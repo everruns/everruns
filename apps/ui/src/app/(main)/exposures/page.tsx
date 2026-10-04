@@ -39,7 +39,7 @@ import {
   StatCard,
   StatGrid,
 } from "@/components/layout";
-import { getEndpointTransportDisplayName } from "@/lib/endpoint-display";
+import { getChannelTypeDisplayName } from "@/lib/channel-display";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
 
@@ -180,7 +180,7 @@ export default function ExposuresPage() {
           <SearchInput
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search by agent, transport or endpoint id"
+            placeholder="Search by agent, transport or channel id"
             className="min-w-64 flex-1"
           />
           <Select
@@ -205,7 +205,7 @@ export default function ExposuresPage() {
               <SelectItem value="all">All transports</SelectItem>
               {transports.map((kind) => (
                 <SelectItem key={kind} value={kind}>
-                  {getEndpointTransportDisplayName(kind)}
+                  {getChannelTypeDisplayName(kind)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -252,7 +252,7 @@ export default function ExposuresPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">
-                          {getEndpointTransportDisplayName(exposure.channel.channel_type)}
+                          {getChannelTypeDisplayName(exposure.channel.channel_type)}
                         </span>
                         {exposure.isTrigger && <Badge variant="outline">trigger</Badge>}
                       </div>

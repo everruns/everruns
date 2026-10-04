@@ -17,7 +17,7 @@ import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { connectSlackWorkspace, type SlackWorkspace } from "@/lib/api/agent-endpoints";
+import { connectSlackWorkspace, type SlackWorkspace } from "@/lib/api/agent-channels";
 
 /** Where Slack's "Your App Configuration Tokens" section lives. */
 export const SLACK_APPS_URL = "https://api.slack.com/apps";

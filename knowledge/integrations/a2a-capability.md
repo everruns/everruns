@@ -11,7 +11,7 @@ tags:
 <!-- Design Decisions:
   - V1 is outbound-only: Everruns agents can delegate to external A2A agents.
   - Do not expose Everruns agents over A2A by default.
-  - Inbound A2A is an explicit future App channel, not a global agent endpoint.
+  - Inbound A2A requires an explicitly configured Agent channel.
   - Runtime surface is unified agent delegation: spawn_agent + generic session_tasks tools.
   - V1 stores external agents in capability config; future org-managed external_agents can replace this source.
   - Run state is registered as session_resources.kind = agent_run for visibility and wake-up.
@@ -21,7 +21,7 @@ tags:
 
 ## Abstract
 
-The A2A capability lets an Everruns agent delegate work to configured external agents using the Agent2Agent protocol. It does not make Everruns agents publicly callable over A2A. The public/server side belongs to a later `a2a` App channel that must be explicitly enabled on a published App.
+The A2A capability lets an Everruns agent delegate work to configured external agents using the Agent2Agent protocol. It does not make Everruns agents publicly callable over A2A. The public/server side belongs to an explicitly configured [A2A channel](a2a-channel.md).
 
 ## Scope
 

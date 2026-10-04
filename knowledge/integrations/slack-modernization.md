@@ -134,7 +134,7 @@ required revisiting the per-app bot identity decision — one Slack workspace in
 to one bot, and an App was a bundle of unrelated channels, so there was no single row to
 install *into*. Retiring the App abstraction answered that: identity lives on the
 endpoint. `signing_secret`, `bot_token` and `team_id` are endpoint config, each endpoint
-serves its own manifest at `/v1/e/{endpoint_id}/slack/manifest` pointed at its own
+serves its own manifest at `/v1/channels/{channel_id}/slack/manifest` pointed at its own
 request URL, verifies its own signatures, and is published on its own.
 
 That gives the install flow an obvious shape: the callback writes the workspace's

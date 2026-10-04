@@ -13,7 +13,7 @@ pub struct RuntimeAccount {
     pub org_id: i64,
     pub id: VirtualUserId,
     pub management: Option<ResolvedOrg>,
-    pub endpoint_id: Option<String>,
+    pub channel_id: Option<String>,
 }
 impl RuntimeAccount {
     pub async fn from_token(auth: &AuthState, token: &str) -> Result<Self, AuthError> {
@@ -36,18 +36,18 @@ impl RuntimeAccount {
         if user.status != "active" || user.usage != "end_user" {
             return Err(AuthError::unauthorized("Runtime account unavailable"));
         }
-        let endpoint = db
-            .get_ingress_endpoint_by_public_id(&claims.endpoint_id)
+        let channel = db
+            .get_ingress_channel_by_public_id(&claims.channel_id)
             .await
-            .map_err(|_| AuthError::internal("Endpoint unavailable"))?
-            .ok_or_else(|| AuthError::unauthorized("Runtime endpoint unavailable"))?;
-        if endpoint.org_id != claims.org_id
-            || !endpoint.enabled
-            || endpoint.endpoint_status != "live"
-            || endpoint.agent_status != "active"
-            || endpoint.exposures_suspended
+            .map_err(|_| AuthError::internal("Channel unavailable"))?
+            .ok_or_else(|| AuthError::unauthorized("Runtime channel unavailable"))?;
+        if channel.org_id != claims.org_id
+            || !channel.enabled
+            || channel.channel_status != "live"
+            || channel.agent_status != "active"
+            || channel.exposures_suspended
         {
-            return Err(AuthError::unauthorized("Runtime endpoint unavailable"));
+            return Err(AuthError::unauthorized("Runtime channel unavailable"));
         }
         if !db
             .list_virtual_user_bindings(claims.org_id, id)
@@ -62,7 +62,7 @@ impl RuntimeAccount {
             org_id: claims.org_id,
             id,
             management: None,
-            endpoint_id: Some(claims.endpoint_id),
+            channel_id: Some(claims.channel_id),
         })
     }
     pub async fn connection_target(
@@ -87,35 +87,35 @@ impl RuntimeAccount {
         }
         Ok(self.id)
     }
-    /// Consumer setup is bounded by the endpoint's effective user MCP attachments.
+    /// Consumer setup is bounded by the channel's effective user MCP attachments.
     pub async fn allowed_mcp_providers(
         &self,
         db: &crate::storage::StorageBackend,
     ) -> anyhow::Result<Option<std::collections::HashSet<String>>> {
-        let Some(endpoint_id) = &self.endpoint_id else {
+        let Some(channel_id) = &self.channel_id else {
             return Ok(None);
         };
-        let endpoint = db
-            .get_ingress_endpoint_by_public_id(endpoint_id)
+        let channel = db
+            .get_ingress_channel_by_public_id(channel_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Endpoint unavailable"))?;
+            .ok_or_else(|| anyhow::anyhow!("Channel unavailable"))?;
         let mut agent =
-            crate::domains::agents::queries::resolve(db, self.org_id, &endpoint.agent_public_id)
+            crate::domains::agents::queries::resolve(db, self.org_id, &channel.agent_public_id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Agent unavailable"))?;
         // Same selection session creation applies, so consumer setup sees the
-        // configuration the endpoint actually runs.
+        // configuration the channel actually runs.
         let version = match everruns_platform::AgentVersionPolicy::from(
-            endpoint.agent_version_policy.as_str(),
+            channel.agent_version_policy.as_str(),
         ) {
-            everruns_platform::AgentVersionPolicy::Pinned => match endpoint.agent_version_id {
+            everruns_platform::AgentVersionPolicy::Pinned => match channel.agent_version_id {
                 Some(id) => db.get_agent_version(self.org_id, id.into()).await?,
                 None => None,
             },
             everruns_platform::AgentVersionPolicy::Latest => {
                 db.get_latest_agent_version(
                     self.org_id,
-                    everruns_contracts::typed_id::AgentId::from_uuid(endpoint.agent_id),
+                    everruns_contracts::typed_id::AgentId::from_uuid(channel.agent_id),
                 )
                 .await?
             }
@@ -133,7 +133,7 @@ impl RuntimeAccount {
         let harness = crate::domains::harnesses::queries::resolve_effective(
             db,
             self.org_id,
-            endpoint.harness_id.into(),
+            channel.harness_id.into(),
         )
         .await?
         .ok_or_else(|| anyhow::anyhow!("Harness unavailable"))?;
@@ -229,7 +229,7 @@ where
             org_id: org.org_id,
             id: user.id,
             management: Some(org),
-            endpoint_id: None,
+            channel_id: None,
         })
     }
 }

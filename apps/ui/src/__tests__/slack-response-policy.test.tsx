@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { SlackConversationSettings } from "@/components/apps/slack-conversation-settings";
-import { getDefaultChannelFormState, buildChannelConfig } from "@/components/apps/channel-form";
+import {
+  getDefaultChannelFormState,
+  buildChannelConfig,
+} from "@/components/agents/channels/channel-form";
 
 describe("Slack response policy", () => {
   const onChange = jest.fn();

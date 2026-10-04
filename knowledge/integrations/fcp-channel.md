@@ -21,7 +21,7 @@ parameter collection, and error guidance happen in natural language, the
 same way a person would ask a service what it does. See the upstream FCP
 specification at `https://github.com/everruns/fcp/blob/main/SPEC.md`.
 
-This spec captures how an existing FCP agent endpoint is exposed, the
+This spec captures how an existing FCP agent channel is exposed, the
 isolation invariants it must keep, and its frozen configuration.
 
 ## Goals
@@ -47,8 +47,8 @@ isolation invariants it must keep, and its frozen configuration.
 Canonical:
 
 ```
-GET  /v1/e/{endpoint_id}/fcp
-POST /v1/e/{endpoint_id}/fcp
+GET  /v1/channels/{channel_id}/fcp
+POST /v1/channels/{channel_id}/fcp
 ```
 
 Permanent compatibility aliases:
@@ -58,7 +58,7 @@ GET  /v1/apps/{legacy_app_id}/fcp
 POST /v1/apps/{legacy_app_id}/fcp
 ```
 
-Aliases resolve from endpoint-owned legacy identity without reading `apps` or
+Aliases resolve from channel-owned legacy identity without reading `apps` or
 `app_channels`.
 
 Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
@@ -92,7 +92,7 @@ with anything else.
 
 1. **Auth stack is FCP-only.** Token verification lives inside
    `crates/server/src/api/fcp.rs::check_token` and never delegates to
-   `EndpointAuthVerifier`. Adding new auth modes is intentionally a
+   `ChannelAuthVerifier`. Adding new auth modes is intentionally a
    breaking design decision, not a config flag.
 2. **Rate limiter is FCP-only.** `app_builder` constructs a dedicated
    `ChannelRateLimiter` with namespace `"fcp"`. Buckets cannot collide
@@ -101,7 +101,7 @@ with anything else.
    session, API token, or cookie. The platform's auth middleware is not
    on the FCP route path.
 4. **No frozen-App dependency.** Endpoint lookup and liveness read
-   `agent_endpoints` and `agents`, not `apps` or `app_channels`.
+   `agent_channels` and `agents`, not `apps` or `app_channels`.
 5. **No internal-state leaks.** Every error path collapses through a
    small set of sanitized responses (`not_found_response`,
    `unauthorized_response`, `turn_error_response`, etc.). A caller cannot

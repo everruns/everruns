@@ -26,7 +26,7 @@ import type {
   UpdateBudgetRequest,
 } from "@/lib/api/types";
 
-type ManagedBudgetSubjectType = Extract<BudgetSubjectType, "agent" | "agent_endpoint">;
+type ManagedBudgetSubjectType = Extract<BudgetSubjectType, "agent" | "agent_channel">;
 type PeriodPreset = "none" | "1h" | "5h" | "24h" | "7d" | "30d" | "calendar_month" | "custom";
 
 const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
@@ -233,7 +233,7 @@ export function BudgetPanel({
       )}
       {!budgetsQuery.isLoading && budgets.length === 0 && !adding && (
         <p className="text-sm text-muted-foreground">
-          No budget is attached to this {subjectType === "agent" ? "agent" : "endpoint"}.
+          No budget is attached to this {subjectType === "agent" ? "agent" : "channel"}.
         </p>
       )}
 

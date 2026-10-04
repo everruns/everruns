@@ -278,17 +278,18 @@ jobs:
               - 'docs/api/openapi.json'
               - '.github/workflows/ci.yml'
             budget_e2e:
-              - 'apps/ui/e2e/endpoint-budget-refusal.spec.ts'
+              - 'apps/ui/e2e/channel-budget-refusal.spec.ts'
               - 'apps/ui/src/components/agents/agent-integrations-panel.tsx'
               - 'apps/ui/src/components/budgets/**'
-              - 'apps/ui/src/hooks/use-agent-endpoints.ts'
+              - 'apps/ui/src/hooks/use-agent-channels.ts'
               - 'apps/ui/src/lib/api/budgets.ts'
               - 'crates/server/src/api/budgets.rs'
-              - 'crates/server/src/domains/agent_endpoints/**'
+              - 'crates/server/src/domains/agent_channels/**'
               - 'crates/server/src/domains/budgets/**'
               - 'crates/server/src/storage/repositories/budgets.rs'
               - 'crates/server/migrations/027_app_budgets.sql'
               - 'crates/server/migrations/137_endpoint_attribution.sql'
+              - 'crates/server/migrations/166_agent_channels.sql'
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
@@ -2504,7 +2505,7 @@ jobs:
           retention-days: 7
 
   ui-budget-e2e:
-    name: UI Endpoint Budget Full-Stack E2E
+    name: UI Channel Budget Full-Stack E2E
     runs-on: ubuntu-latest
     needs:
       - changes
@@ -2534,7 +2535,7 @@ jobs:
       AUTH_MODE: none
       FEATURE_APP_BUDGETS: "prod"
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
-      WORKER_GRPC_AUTH_TOKEN: endpoint-budget-e2e-token
+      WORKER_GRPC_AUTH_TOKEN: channel-budget-e2e-token
       PLAYWRIGHT_REAL_API_URL: http://localhost:9000
 
     defaults:
@@ -2601,8 +2602,8 @@ jobs:
           ./bin/everruns-worker > /tmp/everruns-budget-e2e-worker.log 2>&1 &
           echo "WORKER_PID=$!" >> "$GITHUB_ENV"
 
-      - name: Run endpoint budget full-stack test
-        run: pnpm exec playwright test e2e/endpoint-budget-refusal.spec.ts
+      - name: Run channel budget full-stack test
+        run: pnpm exec playwright test e2e/channel-budget-refusal.spec.ts
 
       - name: Show server and worker logs on failure
         if: failure()
@@ -2618,11 +2619,11 @@ jobs:
           kill "$WORKER_PID" 2>/dev/null || true
           kill "$SERVER_PID" 2>/dev/null || true
 
-      - name: Upload endpoint budget Playwright evidence
+      - name: Upload channel budget Playwright evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: endpoint-budget-playwright-evidence
+          name: channel-budget-playwright-evidence
           path: |
             apps/ui/e2e/playwright-report
             apps/ui/e2e/test-results
@@ -2846,7 +2847,7 @@ jobs:
           require_if_affected "ci:skip-postgres-integration" "${{ needs.changes.outputs.skip_postgres_integration }}" "${{ needs.changes.outputs.postgres_integration }}" "PostgreSQL integration tests"
           require_if_affected "ci:skip-sdk-compat" "${{ needs.changes.outputs.skip_sdk_compat }}" "${{ needs.changes.outputs.sdk_compat }}" "SDK compatibility checks"
           require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.ui }}" "UI Playwright smoke"
-          require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.budget_e2e }}" "UI endpoint budget full-stack E2E"
+          require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.budget_e2e }}" "UI channel budget full-stack E2E"
           require_if_affected "ci:skip-docs-notebooks" "${{ needs.changes.outputs.skip_docs_notebooks }}" "${{ needs.changes.outputs.docs_notebooks }}" "docs notebook execution"
           require_if_affected "ci:skip-docker" "${{ needs.changes.outputs.skip_docker }}" "${{ needs.changes.outputs.docker }}" "Docker image build validation"
           require_if_affected "ci:skip-integration-workflows" "${{ needs.changes.outputs.skip_integration_workflows }}" "$standalone_integration_affected" "standalone Brave Search, DuckDuckGo, or Parallel MCP integration workflows"

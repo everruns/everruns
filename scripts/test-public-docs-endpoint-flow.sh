@@ -7,12 +7,12 @@ SLACK_GUIDE="$ROOT/docs/capabilities/slack.md"
 
 required_guide_text=(
   'Select **Integrations**.'
-  'Select **Add endpoint**.'
-  'Select **Save endpoint**.'
+  'Select **Add channel**.'
+  'Select **Save channel**.'
   'Select **Publish**'
   'Open **Settings** > **Slack workspaces**.'
   'Select **Add to Slack**'
-  '/v1/e/{endpoint_id}/slack/events'
+  '/v1/channels/{channel_id}/slack/events'
 )
 
 for text in "${required_guide_text[@]}"; do
@@ -42,8 +42,8 @@ done
 for diagram in \
   "$ROOT/docs/images/integrations/slack-architecture.mmd" \
   "$ROOT/docs/images/integrations/slack-message-flow.mmd"; do
-  if ! grep -Fq 'Endpoint' "$diagram"; then
-    printf 'Slack diagram does not name Endpoint as the ingress owner: %s\n' "$diagram" >&2
+  if ! grep -Fq 'Channel' "$diagram"; then
+    printf 'Slack diagram does not name Channel as the ingress owner: %s\n' "$diagram" >&2
     exit 1
   fi
   if grep -Fq '/v1/apps/' "$diagram"; then
@@ -68,7 +68,7 @@ if ! grep -Fq 'D->>D: Unregister delivery' "$message_flow_mmd" ||
   exit 1
 fi
 
-apps_guide="$ROOT/docs/features/endpoints.md"
+apps_guide="$ROOT/docs/features/channels.md"
 required_lifecycle_text=(
   'Draft ⇄ Live'
   'Draft → Disabled'
@@ -78,9 +78,9 @@ required_lifecycle_text=(
 
 for text in "${required_lifecycle_text[@]}"; do
   if ! grep -Fq "$text" "$apps_guide"; then
-    printf 'Endpoints guide omits an endpoint lifecycle transition: %s\n' "$text" >&2
+    printf 'Channels guide omits an channel lifecycle transition: %s\n' "$text" >&2
     exit 1
   fi
 done
 
-printf 'Public Slack documentation uses the Agent Integrations endpoint flow.\n'
+printf 'Public Slack documentation uses the Agent Integrations channel flow.\n'

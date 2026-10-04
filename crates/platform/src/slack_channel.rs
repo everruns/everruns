@@ -9,7 +9,7 @@ use utoipa::ToSchema;
 
 use chrono::{DateTime, Utc};
 
-use crate::app::{
+use crate::agent_channel::{
     SessionBinding, SlackReplyMode, default_ag_ui_generic_tool_text,
     is_default_ag_ui_generic_tool_text,
 };
@@ -101,7 +101,7 @@ pub struct SlackChannelConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
+    use crate::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     #[test]
     fn test_slack_channel_config_full() {
         let json = r#"{

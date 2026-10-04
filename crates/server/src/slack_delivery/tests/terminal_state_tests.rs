@@ -20,7 +20,7 @@ pub(super) async fn seed_session(db: &StorageBackend) -> everruns_contracts::typ
         workspace_id: None,
         org_id: ORG,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         trigger_id: None,
         harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
         agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
@@ -130,7 +130,8 @@ async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::U
             recipient_user_id: None,
             recipient_team_id: None,
             tool_visibility: PublicToolVisibility::default(),
-            generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
+            generic_tool_text: everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                .to_string(),
             approvals_enabled: true,
         })
         .await;

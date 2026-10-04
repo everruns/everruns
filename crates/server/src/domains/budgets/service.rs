@@ -49,8 +49,8 @@ struct BudgetScope {
     /// adds `sessions.trigger_id` and re-keys those budgets onto the trigger's
     /// own API id, which is what every other level already does (EVE-1138).
     trigger_subject_id: Option<String>,
-    /// Public ID of the endpoint referenced by `sessions.endpoint_id`.
-    endpoint_subject_id: Option<String>,
+    /// Public ID of the endpoint referenced by `sessions.channel_id`.
+    channel_subject_id: Option<String>,
     session_id: Option<uuid::Uuid>,
     user_id: Option<uuid::Uuid>,
     principal_id: Option<uuid::Uuid>,
@@ -66,7 +66,7 @@ impl BudgetScope {
             user_id: self.user_subject_id.as_deref(),
             org_public_id: Some(self.org_subject_id.as_str()),
             trigger_id: self.trigger_subject_id.as_deref(),
-            endpoint_id: self.endpoint_subject_id.as_deref(),
+            channel_id: self.channel_subject_id.as_deref(),
         }
     }
 }
@@ -136,7 +136,7 @@ impl BudgetService {
             user_subject_id: None,
             org_subject_id: everruns_core::org_public_id_from_internal(org_id),
             trigger_subject_id: None,
-            endpoint_subject_id: None,
+            channel_subject_id: None,
             session_id: SessionId::parse(session_id).ok().map(|id| id.uuid()),
             user_id: None,
             principal_id: None,
@@ -156,8 +156,8 @@ impl BudgetService {
     /// passed as the worker's override renders — the two are independently
     /// generated UUIDs, so rendering the internal one produced a subject no
     /// stored budget could ever match and agent-scoped budgets silently never
-    /// bound. This mirrors the `agent_endpoint` branch, which has always gone
-    /// through `get_agent_endpoint_public_id`.
+    /// bound. This mirrors the `agent_channel` branch, which has always gone
+    /// through `get_agent_channel_public_id`.
     ///
     /// The override is tried first and is looked up the same way, so both the
     /// worker path and the session-derived path land on one identifier. An
@@ -205,10 +205,10 @@ impl BudgetService {
         let trigger_subject_id = session
             .trigger_id
             .map(|id| TriggerId::from_uuid(id).to_string());
-        let endpoint_subject_id = match session.endpoint_id {
-            Some(endpoint_id) => {
+        let channel_subject_id = match session.channel_id {
+            Some(channel_id) => {
                 self.db
-                    .get_agent_endpoint_public_id(session.org_id, endpoint_id)
+                    .get_agent_channel_public_id(session.org_id, channel_id)
                     .await?
             }
             None => None,
@@ -224,7 +224,7 @@ impl BudgetService {
             user_subject_id: session.resolved_owner_user_id.map(|id| id.to_string()),
             org_subject_id: everruns_core::org_public_id_from_internal(session.org_id),
             trigger_subject_id,
-            endpoint_subject_id,
+            channel_subject_id,
             session_id: Some(session.id.uuid()),
             user_id: session.resolved_owner_user_id,
             principal_id: Some(session.owner_principal_id.uuid()),
@@ -255,7 +255,7 @@ impl BudgetService {
         let mut budgets = Vec::new();
         for (subject_type, subject_id) in [
             ("session", Some(scope.session_subject_id.as_str())),
-            ("agent_endpoint", scope.endpoint_subject_id.as_deref()),
+            ("agent_channel", scope.channel_subject_id.as_deref()),
             ("agent_trigger", scope.trigger_subject_id.as_deref()),
             ("agent", scope.agent_subject_id.as_deref()),
             ("user", scope.user_subject_id.as_deref()),

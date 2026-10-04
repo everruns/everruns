@@ -64,10 +64,11 @@ pub enum BudgetSubjectType {
     /// keyed on, leaving those caps with no structural subject until
     /// migration 153 re-keyed them onto the trigger's own id.
     AgentTrigger,
-    /// Bound to a single agent endpoint — the exposure a session arrived
+    /// Bound to a single agent channel — the exposure a session arrived
     /// through (EVE-1004). Successor to `AppChannel` for every ingress except
     /// the webhook triggers migration 138 moved off endpoints.
-    AgentEndpoint,
+    #[serde(alias = "agent_endpoint")]
+    AgentChannel,
 }
 
 impl BudgetSubjectType {
@@ -79,7 +80,7 @@ impl BudgetSubjectType {
             BudgetSubjectType::User => "user",
             BudgetSubjectType::Organization => "org",
             BudgetSubjectType::AgentTrigger => "agent_trigger",
-            BudgetSubjectType::AgentEndpoint => "agent_endpoint",
+            BudgetSubjectType::AgentChannel => "agent_channel",
         }
     }
 }
@@ -98,7 +99,7 @@ impl From<&str> for BudgetSubjectType {
             "user" => BudgetSubjectType::User,
             "org" | "organization" => BudgetSubjectType::Organization,
             "agent_trigger" => BudgetSubjectType::AgentTrigger,
-            "agent_endpoint" => BudgetSubjectType::AgentEndpoint,
+            "agent_channel" | "agent_endpoint" => BudgetSubjectType::AgentChannel,
             // Unknown wire strings, including the retired "app" and
             // "app_channel", fall back to the narrowest subject rather than the
             // widest. Migrations 151 and 153 left no such rows, so this is

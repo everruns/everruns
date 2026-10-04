@@ -1,13 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import SlackWorkspacesPage from "@/app/(main)/settings/slack/page";
-import type { SlackInstallCapability, SlackWorkspace } from "@/lib/api/agent-endpoints";
+import type { SlackInstallCapability, SlackWorkspace } from "@/lib/api/agent-channels";
 
 let mockCapability: SlackInstallCapability;
 let mockWorkspaces: SlackWorkspace[];
 
 jest.mock("@/hooks", () => ({ usePageTitle: jest.fn() }));
 
-jest.mock("@/hooks/use-agent-endpoints", () => ({
+jest.mock("@/hooks/use-agent-channels", () => ({
   useSlackInstallCapability: () => ({ data: mockCapability, isLoading: false }),
   useSlackWorkspaces: () => ({ data: mockWorkspaces, isLoading: false }),
   useInvalidateSlackWorkspaces: () => jest.fn(),

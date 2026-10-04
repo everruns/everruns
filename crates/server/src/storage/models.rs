@@ -859,7 +859,7 @@ pub struct SessionRow {
     /// platform-created sessions, and for app-channel sessions predating the
     /// routing tag the backfill reads.
     #[sqlx(default)]
-    pub endpoint_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
     /// Agent trigger whose ingress created this session (EVE-1138). The
     /// structural successor to the `app_channel:` tag for budget attribution:
     /// migration 138 deleted the endpoint rows a webhook trigger's budgets had
@@ -2742,12 +2742,12 @@ pub struct UpdateApp {
 }
 
 // ============================================
-// Agent endpoint rows (App-linked compatibility path)
+// Agent channel rows (App-linked compatibility path)
 // ============================================
 
-/// `agent_endpoints` row as read through its archival `app_id` link.
+/// `agent_channels` row as read through its archival `app_id` link.
 #[derive(Debug, Clone, FromRow)]
-pub struct AgentEndpointRow {
+pub struct AgentChannelRow {
     pub id: Uuid,
     pub app_id: Uuid,
     pub public_id: String,
@@ -2807,7 +2807,7 @@ pub struct UpdatePrincipalRow {
 
 /// Input for creating an endpoint under a legacy App alias (agent derived from the App).
 #[derive(Debug, Clone)]
-pub struct CreateLegacyAliasEndpointRow {
+pub struct CreateLegacyAliasChannelRow {
     pub public_id: String,
     pub channel_type: String,
     pub channel_config: serde_json::Value,
@@ -2820,7 +2820,7 @@ pub struct CreateLegacyAliasEndpointRow {
 
 /// Input for updating an endpoint by its internal row id.
 #[derive(Debug, Clone, Default)]
-pub struct UpdateEndpointByIdRow {
+pub struct UpdateChannelByIdRow {
     pub channel_type: Option<String>,
     pub channel_config: Option<serde_json::Value>,
     pub channel_config_encrypted: UpdateField<Vec<u8>>,

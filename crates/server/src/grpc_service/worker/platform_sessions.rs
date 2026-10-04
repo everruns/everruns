@@ -24,7 +24,7 @@ impl WorkerServiceImpl {
             self.event_service.event_delivery().clone(),
         );
 
-        let result = crate::domains::agent_endpoints::invoke_scheduled_legacy_alias_endpoint(
+        let result = crate::domains::agent_channels::invoke_scheduled_legacy_alias_channel(
             &self.db,
             self.encryption.as_ref(),
             &self.session_service,

@@ -40,7 +40,7 @@ use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
 use crate::task_wakeup::{TaskWakeups, spawn_wakeup_listener};
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
-    activities::ScheduledAgentTriggerInput, activities::ScheduledEndpointInput,
+    activities::ScheduledAgentTriggerInput, activities::ScheduledChannelInput,
     activities::activity_types,
 };
 
@@ -121,7 +121,7 @@ impl Default for TaskWorkerConfig {
                 "act".to_string(),
                 "leased_resource_cleanup".to_string(),
                 "session_task_reaper".to_string(),
-                activity_types::INVOKE_SCHEDULED_ENDPOINT.to_string(),
+                activity_types::INVOKE_SCHEDULED_CHANNEL.to_string(),
                 activity_types::INVOKE_AGENT_TRIGGER.to_string(),
             ],
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
@@ -905,11 +905,11 @@ where
                         .await;
                 (res, None)
             }
-            activity_types::INVOKE_SCHEDULED_ENDPOINT => {
-                let input: ScheduledEndpointInput = serde_json::from_value(task.input.clone())
+            activity_types::INVOKE_SCHEDULED_CHANNEL => {
+                let input: ScheduledChannelInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
                 let res = adapters
-                    .invoke_scheduled_endpoint(input.org_id, &input.app_id, &input.channel_id)
+                    .invoke_scheduled_channel(input.org_id, &input.app_id, &input.channel_id)
                     .await
                     .map_err(anyhow::Error::from);
                 (res, None)

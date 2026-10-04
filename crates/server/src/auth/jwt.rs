@@ -609,7 +609,8 @@ mod tests {
 pub struct RuntimeAccessClaims {
     pub sub: String,
     pub org_id: i64,
-    pub endpoint_id: String,
+    #[serde(alias = "endpoint_id")]
+    pub channel_id: String,
     pub binding_id: Uuid,
     pub token_type: String,
     pub aud: String,
@@ -630,7 +631,7 @@ impl JwtService {
             &RuntimeAccessClaims {
                 sub: subject.to_string(),
                 org_id: org,
-                endpoint_id: endpoint,
+                channel_id: endpoint,
                 binding_id: binding,
                 token_type: "runtime_access".into(),
                 aud: "everruns-virtual-user".into(),
@@ -655,6 +656,35 @@ impl JwtService {
 mod runtime_token_tests {
     use super::*;
     #[test]
+    fn runtime_credentials_emit_channel_claim_and_accept_existing_endpoint_claim() {
+        let config = JwtConfig::default();
+        let jwt = JwtService::new(config.clone());
+        let token = jwt
+            .generate_runtime_token(
+                42,
+                everruns_contracts::typed_id::VirtualUserId::new(),
+                "appchan_existing".into(),
+                Uuid::new_v4(),
+            )
+            .unwrap();
+        let claims = jwt.validate_runtime_token(&token).unwrap();
+        let mut wire = serde_json::to_value(&claims).unwrap();
+        assert_eq!(wire["channel_id"], "appchan_existing");
+        assert!(wire.get("endpoint_id").is_none());
+        let id = wire.as_object_mut().unwrap().remove("channel_id").unwrap();
+        wire["endpoint_id"] = id;
+        let old_token = encode(
+            &Header::default(),
+            &wire,
+            &EncodingKey::from_secret(config.secret.as_bytes()),
+        )
+        .unwrap();
+        assert_eq!(
+            jwt.validate_runtime_token(&old_token).unwrap().channel_id,
+            claims.channel_id
+        );
+    }
+    #[test]
     fn runtime_and_management_credentials_have_separate_audiences() {
         let jwt = JwtService::new(JwtConfig::default());
         let id = everruns_contracts::typed_id::VirtualUserId::new();
@@ -665,7 +695,7 @@ mod runtime_token_tests {
         let claims = jwt.validate_runtime_token(&token).unwrap();
         assert_eq!(claims.org_id, 42);
         assert_eq!(claims.sub, id.to_string());
-        assert_eq!(claims.endpoint_id, "endpoint-a");
+        assert_eq!(claims.channel_id, "endpoint-a");
         assert_eq!(claims.binding_id, binding);
         assert_eq!(claims.exp - claims.iat, 900);
         assert!(jwt.validate_access_token(&token).is_err());

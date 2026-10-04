@@ -30,7 +30,7 @@
 
 use super::events::{self, TriggerEvent, TriggerEventOutcome, TriggerEventRoute};
 use super::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
-use crate::domains::agent_endpoints::invocation::render_message_template;
+use crate::domains::agent_channels::invocation::render_message_template;
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp;

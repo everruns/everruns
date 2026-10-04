@@ -13,7 +13,7 @@ use test_harness::TestServer;
 
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId, TriggerId, VirtualUserId};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::{AgentEndpointId, SessionSource};
+use everruns_platform::{AgentChannelId, SessionSource};
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
@@ -93,7 +93,7 @@ async fn webhook_trigger_can_be_created() {
     let invoked: Value = server
         .request_raw(
             Method::POST,
-            &format!("/v1/e/{ingress_id}/webhook"),
+            &format!("/v1/channels/{ingress_id}/webhook"),
             vec![
                 ("content-type", "application/json"),
                 ("x-everruns-webhook-token", "webhook-secret"),
@@ -150,7 +150,7 @@ async fn create_migrated_webhook_trigger(
     let agent = create_agent(server, &format!("{name}-agent")).await;
     let agent_public_id = agent["id"].as_str().unwrap().to_string();
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             name,
             &agent_public_id,
             "webhook",
@@ -169,7 +169,7 @@ async fn create_migrated_webhook_trigger(
         .expect("get migrated app")
         .expect("migrated app exists");
 
-    let ingress_id = AgentEndpointId::new().to_string();
+    let ingress_id = AgentChannelId::new().to_string();
     server
         .db
         .create_agent_trigger(CreateAgentTriggerRow {
@@ -311,7 +311,7 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
 
     for path in [
         format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
-        format!("/v1/e/{ingress_id}/webhook"),
+        format!("/v1/channels/{ingress_id}/webhook"),
     ] {
         let response = invoke_webhook(
             &server,
@@ -338,7 +338,7 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
     .json();
     let second: Value = invoke_webhook(
         &server,
-        &format!("/v1/e/{ingress_id}/webhook"),
+        &format!("/v1/channels/{ingress_id}/webhook"),
         ("authorization", "Bearer migrated-secret"),
         "synchronize",
     )
@@ -392,7 +392,7 @@ async fn migrated_webhook_trigger_preserves_routes_auth_templates_and_shared_ses
         .assert_status(StatusCode::OK);
     for path in [
         format!("/v1/apps/{app_id}/webhooks/{ingress_id}"),
-        format!("/v1/e/{ingress_id}/webhook"),
+        format!("/v1/channels/{ingress_id}/webhook"),
     ] {
         let response = invoke_webhook(
             &server,
@@ -429,7 +429,7 @@ async fn migrated_webhook_trigger_ephemeral_sessions_and_rate_limit_are_preserve
     .json();
     let second: Value = invoke_webhook(
         &server,
-        &format!("/v1/e/{ingress_id}/webhook"),
+        &format!("/v1/channels/{ingress_id}/webhook"),
         ("x-everruns-webhook-token", "migrated-secret"),
         "second",
     )
@@ -442,7 +442,7 @@ async fn migrated_webhook_trigger_ephemeral_sessions_and_rate_limit_are_preserve
 
     invoke_webhook(
         &server,
-        &format!("/v1/e/{ingress_id}/webhook"),
+        &format!("/v1/channels/{ingress_id}/webhook"),
         ("x-everruns-webhook-token", "migrated-secret"),
         "limited",
     )
@@ -483,7 +483,7 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         .json();
     let legacy_session_id: SessionId = legacy_session["id"].as_str().unwrap().parse().unwrap();
     // The trigger migration 138 produced: the endpoint row is gone, so
-    // `endpoint_id` is NULL and `trigger_id` is the only structural attribution
+    // `channel_id` is NULL and `trigger_id` is the only structural attribution
     // the session has. The App-era tags stay — they are frozen compatibility
     // attribution — but nothing reads them for a budget any more (EVE-1138).
     let trigger = server
@@ -495,7 +495,7 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
     sqlx::query(
         "UPDATE sessions
          SET app_id = $2,
-             endpoint_id = NULL,
+             channel_id = NULL,
              trigger_id = $6,
              owner_principal_id = $3,
              resolved_owner_user_id = $4,
@@ -569,7 +569,7 @@ async fn migrated_webhook_reuses_legacy_session_and_enforces_its_budget() {
         .await
         .expect("get webhook session")
         .expect("webhook session exists");
-    assert_eq!(session.endpoint_id, None);
+    assert_eq!(session.channel_id, None);
 
     let service = BudgetService::new(server.db.clone());
     let selected = service

@@ -46,7 +46,7 @@ pub struct CreateSessionRow {
     /// The two ingress pointers (EVE-1004, EVE-1138): the endpoint, set by the
     /// app-channel paths that all know theirs, and the trigger, set by the
     /// trigger invocation path. Both `None` for every other way in.
-    pub endpoint_id: Option<Uuid>,
+    pub channel_id: Option<Uuid>,
     pub trigger_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
@@ -99,7 +99,7 @@ impl Default for CreateSessionRow {
             org_id: 0,
             source: everruns_platform::SessionSource::Api,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             trigger_id: None,
             harness_id: None,
             agent_id: None,

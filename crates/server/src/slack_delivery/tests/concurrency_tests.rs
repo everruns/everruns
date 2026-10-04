@@ -64,7 +64,8 @@ async fn register_test_delivery(
             recipient_user_id: None,
             recipient_team_id: None,
             tool_visibility: PublicToolVisibility::default(),
-            generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
+            generic_tool_text: everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+                .to_string(),
             approvals_enabled: true,
         })
         .await;

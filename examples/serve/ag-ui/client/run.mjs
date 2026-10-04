@@ -6,7 +6,7 @@
 //   npm install && npm start                    # or: npm start -- reject
 //
 // SERVE_URL overrides the base URL; the same code points at an Everruns
-// endpoint (`https://<host>/v1/e/<endpoint_id>/ag-ui`) by URL alone.
+// endpoint (`https://<host>/v1/channels/<channel_id>/ag-ui`) by URL alone.
 import { randomUUID } from "node:crypto";
 import { HttpAgent } from "@ag-ui/client";
 
@@ -14,7 +14,7 @@ const base = process.env.SERVE_URL ?? "http://127.0.0.1:3000";
 const decision = process.argv[2] === "reject" ? "reject" : "allow";
 
 const agent = new HttpAgent({
-  url: `${base}/v1/e/assistant/ag-ui`,
+  url: `${base}/v1/channels/assistant/ag-ui`,
   threadId: randomUUID(),
 });
 

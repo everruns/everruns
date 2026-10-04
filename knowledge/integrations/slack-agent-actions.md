@@ -157,10 +157,10 @@ endpoint. Org scoping is then structural rather than a check: the session read
 is `get_session(org_id, session_id)` and the app read is
 `get_by_internal_id(.., org_id, ..)`.
 
-Resolution prefers `sessions.endpoint_id` (EVE-1004) over the
+Resolution prefers `sessions.channel_id` (EVE-1004) over the
 `slack:endpoint:{id}` routing tag, because the FK is immutable and the tag is
 not; the tag remains the fallback for pre-backfill sessions. Either way the
-endpoint must be `EndpointTransport::Slack` and `status == live`, so a session that
+endpoint must be `ChannelType::Slack` and `status == live`, so a session that
 came through another channel never falls through to a sibling Slack endpoint —
 the wrong-bot bug that resolving by endpoint exists to prevent.
 

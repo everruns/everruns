@@ -224,8 +224,8 @@ fn run_error(run: &TestRun) -> &AgUiRunErrorEvent {
     }
 }
 
-fn test_app() -> crate::api::endpoint_ingress::IngressContext {
-    crate::api::endpoint_ingress::IngressContext::for_test("Test App", None)
+fn test_app() -> crate::api::channel_ingress::IngressContext {
+    crate::api::channel_ingress::IngressContext::for_test("Test App", None)
 }
 
 #[test]

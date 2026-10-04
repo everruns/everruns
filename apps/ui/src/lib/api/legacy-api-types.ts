@@ -13,7 +13,7 @@ export type {
 import type { SlackChannelConfig } from "./slack-api-types";
 export type { SlackChannelConfig, SlackReplyMode, SlackResponsePolicy } from "./slack-api-types";
 import type { DriverId } from "./provider-driver-types";
-import type { EndpointStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
+import type { ChannelStatus, LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
 
 // From legacy agent-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // ============================================
@@ -381,7 +381,7 @@ export interface PreviewHarnessRequest {
 // From legacy app-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 
-export type EndpointTransport =
+export type ChannelType =
   | "slack"
   | "ag_ui"
   | "schedule"
@@ -407,14 +407,14 @@ export type SessionBinding =
 
 /**
  * The bindings a messaging transport can offer — it keys off an inbound message.
- * Mirrors `EndpointTransport::allowed_bindings()` for Slack.
+ * Mirrors `ChannelType::allowed_bindings()` for Slack.
  */
 export type SessionStrategy = Extract<SessionBinding, "per_thread" | "per_channel" | "per_user">;
 
 /**
  * The bindings a trigger or request/reply endpoint can offer — nothing is
  * listening on a thread, so the exposure owns the session. Mirrors
- * `EndpointTransport::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
+ * `ChannelType::allowed_bindings()` for schedule, webhook, A2A and api_endpoint.
  */
 export type InvocationSessionMode = Extract<
   SessionBinding,
@@ -425,7 +425,7 @@ export type AgUiToolVisibility = "none" | "generic" | "narrated";
 
 export type AgentVersionPolicy = "default" | "latest" | "pinned";
 
-export type EndpointAuthMode =
+export type ChannelAuthMode =
   | "anonymous"
   | "shared_secret"
   | "api_key"
@@ -435,7 +435,7 @@ export type EndpointAuthMode =
   | "http_basic"
   | "mtls";
 
-export interface EndpointAuthRequirements {
+export interface ChannelAuthRequirements {
   audiences?: string[];
   scopes?: string[];
   claims?: Record<string, unknown>;
@@ -444,7 +444,7 @@ export interface EndpointAuthRequirements {
   domains?: string[];
 }
 
-export type EndpointAuthProviderConfig =
+export type ChannelAuthProviderConfig =
   | {
       type: "google_oidc";
       client_id: string;
@@ -479,10 +479,10 @@ export type EndpointAuthProviderConfig =
       proxy_secret_configured?: boolean;
     };
 
-export interface EndpointAuthConfig {
-  mode: EndpointAuthMode;
-  provider?: EndpointAuthProviderConfig;
-  requirements?: EndpointAuthRequirements;
+export interface ChannelAuthConfig {
+  mode: ChannelAuthMode;
+  provider?: ChannelAuthProviderConfig;
+  requirements?: ChannelAuthRequirements;
 }
 
 /** Default thread expiration window for AG-UI (6 hours, in seconds). */
@@ -519,7 +519,7 @@ export interface AgUiChannelConfig {
   /** Text shown while tools are running when tool_visibility is "generic". */
   generic_tool_text?: string;
   reasoning_summary_visible?: boolean;
-  auth?: EndpointAuthConfig;
+  auth?: ChannelAuthConfig;
 }
 
 export interface ScheduleChannelConfig {
@@ -541,7 +541,7 @@ export interface WebhookChannelConfig {
  *
  * Minimal text-first ingress. FCP intentionally runs its own auth stack —
  * anonymous + an optional shared bearer token — and does not accept the
- * inline `EndpointAuthConfig` modes used by AG-UI and A2A.
+ * inline `ChannelAuthConfig` modes used by AG-UI and A2A.
  */
 export interface FcpChannelConfig {
   anonymous?: boolean;
@@ -582,7 +582,7 @@ export interface A2aChannelConfig {
    * the global API limit still applies.
    */
   rate_limit_per_minute?: number;
-  auth?: EndpointAuthConfig;
+  auth?: ChannelAuthConfig;
   /**
    * Optional shared HMAC signing secret. Plaintext is **write-only** and
    * only sent on a PATCH that intends to rotate / set the secret;
@@ -628,15 +628,15 @@ export interface PublicChatChannelConfig {
   rate_limit_per_minute?: number;
   tool_visibility?: AgUiToolVisibility;
   generic_tool_text?: string;
-  auth?: EndpointAuthConfig;
+  auth?: ChannelAuthConfig;
   branding?: PublicChatBranding;
   captcha?: PublicChatCaptchaConfig;
 }
 
-export interface AgentEndpoint {
+export interface AgentChannel {
   id: string;
-  channel_type: EndpointTransport;
-  auth?: EndpointAuthConfig;
+  channel_type: ChannelType;
+  auth?: ChannelAuthConfig;
   channel_config:
     | SlackChannelConfig
     | AgUiChannelConfig
@@ -652,7 +652,7 @@ export interface AgentEndpoint {
    * retained for the App API's existing shape. Typed from the generated schema
    * so the two cannot drift.
    */
-  status?: EndpointStatus;
+  status?: ChannelStatus;
   next_run_at?: string | null;
   last_invoked_at?: string | null;
   created_at: string;
@@ -672,7 +672,7 @@ export interface App {
   resolved_owner_user_id?: string | null;
   owner?: PrincipalSummary | null;
   effective_owner?: PrincipalSummary | null;
-  channels: AgentEndpoint[];
+  channels: AgentChannel[];
   status: AppStatus;
   published_at: string | null;
   created_at: string;

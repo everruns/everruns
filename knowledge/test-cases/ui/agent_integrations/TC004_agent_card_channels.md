@@ -13,8 +13,8 @@ tags:
 ## Preconditions
 
 - A DB-backed local stack runs with `AUTH_MODE=none`, or the tester has access to the organization.
-- An active agent has five inbound endpoints with a mix of live, draft, and disabled states.
-- A second active agent has no endpoints.
+- An active agent has five inbound channels with a mix of live, draft, and disabled states.
+- A second active agent has no channels.
 
 ## Steps
 
@@ -26,13 +26,13 @@ tags:
    live, draft, or paused state, without relying on color alone.
 4. Activate a channel chip or overflow control. Verify it opens that agent's Integrations tab.
 5. Verify the empty agent says **None configured**. Activate **Add** when management actions
-   are available and verify it opens the agent's endpoint creation page.
-6. Publish, unpublish, and disable an endpoint. Return to the collection and verify the card
+   are available and verify it opens the agent's channel creation page.
+6. Publish, unpublish, and disable a channel. Return to the collection and verify the card
    reflects its current state without a full browser reload.
 7. Suspend all exposures for the populated agent. Verify its chips say **Suspended** and no
    longer display live indicators. Resume exposures and verify their original states return.
 8. Archive the agent. Verify its channels remain visible but say **Agent unavailable** and no
-   endpoint creation action appears.
+   channel creation action appears.
 9. Verify scheduled triggers do not appear in Channels.
 10. Repeat the visual checks in list view and dark mode. Compare harness and example cards:
     headers, quiet tags, capability chips, and separated footers use the same card family.
@@ -40,5 +40,5 @@ tags:
 ## Expected Result
 
 Channel summaries are current, readable at narrow widths, and scoped to the owning agent.
-The collection loads summaries with its agent response, without a separate endpoint request
+The collection loads summaries with its agent response, without a separate channel request
 for each card. The summary never includes channel configuration, authentication, or secrets.

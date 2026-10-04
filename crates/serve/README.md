@@ -158,7 +158,7 @@ the tool and enforced by the runtime; every agent also has the built-in
 
 With the `ag-ui` feature, every top-level agent also serves
 [AG-UI](https://docs.ag-ui.com) 1.0 clients such as CopilotKit at
-`POST /v1/e/{agent}/ag-ui`, the route shape of an Everruns endpoint. Each
+`POST /v1/channels/{agent}/ag-ui`, the route shape of an Everruns endpoint. Each
 AG-UI thread is one session, and pending approvals and `ask_user` questions
 become interrupts that the next run resumes.
 
@@ -169,8 +169,8 @@ everruns-serve = { version = "0.33", features = ["ag-ui"] }
 ## A2A
 
 With the `a2a` feature, every top-level agent also serves A2A 1.0 JSON-RPC at
-`POST /v1/e/{agent}/a2a`, with its Agent Card at
-`GET /v1/e/{agent}/a2a/.well-known/agent-card.json`. Each A2A context is one
+`POST /v1/channels/{agent}/a2a`, with its Agent Card at
+`GET /v1/channels/{agent}/a2a/.well-known/agent-card.json`. Each A2A context is one
 session, and each task one turn whose reply is the task's `response` artifact.
 
 ```toml

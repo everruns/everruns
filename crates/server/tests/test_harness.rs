@@ -16,7 +16,7 @@ use axum::{
     routing::get,
 };
 use http_body_util::BodyExt;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::Serialize;
 use serde_json::Value;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use tower::ServiceExt;
@@ -35,6 +35,9 @@ use everruns_worker::{AgentRunner, RunnerBackend, create_runner_with_backend};
 #[path = "test_harness/egress_fakes.rs"]
 mod egress_fakes;
 pub use egress_fakes::{McpServerSlot, WebhookReceiver};
+#[path = "test_harness/response.rs"]
+mod response;
+pub use response::TestResponse;
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
     headers
@@ -165,7 +168,7 @@ impl TestServer {
         .await
     }
 
-    pub async fn seed_app_endpoint(
+    pub async fn seed_app_channel(
         &self,
         name: &str,
         agent_public_id: &str,
@@ -174,10 +177,10 @@ impl TestServer {
     ) -> Value {
         use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_platform::AgentEndpointId;
-        use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
+        use everruns_platform::AgentChannelId;
+        use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::storage::models::{
-            CreateAppRow, CreateLegacyAliasEndpointRow, CreatePrincipalRow,
+            CreateAppRow, CreateLegacyAliasChannelRow, CreatePrincipalRow,
         };
         use uuid::Uuid;
 
@@ -248,10 +251,10 @@ impl TestServer {
             .await
             .expect("create fixture App");
         self.db
-            .create_legacy_alias_endpoint(
+            .create_legacy_alias_channel(
                 app.id,
-                CreateLegacyAliasEndpointRow {
-                    public_id: AgentEndpointId::new().to_string(),
+                CreateLegacyAliasChannelRow {
+                    public_id: AgentChannelId::new().to_string(),
                     channel_type: channel_type.to_string(),
                     channel_config: prepared.channel_config,
                     channel_config_encrypted: prepared.channel_config_encrypted,
@@ -270,7 +273,7 @@ impl TestServer {
             .json()
     }
 
-    pub async fn set_app_endpoints_live(&self, app_public_id: &str, live: bool) -> Value {
+    pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
         use everruns_durable::UpdateField;
         use everruns_server::storage::models::UpdateApp;
@@ -299,7 +302,7 @@ impl TestServer {
             .expect("update fixture App")
             .expect("fixture App exists");
         self.db
-            .set_app_endpoint_publish(app.id, live)
+            .set_app_channel_publish(app.id, live)
             .await
             .expect("update fixture endpoint status");
         self.get(&format!("/v1/apps/{app_public_id}"))
@@ -308,16 +311,16 @@ impl TestServer {
             .json()
     }
 
-    pub async fn seed_endpoint_for_app(
+    pub async fn seed_channel_for_app(
         &self,
         app_public_id: &str,
         channel_type: &str,
         channel_config: Value,
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_platform::AgentEndpointId;
-        use everruns_server::domains::agent_endpoints::queries::prepare_channel_storage;
-        use everruns_server::storage::models::CreateLegacyAliasEndpointRow;
+        use everruns_platform::AgentChannelId;
+        use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
+        use everruns_server::storage::models::CreateLegacyAliasChannelRow;
 
         let app = self
             .db
@@ -329,10 +332,10 @@ impl TestServer {
             .expect("prepare endpoint config");
         let endpoint = self
             .db
-            .create_legacy_alias_endpoint(
+            .create_legacy_alias_channel(
                 app.id,
-                CreateLegacyAliasEndpointRow {
-                    public_id: AgentEndpointId::new().to_string(),
+                CreateLegacyAliasChannelRow {
+                    public_id: AgentChannelId::new().to_string(),
                     channel_type: channel_type.to_string(),
                     channel_config: prepared.channel_config,
                     channel_config_encrypted: prepared.channel_config_encrypted,
@@ -356,20 +359,20 @@ impl TestServer {
             .clone()
     }
 
-    pub async fn set_endpoint_status(&self, endpoint_public_id: &str, status: &str) -> Value {
-        use everruns_server::storage::models::UpdateEndpointByIdRow;
+    pub async fn set_channel_status(&self, channel_public_id: &str, status: &str) -> Value {
+        use everruns_server::storage::models::UpdateChannelByIdRow;
 
         let endpoint = self
             .db
-            .get_endpoint_row_by_public_id(endpoint_public_id)
+            .get_channel_row_by_public_id(channel_public_id)
             .await
             .expect("get fixture endpoint")
             .expect("fixture endpoint exists");
         let endpoint = self
             .db
-            .update_endpoint_by_id(
+            .update_channel_by_id(
                 endpoint.id,
-                UpdateEndpointByIdRow {
+                UpdateChannelByIdRow {
                     enabled: Some(status != "disabled"),
                     status: Some(status.to_string()),
                     ..Default::default()
@@ -379,7 +382,7 @@ impl TestServer {
             .expect("update fixture endpoint")
             .expect("fixture endpoint exists");
         serde_json::to_value(
-            everruns_server::domains::agent_endpoints::queries::channel_row_to_channel(
+            everruns_server::domains::agent_channels::queries::channel_row_to_channel(
                 self.encryption.as_ref(),
                 endpoint,
             ),
@@ -387,20 +390,20 @@ impl TestServer {
         .expect("serialize fixture endpoint")
     }
 
-    pub async fn update_endpoint_config(
+    pub async fn update_channel_config(
         &self,
-        endpoint_public_id: &str,
+        channel_public_id: &str,
         channel_config: Value,
     ) -> Value {
         use everruns_durable::UpdateField;
-        use everruns_server::domains::agent_endpoints::queries::{
+        use everruns_server::domains::agent_channels::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };
-        use everruns_server::storage::models::UpdateEndpointByIdRow;
+        use everruns_server::storage::models::UpdateChannelByIdRow;
 
         let endpoint = self
             .db
-            .get_endpoint_row_by_public_id(endpoint_public_id)
+            .get_channel_row_by_public_id(channel_public_id)
             .await
             .expect("get fixture endpoint")
             .expect("fixture endpoint exists");
@@ -420,9 +423,9 @@ impl TestServer {
             .expect("prepare endpoint config");
         let endpoint = self
             .db
-            .update_endpoint_by_id(
+            .update_channel_by_id(
                 endpoint.id,
-                UpdateEndpointByIdRow {
+                UpdateChannelByIdRow {
                     channel_config: Some(prepared.channel_config),
                     channel_config_encrypted: UpdateField::from_option(
                         prepared.channel_config_encrypted,
@@ -436,7 +439,7 @@ impl TestServer {
             .expect("update fixture endpoint")
             .expect("fixture endpoint exists");
         serde_json::to_value(
-            everruns_server::domains::agent_endpoints::queries::channel_row_to_channel(
+            everruns_server::domains::agent_channels::queries::channel_row_to_channel(
                 self.encryption.as_ref(),
                 endpoint,
             ),
@@ -843,6 +846,13 @@ impl TestServer {
             ),
             auth_state.clone(),
         );
+        let budgets_state = api::budgets::AppState::new(
+            db.clone(),
+            Arc::new(everruns_server::domains::budgets::BudgetService::new(
+                db.clone(),
+            )),
+            auth_state.clone(),
+        );
         let agents_state = api::agents::AppState::new(
             db.clone(),
             capability_service.clone(),
@@ -991,7 +1001,7 @@ impl TestServer {
             event_delivery.clone(),
             "https://example.com/api".to_string(),
         );
-        let endpoint_webhooks_state = api::endpoint_webhooks::EndpointWebhookState::new(
+        let channel_webhooks_state = api::channel_webhooks::ChannelWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1000,7 +1010,7 @@ impl TestServer {
             api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         )
         .with_mcp_event_triggers(mcp_event_triggers.clone());
-        let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
+        let channel_a2a_state = api::channel_a2a::ChannelA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1011,7 +1021,7 @@ impl TestServer {
             api::a2a_signing::A2aReplayStore::in_memory(),
             "https://app.everruns.test".to_string(),
         );
-        let endpoint_api_state = api::endpoint_api::EndpointApiState::new(
+        let channel_api_state = api::channel_api::ChannelApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1088,13 +1098,14 @@ impl TestServer {
         // Build API routes
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
+            .merge(api::budgets::routes(budgets_state))
             .merge(api::agent_credentials::routes(agent_credentials_state))
             .merge(api::virtual_users::routes(virtual_users_state))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
-            .merge(api::agent_endpoints::routes(agent_triggers_state.clone()))
+            .merge(api::agent_channels::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
@@ -1143,9 +1154,9 @@ impl TestServer {
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))
             .merge(api::slack_events::routes(slack_state))
-            .merge(api::endpoint_webhooks::routes(endpoint_webhooks_state))
-            .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
-            .merge(api::endpoint_api::routes(endpoint_api_state))
+            .merge(api::channel_webhooks::routes(channel_webhooks_state))
+            .merge(api::channel_a2a::routes(channel_a2a_state))
+            .merge(api::channel_api::routes(channel_api_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {
@@ -1431,68 +1442,4 @@ impl TestServer {
 pub enum TestMode {
     Postgres,
     InMemory,
-}
-
-/// Response from a test request
-pub struct TestResponse {
-    status: StatusCode,
-    headers: HeaderMap,
-    body: Vec<u8>,
-}
-
-impl TestResponse {
-    /// Get the status code
-    pub fn status(&self) -> StatusCode {
-        self.status
-    }
-
-    /// Get the response headers
-    pub fn headers(&self) -> &HeaderMap {
-        &self.headers
-    }
-
-    /// Get the body as a string
-    pub fn text(&self) -> String {
-        String::from_utf8_lossy(&self.body).to_string()
-    }
-
-    /// Get the raw response body bytes
-    pub fn bytes(&self) -> &[u8] {
-        &self.body
-    }
-
-    /// Parse the body as JSON
-    pub fn json<T: DeserializeOwned>(&self) -> T {
-        serde_json::from_slice(&self.body)
-            .unwrap_or_else(|e| panic!("Failed to parse JSON: {}. Body: {}", e, self.text()))
-    }
-
-    /// Parse the body as a JSON Value
-    pub fn json_value(&self) -> Value {
-        self.json()
-    }
-
-    /// Assert status and return self for chaining
-    pub fn assert_status(self, expected: StatusCode) -> Self {
-        assert_eq!(
-            self.status,
-            expected,
-            "Expected status {}, got {}. Body: {}",
-            expected,
-            self.status,
-            self.text()
-        );
-        self
-    }
-
-    /// Assert success (2xx) status
-    pub fn assert_success(self) -> Self {
-        assert!(
-            self.status.is_success(),
-            "Expected success status, got {}. Body: {}",
-            self.status,
-            self.text()
-        );
-        self
-    }
 }

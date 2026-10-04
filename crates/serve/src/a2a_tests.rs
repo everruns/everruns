@@ -1,4 +1,4 @@
-//! `POST /v1/e/{agent}/a2a`: A2A 1.0 JSON-RPC over the same host, with the
+//! `POST /v1/channels/{agent}/a2a`: A2A 1.0 JSON-RPC over the same host, with the
 //! Agent Card under it. A child of `wire_tests`, so it shares its server and
 //! test agents.
 
@@ -32,7 +32,7 @@ impl Server {
     /// One JSON-RPC call to `agent`'s endpoint, as an A2A 1.0 client sends it.
     async fn a2a(&self, agent: &str, body: Value) -> reqwest::Response {
         self.client
-            .post(format!("{}/v1/e/{agent}/a2a", self.base))
+            .post(format!("{}/v1/channels/{agent}/a2a", self.base))
             .header("A2A-Version", "1.0")
             .json(&body)
             .send()
@@ -66,7 +66,7 @@ async fn the_agent_card_points_at_the_endpoint() {
     let host = Host::new(app(), Mode::Eval, None).unwrap();
     let server = serve(host).await;
     let response = server
-        .get("/v1/e/echoer/a2a/.well-known/agent-card.json")
+        .get("/v1/channels/echoer/a2a/.well-known/agent-card.json")
         .await;
     assert_eq!(response.status(), 200);
     let card: Value = response.json().await.unwrap();
@@ -75,14 +75,21 @@ async fn the_agent_card_points_at_the_endpoint() {
     let interface = &card["supportedInterfaces"][0];
     assert_eq!(
         interface["url"],
-        format!("{}/v1/e/echoer/a2a", server.base),
+        format!("{}/v1/channels/echoer/a2a", server.base),
         "{card}"
     );
     assert_eq!(interface["protocolBinding"], "JSONRPC");
     assert_eq!(interface["protocolVersion"], "1.0");
     assert_eq!(card["capabilities"]["streaming"], true);
     // The card parses as the SDK's own type, which a client resolves.
-    serde_json::from_value::<::a2a::AgentCard>(card).unwrap();
+    serde_json::from_value::<::a2a::AgentCard>(card.clone()).unwrap();
+    let legacy: Value = server
+        .get("/v1/e/echoer/a2a/.well-known/agent-card.json")
+        .await
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(legacy, card);
 }
 
 #[tokio::test]
@@ -90,7 +97,19 @@ async fn send_message_returns_the_completed_task_and_a_context_keeps_its_session
     let host = Host::new(app(), Mode::Eval, None).unwrap();
     let server = serve(host.clone()).await;
 
-    let task = server.send_message("echoer", "ping", Some("c1")).await;
+    // A published legacy URL and the canonical URL share the same thread map.
+    let response = server
+        .client
+        .post(format!("{}/v1/e/echoer/a2a", server.base))
+        .header("A2A-Version", "1.0")
+        .json(&send_body("SendMessage", "ping", Some("c1")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let body: Value = response.json().await.unwrap();
+    assert!(body["error"].is_null(), "{body}");
+    let task = body["result"]["task"].clone();
     assert_eq!(task["status"]["state"], "TASK_STATE_COMPLETED", "{task}");
     assert_eq!(task["contextId"], "c1");
     assert_eq!(reply(&task), "pong");
@@ -248,7 +267,7 @@ async fn unknown_agents_bad_input_and_old_versions_are_errors() {
         "application/problem+json"
     );
     let card = server
-        .get("/v1/e/nobody/a2a/.well-known/agent-card.json")
+        .get("/v1/channels/nobody/a2a/.well-known/agent-card.json")
         .await;
     assert_eq!(card.status(), 404);
 
@@ -263,7 +282,10 @@ async fn unknown_agents_bad_input_and_old_versions_are_errors() {
 
     // No `A2A-Version` header means 0.3, which this endpoint does not speak.
     let old: Value = server
-        .post("/v1/e/echoer/a2a", send_body("SendMessage", "hi", None))
+        .post(
+            "/v1/channels/echoer/a2a",
+            send_body("SendMessage", "hi", None),
+        )
         .await
         .json()
         .await
@@ -275,8 +297,8 @@ async fn unknown_agents_bad_input_and_old_versions_are_errors() {
 async fn the_manifest_and_agent_card_list_the_endpoints() {
     let manifest = app().manifest();
     for route in [
-        "POST /v1/e/echoer/a2a",
-        "GET /v1/e/echoer/a2a/.well-known/agent-card.json",
+        "POST /v1/channels/echoer/a2a",
+        "GET /v1/channels/echoer/a2a/.well-known/agent-card.json",
     ] {
         assert!(
             manifest.routes.contains(&route.to_string()),
@@ -287,6 +309,6 @@ async fn the_manifest_and_agent_card_list_the_endpoints() {
     let host = Host::new(app(), Mode::Eval, None).unwrap();
     let server = serve(host).await;
     let card: Value = server.get("/v1/agent").await.json().await.unwrap();
-    assert_eq!(card["a2a"]["echoer"], "/v1/e/echoer/a2a");
-    assert_eq!(card["a2a"]["tester"], "/v1/e/tester/a2a");
+    assert_eq!(card["a2a"]["echoer"], "/v1/channels/echoer/a2a");
+    assert_eq!(card["a2a"]["tester"], "/v1/channels/tester/a2a");
 }

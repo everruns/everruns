@@ -40,11 +40,11 @@ export function tokensUrl(origin: string): string {
 }
 
 /** Make a possibly-relative endpoint absolute against the given origin. */
-function absolutize(endpointUrl: string, origin: string): string {
-  if (endpointUrl.startsWith("http://") || endpointUrl.startsWith("https://")) {
-    return endpointUrl;
+function absolutize(channelUrl: string, origin: string): string {
+  if (channelUrl.startsWith("http://") || channelUrl.startsWith("https://")) {
+    return channelUrl;
   }
-  return `${resolveOrigin(origin)}${endpointUrl.startsWith("/") ? "" : "/"}${endpointUrl}`;
+  return `${resolveOrigin(origin)}${channelUrl.startsWith("/") ? "" : "/"}${channelUrl}`;
 }
 
 type SessionBinding =
@@ -314,8 +314,8 @@ export function sdkSessionSamples(opts: { origin: string } & SessionBinding): Co
 }
 
 /** Code samples for invoking an App webhook channel. */
-export function webhookSamples(opts: { origin: string; endpointUrl: string }): CodeSample[] {
-  const url = absolutize(opts.endpointUrl, opts.origin);
+export function webhookSamples(opts: { origin: string; channelUrl: string }): CodeSample[] {
+  const url = absolutize(opts.channelUrl, opts.origin);
   return [
     {
       label: "curl",
@@ -370,8 +370,8 @@ export function webhookSamples(opts: { origin: string; endpointUrl: string }): C
 }
 
 /** Code samples for invoking an App A2A channel (JSON-RPC 2.0 message/send). */
-export function a2aSamples(opts: { origin: string; endpointUrl: string }): CodeSample[] {
-  const url = absolutize(opts.endpointUrl, opts.origin);
+export function a2aSamples(opts: { origin: string; channelUrl: string }): CodeSample[] {
+  const url = absolutize(opts.channelUrl, opts.origin);
   const rpcJson = [
     `{`,
     `  "jsonrpc": "2.0",`,
@@ -487,7 +487,7 @@ export function codingAgentPrompt(opts: {
   kind: PromptKind;
   id?: string;
   name?: string;
-  endpointUrl?: string;
+  channelUrl?: string;
 }): string {
   const subject: Record<PromptKind, string> = {
     agent: "an Everruns agent",
@@ -540,7 +540,7 @@ export function codingAgentPrompt(opts: {
       ...intro,
       ``,
       `I have an Everruns App with a webhook channel:`,
-      `- Endpoint: POST ${absolutize(opts.endpointUrl ?? "", opts.origin)}`,
+      `- Channel: POST ${absolutize(opts.channelUrl ?? "", opts.origin)}`,
       `- Auth: header \`Authorization: Bearer <webhook-token>\` (or \`X-Everruns-Webhook-Token\`).`,
       ``,
       `Please add code to my application that POSTs a JSON payload to this endpoint`,
@@ -555,7 +555,7 @@ export function codingAgentPrompt(opts: {
     ...intro,
     ``,
     `I have an Everruns App exposed as an A2A (Agent2Agent) agent:`,
-    `- JSON-RPC endpoint: POST ${absolutize(opts.endpointUrl ?? "", opts.origin)}`,
+    `- JSON-RPC endpoint: POST ${absolutize(opts.channelUrl ?? "", opts.origin)}`,
     `- Auth: header \`Authorization: Bearer <api-key>\`.`,
     `- Protocol: A2A JSON-RPC 2.0, method "message/send" with a user message part.`,
     ``,

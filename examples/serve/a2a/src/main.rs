@@ -1,8 +1,8 @@
 //! a2a: two agents talking over A2A.
 //!
 //! This binary is a serve app whose `researcher` agent is served over A2A
-//! 1.0 (the `a2a` feature): `POST /v1/e/researcher/a2a`, with its Agent Card
-//! at `/v1/e/researcher/a2a/.well-known/agent-card.json`. The `writer` binary
+//! 1.0 (the `a2a` feature): `POST /v1/channels/researcher/a2a`, with its Agent Card
+//! at `/v1/channels/researcher/a2a/.well-known/agent-card.json`. The `writer` binary
 //! is an `everruns` agent that delegates research to it.
 //!
 //! ```sh

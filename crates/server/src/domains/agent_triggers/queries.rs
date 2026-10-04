@@ -6,7 +6,7 @@ use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
 use everruns_contracts::typed_id::{AgentId, TriggerId};
-use everruns_platform::AgentEndpointId;
+use everruns_platform::AgentChannelId;
 use everruns_platform::{AgentTrigger, AgentTriggerType};
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ pub fn row_to_trigger(
     agent_public_id: AgentId,
     encryption: Option<&Arc<EncryptionService>>,
 ) -> AgentTrigger {
-    let config = crate::domains::agent_endpoints::queries::decrypt_channel_config(
+    let config = crate::domains::agent_channels::queries::decrypt_channel_config(
         encryption,
         row.config_encrypted.as_deref(),
         &row.config,
@@ -31,7 +31,7 @@ pub fn row_to_trigger(
         ingress_id: row
             .ingress_id
             .as_deref()
-            .and_then(|value| value.parse::<AgentEndpointId>().ok()),
+            .and_then(|value| value.parse::<AgentChannelId>().ok()),
         config,
         enabled: row.enabled,
         // NULL on rows that predate per-trigger pinning: they run the default.

@@ -229,7 +229,7 @@ async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -
 
     let app: App = serde_json::from_value(
         server
-            .seed_app_endpoint(
+            .seed_app_channel(
                 "Slack Test Bot",
                 &agent_id,
                 "slack",
@@ -246,7 +246,7 @@ async fn create_published_slack_app(server: &TestServer, signing_secret: &str) -
 
     serde_json::from_value(
         server
-            .set_app_endpoints_live(&app.public_id.to_string(), true)
+            .set_app_channels_live(&app.public_id.to_string(), true)
             .await,
     )
     .expect("published fixture App")
@@ -314,7 +314,7 @@ async fn test_slack_url_verification_challenge() {
     });
     let endpoint_resp = send_slack_event_to_path(
         &server,
-        &format!("/v1/e/{}/slack/events", app.channels[0].public_id),
+        &format!("/v1/channels/{}/slack/events", app.channels[0].public_id),
         TEST_SIGNING_SECRET,
         &payload,
     )
@@ -352,7 +352,7 @@ async fn test_slack_invalid_signature_rejected() {
     let resp = server
         .request_raw(
             Method::POST,
-            &format!("/v1/e/{}/slack/events", app.channels[0].public_id),
+            &format!("/v1/channels/{}/slack/events", app.channels[0].public_id),
             vec![
                 ("content-type", "application/json"),
                 ("x-slack-request-timestamp", &timestamp),
@@ -876,7 +876,7 @@ async fn test_slack_empty_message_ignored() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_slack_manifest_endpoint() {
+async fn test_slack_manifest_channel() {
     let server = TestServer::in_memory().await;
     let app = create_published_slack_app(&server, TEST_SIGNING_SECRET).await;
     let channel_id = app.channels[0].public_id;
@@ -886,7 +886,7 @@ async fn test_slack_manifest_endpoint() {
         .await
         .assert_success();
     let resp = server
-        .get(&format!("/v1/e/{channel_id}/slack/manifest"))
+        .get(&format!("/v1/channels/{channel_id}/slack/manifest"))
         .await
         .assert_success();
 
@@ -909,7 +909,7 @@ async fn test_slack_manifest_endpoint() {
         manifest.contains("app_mentions:read"),
         "Manifest should include app_mentions:read scope"
     );
-    assert!(manifest.contains(&format!("/v1/e/{channel_id}/slack/events")));
+    assert!(manifest.contains(&format!("/v1/channels/{channel_id}/slack/events")));
 }
 
 // ============================================

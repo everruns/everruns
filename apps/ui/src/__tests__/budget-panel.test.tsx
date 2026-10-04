@@ -15,7 +15,7 @@ const deleteBudget = jest.mocked(budgetsApi.deleteBudget);
 const endpointBudget: Budget = {
   id: "bdgt_endpoint",
   organization_id: "org_1",
-  subject_type: "agent_endpoint",
+  subject_type: "agent_channel",
   subject_id: "endpoint_1",
   currency: "usd",
   limit: 10,
@@ -45,9 +45,9 @@ function renderPanel(props?: Partial<React.ComponentProps<typeof BudgetPanel>>) 
 
   return render(
     <BudgetPanel
-      subjectType="agent_endpoint"
+      subjectType="agent_channel"
       subjectId="endpoint_1"
-      title="Endpoint budget"
+      title="Channel budget"
       canManage
       {...props}
     />,
@@ -74,7 +74,7 @@ describe("BudgetPanel", () => {
     expect(screen.getByText(/Reset due Sep 19, 2026/)).toBeInTheDocument();
     expect(screen.getByText("exhausted")).toBeInTheDocument();
     expect(listBudgets).toHaveBeenCalledWith({
-      subject_type: "agent_endpoint",
+      subject_type: "agent_channel",
       subject_id: "endpoint_1",
     });
   });
@@ -91,7 +91,7 @@ describe("BudgetPanel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("creates an endpoint budget with the fixed endpoint subject", async () => {
+  it("creates a channel budget with the fixed channel subject", async () => {
     listBudgets.mockResolvedValue([]);
     renderPanel();
 
@@ -101,7 +101,7 @@ describe("BudgetPanel", () => {
 
     await waitFor(() =>
       expect(createBudget).toHaveBeenCalledWith({
-        subject_type: "agent_endpoint",
+        subject_type: "agent_channel",
         subject_id: "endpoint_1",
         currency: "usd",
         limit: 25,
@@ -111,7 +111,7 @@ describe("BudgetPanel", () => {
     );
   });
 
-  it("edits and removes an endpoint budget", async () => {
+  it("edits and removes a channel budget", async () => {
     renderPanel();
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit budget bdgt_endpoint" }));

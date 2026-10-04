@@ -24,6 +24,15 @@ const nextConfig: NextConfig = {
     "@rjsf/validator-ajv8",
     "@x0k/json-schema-merge",
   ],
+  async redirects() {
+    return [
+      {
+        source: "/agents/:agentId/endpoints/:path*",
+        destination: "/agents/:agentId/channels/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     // THREAT[TM-WEB-014]: deny browser tool registration unless the deployment gate is open;
     // when open, keep discovery and invocation restricted to the document's own origin.

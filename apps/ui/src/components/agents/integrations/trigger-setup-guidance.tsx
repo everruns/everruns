@@ -27,7 +27,7 @@ export function getWebhookTriggerConfig(trigger: AgentTrigger): WebhookTriggerCo
 function webhookUrl(trigger: AgentTrigger): string | null {
   if (!trigger.ingress_id) return null;
   const origin = typeof window === "undefined" ? "" : window.location.origin;
-  return `${origin}/api/v1/e/${trigger.ingress_id}/webhook`;
+  return `${origin}/api/v1/channels/${trigger.ingress_id}/webhook`;
 }
 
 export function TriggerSetupGuidance({ trigger }: { trigger: AgentTrigger }) {
@@ -41,7 +41,7 @@ export function TriggerSetupGuidance({ trigger }: { trigger: AgentTrigger }) {
     }
     return (
       <WebhookSetupGuidance
-        endpointUrl={url}
+        channelUrl={url}
         sessionMode={config.session_mode ?? "shared_session"}
         message={config.message}
         tokenConfigured={!!(config.token_configured || config.token)}

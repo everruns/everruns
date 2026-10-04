@@ -182,3 +182,55 @@ fn sdk_resource_schemas_use_public_wire_names() {
         assert!(!schemas.contains_key(old_name), "stale schema {old_name}");
     }
 }
+
+#[test]
+fn channels_keep_deprecated_route_and_schema_aliases() {
+    let spec = spec_value();
+    for (canonical, legacy, method) in [
+        (
+            "/v1/agents/{agent_id}/channels",
+            "/v1/agents/{agent_id}/endpoints",
+            "post",
+        ),
+        (
+            "/v1/agents/{agent_id}/channels/{channel_id}",
+            "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+            "get",
+        ),
+        (
+            "/v1/channels/{channel_id}/fcp",
+            "/v1/e/{channel_id}/fcp",
+            "post",
+        ),
+        (
+            "/v1/channels/{channel_id}/runtime-auth",
+            "/v1/e/{endpoint_id}/runtime-auth",
+            "post",
+        ),
+    ] {
+        let current = &spec["paths"][canonical][method];
+        let old = &spec["paths"][legacy][method];
+        assert!(!current.is_null(), "{canonical}");
+        assert_eq!(old["deprecated"], true, "{legacy}");
+        assert_eq!(current["responses"], old["responses"]);
+        if legacy.contains("{endpoint_id}") {
+            assert!(
+                old["parameters"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p["name"] == "endpoint_id")
+            );
+        }
+    }
+    for (canonical, legacy) in [
+        ("AgentChannel", "AppChannel"),
+        ("ChannelStatus", "EndpointStatus"),
+        ("ChannelAuthConfig", "AppEndpointAuthConfig"),
+        ("CreateAgentChannelRequest", "CreateAgentEndpointRequest"),
+    ] {
+        let schemas = &spec["components"]["schemas"];
+        assert!(!schemas[canonical].is_null(), "{canonical}");
+        assert_eq!(schemas[canonical], schemas[legacy]);
+    }
+}

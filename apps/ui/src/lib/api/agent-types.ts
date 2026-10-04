@@ -74,7 +74,7 @@ export interface Agent {
   network_access?: NetworkAccessList | null;
   status: AgentStatus;
   /**
-   * The agent-level incident switch (EVE-1007). When true every endpoint of
+   * The agent-level incident switch (EVE-1007). When true every channel of
    * this agent refuses traffic, whatever its own publish state, and resuming
    * restores each one to where it was.
    */
@@ -91,6 +91,6 @@ export interface Agent {
   app_count?: number;
   /** Harness a newly created session for this agent will resolve to. */
   effective_harness?: AgentHarnessSummary;
-  /** Non-secret inbound endpoint summaries; schedules are separate triggers. */
+  /** Non-secret inbound channel summaries; schedules are separate triggers. */
   channels?: AgentChannelSummary[];
 }

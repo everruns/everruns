@@ -107,7 +107,9 @@ describe("AgentTriggersPanel", () => {
     expect(screen.getByText("completed")).toBeInTheDocument();
     expect(screen.getByText("Webhook")).toBeInTheDocument();
     expect(screen.getByText("Token Configured")).toBeInTheDocument();
-    expect(screen.getAllByText(/\/api\/v1\/e\/appchan_webhook\/webhook/).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/\/api\/v1\/channels\/appchan_webhook\/webhook/).length,
+    ).toBeGreaterThan(0);
 
     const runNow = screen.getByRole("button", { name: "Run now" });
     const quickEdit = screen.getByRole("button", { name: "Quick edit trigger" });

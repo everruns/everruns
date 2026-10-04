@@ -3,26 +3,26 @@
 import { useMemo } from "react";
 import { useAgents } from "./use-agents";
 import { useApps } from "./use-apps";
-import { isTriggerChannel } from "./use-agent-endpoints";
+import { isTriggerChannel } from "./use-agent-channels";
 import type {
   Agent,
   AgUiChannelConfig,
-  AgentEndpoint,
+  AgentChannel,
   FcpChannelConfig,
   PublicChatChannelConfig,
 } from "@/lib/api/types";
 
 /// Why an exposure is not accepting traffic, or that it is.
 ///
-/// This mirrors `endpoint_liveness` in `crates/server/src/api/endpoint_ingress.rs`:
+/// This mirrors `channel_liveness` in `crates/server/src/api/channel_ingress.rs`:
 ///
 /// ```text
-/// live = endpoint.status == live && agent.status == active && !agent.exposures_suspended
+/// live = channel.status == live && agent.status == active && !agent.exposures_suspended
 /// ```
 ///
-/// The agent-level terms are folded in here rather than read off the endpoint,
+/// The agent-level terms are folded in here rather than read off the channel,
 /// exactly as the server folds them in at resolution time. A view that showed
-/// `endpoint.status` alone would call an endpoint live while its agent is
+/// `channel.status` alone would call a channel live while its agent is
 /// suspended or archived — which is the one thing this page must never do,
 /// because it is the page someone checks during an incident.
 export type ExposureState = "live" | "draft" | "disabled" | "suspended" | "agent-inactive";
@@ -43,7 +43,7 @@ export function exposureStateLabel(state: ExposureState): string {
 }
 
 export function resolveExposureState(
-  channel: AgentEndpoint,
+  channel: AgentChannel,
   agent: Agent | undefined,
 ): ExposureState {
   // No agent means nothing can serve the traffic, which the server reports as
@@ -60,7 +60,7 @@ export function resolveExposureState(
 /// This is the row an operator scans for. It is deliberately conservative: a
 /// transport whose config we cannot read counts as *not* known-anonymous rather
 /// than silently clean, so a parse failure never hides a public surface.
-export function isAnonymousExposure(channel: AgentEndpoint): boolean {
+export function isAnonymousExposure(channel: AgentChannel): boolean {
   if (channel.channel_type === "public_chat") {
     const config = channel.channel_config as PublicChatChannelConfig;
     const auth = channel.auth ?? config.auth;
@@ -87,11 +87,11 @@ export function isAnonymousExposure(channel: AgentEndpoint): boolean {
 }
 
 export interface OrgExposure {
-  channel: AgentEndpoint;
+  channel: AgentChannel;
   agent: Agent | undefined;
   state: ExposureState;
   /// Configured to accept callers with no credential, whatever its current
-  /// state. A suspended anonymous endpoint is still anonymous — resuming its
+  /// state. A suspended anonymous channel is still anonymous — resuming its
   /// agent opens it — so the row has to say so rather than reading
   /// "authenticated" until the moment it goes live.
   anonymous: boolean;

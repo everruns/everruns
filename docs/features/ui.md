@@ -69,7 +69,7 @@ a narrow column on the right holds the settings:
   Environments, Token usage, and Health check. Each row shows its current value and opens a side
   sheet.
 
-Tabs: **Agent**, **Preview**, **Integrations** (endpoints and triggers), **Stats**, and
+Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
 **Sessions**.
 
 Header actions:

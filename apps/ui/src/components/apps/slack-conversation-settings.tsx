@@ -10,16 +10,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { SessionStrategy, SlackReplyMode, SlackResponsePolicy } from "@/lib/api/types";
-import {
-  getSessionStrategyDisplayName,
-  getSlackReplyModeDisplayName,
-} from "@/lib/endpoint-display";
+import { getSessionStrategyDisplayName, getSlackReplyModeDisplayName } from "@/lib/channel-display";
 
 const SLACK_SESSION_DESCRIPTIONS: Record<SessionStrategy, string> = {
   per_thread: "Each Slack thread has its own session and conversation history.",
   per_channel:
     "Channel conversations share one session and history across all threads in that channel.",
-  per_user: "Each person shares one session across their channel conversations with this endpoint.",
+  per_user: "Each person shares one session across their channel conversations with this channel.",
 };
 
 export function SlackConversationSettings({
@@ -141,7 +138,7 @@ export function SlackConversationSettings({
           className="text-xs leading-relaxed text-muted-foreground"
         >
           {responsePolicy === "all_messages"
-            ? "Respond to every message received by this endpoint."
+            ? "Respond to every message received by this channel."
             : responsePolicy === "mentions_only"
               ? "Respond only to direct messages and @mentions."
               : "Respond to direct messages, @mentions, and clear requests within the agent’s purpose. Stay silent on unrelated or uncertain messages."}

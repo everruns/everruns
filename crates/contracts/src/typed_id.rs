@@ -490,12 +490,12 @@ impl IdMarker for AppIdMarker {
     const PREFIX: &'static str = "app";
 }
 
-/// Marker for agent endpoint IDs. The `appchan` prefix predates the App
+/// Marker for agent channel IDs. The `appchan` prefix predates the App
 /// retirement and stays: it is persisted in rows, session tags, and URLs
 /// registered with third parties.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AgentEndpointIdMarker;
-impl IdMarker for AgentEndpointIdMarker {
+pub struct AgentChannelIdMarker;
+impl IdMarker for AgentChannelIdMarker {
     const PREFIX: &'static str = "appchan";
 }
 
@@ -718,8 +718,8 @@ pub type ScheduleId = TypedId<ScheduleIdMarker>;
 pub type LeasedResourceId = TypedId<LeasedResourceIdMarker>;
 /// App ID
 pub type AppId = TypedId<AppIdMarker>;
-/// Agent endpoint ID (`appchan_` prefix)
-pub type AgentEndpointId = TypedId<AgentEndpointIdMarker>;
+/// Agent channel ID (`appchan_` prefix)
+pub type AgentChannelId = TypedId<AgentChannelIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
 /// Memory ID (org-scoped named Memory — see `knowledge/runtime-resources/memory.md`)

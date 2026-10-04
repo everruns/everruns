@@ -60,7 +60,7 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
         .assert_status(StatusCode::CREATED)
         .json();
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             "consumer-api",
             agent["id"].as_str().unwrap(),
             "ag_ui",
@@ -68,7 +68,7 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
         )
         .await;
     let app = server
-        .set_app_endpoints_live(app["id"].as_str().unwrap(), true)
+        .set_app_channels_live(app["id"].as_str().unwrap(), true)
         .await;
     let endpoint = app["channels"][0]["id"].as_str().unwrap().to_string();
     let account = server
