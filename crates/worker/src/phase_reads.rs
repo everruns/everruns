@@ -1222,7 +1222,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_ne!(fresh.api_key, first.api_key);
-        reads.note_event(everruns_core::REASON_STARTED);
+        reads.note_event(crate::core::REASON_STARTED);
         assert!(reads.with_state(|state| state.providers.is_empty()));
         let after = reads
             .read_through(providers, key.clone(), fetch)
