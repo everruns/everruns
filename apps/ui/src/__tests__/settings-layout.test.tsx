@@ -129,6 +129,10 @@ describe("SettingsLayout", () => {
     expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
     expect(apiKeysLink).toHaveAttribute("href", "/settings/personal-access-tokens");
     expect(slackLink).toHaveAttribute("href", "/settings/slack");
+    expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute(
+      "href",
+      "/settings/health",
+    );
   });
 
   it("disables automatic prefetch for every Settings navigation link", () => {
@@ -138,7 +142,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(10);
+    expect(screen.getAllByRole("link")).toHaveLength(11);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }

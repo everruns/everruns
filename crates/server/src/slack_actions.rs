@@ -160,11 +160,15 @@ impl DbSlackActionInvoker {
             bot_token: config.bot_token,
             channel,
             thread_ts: thread_context.thread_ref,
+            channel_id: bound_channel.internal_id,
+            channel_revision: bound_channel.updated_at,
         })
     }
 }
 
 struct SlackActionContext {
+    channel_id: uuid::Uuid,
+    channel_revision: chrono::DateTime<chrono::Utc>,
     bot_token: String,
     channel: String,
     thread_ts: String,
@@ -259,7 +263,33 @@ impl SlackActionInvoker for DbSlackActionInvoker {
                 name,
             } => {
                 context.authorize_channel(&channel)?;
-                add_reaction(&self.api_base, bot_token, &channel, &timestamp, &name).await?
+                match add_reaction(&self.api_base, bot_token, &channel, &timestamp, &name).await {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        if error.code() == Some("missing_scope") {
+                            let observation = crate::storage::ObserveHealthIssue {
+                                org_id: self.org_id,
+                                channel_id: context.channel_id,
+                                channel_revision: context.channel_revision,
+                                status: "open".into(),
+                                missing_scopes: vec!["reactions:write".into()],
+                                error_code: Some("missing_scope".into()),
+                                checked_at: chrono::Utc::now(),
+                            };
+                            if let Err(storage_error) =
+                                self.db.observe_health_issue(observation).await
+                            {
+                                tracing::warn!(%storage_error,"Could not persist Slack permission issue");
+                            }
+                        }
+                        if error.code() == Some("missing_scope") {
+                            return Err(SlackActionError::Rejected(
+                                "missing_scope: reconnect the Slack app and approve reactions:write to add reactions".into(),
+                            ));
+                        }
+                        return Err(error.into());
+                    }
+                }
             }
             SlackAction::UpdateMessage {
                 channel,
@@ -313,7 +343,7 @@ async fn add_reaction(
     channel: &str,
     timestamp: &str,
     name: &str,
-) -> Result<SlackActionOutcome, SlackActionError> {
+) -> Result<SlackActionOutcome, SlackApiError> {
     let payload = json!({ "channel": channel, "timestamp": timestamp, "name": name });
     match slack_api_call(api_base, bot_token, "reactions.add", payload).await {
         Ok(_) => Ok(SlackActionOutcome::ReactionAdded {
@@ -327,11 +357,7 @@ async fn add_reaction(
                 already_reacted: true,
             })
         }
-        Err(error) if error.code() == Some("missing_scope") => Err(SlackActionError::Rejected(
-            "missing_scope: reconnect the Slack app and approve reactions:write to add reactions"
-                .to_string(),
-        )),
-        Err(error) => Err(error.into()),
+        Err(error) => Err(error),
     }
 }
 
@@ -1100,6 +1126,7 @@ mod tests {
         ));
     }
 
+    mod health_tests;
     mod reaction_tests;
 
     #[tokio::test]

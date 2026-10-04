@@ -1,5 +1,6 @@
 "use client";
 
+import { ChannelHealthWarning } from "@/components/health/channel-health-warning";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +40,7 @@ export function SlackChannelConfiguration({
   if (!canManage) {
     return (
       <div className="space-y-4">
+        <ChannelHealthWarning channelId={channel.id} />
         <SlackConnectionStatus channel={channel} />
         <p className="text-sm text-muted-foreground">
           {getSessionStrategyDisplayName(config.session_strategy ?? "per_thread")} ·{" "}
@@ -67,6 +69,7 @@ export function SlackChannelConfiguration({
         );
       }}
     >
+      <ChannelHealthWarning channelId={channel.id} />
       <fieldset disabled={update.isPending} className="min-w-0 space-y-4">
         <ChannelForm
           state={state}

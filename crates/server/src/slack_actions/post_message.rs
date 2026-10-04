@@ -120,6 +120,8 @@ impl DbSlackActionInvoker {
             return Err(SlackActionError::ChannelUnavailable);
         }
         Ok(SlackActionContext {
+            channel_id: endpoint.internal_id,
+            channel_revision: endpoint.updated_at,
             bot_token: config.bot_token,
             channel: channel.into(),
             thread_ts: thread_ts.into(),

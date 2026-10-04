@@ -513,6 +513,62 @@ struct CreateAppCredentials {
 
 #[async_trait]
 impl SlackAppProvisioner for SlackApiProvisioner {
+    async fn update_permissions(
+        &self,
+        org_id: i64,
+        team_id: Option<&str>,
+        app_id: &str,
+        scopes: &[&str],
+    ) -> SlackProvisioningResult<()> {
+        let row = self.connection_for(org_id, team_id).await?;
+        let exported = self
+            .manifest_call(
+                row,
+                "/apps.manifest.export",
+                serde_json::json!({"app_id":app_id}),
+            )
+            .await?;
+        let mut manifest = exported
+            .get("manifest")
+            .filter(|m| m.is_object())
+            .cloned()
+            .ok_or_else(|| malformed_response("apps.manifest.export"))?;
+        if manifest.get("oauth_config").is_some_and(|v| !v.is_object())
+            || manifest
+                .pointer("/oauth_config/scopes")
+                .is_some_and(|v| !v.is_object())
+            || manifest
+                .pointer("/oauth_config/scopes/bot")
+                .is_some_and(|v| !v.is_array())
+        {
+            return Err(malformed_response("apps.manifest.export"));
+        }
+        let mut required = manifest
+            .pointer("/oauth_config/scopes/bot")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        for scope in scopes {
+            let value = serde_json::Value::String((*scope).into());
+            if !required.contains(&value) {
+                required.push(value);
+            }
+        }
+        // The update API replaces the manifest. Preserve the exported configuration
+        // and add scopes only, including settings changed in Slack itself.
+        manifest["oauth_config"]["scopes"]["bot"] = serde_json::Value::Array(required);
+        let manifest = serde_json::to_string(&manifest)
+            .map_err(|_| malformed_response("apps.manifest.export"))?;
+        let row = self.connection_for(org_id, team_id).await?;
+        self.manifest_call(
+            row,
+            "/apps.manifest.update",
+            serde_json::json!({"app_id":app_id,"manifest":manifest}),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn create_app(
         &self,
         org_id: i64,
@@ -661,6 +717,81 @@ mod tests {
             })))
             .mount(server)
             .await;
+    }
+
+    #[tokio::test]
+    async fn permission_update_preserves_exported_manifest_and_unions_scopes() {
+        let server = MockServer::start().await;
+        let (provisioner, db) = provisioner(&server);
+        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
+        let manifest = serde_json::json!({
+            "display_information":{"name":"Customized bot"},
+            "settings":{"event_subscriptions":{"request_url":"https://example.test/events"}},
+            "oauth_config":{"redirect_urls":["https://example.test/callback"],"scopes":{"bot":["chat:write","custom:read"]}}
+        });
+        Mock::given(method("POST"))
+            .and(path("/apps.manifest.export"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"ok":true,"manifest":manifest})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/apps.manifest.update"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok":true})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        provisioner
+            .update_permissions(1, Some("T1"), "A1", &["chat:write", "reactions:write"])
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
+        assert_eq!(body["app_id"], "A1");
+        let updated: serde_json::Value =
+            serde_json::from_str(body["manifest"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            updated["display_information"],
+            manifest["display_information"]
+        );
+        assert_eq!(updated["settings"], manifest["settings"]);
+        assert_eq!(
+            updated["oauth_config"]["redirect_urls"],
+            manifest["oauth_config"]["redirect_urls"]
+        );
+        assert_eq!(
+            updated["oauth_config"]["scopes"]["bot"],
+            serde_json::json!(["chat:write", "custom:read", "reactions:write"])
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_export_fails_without_mutating_manifest() {
+        let server = MockServer::start().await;
+        let (provisioner, db) = provisioner(&server);
+        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
+        Mock::given(method("POST"))
+            .and(path("/apps.manifest.export"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                serde_json::json!({"ok":true,"manifest":{"oauth_config":"invalid"}}),
+            ))
+            .expect(1)
+            .mount(&server)
+            .await;
+        assert!(
+            provisioner
+                .update_permissions(1, Some("T1"), "A1", &["reactions:write"])
+                .await
+                .is_err()
+        );
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
     }
 
     #[tokio::test]

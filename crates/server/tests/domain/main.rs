@@ -77,3 +77,5 @@ mod virtual_users_migration_test;
 mod virtual_users_api_test;
 
 mod slack_install_integration_test;
+
+mod health_issues_test;

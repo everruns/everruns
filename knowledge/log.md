@@ -24,6 +24,11 @@
   Scheduled and manual live coverage still runs only trusted main-branch code.
   See [Threat Model](security/threat-model.md) TM-CI-001 through TM-CI-003.
 
+* **Actionable health issues.** Add persistent Slack permission and credential
+  issues, existing notification delivery, contextual warnings, guided reconnect
+  and verified recovery for existing installations. See
+  [Actionable Health Issues](operations/health-issues.md).
+
 * **Agent page tabs stay in the address.** Switching Agent, Preview,
   Integrations, Stats, or Sessions writes `?tab=` (the Agent tab omits it), so
   a refresh or a shared link reopens the same tab. See

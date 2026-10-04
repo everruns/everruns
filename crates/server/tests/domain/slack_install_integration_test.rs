@@ -39,6 +39,17 @@ impl SlackAppProvisioner for Provisioner {
         })
     }
 
+    async fn update_permissions(
+        &self,
+        _: i64,
+        _: Option<&str>,
+        _: &str,
+        scopes: &[&str],
+    ) -> SlackProvisioningResult<()> {
+        assert!(scopes.contains(&"reactions:write"));
+        Ok(())
+    }
+
     async fn delete_app(&self, _: i64, _: Option<&str>, _: &str) -> SlackProvisioningResult<()> {
         Ok(())
     }
@@ -106,11 +117,9 @@ async fn exercise_install(server: test_harness::TestServer) {
     Mock::given(method("POST"))
         .and(path("/oauth.v2.access"))
         .and(body_string_contains("code=code"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_json(
-                json!({"ok":true,"access_token":"xoxb-installed","team":{"id":"T1"}}),
-            ),
-        )
+        .respond_with(ResponseTemplate::new(200).set_body_json(
+            json!({"ok":true,"app_id":"A1","access_token":"xoxb-installed","team":{"id":"T1"}}),
+        ))
         .expect(1)
         .mount(&exchange)
         .await;
@@ -119,6 +128,27 @@ async fn exercise_install(server: test_harness::TestServer) {
         .and(body_string_contains("code=refused"))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(json!({"ok":false,"error":"invalid_code"})),
+        )
+        .expect(1)
+        .mount(&exchange)
+        .await;
+    for (code, team, app) in [("wrong-team", "T2", "A1"), ("wrong-app", "T1", "A2")] {
+        Mock::given(method("POST"))
+            .and(path("/oauth.v2.access"))
+            .and(body_string_contains(format!("code={code}")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"ok":true,"app_id":app,"access_token":"wrong-token","team":{"id":team}}),
+            ))
+            .expect(1)
+            .mount(&exchange)
+            .await;
+    }
+    Mock::given(method("POST"))
+        .and(path("/auth.test"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("x-oauth-scopes", "chat:write,reactions:write")
+                .set_body_json(json!({"ok":true,"team_id":"T1"})),
         )
         .expect(1)
         .mount(&exchange)
@@ -176,27 +206,74 @@ async fn exercise_install(server: test_harness::TestServer) {
         rejected.headers()["location"].to_str().unwrap(),
         "https://example.com/agents?slack_install=failed"
     );
-    for query in [
-        format!("error=access_denied&state={}", params["state"]),
-        format!("state={}", params["state"]),
-        format!("code=refused&state={}", params["state"]),
+    // Every valid callback consumes its nonce, including declined consent.
+    for failure in [
+        "error=access_denied",
+        "",
+        "code=refused",
+        "code=wrong-team",
+        "code=wrong-app",
     ] {
+        let retry = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/channels/{id}/slack/install"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"team_id":"T1"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(retry.status(), axum::http::StatusCode::OK);
+        let body: Value =
+            serde_json::from_slice(&retry.into_body().collect().await.unwrap().to_bytes()).unwrap();
+        let url = url::Url::parse(body["authorize_url"].as_str().unwrap()).unwrap();
+        let nonce = url
+            .query_pairs()
+            .find(|(k, _)| k == "state")
+            .unwrap()
+            .1
+            .into_owned();
         let failed = router
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri(format!("/v1/channels/{id}/slack/oauth/callback?{query}"))
+                    .uri(format!(
+                        "/v1/channels/{id}/slack/oauth/callback?{failure}&state={nonce}"
+                    ))
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(failed.status(), axum::http::StatusCode::SEE_OTHER);
         assert_eq!(
             failed.headers()["location"].to_str().unwrap(),
             format!("{editor_url}?slack_install=failed")
         );
+        let replay = router.clone().oneshot(callback(&nonce)).await.unwrap();
+        assert_eq!(
+            replay.headers()["location"].to_str().unwrap(),
+            "https://example.com/agents?slack_install=failed"
+        );
     }
+    let retry = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/channels/{id}/slack/install"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"team_id":"T1"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body: Value =
+        serde_json::from_slice(&retry.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let consent = url::Url::parse(body["authorize_url"].as_str().unwrap()).unwrap();
+    let params: std::collections::HashMap<_, _> = consent.query_pairs().into_owned().collect();
     for uri in [
         format!("/v1/channels/{id}/slack/oauth/callback?error=access_denied&state=wrong"),
         format!("/v1/channels/{id}/slack/oauth/callback?code=code"),

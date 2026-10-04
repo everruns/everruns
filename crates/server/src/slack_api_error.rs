@@ -11,6 +11,7 @@
 /// exact codes rather than substrings of a formatted message (EVE-968).
 pub(crate) const PERMANENT_SLACK_ERRORS: &[&str] = &[
     "channel_not_found",
+    "token_expired",
     "not_authed",
     "invalid_auth",
     "token_revoked",

@@ -230,7 +230,9 @@ pub async fn stream_notifications_sse(
         event_waker: waker,
     };
 
+    let ctx = std::sync::Arc::new(state.ctx(&org));
     let stream = stream::unfold(initial_state, move |state| {
+        let ctx = ctx.clone();
         let service = service.clone();
         async move {
             match state.phase {
@@ -284,6 +286,16 @@ pub async fn stream_notifications_sse(
                             let retry_duration =
                                 state.config.retry_hint(state.config.min_backoff_ms);
                             let last_updated_at = notifications.last().map(|row| row.updated_at);
+                            let notifications =
+                                match crate::domains::health_issues::filter_notifications(
+                                    &ctx,
+                                    notifications,
+                                )
+                                .await
+                                {
+                                    Ok(rows) => rows,
+                                    Err(_) => return None,
+                                };
                             let events = notifications
                                 .into_iter()
                                 .map(|row| {

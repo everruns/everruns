@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { IconTile } from "@/components/layout/page-layout";
 import {
   Server,
+  Activity,
   Key,
   Users,
   Building2,
@@ -57,6 +58,12 @@ const settingsSections: NavSection[] = [
         href: "/settings/slack",
         icon: SlackIcon,
         description: "Connect Slack workspaces your agents can join",
+      },
+      {
+        name: "Health",
+        href: "/settings/health",
+        icon: Activity,
+        description: "Review pending integration issues and recovery actions",
       },
       {
         name: "Features",

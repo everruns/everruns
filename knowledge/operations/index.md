@@ -12,6 +12,7 @@
 * [System-wide Outbound Allowlist](system-allowlist.md) - System-wide outbound allowlist ("green list").
 * [Localization And Timezone Resolution](localization.md) - Locale/timezone resolution and backend localization rules.
 * [Notifications](notifications.md) - Generic user notifications.
+* [Actionable Health Issues](health-issues.md) - Persistent operational issues and verified recovery through notifications.
 * [Email Sending](email.md) - Internal email delivery abstraction.
 * [Egress Service](egress.md) - Host-owned outbound network boundary and future gateway.
 * [Utility LLM Service](utility-llm.md) - Internal utility LLM service for capability internals.

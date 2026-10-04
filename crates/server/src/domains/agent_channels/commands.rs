@@ -339,6 +339,18 @@ impl Command for UpdateAgentChannelCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
+        if row.channel_type == "slack" {
+            let service = crate::domains::health_issues::service::SlackHealthService::new(
+                ctx.db.clone(),
+                ctx.encryption.clone(),
+            );
+            let id = row.channel_public_id.clone();
+            tokio::spawn(async move {
+                if let Err(error) = service.check(&id).await {
+                    tracing::warn!(%error,"Could not reconcile changed Slack channel");
+                }
+            });
+        }
         row_to_channel(ctx, row)
     }
 }

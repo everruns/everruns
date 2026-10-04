@@ -151,6 +151,17 @@ pub trait SlackAppProvisioner: Send + Sync {
         manifest_yaml: &str,
     ) -> SlackProvisioningResult<SlackAppCredentials>;
 
+    /// Add required permissions to an existing app without replacing its other settings.
+    async fn update_permissions(
+        &self,
+        _org_id: i64,
+        _team_id: Option<&str>,
+        _app_id: &str,
+        _scopes: &[&str],
+    ) -> SlackProvisioningResult<()> {
+        Err(SlackProvisioningError::Unavailable)
+    }
+
     /// Delete an app created by `create_app`.
     ///
     /// Called when an install is abandoned before OAuth completes, so a

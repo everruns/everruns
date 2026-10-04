@@ -1,3 +1,6 @@
+jest.mock("@/hooks/use-health-issues", () => ({
+  useHealthIssues: () => ({ data: { data: [], total: 0 }, isError: false }),
+}));
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
