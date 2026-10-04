@@ -83,6 +83,9 @@ impl TaskStore for GrpcDurableStore {
     }
 
     async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
+        if let Some(status) = self.take_claimed_status(workflow_id) {
+            return Ok(grpc_status_to_workflow_status(status));
+        }
         let mut store = self.clone();
         let (status, _, _) = GrpcDurableStore::get_workflow_status(&mut store, workflow_id)
             .await

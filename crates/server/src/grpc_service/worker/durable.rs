@@ -218,9 +218,14 @@ impl WorkerServiceImpl {
                 Status::internal("Failed to claim tasks")
             })?;
 
-        let proto_tasks: Vec<proto::DurableClaimedTask> = tasks
-            .into_iter()
-            .map(|t| proto::DurableClaimedTask {
+        let mut proto_tasks = Vec::with_capacity(tasks.len());
+        for t in tasks {
+            // Best effort: on a failed read the worker checks status itself.
+            let workflow_status = match t.workflow_id {
+                Some(workflow_id) => store.get_workflow_status(workflow_id).await.ok(),
+                None => None,
+            };
+            proto_tasks.push(proto::DurableClaimedTask {
                 id: Some(uuid_to_proto_uuid(t.id)),
                 workflow_id: t.workflow_id.map(uuid_to_proto_uuid),
                 activity_id: t.activity_id,
@@ -228,8 +233,9 @@ impl WorkerServiceImpl {
                 input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),
                 attempt: t.attempt as i32,
                 max_attempts: t.max_attempts as i32,
-            })
-            .collect();
+                workflow_status: workflow_status.map(|s| workflow_status_to_proto(s).into()),
+            });
+        }
 
         Ok(Response::new(ClaimDurableTasksResponse {
             tasks: proto_tasks,

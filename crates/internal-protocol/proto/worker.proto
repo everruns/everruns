@@ -791,6 +791,10 @@ message DurableClaimedTask {
     google.protobuf.Struct input = 5;
     int32 attempt = 6;
     int32 max_attempts = 7;
+    // Status of the task's workflow when it was claimed. A worker checks it
+    // before running the task (a cancelled workflow's task is skipped), and
+    // reading it here saves that check a round trip.
+    optional DurableWorkflowStatus workflow_status = 8;
 }
 
 // === Create workflow ===
