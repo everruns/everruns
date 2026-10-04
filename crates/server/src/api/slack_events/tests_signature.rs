@@ -310,13 +310,13 @@ fn test_build_session_tags_rejects_invocation_only_bindings() {
 }
 
 #[test]
-fn test_desired_session_tags_adds_reply_mode_for_report_progress_only() {
+fn test_desired_session_tags_adds_reply_mode_for_tool_only() {
     let tags = desired_session_tags(
         &[
             "slack:app:app_123".to_string(),
             "slack:thread:1234.0000".to_string(),
         ],
-        SlackReplyMode::ReportProgressOnly,
+        SlackReplyMode::ToolOnly,
     );
 
     assert_eq!(
@@ -324,8 +324,8 @@ fn test_desired_session_tags_adds_reply_mode_for_report_progress_only() {
         vec![
             "slack:app:app_123".to_string(),
             "slack:thread:1234.0000".to_string(),
-            "slack:reply_mode:report_progress_only".to_string(),
-            "channel:reply_mode:report_progress_only".to_string(),
+            "slack:reply_mode:tool_only".to_string(),
+            "channel:reply_mode:tool_only".to_string(),
         ]
     );
 }
@@ -502,6 +502,10 @@ fn slack_message_metadata_includes_system_app_id() {
 
     let metadata = slack_message_metadata(&app, &app.channels[0], &event, None);
 
+    assert_eq!(
+        metadata.get("slack_thread_ts"),
+        Some(&serde_json::json!("1234.5678"))
+    );
     assert_eq!(
         metadata.get("_app_id"),
         Some(&serde_json::Value::String(app.public_id.to_string()))

@@ -175,9 +175,11 @@ parsing prose. An unrecognised kind â€” a control plane newer than the worker â€
 reads as transient, so a worker never tells a model something false about its
 session.
 
-`post_to_channel` is not shipped. It widens blast radius from "the thread that
-asked" to "anywhere the bot is", and the reply path already answers in the
-thread; it returns when there is a per-channel allowlist to gate it.
+The channel-neutral posting tool now reaches the same action service and binds
+to the conversation of the triggering input. It lets the agent compose messages
+without granting arbitrary-channel posting. The action returns Slack acceptance
+and an editable message reference; credentials still stay in the control plane.
+See [Messaging Integrations](messaging-integrations.md).
 
 ### Degradation
 

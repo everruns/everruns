@@ -314,15 +314,15 @@ impl ToolRegistry {
 
     /// Create a tool registry with default built-in tools.
     ///
-    /// This includes `report_progress`, the neutral progress-reporting
-    /// contract tool. Test doubles such as echo tools belong to test-support
+    /// This includes `channel_post_message`, the neutral channel-messaging
+    /// tool. Test doubles such as echo tools belong to test-support
     /// or the test that owns them.
     ///
     /// Test fixture tools (test math/weather) are NOT included: they moved to
     /// the `everruns-test-support` crate (EVE-875) and are registered
     /// explicitly by tests that need them.
     pub fn with_defaults() -> Self {
-        use crate::progress_reporting::ReportProgressTool;
+        use crate::channel_messaging::ChannelPostMessageTool;
 
         let builder = ToolRegistry::builder()
             // NOTE: `spawn_background` is intentionally NOT a default tool —
@@ -334,7 +334,7 @@ impl ToolRegistry {
             // model-visible tools and the worker execution registry: the
             // executor only knows about `spawn_background` when the model
             // can also see it.
-            .tool(ReportProgressTool);
+            .tool(ChannelPostMessageTool);
 
         builder.build()
     }

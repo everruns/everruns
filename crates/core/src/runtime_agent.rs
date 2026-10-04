@@ -590,7 +590,7 @@ mod tests {
         }
 
         fn tools(&self) -> Vec<Box<dyn crate::Tool>> {
-            vec![Box::new(crate::progress_reporting::ReportProgressTool)]
+            vec![Box::new(crate::channel_messaging::ChannelPostMessageTool)]
         }
     }
 
@@ -640,7 +640,7 @@ mod tests {
     }
 
     fn progress_definition() -> ToolDefinition {
-        crate::Tool::to_definition(&crate::progress_reporting::ReportProgressTool)
+        crate::Tool::to_definition(&crate::channel_messaging::ChannelPostMessageTool)
             .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
     }
 

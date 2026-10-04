@@ -37,9 +37,12 @@ use crate::slack_api::{SLACK_API_BASE, slack_api_call};
 use crate::slack_api_error::{SlackApiError, parse_retry_after};
 use crate::storage::{EncryptionService, StorageBackend};
 
+#[path = "slack_actions/post_message.rs"]
+mod post_message;
+
 /// Routing-tag prefix stamped on Slack-originated sessions by
 /// `slack_events::build_session_tags`.
-const SLACK_ENDPOINT_TAG_PREFIX: &str = "slack:channel:";
+const SLACK_CHANNEL_TAG_PREFIX: &str = "slack:channel:";
 
 /// Ceiling on an upload's byte count.
 ///
@@ -85,8 +88,11 @@ impl DbSlackActionInvoker {
         self
     }
 
-    /// Resolve the Slack channel and trusted conversation that created this session.
-    async fn resolve_context(&self) -> Result<SlackActionContext, SlackActionError> {
+    /// Resolve the Slack endpoint and trusted conversation that created this session.
+    async fn resolve_context(
+        &self,
+        input_message_id: Option<&str>,
+    ) -> Result<SlackActionContext, SlackActionError> {
         let org = self.org_id;
         let session_id = self.session_id;
         let session = self
@@ -96,49 +102,26 @@ impl DbSlackActionInvoker {
             .map_err(|e| SlackActionError::Transient(e.to_string()))?
             .ok_or(SlackActionError::NoSlackSession)?;
 
-        let Some(app_internal_id) = session.app_id else {
-            // No owning app bundle: an API-, schedule-, or user-created
-            // session. There is nothing to act as.
-            return Err(SlackActionError::NoSlackSession);
-        };
+        let (app_public_id, bound_channel) = self.resolve_action_channel(&session).await?;
 
-        // Decide which channel before loading the app, so the tag fallback and
-        // the FK agree on a single target.
-        let channel_selector = match session.channel_id {
-            Some(internal_id) => ChannelSelector::Internal(internal_id),
-            None => session
-                .tags
-                .iter()
-                .find_map(|tag| tag.strip_prefix(SLACK_ENDPOINT_TAG_PREFIX))
-                .map(|public_id| ChannelSelector::Public(public_id.to_string()))
-                .ok_or(SlackActionError::NoSlackSession)?,
-        };
-
-        let app = crate::domains::apps::queries::get_by_internal_id(
-            &self.db,
-            self.encryption.as_ref(),
-            org,
-            app_internal_id,
-        )
-        .await
-        .map_err(|e| SlackActionError::Transient(e.to_string()))?
-        .ok_or(SlackActionError::ChannelUnavailable)?;
-
-        let channel = select_slack_channel(&app, &channel_selector)
-            .ok_or(SlackActionError::NoSlackSession)?;
-
-        if !channel.status.is_live() {
-            // A retired or drafted channel must not keep acting. Reported as
+        if !bound_channel.enabled || !bound_channel.status.is_live() {
+            // A retired or drafted endpoint must not keep acting. Reported as
             // unavailable rather than as "not from Slack": the session did come
             // from Slack, the door is just shut.
             return Err(SlackActionError::ChannelUnavailable);
         }
 
-        let config = channel
+        let config = bound_channel
             .slack_config()
             .ok_or(SlackActionError::ChannelUnavailable)?;
         if config.bot_token.trim().is_empty() {
             return Err(SlackActionError::NotConfigured);
+        }
+
+        if let Some(input_message_id) = input_message_id {
+            return self
+                .resolve_post_context(input_message_id, app_public_id, &bound_channel, config)
+                .await;
         }
 
         let thread_context = self
@@ -245,10 +228,31 @@ impl From<SlackApiError> for SlackActionError {
 impl SlackActionInvoker for DbSlackActionInvoker {
     async fn invoke(&self, action: SlackAction) -> Result<SlackActionOutcome, SlackActionError> {
         let kind = action.kind();
-        let context = self.resolve_context().await?;
+        let input_id = match &action {
+            SlackAction::PostMessage {
+                input_message_id, ..
+            } => Some(input_message_id.as_str()),
+            _ => None,
+        };
+        let context = self.resolve_context(input_id).await?;
         let bot_token = &context.bot_token;
 
         let outcome = match action {
+            SlackAction::PostMessage {
+                input_message_id,
+                tool_call_id,
+                text,
+            } => {
+                post_message::post_message(
+                    &self.api_base,
+                    self.session_id,
+                    &context,
+                    input_message_id,
+                    tool_call_id,
+                    text,
+                )
+                .await?
+            }
             SlackAction::AddReaction {
                 channel,
                 timestamp,
@@ -611,19 +615,19 @@ mod tests {
 
     const ORG: i64 = 1;
 
-    struct Fixture {
-        db: Arc<StorageBackend>,
+    pub(super) struct Fixture {
+        pub(super) db: Arc<StorageBackend>,
     }
 
     impl Fixture {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             Self {
                 db: Arc::new(StorageBackend::in_memory()),
             }
         }
 
-        /// A channel must be owned by an agent, so every app needs one.
-        async fn seed_agent(&self, org_id: i64, harness_id: HarnessId) -> AgentId {
+        /// An endpoint must be owned by an agent, so every app needs one.
+        pub(super) async fn seed_agent(&self, org_id: i64, harness_id: HarnessId) -> AgentId {
             use crate::storage::models::CreateAgentRow;
             let id = AgentId::new();
             self.db
@@ -658,7 +662,7 @@ mod tests {
             id
         }
 
-        async fn seed_harness(&self) -> HarnessId {
+        pub(super) async fn seed_harness(&self) -> HarnessId {
             self.db
                 .create_harness(
                     ORG,
@@ -686,8 +690,8 @@ mod tests {
                 .id
         }
 
-        /// Seed an app with one channel of `channel_type`, live and configured.
-        async fn seed_app_with_channel(
+        /// Seed an app with one endpoint of `channel_type`, live and configured.
+        pub(super) async fn seed_app_with_channel(
             &self,
             org_id: i64,
             channel_type: &str,
@@ -755,12 +759,24 @@ mod tests {
             (app.id, channel.id, public_id)
         }
 
-        async fn seed_session(
+        pub(super) async fn seed_session(
             &self,
             org_id: i64,
             app_id: Option<Uuid>,
             channel_id: Option<Uuid>,
             tags: Vec<String>,
+        ) -> SessionId {
+            self.seed_session_for_agent(org_id, app_id, channel_id, tags, None)
+                .await
+        }
+
+        pub(super) async fn seed_session_for_agent(
+            &self,
+            org_id: i64,
+            app_id: Option<Uuid>,
+            channel_id: Option<Uuid>,
+            tags: Vec<String>,
+            agent_id: Option<AgentId>,
         ) -> SessionId {
             let harness_id = self.seed_harness().await;
             let session = self
@@ -774,7 +790,7 @@ mod tests {
                     channel_id,
                     trigger_id: None,
                     harness_id: Some(harness_id),
-                    agent_id: None,
+                    agent_id,
                     agent_version_id: None,
                     agent_config_hash: None,
                     virtual_user_id: None,
@@ -816,7 +832,7 @@ mod tests {
             session.id
         }
 
-        fn invoker(&self, org_id: i64, session_id: SessionId) -> DbSlackActionInvoker {
+        pub(super) fn invoker(&self, org_id: i64, session_id: SessionId) -> DbSlackActionInvoker {
             DbSlackActionInvoker::new(self.db.clone(), None, org_id, session_id)
         }
     }
@@ -1439,3 +1455,7 @@ mod tests {
         assert!(matches!(error, SlackActionError::Rejected(_)));
     }
 }
+
+#[cfg(test)]
+#[path = "slack_actions/post_message_tests.rs"]
+mod post_message_tests;

@@ -432,7 +432,7 @@ fn test_with_defaults_has_expected_tools() {
     let registry = ToolRegistry::with_defaults();
     // Exact inventory excludes test doubles and capability-owned tools:
     // exposing those here would bypass host composition or capability policy.
-    assert_eq!(registry.tool_names(), ["report_progress"]);
+    assert_eq!(registry.tool_names(), ["channel_post_message"]);
     assert!(registry.tool_definitions()[0].display_name().is_some());
 }
 
@@ -440,21 +440,18 @@ fn test_with_defaults_has_expected_tools() {
 async fn test_with_defaults_tools_are_executable() {
     let registry = ToolRegistry::with_defaults();
 
-    // The neutral progress contract remains executable as a core default.
+    // A context-free executor must never report success for a real external post.
     let tool_call = ToolCall {
-        id: "call_1".to_string(),
-        name: "report_progress".to_string(),
-        arguments: serde_json::json!({
-            "status": "completed",
-            "summary": "Boundary audit complete"
-        }),
+        id: "call_1".into(),
+        name: "channel_post_message".into(),
+        arguments: serde_json::json!({"text":"Boundary audit complete"}),
     };
-
-    let tool_def = registry.get("report_progress").unwrap().to_definition();
+    let tool_def = registry
+        .get("channel_post_message")
+        .unwrap()
+        .to_definition();
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
-
-    assert!(result.error.is_none());
-    assert_eq!(result.result.unwrap()["summary"], "Boundary audit complete");
+    assert!(result.error.unwrap().contains("external conversation"));
 }
 
 /// Regression: with_defaults() must NOT include capability-provided tools like

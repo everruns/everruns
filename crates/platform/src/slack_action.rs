@@ -41,6 +41,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum SlackAction {
+    /// Post to the trusted conversation of a persisted input invocation.
+    /// IDs are executor-supplied; the model does not select a destination.
+    PostMessage {
+        input_message_id: String,
+        tool_call_id: String,
+        text: String,
+    },
     /// `reactions.add` — acknowledge a message with an emoji.
     AddReaction {
         /// Channel the message lives in.
@@ -78,6 +85,7 @@ impl SlackAction {
     /// Stable short name for logs and error messages.
     pub fn kind(&self) -> &'static str {
         match self {
+            Self::PostMessage { .. } => "post_message",
             Self::AddReaction { .. } => "add_reaction",
             Self::UpdateMessage { .. } => "update_message",
             Self::LookupUser { .. } => "lookup_user",
@@ -95,6 +103,8 @@ impl SlackAction {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
 pub enum SlackActionOutcome {
+    /// Message accepted by Slack, with its reference for later edits.
+    MessagePosted { channel: String, timestamp: String },
     /// The reaction is on the message (including when it already was).
     ReactionAdded { already_reacted: bool },
     /// The message was rewritten; `timestamp` echoes the message acted on.

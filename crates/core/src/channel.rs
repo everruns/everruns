@@ -322,8 +322,6 @@ pub struct OutboundChannelMessage {
     pub text: String,
     /// Thread reference for reply targeting.
     pub thread_ref: String,
-    /// Whether this is a progress report (vs. a final answer).
-    pub is_progress_report: bool,
     /// Id of the input message this reply answers, when the platform can stamp
     /// it onto the posted message for later correlation. `None` leaves the
     /// message unstamped rather than inventing a key.
@@ -343,8 +341,9 @@ pub enum ChannelReplyMode {
     /// Forward all completed assistant messages to the channel.
     #[default]
     AllMessages,
-    /// Only deliver explicit report_progress tool outputs.
-    ReportProgressOnly,
+    /// Only publish messages explicitly posted through channel_post_message.
+    #[serde(alias = "report_progress_only")]
+    ToolOnly,
 }
 
 /// Trait for platform-specific delivery of agent responses.
@@ -378,7 +377,7 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
     /// Send an immediate acknowledgement to the channel.
     ///
     /// Called right after webhook ingestion for async agent invocations.
-    /// e.g. Slack's "On it." message in report_progress_only mode.
+    /// e.g. Slack's "On it." message in tool_only mode.
     /// Platforms that don't need an ack can return Ok(()).
     async fn send_ack(
         &self,
@@ -386,14 +385,6 @@ pub trait ChannelDeliveryAdapter: Send + Sync {
         text: &str,
         context: &DeliveryContext,
     ) -> DeliveryResult;
-
-    /// Format a progress report for this platform.
-    ///
-    /// Different platforms have different formatting (Slack mrkdwn, Discord markdown, etc.)
-    fn format_progress_report(
-        &self,
-        report: &crate::progress_reporting::ProgressReportPayload,
-    ) -> String;
 
     /// Progressive delivery, when the platform supports it.
     ///
@@ -778,10 +769,7 @@ mod tests {
         assert_eq!(ChannelReplyMode::default(), ChannelReplyMode::AllMessages);
         for (mode, wire) in [
             (ChannelReplyMode::AllMessages, "\"all_messages\""),
-            (
-                ChannelReplyMode::ReportProgressOnly,
-                "\"report_progress_only\"",
-            ),
+            (ChannelReplyMode::ToolOnly, "\"tool_only\""),
         ] {
             assert_eq!(serde_json::to_string(&mode).unwrap(), wire);
             assert_eq!(

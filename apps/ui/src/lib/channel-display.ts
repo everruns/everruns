@@ -69,9 +69,9 @@ export function getSessionStrategyDisplayName(strategy: SessionStrategy): string
 export function getSlackReplyModeDisplayName(mode: SlackReplyMode): string {
   switch (mode) {
     case "all_messages":
-      return "All Assistant Messages";
-    case "report_progress_only":
-      return "Report Progress Only";
+      return "Automatic replies";
+    case "tool_only":
+      return "Agent-controlled messages";
   }
 }
 

@@ -1745,6 +1745,12 @@ message SlackAddReaction {
     string name = 3;
 }
 
+message SlackPostMessage {
+    string input_message_id = 1;
+    string tool_call_id = 2;
+    string text = 3;
+}
+
 message SlackUpdateMessage {
     string channel = 1;
     string timestamp = 2;
@@ -1771,6 +1777,7 @@ message InvokeSlackActionRequest {
         SlackUpdateMessage update_message = 4;
         SlackLookupUser lookup_user = 5;
         SlackUploadFile upload_file = 6;
+        SlackPostMessage post_message = 7;
     }
 }
 
@@ -1779,6 +1786,11 @@ message SlackReactionAdded {
 }
 
 message SlackMessageUpdated {
+    string channel = 1;
+    string timestamp = 2;
+}
+
+message SlackMessagePosted {
     string channel = 1;
     string timestamp = 2;
 }
@@ -1826,6 +1838,7 @@ message InvokeSlackActionResponse {
         SlackUser user = 3;
         SlackFileUploaded file_uploaded = 4;
         SlackActionError error = 5;
+        SlackMessagePosted message_posted = 6;
     }
 }
 

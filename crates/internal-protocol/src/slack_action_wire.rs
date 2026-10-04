@@ -16,6 +16,15 @@ use crate::proto;
 impl From<SlackAction> for proto::invoke_slack_action_request::Action {
     fn from(action: SlackAction) -> Self {
         match action {
+            SlackAction::PostMessage {
+                input_message_id,
+                tool_call_id,
+                text,
+            } => Self::PostMessage(proto::SlackPostMessage {
+                input_message_id,
+                tool_call_id,
+                text,
+            }),
             SlackAction::AddReaction {
                 channel,
                 timestamp,
@@ -58,6 +67,11 @@ impl From<proto::invoke_slack_action_request::Action> for SlackAction {
     fn from(action: proto::invoke_slack_action_request::Action) -> Self {
         use proto::invoke_slack_action_request::Action;
         match action {
+            Action::PostMessage(a) => Self::PostMessage {
+                input_message_id: a.input_message_id,
+                tool_call_id: a.tool_call_id,
+                text: a.text,
+            },
             Action::AddReaction(a) => Self::AddReaction {
                 channel: a.channel,
                 timestamp: a.timestamp,
@@ -83,6 +97,9 @@ impl From<proto::invoke_slack_action_request::Action> for SlackAction {
 impl From<SlackActionOutcome> for proto::invoke_slack_action_response::Result {
     fn from(outcome: SlackActionOutcome) -> Self {
         match outcome {
+            SlackActionOutcome::MessagePosted { channel, timestamp } => {
+                Self::MessagePosted(proto::SlackMessagePosted { channel, timestamp })
+            }
             SlackActionOutcome::ReactionAdded { already_reacted } => {
                 Self::ReactionAdded(proto::SlackReactionAdded { already_reacted })
             }
@@ -195,6 +212,11 @@ mod tests {
 
     #[test]
     fn every_action_round_trips() {
+        round_trip_action(SlackAction::PostMessage {
+            input_message_id: "message-1".into(),
+            tool_call_id: "call-1".into(),
+            text: "**Hello**".into(),
+        });
         round_trip_action(SlackAction::AddReaction {
             channel: "C1".to_string(),
             timestamp: "1.2".to_string(),
@@ -286,6 +308,14 @@ mod tests {
     #[test]
     fn every_outcome_maps_to_its_own_variant() {
         use proto::invoke_slack_action_response::Result as Wire;
+        assert!(matches!(
+            Wire::from(SlackActionOutcome::MessagePosted {
+                channel: "C1".into(),
+                timestamp: "1.2".into(),
+            }),
+            Wire::MessagePosted(proto::SlackMessagePosted { channel, timestamp })
+                if channel == "C1" && timestamp == "1.2"
+        ));
         assert!(matches!(
             Wire::from(SlackActionOutcome::ReactionAdded {
                 already_reacted: true

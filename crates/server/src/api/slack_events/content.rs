@@ -2,7 +2,7 @@
 
 use everruns_contracts::url_validation::validate_safe_url;
 use everruns_core::channel::{SessionBinding, build_session_routing_tag, resolve_session_binding};
-use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
+use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
 use everruns_platform::{SlackChannelConfig, SlackReplyMode};
 use std::collections::HashMap;
 

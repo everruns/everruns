@@ -118,6 +118,14 @@ async fn posted_texts(mock_server: &MockServer) -> Vec<String> {
 }
 
 async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::Uuid) {
+    register_turn_with_mode(dispatcher, session_id, SlackReplyMode::AllMessages).await;
+}
+
+async fn register_turn_with_mode(
+    dispatcher: &SlackDeliveryDispatcher,
+    session_id: uuid::Uuid,
+    reply_mode: SlackReplyMode,
+) {
     dispatcher
         .register(DeliveryRegistration {
             session_id,
@@ -125,7 +133,7 @@ async fn register_turn(dispatcher: &SlackDeliveryDispatcher, session_id: uuid::U
             bot_token: "xoxb-test-token".to_string(),
             channel: CHANNEL.to_string(),
             thread_ts: THREAD_TS.to_string(),
-            reply_mode: SlackReplyMode::AllMessages,
+            reply_mode,
             surface: SlackSurface::Channel,
             recipient_user_id: None,
             recipient_team_id: None,
@@ -433,4 +441,45 @@ async fn notice_without_frontend_url_omits_link() {
 
     let notice = dispatcher.terminal_notice("turn.failed", uuid::Uuid::nil());
     assert_eq!(notice, "The agent could not finish this request.");
+}
+
+#[tokio::test]
+async fn explicit_posts_are_not_reposted_and_failures_still_get_a_terminal_notice() {
+    for (event_type, expected) in [
+        ("turn.completed", None),
+        (
+            "turn.failed",
+            Some("The agent could not finish this request."),
+        ),
+        ("turn.cancelled", Some("This request was cancelled.")),
+    ] {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session = seed_session(&db).await;
+        let (dispatcher, slack) = dispatcher_against_slack(db.clone()).await;
+        register_turn_with_mode(&dispatcher, session.uuid(), SlackReplyMode::ToolOnly).await;
+        emit(&db, session, "tool.completed", INPUT_MSG, serde_json::json!({
+            "tool_name":"channel_post_message", "success":true,
+            "result":[{"type":"text","text":r#"{"delivered":true,"platform":"slack","channel":"C_TERMINAL","message_ref":"1.2"}"#}]
+        })).await;
+        emit(
+            &db,
+            session,
+            "output.message.completed",
+            INPUT_MSG,
+            reply_event_data("Private assistant output"),
+        )
+        .await;
+        emit(&db, session, event_type, INPUT_MSG, serde_json::json!({})).await;
+        dispatcher.process_session_events(session.uuid()).await;
+        dispatcher.process_session_events(session.uuid()).await;
+        let posts = posted_texts(&slack).await;
+        match expected {
+            None => assert!(posts.is_empty(), "accepted tool post must not be repeated"),
+            Some(headline) => {
+                assert_eq!(posts.len(), 1);
+                assert!(posts[0].starts_with(headline));
+            }
+        }
+        assert_eq!(dispatcher.active_delivery_count().await, 0);
+    }
 }

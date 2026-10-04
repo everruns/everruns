@@ -90,10 +90,9 @@ impl Capability for SlackCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        // `post_to_channel` is deliberately absent. It widens blast radius from
-        // "the thread that asked" to "anywhere the bot is", and nothing needs
-        // it yet: the reply path already answers in the thread. It returns when
-        // there is a per-channel allowlist to gate it (EVE-1024).
+        // Posting is supplied by the neutral channel_post_message tool in
+        // agent-controlled mode. It binds to this invocation's conversation;
+        // arbitrary-channel posting is deliberately not exposed here.
         vec![
             Box::new(SlackAddReactionTool),
             Box::new(SlackUpdateMessageTool),
@@ -147,6 +146,9 @@ async fn run(context: &ToolContext, action: SlackAction) -> ToolExecutionResult 
 
 fn outcome_to_json(outcome: SlackActionOutcome) -> Value {
     match outcome {
+        SlackActionOutcome::MessagePosted { channel, timestamp } => json!({
+            "success": true, "channel": channel, "timestamp": timestamp,
+        }),
         SlackActionOutcome::ReactionAdded { already_reacted } => json!({
             "success": true,
             "already_reacted": already_reacted,

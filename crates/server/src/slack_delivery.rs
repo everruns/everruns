@@ -19,12 +19,12 @@ use everruns_core::channel::{
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
     OutboundChannelMessage,
 };
+mod message_receipts;
+mod recovery_endpoint;
 use everruns_core::events;
-use everruns_core::progress_reporting::{
-    ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
-};
 use everruns_platform::SlackReplyMode;
 use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
+use message_receipts::channel_message_was_delivered;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
@@ -558,17 +558,8 @@ impl SlackDeliveryDispatcher {
                 if let Some(text) =
                     extract_delivery_text(&event.event_type, ctx.reply_mode, &event.data)
                 {
-                    // In report-progress-only mode the only text that reaches here
-                    // is a progress report; in all-messages mode it is the answer.
-                    let is_progress_report = ctx.reply_mode == SlackReplyMode::ReportProgressOnly;
                     match self
-                        .post(
-                            &ctx,
-                            session_id,
-                            Some(key.input_message_id.clone()),
-                            text,
-                            is_progress_report,
-                        )
+                        .post(&ctx, session_id, Some(key.input_message_id.clone()), text)
                         .await
                     {
                         // Only a reply Slack accepted counts as delivered. A send that
@@ -583,6 +574,14 @@ impl SlackDeliveryDispatcher {
                             "Failed to post message to Slack after retries"
                         ),
                     }
+                }
+
+                // The tool already sent its message. Observe the receipt for
+                // terminal-state bookkeeping without forwarding the content twice.
+                if event.event_type == events::TOOL_COMPLETED
+                    && channel_message_was_delivered(&event.data)
+                {
+                    delivered = true;
                 }
 
                 // Pane status line. Tool lifecycle is counted rather than
@@ -686,16 +685,13 @@ impl SlackDeliveryDispatcher {
                 // A turn that ended without a delivered reply is silence in the Slack
                 // thread. Post exactly one status line so the user knows the request
                 // is over, and unregister either way.
-                if !delivered {
+                if !delivered
+                    || (ctx.reply_mode == SlackReplyMode::ToolOnly
+                        && matches!(event_type.as_str(), "turn.failed" | "turn.cancelled"))
+                {
                     let notice = self.terminal_notice(&event_type, session_id);
                     match self
-                        .post(
-                            &ctx,
-                            session_id,
-                            Some(key.input_message_id.clone()),
-                            notice,
-                            false,
-                        )
+                        .post(&ctx, session_id, Some(key.input_message_id.clone()), notice)
                         .await
                     {
                         ChannelDeliveryResult::Ok => {}
@@ -1030,13 +1026,11 @@ impl SlackDeliveryDispatcher {
         session_id: Uuid,
         input_message_id: Option<String>,
         text: String,
-        is_progress_report: bool,
     ) -> ChannelDeliveryResult {
         let message = OutboundChannelMessage {
             session_id: SessionId::from_uuid(session_id),
             text,
             thread_ref: ctx.thread_ts.clone(),
-            is_progress_report,
             correlation_id: input_message_id,
         };
         self.adapter
@@ -1124,14 +1118,12 @@ impl SlackDeliveryDispatcher {
 
     /// Recover active Slack deliveries after server restart.
     ///
-    /// Finds app-owned sessions in 'active' status for Slack apps, looks up
-    /// the corresponding app for bot_token, and re-registers deliveries for
-    /// any turns that haven't completed yet.
+    /// Finds active Slack sessions through their endpoint or archival App,
+    /// checks the current configuration, and re-registers unfinished turns.
     pub async fn recover(
         &self,
         encryption: Option<&std::sync::Arc<crate::storage::EncryptionService>>,
     ) {
-        let db = self.db.as_ref();
         let sessions = match self.db.find_active_slack_sessions().await {
             Ok(sessions) => sessions,
             Err(e) => {
@@ -1148,44 +1140,15 @@ impl SlackDeliveryDispatcher {
         info!(count = sessions.len(), "Recovering active Slack sessions");
 
         for session in &sessions {
-            let app_internal_id = match session.app_id {
-                Some(app_id) => app_id,
-                None => continue,
-            };
-
-            // Look up the app through the server-owned session FK.
-            // This keeps recovery independent of mutable routing tags.
-            let app = match crate::domains::apps::queries::get_by_internal_id(
-                db,
-                encryption,
-                session.org_id,
-                app_internal_id,
-            )
-            .await
+            let slack_config = match recovery_endpoint::configuration(&self.db, encryption, session)
+                .await
             {
-                Ok(Some(app)) => app,
-                Ok(None) => {
-                    warn!(
-                        app_id = %app_internal_id,
-                        session_id = %session.id,
-                        org_id = session.org_id,
-                        "App not found in session org during Slack recovery"
-                    );
+                Ok(Some(config)) => config,
+                Ok(None) => continue,
+                Err(error) => {
+                    warn!(%error, session_id = %session.id, "Failed to load Slack endpoint for recovery");
                     continue;
                 }
-                Err(e) => {
-                    warn!(app_id = %app_internal_id, error = %e, "Failed to load app for Slack recovery");
-                    continue;
-                }
-            };
-
-            let slack_channel = match app.slack_channel() {
-                Some(ch) => ch,
-                None => continue,
-            };
-            let slack_config = match slack_channel.slack_config() {
-                Some(cfg) => cfg,
-                None => continue,
             };
 
             // Find the last input.message event to determine delivery context
@@ -1238,7 +1201,7 @@ impl SlackDeliveryDispatcher {
                 .to_string();
 
             let thread_ts = metadata
-                .and_then(|m| m.get("slack_ts"))
+                .and_then(|m| m.get("slack_thread_ts").or_else(|| m.get("slack_ts")))
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
@@ -1246,6 +1209,27 @@ impl SlackDeliveryDispatcher {
             // Persisted at input.message time so a restart can still name the
             // stream recipient (EVE-974). Absent on turns registered before that
             // field existed, which simply means no streaming for those.
+            // Native recovery shares posting's signed-input authorization;
+            // caller-authored API metadata cannot redirect lifecycle feedback.
+            let (channel, thread_ts) = if session.app_id.is_none() {
+                match recovery_endpoint::trusted_native_route(
+                    &self.db,
+                    encryption,
+                    session,
+                    &input_message_id,
+                )
+                .await
+                {
+                    Ok(route) => route,
+                    Err(error) => {
+                        warn!(%error, session_id = %session.id, "Slack recovery input has no trusted route");
+                        continue;
+                    }
+                }
+            } else {
+                (channel, thread_ts)
+            };
+
             let recipient_user_id = metadata
                 .and_then(|m| m.get("slack_user"))
                 .and_then(|v| v.as_str())
@@ -1424,13 +1408,6 @@ impl ChannelDeliveryAdapter for SlackDeliveryAdapter {
         }
     }
 
-    fn format_progress_report(
-        &self,
-        report: &everruns_core::progress_reporting::ProgressReportPayload,
-    ) -> String {
-        format_progress_report_for_slack(report)
-    }
-
     fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
         Some(self)
     }
@@ -1549,31 +1526,6 @@ pub(crate) fn extract_response_text(data: &serde_json::Value) -> Option<String> 
     }
 }
 
-pub(crate) fn extract_progress_report_text(data: &serde_json::Value) -> Option<String> {
-    if data.get("tool_name")?.as_str()? != REPORT_PROGRESS_TOOL_NAME {
-        return None;
-    }
-    if !data
-        .get("success")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
-        return None;
-    }
-
-    let result = data.get("result")?.as_array()?;
-    let json_text = result.iter().find_map(|part| {
-        if part.get("type")?.as_str()? == "text" {
-            part.get("text").and_then(|text| text.as_str())
-        } else {
-            None
-        }
-    })?;
-
-    let payload: ProgressReportPayload = serde_json::from_str(json_text).ok()?;
-    Some(format_progress_report_for_slack(&payload))
-}
-
 pub(crate) fn extract_delivery_text(
     event_type: &str,
     reply_mode: SlackReplyMode,
@@ -1582,9 +1534,6 @@ pub(crate) fn extract_delivery_text(
     match reply_mode {
         SlackReplyMode::AllMessages if event_type == "output.message.completed" => {
             extract_response_text(data)
-        }
-        SlackReplyMode::ReportProgressOnly if event_type == "tool.completed" => {
-            extract_progress_report_text(data)
         }
         _ => None,
     }
@@ -1668,7 +1617,7 @@ impl SlackCorrelation {
 /// of source text before splitting, which keeps synchronous payload allocation
 /// finite while still allowing fence continuations to spill into another API
 /// call when their added markers cross the 50-block boundary.
-fn build_post_payloads(
+pub(crate) fn build_post_payloads(
     channel: &str,
     thread_ts: &str,
     text: &str,
@@ -1897,64 +1846,42 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_progress_report_text_formats_payload() {
-        let data = serde_json::json!({
-            "tool_name": "report_progress",
-            "success": true,
-            "result": [
-                {
-                    "type": "text",
-                    "text": r#"{"status":"completed","summary":"Shipped the fix","details":["updated Slack reply mode"]}"#
-                }
-            ]
+    fn explicit_message_receipts_are_observed_but_never_forwarded() {
+        let mut receipt = serde_json::json!({
+            "tool_name": "channel_post_message", "success": true,
+            "result": [{"type":"text", "text": r#"{"delivered":true,"platform":"slack","channel":"C1","message_ref":"2.3"}"#}]
         });
-
-        assert_eq!(
-            extract_progress_report_text(&data),
-            Some("Done: Shipped the fix\n- updated Slack reply mode".to_string())
-        );
+        assert!(channel_message_was_delivered(&receipt));
+        for mode in [SlackReplyMode::AllMessages, SlackReplyMode::ToolOnly] {
+            assert_eq!(
+                extract_delivery_text("tool.completed", mode, &receipt),
+                None
+            );
+        }
+        receipt["success"] = serde_json::json!(false);
+        assert!(!channel_message_was_delivered(&receipt));
+        receipt["success"] = serde_json::json!(true);
+        receipt["result"][0]["text"] =
+            serde_json::json!(r#"{"delivered":false,"platform":"slack","message_ref":"2.3"}"#);
+        assert!(!channel_message_was_delivered(&receipt));
+        assert!(!channel_message_was_delivered(&serde_json::json!({})));
     }
 
     #[test]
-    fn test_extract_delivery_text_respects_reply_mode() {
-        let output = serde_json::json!({
-            "message": {
-                "content": [
-                    {"type": "text", "text": "Normal assistant reply"}
-                ]
-            }
-        });
-        let tool = serde_json::json!({
-            "tool_name": "report_progress",
-            "success": true,
-            "result": [
-                {
-                    "type": "text",
-                    "text": r#"{"status":"progress","summary":"Investigating","details":[]}"#
-                }
-            ]
-        });
-
+    fn assistant_output_is_only_forwarded_in_automatic_mode() {
+        let output = serde_json::json!({"message":{"content":[{"type":"text","text":"Normal assistant reply"}]}});
         assert_eq!(
             extract_delivery_text(
                 "output.message.completed",
                 SlackReplyMode::AllMessages,
                 &output
             ),
-            Some("Normal assistant reply".to_string())
-        );
-        assert_eq!(
-            extract_delivery_text("tool.completed", SlackReplyMode::AllMessages, &tool),
-            None
-        );
-        assert_eq!(
-            extract_delivery_text("tool.completed", SlackReplyMode::ReportProgressOnly, &tool),
-            Some("Update: Investigating".to_string())
+            Some("Normal assistant reply".into())
         );
         assert_eq!(
             extract_delivery_text(
                 "output.message.completed",
-                SlackReplyMode::ReportProgressOnly,
+                SlackReplyMode::ToolOnly,
                 &output
             ),
             None
@@ -2442,6 +2369,7 @@ mod tests {
                         "metadata": {
                             "slack_channel": "C_TEST",
                             "slack_ts": "1234.5678",
+                            "slack_thread_ts": "1234.0000",
                         },
                     },
                 }),
@@ -2554,6 +2482,17 @@ mod tests {
                 1,
                 "session app_id should drive Slack recovery even if routing tags drift"
             );
+            assert_eq!(
+                dispatcher
+                    .deliveries
+                    .read()
+                    .await
+                    .values()
+                    .next()
+                    .unwrap()
+                    .thread_ts,
+                "1234.0000"
+            );
         }
     }
 
@@ -2627,7 +2566,7 @@ mod tests {
         /// network. If the dispatcher still called Slack directly, the recorder
         /// would stay empty and the mock would see traffic instead.
         struct RecordingAdapter {
-            sent: Arc<Mutex<Vec<(String, bool)>>>,
+            sent: Arc<Mutex<Vec<String>>>,
         }
 
         #[async_trait]
@@ -2644,7 +2583,7 @@ mod tests {
                 self.sent
                     .lock()
                     .expect("recorder lock")
-                    .push((message.text.clone(), message.is_progress_report));
+                    .push(message.text.clone());
                 ChannelDeliveryResult::Ok
             }
 
@@ -2655,10 +2594,6 @@ mod tests {
                 _context: &ChannelDeliveryContext,
             ) -> ChannelDeliveryResult {
                 ChannelDeliveryResult::Ok
-            }
-
-            fn format_progress_report(&self, report: &ProgressReportPayload) -> String {
-                format_progress_report_for_slack(report)
             }
         }
 
@@ -2717,7 +2652,7 @@ mod tests {
             dispatcher.process_session_events(session_id.uuid()).await;
 
             let sent = sent.lock().expect("recorder lock").clone();
-            assert_eq!(sent, vec![("Routed reply.".to_string(), false)]);
+            assert_eq!(sent, vec!["Routed reply.".to_string()]);
             assert!(
                 unused_slack
                     .received_requests()
@@ -2741,7 +2676,6 @@ mod tests {
                 session_id: SessionId::from_uuid(uuid::Uuid::nil()),
                 text: "hello".to_string(),
                 thread_ref: String::new(),
-                is_progress_report: false,
                 correlation_id: None,
             };
             let ctx = ChannelDeliveryContext {
@@ -2863,10 +2797,6 @@ mod tests {
                 _context: &ChannelDeliveryContext,
             ) -> ChannelDeliveryResult {
                 ChannelDeliveryResult::Ok
-            }
-
-            fn format_progress_report(&self, report: &ProgressReportPayload) -> String {
-                format_progress_report_for_slack(report)
             }
 
             fn streaming(&self) -> Option<&dyn ChannelStreamDelivery> {
@@ -3413,9 +3343,6 @@ mod tests {
             ) -> ChannelDeliveryResult {
                 ChannelDeliveryResult::Ok
             }
-            fn format_progress_report(&self, report: &ProgressReportPayload) -> String {
-                format_progress_report_for_slack(report)
-            }
             fn agent_surface(&self) -> Option<&dyn ChannelAgentSurface> {
                 Some(self)
             }
@@ -3453,6 +3380,21 @@ mod tests {
             tool_visibility: PublicToolVisibility,
             events: &[(&str, serde_json::Value)],
         ) -> Vec<Surfaced> {
+            surfaced_for_mode(
+                surface,
+                tool_visibility,
+                SlackReplyMode::AllMessages,
+                events,
+            )
+            .await
+        }
+
+        async fn surfaced_for_mode(
+            surface: SlackSurface,
+            tool_visibility: PublicToolVisibility,
+            reply_mode: SlackReplyMode,
+            events: &[(&str, serde_json::Value)],
+        ) -> Vec<Surfaced> {
             let db = Arc::new(StorageBackend::in_memory());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
@@ -3472,7 +3414,7 @@ mod tests {
                     bot_token: "xoxb-t".to_string(),
                     channel: "D_PANE".to_string(),
                     thread_ts: "1700000000.000100".to_string(),
-                    reply_mode: SlackReplyMode::AllMessages,
+                    reply_mode,
                     surface,
                     recipient_user_id: Some("U_HUMAN".to_string()),
                     recipient_team_id: Some("T_TEAM".to_string()),
@@ -3490,6 +3432,27 @@ mod tests {
 
             let recorded = calls.lock().expect("recorder");
             recorded.clone()
+        }
+
+        #[tokio::test]
+        async fn agent_controlled_mode_keeps_working_feedback_and_clears_it() {
+            let surfaced = surfaced_for_mode(
+                SlackSurface::Pane,
+                PublicToolVisibility::Generic,
+                SlackReplyMode::ToolOnly,
+                &tool_lifecycle(),
+            )
+            .await;
+            assert_eq!(
+                surfaced.first(),
+                Some(&Surfaced::Status(SLACK_THINKING_STATUS.into()))
+            );
+            assert!(
+                surfaced
+                    .iter()
+                    .any(|item| matches!(item, Surfaced::Status(status) if status == "Working..."))
+            );
+            assert_eq!(surfaced.last(), Some(&Surfaced::Status(String::new())));
         }
 
         fn tool_lifecycle() -> Vec<(&'static str, serde_json::Value)> {

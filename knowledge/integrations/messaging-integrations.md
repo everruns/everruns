@@ -17,8 +17,8 @@ Messaging integrations connect agents to external messaging platforms (Slack, Di
 - **ThreadContext is session-level, ExternalActor is message-level**: A session bound to a platform thread accumulates participants in `ThreadContext`. Each individual message carries `ExternalActor` for LLM attribution. This separation lets the agent know both "who's in this conversation" and "who said this specific thing."
 - **Async agent invocation is first-class**: The `ChannelDeliveryAdapter` trait models the webhook→ack→async-response pattern. All platforms share the same lifecycle: register delivery on inbound event, deliver output when agent finishes (seconds to hours later), unregister on turn end.
 - **Generic session tags**: Session routing uses `{platform}:thread:{ref}`, `{platform}:channel:{id}`, `{platform}:user:{id}` tags. The `build_session_routing_tag()` helper generates these from metadata. Slack's existing tags remain as a concrete instance of this pattern.
-- **Reply mode generalized**: `ChannelReplyMode` (`all_messages` | `report_progress_only`) replaces platform-specific reply modes. Progress reporting tags use `channel:reply_mode:*` prefix. Legacy `slack:reply_mode:*` tags remain for backward compat.
-- **Platform-contributed tools deferred**: The Capability trait supports `tools()` but no channel adapter contributes tools yet. See "Future: Platform Tools" below.
+- **Agent-controlled communication is channel-neutral**: explicit posts let the agent choose when to communicate and how to word updates, questions, and answers. The runtime binds the destination to the input invocation and retains credential ownership in the control plane. Success confirms platform acceptance, rather than merely accepting a report payload. Automatic assistant forwarding remains an endpoint choice. Stored progress-only settings opt into this broader contract. See [the tool and sender contract](../../crates/core/src/channel_messaging.rs) and [the Slack adapter](../../crates/platform/src/channel_message_sender.rs).
+- **Platform actions stay in capabilities**: Slack contributes native reactions, edits, user lookup, and file uploads through its hosted capability. Neutral posting shares its bound endpoint action service. See [Slack Agent Actions](slack-agent-actions.md).
 - **Messaging integrations live in `crates/server/`**: Unlike sandbox/execution integrations (`integrations/`), messaging integrations are deeply coupled to server internals (SessionService, MessageService, EventService, EventNotificationBroadcaster). Slack currently lives in flat `crates/server/src/slack_delivery.rs` + `api/slack_events.rs` files; a `crates/server/src/messaging/{platform}/` split is the intended layout once a second platform lands (see Code Organization).
 
 ## Types
@@ -46,7 +46,7 @@ See `crates/core/src/channel.rs` for full definitions.
 | Type | Purpose |
 |------|---------|
 | `OutboundChannelMessage` | Text message to post back to platform thread |
-| `ChannelDeliveryAdapter` | Trait: `deliver()`, `send_ack()`, `format_progress_report()` |
+| `ChannelDeliveryAdapter` | Host-owned acknowledgement, delivery, and lifecycle feedback |
 | `DeliveryContext` | Auth token, channel ID, thread ref, reply mode, platform extras |
 | `DeliveryResult` | Ok / TransientError / PermanentError |
 
@@ -55,7 +55,7 @@ See `crates/core/src/channel.rs` for full definitions.
 | Type | Purpose |
 |------|---------|
 | `SessionBinding` | Thread (default), Conversation, Requester, Endpoint, Ephemeral |
-| `ChannelReplyMode` | AllMessages (default), ReportProgressOnly |
+| `ChannelReplyMode` | Automatic forwarding or agent-controlled communication; see [the mode contract](../../crates/core/src/channel.rs) |
 | `build_session_routing_tag()` | Generates `{platform}:{thread\|channel\|user}:{ref}` session tag. The segment keeps the pre-EVE-1005 word, not the binding name: renaming it orphans live sessions. |
 
 ## Adapter Lifecycle
@@ -116,6 +116,8 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **Message correlation** | Stamp the session and input message id onto every posted message using the platform's metadata facility, so a platform message maps back to the run that produced it without tag-string heuristics. |
 | **Thread context** | Persist a `ThreadContext` per session (participants, and where the user is looking when the platform reports it) and surface it as *conversation context*, never as system prompt — participant names and platform view reports are external user-controlled strings. Accumulate across messages and survive a restart. A platform signal that changes often (Slack: `app_context_changed`) updates the record rather than minting an event per change. Store it under the reserved session KV key `channel:thread_context`, which `session_storage` withholds from the agent-facing `kv_store` tool so a session actor cannot forge its own context. |
 | **Inbound control signals** | A platform stop/cancel control is not a message: keep its blast radius fixed at cancel-only, resolve the session through the same endpoint-scoped lookup inbound messages use (so another endpoint's thread resolves nothing), and route it through the shared cancel path that checks terminal state first — a stop for a finished turn is a no-op, not an error. Let the terminal-state notice be the user's confirmation rather than posting a second one. |
+| **Explicit posting** | Bind to the trusted input conversation. Return platform acceptance and an editable message reference; observe the receipt without forwarding it again. Treat posting as an at-most-once effect under durable Act. |
+| **Working feedback** | Acknowledge tool-only requests independently of model behavior; show pane status through the existing lifecycle adapter. |
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
 | **Streaming (optional)** | Implement `ChannelStreamDelivery` and return it from `ChannelDeliveryAdapter::streaming()`. A platform without progressive delivery returns `None` and keeps discrete posting — the capability is probed, not required. One stream per output message, closed on every terminal state. |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
@@ -150,7 +152,7 @@ Reference implementation. See [`crates/server/specs/slack-integration.md`](../..
 - Webhook: `POST /v1/channels/{channel_id}/slack/events` (with a permanent App-shaped alias)
 - Signing: HMAC-SHA256 via `signing_secret`
 - Session strategies: `per_thread`, `per_channel`, `per_user`
-- Reply modes: `all_messages`, `report_progress_only`
+- Reply behavior: automatic assistant forwarding or agent-controlled communication, configured through [the Slack endpoint](../../crates/platform/src/app.rs)
 - Thread context injection via paginated `conversations.replies` (`per_thread` only, capped with a truncation notice)
 - Event-driven delivery via `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`)
 - Replies rendered as bounded `markdown` blocks, split past Slack's per-block limit, stamped with session/message `metadata`
@@ -166,7 +168,7 @@ Reference implementation. See [`crates/server/specs/slack-integration.md`](../..
 | Microsoft Teams | HMAC-SHA256 | Reply chains | Adaptive cards for rich output |
 | Telegram | Secret token header | Reply-to threading | Bot API webhook mode |
 
-## Future: Platform Tools
+## Platform Tools
 
 Channel adapters should optionally contribute platform-specific tools via the `Capability` trait:
 
@@ -176,13 +178,13 @@ Channel adapters should optionally contribute platform-specific tools via the `C
 | Discord | `create_thread`, `add_reaction`, `pin_message` |
 | Teams | `send_adaptive_card`, `create_tab` |
 
-The plumbing exists (`Capability::tools()` returns `Vec<Box<dyn Tool>>`), but no adapter uses it yet. Tools would receive platform context via `ToolContext` (session access → channel config lookup). **Not implementing now**: recorded as a known gap for future work.
+Slack implements platform actions through its native capability and endpoint action service. The neutral posting tool uses that same service; platform-specific affordances remain capability tools. See [Slack Agent Actions](slack-agent-actions.md).
 
 ## Files
 
 - `crates/core/src/channel.rs`, All types and traits defined here
 - `crates/platform/src/app.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
-- `crates/core/src/progress_reporting.rs`, Generalized tag handling, backward compat
+- `crates/core/src/channel_messaging.rs`, Neutral posting contract, invocation authority, and mode composition
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters
 - `crates/server/specs/slack-integration.md`, Slack-specific implementation spec

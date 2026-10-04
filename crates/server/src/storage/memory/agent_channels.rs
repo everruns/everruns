@@ -136,12 +136,27 @@ impl InMemoryDatabase {
         &self,
         public_id: &str,
     ) -> Result<Option<IngressChannelRow>> {
-        Ok(self
+        let endpoint = self
             .ingress_channels
             .read()
             .values()
             .find(|endpoint| endpoint.channel_public_id == public_id)
-            .cloned())
+            .cloned();
+        let Some(mut endpoint) = endpoint else {
+            return Ok(None);
+        };
+        // PostgreSQL joins the current agent. A creation-time snapshot must not
+        // authorize ingress or actions after suspension or retirement.
+        let agents = self.agents.read();
+        let Some(agent) = agents
+            .values()
+            .find(|agent| agent.id.uuid() == endpoint.agent_id && agent.org_id == endpoint.org_id)
+        else {
+            return Ok(None);
+        };
+        endpoint.agent_status = agent.status.clone();
+        endpoint.exposures_suspended = agent.exposures_suspended;
+        Ok(Some(endpoint))
     }
 
     pub async fn list_ingress_channels_by_legacy_alias(
@@ -364,6 +379,11 @@ impl InMemoryDatabase {
         org_id: i64,
         channel_id: Uuid,
     ) -> Result<Option<String>> {
+        // Native endpoints have no archival App row. Match PostgreSQL's
+        // org-scoped endpoint lookup before using the pre-native fallback.
+        if let Some(endpoint) = self.ingress_channels.read().get(&channel_id) {
+            return Ok((endpoint.org_id == org_id).then(|| endpoint.channel_public_id.clone()));
+        }
         let channel = self.agent_channel_rows.read().get(&channel_id).cloned();
         let Some(channel) = channel else {
             return Ok(None);

@@ -154,6 +154,38 @@ Session strategy in the pane is always `per_thread`. The configured strategy sti
 
 Replies in the agent pane render as the Agent produces them. Channel threads receive one finished message instead of token-by-token updates.
 
+## Reply Modes
+
+Choose **Reply mode** in the endpoint's **Conversation behavior** settings:
+
+| Mode | What people see in Slack |
+|---|---|
+| **Automatic replies** | Every assistant response is published. Replies stream in the agent pane. |
+| **Agent-controlled messages** | The agent chooses when to post updates, questions, and answers. Other assistant messages stay in Everruns. |
+
+In agent-controlled mode, Everruns acknowledges each request with **On it.** The
+agent pane also shows a working status. Approval cards and task progress continue
+to appear independently of the agent's messages.
+
+Existing progress-only endpoints automatically use agent-controlled messages.
+
+### `channel_post_message`
+
+This channel-neutral tool is supplied automatically in agent-controlled mode;
+it does not require enabling the Slack actions capability or adding credentials.
+
+Pass `text` containing the complete message, with Markdown formatting, up to
+12,000 characters. Everruns sends it into the conversation that triggered the
+turn, using this endpoint's bot. The agent cannot select another channel or thread.
+
+Success means Slack accepted the post. The result contains `platform`, `channel`,
+and `message_ref`. For Slack, `message_ref` is the message timestamp: use it as
+`timestamp` with `slack_update_message` when the Slack actions capability is enabled.
+
+The agent can use this tool for concise milestones, questions, and final answers;
+Everruns does not add a fixed status heading. If delivery is uncertain, the error
+says so. Avoid resending blindly because the message may already be visible.
+
 ## Session Strategies
 
 | Strategy | Behavior | Tag Pattern |
@@ -185,10 +217,10 @@ Use `per_thread` for most Slack bots.
 **Outbound path:**
 
 6. The Slack delivery dispatcher watches the turn.
-7. The RuntimeAgent emits completed output messages.
-8. The dispatcher posts each response with `chat.postMessage`.
-9. Transient delivery failures retry with exponential backoff.
-10. The dispatcher unregisters when the turn completes or fails.
+7. In automatic mode, the RuntimeAgent emits completed output messages and the dispatcher posts them.
+8. In agent-controlled mode, `channel_post_message` posts messages directly and returns delivery receipts.
+9. Automatic delivery retries transient failures with exponential backoff. Explicit posts return errors without retrying an uncertain send.
+10. The dispatcher unregisters when the turn completes, fails, or is cancelled.
 
 ## Troubleshooting
 

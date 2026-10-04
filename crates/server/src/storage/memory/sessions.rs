@@ -884,15 +884,25 @@ impl InMemoryDatabase {
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         let sessions = self.sessions.read();
         let apps = self.apps.read();
+        let endpoints = self.ingress_channels.read();
         let result: Vec<_> = sessions
             .values()
             .filter(|s| {
                 s.status == "active"
-                    && s.app_id
-                        .and_then(|app_id| apps.get(&app_id))
-                        .is_some_and(|app| {
-                            app.channel_type.as_deref() == Some("slack") && app.status != "deleted"
-                        })
+                    && (s.app_id.and_then(|id| apps.get(&id)).is_some_and(|app| {
+                        app.org_id == s.org_id
+                            && app.channel_type.as_deref() == Some("slack")
+                            && app.status != "deleted"
+                    }) || (s.app_id.is_none()
+                        && s.channel_id.and_then(|id| endpoints.get(&id)).is_some_and(
+                            |endpoint| {
+                                endpoint.org_id == s.org_id
+                                    && endpoint.channel_type == "slack"
+                                    && s.agent_id.map(|id| id.uuid()) == Some(endpoint.agent_id)
+                                    && endpoint.enabled
+                                    && endpoint.channel_status == "live"
+                            },
+                        )))
             })
             .cloned()
             .collect();
