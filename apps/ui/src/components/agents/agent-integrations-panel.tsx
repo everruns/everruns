@@ -135,7 +135,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
           <section className="flex flex-col gap-3">
             <div className="flex items-end justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">Endpoints</h2>
+                <h2 className="text-lg font-semibold tracking-tight">Channels</h2>
                 <p className="text-sm text-muted-foreground">
                   {doors.length} {pluralize(doors.length, "channel")} · how callers reach this agent
                 </p>
@@ -191,7 +191,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                             <BudgetPanel
                               subjectType="agent_channel"
                               subjectId={channel.id}
-                              title="Endpoint budget"
+                              title="Channel budget"
                               canManage={canManageBudgets}
                             />
                           </div>
@@ -244,7 +244,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                         <BudgetPanel
                           subjectType="agent_channel"
                           subjectId={channel.id}
-                          title="Endpoint budget"
+                          title="Channel budget"
                           canManage={canManageBudgets}
                         />
                       ) : undefined

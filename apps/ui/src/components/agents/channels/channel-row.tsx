@@ -243,7 +243,7 @@ export function ChannelRow({
                 <DropdownMenuContent>
                   {configureHref && (
                     <DropdownMenuItem render={<Link href={configureHref} />}>
-                      {inlineConfiguration ? "Endpoint options" : "Configure"}
+                      {inlineConfiguration ? "Channel options" : "Configure"}
                     </DropdownMenuItem>
                   )}
                   {onRunNow && (

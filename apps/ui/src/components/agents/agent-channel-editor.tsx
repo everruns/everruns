@@ -82,7 +82,7 @@ export function AgentChannelEditor({
   if (!agent || !channel) {
     return (
       <ResourceNotFound
-        title="Endpoint not found"
+        title="Channel not found"
         description="This channel may have been deleted, moved to another agent, or the URL may be wrong."
         backHref={returnHref}
         backLabel="Back to agent"

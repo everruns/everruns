@@ -91,7 +91,7 @@ describe("BudgetPanel", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("creates an endpoint budget with the fixed endpoint subject", async () => {
+  it("creates a channel budget with the fixed channel subject", async () => {
     listBudgets.mockResolvedValue([]);
     renderPanel();
 
@@ -111,7 +111,7 @@ describe("BudgetPanel", () => {
     );
   });
 
-  it("edits and removes an endpoint budget", async () => {
+  it("edits and removes a channel budget", async () => {
     renderPanel();
 
     fireEvent.click(await screen.findByRole("button", { name: "Edit budget bdgt_endpoint" }));
