@@ -445,7 +445,7 @@ async fn post_decision_message(
     let participant =
         super::ensure_slack_user_participant(state, org_id, session_id, &actor).await?;
 
-    let mut event_metadata = crate::execution_metadata::app_message_metadata(
+    let mut event_metadata = crate::execution_metadata::endpoint_message_metadata(
         app.public_id,
         app.owner_principal_id,
         app.virtual_user_id,

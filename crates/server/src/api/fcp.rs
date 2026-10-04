@@ -540,7 +540,7 @@ async fn message(
                 harness_id: context.app.harness_id.uuid(),
                 agent_id: Some(context.app.agent_internal_id),
                 session_id: resolved.session_id,
-                event_metadata: Some(execution_metadata::app_message_metadata(
+                event_metadata: Some(execution_metadata::endpoint_message_metadata(
                     context.app.public_id,
                     context.app.owner_principal_id,
                     context.app.virtual_user_id,

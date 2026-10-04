@@ -9,7 +9,7 @@
 * [MCP Events: session webhooks out, agent triggers in](mcp-events.md) - /mcp clients subscribe to session webhooks; agents subscribe to their MCP servers' events as `mcp_event` triggers.
 * [Inbound Form Mode Elicitation](mcp-form-elicitation.md) - Answering an attached MCP server's form mode elicitation through ask_user, and the trust rules that shape it.
 * [Integrations](integrations.md) - Integration specs index.
-* [Apps](apps.md) - Frozen App compatibility data and permanent ingress aliases.
+* [Archived Apps](apps.md) - Frozen App compatibility data and permanent ingress aliases.
 * [Agent Exposure (retiring the App abstraction)](agent-exposure.md) - Make Agent the addressable entity by making channels Agent-owned and folding invocation into Triggers, retiring App.
 * [Public Chat (Hosted Chat App)](public-chat.md) - Public Chat (hosted, isolated chat app), product spec/proposal.
 * [Legacy App Invocation Aliases](app-invocation-channels.md) - Frozen App-shaped aliases for channel-owned webhook and schedule ingress.
