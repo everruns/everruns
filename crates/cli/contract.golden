@@ -112,6 +112,10 @@ harnesses get	--id!
 harnesses list	--include-archived --search
 harnesses preview	--capabilities --mcp-servers --parent-harness-id --system-prompt
 harnesses update	--capabilities --default-model-id --description --display-name --embedder-metadata --id! --initial-files --intro-markdown --mcpServers --name --network-access --parent-harness-id --short-description --starters --status --system-prompt --tags...
+health-issues check	--issue-id!
+health-issues get	--issue-id!
+health-issues list	--channel-id --limit --offset
+health-issues snooze	--issue-id!
 images get	--id!
 images list	--limit --offset
 knowledge-bases create	--description --embedding-model-id <name>!
