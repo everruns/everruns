@@ -183,10 +183,10 @@ View and manage team members (when authentication is enabled).
 
 Open **Virtual users** to create or manage organization-scoped accounts. Choose **End user** for a person using agents or **Service** for an agent account. The detail page has **Overview**, **Connections**, **Linked identities**, and **Sessions** tabs. Usage is fixed at creation. An agent's overview lets you select its service account.
 
-**Settings → Account** edits your Everruns management profile. **My agent experience** edits your current organization's default virtual-user profile and runtime defaults. **Connections** uses the same account and connection store. Switching organizations selects that organization's runtime account. **Team members** remains management membership administration.
+**Settings → Account** edits your Everruns management profile. **My agent experience** edits your current organization's default virtual-user profile, runtime defaults, and connections. Switching organizations selects that organization's runtime account. **Team members** remains management membership administration. `/settings/connections` opens My agent experience.
 
 End-user connections are private to their owner. Organization management permissions do not grant access to another end user's credentials. Service account connections require management permissions. Saved credentials are encrypted and never returned by the API.
 
-When upgrading an account that belonged to several organizations, old connections require an explicit destination. Select the destination from **Connections** and move each pending connection once. A destination that already has that provider is rejected rather than overwritten. Accounts with one organization migrate automatically.
+When upgrading an account that belonged to several organizations, old connections require an explicit destination. Select the destination from **My agent experience** and move each pending connection once. A destination that already has that provider is rejected rather than overwritten. Accounts with one organization migrate automatically.
 
 Operators upgrading an existing installation should follow the [virtual-user cutover runbook](/sre/runbooks/virtual-user-cutover/).

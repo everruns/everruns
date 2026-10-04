@@ -1,6 +1,6 @@
 //! Browserless API key resolution, browser session state, and parameter helpers.
 //!
-//! Decision: API token ONLY comes from user connection (Settings > Connections > Browserless).
+//! Decision: API token ONLY comes from user connection (Settings > My agent experience).
 //!   Never stored in session secrets. Session state only tracks the WS endpoint.
 
 use everruns_core::tool_context::ToolContext;
@@ -21,7 +21,7 @@ const BROWSER_SESSION_KEY: &str = "browserless_browser_session";
 // API Key Resolution
 // ============================================================================
 
-/// Resolve Browserless API token via user connection (Settings > Connections > Browserless).
+/// Resolve Browserless API token via user connection (Settings > My agent experience).
 pub async fn get_api_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
     if let Some(resolver) = context.connection_resolver.as_ref() {
         match resolver
@@ -38,7 +38,7 @@ pub async fn get_api_token(context: &ToolContext) -> Result<String, ToolExecutio
 
     Err(ToolExecutionResult::tool_error(
         "Browserless API token not configured.\n\n\
-         Set up your API token in **Settings > Connections > Browserless**.\n\n\
+         Set up your API token in **Settings > My agent experience**.\n\n\
          Get your token at https://www.browserless.io/account/home under API Keys.",
     ))
 }

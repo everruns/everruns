@@ -88,7 +88,8 @@ describe("SettingsLayout", () => {
     expect(screen.getByText("Team members")).toBeInTheDocument();
     expect(screen.getByText("Payments")).toBeInTheDocument();
     expect(screen.getByText("Account")).toBeInTheDocument();
-    expect(screen.getByText("Connections")).toBeInTheDocument();
+    expect(screen.getByText("My agent experience")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Connections" })).not.toBeInTheDocument();
     expect(screen.getByText("Personal access tokens")).toBeInTheDocument();
   });
 
@@ -117,7 +118,7 @@ describe("SettingsLayout", () => {
     const membersLink = screen.getByRole("link", { name: /Team members/i });
     const paymentsLink = screen.getByRole("link", { name: /Payments/i });
     const profileLink = screen.getByRole("link", { name: /Account/i });
-    const connectionsLink = screen.getByRole("link", { name: /Connections/i });
+    const agentExperienceLink = screen.getByRole("link", { name: /My agent experience/i });
     const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
     const slackLink = screen.getByRole("link", { name: /Slack workspaces/i });
 
@@ -126,7 +127,7 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveAttribute("href", "/settings/members");
     expect(paymentsLink).toHaveAttribute("href", "/settings/payments");
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
-    expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
+    expect(agentExperienceLink).toHaveAttribute("href", "/settings/agent-experience");
     expect(apiKeysLink).toHaveAttribute("href", "/settings/personal-access-tokens");
     expect(slackLink).toHaveAttribute("href", "/settings/slack");
     expect(screen.getByRole("link", { name: "Health" })).toHaveAttribute(
@@ -142,7 +143,7 @@ describe("SettingsLayout", () => {
       </SettingsLayout>,
     );
 
-    expect(screen.getAllByRole("link")).toHaveLength(11);
+    expect(screen.getAllByRole("link")).toHaveLength(10);
     for (const link of screen.getAllByRole("link")) {
       expect(link).toHaveAttribute("data-prefetch", "false");
     }
@@ -154,7 +155,7 @@ describe("SettingsLayout", () => {
     ["/settings/members", "Team members"],
     ["/settings/organization", "Organization"],
     ["/settings/profile", "Account"],
-    ["/settings/connections", "Connections"],
+    ["/settings/agent-experience", "My agent experience"],
   ])("highlights the active navigation item for %s", (pathname, linkName) => {
     mockPathname.mockReturnValue(pathname);
     render(
@@ -205,7 +206,8 @@ describe("SettingsLayout", () => {
     // Personal section contains its items
     const personalSection = personalLabel.closest("div[class]")!.parentElement!;
     expect(personalSection).toHaveTextContent("Account");
-    expect(personalSection).toHaveTextContent("Connections");
+    expect(personalSection).toHaveTextContent("My agent experience");
+    expect(personalSection).not.toHaveTextContent("Connections");
     expect(personalSection).toHaveTextContent("Personal access tokens");
     expect(personalSection).not.toHaveTextContent("Organization");
     expect(personalSection).not.toHaveTextContent("Team members");

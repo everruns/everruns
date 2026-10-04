@@ -365,7 +365,7 @@ Two deliberately separate front doors over shared plumbing:
 |---|---|---|
 | Scope | Organization | User |
 | Purpose | Infrastructure that runs agents; spends org money | User's identity on an external service, used by tools |
-| Configured by | Org admins (Settings → Providers) | Each user (Settings → Connections) |
+| Configured by | Org admins (Settings → Providers) | Each user (Settings → My agent experience) |
 | Resolution | Per LLM/service call, cached, **fail-closed** | Lazy at tool execution time |
 | Visibility | Org-visible | Private to the owning user |
 | Code unit | Driver (`DriverRegistry`) | Connector (plugin registry) |

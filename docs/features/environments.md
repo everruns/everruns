@@ -22,7 +22,7 @@ uses.
 
 Bashkit is available without a provider connection. Daytona appears as unavailable when its
 provider integration is not installed in the deployment. A user who starts a Daytona chat also
-needs a Daytona connection under **Settings > Connections**; the session returns an actionable
+needs a Daytona connection under **Settings → My agent experience**; the session returns an actionable
 connection error when that user has not connected it.
 
 Do not put API keys or other credentials in target options or bootstrap commands. Bind provider

@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
-import ConnectionsPage from "@/app/(main)/settings/connections/page";
+import { ConnectionsPanel } from "@/components/connections/connections-panel";
 
 // Mock streamdown-message to capture rendered markdown content
 jest.mock("@/components/chat/streamdown-message", () => ({
@@ -62,7 +62,7 @@ const mockDaytonaProvider = {
   },
 };
 
-describe("ConnectionsPage - Markdown Instructions", () => {
+describe("ConnectionsPanel - Markdown Instructions", () => {
   let queryClient: QueryClient;
 
   const wrapper = ({ children }: { children: ReactNode }) => (
@@ -99,14 +99,14 @@ describe("ConnectionsPage - Markdown Instructions", () => {
   });
 
   it("renders available provider in the list", () => {
-    render(<ConnectionsPage />, { wrapper });
+    render(<ConnectionsPanel />, { wrapper });
 
     expect(screen.getByText("Daytona")).toBeInTheDocument();
     expect(screen.getByText("Cloud development environment")).toBeInTheDocument();
   });
 
   it("renders instructions_markdown via InlineStreamdownMessage when dialog opens", async () => {
-    render(<ConnectionsPage />, { wrapper });
+    render(<ConnectionsPanel />, { wrapper });
 
     // Click Connect button to open the API key dialog
     const connectButton = screen.getByRole("button", { name: /Connect/i });
@@ -126,7 +126,7 @@ describe("ConnectionsPage - Markdown Instructions", () => {
   });
 
   it("passes styling classes to InlineStreamdownMessage", async () => {
-    render(<ConnectionsPage />, { wrapper });
+    render(<ConnectionsPanel />, { wrapper });
 
     const connectButton = screen.getByRole("button", { name: /Connect/i });
     fireEvent.click(connectButton);
@@ -141,13 +141,13 @@ describe("ConnectionsPage - Markdown Instructions", () => {
   });
 
   it("does not render InlineStreamdownMessage when dialog is closed", () => {
-    render(<ConnectionsPage />, { wrapper });
+    render(<ConnectionsPanel />, { wrapper });
 
     expect(screen.queryByTestId("inline-streamdown-message")).not.toBeInTheDocument();
   });
 
   it("renders form fields alongside markdown instructions", async () => {
-    render(<ConnectionsPage />, { wrapper });
+    render(<ConnectionsPanel />, { wrapper });
 
     const connectButton = screen.getByRole("button", { name: /Connect/i });
     fireEvent.click(connectButton);
@@ -162,7 +162,7 @@ describe("ConnectionsPage - Markdown Instructions", () => {
   });
 
   it("renders Connect button with provider name in dialog title", async () => {
-    render(<ConnectionsPage />, { wrapper });
+    render(<ConnectionsPanel />, { wrapper });
 
     const connectButton = screen.getByRole("button", { name: /Connect/i });
     fireEvent.click(connectButton);

@@ -49,11 +49,11 @@ Session state (`ws_endpoint`, timestamps) stored as plain key-value in `session_
 
 ### API Token Resolution
 
-The Browserless API token is resolved via **user connection** for the `browserless` provider (Settings > Connections). See `src/connection.rs` for the `ConnectionProviderPlugin`.
+The Browserless API token is resolved via **user connection** for the `browserless` provider (Settings > My agent experience). See `src/connection.rs` for the `ConnectionProviderPlugin`.
 
 ### User Connection
 
-Browserless registers as a `ConnectionProviderPlugin` (API-key type). Users configure their token in **Settings > Connections > Browserless**:
+Browserless registers as a `ConnectionProviderPlugin` (API-key type). Users configure their token in **Settings > My agent experience**:
 
 1. User enters API token (from [Browserless Dashboard](https://www.browserless.io/account/home))
 2. Token validated via `GET /active` endpoint
@@ -199,7 +199,7 @@ No long-lived WebSocket connections from our side, we connect/disconnect for eac
 
 ## Security
 
-- **API Token**: Stored in user connections (Settings > Connections > Browserless), encrypted at rest
+- **API Token**: Stored in user connections (Settings > My agent experience), encrypted at rest
 - **CDP session state**: Stored as plain key-value in `session_storage` (only WS endpoint, no secrets), per-session scoped
 - **No secrets in chat**: Token resolved via connection provider, never exposed in conversation
 - **No secrets in logs**: CDP debug logging redacts API tokens from WebSocket URLs

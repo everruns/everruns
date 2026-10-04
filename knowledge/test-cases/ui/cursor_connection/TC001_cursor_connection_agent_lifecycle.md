@@ -19,7 +19,7 @@ Verify that the Cursor Agent Manager prompts for a Cursor API key via the inline
 - Server running (`just start-all` recommended)
 - User logged in
 - LLM API key configured
-- No existing Cursor connection in Settings > Connections
+- No existing Cursor connection in Settings → My agent experience
 - Valid Cursor Cloud Agents API key available
 - Cursor GitHub app has access to the test repository
 - Use a small test repository where creating a branch/PR is safe
@@ -66,4 +66,4 @@ Verify that the Cursor Agent Manager prompts for a Cursor API key via the inline
 ## Cleanup
 
 - Delete any branch or PR created in the safe test repository
-- Remove the Cursor connection from Settings > Connections if it should not persist
+- Remove the Cursor connection from Settings → My agent experience if it should not persist

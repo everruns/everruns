@@ -22,7 +22,7 @@ OAuth, installed into Everruns as a stable `plugin:{install_id}` capability.
 
 Install `resend` from the default `everruns` marketplace (Settings →
 Plugins), assign the Resend capability to an agent, then connect
-Resend under **Settings → Connections**. The OAuth client is registered
+Resend under **Settings → My agent experience**. The OAuth client is registered
 dynamically against `api.resend.com`; tokens are stored encrypted and
 refreshed automatically.
 

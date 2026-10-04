@@ -229,7 +229,7 @@ export function MemoryFormDialog({
                     {!githubConnection && (
                       <p className="text-xs text-muted-foreground">
                         Private repositories need a{" "}
-                        <Link href="/settings/connections" className="underline">
+                        <Link href="/settings/agent-experience" className="underline">
                           GitHub connection
                         </Link>
                         .

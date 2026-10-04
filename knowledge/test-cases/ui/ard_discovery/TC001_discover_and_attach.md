@@ -72,4 +72,4 @@ reflects the attachment.
 ## Cleanup
 
 - No external resources are provisioned by this test (attachments are session-scoped KV/config). Ending or deleting the session is sufficient.
-- If an `ard` connection or `ARD_REGISTRY_TOKEN` secret was added for a non-anonymous registry, remove it from Settings > Connections / session secrets if it should not persist.
+- If an `ard` connection or `ARD_REGISTRY_TOKEN` secret was added for a non-anonymous registry, remove it from Settings → My agent experience / session secrets if it should not persist.

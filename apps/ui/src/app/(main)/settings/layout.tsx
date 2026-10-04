@@ -10,7 +10,6 @@ import {
   Key,
   Users,
   Building2,
-  Cable,
   User,
   WalletCards,
   FlaskConical,
@@ -92,13 +91,7 @@ const settingsSections: NavSection[] = [
         name: "My agent experience",
         href: "/settings/agent-experience",
         icon: User,
-        description: "Your virtual user in this organization",
-      },
-      {
-        name: "Connections",
-        href: "/settings/connections",
-        icon: Cable,
-        description: "Connect external accounts",
+        description: "Your virtual user and connections in this organization",
       },
       {
         name: "Personal access tokens",

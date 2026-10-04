@@ -19,7 +19,7 @@ Verify that an agent with Deno capability prompts for a Deno access token via th
 - Server running (`just start-all` — full mode with PostgreSQL required for leased resources)
 - User logged in
 - LLM API keys configured (Anthropic or OpenAI)
-- **No** existing Deno connection in Settings > Connections (disconnect first if present)
+- **No** existing Deno connection in Settings → My agent experience (disconnect first if present)
 - Valid Deno organization access token (`ddo_...`) available for test
 
 ## Test Data
@@ -70,5 +70,5 @@ Verify that an agent with Deno capability prompts for a Deno access token via th
 
 ## Cleanup
 
-- After the test, navigate to **Settings > Connections** and verify or disconnect the Deno connection if it should not persist
+- After the test, navigate to **Settings → My agent experience** and verify or disconnect the Deno connection if it should not persist
 - If the sandbox deletion step failed, manually delete any remaining sandboxes via the Deno Deploy Console to avoid resource leaks

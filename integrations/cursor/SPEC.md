@@ -13,7 +13,7 @@ Primary use case: a user configures an orchestration agent that investigates an 
 - Connection provider id: `cursor`
 - API base: `https://api.cursor.com`
 - Credential sources:
-  1. User connection token from Settings > Connections
+  1. User connection token from Settings > My agent experience
   2. Session secret `CURSOR_API_KEY` (per-session opt-in)
 
   The previous process-wide `CURSOR_API_KEY` env-var fallback was removed:

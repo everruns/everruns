@@ -14,7 +14,7 @@ Parallel provides hosted MCP tools for web search and URL fetching.
 
 Add the `parallel_search` capability to an agent or harness. It works for free without any connection.
 
-To use a Parallel API key, add a `Parallel` connection in Settings > Connections, then configure the capability with `auth: "connection"`.
+To use a Parallel API key, add a `Parallel` connection in Settings → My agent experience, then configure the capability with `auth: "connection"`.
 
 To use Parallel's OAuth-compatible MCP endpoint, configure the capability with `endpoint: "oauth"`. This mode requires the `Parallel` connection because the endpoint rejects anonymous requests.
 

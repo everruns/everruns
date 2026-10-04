@@ -49,7 +49,7 @@ Registration uses `inventory::submit!`. Server discovers providers at runtime vi
 
 ### API Key Connection Flow
 
-1. User clicks "Connect" for an API-key provider in Settings > Connections
+1. User clicks "Connect" for an API-key provider in Settings > My agent experience
 2. Dialog renders the provider's `form_schema` (fields + instructions)
 3. User enters API key and submits
 4. `POST /v1/user/connections/{provider}` with `{ api_key: "..." }`
@@ -59,7 +59,7 @@ Registration uses `inventory::submit!`. Server discovers providers at runtime vi
 **Resolution priority** (for tools like Daytona):
 1. Session secret (highest priority, local to session)
 2. User connection (persistent, configured in Settings)
-3. Error with guidance to Settings > Connections
+3. Error with guidance to Settings > My agent experience
 
 **Security:** API keys should be entered via the Settings UI, not in chat. Secrets typed in chat are stored plaintext in the events table (see TM-AGENT-016).
 
@@ -76,7 +76,7 @@ A **GitHub App** (not an OAuth App) provides granular, per-repo permissions with
 | Blast radius | All user's repos, forever | Selected repos only, 1 hour window |
 
 **Flow:**
-1. User clicks "Install" in Settings > Connections
+1. User clicks "Install" in Settings > My agent experience
 2. `GET /v1/user/connections/github/authorize` → redirect to GitHub App installation page
 3. User selects which repos to grant access to
 4. GitHub redirects back → `GET /v1/user/connections/github/callback?installation_id=...&setup_action=install`

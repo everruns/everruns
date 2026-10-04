@@ -200,7 +200,7 @@ mod tests {
         );
     }
 
-    /// The connector an operator sees in Settings > Connections is registered
+    /// The connector an operator sees in Settings > My agent experience is registered
     /// too, otherwise the capability has no way to get a user's key.
     #[test]
     fn typesafe_connector_is_registered_for_dev_deployments() {

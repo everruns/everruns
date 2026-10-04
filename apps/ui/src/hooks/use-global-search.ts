@@ -205,10 +205,10 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["token", "key", "api key", "pat", "personal access token"],
   },
   {
-    title: "Settings > Connections",
-    href: "/settings/connections",
+    title: "Settings > My agent experience",
+    href: "/settings/agent-experience",
     icon: Settings,
-    keywords: ["github", "gitlab"],
+    keywords: ["connections", "github", "gitlab", "virtual user", "locale", "timezone"],
   },
   {
     title: "Settings > LLM Providers",

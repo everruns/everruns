@@ -27,7 +27,7 @@ which those models are trained on. The display, the actions, and the limits
 are the same either way.
 
 The display is a Chromium page on a [Browserless](/capabilities/browserless/)
-browser. Connect Browserless in **Settings > Connections > Browserless** first.
+browser. Connect Browserless from **Settings → My agent experience** first.
 The agent shares one persistent browser per session with the Browserless tools,
 so a page opened by `browserless_open_browser` is the page `computer` sees.
 

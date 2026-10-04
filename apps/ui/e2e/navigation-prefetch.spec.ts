@@ -8,6 +8,7 @@ const SETTINGS_CHILD_ROUTES = [
   "/settings/features",
   "/settings/payments",
   "/settings/profile",
+  "/settings/agent-experience",
   "/settings/connections",
   "/settings/personal-access-tokens",
 ];
