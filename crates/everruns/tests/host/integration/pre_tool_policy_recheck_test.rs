@@ -8,18 +8,20 @@
 #![cfg(all(feature = "bashkit", feature = "builtins"))]
 
 use async_trait::async_trait;
-use everruns_core::builtins::GuardrailsCapability;
-use everruns_core::builtins::tool_approval::{ApprovalDecision, ToolApprovalCapability, ToolApprover};
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::ExecutionContext;
+use everruns_core::builtins::GuardrailsCapability;
+use everruns_core::builtins::tool_approval::{
+    ApprovalDecision, ToolApprovalCapability, ToolApprover,
+};
 use everruns_core::capabilities::{Capability, CapabilityStatus};
+use everruns_core::engine::{ActInput, ActResult};
+use everruns_core::host::execute_act_activity;
 use everruns_core::user_hook_types::{
     ExecutorSpec, HookEvent, HookMatcher, HookSource, OnError, UserHookSpec,
 };
 use everruns_core::{HarnessDefinition, Tool, ToolExecutionResult};
-use everruns_core::engine::{ActInput, ActResult};
-use everruns_core::host::execute_act_activity;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
