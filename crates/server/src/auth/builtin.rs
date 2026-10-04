@@ -39,12 +39,10 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// HARNESS-SEED SAFETY NET (see also `knowledge/security/authentication.md`):
 /// When default-org auto-join is enabled, `register` and `oauth_callback`
 /// add new users to `DEFAULT_ORG_ID`.
-/// The background seed task (see `seed::spawn_seed_task_with_host_composition`)
-/// provisions built-in harnesses for that org, but it runs asynchronously
-/// with a 500 ms initial delay — so a user who signs up during the startup
-/// window (cold boot, slow DB, or a partial seed failure that will
-/// self-retry) can otherwise land in an org that has no harnesses and see
-/// the chat/session UI 404.
+/// Startup [`crate::seed::prepare_seed_task`] provisions that org's identities
+/// and harnesses before serving. The signup safety net still repairs missing
+/// harnesses using the operator-composed set, without relying on background
+/// catalog seeding or a completely provisioned database.
 ///
 /// PR #1462 removed an earlier safety-net call that used
 /// `oss_built_in_harnesses()`, because that could override an operator's
