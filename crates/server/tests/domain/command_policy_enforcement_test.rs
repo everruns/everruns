@@ -785,8 +785,12 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // Creates a fresh agent; cannot mint a built-in (is_built_in is false on
     // every API-facing creation path).
     "create_agent",
-    // Same — import is create with a definition body.
+    // Creates a fresh agent, or delegates targeted updates to UpsertAgent,
+    // which enforces the same built-in definition guard as update_agent.
     "import_agent",
+    // Reads the agent definition and optionally writes a separate workspace
+    // artifact. Non-read-only for that filesystem effect; never mutates the agent.
+    "export_agent",
     // The escape hatch. Blocking copy would leave built-in agents unusable as
     // a starting point, and the rejection message tells users to copy first.
     "copy_agent",

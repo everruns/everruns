@@ -22852,12 +22852,16 @@
           "type"
         ],
         "properties": {
-          "config": {},
+          "config": {
+            "description": "Declarative transport settings, excluding credentials and destination resource IDs."
+          },
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Request an enabled draft; false by default. Publication remains a host operation."
           },
           "type": {
-            "type": "string"
+            "type": "string",
+            "description": "Ingress transport type, such as ag_ui, public_chat, fcp or slack."
           }
         },
         "additionalProperties": false
@@ -28383,21 +28387,25 @@
       },
       "FileSource": {
         "type": "object",
+        "description": "A package-relative file or glob and its workspace destination.",
         "required": [
           "source"
         ],
         "properties": {
           "is_readonly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the initial workspace file is read-only. Defaults to true."
           },
           "path": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Workspace destination; omitted paths are derived from the package source."
           },
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Relative file path or glob confined to the package directory."
           }
         },
         "additionalProperties": false
@@ -35585,10 +35593,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PackageCapability"
-            }
+            },
+            "description": "Named capabilities, optionally with configuration; the host validates availability."
           },
           "channels": {
             "type": "object",
+            "description": "Named channel descriptions, upserted without removing omitted destination channels.",
             "additionalProperties": {
               "$ref": "#/components/schemas/Channel"
             },
@@ -35600,56 +35610,68 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional description of the agent's purpose."
           },
           "display_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable agent label. Defaults to the stable name at the host."
           },
-          "environments": {},
+          "environments": {
+            "description": "Platform-specific environment requirements; other hosts must bind or reject them."
+          },
           "harness": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Named harness requirement. Omission uses the host's default harness."
           },
           "initial_files": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/File"
-            }
+            },
+            "description": "Embedded initial files or package-relative sources. Folder loading defaults to files/."
           },
           "instructions": {
-            "type": "string"
+            "type": "string",
+            "description": "Authored instructions. Legacy system_prompt input is also accepted."
           },
           "instructions_file": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Package-relative instructions source. Folder loading defaults to instructions.md."
           },
           "intro_markdown": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional Markdown introduction shown before the conversation starts."
           },
           "max_iterations": {
             "type": [
               "integer",
               "null"
             ],
+            "description": "Optional tool-loop iteration limit. Omission keeps the host default.",
             "minimum": 0
           },
           "mcpServers": {
-            "$ref": "#/components/schemas/BTreeMap"
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Named scoped MCP definitions. Credential placeholders require explicit host bindings."
           },
           "model": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/PackageModel"
+                "$ref": "#/components/schemas/PackageModel",
+                "description": "Provider and model names. Omission uses the host's default model."
               },
               {
                 "type": "null"
@@ -35657,12 +35679,14 @@
             ]
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable agent name used for destination lookup; resource IDs are not portable."
           },
           "network_access": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/NetworkAccessList"
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Optional outbound network policy enforced by the host."
               },
               {
                 "type": "null"
@@ -35673,40 +35697,47 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Whether independent tool calls may run concurrently. Omission keeps the host default."
           },
           "schema_version": {
             "type": "integer",
             "format": "int32",
+            "description": "Portable format version. Currently 1; omitted values default to 1.",
             "minimum": 0
           },
           "short_description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional short description for agent discovery surfaces."
           },
           "skills": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Package-relative skill folders including SKILL.md and supporting assets."
           },
           "starters": {
             "type": "array",
-            "items": {}
+            "items": {},
+            "description": "Suggested opening messages in the platform's starter format."
           },
           "tags": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Discovery tags, compared as an unordered set."
           },
           "tools": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ToolDefinition"
-            }
+            },
+            "description": "Tool schemas whose executable implementations must be bound by the host."
           }
         },
         "additionalProperties": false
@@ -37730,22 +37761,28 @@
           {
             "$ref": "#/components/schemas/PackageCapabilityReference"
           }
-        ]
+        ],
+        "description": "A named capability or a named capability with host-validated configuration."
       },
       "PackageCapabilityReference": {
         "type": "object",
+        "description": "A capability requirement identified by a stable reference and optional settings.",
         "required": [
           "ref"
         ],
         "properties": {
-          "config": {},
+          "config": {
+            "description": "Configuration validated against the destination capability schema."
+          },
           "ref": {
-            "type": "string"
+            "type": "string",
+            "description": "Built-in or catalog capability name. Destination resource IDs are rejected."
           }
         }
       },
       "PackageInput": {
         "type": "object",
+        "description": "A self-contained agent definition or package in the current session workspace.",
         "properties": {
           "content": {
             "type": "string",
@@ -37762,7 +37799,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection."
           },
           "target": {
             "type": [
@@ -37776,16 +37814,19 @@
       },
       "PackageModel": {
         "type": "object",
+        "description": "A portable provider/model name pair, resolved at the destination.",
         "required": [
           "provider",
           "model"
         ],
         "properties": {
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-native model name, rather than a platform model ID."
           },
           "provider": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable provider name, such as openai or anthropic."
           }
         }
       },

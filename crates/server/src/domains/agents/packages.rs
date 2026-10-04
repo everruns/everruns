@@ -31,6 +31,7 @@ pub fn package_error(error: PackageError) -> CommandError {
     CommandError::bad_request(error.to_string())
 }
 
+/// A self-contained agent definition or package in the current session workspace.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PackageInput {
@@ -40,6 +41,7 @@ pub struct PackageInput {
     /// Path in the current Platform Chat session workspace (never server disk).
     #[serde(default)]
     pub file: Option<String>,
+    /// Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection.
     #[serde(default)]
     pub format: Option<String>,
     /// Existing agent name to update or compare. Omit to create.
@@ -713,10 +715,12 @@ pub async fn apply(
     Ok((agent, created))
 }
 
+/// Export a portable definition, optionally writing an artifact to the current session.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportAgent {
     /// Agent name (legacy IDs are also accepted).
     pub id: String,
+    /// Output format; defaults to JSON for responses and Markdown for artifacts.
     #[serde(default)]
     pub format: Option<String>,
     /// New artifact path in the current session workspace.

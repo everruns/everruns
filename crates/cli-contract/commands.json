@@ -768,7 +768,8 @@
         "field": "format",
         "long": "format",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Text encoding: auto, markdown, toml, yaml or json."
       },
       {
         "field": "target",
@@ -807,7 +808,8 @@
         "field": "format",
         "long": "format",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Output format; defaults to JSON for responses and Markdown for artifacts."
       },
       {
         "field": "out",
@@ -1016,7 +1018,8 @@
         "field": "format",
         "long": "format",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Text encoding: auto, markdown, toml, yaml or json."
       },
       {
         "field": "target",
@@ -1963,7 +1966,8 @@
         "field": "format",
         "long": "format",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Text encoding: auto, markdown, toml, yaml or json."
       },
       {
         "field": "target",

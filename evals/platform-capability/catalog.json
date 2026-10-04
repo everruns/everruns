@@ -8499,6 +8499,7 @@
     "description": "Compare an agent package with an existing agent by name without applying changes.",
     "input_schema": {
       "additionalProperties": false,
+      "description": "A self-contained agent definition or package in the current session workspace.",
       "properties": {
         "content": {
           "description": "Markdown/TOML/YAML/JSON agent definition, with assets embedded.",
@@ -8512,6 +8513,7 @@
           ]
         },
         "format": {
+          "description": "Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection.",
           "type": [
             "string",
             "null"
@@ -8730,8 +8732,10 @@
     "cli": "agents export",
     "description": "Export a portable agent definition as JSON, without IDs or credentials.",
     "input_schema": {
+      "description": "Export a portable definition, optionally writing an artifact to the current session.",
       "properties": {
         "format": {
+          "description": "Output format; defaults to JSON for responses and Markdown for artifacts.",
           "type": [
             "string",
             "null"
@@ -10731,6 +10735,7 @@
     "description": "Import an agent package; target explicitly updates an existing agent by name.",
     "input_schema": {
       "additionalProperties": false,
+      "description": "A self-contained agent definition or package in the current session workspace.",
       "properties": {
         "content": {
           "description": "Markdown/TOML/YAML/JSON agent definition, with assets embedded.",
@@ -10744,6 +10749,7 @@
           ]
         },
         "format": {
+          "description": "Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection.",
           "type": [
             "string",
             "null"
@@ -21649,6 +21655,7 @@
     "description": "Validate an agent package and destination dependencies without changing resources.",
     "input_schema": {
       "additionalProperties": false,
+      "description": "A self-contained agent definition or package in the current session workspace.",
       "properties": {
         "content": {
           "description": "Markdown/TOML/YAML/JSON agent definition, with assets embedded.",
@@ -21662,6 +21669,7 @@
           ]
         },
         "format": {
+          "description": "Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection.",
           "type": [
             "string",
             "null"

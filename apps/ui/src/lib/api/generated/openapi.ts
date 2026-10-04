@@ -6733,8 +6733,11 @@ export interface components {
      *     Channels default to disabled; enabled intent still requires host publication.
      */
     Channel: {
+      /** @description Declarative transport settings, excluding credentials and destination resource IDs. */
       config?: unknown;
+      /** @description Request an enabled draft; false by default. Publication remains a host operation. */
       enabled?: boolean;
+      /** @description Ingress transport type, such as ag_ui, public_chat, fcp or slack. */
       type: string;
     };
     /**
@@ -9834,9 +9837,13 @@ export interface components {
        */
       size_bytes: number;
     };
+    /** @description A package-relative file or glob and its workspace destination. */
     FileSource: {
+      /** @description Whether the initial workspace file is read-only. Defaults to true. */
       is_readonly?: boolean;
+      /** @description Workspace destination; omitted paths are derived from the package source. */
       path?: string | null;
+      /** @description Relative file path or glob confined to the package directory. */
       source: string;
     };
     /** @description File stat information */
@@ -13779,30 +13786,52 @@ export interface components {
     };
     /** @description Authored values only: no organisation, agent, model, harness or channel IDs. */
     Manifest: {
+      /** @description Named capabilities, optionally with configuration; the host validates availability. */
       capabilities?: components["schemas"]["PackageCapability"][];
+      /** @description Named channel descriptions, upserted without removing omitted destination channels. */
       channels?: {
         [key: string]: components["schemas"]["Channel"];
       };
+      /** @description Optional description of the agent's purpose. */
       description?: string | null;
+      /** @description Human-readable agent label. Defaults to the stable name at the host. */
       display_name?: string | null;
+      /** @description Platform-specific environment requirements; other hosts must bind or reject them. */
       environments?: unknown;
+      /** @description Named harness requirement. Omission uses the host's default harness. */
       harness?: string | null;
+      /** @description Embedded initial files or package-relative sources. Folder loading defaults to files/. */
       initial_files?: components["schemas"]["File"][];
+      /** @description Authored instructions. Legacy system_prompt input is also accepted. */
       instructions?: string;
+      /** @description Package-relative instructions source. Folder loading defaults to instructions.md. */
       instructions_file?: string | null;
+      /** @description Optional Markdown introduction shown before the conversation starts. */
       intro_markdown?: string | null;
+      /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
       max_iterations?: number | null;
+      /** @description Named scoped MCP definitions. Credential placeholders require explicit host bindings. */
       mcpServers?: components["schemas"]["BTreeMap"];
       model?: components["schemas"]["PackageModel"] | null;
+      /** @description Stable agent name used for destination lookup; resource IDs are not portable. */
       name?: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
+      /** @description Whether independent tool calls may run concurrently. Omission keeps the host default. */
       parallel_tool_calls?: boolean | null;
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Portable format version. Currently 1; omitted values default to 1.
+       */
       schema_version?: number;
+      /** @description Optional short description for agent discovery surfaces. */
       short_description?: string | null;
+      /** @description Package-relative skill folders including SKILL.md and supporting assets. */
       skills?: string[];
+      /** @description Suggested opening messages in the platform's starter format. */
       starters?: unknown[];
+      /** @description Discovery tags, compared as an unordered set. */
       tags?: string[];
+      /** @description Tool schemas whose executable implementations must be bound by the host. */
       tools?: components["schemas"]["ToolDefinition"][];
     };
     /** @description Response body for manual memory source. */
@@ -14939,22 +14968,31 @@ export interface components {
        */
       turn_id: string;
     };
+    /** @description A named capability or a named capability with host-validated configuration. */
     PackageCapability: string | components["schemas"]["PackageCapabilityReference"];
+    /** @description A capability requirement identified by a stable reference and optional settings. */
     PackageCapabilityReference: {
+      /** @description Configuration validated against the destination capability schema. */
       config?: unknown;
+      /** @description Built-in or catalog capability name. Destination resource IDs are rejected. */
       ref: string;
     };
+    /** @description A self-contained agent definition or package in the current session workspace. */
     PackageInput: {
       /** @description Markdown/TOML/YAML/JSON agent definition, with assets embedded. */
       content?: string;
       /** @description Path in the current Platform Chat session workspace (never server disk). */
       file?: string | null;
+      /** @description Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection. */
       format?: string | null;
       /** @description Existing agent name to update or compare. Omit to create. */
       target?: string | null;
     };
+    /** @description A portable provider/model name pair, resolved at the destination. */
     PackageModel: {
+      /** @description Provider-native model name, rather than a platform model ID. */
       model: string;
+      /** @description Stable provider name, such as openai or anthropic. */
       provider: string;
     };
     /**

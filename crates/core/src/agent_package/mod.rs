@@ -80,7 +80,9 @@ impl Format {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Diagnostic {
+    /// Manifest field or asset path associated with the error.
     pub path: String,
+    /// Human-readable validation error and expected behavior.
     pub message: String,
 }
 
@@ -112,10 +114,13 @@ pub(crate) fn error(path: impl Into<String>, message: impl fmt::Display) -> Pack
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Channel {
+    /// Ingress transport type, such as ag_ui, public_chat, fcp or slack.
     #[serde(rename = "type")]
     pub channel_type: String,
+    /// Request an enabled draft; false by default. Publication remains a host operation.
     #[serde(default)]
     pub enabled: bool,
+    /// Declarative transport settings, excluding credentials and destination resource IDs.
     #[serde(default = "empty_object")]
     pub config: Value,
 }
@@ -132,13 +137,17 @@ pub enum File {
     Source(FileSource),
     Inline(InitialFile),
 }
+/// A package-relative file or glob and its workspace destination.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FileSource {
+    /// Relative file path or glob confined to the package directory.
     pub source: String,
+    /// Workspace destination; omitted paths are derived from the package source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// Whether the initial workspace file is read-only. Defaults to true.
     #[serde(default = "yes")]
     pub is_readonly: bool,
 }
@@ -154,30 +163,40 @@ fn version() -> u32 {
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct Manifest {
+    /// Portable format version. Currently 1; omitted values default to 1.
     #[serde(default = "version")]
     pub schema_version: u32,
+    /// Stable agent name used for destination lookup; resource IDs are not portable.
     #[serde(default)]
     pub name: String,
+    /// Human-readable agent label. Defaults to the stable name at the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Optional description of the agent's purpose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Authored instructions. Legacy system_prompt input is also accepted.
     #[serde(default, alias = "system_prompt")]
     pub instructions: String,
+    /// Package-relative instructions source. Folder loading defaults to instructions.md.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instructions_file: Option<String>,
+    /// Provider and model names. Omission uses the host's default model.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "model")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<PackageModel>))]
     pub model: Option<ModelSpec>,
+    /// Named harness requirement. Omission uses the host's default harness.
     #[serde(
         default,
         alias = "harness_name",
         skip_serializing_if = "Option::is_none"
     )]
     pub harness: Option<String>,
+    /// Discovery tags, compared as an unordered set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
+    /// Named capabilities, optionally with configuration; the host validates availability.
     #[serde(
         default,
         deserialize_with = "capabilities",
@@ -185,14 +204,17 @@ pub struct Manifest {
     )]
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<PackageCapability>))]
     pub capabilities: Vec<CapabilityRef>,
+    /// Embedded initial files or package-relative sources. Folder loading defaults to files/.
     #[serde(
         default,
         deserialize_with = "files",
         skip_serializing_if = "Vec::is_empty"
     )]
     pub initial_files: Vec<File>,
+    /// Package-relative skill folders including SKILL.md and supporting assets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skills: Vec<String>,
+    /// Named scoped MCP definitions. Credential placeholders require explicit host bindings.
     #[serde(
         default,
         rename = "mcpServers",
@@ -201,24 +223,33 @@ pub struct Manifest {
         skip_serializing_if = "BTreeMap::is_empty"
     )]
     pub mcp_servers: ScopedMcpServers,
+    /// Optional outbound network policy enforced by the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[serde(deserialize_with = "network_access")]
     pub network_access: Option<NetworkAccessList>,
+    /// Optional tool-loop iteration limit. Omission keeps the host default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,
+    /// Whether independent tool calls may run concurrently. Omission keeps the host default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
+    /// Tool schemas whose executable implementations must be bound by the host.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[serde(deserialize_with = "tools")]
     pub tools: Vec<ToolDefinition>,
+    /// Named channel descriptions, upserted without removing omitted destination channels.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub channels: BTreeMap<String, Channel>,
+    /// Optional Markdown introduction shown before the conversation starts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intro_markdown: Option<String>,
+    /// Optional short description for agent discovery surfaces.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short_description: Option<String>,
+    /// Suggested opening messages in the platform's starter format.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub starters: Vec<Value>,
+    /// Platform-specific environment requirements; other hosts must bind or reject them.
     // Platform-specific environment descriptions remain data; other hosts
     // must explicitly bind them or reject them rather than discard them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -978,13 +1009,17 @@ fn defaults(m: &mut Manifest) {
     }
 }
 
+/// A portable provider/model name pair, resolved at the destination.
 #[cfg(feature = "openapi")]
 #[derive(utoipa::ToSchema)]
 #[allow(dead_code)]
 struct PackageModel {
+    /// Stable provider name, such as openai or anthropic.
     provider: String,
+    /// Provider-native model name, rather than a platform model ID.
     model: String,
 }
+/// A named capability or a named capability with host-validated configuration.
 #[cfg(feature = "openapi")]
 #[derive(serde::Serialize, utoipa::ToSchema)]
 #[serde(untagged)]
@@ -993,12 +1028,15 @@ enum PackageCapability {
     Name(String),
     Reference(PackageCapabilityReference),
 }
+/// A capability requirement identified by a stable reference and optional settings.
 #[cfg(feature = "openapi")]
 #[derive(serde::Serialize, utoipa::ToSchema)]
 #[allow(dead_code)]
 struct PackageCapabilityReference {
+    /// Built-in or catalog capability name. Destination resource IDs are rejected.
     #[serde(rename = "ref")]
     name: String,
+    /// Configuration validated against the destination capability schema.
     #[serde(default)]
     config: Value,
 }
