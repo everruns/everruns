@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import ChatsPageClient from "@/app/(main)/chats/chats-page-client";
 import ChatThreadPage from "@/app/(main)/chats/[threadId]/page";
+import { ChatThreadView } from "@/components/chat/chat-thread-view";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import type { Session } from "@/lib/api/types";
 
@@ -215,6 +216,37 @@ describe("Thread surface", () => {
 
     expect(mockSessionContext).toHaveBeenCalled();
     expect(screen.getByText("chat-panel:Platform Chat")).toBeInTheDocument();
+  });
+
+  it("resolves and reopens an adopted thread through the existing lifecycle", () => {
+    const { rerender } = render(<ChatThreadView threadId="sess_1" threadMode />);
+    fireEvent.click(screen.getByRole("button", { name: "Resolve thread" }));
+    expect(mockArchiveMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
+    expect(screen.queryByRole("button", { name: "Pin chat" })).not.toBeInTheDocument();
+    mockSessionContext.mockReturnValue({
+      session: thread({ id: "sess_1", archived_at: "2026-10-03T00:00:00Z" }),
+      agent: { id: "agent_1", name: "platform-chat", display_name: "Platform Chat" },
+      agentId: "agent_1",
+      sessionLoading: false,
+    });
+    rerender(<ChatThreadView threadId="sess_1" threadMode />);
+    expect(screen.getByText("Resolved")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reopen thread" }));
+    expect(mockUnarchiveMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
+  });
+
+  it("shares permanent Chat independently of the selected side-pane route", async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    mockSessionContext.mockReturnValue({
+      session: thread({ id: "permanent", tags: ["chat", "platform-chat-starter"] }),
+      agent: { id: "agent_1", name: "platform-chat", display_name: "Platform Chat" },
+      agentId: "agent_1",
+      sessionLoading: false,
+    });
+    render(<ChatThreadView threadId="permanent" />);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Share" })));
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/chats`);
   });
 
   it("does not mount mutable chat controls for a recording", async () => {

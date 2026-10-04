@@ -1,4 +1,6 @@
 export interface FeatureFlags {
+  /** Integrated platform Chat workspace. Organization adoption opt-in. */
+  chat_threads?: boolean;
   docker_capability?: boolean;
   container_sandbox?: boolean;
   lua?: boolean;
