@@ -61,6 +61,7 @@ struct SourceReads {
     agents: AtomicU32,
     harnesses: AtomicU32,
     sessions: AtomicU32,
+    events: AtomicU32,
 }
 
 /// gRPC-style adapter: round-trips every view through serialization before
@@ -188,6 +189,7 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _request: everruns_core::events::EventRequest,
             ) -> CoreResult<everruns_core::events::Event> {
+                self.source_reads().events.fetch_add(1, Ordering::SeqCst);
                 Err(everruns_contracts::error::AgentLoopError::store(
                     "event emission failed",
                 ))
@@ -674,7 +676,7 @@ async fn batch_seed_is_pinned_and_failed_session_writes_still_invalidate() {
 }
 
 #[tokio::test]
-async fn a_failed_phase_start_emission_still_ends_setup_memoizing() {
+async fn a_queued_phase_start_failure_still_ends_setup_memoizing() {
     let adapters = phase_fixture();
     let counts = adapters.reads.clone();
     let id = adapters.agent.id;
@@ -690,12 +692,21 @@ async fn a_failed_phase_start_emission_still_ends_setup_memoizing() {
     let host = WorkerRuntimeHost::new(adapters);
     let store = host.agent_store(DEFAULT_ORG_ID);
     store.get_agent(id).await.unwrap();
-    assert!(host.event_emitter().emit(request).await.is_err());
+    // Setup ends when the event is queued, before its background store fails.
+    assert!(host.event_emitter().emit(request).await.is_ok());
     store.get_agent(id).await.unwrap();
     store.get_agent(id).await.unwrap();
     assert_eq!(
         counts.agents.load(Ordering::SeqCst),
         3,
-        "failed emission cannot retain a setup cache"
+        "queued emission cannot retain a setup cache"
+    );
+    host.flush_events().await;
+    assert_eq!(counts.events.load(Ordering::SeqCst), 1);
+    store.get_agent(id).await.unwrap();
+    assert_eq!(
+        counts.agents.load(Ordering::SeqCst),
+        4,
+        "failed background emission cannot restore a setup cache"
     );
 }

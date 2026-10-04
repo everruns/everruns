@@ -82,9 +82,15 @@ check "no guard discards cargo's stderr" "$([ "$unguarded" -eq 0 ] && echo ok)"
 
 # Vendor dependencies are optional in the consolidated driver crate. These
 # fixtures model a forbidden subtree visible only when vendor features are on.
+REAL_CARGO="$(command -v cargo)"
 mkdir "$WORK/bin"
 cat >"$WORK/bin/cargo" <<'CARGO'
 #!/usr/bin/env bash
+# Source guards inspect real standalone workspaces; only dependency trees
+# are synthetic so the forbidden vendor edge is controlled by the fixture.
+if [ "${1:-}" = metadata ]; then
+  exec "$GUARD_REAL_CARGO" "$@"
+fi
 package=""
 all_features=0
 while [ "$#" -gt 0 ]; do
@@ -106,7 +112,7 @@ chmod +x "$WORK/bin/cargo"
 
 while read -r guard dependency; do
   set +e
-  output="$(PATH="$WORK/bin:$PATH" GUARD_FAKE_DEPENDENCY="$dependency" \
+  output="$(PATH="$WORK/bin:$PATH" GUARD_REAL_CARGO="$REAL_CARGO" GUARD_FAKE_DEPENDENCY="$dependency" \
     bash "scripts/lib/$guard" 2>"$WORK/err")"
   status=$?
   set -e
@@ -116,7 +122,7 @@ while read -r guard dependency; do
 done <<'GUARDS'
 check-provider-isolation.sh everruns-core
 check-test-support-isolation.sh llmsim
-check-agent-record-isolation.sh everruns-platform
+check-agent-record-isolation.sh everruns-capabilities
 check-observability-isolation.sh opentelemetry
 GUARDS
 
