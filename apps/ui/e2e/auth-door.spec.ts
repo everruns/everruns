@@ -93,7 +93,8 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
 
   await expect(page).toHaveURL(/\/chats$/);
   await expect(page.getByRole("link", { name: "Platform Chat", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Share", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open session", exact: true })).toBeVisible();
   await expect(
     page.getByRole("combobox", { name: "Type a message — pick a model to send" }),
   ).toBeVisible();
