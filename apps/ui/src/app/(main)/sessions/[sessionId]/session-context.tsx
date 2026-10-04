@@ -126,6 +126,8 @@ export function useSessionContext() {
 
 interface SessionProviderProps {
   sessionId: string;
+  /** Adopted work threads must be reopened before browser-agent mutations too. */
+  readOnlyWhenArchived?: boolean;
   draftAgent?: Agent;
   draftModel?: ModelWithProvider;
   children: ReactNode;
@@ -137,6 +139,7 @@ export function SessionProvider({
   children,
   draftAgent,
   draftModel,
+  readOnlyWhenArchived = false,
 }: SessionProviderProps) {
   const pathname = usePathname();
   const { currentOrg } = useOrg();
@@ -325,6 +328,7 @@ export function SessionProvider({
   // Session detail is a read-only recording (EVE-854), so registering these
   // tools there would hand a browser agent a mutation the page itself refuses.
   const isChatSurface =
+    !(readOnlyWhenArchived && session?.archived_at) &&
     !!session &&
     isChatThread(session) &&
     (pathname === "/chat" || pathname === "/chats" || pathname === `/chats/${sessionId}`);
