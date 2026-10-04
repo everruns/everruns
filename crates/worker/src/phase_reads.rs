@@ -41,6 +41,10 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
+use everruns_contracts::driver_registry::ProviderConfig;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::runtime_provider::ProviderKey;
+use everruns_contracts::typed_id::SessionId;
 
 /// How long a memoized read stays usable. Covers setup (under a second even
 /// with a remote database).
@@ -49,6 +53,8 @@ const FRESH_FOR: Duration = Duration::from_secs(2);
 type Key = (i64, Uuid);
 /// Org, session, and input message.
 type TurnKey = (i64, Uuid, Uuid);
+/// Org, provider, and the session whose overrides apply, if any.
+type ProviderKeyed = (i64, String, Option<Uuid>);
 
 struct Entry<T> {
     at: Instant,
@@ -61,6 +67,8 @@ struct State {
     harnesses: HashMap<Key, Entry<Option<Harness>>>,
     sessions: HashMap<Key, Entry<Option<ExecutionSession>>>,
     turn_contexts: HashMap<TurnKey, Entry<TurnContext>>,
+    models: HashMap<Key, Entry<Option<ModelSpec>>>,
+    providers: HashMap<ProviderKeyed, Entry<Option<ProviderConfig>>>,
     fetched: u32,
     saved: u32,
     /// The phase started: stop memoizing.
@@ -83,6 +91,14 @@ fn sessions(s: &mut State) -> &mut HashMap<Key, Entry<Option<ExecutionSession>>>
 
 fn turn_contexts(s: &mut State) -> &mut HashMap<TurnKey, Entry<TurnContext>> {
     &mut s.turn_contexts
+}
+
+fn models(s: &mut State) -> &mut HashMap<Key, Entry<Option<ModelSpec>>> {
+    &mut s.models
+}
+
+fn providers(s: &mut State) -> &mut HashMap<ProviderKeyed, Entry<Option<ProviderConfig>>> {
+    &mut s.providers
 }
 
 /// The ids a phase's setup reads. Known when the worker claims the task.
@@ -216,6 +232,66 @@ impl PhaseReads {
             || adapters.load_turn_context_for_execution(org_id, session_id, input_message_id),
         )
         .await
+    }
+
+    pub async fn model_spec<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        model_id: Uuid,
+    ) -> Result<Option<ModelSpec>> {
+        self.read_through(models, (org_id, model_id), || {
+            adapters.get_model_spec(org_id, model_id)
+        })
+        .await
+    }
+
+    /// The provider's configuration, credentials included, as seen by
+    /// `session` when one is given.
+    pub async fn provider_config<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        provider: &ProviderKey,
+        session: Option<SessionId>,
+    ) -> Result<Option<ProviderConfig>> {
+        let key = (
+            org_id,
+            provider.as_str().to_string(),
+            session.map(|id| id.uuid()),
+        );
+        self.read_through(providers, key, || async move {
+            match session {
+                Some(session) => {
+                    adapters
+                        .get_provider_config_for_session(org_id, provider, session)
+                        .await
+                }
+                None => adapters.get_provider_config(org_id, provider).await,
+            }
+        })
+        .await
+    }
+
+    /// Start resolving the turn's model and its provider as soon as the
+    /// snapshot names it, so they are ready when context assembly asks after
+    /// loading history. A model switched by an earlier message wastes this read.
+    pub fn prefetch_model<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        model_id: Uuid,
+        session: SessionId,
+    ) {
+        let (reads, adapters) = (self.clone(), adapters.clone());
+        tokio::spawn(async move {
+            if let Ok(Some(spec)) = reads.model_spec(&adapters, org_id, model_id).await {
+                let provider = &spec.provider;
+                let _ = reads
+                    .provider_config(&adapters, org_id, provider, Some(session))
+                    .await;
+            }
+        });
     }
 
     /// Keep records another read already returned (the batched turn context
