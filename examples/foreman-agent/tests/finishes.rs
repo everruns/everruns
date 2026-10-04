@@ -248,7 +248,7 @@ fn every_reading_answers_every_question() {
 #[tokio::test]
 async fn the_readings_service_answers_the_nine_questions() {
     let foreman = Foreman::new(Readings::decisions().unwrap(), Duration::from_secs(5));
-    let assessment = foreman.assess(&Observation::sample()).await.unwrap();
+    let assessment = foreman.assess(&support::observation()).await.unwrap();
     // The sample observation has a worker on the floor and nothing changed
     // yet, so this is the opening reading.
     assert_eq!(assessment.implementation_complete, 0.31);
@@ -259,7 +259,7 @@ async fn the_readings_service_answers_the_nine_questions() {
 fn the_phase_follows_the_floor_not_the_call_count() {
     let phase =
         |observation: &Observation| Readings::phase(&serde_json::to_value(observation).unwrap());
-    let mut observation = Observation::sample();
+    let mut observation = support::observation();
     assert!(!observation.active_workers.is_empty());
     assert_eq!(phase(&observation), "started");
 
@@ -317,8 +317,8 @@ async fn the_factory_finishes_after_verifying_its_own_work() {
     assert!(outcome.verification[0].passed);
     // Not the supervisor's opinion of the work — the work.
     assert!(fixture::changed(&root));
-    assert!(fixture::verify(&root).iter().all(|check| check.passed));
-    assert!(fixture::tests_pass(&root));
+    assert!(support::acceptance_pass(&root));
+    assert!(support::tests_pass(&root));
 }
 
 #[test]
@@ -328,7 +328,7 @@ fn the_scripted_edits_leave_a_repository_that_passes_its_own_suite() {
     // once — without starting a factory.
     let root = tempfile::tempdir().unwrap();
     fixture::materialize(root.path()).unwrap();
-    assert!(fixture::tests_pass(root.path()), "the fixture starts green");
+    assert!(support::tests_pass(root.path()), "the fixture starts green");
 
     for script in [
         include_str!("resources/write_rates.sh"),
@@ -344,10 +344,55 @@ fn the_scripted_edits_leave_a_repository_that_passes_its_own_suite() {
     }
 
     assert!(fixture::changed(root.path()));
-    for check in fixture::verify(root.path()) {
-        assert!(check.passed, "{}", check.label);
-    }
+    assert!(support::acceptance_pass(root.path()));
     // And the suite it left behind still passes — including the boundaries
     // the job asked for.
-    assert!(fixture::tests_pass(root.path()));
+    assert!(support::tests_pass(root.path()));
+}
+
+mod support;
+
+#[test]
+fn fixed_acceptance_rejects_wrong_rates_even_when_worker_tests_are_green() {
+    let root = tempfile::tempdir().unwrap();
+    fixture::materialize(root.path()).unwrap();
+    std::fs::write(root.path().join("tests/run.sh"), "exit 0\n").unwrap();
+    assert!(support::tests_pass(root.path()));
+    assert!(!support::acceptance_pass(root.path()));
+}
+
+#[tokio::test]
+async fn an_external_coder_still_gets_a_mount_enforced_read_only_verifier() {
+    let root = tempfile::tempdir().unwrap();
+    fixture::materialize(root.path()).unwrap();
+    let before = std::fs::read_to_string(root.path().join("lib/rates.sh")).unwrap();
+    let trying_to_write = Model::simulated_with_config(LlmSimConfig::scripted(vec![
+        SimTurn::ToolCalls(vec![SimToolCall {
+            name: "bash".to_owned(),
+            arguments: serde_json::json!({"commands": "echo tampered > /workspace/lib/rates.sh"}),
+            id: Some("attempt_write".to_owned()),
+        }]),
+        SimTurn::Assistant("Verification attempted.".to_owned()),
+    ]));
+    let crew = Crew::external(
+        everruns_foreman_agent::worker::ExternalAgent::from_template("true {mission}").unwrap(),
+        "scripted",
+        agent::verifier(trying_to_write, root.path()).unwrap(),
+    );
+    let outcome = Factory::new(
+        fixture::JOB,
+        root.path(),
+        crew,
+        Foreman::new(Readings::decisions().unwrap(), Duration::from_secs(5)),
+        config(),
+    )
+    .run()
+    .await;
+    assert_eq!(outcome.workers.len(), 2);
+    assert_eq!(outcome.verification.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(root.path().join("lib/rates.sh")).unwrap(),
+        before
+    );
+    assert!(outcome.workers[1].output.as_str().contains("echo tampered"));
 }

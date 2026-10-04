@@ -2700,7 +2700,6 @@ dependencies = [
  "everruns",
  "everruns-drivers",
  "everruns-example-demo",
- "everruns-foreman-agent",
  "libc",
  "serde",
  "serde_json",

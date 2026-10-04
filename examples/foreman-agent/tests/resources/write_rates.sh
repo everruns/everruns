@@ -42,3 +42,15 @@ quote() {
 }
 RATES
 echo "wrote lib/rates.sh"
+
+cat > README.md <<'README'
+# shipkit
+
+Shipping cost calculation for the storefront, in portable shell.
+
+`quote <weight_g> <destination>` prints the cost in cents. Weights are whole grams.
+Rates use weight tiers: 700 cents up to 1000 g, 1200 up to 5000 g,
+2400 up to 20000 g, and 4800 above, plus the destination surcharge.
+
+Run the tests with `bash tests/run.sh`.
+README

@@ -1,14 +1,4 @@
-//! Who does the work, and how the factory watches it.
-//!
-//! Two backends, one evidence channel. An Everruns session is observed through
-//! its own canonical event stream — typed, with tool calls and model steps
-//! already separated. An external coding agent is a child process observed
-//! through stdout and stderr, which is all any harness gets from a CLI.
-//!
-//! The supervisor cannot tell them apart, and that is the point: what it reads
-//! is a bounded [`Observation`](crate::observation::Observation), and the
-//! strongest evidence in one — the repository's own diff — is gathered by the
-//! host either way. Swapping the worker does not change the supervision.
+//! Coding backends and event pumps. Every backend shares a read-only Framework verifier.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -46,63 +36,57 @@ const REPO: &str = "{repo}";
 /// The `{mission}` placeholder in an external agent's command template.
 const MISSION: &str = "{mission}";
 
-/// Who is on the floor.
-pub enum Crew {
-    /// Everruns sessions on the Bashkit shell.
-    Sessions(Box<Sessions>),
-    /// An external coding-agent CLI, one child process per worker.
-    External(ExternalAgent),
-}
-
-/// Two agents over one workspace, and the engine that runs their sessions.
-///
-/// The verifier is a second agent over the same directory under the default
-/// read-only policy, so "independent check" is a property of the mount rather
-/// than a request in a prompt a model may decline to honor.
-pub struct Sessions {
-    /// What the sessions are running on, for display.
+/// One coding backend and an independent Framework verifier.
+pub struct Crew {
     pub model: String,
-    /// Edits the repository.
-    pub worker: Agent,
-    /// Reads it.
+    pub coding: CodingWorker,
     pub verifier: Agent,
-    /// Owns the sessions.
     pub engine: Engine,
 }
 
+pub enum CodingWorker {
+    Session(Box<Agent>),
+    External(ExternalAgent),
+}
+
 impl Crew {
-    /// A crew of Everruns sessions on `model`.
     pub fn sessions(model: impl Into<String>, worker: Agent, verifier: Agent) -> Self {
-        Self::Sessions(Box::new(Sessions {
+        Self {
             model: model.into(),
-            worker,
+            coding: CodingWorker::Session(Box::new(worker)),
             verifier,
             engine: Engine::new(),
-        }))
+        }
     }
 
-    /// What to call this crew in the run's header.
+    pub fn external(
+        worker: ExternalAgent,
+        verifier_model: impl Into<String>,
+        verifier: Agent,
+    ) -> Self {
+        Self {
+            model: verifier_model.into(),
+            coding: CodingWorker::External(worker),
+            verifier,
+            engine: Engine::new(),
+        }
+    }
+
     pub fn label(&self) -> String {
-        match self {
-            Self::Sessions(sessions) => format!("{} on the bashkit shell", sessions.model),
-            Self::External(agent) => format!("{} (external CLI)", agent.label),
+        match &self.coding {
+            CodingWorker::Session(_) => format!("{} on Bashkit", self.model),
+            CodingWorker::External(agent) => format!("{} (external CLI)", agent.label),
         }
     }
 }
 
 /// An external coding agent, as the command line that starts one.
-///
-/// Templates rather than hard-coded argv, because the tools move: a preset that
-/// stops matching its CLI is one `--worker-command` away from working again,
-/// and the example does not have to pretend it tracks every release.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExternalAgent {
     /// `codex`, `yolop`, or whatever the operator named.
     pub label: String,
-    /// Argv for a coding pass. `{repo}` and `{mission}` are substituted whole.
+    /// Coding argv; `{repo}` and `{mission}` are substituted whole.
     pub coding: Vec<String>,
-    /// Argv for a verification pass.
-    pub verifying: Vec<String>,
     /// Credential variables this known worker is permitted to inherit.
     pub(crate) credential_environment: &'static [&'static str],
 }
@@ -129,25 +113,16 @@ impl std::error::Error for TemplateError {}
 
 impl ExternalAgent {
     /// The Codex CLI, on the stable non-interactive `exec` interface.
-    ///
-    /// This is the line Foreman itself runs, with one change: the verification
-    /// pass asks for `read-only`, so an independent check cannot quietly become
-    /// another coding pass.
     pub fn codex() -> Self {
         let base = ["codex", "exec", "--cd", REPO, "--color", "never", "--json"];
         Self {
             label: "codex".to_owned(),
             coding: argv(&base, "workspace-write"),
-            verifying: argv(&base, "read-only"),
             credential_environment: CODEX_CREDENTIALS,
         }
     }
 
     /// yolop, on its one-shot `--print` interface.
-    ///
-    /// yolop publishes no read-only mode, so both passes run the same way and
-    /// the verifier's independence rests on its mission alone. That is weaker
-    /// than the session backend, and worth knowing before trusting a result.
     pub fn yolop() -> Self {
         let argv: Vec<String> = ["yolop", "-C", REPO, "-p", MISSION]
             .iter()
@@ -156,7 +131,6 @@ impl ExternalAgent {
         Self {
             label: "yolop".to_owned(),
             coding: argv.clone(),
-            verifying: argv,
             credential_environment: YOLOP_CREDENTIALS,
         }
     }
@@ -171,7 +145,6 @@ impl ExternalAgent {
         Ok(Self {
             label,
             coding: words.clone(),
-            verifying: words,
             // An arbitrary command must opt into credentials through another
             // mechanism; Foreman cannot safely infer which secrets it needs.
             credential_environment: &[],
@@ -179,16 +152,8 @@ impl ExternalAgent {
     }
 
     /// The command line for one worker, with the placeholders filled in.
-    ///
-    /// Substitution is whole-word, never string interpolation: a mission is
-    /// one argv entry however many quotes, newlines, or semicolons it holds,
-    /// and there is no shell between here and the process.
-    pub fn command(&self, kind: WorkerKind, repo: &Path, mission: &str) -> Vec<String> {
-        let template = match kind {
-            WorkerKind::Coding => &self.coding,
-            WorkerKind::Verifier => &self.verifying,
-        };
-        template
+    pub fn command(&self, repo: &Path, mission: &str) -> Vec<String> {
+        self.coding
             .iter()
             .map(|word| match word.as_str() {
                 REPO => repo.display().to_string(),
@@ -213,10 +178,6 @@ fn argv(base: &[&str], sandbox: &str) -> Vec<String> {
 }
 
 /// How the factory asks a worker to stop.
-///
-/// Cooperative for a session: the turn stops at its next boundary and resolves
-/// as cancelled, leaving the session's own history consistent. Blunt for a
-/// process, because a CLI offers nothing better.
 pub enum Stop {
     /// Cancel a session's turn.
     Turn(TurnHandle),
@@ -274,9 +235,6 @@ impl Feed {
 }
 
 /// Drain one session's canonical events into the evidence the supervisor reads.
-///
-/// This is the whole coupling between the two loops: the worker never waits for
-/// it, and it never speaks back into the session.
 pub async fn pump_session(
     feed: Feed,
     session: everruns::Session,
@@ -332,14 +290,27 @@ pub async fn pump_session(
             }
             SessionEventKind::ToolCompleted {
                 tool_name, success, ..
-            } => note(
-                &feed.events,
-                format!(
-                    "{} tool {tool_name} {}",
-                    feed.id,
-                    if *success { "ok" } else { "failed" }
-                ),
-            ),
+            } => {
+                // Streaming stdout omits exit status and structured failure details.
+                // Keep the final tool result in the same bounded evidence tail.
+                let payload = event.canonical_json();
+                let data = &payload["data"];
+                let result = data.get("result").or_else(|| data.get("error"));
+                with(&feed.workers, &feed.id, |worker| {
+                    worker.output.push(&format!(
+                        "\n{tool_name} completed (success={success}): {}\n",
+                        result.map_or_else(String::new, serde_json::Value::to_string)
+                    ));
+                });
+                note(
+                    &feed.events,
+                    format!(
+                        "{} tool {tool_name} {}",
+                        feed.id,
+                        if *success { "ok" } else { "failed" }
+                    ),
+                );
+            }
             _ => {}
         }
         let _ = feed.signals.send(Signal::Activity);
@@ -374,11 +345,6 @@ pub async fn pump_session(
 }
 
 /// Run an external coding agent and stream what it prints.
-///
-/// A CLI gives no typed events, so every line is evidence of the same two
-/// things: that the worker is alive, and what it last said. The repository's
-/// own diff carries the rest, which is why the supervisor reads it directly
-/// rather than asking the worker what it did.
 pub async fn pump_process(
     feed: Feed,
     argv: Vec<String>,
@@ -397,7 +363,10 @@ pub async fn pump_process(
     };
     note(&feed.events, format!("{} exec {program}", feed.id));
 
-    let mut child = match sanitized_command(program, arguments, &cwd, credential_environment)
+    let mut command = sanitized_command(program, arguments, &cwd, credential_environment);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = match command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -418,6 +387,7 @@ pub async fn pump_process(
         }
     };
 
+    let mut group = ProcessGroup(child.id());
     let mut readers = Vec::new();
     if let Some(stdout) = child.stdout.take() {
         readers.push(tokio::spawn(read_lines(
@@ -442,12 +412,20 @@ pub async fn pump_process(
         }
         _ = stop.notified() => {
             stopped = true;
+            group.stop();
             let _ = child.start_kill();
             child.wait().await
         }
     };
-    for reader in readers {
-        let _ = reader.await;
+    // Descendants can hold stdout open even after the parent exits.
+    group.stop();
+    for mut reader in readers {
+        if tokio::time::timeout(std::time::Duration::from_secs(1), &mut reader)
+            .await
+            .is_err()
+        {
+            reader.abort();
+        }
     }
 
     let summary = lock(&feed.workers)
@@ -469,6 +447,27 @@ pub async fn pump_process(
         Err(error) => (WorkerStatus::Failed, false, error.to_string()),
     };
     feed.finish(status, success, summary, Some(reason));
+}
+
+/// Kill the process tree on cancellation, normal exit, or pump shutdown.
+struct ProcessGroup(Option<u32>);
+
+impl ProcessGroup {
+    fn stop(&mut self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.0.take() {
+            // This child was spawned as its own process group; never signal the host's group.
+            unsafe {
+                libc::killpg(pid as i32, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 /// Build a child process without crossing Foreman's credential boundary.
@@ -559,126 +558,5 @@ pub fn first_line(script: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn codex_runs_foremans_own_command_line() {
-        let argv = ExternalAgent::codex().command(
-            WorkerKind::Coding,
-            Path::new("/tmp/repo"),
-            "Add rate limiting.",
-        );
-        assert_eq!(
-            argv,
-            vec![
-                "codex",
-                "exec",
-                "--cd",
-                "/tmp/repo",
-                "--color",
-                "never",
-                "--json",
-                "--sandbox",
-                "workspace-write",
-                "Add rate limiting.",
-            ]
-        );
-    }
-
-    #[test]
-    fn a_codex_verifier_is_given_a_read_only_sandbox() {
-        let argv =
-            ExternalAgent::codex().command(WorkerKind::Verifier, Path::new("/tmp/repo"), "Check.");
-        let sandbox = argv.iter().position(|word| word == "--sandbox").unwrap();
-        assert_eq!(argv[sandbox + 1], "read-only");
-    }
-
-    #[test]
-    fn yolop_runs_its_one_shot_print_interface() {
-        let argv =
-            ExternalAgent::yolop().command(WorkerKind::Coding, Path::new("/tmp/repo"), "Fix it.");
-        assert_eq!(argv, vec!["yolop", "-C", "/tmp/repo", "-p", "Fix it."]);
-    }
-
-    #[test]
-    fn a_mission_stays_one_argument_however_it_is_written() {
-        // No shell sits between the template and the process, so a mission
-        // carrying quotes, newlines, or a semicolon is still one argv entry.
-        let mission = "Fix \"it\"; then\nrun the tests";
-        let argv =
-            ExternalAgent::yolop().command(WorkerKind::Coding, Path::new("/tmp/repo"), mission);
-        assert_eq!(argv.len(), 5);
-        assert_eq!(argv[4], mission);
-    }
-
-    #[test]
-    fn an_operator_template_needs_somewhere_to_put_the_mission() {
-        let agent = ExternalAgent::from_template("mycli --repo {repo} --task {mission}").unwrap();
-        assert_eq!(agent.label, "mycli");
-        assert_eq!(
-            agent.command(WorkerKind::Coding, Path::new("/repo"), "go"),
-            vec!["mycli", "--repo", "/repo", "--task", "go"]
-        );
-        assert!(matches!(
-            ExternalAgent::from_template("mycli --repo {repo}"),
-            Err(TemplateError::NoMission)
-        ));
-        assert!(matches!(
-            ExternalAgent::from_template("   "),
-            Err(TemplateError::Empty)
-        ));
-    }
-
-    #[test]
-    fn a_jsonl_line_names_its_own_step() {
-        assert_eq!(
-            json_type(r#"{"type":"tool_use","name":"shell"}"#).as_deref(),
-            Some("tool_use")
-        );
-        assert_eq!(json_type("not json at all"), None);
-        assert_eq!(json_type(r#"{"no":"type"}"#), None);
-    }
-
-    #[test]
-    fn a_tool_call_is_summarized_by_its_first_real_line() {
-        assert_eq!(
-            first_line("\n\n  cat src/rates.py\nls tests\n"),
-            "cat src/rates.py"
-        );
-        assert_eq!(first_line(""), "");
-        let clipped = first_line(&"x".repeat(200));
-        assert_eq!(clipped.chars().count(), 80);
-        assert!(clipped.ends_with('…'));
-    }
-
-    #[tokio::test]
-    async fn every_external_worker_policy_excludes_unlisted_host_secrets() {
-        // Cargo supplies this variable to the test process, making it a stable
-        // sentinel without mutating the process environment in parallel tests.
-        assert!(std::env::var_os("CARGO_MANIFEST_DIR").is_some());
-        let custom = ExternalAgent::from_template("worker {mission}").unwrap();
-        for agent in [ExternalAgent::codex(), ExternalAgent::yolop(), custom] {
-            let arguments = vec![
-                "-c".to_owned(),
-                "printf '%s' \"${CARGO_MANIFEST_DIR-unset}\"".to_owned(),
-            ];
-            let output = sanitized_command(
-                "sh",
-                &arguments,
-                Path::new("."),
-                agent.credential_environment(),
-            )
-            .output()
-            .await
-            .unwrap();
-            assert_eq!(
-                String::from_utf8(output.stdout).unwrap(),
-                "unset",
-                "{}",
-                agent.label
-            );
-            assert!(!agent.credential_environment().contains(&"TYPESAFE_API_KEY"));
-        }
-    }
-}
+#[path = "../tests/unit/worker.rs"]
+mod tests;

@@ -1,11 +1,4 @@
-//! How a factory run looks while it happens. Nothing here changes a decision.
-//!
-//! Two streams share one screen on purpose: the worker's own output, dimmed,
-//! and the supervisor's readings cutting in while it is still talking. That
-//! interleaving is the architecture, so it is what the demo shows.
-//!
-//! The ANSI layer is [`everruns_example_demo::style`]; only the layout — the
-//! nine-dimension block and the decision line — belongs to this example.
+//! Compact worker and supervisor timeline. Presentation never changes policy.
 
 use std::io::Write;
 use std::sync::Mutex;
@@ -15,14 +8,12 @@ use everruns_example_demo::style::{
 };
 
 use crate::factory::Watcher;
-use crate::foreman::{Assessment, DIMENSIONS, Lens};
+use crate::foreman::{Assessment, DIMENSIONS};
 use crate::observation::{TestRun, WorkerKind, WorkerRecord, WorkerStatus};
 use crate::policy::{Action, Intervention};
 
 /// Lines shown from one shell script.
 const SCRIPT_LINES: usize = 3;
-/// Width of one probability bar, in cells.
-const BAR: usize = 14;
 /// Column the dimension labels are padded to.
 const LABEL: usize = 24;
 /// Characters of worker text on one line, inside the two-space indent.
@@ -94,7 +85,7 @@ impl Watcher for Terminal {
         self.break_line();
         let kind = match worker.kind {
             WorkerKind::Coding => "coding worker",
-            WorkerKind::Verifier => "independent verifier",
+            WorkerKind::Verifier => "independent verifier · READ-ONLY workspace",
         };
         println!(
             "\n{} {} {}",
@@ -115,9 +106,14 @@ impl Watcher for Terminal {
         let _ = std::io::stdout().flush();
     }
 
-    fn worker_tool(&self, _worker_id: &str, tool: &str, script: &str) {
+    fn worker_tool(&self, worker_id: &str, tool: &str, script: &str) {
         self.break_line();
-        println!("  {} {}", paint(DIM, "❯"), paint(YELLOW, tool));
+        println!(
+            "  {} {} · {}",
+            paint(CYAN, worker_id),
+            paint(DIM, "tool"),
+            paint(YELLOW, tool)
+        );
         let lines: Vec<&str> = script
             .lines()
             .filter(|line| !line.trim().is_empty())
@@ -159,31 +155,49 @@ impl Watcher for Terminal {
         );
     }
 
-    fn assessed(&self, iteration: usize, assessment: &Assessment) {
+    fn assessed(&self, iteration: usize, assessment: &Assessment, active: Option<&WorkerRecord>) {
         self.break_line();
+        let status = active.map_or_else(
+            || "workers idle".to_owned(),
+            |worker| {
+                format!(
+                    "observed {} RUNNING · {:.0}s · {} tools",
+                    worker.id,
+                    worker.elapsed().as_secs_f64(),
+                    worker.tool_calls
+                )
+            },
+        );
         println!(
-            "\n  {} {}",
+            "\n  {}  {}",
             paint(
                 &format!("{BOLD}{MAGENTA}"),
-                &format!("foreman · reading {iteration}")
+                &format!("SUPERVISOR · reading {iteration}")
             ),
-            paint(DIM, &"─".repeat(WIDTH.saturating_sub(22))),
+            paint(CYAN, &status)
         );
-        for lens in [Lens::Job, Lens::Floor] {
-            let heading = match lens {
-                Lens::Job => "the job",
-                Lens::Floor => "the floor",
-            };
-            println!("  {}", paint(DIM, heading));
-            for dimension in DIMENSIONS.iter().filter(|d| d.lens == lens) {
-                let value = assessment.value(dimension.id);
-                println!(
-                    "    {:LABEL$} {} {}",
-                    dimension.id,
-                    bar(value),
-                    paint(BOLD, &format!("{value:.2}")),
-                );
-            }
+        for row in DIMENSIONS.chunks(3) {
+            let cells = row
+                .iter()
+                .map(|dimension| {
+                    let value = assessment.value(dimension.id);
+                    let risk = matches!(
+                        dimension.id,
+                        "worker_stuck" | "work_off_track" | "needs_human"
+                    );
+                    let code = if value >= 0.8 {
+                        if risk { RED } else { GREEN }
+                    } else {
+                        DIM
+                    };
+                    format!(
+                        "{:LABEL$} {}",
+                        dimension.id,
+                        paint(&format!("{BOLD}{code}"), &format!("{value:.2}"))
+                    )
+                })
+                .collect::<Vec<_>>();
+            println!("    {}", cells.join("  "));
         }
     }
 
@@ -237,69 +251,6 @@ impl Watcher for Terminal {
     }
 }
 
-/// A probability as a bar. Calibration is the point, so the bar is linear and
-/// the number stays next to it.
-fn bar(value: f64) -> String {
-    let filled = (value.clamp(0.0, 1.0) * BAR as f64).round() as usize;
-    let code = if value >= 0.8 {
-        GREEN
-    } else if value >= 0.5 {
-        YELLOW
-    } else {
-        DIM
-    };
-    format!(
-        "{}{}",
-        paint(code, &"█".repeat(filled)),
-        paint(DIM, &"·".repeat(BAR - filled)),
-    )
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn worker_text_breaks_on_newlines_and_then_on_words() {
-        let mut buffer = String::from("first\nsecond");
-        assert_eq!(next_line(&mut buffer).as_deref(), Some("first"));
-        assert_eq!(next_line(&mut buffer), None);
-        assert_eq!(buffer, "second");
-
-        // A single long chunk still breaks, and breaks between words.
-        let mut buffer = "lorem ipsum ".repeat(30);
-        let line = next_line(&mut buffer).unwrap();
-        assert!(line.chars().count() <= WRAP, "{line}");
-        assert!(line.ends_with("ipsum") || line.ends_with("lorem"), "{line}");
-        assert!(!buffer.starts_with(' '));
-    }
-
-    #[test]
-    fn a_word_longer_than_the_line_is_cut_rather_than_held_forever() {
-        let mut buffer = "x".repeat(WRAP + 10);
-        let line = next_line(&mut buffer).unwrap();
-        assert_eq!(line.chars().count(), WRAP);
-        assert_eq!(buffer.chars().count(), 10);
-    }
-
-    #[test]
-    fn a_bar_is_as_long_as_the_probability() {
-        // Styling aside, the cell count is fixed and the fill is linear.
-        let cells = |value: f64| {
-            let rendered = bar(value);
-            (rendered.matches('█').count(), rendered.matches('·').count())
-        };
-        assert_eq!(cells(0.0), (0, BAR));
-        assert_eq!(cells(1.0), (BAR, 0));
-        assert_eq!(cells(0.5), (BAR / 2, BAR / 2));
-        // Out-of-range input cannot overflow the bar.
-        assert_eq!(cells(9.9), (BAR, 0));
-    }
-
-    #[test]
-    fn every_dimension_has_a_label_that_fits_its_column() {
-        for dimension in &DIMENSIONS {
-            assert!(dimension.id.len() <= LABEL, "{}", dimension.id);
-        }
-    }
-}
+#[path = "../tests/unit/terminal.rs"]
+mod tests;

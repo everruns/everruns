@@ -1,9 +1,4 @@
-//! One supervised run, rendered to a terminal.
-//!
-//! The shape is the same whoever is on the floor: build the factory, print the
-//! header, run it, print what it decided. Both binaries — the real `foreman`
-//! and the demo beside it — go through here, so neither can drift into its own
-//! account of what happened.
+//! A supervised run and its terminal result.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -27,26 +22,33 @@ pub async fn supervise(
     foreman: Foreman,
     config: Config,
     tests: Option<String>,
+    test_image: String,
 ) -> Outcome {
     let factory = Factory::new(job, workspace, crew, foreman, config)
         .testing(tests.clone())
+        .test_image(test_image)
         .watched_by(Arc::new(terminal::Terminal::new()));
 
     demo::banner("everruns · foreman");
     demo::field("worker", &factory.crew_label());
+    demo::field(
+        "verifier",
+        &format!("{} · read-only workspace", factory.verifier_model()),
+    );
     demo::field("foreman", &format!("{model} — nine questions, one request"));
     demo::field("repository", &workspace.display().to_string());
     demo::field("tests", tests.as_deref().unwrap_or("none configured"));
     demo::field("run", factory.run_id());
     demo::field("job", &headline(job));
+    demo::body(
+        "Rust policy dispatches roles; the configured backend does the coding.",
+        demo::DIM,
+    );
 
     factory.run().await
 }
 
 /// The exit status is whether the factory decided, not which way.
-///
-/// Escalation is the supervisor doing its job, and a person is standing right
-/// here. Only a run that ran out of clock decided nothing at all.
 pub fn settle(outcome: &Outcome) -> Result<()> {
     match outcome.status {
         Status::TimedOut => bail!("factory ran out of time without deciding"),
@@ -58,6 +60,7 @@ pub fn report(outcome: &Outcome) {
     demo::section("FACTORY");
     demo::field("status", outcome.status.label());
     demo::field("readings", &outcome.iterations.to_string());
+    demo::field("live readings", &outcome.live_readings.to_string());
     demo::field("workers", &outcome.workers.len().to_string());
     demo::field("elapsed", &format!("{:.0}s", outcome.elapsed.as_secs_f64()));
     if let Some(intervention) = &outcome.last_intervention {
@@ -104,16 +107,5 @@ pub fn headline(job: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_headline_is_one_line_that_fits_beside_its_label() {
-        assert_eq!(headline("Add\n  tiers."), "Add tiers.");
-        let long = "word ".repeat(40);
-        let headline = headline(&long);
-        assert!(headline.chars().count() <= 88);
-        assert!(!headline.contains('\n'));
-        assert!(headline.ends_with('\u{2026}'));
-    }
-}
+#[path = "../tests/unit/run.rs"]
+mod tests;
