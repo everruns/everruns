@@ -11,7 +11,7 @@
 #                             `everruns-contracts` contract ALONE (EVE-873),
 #                             so the open capability seams fail here if they
 #                             stop being usable without core/host access.
-#   external-builtin-pack     composes `everruns-builtins` into a fresh core
+#   external-builtin-pack     composes the core `builtins` feature into a fresh core
 #                             registry without relying on link-time discovery.
 #   external-provider-pack    implements the `ChatDriver` contract and driver
 #                             registration against the provider SPI
@@ -24,12 +24,12 @@
 #                             composition fails here if a seam closes.
 #   external-execution-contracts implements neutral per-turn event and context
 #                             contracts from core, and verifies the concrete
-#                             filesystem/command hosts are host-owned, without
+#                             filesystem/command hosts use core host features, without
 #                             importing platform.
 #   external-platform-store    executes stock subagent delegation through a
 #                             runtime-only store and a real offline child turn.
 #   external-workspace-backend implements the open workspace lifecycle SPI
-#                             using only the published host crate.
+#                             using only the published core host feature.
 #
 # The fixtures live under `crates/everruns/tests/fixtures/external-consumer` and
 # form their own cargo workspace, deliberately outside the repository workspace,
