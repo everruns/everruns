@@ -565,7 +565,7 @@ impl InMemoryDatabase {
 
         let caps = self.harness_capabilities.read();
         let mut counts: HashMap<String, u64> = HashMap::new();
-        for ((harness_id, cap_id), _) in caps.iter() {
+        for (harness_id, cap_id) in caps.keys() {
             if active.contains(harness_id) {
                 *counts.entry(cap_id.clone()).or_insert(0) += 1;
             }

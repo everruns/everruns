@@ -95,7 +95,7 @@ fn workspace_root() -> PathBuf {
 fn spec_operation_ids() -> BTreeSet<String> {
     let doc = ApiDoc::openapi();
     let mut out = BTreeSet::new();
-    for (_path, item) in doc.paths.paths.iter() {
+    for item in doc.paths.paths.values() {
         for op in [
             item.get.as_ref(),
             item.put.as_ref(),

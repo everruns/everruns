@@ -1001,7 +1001,7 @@ impl InMemoryDatabase {
 
         let caps = self.agent_capabilities.read();
         let mut counts: HashMap<String, u64> = HashMap::new();
-        for ((agent_id, cap_id), _) in caps.iter() {
+        for (agent_id, cap_id) in caps.keys() {
             if active.contains(agent_id) {
                 *counts.entry(cap_id.clone()).or_insert(0) += 1;
             }
