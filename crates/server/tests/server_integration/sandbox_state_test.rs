@@ -167,6 +167,7 @@ async fn postgres_pins_profile_and_keeps_logical_environment_after_instance_dele
         .await
         .expect("create session");
     let profile = ResolvedEnvironmentProfile {
+        source_revision_id: None,
         target: EnvironmentTargetProfile::managed("daytona"),
         containment: EnvironmentContainmentProfile {
             network: EnvironmentNetworkPolicy::Allow,

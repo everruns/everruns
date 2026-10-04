@@ -15,6 +15,12 @@ appliesTo: [platform, cloud]
 
 Run code in cloud sandboxes powered by [Daytona](https://www.daytona.io/). An agent can create several isolated Linux environments per session, each with network access, then execute commands, manage files, clone repositories, and download results. The capability is marked experimental and may change.
 
+:::note[New fleet workflows]
+This provider-specific capability remains for compatibility and advanced Daytona operations. Use
+[`sandbox_fleet`](/capabilities/sandbox-fleet/) for new workflows that should use logical Everruns
+Sandbox IDs and remain independent of the provider-facing tool namespace.
+:::
+
 ## Set up
 
 1. In the [Daytona Dashboard](https://app.daytona.io), open **API Keys** in your account settings, select **Create New API Key**, and copy the key.

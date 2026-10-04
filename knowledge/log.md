@@ -4,6 +4,13 @@
 
 * **Decision models share provider authentication.** Direct TypeSafe and OpenRouter use the same neutral System One contract. Tenant models retain service/profile identity, support an explicit decision default, and bind Jev through host credential, egress, budget and usage boundaries. Utility guardrails remain deployment-owned. See [Decision Service](operations/decisions-service.md).
 
+* **Sandbox platform proposal separates configuration, primary execution, and
+  fleets.** Environment is reusable versioned configuration; a Session owns at
+  most one recoverable primary Sandbox over a durable Workspace; agent-managed
+  Sandboxes are explicit resources. Harnesses may seal execution, with Bashkit
+  Worker as the fixed Bashkit child of Worker. See
+  [Sandbox Platform Architecture](harnesses/sandbox-abstraction.md).
+
 * **MCP server card version is the platform release.** The card's `version` and
   `serverInfo.version`, and the server info on `initialize` and `server/discover`,
   are the running package version. A release tag updates them; they are not a

@@ -1,6 +1,10 @@
 // Agent commands — user-facing operations.
 // Request types double as catalog entries and auto-register with inventory.
 
+use super::command_validation::{
+    normalize_capability_refs, reject_environment_override_for_fixed_harness,
+    validate_environment_sources,
+};
 use super::environment as environment_profiles;
 pub(crate) use super::managed::check_harness_assignment;
 use super::managed::{
@@ -35,30 +39,6 @@ use crate::api::validation::{
 };
 
 const MAX_AUTO_SNAPSHOTS_PER_AGENT: i64 = 50;
-
-async fn normalize_capability_refs(
-    ctx: &Ctx,
-    caps: Vec<AgentCapabilityConfig>,
-) -> Result<Vec<AgentCapabilityConfig>, CommandError> {
-    let caps = crate::domains::capabilities::validation::normalize_capability_refs(
-        &ctx.db,
-        ctx.org_id(),
-        caps,
-    )
-    .await
-    .map_err(classify_anyhow)?;
-    crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
-        &ctx.feature_flags,
-        &caps,
-    )?;
-    crate::domains::capabilities::validation::validate_hydrated_capability_size_for_org(
-        &ctx.db,
-        ctx.org_id(),
-        &caps,
-    )
-    .await?;
-    Ok(caps)
-}
 
 // Shared persistence helpers
 
@@ -148,6 +128,7 @@ impl Command for CreateAgent {
         validate_managed_name(&req.name)?;
         validate_create_limits(&req)?;
         environment_profiles::validate(req.environments.as_ref())?;
+        validate_environment_sources(ctx, req.environments.as_ref()).await?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
 
         // Enforce per-org agent cap (excludes soft-deleted) before insert.
@@ -197,6 +178,8 @@ impl Command for CreateAgent {
         };
         let harness_id =
             resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
+        reject_environment_override_for_fixed_harness(ctx, harness_id, req.environments.is_some())
+            .await?;
 
         validate_service_account(ctx, req.service_virtual_user_id).await?;
         // Persist
@@ -503,6 +486,9 @@ impl Command for UpdateAgentCmd {
         }
         validate_update_limits(&req)?;
         environment_profiles::validate_update(&req.environments)?;
+        if let everruns_durable::UpdateField::Set(environments) = &req.environments {
+            validate_environment_sources(ctx, Some(environments)).await?;
+        }
         if matches!(req.status, Some(AgentStatus::Deleted)) {
             return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
@@ -589,6 +575,18 @@ impl Command for UpdateAgentCmd {
             .map_err(classify_anyhow)?;
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
+        let final_harness_id = harness_id.unwrap_or(existing.harness_id);
+        let final_has_environments = match &req.environments {
+            everruns_durable::UpdateField::Set(_) => true,
+            everruns_durable::UpdateField::Clear => false,
+            everruns_durable::UpdateField::Unchanged => existing.environments.is_some(),
+        };
+        reject_environment_override_for_fixed_harness(
+            ctx,
+            final_harness_id,
+            final_has_environments,
+        )
+        .await?;
 
         if let everruns_durable::UpdateField::Set(id) = req.service_virtual_user_id {
             validate_service_account(ctx, Some(id)).await?;

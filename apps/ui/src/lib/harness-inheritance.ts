@@ -41,3 +41,18 @@ export function resolveHarnessInheritance(
 
   return { directParent, chain, missingParentId, hasCycle };
 }
+
+export function harnessInheritsFromName(
+  harnessId: string | null | undefined,
+  harnesses: Harness[],
+  ancestorName: string,
+): boolean {
+  if (!harnessId) return false;
+  const byId = new Map(harnesses.map((harness) => [harness.id, harness]));
+  const harness = byId.get(harnessId);
+  return harness
+    ? resolveHarnessInheritance(harness, byId).chain.some(
+        (ancestor) => ancestor.name === ancestorName,
+      )
+    : false;
+}

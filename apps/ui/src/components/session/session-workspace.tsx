@@ -134,7 +134,7 @@ export function SessionWorkspace() {
 
       {/* File viewer main area */}
       <div className="flex flex-1 flex-col overflow-y-auto">
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-hidden">
           {selectedFile && !selectedFile.is_directory ? (
             <FileViewer
               workspaceId={workspaceId}

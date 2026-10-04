@@ -25,6 +25,10 @@ jest.mock("@/hooks", () => ({
   useCreateAgent: () => ({ mutateAsync: createAgent, isPending: false, error: null }),
   useCreateHarness: () => ({ mutateAsync: createHarness, isPending: false, error: null }),
   useCapabilities: () => ({ data: [] }),
+  useHarnesses: () => ({
+    data: [{ id: "harness_123", name: "generic", display_name: "Generic" }],
+  }),
+  useEnvironments: () => ({ data: [] }),
   useAgentNameAvailability: () => ({ isChecking: false, available: true }),
   useHarnessNameAvailability: () => ({ isChecking: false, available: true }),
   useEnvironmentTargets: () => ({

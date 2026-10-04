@@ -71,6 +71,8 @@ export function NewPlaygroundChatForm({
     : undefined;
   const environmentProfiles = selectedAgent?.environments?.profiles ?? {};
   const environmentNames = Object.keys(environmentProfiles);
+  const environmentPolicy =
+    selectedAgent?.environments?.policy ?? (environmentNames.length > 1 ? "selectable" : "fixed");
   const selectedEnvironment = environment || selectedAgent?.environments?.default || "";
 
   const selectCounterpart = (value: string) => {
@@ -92,7 +94,7 @@ export function NewPlaygroundChatForm({
       const session = await createSession.mutateAsync({
         request: {
           ...binding,
-          ...(selectedAgent?.environments && selectedEnvironment
+          ...(selectedAgent?.environments && selectedEnvironment && environmentPolicy !== "fixed"
             ? { environment: { use: selectedEnvironment } }
             : {}),
           source: "playground",
@@ -158,7 +160,9 @@ export function NewPlaygroundChatForm({
             )}
           </SelectContent>
         </Select>
-        {selectedAgent?.environments && environmentNames.length > 0 ? (
+        {selectedAgent?.environments &&
+        environmentNames.length > 0 &&
+        environmentPolicy !== "fixed" ? (
           <Select value={selectedEnvironment} onValueChange={setEnvironment}>
             <SelectTrigger className="w-full" aria-label="Environment">
               <SelectValue placeholder="Pick an environment" />
@@ -179,6 +183,11 @@ export function NewPlaygroundChatForm({
               </SelectGroup>
             </SelectContent>
           </Select>
+        ) : selectedAgent?.environments && environmentNames.length > 0 ? (
+          <div className="border bg-muted/40 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Environment: </span>
+            {selectedEnvironment} · fixed by Agent
+          </div>
         ) : null}
         {children}
         <Button

@@ -2026,6 +2026,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/environments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_environments"];
+    put?: never;
+    post: operations["create_environment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/environments/{environment_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_environment_definition"];
+    put: operations["revise_environment"];
+    post?: never;
+    delete: operations["archive_environment"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/files": {
     parameters: {
       query?: never;
@@ -8009,6 +8041,12 @@ export interface components {
       /** @description Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref. */
       definition: Record<string, unknown>;
     };
+    CreateEnvironmentRequest: {
+      description?: string | null;
+      display_name: string;
+      name: string;
+      profile: components["schemas"]["EnvironmentProfile"];
+    };
     /** @description Request to create a file */
     CreateFileRequest: {
       /**
@@ -9213,6 +9251,20 @@ export interface components {
        */
       task_id: string;
     };
+    /** @description Organization-scoped reusable execution Environment. */
+    Environment: {
+      /** Format: date-time */
+      created_at: string;
+      current_revision: components["schemas"]["EnvironmentRevision"];
+      description?: string | null;
+      display_name: string;
+      id: string;
+      is_managed: boolean;
+      name: string;
+      status: string;
+      /** Format: date-time */
+      updated_at: string;
+    };
     /** @description Reproducible initialization pinned with the profile snapshot. */
     EnvironmentBootstrap: {
       commands?: string[];
@@ -9304,6 +9356,11 @@ export interface components {
           mode: "allow";
         };
     /**
+     * @description Agent policy for choosing the Session's one immutable primary Sandbox.
+     * @enum {string}
+     */
+    EnvironmentPolicyMode: "fixed" | "selectable" | "configurable";
+    /**
      * @description Desired environment configuration authored by a human or application.
      *
      *     Containment and durability may be omitted when the target has exactly one
@@ -9315,7 +9372,23 @@ export interface components {
       containment?: components["schemas"]["EnvironmentContainmentProfile"] | null;
       durability?: components["schemas"]["EnvironmentDurability"] | null;
       lifecycle?: components["schemas"]["EnvironmentLifecycle"];
+      /**
+       * @description Immutable reusable Environment revision this profile was copied from.
+       *     The profile remains a complete snapshot so Agent versions are portable
+       *     and later Environment revisions cannot change an existing version.
+       */
+      source_revision_id?: string | null;
       target: components["schemas"]["EnvironmentTargetProfile"];
+    };
+    /** @description Immutable revision of an Environment template. */
+    EnvironmentRevision: {
+      /** Format: date-time */
+      created_at: string;
+      environment_id: string;
+      id: string;
+      profile: components["schemas"]["EnvironmentProfile"];
+      /** Format: int32 */
+      revision: number;
     };
     /** @description Session-level selection: use an Agent profile, or provide an inline one. */
     EnvironmentSelection:
@@ -9327,6 +9400,7 @@ export interface components {
     EnvironmentSet: {
       /** @description Profile inherited when session creation does not choose one explicitly. */
       default: string;
+      policy?: components["schemas"]["EnvironmentPolicyMode"] | null;
       /** @description Human-authored profiles addressable by name at session creation. */
       profiles?: {
         [key: string]: components["schemas"]["EnvironmentProfile"];
@@ -17135,6 +17209,7 @@ export interface components {
       containment: components["schemas"]["EnvironmentContainmentProfile"];
       durability: components["schemas"]["EnvironmentDurability"];
       lifecycle: components["schemas"]["EnvironmentLifecycle"];
+      source_revision_id?: string | null;
       target: components["schemas"]["EnvironmentTargetProfile"];
     };
     /**
@@ -17267,6 +17342,12 @@ export interface components {
     ResumeSessionResponse: {
       resumed_budgets: number;
       session_id: string;
+    };
+    ReviseEnvironmentRequest: {
+      /** @description Omit to preserve; send null to clear. */
+      description?: string | null;
+      display_name?: string | null;
+      profile: components["schemas"]["EnvironmentProfile"];
     };
     /**
      * @description Risk classification for capabilities (TM-AGENT-005).
@@ -18040,12 +18121,14 @@ export interface components {
        *     session on somebody else's machine is never reported as recoverable.
        */
       durability: string;
+      /** @description Reusable Environment revision pinned into this Sandbox. */
+      environment_revision_id?: string | null;
       /**
        * Format: int64
        * @description Physical incarnation fence. Increments whenever compute is replaced.
        */
       generation?: number | null;
-      /** @description Durable logical Environment id. Absent for legacy capability-derived sessions. */
+      /** @description Deprecated alias for `sandbox_id` during the Environment-to-Sandbox migration. */
       id?: string | null;
       /** Format: date-time */
       last_activity_at?: string | null;
@@ -18059,6 +18142,10 @@ export interface components {
        *     environment profile.
        */
       resolved_from: string;
+      /** @description `primary` for the implicit shell/files binding. */
+      role?: string | null;
+      /** @description Durable logical primary Sandbox id. Absent for legacy capability-derived sessions. */
+      sandbox_id?: string | null;
       /** @description Capability that supplied the compute, for operators tracing a surprise. */
       source_capability?: string | null;
       target?: components["schemas"]["EnvironmentTarget"] | null;
@@ -28381,6 +28468,115 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["EnvironmentTargetsResponse"];
+        };
+      };
+    };
+  };
+  list_environments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"][];
+        };
+      };
+    };
+  };
+  create_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateEnvironmentRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"];
+        };
+      };
+    };
+  };
+  get_environment_definition: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        environment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"];
+        };
+      };
+    };
+  };
+  revise_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        environment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviseEnvironmentRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"];
+        };
+      };
+    };
+  };
+  archive_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        environment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
         };
       };
     };

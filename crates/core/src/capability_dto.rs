@@ -187,6 +187,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "budgeting" => Some("budgeting"),
         "current_time" => Some("current-time"),
         "daytona" => Some("daytona"),
+        "sandbox_fleet" => Some("sandbox-fleet"),
         "github" => Some("github"),
         "github_scout" => Some("github-scout"),
         "session_file_system" => Some("file-system"),

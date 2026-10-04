@@ -12,10 +12,13 @@ tags:
 
 # Execution environments
 
-Status: active implementation. Extends, does not replace,
-[Sandbox Abstraction](sandbox-abstraction.md). The application-facing half, what a
-harness becomes once the environment is separable, is proposed in
-[Framework Harnesses](../framework/harnesses.md).
+Status: implemented baseline. This document describes the current Environment
+profile API and target/containment implementation. The target product model is
+now [Sandbox Platform Architecture](sandbox-abstraction.md): Environment becomes
+reusable versioned configuration, the live Session resource is named Sandbox,
+Harnesses may seal an Environment binding, and sandbox fleets remain a separate
+resource plane. Until that migration lands, the exact current behavior below is
+authoritative for the existing API and code.
 
 What exists in code today:
 

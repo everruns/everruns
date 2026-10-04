@@ -116,6 +116,7 @@ interface AgentSettingsSheetProps {
   agent: Agent;
   draft: AgentDraft;
   readOnly: boolean;
+  fixedEnvironment?: string;
   /** Wraps a draft change so the page enters edit mode. */
   onDraftChange: <T>(apply: (value: T) => void) => (value: T) => void;
 }
@@ -126,6 +127,7 @@ export function AgentSettingsSheet({
   agent,
   draft,
   readOnly,
+  fixedEnvironment,
   onDraftChange,
 }: AgentSettingsSheetProps) {
   const meta = section ? SECTIONS[section] : null;
@@ -168,13 +170,21 @@ export function AgentSettingsSheet({
                   description="One pattern per line: example.com, *.example.com, or https://example.com/api/."
                 />
               )}
-              {section === "environments" && (
-                <EnvironmentProfilesEditor
-                  value={draft.environments}
-                  onChange={onDraftChange(draft.setEnvironments)}
-                  disabled={readOnly}
-                />
-              )}
+              {section === "environments" &&
+                (fixedEnvironment ? (
+                  <div className="border bg-muted/40 p-4 text-sm">
+                    <p className="font-medium">{fixedEnvironment}</p>
+                    <p className="text-muted-foreground">
+                      Locked by the selected Harness. Agent and Session overrides are disabled.
+                    </p>
+                  </div>
+                ) : (
+                  <EnvironmentProfilesEditor
+                    value={draft.environments}
+                    onChange={onDraftChange(draft.setEnvironments)}
+                    disabled={readOnly}
+                  />
+                ))}
               {section === "usage" && <UsageSection agent={agent} />}
               {section === "health" && <AgentHealthCheck agentId={agent.id} />}
               {section === "versions" && <AgentVersionHistory agent={agent} />}

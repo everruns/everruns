@@ -198,7 +198,7 @@ describe("NewPlaygroundChatForm", () => {
     );
   });
 
-  it("shows and pins the default Environment for a preselected Agent", async () => {
+  it("shows a fixed Environment without sending a Session override", async () => {
     setup({
       agents: [
         {
@@ -217,14 +217,14 @@ describe("NewPlaygroundChatForm", () => {
 
     render(<NewPlaygroundChatForm initialAgentId="agent_1" endUserId="identity_customer" />);
 
-    expect(screen.getByRole("combobox", { name: "Environment" })).toHaveValue("build");
+    expect(screen.getByText("build · fixed by Agent")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Environment" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
         request: {
           agent_id: "agent_1",
-          environment: { use: "build" },
           source: "playground",
           playground_user_id: "identity_customer",
         },

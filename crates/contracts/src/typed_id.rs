@@ -369,11 +369,25 @@ impl IdMarker for SessionIdMarker {
     const PREFIX: &'static str = "session";
 }
 
-/// Marker for logical execution Environment IDs.
+/// Marker for reusable execution Environment configuration IDs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EnvironmentIdMarker;
 impl IdMarker for EnvironmentIdMarker {
     const PREFIX: &'static str = "env";
+}
+
+/// Marker for immutable Environment revision IDs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EnvironmentRevisionIdMarker;
+impl IdMarker for EnvironmentRevisionIdMarker {
+    const PREFIX: &'static str = "envrev";
+}
+
+/// Marker for durable logical Sandbox IDs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SandboxIdMarker;
+impl IdMarker for SandboxIdMarker {
+    const PREFIX: &'static str = "sandbox";
 }
 
 /// Marker for Session Participant IDs
@@ -726,8 +740,12 @@ pub type NotificationId = TypedId<NotificationIdMarker>;
 pub type MemoryId = TypedId<MemoryIdMarker>;
 /// Workspace ID (org-scoped named Workspace — see `knowledge/runtime-resources/workspace.md`)
 pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
-/// Logical execution Environment ID.
+/// Reusable execution Environment configuration ID.
 pub type EnvironmentId = TypedId<EnvironmentIdMarker>;
+/// Immutable Environment revision ID.
+pub type EnvironmentRevisionId = TypedId<EnvironmentRevisionIdMarker>;
+/// Durable logical Sandbox ID.
+pub type SandboxId = TypedId<SandboxIdMarker>;
 /// Eval ID
 pub type EvalId = TypedId<EvalIdMarker>;
 /// Eval Case ID

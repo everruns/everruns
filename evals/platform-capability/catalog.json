@@ -1554,6 +1554,15 @@
             }
           ]
         },
+        "EnvironmentPolicyMode": {
+          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
+          "enum": [
+            "fixed",
+            "selectable",
+            "configurable"
+          ],
+          "type": "string"
+        },
         "EnvironmentProfile": {
           "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
           "properties": {
@@ -1583,6 +1592,13 @@
             "lifecycle": {
               "$ref": "#/$defs/EnvironmentLifecycle"
             },
+            "source_revision_id": {
+              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "target": {
               "$ref": "#/$defs/EnvironmentTargetProfile"
             }
@@ -1598,6 +1614,17 @@
             "default": {
               "description": "Profile inherited when session creation does not choose one explicitly.",
               "type": "string"
+            },
+            "policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EnvironmentPolicyMode",
+                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one profile then means `fixed`, while several mean `selectable`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "profiles": {
               "additionalProperties": {
@@ -6807,6 +6834,13 @@
             },
             "lifecycle": {
               "$ref": "#/$defs/EnvironmentLifecycle"
+            },
+            "source_revision_id": {
+              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "target": {
               "$ref": "#/$defs/EnvironmentTargetProfile"
@@ -15853,6 +15887,15 @@
             }
           ]
         },
+        "EnvironmentPolicyMode": {
+          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
+          "enum": [
+            "fixed",
+            "selectable",
+            "configurable"
+          ],
+          "type": "string"
+        },
         "EnvironmentProfile": {
           "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
           "properties": {
@@ -15882,6 +15925,13 @@
             "lifecycle": {
               "$ref": "#/$defs/EnvironmentLifecycle"
             },
+            "source_revision_id": {
+              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "target": {
               "$ref": "#/$defs/EnvironmentTargetProfile"
             }
@@ -15897,6 +15947,17 @@
             "default": {
               "description": "Profile inherited when session creation does not choose one explicitly.",
               "type": "string"
+            },
+            "policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EnvironmentPolicyMode",
+                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one profile then means `fixed`, while several mean `selectable`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "profiles": {
               "additionalProperties": {
@@ -21266,6 +21327,15 @@
             }
           ]
         },
+        "EnvironmentPolicyMode": {
+          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
+          "enum": [
+            "fixed",
+            "selectable",
+            "configurable"
+          ],
+          "type": "string"
+        },
         "EnvironmentProfile": {
           "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
           "properties": {
@@ -21295,6 +21365,13 @@
             "lifecycle": {
               "$ref": "#/$defs/EnvironmentLifecycle"
             },
+            "source_revision_id": {
+              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "target": {
               "$ref": "#/$defs/EnvironmentTargetProfile"
             }
@@ -21310,6 +21387,17 @@
             "default": {
               "description": "Profile inherited when session creation does not choose one explicitly.",
               "type": "string"
+            },
+            "policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/EnvironmentPolicyMode",
+                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one profile then means `fixed`, while several mean `selectable`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "profiles": {
               "additionalProperties": {

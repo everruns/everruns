@@ -24,6 +24,7 @@ import {
   MessageSquare,
   Radio,
   Server,
+  Container,
   Settings,
   Shield,
   Telescope,
@@ -90,6 +91,7 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Harnesses", href: "/harnesses", icon: Shield },
+  { name: "Environments", href: "/environments", icon: Container },
   { name: "Virtual Users", href: "/virtual-users", icon: UserRound },
   {
     name: "Knowledge indexes",

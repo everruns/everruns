@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::{EnvironmentId, EnvironmentRevisionId};
 use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
@@ -14,11 +16,38 @@ use utoipa::ToSchema;
 /// Named execution environments offered by an Agent version.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentSet {
+    /// Who may choose the primary Sandbox for a Session. Older rows omit this
+    /// field; one profile then means `fixed`, while several mean `selectable`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<EnvironmentPolicyMode>,
     /// Profile inherited when session creation does not choose one explicitly.
     pub default: String,
     /// Human-authored profiles addressable by name at session creation.
     #[serde(default)]
     pub profiles: BTreeMap<String, EnvironmentProfile>,
+}
+
+impl EnvironmentSet {
+    /// Effective policy, including the deterministic legacy migration rule.
+    pub fn effective_policy(&self) -> EnvironmentPolicyMode {
+        self.policy.unwrap_or(if self.profiles.len() <= 1 {
+            EnvironmentPolicyMode::Fixed
+        } else {
+            EnvironmentPolicyMode::Selectable
+        })
+    }
+}
+
+/// Agent policy for choosing the Session's one immutable primary Sandbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentPolicyMode {
+    /// Always use the default Environment; Session overrides are rejected.
+    Fixed,
+    /// A Session may select only one of the declared named Environments.
+    Selectable,
+    /// A Session may select a named Environment or submit a constrained one-off profile.
+    Configurable,
 }
 
 /// Desired environment configuration authored by a human or application.
@@ -28,6 +57,12 @@ pub struct EnvironmentSet {
 /// to a Session.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentProfile {
+    /// Immutable reusable Environment revision this profile was copied from.
+    /// The profile remains a complete snapshot so Agent versions are portable
+    /// and later Environment revisions cannot change an existing version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub source_revision_id: Option<EnvironmentRevisionId>,
     pub target: EnvironmentTargetProfile,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub containment: Option<EnvironmentContainmentProfile>,
@@ -43,6 +78,9 @@ pub struct EnvironmentProfile {
 /// been made explicit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ResolvedEnvironmentProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub source_revision_id: Option<EnvironmentRevisionId>,
     pub target: EnvironmentTargetProfile,
     pub containment: EnvironmentContainmentProfile,
     pub durability: EnvironmentDurability,
@@ -239,6 +277,37 @@ pub enum EnvironmentSelection {
     Inline(EnvironmentProfile),
 }
 
+/// Organization-scoped reusable execution Environment.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[schema(as = Environment)]
+pub struct EnvironmentDefinition {
+    #[serde(rename = "id")]
+    #[schema(value_type = String)]
+    pub public_id: EnvironmentId,
+    pub name: String,
+    pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub is_managed: bool,
+    pub status: String,
+    pub current_revision: EnvironmentRevision,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Immutable revision of an Environment template.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct EnvironmentRevision {
+    #[serde(rename = "id")]
+    #[schema(value_type = String)]
+    pub public_id: EnvironmentRevisionId,
+    #[schema(value_type = String)]
+    pub environment_id: EnvironmentId,
+    pub revision: i32,
+    pub profile: EnvironmentProfile,
+    pub created_at: DateTime<Utc>,
+}
+
 fn default_idle_after_seconds() -> u64 {
     180
 }
@@ -271,6 +340,30 @@ mod tests {
         }))
         .unwrap();
         assert!(matches!(inline, EnvironmentSelection::Inline(_)));
+    }
+
+    #[test]
+    fn legacy_environment_sets_get_a_deterministic_policy() {
+        let profile: EnvironmentProfile = serde_json::from_value(json!({
+            "target": {"kind": "vfs", "provider": "bashkit"}
+        }))
+        .unwrap();
+        let fixed = EnvironmentSet {
+            policy: None,
+            default: "default".into(),
+            profiles: BTreeMap::from([("default".into(), profile.clone())]),
+        };
+        assert_eq!(fixed.effective_policy(), EnvironmentPolicyMode::Fixed);
+
+        let selectable = EnvironmentSet {
+            policy: None,
+            default: "one".into(),
+            profiles: BTreeMap::from([("one".into(), profile.clone()), ("two".into(), profile)]),
+        };
+        assert_eq!(
+            selectable.effective_policy(),
+            EnvironmentPolicyMode::Selectable
+        );
     }
 
     #[test]

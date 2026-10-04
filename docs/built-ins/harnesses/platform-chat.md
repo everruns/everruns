@@ -1,11 +1,11 @@
 ---
 title: Platform Chat Agent
-description: The managed Agent for Everruns platform conversations, running on Generic.
+description: The managed Agent for Everruns platform conversations, running on Bashkit Worker.
 ---
 
 **Platform Chat** is a managed Agent that helps you operate your Everruns organization.
-It runs on the [Generic harness](/built-ins/harnesses/generic/), which supplies the
-shared execution environment. The Agent supplies its identity, instructions, platform
+It runs on [Bashkit Worker](/built-ins/harnesses/bashkit-worker/), which supplies a sealed,
+recoverable Bashkit virtual workspace. The Agent supplies its identity, instructions, platform
 access, introduction, conversation starters, and durable operator memory.
 
 ## Chat and side conversations
@@ -34,7 +34,7 @@ in the secure setup flow. Recurring autonomous work belongs to an Agent Trigger.
 ## Bundled Capabilities
 
 The Agent configures these capabilities in addition to the execution environment
-inherited from [Generic](/built-ins/harnesses/generic/).
+inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 
 | Capability | Purpose |
 |---|---|
@@ -43,11 +43,21 @@ inherited from [Generic](/built-ins/harnesses/generic/).
 | Task Management | Track work within a conversation |
 | Prompt Caching | Cache stable prompt content |
 | Tool Call Repair | Repair malformed tool calls |
+| Human Intent | Preserve consequential user intent across tool calls |
+| Web Fetch | Read public web resources and download files |
+| Storage | Keep durable session values and secrets |
+| Schedules | Arrange follow-up work for the session |
+| BTW | Handle lightweight side questions without losing the main thread |
+| Message Metadata | Attach structured metadata to messages |
+| Retrieval Citations | Retrieve sources for grounded answers |
+| Citation Verification | Verify citation support before answering |
+| Ask User | Pause for structured user input when required |
+| Error Disclosure | Return detailed platform errors to the managed operator Agent |
 
 ## Existing conversations
 
-The dedicated Platform Chat harness is retired. Existing platform conversations move
-to the managed Agent on Generic while keeping their IDs, history, workspace files,
+The dedicated Platform Chat harness and its interim Generic binding are retired. Existing platform
+conversations move to the managed Agent on Bashkit Worker while keeping their IDs, history, workspace files,
 owners, and memory. Older custom agents, apps, triggers, and child harnesses retain
 their original execution bindings so their authored behavior is preserved; the retired
 harness remains stored for those bindings and historical accounting.

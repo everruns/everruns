@@ -277,9 +277,11 @@ impl Command for CreateSession {
                 "Chat requires the managed Platform Chat Agent; use Playground to test agents",
             ));
         }
-        if is_platform_chat && (source == SessionSource::Playground || harness.name != "generic") {
+        if is_platform_chat
+            && (source == SessionSource::Playground || harness.name != "bashkit-worker")
+        {
             return Err(CommandError::bad_request(
-                "Platform Chat requires Generic and cannot run in Playground",
+                "Platform Chat requires Bashkit Worker and cannot run in Playground",
             ));
         }
         if is_platform_chat

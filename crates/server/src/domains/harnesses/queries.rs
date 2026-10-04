@@ -302,6 +302,32 @@ pub async fn resolve_effective(
     Ok(Some(effective))
 }
 
+/// Return whether a Harness or any of its ancestors has the stable built-in
+/// name. This is for sealed product behavior that inheritance must not erase;
+/// effective Harness metadata intentionally remains child-owned.
+pub async fn inherits_from_name(
+    db: &StorageBackend,
+    org_id: i64,
+    id: HarnessId,
+    expected_name: &str,
+) -> anyhow::Result<bool> {
+    let mut visited = HashSet::new();
+    let mut cursor = Some(id);
+    while let Some(current_id) = cursor {
+        if !visited.insert(current_id) {
+            anyhow::bail!("Harness inheritance cycle detected");
+        }
+        let Some(harness) = load_raw_harness(db, org_id, current_id).await? else {
+            return Ok(false);
+        };
+        if harness.name == expected_name {
+            return Ok(true);
+        }
+        cursor = harness.parent_harness_id;
+    }
+    Ok(false)
+}
+
 /// Merge a preview layer onto a parent harness.
 pub fn merge_preview_layer(
     parent: Option<&Harness>,
@@ -522,5 +548,30 @@ mod tests {
         assert!(root.capabilities.is_empty());
         assert_eq!(child.capabilities[0].capability_id(), "web_fetch");
         assert!(leaf.capabilities.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sealed_ancestor_is_detected_through_custom_children() {
+        let db = StorageBackend::in_memory();
+        let org_id = 1;
+        let sealed = db
+            .create_harness(org_id, harness_row("bashkit-worker", None))
+            .await
+            .unwrap();
+        let child = db
+            .create_harness(org_id, harness_row("support-worker", Some(sealed.id)))
+            .await
+            .unwrap();
+
+        assert!(
+            inherits_from_name(&db, org_id, child.id, "bashkit-worker")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !inherits_from_name(&db, org_id, child.id, "conversation")
+                .await
+                .unwrap()
+        );
     }
 }

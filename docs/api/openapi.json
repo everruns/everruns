@@ -7521,6 +7521,146 @@
         }
       }
     },
+    "/v1/environments": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "operationId": "list_environments",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Environment"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "environments"
+        ],
+        "operationId": "create_environment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEnvironmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environment"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/environments/{environment_id}": {
+      "get": {
+        "tags": [
+          "environments"
+        ],
+        "operationId": "get_environment_definition",
+        "parameters": [
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environment"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "environments"
+        ],
+        "operationId": "revise_environment",
+        "parameters": [
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseEnvironmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environment"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "environments"
+        ],
+        "operationId": "archive_environment",
+        "parameters": [
+          {
+            "name": "environment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/files": {
       "get": {
         "tags": [
@@ -25257,6 +25397,31 @@
           }
         }
       },
+      "CreateEnvironmentRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "display_name",
+          "profile"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/EnvironmentProfile"
+          }
+        }
+      },
       "CreateFileRequest": {
         "type": "object",
         "description": "Request to create a file",
@@ -27313,6 +27478,54 @@
           }
         }
       },
+      "Environment": {
+        "type": "object",
+        "description": "Organization-scoped reusable execution Environment.",
+        "required": [
+          "id",
+          "name",
+          "display_name",
+          "is_managed",
+          "status",
+          "current_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current_revision": {
+            "$ref": "#/components/schemas/EnvironmentRevision"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "is_managed": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "EnvironmentBootstrap": {
         "type": "object",
         "description": "Reproducible initialization pinned with the profile snapshot.",
@@ -27555,6 +27768,15 @@
         ],
         "description": "Outbound network policy the target must actually enforce."
       },
+      "EnvironmentPolicyMode": {
+        "type": "string",
+        "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
+        "enum": [
+          "fixed",
+          "selectable",
+          "configurable"
+        ]
+      },
       "EnvironmentProfile": {
         "type": "object",
         "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
@@ -27588,8 +27810,45 @@
           "lifecycle": {
             "$ref": "#/components/schemas/EnvironmentLifecycle"
           },
+          "source_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version."
+          },
           "target": {
             "$ref": "#/components/schemas/EnvironmentTargetProfile"
+          }
+        }
+      },
+      "EnvironmentRevision": {
+        "type": "object",
+        "description": "Immutable revision of an Environment template.",
+        "required": [
+          "id",
+          "environment_id",
+          "revision",
+          "profile",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "environment_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/EnvironmentProfile"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -27622,6 +27881,17 @@
           "default": {
             "type": "string",
             "description": "Profile inherited when session creation does not choose one explicitly."
+          },
+          "policy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EnvironmentPolicyMode",
+                "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one profile then means `fixed`, while several mean `selectable`."
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "profiles": {
             "type": "object",
@@ -41487,6 +41757,12 @@
           "lifecycle": {
             "$ref": "#/components/schemas/EnvironmentLifecycle"
           },
+          "source_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "target": {
             "$ref": "#/components/schemas/EnvironmentTargetProfile"
           }
@@ -41679,6 +41955,30 @@
           },
           "session_id": {
             "type": "string"
+          }
+        }
+      },
+      "ReviseEnvironmentRequest": {
+        "type": "object",
+        "required": [
+          "profile"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Omit to preserve; send null to clear."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "profile": {
+            "$ref": "#/components/schemas/EnvironmentProfile"
           }
         }
       },
@@ -42893,6 +43193,13 @@
             "type": "string",
             "description": "`checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a\nsession on somebody else's machine is never reported as recoverable."
           },
+          "environment_revision_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reusable Environment revision pinned into this Sandbox."
+          },
           "generation": {
             "type": [
               "integer",
@@ -42906,7 +43213,7 @@
               "string",
               "null"
             ],
-            "description": "Durable logical Environment id. Absent for legacy capability-derived sessions."
+            "description": "Deprecated alias for `sandbox_id` during the Environment-to-Sandbox migration."
           },
           "last_activity_at": {
             "type": [
@@ -42942,6 +43249,20 @@
           "resolved_from": {
             "type": "string",
             "description": "How this view was produced. `capabilities` means it was derived from the\nsession's effective capability set rather than read from a stored\nenvironment profile."
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`primary` for the implicit shell/files binding."
+          },
+          "sandbox_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable logical primary Sandbox id. Absent for legacy capability-derived sessions."
           },
           "source_capability": {
             "type": [
