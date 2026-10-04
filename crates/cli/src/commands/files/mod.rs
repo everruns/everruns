@@ -13,6 +13,8 @@ pub mod remote;
 pub mod state;
 pub mod sync_cmd;
 pub mod sync_engine;
+#[cfg(test)]
+mod test_server;
 
 use crate::output::OutputFormat;
 use anyhow::Result;

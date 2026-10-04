@@ -197,6 +197,7 @@ Session filesystem operations, sync, push, pull, list. See [Files](#files) secti
 
 **Chosen:** Respect `.gitignore` patterns by default (via `ignore` crate). Additional `.everrunsignore` file for sync-specific exclusions. Always exclude: `.git/`, `node_modules/`, `target/`, `__pycache__/`, `.env`.
 **Rationale:** Prevents syncing build artifacts and secrets. Aligns with developer expectations.
+Only regular files are uploaded. Symlinks are skipped with a warning, including ones added while sync runs, so a link cannot upload bytes from outside the local directory (TM-FS-020).
 
 #### Decision 5: Incremental Sync via Content Hashing
 
