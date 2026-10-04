@@ -11,7 +11,7 @@ const FLAGS: &str = "/v1/orgs/org_00000000000000000000000000000001/feature-flags
 async fn test_feature_grades_control_http_defaults_mutations_and_payment_access() {
     for (grade, default_enabled, tenant_can_manage) in [
         (FeatureFlagGrade::Dev, false, false),
-        (FeatureFlagGrade::Preview, false, false),
+        (FeatureFlagGrade::Internal, false, false),
         (FeatureFlagGrade::Adoption, false, true),
         (FeatureFlagGrade::Prod, true, true),
         (FeatureFlagGrade::Off, false, false),
@@ -50,7 +50,7 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
             .assert_status(StatusCode::NOT_FOUND);
 
         let platform_route = format!("{FLAGS}/platform");
-        let status = if grade == FeatureFlagGrade::Preview {
+        let status = if grade == FeatureFlagGrade::Internal {
             StatusCode::OK
         } else {
             StatusCode::BAD_REQUEST
@@ -59,7 +59,7 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
             .patch(&platform_route, json!({"flags":{"machine_payments":true}}))
             .await
             .assert_status(status);
-        if grade == FeatureFlagGrade::Preview {
+        if grade == FeatureFlagGrade::Internal {
             let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
             assert_eq!(effective["machine_payments"], true);
             server

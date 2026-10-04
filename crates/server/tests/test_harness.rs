@@ -694,7 +694,7 @@ impl TestServer {
         }
         feature_flag_policy = feature_flag_policy.with_grade(
             "openai_agents_api",
-            everruns_platform::FeatureFlagGrade::Preview,
+            everruns_platform::FeatureFlagGrade::Internal,
         );
         let feature_flag_policy = policy_override.unwrap_or(feature_flag_policy);
         let feature_flags = feature_flag_policy.deployment_flags();

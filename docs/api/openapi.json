@@ -27523,7 +27523,7 @@
         "description": "Rollout policy for one feature, independent of the running deployment grade.",
         "enum": [
           "dev",
-          "preview",
+          "internal",
           "adoption",
           "prod",
           "off"

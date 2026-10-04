@@ -24,7 +24,7 @@ const mockRows = [
     name: "voice",
     label: "Voice",
     description: "Talk to agents",
-    grade: "preview",
+    grade: "internal",
     effective: false,
     can_manage: false,
   },
@@ -45,7 +45,7 @@ describe("Feature grade settings", () => {
     mockMutate.mockClear();
   });
 
-  it("shows adoption off and prod on without exposing preview enrolment", () => {
+  it("shows adoption off and prod on without exposing internal enrolment", () => {
     render(<FeaturesSettingsPage />);
     expect(screen.getByRole("switch", { name: "Enable Evals" })).toHaveAttribute(
       "aria-checked",

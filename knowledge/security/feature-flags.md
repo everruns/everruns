@@ -15,7 +15,7 @@ concept: it describes the running deployment, not a feature's maturity.
 ## Policy
 
 Local-development features cannot be activated on hosted deployments by either a tenant
-or a platform operator. Preview enrolment is an explicit platform decision for individual
+or a platform operator. Internal enrolment is an explicit platform decision for individual
 organisations. Adoption features let organisation owners and admins opt in. Production
 features start enabled for every organisation, while owners and admins may opt out.
 An off feature is unavailable regardless of existing organisation records or actor.
@@ -37,7 +37,7 @@ The existing [organisation flag table](../../crates/server/migrations/046_org_fe
 stores explicit overrides in both directions. A missing record inherits the grade default;
 a stored false is a durable production opt-out, not an instruction to remove the record.
 Patch operations change only named flags. The default-organisation seeder must not enrol
-features: defaults belong to the grade policy, so bootstrap cannot bypass preview/off.
+features: defaults belong to the grade policy, so bootstrap cannot bypass internal/off.
 
 [Resolution](../../crates/server/src/services/org_feature_flags.rs) reads durable overrides
 on every enforcement path. A replica-local cache must not delay revocation. Storage
@@ -46,11 +46,11 @@ failures deny feature access instead of treating unknown overrides as production
 ## Configuration authority
 
 Tenant settings expose only locally available development, adoption, and production
-features. Tenant updates require an organisation owner/admin and reject preview and off
+features. Tenant updates require an organisation owner/admin and reject internal and off
 features in both directions. Platform settings expose every grade, but the platform update
-route may only change preview enrolments. It cannot alter tenant-owned settings or promote
-an off/local-only feature. These routes provide the backend contract for the future
-super-admin application; that application is not part of this feature change.
+route may only change internal enrolments. It cannot alter tenant-owned settings or promote
+an off/local-only feature. These routes provide the backend contract for the super-admin
+enrolment screen tracked in EVE-1196; the existing super-admin console does not expose it yet.
 
 The [HTTP API](../../crates/server/src/api/org_feature_flags.rs) owns wire shapes and route
 permissions. The public deployment flag map describes whether routes/capabilities can
@@ -61,7 +61,7 @@ displays effective switch state so production defaults appear on even without a 
 
 ## Execution boundary
 
-Hosted capability registration uses deployment availability. Preview/adoption registration
+Hosted capability registration uses deployment availability. Internal/adoption registration
 does not authorise use: the server filters capabilities using organisation-effective flags
 before loading a worker snapshot, command dispatch, or assigning configurations. An explicit
 feature grade owns registration availability even when a plugin carries experimental metadata.
