@@ -155,7 +155,7 @@ Multi-step browser interactions.
 - **Returns**: `{ title, url, screenshot?, content? }`, when both flags are true, both fields are included. If neither is set, returns content by default.
 - **Session-aware**: Uses CDP session (click, type, keyboard, mouse, touch via CDP commands) if active, generates Puppeteer code for REST `/function` otherwise.
 
-**Supported step actions**: See `src/tools.rs:build_interaction_code()` for REST and `execute_with_context()` for CDP.
+**Supported step actions**: See `src/interaction_code.rs` for REST and `execute_with_context()` for CDP.
 
 | Action | Parameters | Description |
 |--------|-----------|-------------|
@@ -203,7 +203,7 @@ No long-lived WebSocket connections from our side, we connect/disconnect for eac
 - **CDP session state**: Stored as plain key-value in `session_storage` (only WS endpoint, no secrets), per-session scoped
 - **No secrets in chat**: Token resolved via connection provider, never exposed in conversation
 - **No secrets in logs**: CDP debug logging redacts API tokens from WebSocket URLs
-- **URL validation**: Only `http://` and `https://` URLs allowed (blocks `file://`, `javascript:`, etc.)
+- **URL validation**: Only `http://` and `https://` URLs allowed (blocks `file://`, `javascript:`, etc.). The session network access list is enforced on every navigation, including nested interact steps and the persistent browser's initial URL. When that list is set, redirects and requests the page discovers are rejected on the CDP session and on the REST transports that accept rejection patterns.
 - **Timeout caps**: All wait/timeout values capped at 120s to prevent unbounded resource consumption
 - **Ephemeral by default**: REST mode has no cross-request data leakage
 - **Content truncation**: Large DOM responses truncated to 100KB (UTF-8 safe boundary) to prevent context flooding
