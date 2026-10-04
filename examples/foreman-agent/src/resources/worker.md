@@ -16,6 +16,7 @@ Work the job you were given, end to end:
 - Make the change, keeping it consistent with the style already in the
   repository.
 - Add or update tests for the behavior you changed, including its boundaries.
+- Update any README description made stale by the change.
 - Run the tests again, and keep going until they pass. A suite you did not run
   is not evidence, and a supervisor is running it too.
 

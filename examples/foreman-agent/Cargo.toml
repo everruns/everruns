@@ -1,9 +1,4 @@
-# Semantic supervision: a fast decisions watches a slow coding agent while it
-# works. The worker is an ordinary Framework agent on the Bashkit shell; the
-# supervisor is `Decisions`, asking nine narrow questions about bounded
-# evidence in one request. The policy that acts on the numbers is plain Rust.
-#
-# A Framework port of https://github.com/thruwire/foreman.
+# Concurrent supervision: nine probabilities, deterministic Rust policy.
 
 [package]
 name = "everruns-foreman-agent"
@@ -23,10 +18,6 @@ path = "src/lib.rs"
 name = "foreman"
 path = "src/main.rs"
 
-[features]
-# Fixtures `tests/` borrows. Off in a real build.
-testing = []
-
 [dependencies]
 anyhow = "1.0"
 async-trait = "0.1"
@@ -45,7 +36,3 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "ti
 
 [lints]
 workspace = true
-
-[dev-dependencies]
-# This crate again, with the fixtures `tests/` borrows.
-everruns-foreman-agent = { path = ".", features = ["testing"] }
