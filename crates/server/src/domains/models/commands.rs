@@ -220,7 +220,9 @@ pub struct UpdateModel {
     pub model_id: Option<String>,
     /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
+    /// Change the selected service; it must match the assigned profile.
     pub service: Option<everruns_contracts::ServiceKind>,
+    /// Explicitly reassign the stable profile; preference-only edits preserve it.
     pub profile_key: Option<String>,
     pub capabilities: Option<Vec<String>>,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
@@ -456,8 +458,10 @@ impl Command for GetDefaultDecisionModel {
     }
 }
 inventory::submit! { CommandDescriptor::of::<GetDefaultDecisionModel>() }
+/// Select or clear the organization decision default.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetDefaultDecisionModel {
+    /// Prefixed saved model ID; omit or pass null to clear the default.
     pub model_id: Option<String>,
 }
 impl Command for SetDefaultDecisionModel {

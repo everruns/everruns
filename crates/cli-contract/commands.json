@@ -5554,7 +5554,8 @@
         "field": "model_id",
         "long": "model-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Prefixed saved model ID; omit or pass null to clear the default."
       }
     ]
   },
@@ -5698,7 +5699,8 @@
         "field": "profile_key",
         "long": "profile-key",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Explicitly reassign the stable profile; preference-only edits preserve it."
       },
       {
         "field": "provider_id",

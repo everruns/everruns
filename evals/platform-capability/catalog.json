@@ -14914,8 +14914,10 @@
     "cli": null,
     "description": "Set the selected decision model.",
     "input_schema": {
+      "description": "Select or clear the organization decision default.",
       "properties": {
         "model_id": {
+          "description": "Prefixed saved model ID; omit or pass null to clear the default.",
           "type": [
             "string",
             "null"
@@ -18922,6 +18924,7 @@
           ]
         },
         "profile_key": {
+          "description": "Explicitly reassign the stable profile; preference-only edits preserve it.",
           "type": [
             "string",
             "null"
@@ -18937,7 +18940,8 @@
         "service": {
           "oneOf": [
             {
-              "$ref": "#/$defs/ServiceKind"
+              "$ref": "#/$defs/ServiceKind",
+              "description": "Change the selected service; it must match the assigned profile."
             },
             {
               "type": "null"

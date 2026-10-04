@@ -392,11 +392,17 @@ impl ModelVendor {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct DecisionModelProfile {
+    /// Native primitive names supported by this profile (noul, choice or score).
     pub primitives: Vec<String>,
+    /// Whether returned probabilities are calibrated native decision measurements.
     pub calibrated: bool,
+    /// Maximum options in one choice question, when known.
     pub max_choice_options: Option<usize>,
+    /// Maximum levels in one score question, when known.
     pub max_score_levels: Option<usize>,
+    /// Maximum token count for the evaluated state, when known.
     pub state_tokens: Option<usize>,
+    /// Maximum token count for the complete request, when known.
     pub request_tokens: Option<usize>,
 }
 

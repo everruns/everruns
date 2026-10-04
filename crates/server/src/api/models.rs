@@ -76,8 +76,10 @@ pub struct CreateModelRequest {
     /// Human-readable display name for the model.
     #[schema(example = "GPT-4o")]
     pub display_name: String,
+    /// Selected service; omitted values infer it from the profile or capabilities.
     #[serde(default)]
     pub service: Option<everruns_contracts::ServiceKind>,
+    /// Stable curated profile key; omitted values infer a provider-specific binding.
     #[serde(default)]
     pub profile_key: Option<String>,
     /// List of capabilities this model supports (e.g., "chat", "vision", "tools").
@@ -128,7 +130,9 @@ pub struct UpdateModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "GPT-4o Mini")]
     pub display_name: Option<String>,
+    /// Change the selected service; it must match the assigned profile.
     pub service: Option<everruns_contracts::ServiceKind>,
+    /// Explicitly reassign the stable profile; preference-only edits preserve it.
     pub profile_key: Option<String>,
     /// List of capabilities this model supports.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -382,18 +386,27 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Read-only model behavior, independent from the credentials of a serving account.
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct ModelProfileResponse {
+    /// Stable profile identity, including a vendor or custom-account namespace.
     pub key: String,
+    /// Model service described by the profile.
     pub service: everruns_contracts::ServiceKind,
+    /// Model developer, when known; this may differ from the serving provider.
     pub vendor: Option<everruns_contracts::model::ModelVendor>,
+    /// Profile origin: curated, discovered, predefined or manual.
     pub source: String,
+    /// Capabilities, decision semantics, limits and pricing for this model.
     pub profile: everruns_contracts::model::ModelProfile,
 }
 
+/// Restrict profiles to one service or an authorized provider catalog.
 #[derive(Default, Deserialize, IntoParams)]
 pub struct ProfileQuery {
+    /// Return only profiles for this service.
     pub service: Option<everruns_contracts::ServiceKind>,
+    /// Prefixed provider account ID used to restrict available profiles.
     pub provider_id: Option<String>,
 }
 
@@ -492,7 +505,7 @@ async fn profiles_for_caller(
     Ok(Json(profiles))
 }
 
-#[utoipa::path(get, path = "/v1/model-profiles", params(ProfileQuery), responses((status = 200, description = "Authorized model profiles", body = ListResponse<ModelProfileResponse>)), tag = "models")]
+#[utoipa::path(get, path = "/v1/model-profiles", description = "List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider.", params(ProfileQuery), responses((status = 200, description = "Authorized model profiles", body = ListResponse<ModelProfileResponse>)), tag = "models")]
 pub async fn list_model_profiles(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -502,7 +515,7 @@ pub async fn list_model_profiles(
     Ok(Json(ListResponse::new(profiles)))
 }
 
-#[utoipa::path(get, path = "/v1/model-profiles/{key}", params(("key" = String, Path)), responses((status = 200, description = "Model profile", body = ModelProfileResponse), (status = 404, description = "Unknown profile")), tag = "models")]
+#[utoipa::path(get, path = "/v1/model-profiles/{key}", description = "Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication.", params(("key" = String, Path)), responses((status = 200, description = "Model profile", body = ModelProfileResponse), (status = 404, description = "Unknown profile")), tag = "models")]
 pub async fn get_model_profile(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -539,7 +552,7 @@ mod tests {
     // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 }
 
-#[utoipa::path(get, path = "/v1/models/decision-default", responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
+#[utoipa::path(get, path = "/v1/models/decision-default", description = "Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.", responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
 pub async fn get_default_decision_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -550,7 +563,7 @@ pub async fn get_default_decision_model(
             .await?,
     ))
 }
-#[utoipa::path(put, path = "/v1/models/decision-default", request_body = crate::domains::models::commands::SetDefaultDecisionModel, responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
+#[utoipa::path(put, path = "/v1/models/decision-default", description = "Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default.", request_body = crate::domains::models::commands::SetDefaultDecisionModel, responses((status = 200, description = "Selected decision model", body = Option<ModelWithProvider>)), tag = "models")]
 pub async fn set_default_decision_model(
     org: ResolvedOrg,
     State(state): State<AppState>,

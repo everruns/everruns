@@ -2819,6 +2819,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider. */
     get: operations["list_model_profiles"];
     put?: never;
     post?: never;
@@ -2835,6 +2836,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication. */
     get: operations["get_model_profile"];
     put?: never;
     post?: never;
@@ -2885,7 +2887,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null. */
     get: operations["get_default_decision_model"];
+    /** @description Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default. */
     put: operations["set_default_decision_model"];
     post?: never;
     delete?: never;
@@ -8332,6 +8336,7 @@ export interface components {
        * @example gpt-5.2
        */
       model_id: string;
+      /** @description Stable curated profile key; omitted values infer a provider-specific binding. */
       profile_key?: string | null;
       service?: components["schemas"]["ServiceKind"] | null;
     };
@@ -8936,11 +8941,17 @@ export interface components {
     };
     /** @description Typed decision semantics and serving-independent limits. */
     DecisionModelProfile: {
+      /** @description Whether returned probabilities are calibrated native decision measurements. */
       calibrated: boolean;
+      /** @description Maximum options in one choice question, when known. */
       max_choice_options?: number | null;
+      /** @description Maximum levels in one score question, when known. */
       max_score_levels?: number | null;
+      /** @description Native primitive names supported by this profile (noul, choice or score). */
       primitives: string[];
+      /** @description Maximum token count for the complete request, when known. */
       request_tokens?: number | null;
+      /** @description Maximum token count for the evaluated state, when known. */
       state_tokens?: number | null;
     };
     /**
@@ -12600,9 +12611,13 @@ export interface components {
     ListResponse_ModelProfileResponse: {
       /** @description Array of items returned by the list operation. */
       data: {
+        /** @description Stable profile identity, including a vendor or custom-account namespace. */
         key: string;
+        /** @description Capabilities, decision semantics, limits and pricing for this model. */
         profile: components["schemas"]["ModelProfile"];
+        /** @description Model service described by the profile. */
         service: components["schemas"]["ServiceKind"];
+        /** @description Profile origin: curated, discovered, predefined or manual. */
         source: string;
         vendor?: components["schemas"]["ModelVendor"] | null;
       }[];
@@ -14647,10 +14662,15 @@ export interface components {
       tool_search?: boolean;
       verbosity?: components["schemas"]["VerbosityConfig"] | null;
     };
+    /** @description Read-only model behavior, independent from the credentials of a serving account. */
     ModelProfileResponse: {
+      /** @description Stable profile identity, including a vendor or custom-account namespace. */
       key: string;
+      /** @description Capabilities, decision semantics, limits and pricing for this model. */
       profile: components["schemas"]["ModelProfile"];
+      /** @description Model service described by the profile. */
       service: components["schemas"]["ServiceKind"];
+      /** @description Profile origin: curated, discovered, predefined or manual. */
       source: string;
       vendor?: components["schemas"]["ModelVendor"] | null;
     };
@@ -18446,7 +18466,9 @@ export interface components {
        */
       version_id: string;
     };
+    /** @description Select or clear the organization decision default. */
     SetDefaultDecisionModel: {
+      /** @description Prefixed saved model ID; omit or pass null to clear the default. */
       model_id?: string | null;
     };
     /** @description Request body for setting a preference value. */
@@ -20086,6 +20108,7 @@ export interface components {
        * @example gpt-5.4-mini
        */
       model_id?: string | null;
+      /** @description Explicitly reassign the stable profile; preference-only edits preserve it. */
       profile_key?: string | null;
       /**
        * @description Provider that owns this model.
@@ -31038,7 +31061,9 @@ export interface operations {
   list_model_profiles: {
     parameters: {
       query?: {
+        /** @description Return only profiles for this service. */
         service?: components["schemas"]["ServiceKind"] | null;
+        /** @description Prefixed provider account ID used to restrict available profiles. */
         provider_id?: string | null;
       };
       header?: never;

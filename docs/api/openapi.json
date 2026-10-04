@@ -10882,11 +10882,13 @@
         "tags": [
           "models"
         ],
+        "description": "List curated and account-scoped profiles visible to the caller, optionally filtered by service or provider.",
         "operationId": "list_model_profiles",
         "parameters": [
           {
             "name": "service",
             "in": "query",
+            "description": "Return only profiles for this service.",
             "required": false,
             "schema": {
               "oneOf": [
@@ -10902,6 +10904,7 @@
           {
             "name": "provider_id",
             "in": "query",
+            "description": "Prefixed provider account ID used to restrict available profiles.",
             "required": false,
             "schema": {
               "type": [
@@ -10930,6 +10933,7 @@
         "tags": [
           "models"
         ],
+        "description": "Read a stable model profile visible to the caller. Profiles describe behavior independently from provider authentication.",
         "operationId": "get_model_profile",
         "parameters": [
           {
@@ -11057,6 +11061,7 @@
         "tags": [
           "models"
         ],
+        "description": "Get the organization decision default. An unavailable selection remains visible for repair; no selection returns null.",
         "operationId": "get_default_decision_model",
         "responses": {
           "200": {
@@ -11082,6 +11087,7 @@
         "tags": [
           "models"
         ],
+        "description": "Select an enabled, healthy model supporting calibrated noul, choice and score decisions. Omit model_id or set it to null to clear the default.",
         "operationId": "set_default_decision_model",
         "requestBody": {
           "content": {
@@ -25873,12 +25879,14 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Stable curated profile key; omitted values infer a provider-specific binding."
           },
           "service": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ServiceKind"
+                "$ref": "#/components/schemas/ServiceKind",
+                "description": "Selected service; omitted values infer it from the profile or capabilities."
               },
               {
                 "type": "null"
@@ -26856,13 +26864,15 @@
         ],
         "properties": {
           "calibrated": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether returned probabilities are calibrated native decision measurements."
           },
           "max_choice_options": {
             "type": [
               "integer",
               "null"
             ],
+            "description": "Maximum options in one choice question, when known.",
             "minimum": 0
           },
           "max_score_levels": {
@@ -26870,19 +26880,22 @@
               "integer",
               "null"
             ],
+            "description": "Maximum levels in one score question, when known.",
             "minimum": 0
           },
           "primitives": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Native primitive names supported by this profile (noul, choice or score)."
           },
           "request_tokens": {
             "type": [
               "integer",
               "null"
             ],
+            "description": "Maximum token count for the complete request, when known.",
             "minimum": 0
           },
           "state_tokens": {
@@ -26890,6 +26903,7 @@
               "integer",
               "null"
             ],
+            "description": "Maximum token count for the evaluated state, when known.",
             "minimum": 0
           }
         }
@@ -33425,6 +33439,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "Read-only model behavior, independent from the credentials of a serving account.",
               "required": [
                 "key",
                 "service",
@@ -33433,21 +33448,26 @@
               ],
               "properties": {
                 "key": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Stable profile identity, including a vendor or custom-account namespace."
                 },
                 "profile": {
-                  "$ref": "#/components/schemas/ModelProfile"
+                  "$ref": "#/components/schemas/ModelProfile",
+                  "description": "Capabilities, decision semantics, limits and pricing for this model."
                 },
                 "service": {
-                  "$ref": "#/components/schemas/ServiceKind"
+                  "$ref": "#/components/schemas/ServiceKind",
+                  "description": "Model service described by the profile."
                 },
                 "source": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Profile origin: curated, discovered, predefined or manual."
                 },
                 "vendor": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/ModelVendor"
+                      "$ref": "#/components/schemas/ModelVendor",
+                      "description": "Model developer, when known; this may differ from the serving provider."
                     },
                     {
                       "type": "null"
@@ -37349,6 +37369,7 @@
       },
       "ModelProfileResponse": {
         "type": "object",
+        "description": "Read-only model behavior, independent from the credentials of a serving account.",
         "required": [
           "key",
           "service",
@@ -37357,21 +37378,26 @@
         ],
         "properties": {
           "key": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable profile identity, including a vendor or custom-account namespace."
           },
           "profile": {
-            "$ref": "#/components/schemas/ModelProfile"
+            "$ref": "#/components/schemas/ModelProfile",
+            "description": "Capabilities, decision semantics, limits and pricing for this model."
           },
           "service": {
-            "$ref": "#/components/schemas/ServiceKind"
+            "$ref": "#/components/schemas/ServiceKind",
+            "description": "Model service described by the profile."
           },
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Profile origin: curated, discovered, predefined or manual."
           },
           "vendor": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ModelVendor"
+                "$ref": "#/components/schemas/ModelVendor",
+                "description": "Model developer, when known; this may differ from the serving provider."
               },
               {
                 "type": "null"
@@ -43716,12 +43742,14 @@
       },
       "SetDefaultDecisionModel": {
         "type": "object",
+        "description": "Select or clear the organization decision default.",
         "properties": {
           "model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Prefixed saved model ID; omit or pass null to clear the default."
           }
         }
       },
@@ -46983,7 +47011,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Explicitly reassign the stable profile; preference-only edits preserve it."
           },
           "provider_id": {
             "type": [
@@ -46996,7 +47025,8 @@
           "service": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/ServiceKind"
+                "$ref": "#/components/schemas/ServiceKind",
+                "description": "Change the selected service; it must match the assigned profile."
               },
               {
                 "type": "null"
