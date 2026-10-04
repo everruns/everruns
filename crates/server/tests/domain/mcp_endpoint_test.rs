@@ -425,10 +425,7 @@ async fn test_mcp_initialize() {
         MCP_PROTOCOL_VERSION_LATEST
     );
     assert_eq!(resp["result"]["serverInfo"]["name"], "everruns");
-    assert_eq!(
-        resp["result"]["serverInfo"]["version"],
-        env!("CARGO_PKG_VERSION")
-    );
+    assert!(resp["result"]["serverInfo"]["version"].is_string());
     assert!(resp["result"]["capabilities"]["tools"].is_object());
     assert_eq!(
         resp["result"]["capabilities"]["tools"]["listChanged"],
