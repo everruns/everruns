@@ -320,7 +320,7 @@ async fn test_execute_command_lists_seeded_harnesses() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
-            runtime_view: String::new(),
+            runtime_view: false,
             input_message_id: None,
             platform_session_id: None,
 
