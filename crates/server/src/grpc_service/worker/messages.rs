@@ -153,6 +153,9 @@ impl WorkerServiceImpl {
 
         let proto_session = schema_session_to_proto(&session);
 
+        // A phase-executing worker assembles history and the model itself.
+        let omit_messages_and_model = req.omit_messages_and_model.unwrap_or(false);
+
         // Load messages from events using EventService with limit
         let default_limit: i32 = std::env::var("TURN_CONTEXT_MESSAGE_LIMIT")
             .ok()
@@ -162,14 +165,17 @@ impl WorkerServiceImpl {
         let fetch_limit = message_limit.saturating_add(1);
 
         // Fetch one extra to detect truncation
-        let events = self
-            .event_service
-            .list_message_events_limited(session_id, Some(fetch_limit))
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to list messages: {}", e);
-                Status::internal("Failed to list messages")
-            })?;
+        let events = if omit_messages_and_model {
+            Vec::new()
+        } else {
+            self.event_service
+                .list_message_events_limited(session_id, Some(fetch_limit))
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to list messages: {}", e);
+                    Status::internal("Failed to list messages")
+                })?
+        };
 
         let messages_truncated = events.len() > message_limit as usize;
         let events_iter: Box<dyn Iterator<Item = _>> = if messages_truncated {
@@ -205,7 +211,9 @@ impl WorkerServiceImpl {
             .or(agent.as_ref().and_then(|a| a.default_model_id))
             .or(harness.as_ref().and_then(|h| h.default_model_id));
 
-        let model: Option<proto::ResolvedModel> = if let Some(mid) = model_id {
+        let model: Option<proto::ResolvedModel> = if omit_messages_and_model {
+            None
+        } else if let Some(mid) = model_id {
             self.provider_resolver_service
                 .resolve_model(req.org_id, mid.uuid())
                 .await

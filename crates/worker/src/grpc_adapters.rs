@@ -2000,9 +2000,8 @@ pub struct TurnContext {
     pub mcp_tool_definitions: Vec<everruns_contracts::tool_types::ToolDefinition>,
 }
 
-/// Load turn context in one batched call (optimization)
-///
-/// This is more efficient than making separate calls for agent, session, messages.
+/// Load turn context in one batched call, cheaper than separate agent, session,
+/// and message calls.
 pub async fn load_turn_context(
     client: &GrpcClient,
     org_id: i64,
@@ -2021,7 +2020,8 @@ pub async fn load_turn_context_for_execution(
     let request = proto::GetTurnContextRequest {
         session_id: Some(uuid_to_proto(session_id.uuid())),
         org_id,
-        message_limit: None, // use server default
+        message_limit: None, // use server default; execution assembles its own:
+        omit_messages_and_model: input_message_id.map(|_| true),
         input_message_id: input_message_id.map(uuid_to_proto),
     };
 

@@ -321,6 +321,10 @@ message GetTurnContextRequest {
     // Max messages to return (most recent N). 0 = use server default.
     optional int32 message_limit = 3;
     Uuid input_message_id = 4;
+    // Skip loading messages and resolving the model. A worker executing a
+    // phase assembles both itself, so loading them here only added a history
+    // read and a credential decrypt to every phase's setup.
+    optional bool omit_messages_and_model = 5;
 }
 
 message GetTurnContextResponse {
