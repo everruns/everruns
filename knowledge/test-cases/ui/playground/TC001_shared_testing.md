@@ -34,9 +34,9 @@ Verify standard navigation, identity binding, shared inspection, and reuse of se
 3. Send the test message. Verify streaming, final output, rename, and the fixed agent/user facts.
 4. Use Open session and verify the same session identifier and transcript. Use Workspace to inspect the same run. Verify Trace and Pin chat are absent.
 5. Sign in as another organisation member. Find the chat in Playground. Verify it is inspectable, but sending as someone else's user requires admin authority.
-6. Filter the library by agent, virtual user, and title. Archive the chat; verify it moves into Archived and can be restored.
+6. Filter the library by agent and title, and group the page by day, agent, and none. Archive the chat; verify it moves into Archived and can be restored.
 7. Verify Playground chats are absent from personal Chats and its sidebar thread list. Confirm a normal chat still sends successfully.
-8. Use the chat breadcrumb to return to Playground. Open the same chat with the explicit Open chat row action. Follow the agent and virtual-user links from both the list and chat details; verify each opens the correct entity.
+8. Use the chat breadcrumb to return to Playground. Open the same chat by activating its row. Follow the agent and virtual-user chips on the list and the links on the chat details; verify each opens the correct entity.
 9. Verify list, setup, and detail use the standard page masthead, gold create action, and underline tabs in both themes and at a narrow viewport.
 
 ## Expected Result

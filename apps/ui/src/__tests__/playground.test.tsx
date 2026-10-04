@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PlaygroundPage from "@/app/(main)/playground/page";
 import PlaygroundChatPage from "@/app/(main)/playground/[sessionId]/page";
 import { ChatThreadHeader } from "@/components/chat/chat-thread-header";
-import { listSessions } from "@/lib/api/sessions";
+import { getSessionFacets, listSessions } from "@/lib/api/sessions";
 import type { Event, Session } from "@/lib/api/types";
 
 const mockSession: Session = {
@@ -31,7 +31,10 @@ const mockAgent = { id: "agent_support", name: "Support agent", status: "active"
 const mockMutation = { mutate: jest.fn(), isPending: false };
 
 jest.mock("next/navigation", () => ({ usePathname: () => "/playground/session_test" }));
-jest.mock("@/lib/api/sessions", () => ({ listSessions: jest.fn() }));
+jest.mock("@/lib/api/sessions", () => ({
+  listSessions: jest.fn(),
+  getSessionFacets: jest.fn(),
+}));
 jest.mock("@/hooks", () => ({
   useAgents: () => ({ data: [mockAgent] }),
   useHarnesses: () => ({ data: [] }),
@@ -58,9 +61,6 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
     chatEvents: mockChatEvents,
     getMessageText: () => "First user question",
   }),
-}));
-jest.mock("@/components/virtual-user/virtual-user-select", () => ({
-  VirtualUserSelect: () => <span>Virtual user filter</span>,
 }));
 jest.mock("@/components/chat/chat-panel", () => ({ ChatPanel: () => <div>Live chat</div> }));
 jest.mock("@/components/session/session-transcript", () => ({
@@ -90,18 +90,35 @@ beforeEach(() => {
   jest
     .mocked(listSessions)
     .mockResolvedValue({ data: [mockSession], total: 25, offset: 0, limit: 20 });
+  jest.mocked(getSessionFacets).mockResolvedValue({
+    total: 12,
+    by_activity: [],
+    by_source: [],
+    by_agent: [{ value: "agent_support", count: 4 }],
+    active_now: 1,
+    failed_today: 0,
+    p95_duration_ms: 0,
+    tokens_today: 0,
+  });
 });
 
-test("the shared list has explicit chat entry and linked agent/user context without a flag provider", async () => {
+test("the shared list opens from the row and links agent and user context", async () => {
+  mockSession.effective_owner = {
+    id: "principal_human",
+    kind: "user",
+    metadata: { name: "Mykola Chaliy" },
+  };
+  mockSession.event_count = 14;
   renderLibrary();
-  expect(await screen.findByRole("link", { name: "Open chat Support test" })).toHaveAttribute(
+  expect(await screen.findByRole("link", { name: "Support test" })).toHaveAttribute(
     "href",
     "/playground/session_test",
   );
-  expect(screen.getByRole("link", { name: "Support test" })).toHaveAttribute(
-    "href",
-    "/playground/session_test",
-  );
+  expect(screen.queryByRole("link", { name: "Open chat Support test" })).not.toBeInTheDocument();
+  expect(screen.getByText("Hello")).toBeInTheDocument();
+  expect(screen.getByTitle("Started by Mykola Chaliy")).toHaveTextContent("MC");
+  expect(screen.getByTitle("14 events")).toBeInTheDocument();
+  expect(screen.getByText("12")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Support agent" })).toHaveAttribute(
     "href",
     "/agents/agent_support",
@@ -115,7 +132,7 @@ test("the shared list has explicit chat entry and linked agent/user context with
 
 test("archived tabs and pagination preserve server-side Playground filtering", async () => {
   renderLibrary();
-  await screen.findByRole("link", { name: "Open chat Support test" });
+  await screen.findByRole("link", { name: "Support test" });
   fireEvent.click(screen.getByRole("tab", { name: "Archived" }));
   await waitFor(() =>
     expect(listSessions).toHaveBeenLastCalledWith(
@@ -128,6 +145,27 @@ test("archived tabs and pagination preserve server-side Playground filtering", a
       expect.objectContaining({ source: "playground", archivedOnly: true, offset: 20 }),
     ),
   );
+});
+
+test("agent filter and grouping controls the current page without a virtual-user select", async () => {
+  renderLibrary();
+  await screen.findByRole("link", { name: "Support test" });
+  expect(screen.queryByText("Virtual user filter")).not.toBeInTheDocument();
+  expect(screen.getByRole("radio", { name: "Day" })).toHaveAttribute("aria-checked", "true");
+  fireEvent.click(screen.getByRole("button", { name: "Filter" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /Support agent/ }));
+  await waitFor(() =>
+    expect(listSessions).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: "playground", agentId: "agent_support", offset: 0 }),
+    ),
+  );
+  expect(screen.getByText("Agent is")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
+  expect(screen.getByRole("group", { name: "Support agent" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("radio", { name: "None" }));
+  expect(
+    screen.queryByRole("group", { name: /Today|Yesterday|Earlier|Support agent/ }),
+  ).not.toBeInTheDocument();
 });
 
 test("chats keep their agent link when the agent is absent from the active list", async () => {
