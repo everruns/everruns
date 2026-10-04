@@ -18,7 +18,7 @@ impl SessionStorageStore for GrpcAdapter {
         key: &str,
         value: &str,
     ) -> Result<()> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageSetValueRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             key: key.to_string(),
@@ -36,7 +36,7 @@ impl SessionStorageStore for GrpcAdapter {
         session_id: everruns_contracts::typed_id::SessionId,
         key: &str,
     ) -> Result<Option<String>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageGetValueRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             key: key.to_string(),
@@ -53,7 +53,7 @@ impl SessionStorageStore for GrpcAdapter {
         session_id: everruns_contracts::typed_id::SessionId,
         key: &str,
     ) -> Result<bool> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageDeleteValueRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             key: key.to_string(),
@@ -70,7 +70,7 @@ impl SessionStorageStore for GrpcAdapter {
         session_id: everruns_contracts::typed_id::SessionId,
         key: &str,
     ) -> Result<Option<String>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageTakeValueRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             key: key.to_string(),
@@ -86,7 +86,7 @@ impl SessionStorageStore for GrpcAdapter {
         &self,
         session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<Vec<KeyInfo>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageListKeysRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
         };
@@ -112,7 +112,7 @@ impl SessionStorageStore for GrpcAdapter {
         name: &str,
         value: &str,
     ) -> Result<()> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageSetSecretRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             name: name.to_string(),
@@ -130,7 +130,7 @@ impl SessionStorageStore for GrpcAdapter {
         session_id: everruns_contracts::typed_id::SessionId,
         name: &str,
     ) -> Result<Option<String>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageGetSecretRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             name: name.to_string(),
@@ -147,7 +147,7 @@ impl SessionStorageStore for GrpcAdapter {
         session_id: everruns_contracts::typed_id::SessionId,
         name: &str,
     ) -> Result<bool> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageDeleteSecretRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             name: name.to_string(),
@@ -163,7 +163,7 @@ impl SessionStorageStore for GrpcAdapter {
         &self,
         session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<Vec<SecretInfo>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionStorageListSecretsRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
         };

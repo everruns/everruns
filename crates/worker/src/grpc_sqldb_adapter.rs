@@ -159,7 +159,7 @@ impl SessionSqlDbStore for GrpcAdapter {
         db_name: &str,
         sql: &str,
     ) -> SqlDbResult<SqlExecuteResult> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionSqlDbExecuteRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             db_name: db_name.to_string(),
@@ -180,7 +180,7 @@ impl SessionSqlDbStore for GrpcAdapter {
         db_name: &str,
         sql: &str,
     ) -> SqlDbResult<SqlQueryResult> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::SessionSqlDbQueryRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             db_name: db_name.to_string(),

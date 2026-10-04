@@ -44,13 +44,13 @@ use everruns_internal_protocol::{
 // the gRPC wire carries the pre-merged record between server and worker.
 use everruns_platform::{Agent, Harness, HarnessStatus};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tonic::service::interceptor::InterceptedService;
 use tonic::transport::Channel;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcClientAuth;
 mod connection_resolver;
+mod shared_client;
+pub use shared_client::SharedClient;
 mod session_storage;
 
 const COMMAND_API_VERSION_V1: &str = "v1";
@@ -147,7 +147,7 @@ async fn fetch_image_from_url(url: &str, media_type: &str) -> Result<ResolvedIma
 /// gRPC client wrapper for worker operations
 #[derive(Clone)]
 pub struct GrpcClient {
-    pub(crate) inner: Arc<Mutex<WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>>>,
+    pub(crate) inner: SharedClient,
 }
 
 /// Max gRPC message size (16MB)
@@ -175,7 +175,7 @@ impl GrpcClient {
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
 
         Ok(Self {
-            inner: Arc::new(Mutex::new(client)),
+            inner: SharedClient::new(client),
         })
     }
 
@@ -186,7 +186,7 @@ impl GrpcClient {
             .max_decoding_message_size(MAX_GRPC_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_GRPC_MESSAGE_SIZE);
         Self {
-            inner: Arc::new(Mutex::new(client)),
+            inner: SharedClient::new(client),
         }
     }
 
@@ -207,7 +207,7 @@ impl GrpcClient {
             org_id,
         };
 
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         client
             .set_session_status(request)
             .await
@@ -229,7 +229,7 @@ impl GrpcClient {
             org_id,
         };
 
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .set_session_title(request)
             .await
@@ -256,7 +256,7 @@ impl GrpcClient {
             metadata: Some(json_to_proto_struct(&input.metadata)),
         };
 
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .create_image_artifact(request)
             .await
@@ -280,7 +280,7 @@ impl GrpcClient {
             image_id: Some(uuid_to_proto(image_id.uuid())),
         };
 
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .get_image_artifact(request)
             .await
@@ -303,7 +303,7 @@ impl GrpcClient {
             image_id: Some(uuid_to_proto(image_id.uuid())),
         };
 
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .get_image_artifact_info(request)
             .await
@@ -327,7 +327,7 @@ impl GrpcClient {
             provider_id: String::new(),
         };
 
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .get_default_provider_credentials(request)
             .await
@@ -354,7 +354,7 @@ impl GrpcClient {
             provider_type: String::new(),
             provider_id: provider_id.to_string(),
         };
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .get_default_provider_credentials(request)
             .await
@@ -396,7 +396,7 @@ impl GrpcClient {
             session_id: session_id.map(uuid_to_proto),
         };
 
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .get_mcp_server_by_prefix(request)
             .await
@@ -424,8 +424,7 @@ impl GrpcClient {
         };
         let response = self
             .inner
-            .lock()
-            .await
+            .client()
             .get_mcp_server_by_prefix(request)
             .await
             .map_err(grpc_status_to_error)?;
@@ -443,7 +442,7 @@ impl GrpcClient {
         limit: u32,
         stale_after_seconds: u32,
     ) -> Result<Vec<LeasedResource>> {
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .claim_due_leased_resources(proto::ClaimDueLeasedResourcesRequest {
                 limit,
@@ -466,7 +465,7 @@ impl GrpcClient {
         resource_id: LeasedResourceId,
         expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<bool> {
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .mark_leased_resource_released(proto::MarkLeasedResourceReleasedRequest {
                 resource_id: Some(uuid_to_proto(resource_id.uuid())),
@@ -490,7 +489,7 @@ impl GrpcClient {
         retry_after_seconds: u32,
         error: &str,
     ) -> Result<bool> {
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .mark_leased_resource_cleanup_failed(proto::MarkLeasedResourceCleanupFailedRequest {
                 resource_id: Some(uuid_to_proto(resource_id.uuid())),
@@ -515,7 +514,7 @@ impl GrpcClient {
         stale_after_seconds: i64,
         limit: i64,
     ) -> Result<Vec<(everruns_contracts::typed_id::SessionId, String)>> {
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .list_orphaned_session_tasks(proto::ListOrphanedSessionTasksRequest {
                 stale_after_seconds,
@@ -548,7 +547,7 @@ impl GrpcClient {
         ttl_seconds: i64,
         limit: i64,
     ) -> Result<usize> {
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .prune_terminal_session_tasks(proto::PruneTerminalSessionTasksRequest {
                 ttl_seconds,
@@ -565,7 +564,7 @@ impl GrpcClient {
         app_id: &str,
         channel_id: &str,
     ) -> Result<serde_json::Value> {
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .invoke_scheduled_app_channel(proto::InvokeScheduledAppChannelRequest {
                 org_id,
@@ -588,7 +587,7 @@ impl GrpcClient {
         agent_id: &str,
         trigger_id: &str,
     ) -> Result<serde_json::Value> {
-        let mut client = self.inner.lock().await;
+        let mut client = self.inner.client();
         let response = client
             .invoke_agent_trigger(proto::InvokeAgentTriggerRequest {
                 org_id,
@@ -673,7 +672,7 @@ impl GrpcAdapter {
         params: serde_json::Value,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
         let org_id = self.require_org(surface)?;
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
                 input_message_id: None,
@@ -753,7 +752,7 @@ impl GrpcOrgAdapter {
                 "Platform command requires a management-authorized invocation",
             ));
         }
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
                 name: name.to_string(),
@@ -795,7 +794,7 @@ impl GrpcOrgAdapter {
         let session_id = self.platform_session_id.ok_or_else(|| {
             AgentLoopError::store("Platform command surface requires a platform session context")
         })?;
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .invoke_platform_command_surface(proto::InvokePlatformCommandSurfaceRequest {
                 input_message_id: self.input_message_id.map(uuid_to_proto),
@@ -1046,7 +1045,7 @@ impl GrpcAdapter {
         session_id: Uuid,
         input: InputMessage,
     ) -> Result<RuntimeMessage> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         // Convert content to prost ListValue
         let content_json = serde_json::to_value(&input.content)
@@ -1095,7 +1094,7 @@ impl MessageRetriever for GrpcAdapter {
         session_id: SessionId,
         message_id: MessageId,
     ) -> Result<Option<RuntimeMessage>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::GetMessageRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -1205,7 +1204,7 @@ impl GrpcAdapter {
         message_limit: Option<i32>,
         after_sequence: Option<i64>,
     ) -> Result<(Vec<RuntimeMessage>, usize, Option<i64>)> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::LoadMessagesRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -1242,7 +1241,7 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
         provider_type: &str,
         model: &str,
     ) -> Result<Option<everruns_core::CompactionCheckpoint>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .get_compaction_checkpoint(proto::GetCompactionCheckpointRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -1271,7 +1270,7 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
     }
 
     async fn install(&self, checkpoint: everruns_core::CompactionCheckpoint) -> Result<bool> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let payload_json = serde_json::to_vec(&checkpoint.payload)
             .map_err(|error| AgentLoopError::store(error.to_string()))?;
         Ok(client
@@ -1413,7 +1412,7 @@ impl GrpcOrgAdapter {
     /// Fetch the stored agent record off the wire (platform-side transport;
     /// projected to `AgentDefinition` before it reaches host execution).
     pub(crate) async fn fetch_agent_record(&self, agent_id: AgentId) -> Result<Option<Agent>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::GetAgentRequest {
             agent_id: Some(uuid_to_proto(agent_id.uuid())),
@@ -1559,7 +1558,7 @@ impl GrpcOrgAdapter {
         &self,
         harness_id: everruns_contracts::typed_id::HarnessId,
     ) -> Result<Option<Harness>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::GetHarnessRequest {
             harness_id: Some(uuid_to_proto(harness_id.uuid())),
@@ -1657,7 +1656,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
 #[async_trait]
 impl SessionStore for GrpcOrgAdapter {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::GetSessionRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -1765,7 +1764,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSe
 #[async_trait]
 impl ProviderStore for GrpcOrgAdapter {
     async fn get_model_spec(&self, model_id: ModelId) -> Result<Option<ModelSpec>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::GetResolvedModelRequest {
             model_id: Some(uuid_to_proto(model_id.uuid())),
@@ -1787,7 +1786,7 @@ impl ProviderStore for GrpcOrgAdapter {
     }
 
     async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::GetDefaultModelRequest {
             org_id: self.org_id,
@@ -1892,7 +1891,7 @@ impl EventEmitter for GrpcAdapter {
         }
 
         // Blocking gRPC round-trip (needs server-assigned id + sequence)
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let proto_event_request = core_event_request_to_proto(&request)?;
 
@@ -1942,13 +1941,13 @@ impl GrpcAdapter {
             sequence: None,
         };
 
-        // Fire gRPC call in background with backpressure: if the client mutex
-        // is already held (previous emit still in flight), drop this event
-        // rather than accumulating unbounded background tasks.
+        // Fire gRPC call in background with backpressure: while the previous
+        // ephemeral emit is still in flight, drop this event rather than
+        // accumulating unbounded background tasks.
         let client = self.client.clone();
         tokio::spawn(async move {
-            match client.inner.try_lock() {
-                Ok(mut inner) => {
+            match client.inner.try_ephemeral() {
+                Some((mut inner, _permit)) => {
                     if let Err(e) = inner.emit_event(grpc_request).await {
                         tracing::debug!(
                             error = %e,
@@ -1958,7 +1957,7 @@ impl GrpcAdapter {
                         );
                     }
                 }
-                Err(_) => {
+                None => {
                     tracing::debug!(
                         %session_id,
                         event_type,
@@ -2015,7 +2014,7 @@ pub async fn load_turn_context_for_execution(
     session_id: SessionId,
     input_message_id: Option<Uuid>,
 ) -> Result<TurnContext> {
-    let mut grpc_client = client.inner.lock().await;
+    let mut grpc_client = client.inner.client();
 
     let request = proto::GetTurnContextRequest {
         session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2119,7 +2118,7 @@ impl GrpcOrgAdapter {
             return Ok(HashMap::new());
         }
 
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::ResolveImagesRequest {
             image_ids: image_ids.iter().map(|id| uuid_to_proto(*id)).collect(),
@@ -2159,7 +2158,7 @@ impl GrpcOrgAdapter {
             return Ok(HashMap::new());
         }
 
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::ResolveFilesRequest {
             file_ids: file_ids.iter().map(|id| uuid_to_proto(*id)).collect(),
@@ -2200,7 +2199,7 @@ impl ImageResolver for GrpcOrgAdapter {
     /// Returns the base64-encoded image data and media type, or None if not found.
     /// When the server returns a presigned URL, the image is fetched via HTTP.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
 
         let request = proto::ResolveImageRequest {
             image_id: Some(uuid_to_proto(image_id)),
@@ -2259,7 +2258,7 @@ impl everruns_platform::SessionMutator for GrpcOrgAdapter {
 #[async_trait]
 impl LeasedResourceStore for GrpcAdapter {
     async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .upsert_leased_resource(proto::UpsertLeasedResourceRequest {
                 session_id: Some(uuid_to_proto(input.session_id.uuid())),
@@ -2288,7 +2287,7 @@ impl LeasedResourceStore for GrpcAdapter {
         resource_type: &str,
         external_id: &str,
     ) -> Result<Option<LeasedResource>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .release_leased_resource(proto::ReleaseLeasedResourceRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2307,7 +2306,7 @@ impl LeasedResourceStore for GrpcAdapter {
     }
 
     async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .list_session_leased_resources(proto::ListSessionLeasedResourcesRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2354,7 +2353,7 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
         &self,
         entry: everruns_core::RegisterSessionResource,
     ) -> Result<everruns_core::SessionResourceEntry> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .register_session_resource(proto::RegisterSessionResourceRequest {
                 session_id: Some(uuid_to_proto(entry.session_id.uuid())),
@@ -2380,7 +2379,7 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
         resource_id: &str,
         status: everruns_core::SessionResourceStatus,
     ) -> Result<Option<everruns_core::SessionResourceEntry>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .update_session_resource_status(proto::UpdateSessionResourceStatusRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2412,7 +2411,7 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
         session_id: SessionId,
         filter: Option<&everruns_core::SessionResourceFilter>,
     ) -> Result<Vec<everruns_core::SessionResourceEntry>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .list_session_resources(proto::ListSessionResourcesRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2431,7 +2430,7 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
     }
 
     async fn deregister(&self, session_id: SessionId, resource_id: &str) -> Result<bool> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .deregister_session_resource(proto::DeregisterSessionResourceRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -2558,7 +2557,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
     ) -> Result<everruns_core::session_schedule::SessionSchedule> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::CreateSessionScheduleRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             description,
@@ -2589,7 +2588,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
         everruns_core::session_schedule::SessionSchedule,
         everruns_core::session_schedule::ScheduleLimitError,
     > {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::CreateSessionScheduleRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             description,
@@ -2629,7 +2628,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
         session_id: everruns_contracts::typed_id::SessionId,
         schedule_id: everruns_contracts::typed_id::ScheduleId,
     ) -> Result<everruns_core::session_schedule::SessionSchedule> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::CancelSessionScheduleRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             schedule_id: Some(uuid_to_proto(schedule_id.uuid())),
@@ -2650,7 +2649,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
         &self,
         session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<Vec<everruns_core::session_schedule::SessionSchedule>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::ListSessionSchedulesRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             org_id: self.org_id,
@@ -2671,7 +2670,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
         &self,
         session_id: everruns_contracts::typed_id::SessionId,
     ) -> Result<u32> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::CountActiveSessionSchedulesRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             org_id: self.org_id,
@@ -2684,7 +2683,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
     }
 
     async fn count_active_org_schedules(&self) -> Result<u32> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::CountActiveOrgSchedulesRequest {
             org_id: self.org_id,
         };
@@ -2976,7 +2975,7 @@ impl GrpcOutboundToolRateLimiter {
 #[async_trait]
 impl everruns_core::tool_execution::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
     async fn check_org(&self, org_id: &everruns_contracts::typed_id::OrgId) -> bool {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::CheckOutboundToolRateLimitRequest {
             org_key: org_id.to_string(),
         };
@@ -3005,7 +3004,7 @@ impl everruns_core::tool_execution::BudgetChecker for GrpcBudgetChecker {
         &self,
         session_id: &str,
     ) -> everruns_contracts::error::Result<everruns_core::budget::BudgetToolResponse> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let request = proto::CheckBudgetsForSessionRequest {
             org_id: self.org_id,
             session_id: session_id.to_string(),
@@ -3042,7 +3041,7 @@ impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
         session_id: SessionId,
         request: everruns_core::payment::MachinePaymentRequest,
     ) -> everruns_contracts::error::Result<everruns_core::payment::MachinePaymentResponse> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let proto_request = proto::ExecuteMachinePaymentRequest {
             org_id: self.org_id,
             session_id: session_id.to_string(),
@@ -3126,7 +3125,7 @@ impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessio
                 "session-creation authority is scoped to the current session",
             ));
         }
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .authorize_session_creation(proto::AuthorizeSessionCreationRequest {
                 input_message_id: self.input_message_id.map(uuid_to_proto),
@@ -3168,7 +3167,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         input: everruns_core::CreateSessionTask,
     ) -> Result<everruns_core::SessionTask> {
         let create = everruns_internal_protocol::create_session_task_to_proto(&input);
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .create_session_task(proto::CreateSessionTaskRequest {
                 create: Some(create),
@@ -3189,7 +3188,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         update: everruns_core::SessionTaskUpdate,
     ) -> Result<Option<everruns_core::SessionTask>> {
         let update = everruns_internal_protocol::session_task_update_to_proto(&update);
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .update_session_task(proto::UpdateSessionTaskRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -3206,7 +3205,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         session_id: SessionId,
         task_id: &str,
     ) -> Result<Option<everruns_core::SessionTask>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .get_session_task(proto::GetSessionTaskRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -3222,7 +3221,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         session_id: SessionId,
         filter: Option<&everruns_core::SessionTaskFilter>,
     ) -> Result<Vec<everruns_core::SessionTask>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .list_session_tasks(proto::ListSessionTasksRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -3244,7 +3243,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         session_id: SessionId,
         task_id: &str,
     ) -> Result<Option<everruns_core::SessionTask>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .request_cancel_session_task(proto::RequestCancelSessionTaskRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -3262,7 +3261,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         message: everruns_core::NewTaskMessage,
     ) -> Result<everruns_core::TaskMessage> {
         let message = everruns_internal_protocol::new_task_message_to_proto(&message);
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .record_session_task_message(proto::RecordSessionTaskMessageRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
@@ -3285,7 +3284,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         limit: Option<u32>,
         _after_id: Option<&str>,
     ) -> Result<Vec<everruns_core::TaskMessage>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .list_session_task_messages(proto::ListSessionTaskMessagesRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
