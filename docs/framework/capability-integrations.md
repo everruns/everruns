@@ -19,7 +19,7 @@ execution or network surface.
 | `filesystem` | Yes | `everruns-integrations-filesystem` | Host-provided, session-scoped filesystem only |
 | `bashkit` | No | `everruns-integrations-bashkit` | Sandboxed shell; HTTP remains capability-config and egress-policy gated |
 | `web-fetch` | No | `everruns-integrations-web-fetch` | FetchKit requests through the host egress contract |
-| `lua` | No | `everruns-integrations-lua` | Vendored Lua 5.4 sandbox; also requires `FEATURE_LUA=true` at runtime |
+| `lua` | No | `everruns-integrations-lua` | Vendored Lua 5.4 sandbox; also requires `FEATURE_LUA=prod` at runtime |
 | `mcp` | No | `everruns-mcp` | Remote HTTP MCP through the host egress contract |
 | `mcp-stdio` | No | `everruns-mcp` | Adds local-process MCP servers and implies `mcp` |
 | `host-shell` | No | `everruns-host` | `bash` tool over real host processes, bounded by a kernel policy; implies `host-compute` |

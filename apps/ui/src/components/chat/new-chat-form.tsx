@@ -39,11 +39,13 @@ const HARNESS_VALUE_PREFIX = "harness:";
 
 export function NewChatForm({
   onStartingChange,
+  initialAgentId,
   surface = "chat",
   endUserId,
   children,
 }: {
   surface?: "chat" | "playground";
+  initialAgentId?: string;
   endUserId?: string;
   children?: ReactNode;
   /**
@@ -55,14 +57,17 @@ export function NewChatForm({
   onStartingChange?: (starting: boolean) => void;
 } = {}) {
   const router = useRouter();
-  const { data: agents = [], isLoading: agentsLoading } = useAgents();
+  const { data: allAgents = [], isLoading: agentsLoading } = useAgents();
+  const agents = allAgents.filter((a) => !(a.name === "platform-chat"));
   const { data: allHarnesses = [], isLoading: harnessesLoading } = useHarnesses();
   const harnesses =
     surface === "playground"
       ? allHarnesses.filter((h) => !h.is_built_in || !h.name.startsWith("platform-chat"))
       : allHarnesses;
   const createSession = useCreateSession();
-  const [selection, setSelection] = useState("");
+  const [selection, setSelection] = useState(
+    initialAgentId ? `${AGENT_VALUE_PREFIX}${initialAgentId}` : "",
+  );
   const [environment, setEnvironment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const optionsLoading = agentsLoading || harnessesLoading;
@@ -187,6 +192,7 @@ export function NewChatForm({
         ) : null}
         {children}
         <Button
+          variant={surface === "playground" ? "accent" : "default"}
           onClick={start}
           disabled={
             !selection || createSession.isPending || (surface === "playground" && !endUserId)
@@ -197,7 +203,7 @@ export function NewChatForm({
           ) : (
             <MessageCircle className="size-4" />
           )}
-          {surface === "playground" ? "Start conversation" : "Start chat"}
+          {surface === "playground" ? "Start Playground chat" : "Start chat"}
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}

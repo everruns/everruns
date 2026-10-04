@@ -101,13 +101,13 @@ impl SessionService {
         agent_version_policy: AgentVersionPolicy,
         agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
         // Internal id of the endpoint this ingress resolved, recorded as
-        // `sessions.endpoint_id` so provenance names the door, not the bundle
+        // `sessions.channel_id` so provenance names the door, not the bundle
         // (EVE-1004). `None` only where the caller genuinely has no endpoint
         // pointer — migrated App schedules, whose trigger row kept
         // `execution_app_id` but never an endpoint id. Leaving those NULL is
         // the same rule the 137 backfill follows: derive or leave unknown,
         // never guess an App's endpoint for it.
-        endpoint_internal_id: Option<Uuid>,
+        channel_internal_id: Option<Uuid>,
         // Internal id of the trigger whose ingress resolved, recorded as
         // `sessions.trigger_id` (EVE-1138). Set for the migrated App webhooks
         // that now run as triggers; `None` for every other App channel.
@@ -124,7 +124,7 @@ impl SessionService {
             agent_public_id,
             Some((agent_version_policy, agent_version_id)),
             app_internal_id,
-            endpoint_internal_id,
+            channel_internal_id,
             trigger_internal_id,
             Some((owner_principal_id, resolved_owner_user_id)),
             source,
@@ -190,7 +190,7 @@ impl SessionService {
         // app-channel path knows its endpoint, so this is passed rather than
         // inferred from tags — the tag spelling differs per transport and a
         // multi-endpoint App makes `app_id` alone ambiguous.
-        endpoint_id: Option<Uuid>,
+        channel_id: Option<Uuid>,
         // Agent trigger whose ingress is creating this session (EVE-1138).
         // Passed rather than inferred from the `app_channel:`/`agent_trigger:`
         // tags: it is the budget subject for trigger ingress, and no budget
@@ -277,33 +277,17 @@ impl SessionService {
             .as_ref()
             .map(|agent| serde_json::from_value(agent.mcp_servers.clone()).unwrap_or_default());
 
-        let resolved_agent_version = if FeatureFlags::current().agent_versions {
-            if let Some(agent_id) = agent_id {
-                let (version_policy, pinned_version_id) =
-                    agent_version_selection.unwrap_or_default();
-                match version_policy {
-                    AgentVersionPolicy::Pinned => {
-                        if let Some(version_id) = pinned_version_id {
-                            self.db.get_agent_version(org_id, version_id).await?
-                        } else {
-                            None
-                        }
-                    }
-                    AgentVersionPolicy::Latest => {
-                        self.db.get_latest_agent_version(org_id, agent_id).await?
-                    }
-                    AgentVersionPolicy::Default => {
-                        if let Some(version_id) = agent.as_ref().and_then(|a| a.default_version_id)
-                        {
-                            self.db.get_agent_version(org_id, version_id).await?
-                        } else {
-                            None
-                        }
-                    }
-                }
-            } else {
-                None
-            }
+        let resolved_agent_version = if let Some(agent) = &agent {
+            let (policy, version_id) = agent_version_selection.unwrap_or_default();
+            crate::domains::agents::version_policy::resolve_exposure_version(
+                &self.db,
+                org_id,
+                agent,
+                policy,
+                version_id,
+                FeatureFlags::current().agent_versions,
+            )
+            .await?
         } else {
             None
         };
@@ -489,7 +473,7 @@ impl SessionService {
             org_id,
             source,
             app_id,
-            endpoint_id,
+            channel_id,
             trigger_id,
             harness_id: Some(harness_id),
             agent_id,
@@ -691,7 +675,7 @@ impl SessionService {
             org_id,
             source,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             trigger_id: None,
             harness_id: Some(harness_id),
             agent_id: None,

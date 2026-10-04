@@ -14,26 +14,27 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
     pub encryption: Option<Arc<EncryptionService>>,
-    pub verifier: super::endpoint_auth::EndpointAuthVerifier,
+    pub verifier: super::channel_auth::ChannelAuthVerifier,
 }
 impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/e/{endpoint_id}/runtime-auth", post(exchange))
+        .route("/v1/channels/{channel_id}/runtime-auth", post(exchange))
+        .route("/v1/e/{channel_id}/runtime-auth", post(exchange))
         .with_state(state)
 }
-#[utoipa::path(summary = "Exchange verified endpoint authentication for a bounded runtime credential.", post, path = "/v1/e/{endpoint_id}/runtime-auth", params(("endpoint_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
+#[utoipa::path(summary = "Exchange verified channel authentication for a bounded runtime credential.", post, path = "/v1/channels/{channel_id}/runtime-auth", params(("channel_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn exchange(
     State(state): State<AppState>,
     Path(endpoint): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let (context, channel) =
-        super::endpoint_ingress::resolve_endpoint(&state.db, state.encryption.as_ref(), &endpoint)
+        super::channel_ingress::resolve_channel(&state.db, state.encryption.as_ref(), &endpoint)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
             .ok_or(StatusCode::NOT_FOUND)?;
-    if super::endpoint_ingress::endpoint_liveness(&context, &channel).is_err() {
+    if super::channel_ingress::channel_liveness(&context, &channel).is_err() {
         return Err(StatusCode::NOT_FOUND);
     }
     let public_chat_auth = channel.public_chat_config().and_then(|c| c.auth);
@@ -47,7 +48,7 @@ async fn exchange(
         .verify_principal(
             auth,
             &headers,
-            super::endpoint_auth::LegacyEndpointAuth {
+            super::channel_auth::LegacyChannelAuth {
                 shared_secret: None,
                 api_key: None,
             },

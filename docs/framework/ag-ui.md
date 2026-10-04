@@ -292,6 +292,6 @@ callers you do not trust: these messages carry the authority of the system
 prompt.
 
 A [serve](/framework/serve/#ag-ui-and-copilotkit) app gets this route built
-in with its `ag-ui` feature, at `/v1/e/{agent}/ag-ui`. For a hosted agent with
+in with its `ag-ui` feature, at `/v1/channels/{agent}/ag-ui`. For a hosted agent with
 no server code, Everruns serves the same protocol at
-`/v1/e/{endpoint_id}/ag-ui`.
+`/v1/channels/{channel_id}/ag-ui`.

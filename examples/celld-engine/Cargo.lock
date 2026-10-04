@@ -278,7 +278,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "everruns-contracts"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -305,7 +305,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -335,7 +335,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "chrono",

@@ -1130,15 +1130,10 @@ async fn resolve_org_by_id(
     let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
         org_row.org_id,
-        &state.auth.system_feature_flags,
+        &state.auth.feature_flag_policy,
     )
     .await
-    .unwrap_or_else(|_| {
-        everruns_platform::FeatureFlags::for_org(
-            &state.auth.system_feature_flags,
-            &std::collections::HashMap::new(),
-        )
-    });
+    .unwrap_or_else(|_| everruns_platform::FeatureFlags::default());
 
     Ok(ResolvedOrg {
         org_id: org_row.org_id,

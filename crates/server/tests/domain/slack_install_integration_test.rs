@@ -55,12 +55,12 @@ impl SlackAppProvisioner for Provisioner {
 }
 
 #[tokio::test]
-async fn draft_slack_endpoint_completes_oauth_without_accepting_webhooks() {
+async fn draft_slack_channel_completes_oauth_without_accepting_webhooks() {
     exercise_install(test_harness::TestServer::in_memory().await).await;
 }
 
 #[tokio::test]
-async fn draft_slack_endpoint_persists_oauth_with_postgres() {
+async fn draft_slack_channel_persists_oauth_with_postgres() {
     exercise_install(test_harness::TestServer::new().await).await;
 }
 
@@ -75,7 +75,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         .json();
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{}/endpoints", agent["id"].as_str().unwrap()),
+            &format!("/v1/agents/{}/channels", agent["id"].as_str().unwrap()),
             json!({"channel_type":"slack", "channel_config":{}}),
         )
         .await
@@ -140,7 +140,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/v1/e/{id}/slack/install"))
+                .uri(format!("/v1/channels/{id}/slack/install"))
                 .header("content-type", "application/json")
                 .body(Body::from(r#"{"team_id":"T1"}"#))
                 .unwrap(),
@@ -158,7 +158,7 @@ async fn exercise_install(server: test_harness::TestServer) {
     let callback = |nonce: &str| {
         Request::builder()
             .uri(format!(
-                "/v1/e/{id}/slack/oauth/callback?code=code&state={nonce}"
+                "/v1/channels/{id}/slack/oauth/callback?code=code&state={nonce}"
             ))
             .body(Body::empty())
             .unwrap()
@@ -169,7 +169,7 @@ async fn exercise_install(server: test_harness::TestServer) {
         .await
         .unwrap();
     let editor_url = format!(
-        "https://example.com/agents/{}/endpoints/{id}",
+        "https://example.com/agents/{}/channels/{id}",
         agent["id"].as_str().unwrap()
     );
     assert_eq!(
@@ -185,7 +185,7 @@ async fn exercise_install(server: test_harness::TestServer) {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri(format!("/v1/e/{id}/slack/oauth/callback?{query}"))
+                    .uri(format!("/v1/channels/{id}/slack/oauth/callback?{query}"))
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -198,10 +198,10 @@ async fn exercise_install(server: test_harness::TestServer) {
         );
     }
     for uri in [
-        format!("/v1/e/{id}/slack/oauth/callback?error=access_denied&state=wrong"),
-        format!("/v1/e/{id}/slack/oauth/callback?code=code"),
+        format!("/v1/channels/{id}/slack/oauth/callback?error=access_denied&state=wrong"),
+        format!("/v1/channels/{id}/slack/oauth/callback?code=code"),
         format!(
-            "/v1/e/missing/slack/oauth/callback?code=code&state={}",
+            "/v1/channels/missing/slack/oauth/callback?code=code&state={}",
             params["state"]
         ),
     ] {
@@ -232,7 +232,7 @@ async fn exercise_install(server: test_harness::TestServer) {
     );
 
     let (_, stored) =
-        api::endpoint_ingress::resolve_endpoint(&server.db, server.encryption.as_ref(), id)
+        api::channel_ingress::resolve_channel(&server.db, server.encryption.as_ref(), id)
             .await
             .unwrap()
             .unwrap();
@@ -241,10 +241,10 @@ async fn exercise_install(server: test_harness::TestServer) {
     assert_eq!(config.bot_token, "xoxb-installed");
     assert_eq!(config.team_id.as_deref(), Some("T1"));
     assert!(config.provisioned_app.unwrap().install_state.is_none());
-    assert_eq!(stored.status, everruns_platform::EndpointStatus::Draft);
+    assert_eq!(stored.status, everruns_platform::ChannelStatus::Draft);
     server
         .post(
-            &format!("/v1/e/{id}/slack/events"),
+            &format!("/v1/channels/{id}/slack/events"),
             json!({"type":"url_verification","challenge":"test"}),
         )
         .await

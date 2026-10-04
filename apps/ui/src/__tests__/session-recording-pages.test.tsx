@@ -1,3 +1,4 @@
+jest.mock("@/providers/feature-flags-provider", () => ({ useFeatureFlag: () => true }));
 import { render, screen } from "@testing-library/react";
 import type { Event } from "@/lib/api/types";
 import { formatMessage } from "@/lib/i18n";
@@ -21,6 +22,7 @@ jest.mock("@/providers/locale-provider", () => ({
 }));
 
 const mockSessionContext = {
+  agent: { name: "platform-chat" },
   sessionId: "session_123",
   session: {
     id: "session_123",

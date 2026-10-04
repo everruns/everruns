@@ -1,6 +1,6 @@
-//! The A2A channel: `POST /v1/e/{agent}/a2a` serves an agent to other agents
+//! The A2A channel: `POST /v1/channels/{agent}/a2a` serves an agent to other agents
 //! over A2A 1.0 JSON-RPC, with its Agent Card at
-//! `GET /v1/e/{agent}/a2a/.well-known/agent-card.json`. Requires the `a2a`
+//! `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json`. Requires the `a2a`
 //! feature.
 //!
 //! Decisions:
@@ -14,7 +14,7 @@
 //!   `A2A-Version: 1.0` header (absent means 0.3, which is refused). The
 //!   everruns server also speaks 0.3; serve does not.
 //! - The path has the shape of the everruns server's endpoint route
-//!   (`/v1/e/{id}/a2a`, card under it), so a caller moves between serve and
+//!   (`/v1/channels/{id}/a2a`, card under it), so a caller moves between serve and
 //!   Everruns by base URL and id alone. Here the id is the agent's name:
 //!   every top-level agent is an endpoint, as with AG-UI.
 //! - One session per (agent, A2A `contextId`), kept in the thread map
@@ -63,7 +63,7 @@ use crate::host::{ApiError, Host, NewSession};
 /// The route of `agent`'s A2A endpoint. Its card is under it, at
 /// `/.well-known/agent-card.json`.
 pub(crate) fn route(agent: &str) -> String {
-    format!("/v1/e/{agent}/a2a")
+    format!("/v1/channels/{agent}/a2a")
 }
 
 /// The thread-map channel key of `agent`'s A2A contexts.
@@ -95,14 +95,26 @@ pub(crate) fn routes(host: &Arc<Host>, mut router: Router<Arc<Host>>) -> Router<
         };
         let endpoint = jsonrpc_router(Arc::new(handler))
             .route(WELL_KNOWN_AGENT_CARD_PATH, get(agent_card).with_state(card));
-        router = router.nest_service(&route(agent), endpoint);
+        router = router
+            .nest_service(&route(agent), endpoint.clone())
+            .nest_service(
+                &route(agent).replacen("/v1/channels/", "/v1/e/", 1),
+                endpoint,
+            );
     }
     // Static agent paths win over these; a subagent or an unknown name lands
     // here.
-    router.route("/v1/e/{name}/a2a", post(unknown)).route(
-        &format!("/v1/e/{{name}}/a2a{WELL_KNOWN_AGENT_CARD_PATH}"),
-        get(unknown),
-    )
+    router
+        .route("/v1/channels/{name}/a2a", post(unknown))
+        .route("/v1/e/{name}/a2a", post(unknown))
+        .route(
+            &format!("/v1/e/{{name}}/a2a{WELL_KNOWN_AGENT_CARD_PATH}"),
+            get(unknown),
+        )
+        .route(
+            &format!("/v1/channels/{{name}}/a2a{WELL_KNOWN_AGENT_CARD_PATH}"),
+            get(unknown),
+        )
 }
 
 async fn unknown(Path(name): Path<String>) -> Response {
@@ -126,7 +138,7 @@ struct CardSource {
     agent: &'static str,
 }
 
-/// `GET /v1/e/{agent}/a2a/.well-known/agent-card.json`.
+/// `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json`.
 async fn agent_card(State(source): State<CardSource>, headers: HeaderMap) -> Response {
     let Some(host) = source.host.upgrade() else {
         return crate::server::Failure::from(anyhow::anyhow!("host is shutting down"))

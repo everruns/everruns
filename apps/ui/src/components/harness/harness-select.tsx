@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
   Select,
   SelectContent,
@@ -35,7 +35,8 @@ interface HarnessSelectProps {
 
 /**
  * Harness select dropdown that displays harness names but uses IDs as values.
- * Handles the ID-to-name mapping automatically.
+ * Each option, and the closed control, includes the harness purpose so the
+ * choice is understandable without opening the harness itself.
  */
 export function HarnessSelect({
   id,
@@ -49,6 +50,7 @@ export function HarnessSelect({
   excludeIds = [],
 }: HarnessSelectProps) {
   const noneValue = "__none__";
+  const purposeId = `${useId()}-purpose`;
   const { data: harnesses = [] } = useHarnesses();
   const filteredHarnesses = useMemo(
     () => harnesses.filter((harness) => !excludeIds.includes(harness.id)),
@@ -62,29 +64,56 @@ export function HarnessSelect({
   // Resolve ID → name. When harnesses haven't loaded yet (org switch race),
   // show "Loading…" instead of the raw ID (EVE-142).
   // When no value is set and includeNoneOption is true, show the noneLabel.
+  const selected = value ? harnessMap.get(value) : undefined;
   const displayValue = value
-    ? getDisplayName(harnessMap.get(value)) || (filteredHarnesses.length === 0 ? "Loading…" : value)
+    ? getDisplayName(selected) || (filteredHarnesses.length === 0 ? "Loading…" : value)
     : includeNoneOption
       ? noneLabel
       : undefined;
+  const purpose = selected?.description?.trim() || "";
 
   return (
-    <Select
-      value={value || (includeNoneOption ? noneValue : value)}
-      onValueChange={(nextValue) => onValueChange(nextValue === noneValue ? "" : nextValue)}
-      disabled={disabled}
-    >
-      <SelectTrigger id={id} className={className}>
-        <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
-        {filteredHarnesses.map((harness) => (
-          <SelectItem key={harness.id} value={harness.id}>
-            {getDisplayName(harness)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="flex w-full min-w-0 flex-col gap-1.5">
+      <Select
+        value={value || (includeNoneOption ? noneValue : value)}
+        onValueChange={(nextValue) => onValueChange(nextValue === noneValue ? "" : nextValue)}
+        disabled={disabled}
+      >
+        <SelectTrigger
+          id={id}
+          className={className}
+          aria-describedby={purpose ? purposeId : undefined}
+        >
+          <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
+        </SelectTrigger>
+        <SelectContent className="w-72">
+          {includeNoneOption && <SelectItem value={noneValue}>{noneLabel}</SelectItem>}
+          {filteredHarnesses.map((harness) => {
+            const description = harness.description?.trim();
+            return (
+              <SelectItem
+                key={harness.id}
+                value={harness.id}
+                className="items-start py-1.5 [&>div]:min-w-0 [&>div]:flex-1"
+              >
+                <span className="flex w-full min-w-0 flex-col items-start gap-0.5 whitespace-normal">
+                  <span>{getDisplayName(harness)}</span>
+                  {description ? (
+                    <span className="line-clamp-2 text-left text-[11px] leading-snug font-normal text-muted-foreground">
+                      {description}
+                    </span>
+                  ) : null}
+                </span>
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+      {purpose ? (
+        <p id={purposeId} className="line-clamp-3 text-xs leading-snug text-muted-foreground">
+          {purpose}
+        </p>
+      ) : null}
+    </div>
   );
 }

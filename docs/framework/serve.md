@@ -172,14 +172,14 @@ With the `ag-ui` feature, every top-level agent also serves
 cargo add everruns-serve --features ag-ui
 ```
 
-The route is `POST /v1/e/{agent}/ag-ui`, the same shape as an Everruns
+The route is `POST /v1/channels/{agent}/ag-ui`, the same shape as an Everruns
 endpoint's AG-UI route, so a front end moves between a local serve app and
 Everruns by base URL and id alone:
 
 ```ts
 import { HttpAgent } from "@ag-ui/client";
 
-const agent = new HttpAgent({ url: "http://localhost:3000/v1/e/analyst/ag-ui" });
+const agent = new HttpAgent({ url: "http://localhost:3000/v1/channels/analyst/ag-ui" });
 ```
 
 Each AG-UI `threadId` maps to one session, which survives a restart. A
@@ -204,13 +204,13 @@ With the `a2a` feature, every top-level agent also serves other agents over
 cargo add everruns-serve --features a2a
 ```
 
-The endpoint is `POST /v1/e/{agent}/a2a` and its Agent Card is
-`GET /v1/e/{agent}/a2a/.well-known/agent-card.json`, the shape of an Everruns
+The endpoint is `POST /v1/channels/{agent}/a2a` and its Agent Card is
+`GET /v1/channels/{agent}/a2a/.well-known/agent-card.json`, the shape of an Everruns
 A2A endpoint. Any A2A 1.0 client works, including the official `a2a` CLI and
 another Everruns agent's `a2a_agent_delegation` capability:
 
 ```sh
-a2a send -a http://localhost:3000/v1/e/researcher/a2a/.well-known/agent-card.json "Tide pools"
+a2a send -a http://localhost:3000/v1/channels/researcher/a2a/.well-known/agent-card.json "Tide pools"
 ```
 
 Each A2A `contextId` maps to one session, which survives a restart; each task

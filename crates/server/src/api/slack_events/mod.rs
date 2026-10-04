@@ -20,6 +20,7 @@ mod content;
 mod events;
 mod interactivity;
 mod manifest;
+mod response_policy;
 mod thread;
 mod wire;
 
@@ -61,9 +62,17 @@ pub struct SlackState {
     /// Backend origin including the API prefix (e.g. `https://app.example.com/api`).
     /// The generated manifest needs it to name this server's own webhook URL.
     pub api_base_url: String,
+    pub(crate) agent_versions_enabled: bool,
+    pub decisions: Arc<dyn everruns_core::DecisionsService>,
 }
 
 impl SlackState {
+    /// Inject the same deployment decisions service used by the runtime.
+    pub fn with_decisions(mut self, decisions: Arc<dyn everruns_core::DecisionsService>) -> Self {
+        self.decisions = decisions;
+        self
+    }
+
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<crate::storage::EncryptionService>>,
@@ -87,6 +96,8 @@ impl SlackState {
             user_name_cache: new_slack_user_cache(),
             delivery_dispatcher,
             api_base_url,
+            agent_versions_enabled: everruns_platform::FeatureFlags::current().agent_versions,
+            decisions: Arc::new(everruns_core::DisabledDecisionsService),
         }
     }
 }
@@ -103,12 +114,20 @@ pub fn routes(state: SlackState) -> Router {
             get(handle_slack_manifest_legacy),
         )
         .route(
+            "/v1/channels/{channel_id}/slack/events",
+            post(handle_slack_event_channel),
+        )
+        .route(
             "/v1/e/{channel_id}/slack/events",
-            post(handle_slack_event_endpoint),
+            post(handle_slack_event_channel),
+        )
+        .route(
+            "/v1/channels/{channel_id}/slack/manifest",
+            get(handle_slack_manifest_channel),
         )
         .route(
             "/v1/e/{channel_id}/slack/manifest",
-            get(handle_slack_manifest_endpoint),
+            get(handle_slack_manifest_channel),
         )
         // EVE-1025. Both spellings, matching the events endpoint: an app
         // created against the legacy URL keeps working without re-saving its
@@ -118,15 +137,19 @@ pub fn routes(state: SlackState) -> Router {
             post(handle_slack_interactivity_legacy),
         )
         .route(
+            "/v1/channels/{channel_id}/slack/interactivity",
+            post(handle_slack_interactivity_channel),
+        )
+        .route(
             "/v1/e/{channel_id}/slack/interactivity",
-            post(handle_slack_interactivity_endpoint),
+            post(handle_slack_interactivity_channel),
         )
         .with_state(state)
 }
 
 pub(crate) enum SlackTarget {
     LegacyApp(String),
-    Endpoint(String),
+    Channel(String),
 }
 
 /// Extract text content from an output.message.completed event's data.

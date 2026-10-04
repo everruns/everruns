@@ -104,6 +104,15 @@ impl Command for CreateSession {
         }
 
         let mut req = self.0;
+        // Older browsers may still submit the retired direct-harness chat shape.
+        if req.source == Some(SessionSource::Chat)
+            && req.agent_id.is_none()
+            && req.agent_name.is_none()
+            && req.harness_name.as_deref() == Some("platform-chat")
+        {
+            req.agent_name = Some(crate::platform_chat_agent::NAME.into());
+            req.harness_name = None;
+        }
         req.locale =
             crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
 
@@ -274,7 +283,35 @@ impl Command for CreateSession {
         } else {
             source
         };
-        starter::mark_platform_chat_starter(&mut req, &harness.name, agent_internal_id.is_some())?;
+        let is_platform_chat = crate::platform_chat_agent::is_platform_chat(
+            &ctx.db,
+            ctx.org_id(),
+            agent_internal_id.map(AgentId::from_uuid),
+        )
+        .await
+        .map_err(classify_anyhow)?;
+        if source == SessionSource::Chat && !is_platform_chat {
+            return Err(CommandError::bad_request(
+                "Chat requires the managed Platform Chat Agent; use Playground to test agents",
+            ));
+        }
+        if is_platform_chat && (source == SessionSource::Playground || harness.name != "generic") {
+            return Err(CommandError::bad_request(
+                "Platform Chat requires Generic and cannot run in Playground",
+            ));
+        }
+        if is_platform_chat
+            && (req.system_prompt.is_some()
+                || !req.capabilities.is_empty()
+                || !req.tools.is_empty()
+                || !req.mcp_servers.is_empty()
+                || req.virtual_user_id.is_some())
+        {
+            return Err(CommandError::bad_request(
+                "Platform Chat uses its managed Agent configuration and the current user's identity",
+            ));
+        }
+        starter::mark_platform_chat_starter(&mut req, &harness.name, is_platform_chat)?;
         q::session_service(ctx)?
             .create(
                 &ctx.caller,

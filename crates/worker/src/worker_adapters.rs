@@ -37,6 +37,8 @@ use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolDefinition;
 use everruns_platform::{Agent, Harness};
+
+use crate::phase_reads::PhaseReads;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -543,7 +545,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Invoke a schedule endpoint addressed by its legacy App alias when a
     /// durable schedule fires. Carried over gRPC as `InvokeScheduledAppChannel`.
-    async fn invoke_scheduled_endpoint(
+    async fn invoke_scheduled_channel(
         &self,
         org_id: i64,
         app_id: &str,
@@ -661,6 +663,8 @@ pub struct SessionAdapter<A: WorkerAdapters> {
     /// org-scoped command transport. `None` outside a turn (the message and
     /// event surfaces do not need one).
     org_id: Option<i64>,
+    /// Told about each emitted event, to time phase setup.
+    reads: Option<PhaseReads>,
 }
 
 impl<A: WorkerAdapters> SessionAdapter<A> {
@@ -685,7 +689,14 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
             adapters,
             event_metadata: None,
             org_id: None,
+            reads: None,
         }
+    }
+
+    /// Report emitted events to a phase's read memo (see `crate::phase_reads`).
+    pub fn with_reads(mut self, reads: PhaseReads) -> Self {
+        self.reads = Some(reads);
+        self
     }
 
     pub fn with_event_metadata(
@@ -704,11 +715,48 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
 pub struct OrgAdapter<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
+    reads: Option<PhaseReads>,
 }
 
 impl<A: WorkerAdapters> OrgAdapter<A> {
     pub fn new(adapters: A, org_id: i64) -> Self {
-        Self { adapters, org_id }
+        Self {
+            adapters,
+            org_id,
+            reads: None,
+        }
+    }
+
+    /// Share a phase's read memo (see `crate::phase_reads`).
+    pub fn with_reads(mut self, reads: PhaseReads) -> Self {
+        self.reads = Some(reads);
+        self
+    }
+
+    async fn agent_record(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+        match &self.reads {
+            Some(reads) => {
+                reads
+                    .agent(&self.adapters, self.org_id, agent_id.uuid())
+                    .await
+            }
+            None => self.adapters.get_agent(self.org_id, agent_id.uuid()).await,
+        }
+    }
+
+    async fn harness_record(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
+        match &self.reads {
+            Some(reads) => {
+                reads
+                    .harness(&self.adapters, self.org_id, harness_id.uuid())
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_harness(self.org_id, harness_id.uuid())
+                    .await
+            }
+        }
     }
 }
 
@@ -720,8 +768,7 @@ impl<A: WorkerAdapters> everruns_core::execution_loading::AgentStore for OrgAdap
         // Loading seam (EVE-877): project the stored record into the portable
         // execution definition; archived/deleted records fail here, before
         // host execution.
-        self.adapters
-            .get_agent(self.org_id, agent_id.uuid())
+        self.agent_record(agent_id)
             .await?
             .map(|agent| agent.execution_definition())
             .transpose()
@@ -731,16 +778,10 @@ impl<A: WorkerAdapters> everruns_core::execution_loading::AgentStore for OrgAdap
         &self,
         agent_id: AgentId,
     ) -> Result<Option<everruns_core::DependencyBlocker>> {
-        Ok(
-            match self
-                .adapters
-                .get_agent(self.org_id, agent_id.uuid())
-                .await?
-            {
-                Some(agent) => agent.dependency_blocker(),
-                None => Some(everruns_core::DependencyBlocker::AgentDeleted),
-            },
-        )
+        Ok(match self.agent_record(agent_id).await? {
+            Some(agent) => agent.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::AgentDeleted),
+        })
     }
 }
 
@@ -750,8 +791,7 @@ impl<A: WorkerAdapters> everruns_core::execution_loading::HarnessStore for OrgAd
         // Loading seam (EVE-881): WorkerAdapters transports the pre-merged
         // stored record; project it into the portable execution definition,
         // failing archived/deleted records here.
-        self.adapters
-            .get_harness(self.org_id, harness_id.uuid())
+        self.harness_record(harness_id)
             .await?
             .map(|harness| harness.execution_definition())
             .transpose()
@@ -761,25 +801,28 @@ impl<A: WorkerAdapters> everruns_core::execution_loading::HarnessStore for OrgAd
         &self,
         harness_id: HarnessId,
     ) -> Result<Option<everruns_core::DependencyBlocker>> {
-        Ok(
-            match self
-                .adapters
-                .get_harness(self.org_id, harness_id.uuid())
-                .await?
-            {
-                Some(harness) => harness.dependency_blocker(),
-                None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
-            },
-        )
+        Ok(match self.harness_record(harness_id).await? {
+            Some(harness) => harness.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+        })
     }
 }
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::execution_loading::SessionStore for OrgAdapter<A> {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
-        self.adapters
-            .get_session(self.org_id, session_id.uuid())
-            .await
+        match &self.reads {
+            Some(reads) => {
+                reads
+                    .session(&self.adapters, self.org_id, session_id.uuid())
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_session(self.org_id, session_id.uuid())
+                    .await
+            }
+        }
     }
 }
 
@@ -790,6 +833,9 @@ impl<A: WorkerAdapters> everruns_platform::SessionMutator for OrgAdapter<A> {
         session_id: SessionId,
         title: String,
     ) -> Result<ExecutionSession> {
+        if let Some(reads) = &self.reads {
+            reads.invalidate_session(self.org_id, session_id.uuid());
+        }
         self.adapters
             .set_session_title(self.org_id, session_id.uuid(), title)
             .await
@@ -880,6 +926,9 @@ impl<A: WorkerAdapters> everruns_core::event_emitter::EventEmitter for SessionAd
                 metadata.entry(key.clone()).or_insert_with(|| value.clone());
             }
             request.metadata = Some(serde_json::Value::Object(metadata));
+        }
+        if let Some(reads) = &self.reads {
+            reads.note_event(&request.event_type);
         }
         self.adapters.emit_event(request).await
     }

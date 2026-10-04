@@ -2,7 +2,7 @@
 
 import { Pin } from "lucide-react";
 import { useAgentVersions } from "@/hooks/use-agents";
-import type { AgentVersion, AgentVersionPolicy, OpenApiAppChannel } from "@/lib/api/types";
+import type { AgentVersion, AgentVersionPolicy, OpenApiAgentChannel } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
-/// Which Agent version an exposure (endpoint or trigger) runs (EVE-1139).
+/// Which Agent version an exposure (channel or trigger) runs (EVE-1139).
 export interface AgentVersionSelection {
   agent_version_policy: AgentVersionPolicy;
   agent_version_id: string | null;
@@ -25,10 +25,13 @@ export const DEFAULT_VERSION_SELECTION: AgentVersionSelection = {
   agent_version_id: null,
 };
 
-type VersionSelectionFields = Pick<OpenApiAppChannel, "agent_version_policy" | "agent_version_id">;
+type VersionSelectionFields = Pick<
+  OpenApiAgentChannel,
+  "agent_version_policy" | "agent_version_id"
+>;
 
-/// Read an endpoint's or trigger's stored selection. Takes any record because
-/// the hand-written `AgentEndpoint` UI type predates these fields; the generated
+/// Read a channel's or trigger's stored selection. Takes any record because
+/// the hand-written `AgentChannel` UI type predates these fields; the generated
 /// schema is the source of their shape.
 export function versionSelectionOf(value: object): AgentVersionSelection {
   const fields = value as VersionSelectionFields;

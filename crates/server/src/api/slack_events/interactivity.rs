@@ -1,4 +1,4 @@
-//! `POST /v1/e/{channel_id}/slack/interactivity` — a click on an approval card.
+//! `POST /v1/channels/{channel_id}/slack/interactivity` — a click on an approval card.
 //!
 //! Mirrors the events endpoint exactly: same signing secret, same unscoped
 //! endpoint lookup, same generic 404 for anything not published. It accepts
@@ -26,7 +26,7 @@ use serde::Deserialize;
 
 use super::{SlackState, SlackTarget, resolve_slack_channel, verify_slack_signature};
 use crate::api::ErrorResponse;
-use crate::api::endpoint_ingress::{IngressContext, IngressEndpoint};
+use crate::api::channel_ingress::{IngressChannel, IngressContext};
 use crate::middleware::RequestId;
 use crate::slack_approvals::{
     ApprovalBinding, ApprovalDecision, ApprovalPolicy, ApprovalRequest, build_resolved_blocks,
@@ -73,7 +73,7 @@ struct SlackAction {
     value: Option<String>,
 }
 
-pub(crate) async fn handle_slack_interactivity_endpoint(
+pub(crate) async fn handle_slack_interactivity_channel(
     State(state): State<SlackState>,
     Path(channel_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
@@ -82,7 +82,7 @@ pub(crate) async fn handle_slack_interactivity_endpoint(
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     handle_slack_interactivity(
         state,
-        SlackTarget::Endpoint(channel_id),
+        SlackTarget::Channel(channel_id),
         req_id,
         headers,
         body,
@@ -176,7 +176,7 @@ fn parse_interaction(body: &[u8]) -> Option<InteractionPayload> {
 async fn handle_block_action(
     state: &SlackState,
     app: &IngressContext,
-    slack_channel: &IngressEndpoint,
+    slack_channel: &IngressChannel,
     slack_config: &SlackChannelConfig,
     payload: InteractionPayload,
     request_id: Option<String>,
@@ -235,7 +235,7 @@ async fn handle_block_action(
     // The session must belong to *this* endpoint, not merely to the same org:
     // one agent can carry two Slack endpoints, and a click on one must not
     // answer a pause raised through the other.
-    if session.endpoint_id != Some(slack_channel.internal_id) {
+    if session.channel_id != Some(slack_channel.internal_id) {
         tracing::warn!(
             app_id = %app_id,
             %session_id,

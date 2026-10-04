@@ -18,7 +18,7 @@ Verify that the evals list page loads successfully and displays the eval cards g
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `evals` enabled (`FEATURE_EVALS=true`)
+- Feature flag `evals` enabled (`FEATURE_EVALS=prod`)
 
 ## Test Data
 

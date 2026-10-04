@@ -48,18 +48,13 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        // This state is only reached through the enabled payment router. Machine
-        // payments are deployment-controlled rather than an org opt-in, so keep
-        // the command boundary aligned with the router's system-level gate.
-        let mut feature_flags = org.feature_flags.clone();
-        feature_flags.machine_payments = true;
         Ctx::minimal(
             Caller::from(org),
             self.db.clone(),
             self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
-        .with_feature_flags(feature_flags)
+        .with_feature_flags(org.feature_flags.clone())
     }
 }
 
@@ -396,7 +391,19 @@ mod tests {
             AppState::new(
                 db.clone(),
                 Some(Arc::new(encryption)),
-                AuthState::builtin(AuthConfig::default(), db),
+                AuthState::builtin(AuthConfig::default(), db).with_feature_flag_policy(
+                    everruns_platform::FeatureFlagPolicy::from_env(
+                        everruns_core::DeploymentGrade::Prod,
+                    )
+                    .with_grade(
+                        "machine_payments",
+                        if machine_payments_enabled {
+                            everruns_platform::FeatureFlagGrade::Prod
+                        } else {
+                            everruns_platform::FeatureFlagGrade::Off
+                        },
+                    ),
+                ),
             ),
             machine_payments_enabled,
         )

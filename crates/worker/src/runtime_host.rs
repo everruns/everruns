@@ -34,6 +34,7 @@ use everruns_platform::{
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::phase_reads::PhaseReads;
 use crate::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
 
 /// Resolves an `mcp_*` server prefix to a connection by asking the control
@@ -270,6 +271,7 @@ pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     /// Explicit turn cancel only; `cancellation` also fires on ownership loss.
     cancel_requested: Option<tokio::sync::watch::Receiver<bool>>,
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    reads: PhaseReads,
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
@@ -283,12 +285,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self
     }
     pub fn new(adapters: A) -> Self {
-        Self {
-            adapters,
-            cancellation: None,
-            cancel_requested: None,
-            event_metadata: None,
-        }
+        Self::with_event_metadata(adapters, None)
     }
 
     pub fn with_event_metadata(
@@ -300,6 +297,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
             cancellation: None,
             cancel_requested: None,
             event_metadata: metadata,
+            reads: PhaseReads::new(),
         }
     }
 }
@@ -320,6 +318,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     ) -> Result<()> {
         // Status mutation is an acknowledged effect end to end (EVE-882):
         // neither the adapter nor the host contract exposes a session record.
+        self.reads.invalidate_session(org_id, session_id.uuid());
         self.adapters
             .set_session_status(org_id, session_id.uuid(), &status.to_string())
             .await?;
@@ -345,11 +344,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         input_message_id: everruns_contracts::typed_id::MessageId,
     ) -> Result<ResolvedTurnInputs> {
         // The batched control-plane transport still ships stored records (see
-        // `WorkerAdapters::load_turn_context`).
-        // They are projected into the canonical resolved execution snapshot
-        // here, at the platform boundary, so host execution never sees them
-        // (EVE-872). The control plane returns the harness pre-merged, so the
-        // effective definition folds identically to the in-process runtime.
+        // `WorkerAdapters::load_turn_context`). They are projected into the
+        // canonical resolved execution snapshot here, at the platform boundary,
+        // so host execution never sees them (EVE-872). The control plane returns
+        // the harness pre-merged, so the effective definition folds identically.
         let context = if input_message_id.uuid().is_nil() {
             self.adapters
                 .load_turn_context(org_id, session_id.uuid())
@@ -361,10 +359,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         };
         // Loading seam (EVE-877/EVE-881): project the stored records into the
         // portable execution definitions; archived/deleted harnesses and
-        // agents fail here, before the snapshot is built.
+        // agents fail here, before the snapshot is built. Later reads reuse these.
+        let (reads, agent) = (&self.reads, context.agent.as_ref());
+        reads.seed(org_id, &context.session, agent);
         let harness_definition = self
-            .adapters
-            .get_harness(org_id, context.session.harness_id.uuid())
+            .reads
+            .harness(&self.adapters, org_id, context.session.harness_id.uuid())
             .await?
             .ok_or_else(|| {
                 everruns_contracts::error::AgentLoopError::harness_not_found(
@@ -398,19 +398,19 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     }
 
     fn harness_store(&self, org_id: i64) -> Arc<dyn HarnessStore> {
-        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id).with_reads(self.reads.clone()))
     }
 
     fn agent_store(&self, org_id: i64) -> Arc<dyn AgentStore> {
-        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id).with_reads(self.reads.clone()))
     }
 
     fn session_store(&self, org_id: i64) -> Arc<dyn SessionStore> {
-        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id).with_reads(self.reads.clone()))
     }
 
     fn session_mutator(&self, org_id: i64) -> Arc<dyn SessionMutator> {
-        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id).with_reads(self.reads.clone()))
     }
 
     fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore> {
@@ -440,7 +440,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
         Arc::new(
             SessionAdapter::new(self.adapters.clone())
-                .with_event_metadata(self.event_metadata.clone()),
+                .with_event_metadata(self.event_metadata.clone())
+                .with_reads(self.reads.clone()),
         )
     }
 
@@ -1371,7 +1372,7 @@ mod mcp_credential_tests {
         ) -> CoreResult<crate::worker_adapters::TurnContext> {
             unimplemented!()
         }
-        async fn invoke_scheduled_endpoint(
+        async fn invoke_scheduled_channel(
             &self,
             _org_id: i64,
             _app_id: &str,

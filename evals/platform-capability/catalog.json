@@ -2134,6 +2134,101 @@
     "read_only": false
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Create an ingress channel for an agent.",
+    "input_schema": {
+      "$defs": {
+        "AgentVersionPolicy": {
+          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
+          "enum": [
+            "default",
+            "latest",
+            "pinned"
+          ],
+          "example": "pinned",
+          "type": "string"
+        },
+        "ChannelType": {
+          "description": "Supported channel types for app distribution.",
+          "enum": [
+            "slack",
+            "ag_ui",
+            "schedule",
+            "webhook",
+            "a2a",
+            "fcp",
+            "api_endpoint",
+            "public_chat"
+          ],
+          "example": "webhook",
+          "type": "string"
+        },
+        "CreateAgentChannelRequest": {
+          "description": "Request to create an ingress channel owned by an Agent.",
+          "properties": {
+            "agent_version_id": {
+              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
+              "example": "agentver_01933b5a00007000800000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "agent_version_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/AgentVersionPolicy",
+                  "description": "Which Agent version sessions started through this channel run.\nOmitted means `default` (the agent's default version)."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "channel_config": {
+              "description": "Transport-specific channel configuration."
+            },
+            "channel_type": {
+              "$ref": "#/$defs/ChannelType",
+              "description": "Transport used by the channel."
+            },
+            "enabled": {
+              "description": "Whether the channel can accept ingress traffic.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "channel_type"
+          ],
+          "type": "object"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/CreateAgentChannelRequest"
+        },
+        {
+          "properties": {
+            "agent_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "agent_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "method": "POST",
+    "name": "create_agent_channel",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "Create a write-only Agent credential setup requirement for one attached MCP tool parameter. This command never accepts a secret value; the user completes setup in the Agent Credentials UI.",
@@ -2186,101 +2281,6 @@
     "name": "create_agent_credential_binding",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/credentials",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "Create an ingress endpoint for an agent.",
-    "input_schema": {
-      "$defs": {
-        "AgentVersionPolicy": {
-          "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-          "enum": [
-            "default",
-            "latest",
-            "pinned"
-          ],
-          "example": "pinned",
-          "type": "string"
-        },
-        "ChannelType": {
-          "description": "Supported channel types for app distribution.",
-          "enum": [
-            "slack",
-            "ag_ui",
-            "schedule",
-            "webhook",
-            "a2a",
-            "fcp",
-            "api_endpoint",
-            "public_chat"
-          ],
-          "example": "webhook",
-          "type": "string"
-        },
-        "CreateAgentEndpointRequest": {
-          "description": "Request to create an ingress endpoint owned by an Agent.",
-          "properties": {
-            "agent_version_id": {
-              "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-              "example": "agentver_01933b5a00007000800000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "agent_version_policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/AgentVersionPolicy",
-                  "description": "Which Agent version sessions started through this endpoint run.\nOmitted means `default` (the agent's default version)."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "channel_config": {
-              "description": "Transport-specific endpoint configuration."
-            },
-            "channel_type": {
-              "$ref": "#/$defs/ChannelType",
-              "description": "Transport used by the endpoint."
-            },
-            "enabled": {
-              "description": "Whether the endpoint can accept ingress traffic.",
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "channel_type"
-          ],
-          "type": "object"
-        }
-      },
-      "allOf": [
-        {
-          "$ref": "#/$defs/CreateAgentEndpointRequest"
-        },
-        {
-          "properties": {
-            "agent_id": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "agent_id"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "method": "POST",
-    "name": "create_agent_endpoint",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints",
     "positional_arg": null,
     "read_only": false
   },
@@ -4000,7 +4000,8 @@
           "type": "array"
         },
         "intro_markdown": {
-          "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nImages are allowed. The agent intro wins. Hidden once the user inputs.",
+          "deprecated": true,
+          "description": "Deprecated: configure conversation presentation on the Agent instead.",
           "example": "I triage incidents, dig through logs, and draft the update.",
           "type": [
             "string",
@@ -4036,7 +4037,8 @@
           ]
         },
         "short_description": {
-          "description": "One-line description in simplified Markdown, shown below the chat title\nonce the intro is hidden. The agent value wins.",
+          "deprecated": true,
+          "description": "Deprecated: configure conversation presentation on the Agent instead.",
           "example": "Triage incidents, dig through logs, draft the update.",
           "type": [
             "string",
@@ -4044,7 +4046,8 @@
           ]
         },
         "starters": {
-          "description": "Conversation starters for a fresh Platform Chat thread. Selecting one\ninserts its text into the composer. The agent starters win when\nnon-empty. `icon` reuses the harness icon name set.",
+          "deprecated": true,
+          "description": "Deprecated: configure conversation presentation on the Agent instead.",
           "items": {
             "$ref": "#/$defs/ConversationStarter"
           },
@@ -5812,7 +5815,7 @@
           "type": "string"
         },
         "subject_type": {
-          "description": "Class of subject this policy binds to. One of: `user`, `virtual_user`,\n`agent`, `agent_endpoint`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,\n`agent`→`agent_…`, `agent_endpoint`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
+          "description": "Class of subject this policy binds to. One of: `user`, `virtual_user`,\n`agent`, `agent_channel`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `virtual_user`→`identity_…`,\n`agent`→`agent_…`, `agent_channel`→`appchan_…` (an endpoint kept the\nidentifier it carried as an App channel), `session`→`session_…`,\n`org`→`org_…`. The identifier must be the API-facing one — an internal\nuuid will be stored and then never match (EVE-1130).",
           "example": "virtual_user",
           "type": "string"
         }
@@ -7265,7 +7268,7 @@
           ]
         },
         "source": {
-          "description": "How this session was started. Clients may declare `chat`, `playground` (feature gated), or `api`\n(the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
+          "description": "How this session was started. Clients may declare `chat`, `playground`, or `api`\n(the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
           "example": "chat",
           "type": [
             "string",
@@ -7652,6 +7655,32 @@
     "read_only": false
   },
   {
+    "category": "agent_channels",
+    "cli": null,
+    "description": "Delete an agent ingress channel.",
+    "input_schema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "channel_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "channel_id"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "delete_agent_channel",
+    "output_shape": "unknown",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": null,
     "description": "Delete an agent check rule (built-in override or custom rule).",
@@ -7671,32 +7700,6 @@
     "name": "delete_agent_check_rule",
     "output_shape": "unknown",
     "path": "/v1/agents/check-rules/{rule_id}",
-    "positional_arg": null,
-    "read_only": false
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "Delete an agent ingress endpoint.",
-    "input_schema": {
-      "properties": {
-        "agent_id": {
-          "type": "string"
-        },
-        "endpoint_id": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "agent_id",
-        "endpoint_id"
-      ],
-      "type": "object"
-    },
-    "method": "DELETE",
-    "name": "delete_agent_endpoint",
-    "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -8603,6 +8606,20 @@
     "read_only": false
   },
   {
+    "category": "sessions",
+    "cli": null,
+    "description": "Open the current user's permanent platform conversation",
+    "input_schema": {
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "ensure_platform_chat",
+    "output_shape": "unknown",
+    "path": "/v1/sessions/platform-chat",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "evals",
     "cli": null,
     "description": "Report whether the caller can import eval results.",
@@ -9258,28 +9275,28 @@
     "read_only": true
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Get an agent ingress endpoint.",
+    "description": "Get an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "GET",
-    "name": "get_agent_endpoint",
+    "name": "get_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": true
   },
@@ -9404,6 +9421,21 @@
     "output_shape": "unknown",
     "path": "/v1/capabilities/declarative/{id}",
     "positional_arg": "id",
+    "read_only": true
+  },
+  {
+    "category": "models",
+    "cli": null,
+    "description": "Get the effective organization default model.",
+    "input_schema": {
+      "description": "Resolve the organization's default without creating a session.",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_default_model",
+    "output_shape": "unknown",
+    "path": "/v1/models/default",
+    "positional_arg": null,
     "read_only": true
   },
   {
@@ -10260,6 +10292,13 @@
               "description": "Case-insensitive title substring match.",
               "type": [
                 "string",
+                "null"
+              ]
+            },
+            "side_chats_only": {
+              "description": "Exclude the permanent Chat from side-conversation pagination.",
+              "type": [
+                "boolean",
                 "null"
               ]
             },
@@ -11968,24 +12007,9 @@
     "read_only": false
   },
   {
-    "category": "agents",
+    "category": "agent_channels",
     "cli": null,
-    "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
-    "input_schema": {
-      "description": "List the org's effective check-rule configuration (built-ins + custom).",
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "list_agent_check_rules",
-    "output_shape": "unknown",
-    "path": "/v1/agents/check-rules",
-    "positional_arg": null,
-    "read_only": true
-  },
-  {
-    "category": "agent_endpoints",
-    "cli": null,
-    "description": "List an agent's ingress endpoints.",
+    "description": "List an agent's ingress channels.",
     "input_schema": {
       "properties": {
         "agent_id": {
@@ -11998,9 +12022,24 @@
       "type": "object"
     },
     "method": "GET",
-    "name": "list_agent_endpoints",
+    "name": "list_agent_channels",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints",
+    "path": "/v1/agents/{agent_id}/channels",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "agents",
+    "cli": null,
+    "description": "List the org's agent check rules: built-in rules with their effective enabled/severity, plus custom rules.",
+    "input_schema": {
+      "description": "List the org's effective check-rule configuration (built-ins + custom).",
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_agent_check_rules",
+    "output_shape": "unknown",
+    "path": "/v1/agents/check-rules",
     "positional_arg": null,
     "read_only": true
   },
@@ -13663,6 +13702,13 @@
                 "null"
               ]
             },
+            "side_chats_only": {
+              "description": "Exclude the permanent Chat from side-conversation pagination.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
             "source": {
               "description": "Comma-separated sources (`chat`, `api`, `slack`, `ag_ui`, `fcp`,\n`schedule`, `webhook`, `a2a`, `eval`, `subagent`, `unknown`).",
               "type": [
@@ -15044,28 +15090,28 @@
     "read_only": true
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Publish an agent ingress endpoint.",
+    "description": "Publish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "publish_agent_endpoint",
+    "name": "publish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/publish",
     "positional_arg": null,
     "read_only": false
   },
@@ -15095,7 +15141,7 @@
   {
     "category": "agents",
     "cli": "agents exposures resume",
-    "description": "Let an agent's live endpoints accept traffic again.",
+    "description": "Let an agent's live channels accept traffic again.",
     "input_schema": {
       "description": "Clear the agent-level exposure suspend, restoring the previously live set.",
       "properties": {
@@ -15724,7 +15770,7 @@
   {
     "category": "agents",
     "cli": "agents exposures suspend",
-    "description": "Stop every endpoint on an agent from accepting traffic.",
+    "description": "Stop every channel on an agent from accepting traffic.",
     "input_schema": {
       "description": "Take every endpoint on an agent off the internet in one action (EVE-1007).\n\nThis is the incident control, and is deliberately separate from archiving and\nfrom per-endpoint publish: it leaves every endpoint's own `status` untouched,\nso resuming restores exactly the set that was live before — which is what\nmakes it safe to reach for under pressure.",
       "properties": {
@@ -15895,28 +15941,28 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Run an agent schedule endpoint now.",
+    "description": "Run an agent schedule channel now.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "trigger_agent_endpoint",
+    "name": "trigger_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/trigger",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/trigger",
     "positional_arg": null,
     "read_only": false
   },
@@ -16065,28 +16111,28 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Unpublish an agent ingress endpoint.",
+    "description": "Unpublish an agent ingress channel.",
     "input_schema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "endpoint_id": {
+        "channel_id": {
           "type": "string"
         }
       },
       "required": [
         "agent_id",
-        "endpoint_id"
+        "channel_id"
       ],
       "type": "object"
     },
     "method": "POST",
-    "name": "unpublish_agent_endpoint",
+    "name": "unpublish_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}/unpublish",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}/unpublish",
     "positional_arg": null,
     "read_only": false
   },
@@ -17142,9 +17188,9 @@
     "read_only": false
   },
   {
-    "category": "agent_endpoints",
+    "category": "agent_channels",
     "cli": null,
-    "description": "Update an agent ingress endpoint.",
+    "description": "Update an agent ingress channel.",
     "input_schema": {
       "$defs": {
         "AgentVersionPolicy": {
@@ -17157,8 +17203,8 @@
           "example": "pinned",
           "type": "string"
         },
-        "UpdateAgentEndpointRequest": {
-          "description": "Request to update an ingress endpoint owned by an Agent.",
+        "UpdateAgentChannelRequest": {
+          "description": "Request to update an ingress channel owned by an Agent.",
           "properties": {
             "agent_version_id": {
               "description": "Version to pin. Only valid with policy `pinned`.",
@@ -17180,10 +17226,10 @@
               ]
             },
             "channel_config": {
-              "description": "Replacement transport-specific endpoint configuration."
+              "description": "Replacement transport-specific channel configuration."
             },
             "enabled": {
-              "description": "Whether the endpoint can accept ingress traffic.",
+              "description": "Whether the channel can accept ingress traffic.",
               "type": [
                 "boolean",
                 "null"
@@ -17195,29 +17241,29 @@
       },
       "allOf": [
         {
-          "$ref": "#/$defs/UpdateAgentEndpointRequest"
+          "$ref": "#/$defs/UpdateAgentChannelRequest"
         },
         {
           "properties": {
             "agent_id": {
               "type": "string"
             },
-            "endpoint_id": {
+            "channel_id": {
               "type": "string"
             }
           },
           "required": [
             "agent_id",
-            "endpoint_id"
+            "channel_id"
           ],
           "type": "object"
         }
       ]
     },
     "method": "PATCH",
-    "name": "update_agent_endpoint",
+    "name": "update_agent_channel",
     "output_shape": "unknown",
-    "path": "/v1/agents/{agent_id}/endpoints/{endpoint_id}",
+    "path": "/v1/agents/{agent_id}/channels/{channel_id}",
     "positional_arg": null,
     "read_only": false
   },
@@ -18768,7 +18814,8 @@
               ]
             },
             "intro_markdown": {
-              "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nOuter `None` leaves unchanged; inner `None` clears.",
+              "deprecated": true,
+              "description": "Deprecated: configure conversation presentation on the Agent instead.",
               "example": "I triage incidents, dig through logs, and draft the update.",
               "type": [
                 "string",
@@ -18813,7 +18860,8 @@
               ]
             },
             "short_description": {
-              "description": "One-line description in simplified Markdown. Outer `None` leaves\nunchanged; inner `None` clears.",
+              "deprecated": true,
+              "description": "Deprecated: configure conversation presentation on the Agent instead.",
               "example": "Triage incidents, dig through logs, draft the update.",
               "type": [
                 "string",
@@ -18821,7 +18869,8 @@
               ]
             },
             "starters": {
-              "description": "Conversation starters; omit to leave unchanged, send empty to clear.\n`icon` reuses the harness icon name set.",
+              "deprecated": true,
+              "description": "Deprecated: configure conversation presentation on the Agent instead.",
               "items": {
                 "$ref": "#/$defs/ConversationStarter"
               },

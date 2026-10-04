@@ -1166,7 +1166,17 @@ async fn built_in_agent_rejects_version_mutations() {
 async fn built_in_agent_can_be_copied() {
     let db = Arc::new(StorageBackend::in_memory());
     let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
-    let agent = seed_built_in_agent(&db, &ctx, "chat").await;
+    let mut request = basic_agent_request("chat");
+    request.intro_markdown = Some("Welcome to the platform".into());
+    request.short_description = Some("Platform assistant".into());
+    request.starters = serde_json::from_value(serde_json::json!([
+        {"text": "List agents", "icon": "bot"}
+    ]))
+    .unwrap();
+    let agent = CreateAgent(request).execute(&ctx).await.unwrap();
+    db.mark_agent_built_in(DEFAULT_ORG_ID, AgentId::from_uuid(agent.internal_id))
+        .await
+        .unwrap();
 
     let copy = CopyAgent {
         id: agent.public_id.to_string(),
@@ -1176,6 +1186,9 @@ async fn built_in_agent_can_be_copied() {
     .expect("copy is the escape hatch and must stay open");
 
     assert_ne!(copy.public_id, agent.public_id);
+    assert_eq!(copy.intro_markdown, agent.intro_markdown);
+    assert_eq!(copy.short_description, agent.short_description);
+    assert_eq!(copy.starters, agent.starters);
 
     // The copy must be editable, or the escape hatch leads nowhere.
     UpdateAgentCmd {
@@ -1198,7 +1211,7 @@ async fn built_in_agents_do_not_count_toward_limit() {
     let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner);
     ctx.resource_limits.max_agents_per_org = 1;
 
-    seed_built_in_agent(&db, &ctx, "platform-chat").await;
+    seed_built_in_agent(&db, &ctx, "managed-test").await;
 
     // The built-in must not consume the cap, so a user agent still fits.
     CreateAgent(basic_agent_request("mine"))

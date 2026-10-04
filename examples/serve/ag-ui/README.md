@@ -2,7 +2,7 @@
 
 A [serve](../../../crates/serve) app streamed to CopilotKit or any
 [AG-UI](https://docs.ag-ui.com) 1.0 client. The `ag-ui` feature serves
-`POST /v1/e/assistant/ag-ui`, the same route shape as an Everruns endpoint, so
+`POST /v1/channels/assistant/ag-ui`, the same route shape as an Everruns endpoint, so
 a front end moves between the two by base URL alone. The `deploy` tool needs
 approval, which the client sees as an interrupt. It runs offline; without a
 model gateway, the agent follows a scripted simulator.
@@ -49,7 +49,7 @@ import { CopilotRuntime } from "@copilotkit/runtime";
 
 const runtime = new CopilotRuntime({
   agents: {
-    assistant: new HttpAgent({ url: "http://127.0.0.1:3000/v1/e/assistant/ag-ui" }),
+    assistant: new HttpAgent({ url: "http://127.0.0.1:3000/v1/channels/assistant/ag-ui" }),
   },
 });
 ```

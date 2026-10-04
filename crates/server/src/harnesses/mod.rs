@@ -1,7 +1,7 @@
 //! Built-in harness definitions.
 //!
 //! Decision: Only platform-essential harnesses are auto-provisioned per org —
-//! `base`, `generic`, and `platform-chat`. Specialized harnesses
+//! `base` and `generic`. Platform Chat is a managed Agent. Specialized harnesses
 //! (`coding`, `data-analyst`) live in the
 //! `examples` module and are adopted on demand via `/v1/harness-examples`
 //! and `POST /v1/harnesses/import?from-example=…`.
@@ -17,7 +17,6 @@ mod coding_prompt;
 mod data_analyst;
 pub mod examples;
 mod generic;
-pub(crate) mod platform_chat;
 
 use everruns_platform::BuiltInHarnessDefinition;
 
@@ -30,11 +29,7 @@ pub use examples::{
 /// Only platform-essential harnesses are listed here. Specialized harnesses
 /// (data analyst and coding) are adopted from `harness_examples()`.
 pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
-    vec![
-        base::definition(),
-        generic::definition(),
-        platform_chat::definition(),
-    ]
+    vec![base::definition(), generic::definition()]
 }
 
 #[cfg(test)]
@@ -63,7 +58,7 @@ mod tests {
 
         // The default built-in list now contains only platform-essential
         // harnesses. Specialized coding/data harnesses moved to examples.
-        assert_eq!(names, vec!["base", "generic", "platform-chat"]);
+        assert_eq!(names, vec!["base", "generic"]);
         for legacy in LEGACY_BUILT_IN_NAMES {
             assert!(
                 !names.iter().any(|n| n == legacy),
@@ -107,7 +102,8 @@ mod tests {
 
     #[test]
     fn interactive_harnesses_expose_ask_user_and_describe_it() {
-        for definition in [generic::definition(), platform_chat::definition()] {
+        {
+            let definition = generic::definition();
             assert!(
                 definition
                     .capabilities
@@ -116,24 +112,32 @@ mod tests {
                 "{} must expose ask_user",
                 definition.name
             );
+            // The description is the purpose shown in the harness picker, so it
+            // stays a sentence about when to choose it rather than a capability list.
             assert!(
-                definition.description.contains("structured user questions"),
-                "{} must describe structured user questions",
+                !definition.description.trim().is_empty()
+                    && definition.description.chars().count() <= 160,
+                "{} description should say when to use it, in picker length",
                 definition.name
             );
         }
 
+        let base = base::definition();
         assert!(
-            base::definition()
-                .capabilities
+            base.capabilities
                 .iter()
                 .all(|capability| capability.capability_id() != "ask_user")
+        );
+        assert!(
+            !base.description.trim().is_empty() && base.description.chars().count() <= 160,
+            "base description should say when to use it, in picker length"
         );
     }
 
     #[test]
     fn ask_user_harnesses_also_expose_request_approval() {
-        for definition in [generic::definition(), platform_chat::definition()] {
+        {
+            let definition = generic::definition();
             let capabilities = definition
                 .capabilities
                 .iter()

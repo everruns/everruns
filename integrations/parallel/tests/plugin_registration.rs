@@ -11,10 +11,10 @@ fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| decisions.is_enabled(flag))
+        plugin.feature_flag.map_or_else(
+            || !plugin.experimental_only || grade.experimental_features_enabled(),
+            |flag| decisions.is_enabled(flag),
+        )
     });
     registry
 }
@@ -97,7 +97,7 @@ fn payments_capability_disabled_by_default() {
 fn payments_capability_enabled_by_flag() {
     let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
-    unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
+    unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "prod") };
     // Deliberate enablement works in any grade, including prod.
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(registry.has("parallel"));

@@ -1,11 +1,28 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-04
+
+* **Playground list is dense rows.** The library groups the current page by day,
+  agent, or none, filters by agent, and opens a chat from the row. Agent and
+  virtual-user chips still link to their pages. See
+  [Information Architecture](ui/information-architecture.md).
+
 ## 2026-10-03
+
+* **Paid CI coverage follows provider/model changes and a nightly sweep.**
+  Ordinary Rust merges retain llmsim workflows without provider credentials.
+  Scheduled and manual live coverage still runs only trusted main-branch code.
+  See [Threat Model](security/threat-model.md) TM-CI-001 through TM-CI-003.
 
 * **Agent page tabs stay in the address.** Switching Agent, Preview,
   Integrations, Stats, or Sessions writes `?tab=` (the Agent tab omits it), so
   a refresh or a shared link reopens the same tab. See
   [Agent Page](ui/agent-page.md).
+
+* **Feature rollout grades.** Per-feature grades now own deployment availability,
+  organisation defaults, and tenant versus platform configuration authority.
+  Environment overrides select grades; explicit false organisation overrides
+  preserve production opt-outs. See [Feature Flags](security/feature-flags.md).
 
 * **Session storage reads require session view.** Listing key/value entries
   or secret names now evaluates `SESSION_VIEW` before the store is read, so a

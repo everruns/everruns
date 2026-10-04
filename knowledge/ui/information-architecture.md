@@ -68,7 +68,7 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 
 Playground belongs under Building: it is the team's place to try the agents they are authoring.
 Chats remains the personal conversation surface and the unconditional landing route. Playground
-conversations are ordinary organisation-scoped sessions, listed independently of personal Chats.
+chats are ordinary organisation-scoped sessions, listed independently of personal Chats.
 They use the same header, transcript, composer, streaming context, and workspace viewer.
 
 A conversation fixes its counterpart and end-user virtual user at creation. The default subject is
@@ -82,38 +82,34 @@ connections retain their existing access rules. The personal Platform Chat harne
 The initial experience starts with a fresh workspace. Workspace is a secondary inspection view,
 not a prerequisite for starting a conversation. Realtime voice remains on the personal Chat surface
 until its direct transcript path supports fixed test-subject attribution. A persistent Open session action leads to the same
-recording; Trace opens its timeline. Archiving is shared; pinning is personal. The library offers
-server-paginated search, agent and virtual-user filters, and active/archived views.
+recording and its timeline. Archiving is shared. Pinning stays on personal Chats. The library offers
+server-paginated search, an agent filter, grouping by day, agent, or none, and active/archived
+views.
 
-Playground is disabled by default on every deployment grade and requires deployment enablement
-plus organisation opt-in. The flag hides the navigation and all Playground routes and gates creation
-and new messages on the server. Existing recordings remain inspectable through the ordinary Sessions
-API and UI if the flag is later disabled; disabling a surface does not erase its history.
+Playground is a standard surface, available without deployment or organisation feature flags.
+Its list, setup, and detail pages use the shared page layout: breadcrumbs, masthead, control strip,
+and context rail. Each list row opens its chat. Agent and virtual-user chips link to their detail
+pages, and the row shows who started the chat. The UI consistently calls these Playground chats.
 See [source and binding policy](../../crates/server/src/domains/sessions/playground.rs) and
 [shared creation flow](../../apps/ui/src/components/chat/new-chat-form.tsx).
 
 ## Surface contracts
 
-* **Chats is the unconditional landing route.** It is core functionality, requires no feature
-  opt-in, is the first thing in the sidebar, and is the default destination for every user with no
-  other intent. A fresh organization can open Chats and start a thread without configuration.
-* **Every user starts with a pinned Platform Chat thread.** "Requires no configuration" is
-  not enough if the landing route is an empty list and a counterpart picker: the app creates a
-  thread bound to the built-in `platform-chat` harness on first entry, pins it so it stays at the
-  top, and ends onboarding there. It is an ordinary session, adopted rather than duplicated when
-  one already exists, and never recreated once archived — archiving is the user saying they do
-  not want it. The starter carries a dedicated tag with a database uniqueness constraint per
-  organization and owner. The browser's existence check is only a convenience; it cannot decide
-  uniqueness across tabs, retries, and stale caches. Existing untagged threads are adopted by
-  the migration before that constraint is installed. The server also recognizes the starter
-  request shape from older browser bundles and marks it before insertion. Empty, pinned duplicate
-  starters are archived during migration; chats with any activity remain available.
-* **A thread is bound to exactly one counterpart.** The counterpart may be an Agent or a Harness,
-  so users can talk to a configured runtime without creating an otherwise-empty Agent. Switching
-  counterparts starts a new thread rather than re-pointing an existing one; the transcript is only
-  meaningful against the counterpart that produced it.
+* **Chat is the unconditional landing route.** It directly opens the user's permanent
+  Platform Chat conversation. The permanent conversation cannot be renamed, unpinned,
+  archived, deleted, or reassigned. Server resolution and database uniqueness arbitrate
+  concurrent tabs and retries; an existing conversation is always adopted.
+* **Chat has one managed Agent on Generic.** The Agent owns identity, platform access,
+  instructions, introduction, and starters. No Agent or harness picker appears in Chat.
+  New chat opens an empty draft and creates a fresh side conversation on first send,
+  with the same Agent and owner. Durable private/shared memory remains available;
+  conversation history and workspace files are not copied.
+* **Chat history lists side conversations only.** Source, managed Agent, owner, and the
+  permanent-conversation exclusion are applied before pagination. Playground conversations
+  and arbitrary Agent runs remain in their respective surfaces. Existing recording URLs
+  remain inspectable through Sessions.
 * **The nav's thread list is bounded.** Live threads in the nav mean the nav is never the
-  same twice, so the Chats entry lists only the few most recently active threads and hands
+  same twice, so the Chat entry lists only the few most recently active threads and hands
   the rest to the all-threads page. It also holds its order steady while the pointer is
   inside it, so an arriving turn cannot re-sort a row out from under a click.
 * **Archiving is how a thread leaves the list without leaving existence.** Threads accumulate,

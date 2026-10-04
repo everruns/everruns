@@ -25,7 +25,7 @@ use everruns_example_demo as demo;
 use serde_json::{Value, json};
 
 const MODEL: &str = "gpt-5.6-terra";
-const RESEARCHER: &str = "http://127.0.0.1:3000/v1/e/researcher/a2a";
+const RESEARCHER: &str = "http://127.0.0.1:3000/v1/channels/researcher/a2a";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

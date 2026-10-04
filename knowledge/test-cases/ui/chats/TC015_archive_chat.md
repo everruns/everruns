@@ -20,7 +20,7 @@ them back without destroying the thread.
 
 - DB-backed stack running
 - User logged in
-- At least two chat threads exist for the current user, one with a reply in its transcript
+- At least two side chat threads exist for the current user, one with a reply in its transcript
 
 ## Test Data
 
@@ -28,13 +28,13 @@ None.
 
 ## Steps
 
-1. Open `/chats` and note the listed threads and the sidebar thread list
+1. Open `/chats/history` and note the listed threads and the sidebar thread list
 2. Press **Archive chat** on the row of the thread that has a transcript
 3. Observe the Chats list and the sidebar
 4. Open the **Filter** menu and enable **Show archived**
 5. Open the archived thread from the list and confirm its transcript is intact
-6. Press **Unarchive chat** in the thread header, then return to `/chats`
-7. Disable **Show archived** and reload `/chats`
+6. Press **Unarchive chat** in the thread header, then return to `/chats/history`
+7. Disable **Show archived** and reload `/chats/history`
 
 ## Expected Result
 
@@ -45,4 +45,6 @@ None.
 | Filter | Enabling **Show archived** re-lists the thread, dimmed and badged **Archived**, below unarchived threads |
 | Thread | Opening the archived thread loads its full transcript and header, with an **Archived** badge |
 | Restore | **Unarchive chat** returns the thread to the default list and activity-time ordering |
-| Persistence | Reloading `/chats` with the filter off shows the restored thread and hides any still-archived ones |
+| Persistence | Reloading `/chats/history` with the filter off shows the restored thread and hides any still-archived ones |
+
+These controls apply only to side conversations. Permanent **Chat** exposes neither control and rejects the corresponding API mutation.

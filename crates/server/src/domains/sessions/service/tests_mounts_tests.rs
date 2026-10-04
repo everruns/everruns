@@ -166,7 +166,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
             workspace_id: None,
             org_id: caller.org_id,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             trigger_id: None,
             harness_id: Some(other_harness.id),
             agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
@@ -510,7 +510,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
             workspace_id: None,
             org_id: caller.org_id,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             trigger_id: None,
             harness_id: None,
             agent_id: None,
@@ -1251,23 +1251,26 @@ async fn memory_test_caller(db: &Arc<StorageBackend>, email: &str) -> Caller {
 /// The point of the whole exercise: two sessions of the chat surface are
 /// two threads of one operator memory, not two private forks of it.
 #[tokio::test]
-async fn shared_harness_memory_is_visible_across_sessions() {
+async fn shared_agent_memory_is_visible_across_sessions() {
     let db = Arc::new(StorageBackend::in_memory());
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "shared-memory@example.com").await;
-    let ctx = test_ctx(caller.clone(), db.clone()).await;
-    let harness_id = create_named_harness(
-        &ctx,
-        crate::harnesses::platform_chat::PLATFORM_CHAT_HARNESS_NAME,
-    )
-    .await;
+    let _ctx = test_ctx(caller.clone(), db.clone()).await;
+    let harness_id = crate::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    let managed = db
+        .get_agent_by_name(DEFAULT_ORG_ID, "platform-chat")
+        .await
+        .unwrap()
+        .unwrap();
 
     let first = session_service
         .create(
             &caller,
             harness_id.uuid(),
-            None,
-            None,
+            Some(managed.id.uuid()),
+            Some(managed.public_id.parse().unwrap()),
             SessionSource::Api,
             build_create_request(harness_id, None, None),
         )
@@ -1277,8 +1280,8 @@ async fn shared_harness_memory_is_visible_across_sessions() {
         .create(
             &caller,
             harness_id.uuid(),
-            None,
-            None,
+            Some(managed.id.uuid()),
+            Some(managed.public_id.parse().unwrap()),
             SessionSource::Api,
             build_create_request(harness_id, None, None),
         )

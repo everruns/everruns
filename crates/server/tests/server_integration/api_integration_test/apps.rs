@@ -123,7 +123,7 @@ async fn app_management_routes_are_retired() {
 }
 
 #[tokio::test]
-async fn public_chat_endpoint_route_matches_legacy_alias() {
+async fn public_chat_channel_route_matches_legacy_alias() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
@@ -138,7 +138,7 @@ async fn public_chat_endpoint_route_matches_legacy_alias() {
         .assert_status(StatusCode::CREATED)
         .json();
     let app = server
-        .seed_app_endpoint(
+        .seed_app_channel(
             "Public Chat route",
             agent["id"].as_str().expect("agent ID"),
             "public_chat",
@@ -150,10 +150,10 @@ async fn public_chat_endpoint_route_matches_legacy_alias() {
         .await;
     let app_id = app["id"].as_str().expect("App ID");
     let channel_id = app["channels"][0]["id"].as_str().expect("channel ID");
-    server.set_app_endpoints_live(app_id, true).await;
+    server.set_app_channels_live(app_id, true).await;
 
     let endpoint_response = server
-        .get(&format!("/v1/e/{channel_id}/public-chat/config"))
+        .get(&format!("/v1/channels/{channel_id}/public-chat/config"))
         .await;
     let legacy_response = server
         .get(&format!("/v1/apps/{app_id}/public-chat/config"))

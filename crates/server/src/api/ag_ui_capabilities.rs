@@ -1,4 +1,4 @@
-//! `GET /v1/e/{endpoint_id}/ag-ui/capabilities`: the AG-UI 1.0
+//! `GET /v1/channels/{channel_id}/ag-ui/capabilities`: the AG-UI 1.0
 //! `AgentCapabilities` an endpoint declares.
 //!
 //! Decision: derived from the endpoint's channel config alone, never from the

@@ -4,6 +4,8 @@
 // It can be used by both the main API server (for Swagger UI)
 // and the export-openapi binary (for static spec generation).
 
+mod channel_aliases;
+
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
@@ -58,6 +60,7 @@ struct SdkMetadata;
 
 impl Modify for SdkMetadata {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        channel_aliases::add_route_aliases(openapi);
         for path in ["/v1/apps", "/v1/apps/{app_id}"] {
             if let Some(operation) = openapi
                 .paths
@@ -71,6 +74,8 @@ impl Modify for SdkMetadata {
         let Some(components) = openapi.components.as_mut() else {
             return;
         };
+
+        channel_aliases::add_schema_aliases(components);
 
         for &(wrapper, kind, model) in SDK_RESPONSE_WRAPPERS {
             let Some(RefOr::T(schema)) = components.schemas.get_mut(wrapper) else {
@@ -151,15 +156,16 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agent_credentials::create_credential_binding,
         api::agent_credentials::set_credential_value,
         api::agent_credentials::delete_credential_binding,
-        api::agent_endpoints::list_agent_endpoints,
-        api::agent_endpoints::create_agent_endpoint,
-        api::agent_endpoints::get_agent_endpoint,
-        api::agent_endpoints::update_agent_endpoint,
-        api::agent_endpoints::delete_agent_endpoint,
-        api::agent_endpoints::publish_agent_endpoint,
-        api::agent_endpoints::unpublish_agent_endpoint,
-        api::agent_endpoints::trigger_agent_endpoint,
+        api::agent_channels::list_agent_channels,
+        api::agent_channels::create_agent_channel,
+        api::agent_channels::get_agent_channel,
+        api::agent_channels::update_agent_channel,
+        api::agent_channels::delete_agent_channel,
+        api::agent_channels::publish_agent_channel,
+        api::agent_channels::unpublish_agent_channel,
+        api::agent_channels::trigger_agent_channel,
         api::sessions::create_session,
+        api::sessions::ensure_platform_chat,
         api::sessions::fork_session,
         api::sessions::list_sessions,
         api::sessions::get_session,
@@ -185,23 +191,23 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::voice::attach_call,
         api::voice::end_call,
         api::voice::create_agent_voice_session,
-        api::endpoint_webhooks::invoke_webhook_legacy,
-        api::endpoint_webhooks::invoke_webhook_endpoint,
-        api::endpoint_a2a::invoke_a2a_legacy,
-        api::endpoint_a2a::invoke_a2a_endpoint,
-        api::endpoint_a2a::agent_card::agent_card_legacy,
-        api::endpoint_a2a::agent_card::agent_card_endpoint,
+        api::channel_webhooks::invoke_webhook_legacy,
+        api::channel_webhooks::invoke_webhook_channel,
+        api::channel_a2a::invoke_a2a_legacy,
+        api::channel_a2a::invoke_a2a_channel,
+        api::channel_a2a::agent_card::agent_card_legacy,
+        api::channel_a2a::agent_card::agent_card_channel,
         api::fcp::handshake,
         api::fcp::message_legacy,
-        api::fcp::message_endpoint,
-        api::endpoint_api::create_session,
-        api::endpoint_api::create_session_endpoint,
-        api::endpoint_api::post_message,
-        api::endpoint_api::post_message_endpoint,
-        api::endpoint_api::get_session,
-        api::endpoint_api::get_session_endpoint,
-        api::endpoint_api::cancel_session,
-        api::endpoint_api::cancel_session_endpoint,
+        api::fcp::message_channel,
+        api::channel_api::create_session,
+        api::channel_api::create_session_channel,
+        api::channel_api::post_message,
+        api::channel_api::post_message_channel,
+        api::channel_api::get_session,
+        api::channel_api::get_session_channel,
+        api::channel_api::cancel_session,
+        api::channel_api::cancel_session_channel,
         // Agent triggers (EVE-757)
         api::agent_triggers::list_agent_triggers,
         api::agent_triggers::create_agent_trigger,
@@ -225,6 +231,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::models::list_provider_models,
         api::models::list_all_models,
         api::models::get_model,
+        api::models::get_default_model,
         api::models::update_model,
         api::models::delete_model,
         api::capabilities::list_capabilities,
@@ -564,7 +571,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::voice::VoiceCallResponse, api::voice::VoiceAttachResponse,
             api::voice::VoiceEndResponse,
             api::voice::VoiceSessionResponse<api::voice::VoiceCallResponse>,
-            api::endpoint_webhooks::WebhookInvocationResponse,
+            api::channel_webhooks::WebhookInvocationResponse,
             // Agent triggers (EVE-757)
             everruns_platform::AgentTrigger,
             everruns_platform::AgentTriggerType,
@@ -578,10 +585,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             everruns_platform::TriggerEventFilter,
             everruns_platform::TriggerFilterCondition,
             domains::agent_triggers::TriggerAgentTriggerOutput,
-            api::endpoint_api::MessageBody,
-            api::endpoint_api::SessionRef,
-            api::endpoint_api::SessionStatus,
-            api::endpoint_api::AgentMessage,
+            api::channel_api::MessageBody,
+            api::channel_api::SessionRef,
+            api::channel_api::SessionStatus,
+            api::channel_api::AgentMessage,
             ListResponse<Agent>,
             PaginatedResponse<Session>,
             ListResponse<api::messages::Message>,

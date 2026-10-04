@@ -25,7 +25,7 @@ pub struct BudgetSubjectLookup<'a> {
     /// `appchan_` id the App channel carried — the endpoint kept its identifier
     /// when it was re-parented (EVE-1004) — under the subject type that
     /// replaced it.
-    pub endpoint_id: Option<&'a str>,
+    pub channel_id: Option<&'a str>,
 }
 
 impl<'a> BudgetSubjectLookup<'a> {
@@ -36,8 +36,8 @@ impl<'a> BudgetSubjectLookup<'a> {
         if let Some(id) = self.session_id {
             pairs.push(("session", id));
         }
-        if let Some(id) = self.endpoint_id {
-            pairs.push(("agent_endpoint", id));
+        if let Some(id) = self.channel_id {
+            pairs.push(("agent_channel", id));
         }
         if let Some(id) = self.trigger_id {
             pairs.push(("agent_trigger", id));
@@ -151,7 +151,7 @@ impl Database {
                 agent_id,
                 user_id,
                 org_public_id,
-                endpoint_id: None,
+                channel_id: None,
             },
         )
         .await

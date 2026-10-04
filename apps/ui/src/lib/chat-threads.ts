@@ -1,17 +1,4 @@
-/**
- * Chat thread vocabulary.
- *
- * A chat thread is an ordinary session: created with `POST /v1/sessions` bound
- * to an agent, renamed with `PATCH /v1/sessions/{id}`, listed with
- * `GET /v1/sessions`. There is no chat-specific API.
- *
- * Marking a session as a chat thread is the one thing the API cannot express
- * yet. EVE-852 adds a typed `source` on the session plus `source=chat` + `mine`
- * filters on the list endpoint; until then a thread is marked with a tag and
- * recognised client-side. When that lands, delete `isChatThread` and
- * `selectChatThreads` and pass the filters to the server instead — nothing else
- * in this module changes.
- */
+/** Platform conversations are ordinary sessions on the managed Agent. */
 
 import type { Session } from "@/lib/api/types";
 
@@ -26,7 +13,10 @@ export const PLATFORM_CHAT_STARTER_TAG = "platform-chat-starter";
  *  predate the Chats surface still carry it, so they stay visible. */
 export const LEGACY_GLOBAL_CHAT_TAG = "global-chat";
 
-/** Built-in operator chat harness. A thread bound to it has no agent. */
+/** Managed Agent used by every platform conversation. */
+export const PLATFORM_CHAT_AGENT_NAME = "platform-chat";
+
+/** Legacy name retained for historical harness references. */
 export const PLATFORM_CHAT_HARNESS_NAME = "platform-chat";
 
 /** Most-recently-active threads shown under the sidebar's Chats entry. The cap
@@ -34,7 +24,7 @@ export const PLATFORM_CHAT_HARNESS_NAME = "platform-chat";
  *  so it must be bounded and stable. */
 export const SIDEBAR_THREAD_LIMIT = 5;
 
-/** How many sessions to scan for threads while the server cannot filter (EVE-852). */
+/** Bounded sidebar query size; source, Agent, and owner filtering happen on the server. */
 export const THREAD_SCAN_LIMIT = 100;
 
 export function isChatThread(session: Session): boolean {

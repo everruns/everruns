@@ -8,8 +8,8 @@ use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::models::{
-    CreateModel, DeleteModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW, ListModels,
-    ListProviderModels, ModelService, UpdateModel,
+    CreateModel, DeleteModel, GetDefaultModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW,
+    ListModels, ListProviderModels, ModelService, UpdateModel,
 };
 use crate::kernel_imports::{
     Caller, ResourceConfigResponse, contracts::model::Model, contracts::model::ModelSource,
@@ -330,9 +330,22 @@ pub async fn model_config(
     Json(ResourceConfigResponse { policies })
 }
 
+/// Resolve the default for empty drafts without persisting a session.
+#[utoipa::path(get, path = "/v1/models/default", responses(
+    (status = 200, description = "Effective organization default, or null when unavailable", body = Option<ModelWithProvider>),
+    (status = 403, description = "Forbidden", body = ErrorResponse)
+), tag = "models")]
+pub async fn get_default_model(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<Option<ModelWithProvider>> {
+    Ok(Json(GetDefaultModel {}.run(&state.ctx(&org)).await?))
+}
+
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/models/config", get(model_config))
+        .route("/v1/models/default", get(get_default_model))
         .route(
             "/v1/providers/{provider_id}/models",
             post(create_model).get(list_provider_models),

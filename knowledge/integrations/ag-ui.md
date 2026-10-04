@@ -10,13 +10,13 @@ tags:
 
 ## Status
 
-Implemented on AG-UI 1.0 for the endpoint `POST /v1/e/{endpoint_id}/ag-ui` and
-Public Chat (`POST /v1/e/{endpoint_id}/public-chat`), which reuses the same
+Implemented on AG-UI 1.0 for the endpoint `POST /v1/channels/{channel_id}/ag-ui` and
+Public Chat (`POST /v1/channels/{channel_id}/public-chat`), which reuses the same
 stream, including interrupts and resume, frontend tools, token usage,
 subagents, run metadata, and a capabilities declaration at
-`GET /v1/e/{endpoint_id}/ag-ui/capabilities`. The framework serves the same
+`GET /v1/channels/{channel_id}/ag-ui/capabilities`. The framework serves the same
 protocol from any session behind the facade's `ag-ui` feature (see
-[Framework](#framework)), and `serve` mounts it at `POST /v1/e/{agent}/ag-ui`
+[Framework](#framework)), and `serve` mounts it at `POST /v1/channels/{agent}/ag-ui`
 behind its own `ag-ui` feature (see [serve](#serve)), with the runnable
 `examples/serve/ag-ui` driven by `@ag-ui/client`. The crate also has the
 consumer half (below), which outbound delegation, the
@@ -28,7 +28,7 @@ EVE-1135 replaced the pre-1.0 emitter and moved the UI's contract validation
 to 1.0 in PR #3965. Existing endpoints emit the new reasoning vocabulary
 without a legacy translation mode; the version handshake acknowledges a
 request's declaration, not a negotiation back to the old protocol. The public
-[endpoint guide](../../docs/features/endpoints.md#upgrade-a-pre-10-client)
+[endpoint guide](../../docs/features/channels.md#upgrade-a-pre-10-client)
 owns client migration instructions.
 
 The UI's isolated OpenUI dependency remains on its declared pre-1.0 range
@@ -160,7 +160,7 @@ errors visible), because the developer owns both ends.
 
 ## serve
 
-`serve`'s `ag-ui` feature serves `POST /v1/e/{agent}/ag-ui` for every
+`serve`'s `ag-ui` feature serves `POST /v1/channels/{agent}/ag-ui` for every
 top-level agent, listed in the manifest's routes and the agent card's `ag_ui`
 map. The path has the server's channel shape so a CopilotKit front end moves
 between serve and Everruns by base URL and id alone; the id is the agent name
@@ -315,7 +315,7 @@ itself, never an anonymous or Public Chat visitor.
 
 ## Capabilities
 
-`GET /v1/e/{endpoint_id}/ag-ui/capabilities` returns a 1.0 `AgentCapabilities`
+`GET /v1/channels/{channel_id}/ag-ui/capabilities` returns a 1.0 `AgentCapabilities`
 behind the same auth, gates and rate limit as a run
 ([`ag_ui_capabilities.rs`](../../crates/server/src/api/ag_ui_capabilities.rs)).
 It is derived from the endpoint config only: identity (the endpoint name and

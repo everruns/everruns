@@ -1,4 +1,9 @@
 export interface FeatureFlags {
+  docker_capability?: boolean;
+  container_sandbox?: boolean;
+  lua?: boolean;
+  openai_agents_api?: boolean;
+  mcp_events?: boolean;
   notifications: boolean;
   evals: boolean;
   /** Skills registry management UI. Experimental. */
@@ -21,7 +26,6 @@ export interface FeatureFlags {
   /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
   webmcp: boolean;
   reports: boolean;
-  playground?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
 }

@@ -12,7 +12,7 @@ name = "ag-ui"
 path = "src/main.rs"
 
 [dependencies]
-# The `ag-ui` feature serves `POST /v1/e/{agent}/ag-ui` for every top-level agent.
+# The `ag-ui` feature serves `POST /v1/channels/{agent}/ag-ui` for every top-level agent.
 everruns-serve = { workspace = true, features = ["ag-ui"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

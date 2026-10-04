@@ -8,8 +8,8 @@
 // Split into per-entity modules for maintainability (EVE-99).
 
 mod a2a_push_configs;
+mod agent_channels;
 mod agent_check_rules;
-mod agent_endpoints;
 mod agent_health_checks;
 mod agent_mcp_secret_bindings;
 mod agent_trigger_mcp_subscriptions;
@@ -91,7 +91,7 @@ type RuntimeInvocationAuthority = (
 );
 type ConnectionSetupState = (String, Vec<u8>, DateTime<Utc>);
 
-use super::IngressEndpointRow;
+use super::IngressChannelRow;
 use super::a2a_push_configs::A2aPushConfigRow;
 use super::agent_trigger_deliveries::AgentTriggerDeliveryRow;
 use super::github_app_rows::GitHubAppRow;
@@ -206,9 +206,9 @@ pub struct InMemoryDatabase {
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
     apps: RwLock<HashMap<Uuid, AppRow>>,
-    // Agent endpoint rows, keyed by internal id (App-linked compatibility path)
-    endpoint_rows: RwLock<HashMap<Uuid, AgentEndpointRow>>,
-    ingress_endpoints: RwLock<HashMap<Uuid, IngressEndpointRow>>,
+    // Agent channel rows, keyed by internal id (App-linked compatibility path)
+    agent_channel_rows: RwLock<HashMap<Uuid, AgentChannelRow>>,
+    ingress_channels: RwLock<HashMap<Uuid, IngressChannelRow>>,
     // Organization-scoped runtime accounts
     pub(super) virtual_users: RwLock<HashMap<VirtualUserId, VirtualUserRow>>,
     pub(super) virtual_user_bindings:
@@ -386,8 +386,8 @@ impl Default for InMemoryDatabase {
             session_task_messages: RwLock::new(Vec::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
-            endpoint_rows: RwLock::new(HashMap::new()),
-            ingress_endpoints: RwLock::new(HashMap::new()),
+            agent_channel_rows: RwLock::new(HashMap::new()),
+            ingress_channels: RwLock::new(HashMap::new()),
             virtual_users: RwLock::new(HashMap::new()),
             virtual_user_bindings: RwLock::new(HashMap::new()),
             runtime_invocations: RwLock::new(HashMap::new()),

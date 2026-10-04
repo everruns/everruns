@@ -106,7 +106,7 @@ Unattended work must not silently spend a human user's wallet.
 The `parallel` capability is the first machine-payment consumer. Core owns only the
 trust-boundary primitive (`PaymentAuthority`, payment DTOs, `ToolContext`); the
 vendor-specific paid adapter lives in the `integrations/parallel` crate and is
-registered as an integration plugin gated by the deployment-controlled `machine_payments` feature
+registered as an integration plugin gated by the rollout-graded `machine_payments` feature
 flag. It contributes:
 - `parallel_search`
 - `parallel_extract`
@@ -152,12 +152,11 @@ enforcement, and idempotency-key settlement hardening remain follow-ups.
 
 ## Rollout
 
-Feature flag: `FEATURE_MACHINE_PAYMENTS` (the deployment-only, API-visible
-`machine_payments` feature flag). It is off by default on every grade including dev because
-spend is irreversible; set `FEATURE_MACHINE_PAYMENTS=true` to deliberately enable. It is
-reported by the feature-flags API so the UI can remove the custody surface, but it is not an
-organization opt-in. The flag gates machine-payment capabilities (currently the `parallel`
-integration plugin), payment account/policy/attempt APIs, and Settings > Payments.
+Machine payments use the same [rollout-grade policy](feature-flags.md) as other
+features, with an off catalog default because spend is irreversible. The resolved
+organisation flag gates paid capabilities, payment account/policy/attempt APIs,
+and Settings > Payments. The execution authority reads durable organisation overrides
+again before spending so revocation applies to tools loaded before an opt-out.
 
 Recommended sequence:
 1. Payment DTOs, account/policy/attempt APIs, and UI.

@@ -22,11 +22,7 @@ impl InMemoryDatabase {
         let mut store = self.org_feature_flags.write();
         let entry = store.entry(org_id).or_default();
         for (flag_name, enabled) in flags {
-            if *enabled {
-                entry.insert(flag_name.clone(), true);
-            } else {
-                entry.remove(flag_name);
-            }
+            entry.insert(flag_name.clone(), *enabled);
         }
         Ok(())
     }

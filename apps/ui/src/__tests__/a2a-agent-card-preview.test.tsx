@@ -11,7 +11,7 @@ describe("A2aAgentCardPreview", () => {
     const card = buildA2aAgentCardPreview({
       agentName: "Support Bot",
       agentDescription: "Routes support requests",
-      endpointUrl: "https://example.com/api/v1/apps/app-123/a2a/appchan-123",
+      channelUrl: "https://example.com/api/v1/apps/app-123/a2a/appchan-123",
       agentCardName: "Support A2A",
       agentCardDescription: "Answers external agents",
       sessionMode: "session_per_invocation",
@@ -82,7 +82,7 @@ describe("A2aAgentCardPreview", () => {
       <A2aAgentCardPreview
         agentName="Inbox Triage"
         agentDescription="Reviews inbox items"
-        endpointUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123"
+        channelUrl="https://example.com/api/v1/apps/app-123/a2a/appchan-123"
         sessionMode="shared_session"
       />,
     );

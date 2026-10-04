@@ -151,25 +151,24 @@ pub fn connector_plugins() -> impl Iterator<Item = &'static ConnectorPlugin> {
 
 /// Whether a capability plugin is registered for `grade` under the current environment.
 ///
-/// `experimental_only` is a grade gate; `feature_flag` resolves through
-/// [`ExecutionFeatureDecisions`], which is fail-closed — an unset flag is off
-/// at every grade.
+/// A named feature grade owns availability, including explicit promotion of
+/// experimental plugins. Plugins without a flag retain their dev-only metadata gate.
 pub fn capability_is_enabled(plugin: &IntegrationPlugin, grade: DeploymentGrade) -> bool {
     let decisions = ExecutionFeatureDecisions::from_env(grade);
-    (!plugin.experimental_only || grade.experimental_features_enabled())
-        && plugin
-            .feature_flag
-            .is_none_or(|flag| decisions.is_enabled(flag))
+    plugin.feature_flag.map_or_else(
+        || !plugin.experimental_only || grade.experimental_features_enabled(),
+        |flag| decisions.is_enabled(flag),
+    )
 }
 
 /// Register the catalog's capabilities accepted by `grade` onto `registry`.
 pub fn register_capabilities(registry: &mut CapabilityRegistry, grade: DeploymentGrade) {
     let decisions = ExecutionFeatureDecisions::from_env(grade);
     registry.register_plugins(capability_plugins(), |plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| decisions.is_enabled(flag))
+        plugin.feature_flag.map_or_else(
+            || !plugin.experimental_only || grade.experimental_features_enabled(),
+            |flag| decisions.is_enabled(flag),
+        )
     });
 }
 

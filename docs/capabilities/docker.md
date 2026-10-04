@@ -15,9 +15,12 @@ appliesTo: [platform]
 
 Run commands and manage files in a Docker container tied to the session. The container is lazily started on first use and persists for the session duration. A self-hosted alternative to cloud sandbox providers like Daytona or E2B.
 
-> **Status:** Experimental, available only on development-grade deployments.
+> **Status:** Experimental; availability follows the configured feature rollout grade.
 
-It is also disabled by default and requires `FEATURE_DOCKER_CAPABILITY=true`. It may change significantly in future releases.
+It is off by default. Use `FEATURE_DOCKER_CAPABILITY=dev` for local development,
+or select `preview`, `adoption`, or `prod` to control hosted rollout. See
+[feature rollout grades](/sre/environment-variables/#feature-rollout-grades).
+It may change significantly in future releases.
 
 ## Tools
 

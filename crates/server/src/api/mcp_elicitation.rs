@@ -261,10 +261,7 @@ async fn resolve_org(
         user_id: Some(auth_user.id),
         role: org.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         is_platform_user: auth_user.is_platform_user,
-        feature_flags: everruns_platform::FeatureFlags::for_org(
-            &state.auth.system_feature_flags,
-            &HashMap::new(),
-        ),
+        feature_flags: everruns_platform::FeatureFlags::default(),
     })
 }
 

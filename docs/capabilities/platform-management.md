@@ -44,9 +44,9 @@ Replace the capability on any agent or harness that still lists it:
 | `manage_harnesses` | `create_harness`, `update_harness`, `delete_harness`, `copy_harness` |
 | `read_agents` | `list_agents` / `get_agent` |
 | `manage_agents` | `create_agent`, `update_agent`, `delete_agent` |
-| `read_apps` | `list_apps` / `get_app` (read-only archive); `list_agent_endpoints` / `get_agent_endpoint` for live endpoints |
+| `read_apps` | `list_apps` / `get_app` (read-only archive); `list_agent_channels` / `get_agent_channel` for live endpoints |
 | `manage_apps` | No equivalent. Apps are retired; endpoints belong to an agent. |
-| `manage_app_channels` | `create_agent_endpoint`, `update_agent_endpoint`, `delete_agent_endpoint`, `publish_agent_endpoint`, `unpublish_agent_endpoint` |
+| `manage_app_channels` | `create_agent_channel`, `update_agent_channel`, `delete_agent_channel`, `publish_agent_channel`, `unpublish_agent_channel` |
 | `read_sessions` | `list_sessions` / `get_session` |
 | `manage_sessions` | `create_session`, `delete_session` |
 | `session_send_message` | `create_message` |

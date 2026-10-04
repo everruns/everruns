@@ -5,15 +5,15 @@ export function webMcpPermissionsPolicy(env: {
   deploymentGrade: string | undefined;
   devMode: string | undefined;
 }): string {
-  const explicitlyEnabled = env.feature === "true" || env.feature === "1";
-  const explicitlyDisabled = env.feature !== undefined && !explicitlyEnabled;
-  const grade = env.deploymentGrade?.toLowerCase();
-  const developmentDefault =
-    !explicitlyDisabled &&
-    (grade === "dev" ||
-      grade === "development" ||
-      (!grade && (env.devMode === "true" || env.devMode === "1")));
-  return explicitlyEnabled || developmentDefault ? "tools=(self)" : "tools=()";
+  const deployment = env.deploymentGrade?.toLowerCase();
+  const local =
+    deployment === "dev" ||
+    deployment === "development" ||
+    (env.deploymentGrade === undefined && (env.devMode === "true" || env.devMode === "1"));
+  const grade = env.feature ?? "dev";
+  const available =
+    grade === "preview" || grade === "adoption" || grade === "prod" || (grade === "dev" && local);
+  return available ? "tools=(self)" : "tools=()";
 }
 
 const nextConfig: NextConfig = {
@@ -24,6 +24,15 @@ const nextConfig: NextConfig = {
     "@rjsf/validator-ajv8",
     "@x0k/json-schema-merge",
   ],
+  async redirects() {
+    return [
+      {
+        source: "/agents/:agentId/endpoints/:path*",
+        destination: "/agents/:agentId/channels/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     // THREAT[TM-WEB-014]: deny browser tool registration unless the deployment gate is open;
     // when open, keep discovery and invocation restricted to the document's own origin.

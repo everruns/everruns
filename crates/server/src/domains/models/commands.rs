@@ -383,3 +383,29 @@ mod parse_tests {
         assert!(!cmd.favorites_only);
     }
 }
+
+/// Resolve the organization's default without creating a session.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct GetDefaultModel {}
+impl Command for GetDefaultModel {
+    type Output = Option<ModelWithProvider>;
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "get_default_model",
+            category: "models",
+            description: "Get the effective organization default model.",
+            method: "GET",
+            path: "/v1/models/default",
+        }
+    }
+    fn policy() -> Option<&'static Policy> {
+        Some(&LLM_MODEL_VIEW)
+    }
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        q::service(ctx)
+            .get_default(&ctx.caller)
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+inventory::submit! { CommandDescriptor::of::<GetDefaultModel>() }

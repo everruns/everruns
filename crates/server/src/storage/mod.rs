@@ -68,7 +68,7 @@ pub use encryption::{
 };
 pub use harness_store::{DbHarnessStore, create_db_harness_store};
 pub use ingress::{
-    AgentChannelSummaryRow, CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow,
+    AgentChannelSummaryRow, CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow,
 };
 pub use late_generation_usage::*;
 pub use leased_resource_store::{

@@ -1,6 +1,11 @@
 name: CI
 
 on:
+  # Dependency/version-only changes get live coverage once a night, rather
+  # than buying the full provider matrix after every unrelated merge.
+  schedule:
+    - cron: '23 7 * * *'
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -44,8 +49,8 @@ env:
   CARGO_PROFILE_TEST_DEBUG: line-tables-only
   # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope: PR code
   # would inherit it and could exfiltrate the whole Doppler vault via
-  # build.rs, proc-macros, or tests. Inject it per step under a push-only
-  # gate (see Slack + live-test jobs below).
+  # build.rs, proc-macros, or tests. Inject it per step only for trusted
+  # main code (see Slack + live-test jobs below).
 
 jobs:
   # Detect which parts of the codebase changed to skip irrelevant jobs
@@ -69,7 +74,7 @@ jobs:
       docs_snippets: ${{ steps.core_filter.outputs.docs_snippets }}
       docker: ${{ steps.core_filter.outputs.docker }}
       postgres_integration: ${{ steps.core_filter.outputs.postgres_integration }}
-      provider_live: ${{ steps.core_filter.outputs.provider_live }}
+      provider_live: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || steps.core_filter.outputs.provider_live == 'true' }}
       object_storage: ${{ steps.core_filter.outputs.object_storage }}
       brave_search_integration: ${{ steps.core_filter.outputs.brave_search_integration }}
       duckduckgo_integration: ${{ steps.core_filter.outputs.duckduckgo_integration }}
@@ -148,6 +153,7 @@ jobs:
 
       - uses: dorny/paths-filter@v4
         id: core_filter
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         with:
           filters: |
             rust:
@@ -272,17 +278,18 @@ jobs:
               - 'docs/api/openapi.json'
               - '.github/workflows/ci.yml'
             budget_e2e:
-              - 'apps/ui/e2e/endpoint-budget-refusal.spec.ts'
+              - 'apps/ui/e2e/channel-budget-refusal.spec.ts'
               - 'apps/ui/src/components/agents/agent-integrations-panel.tsx'
               - 'apps/ui/src/components/budgets/**'
-              - 'apps/ui/src/hooks/use-agent-endpoints.ts'
+              - 'apps/ui/src/hooks/use-agent-channels.ts'
               - 'apps/ui/src/lib/api/budgets.ts'
               - 'crates/server/src/api/budgets.rs'
-              - 'crates/server/src/domains/agent_endpoints/**'
+              - 'crates/server/src/domains/agent_channels/**'
               - 'crates/server/src/domains/budgets/**'
               - 'crates/server/src/storage/repositories/budgets.rs'
               - 'crates/server/migrations/027_app_budgets.sql'
               - 'crates/server/migrations/137_endpoint_attribution.sql'
+              - 'crates/server/migrations/166_agent_channels.sql'
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'
@@ -335,26 +342,21 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
-            # Gate for the live provider matrix (`live-provider-matrix` job).
-            # Shaped around the crates that own provider wire behaviour, which
-            # is what that matrix exists to validate.
-            #
-            # The provider entries are directory-wide on purpose. The gate used
-            # to enumerate openai/anthropic/gemini, so every driver added later
-            # fell outside it and `crates/provider` — which owns the wire
-            # protocols themselves — was never listed at all. PR #3280 fixed an
-            # openresponses_protocol.rs regression and the live matrix was
-            # skipped on that very PR (EVE-936).
-            # scripts/test-ci-provider-live-filter.sh pins the invariant.
+            # Paid suites follow provider/model source and their live harness.
+            # All driver source stays covered, including newly added providers.
+            # Manifests, lockfiles, docs and CI edits rely on the nightly sweep.
             provider_live:
-              - 'crates/provider/**'
-              - 'crates/contracts/**'
-              - 'crates/drivers/**'
-              - 'crates/llm-tests/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'rust-toolchain.toml'
-              - '.github/workflows/ci.yml'
+              - 'crates/provider/src/**'
+              - 'crates/contracts/src/**'
+              - 'crates/drivers/*/src/**'
+              - 'crates/llm-tests/src/**'
+              - 'crates/llm-tests/tests/**'
+              - 'crates/server/src/seed/models.rs'
+              - 'crates/server/src/platform.rs'
+              - 'crates/server/tests/workflow_test/thinking.rs'
+              - 'crates/server/tests/workflow_test/tool_calls.rs'
+              - 'crates/server/tests/workflow_test/filesystem.rs'
+              - 'crates/server/tests/workflow_test/support.rs'
             # S3 blob-backend integration coverage. Narrow on purpose so the
             # SeaweedFS-backed job only runs when the object-storage offload code,
             # its sidecar migration, or the harness/workflow that drives it
@@ -389,6 +391,7 @@ jobs:
       # non-markdown file and incorrectly enables the live paid matrix.
       - uses: dorny/paths-filter@v4
         id: live_filter
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
         with:
           predicate-quantifier: every
           filters: |
@@ -1643,7 +1646,7 @@ jobs:
     name: Live Provider Matrix
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.provider_live == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.provider_live == 'true' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     timeout-minutes: 40
 
     steps:
@@ -1861,7 +1864,7 @@ jobs:
     # (e.g. ubuntu-latest-8-core); defaults to standard runners.
     runs-on: ${{ vars.CI_RUNNER_LABEL || 'ubuntu-latest' }}
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.budget_e2e == 'true') && needs.changes.outputs.skip_slow_rust != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.budget_e2e == 'true' || needs.changes.outputs.provider_live == 'true') && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 40
 
     env:
@@ -1928,18 +1931,15 @@ jobs:
           path: target/release-ci/export-openapi
           retention-days: 1
 
-  # Gated to push events: this job launches PR-built `everruns-server` and
-  # `everruns-worker` binaries with ANTHROPIC/OPENAI/GEMINI keys in env, so
-  # running it on fork PRs would let attacker-controlled binary code exfil
-  # the keys. PR coverage of the binaries is still provided by build-binaries
-  # (compile-time) and the workflow tests run on push to main.
+  # Only main may launch binaries with live credentials. Ordinary Rust pushes
+  # retain the server/worker llmsim coverage without fetching provider keys.
   workflow-test:
     name: Workflow Tests (Server + Worker)
     runs-on: ubuntu-latest
     needs:
       - changes
       - build-binaries
-    if: github.event_name == 'push' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.run_ci == 'true' && (needs.changes.outputs.rust == 'true' || needs.changes.outputs.provider_live == 'true') && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 30
     services:
       postgres:
@@ -2054,14 +2054,19 @@ jobs:
       # step.
       - name: Start API server
         env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DOPPLER_TOKEN: ${{ needs.changes.outputs.provider_live == 'true' && secrets.DOPPLER_TOKEN || '' }}
+          RUN_LIVE_TESTS: ${{ needs.changes.outputs.provider_live }}
         run: |
           set -euo pipefail
-          openai_key="$(doppler secrets get OPENAI_API_KEY --plain)"
-          anthropic_key="$(doppler secrets get ANTHROPIC_API_KEY --plain)"
-          if [ -z "$openai_key" ] || [ -z "$anthropic_key" ]; then
-            echo "Doppler returned an empty provider key; the org-default tests cannot run." >&2
-            exit 1
+          openai_key=""
+          anthropic_key=""
+          if [ "$RUN_LIVE_TESTS" = "true" ]; then
+            openai_key="$(doppler secrets get OPENAI_API_KEY --plain)"
+            anthropic_key="$(doppler secrets get ANTHROPIC_API_KEY --plain)"
+            if [ -z "$openai_key" ] || [ -z "$anthropic_key" ]; then
+              echo "Doppler returned an empty provider key; the org-default tests cannot run." >&2
+              exit 1
+            fi
           fi
           env -u DOPPLER_TOKEN \
           DEFAULT_OPENAI_API_KEY="$openai_key" \
@@ -2091,9 +2096,8 @@ jobs:
           cat server.log
           exit 1
 
-      # Provider credentials come from Doppler, matching the live LLM step. This
-      # job is already push-only, the same trust boundary that step relies on,
-      # so a PR cannot reach the vault through it.
+      # Credentials are available only on main, and only when paid coverage is
+      # scheduled. The two test steps are mutually exclusive: one cargo pass.
       #
       # EVERRUNS_REQUIRE_LIVE_TESTS makes a missing credential fail loudly.
       # The reasoning projection test verifies a real provider's reasoning
@@ -2102,6 +2106,7 @@ jobs:
       # nothing. The llmsim tests in this job are unaffected — they never read a
       # provider key.
       - name: Run workflow tests
+        if: needs.changes.outputs.provider_live == 'true'
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           EVERRUNS_REQUIRE_LIVE_TESTS: "1"
@@ -2113,6 +2118,23 @@ jobs:
           doppler run --preserve-env="DATABASE_URL,API_BASE_URL,AUTH_MODE,DEPLOYMENT_GRADE,WORKER_GRPC_AUTH_TOKEN,SECRETS_ENCRYPTION_KEY,RATE_LIMIT_API_REQUESTS_PER_MINUTE,EVERRUNS_REQUIRE_LIVE_TESTS,EVERRUNS_LIVE_SKIP_REPORT"
           -- cargo test -p everruns-server --test workflow_test -- --test-threads=1
 
+      - name: Run llmsim workflow tests
+        if: needs.changes.outputs.provider_live != 'true'
+        # Explicitly exclude paid cases, and remove ambient credentials so a
+        # newly added live case cannot accidentally spend on this path.
+        run: >-
+          env -u DOPPLER_TOKEN -u OPENAI_API_KEY -u ANTHROPIC_API_KEY
+          -u DEFAULT_OPENAI_API_KEY -u DEFAULT_ANTHROPIC_API_KEY
+          -u EVERRUNS_REQUIRE_LIVE_TESTS
+          cargo test -p everruns-server --test workflow_test -- --test-threads=1
+          --skip test_no_duplicate_tool_calls
+          --skip test_agent_execution_openai_with_tool_calls
+          --skip test_agent_execution_anthropic_with_tool_calls
+          --skip test_agent_filesystem_and_bash_workspace_integration
+          --skip test_anthropic_extended_thinking
+          --skip test_anthropic_extended_thinking_with_tools
+          --skip test_reasoning_reaches_api_sanitized_and_classified
+
       # libtest captures stdout for tests that pass, so a skipped live test is
       # invisible in a green run unless it is re-emitted here. Step summaries are
       # not readable over the Actions API, so the log is the only channel a
@@ -2121,7 +2143,7 @@ jobs:
       #
       # `always()`: the report matters just as much when a later assertion failed.
       - name: Report skipped live tests
-        if: always()
+        if: always() && needs.changes.outputs.provider_live == 'true'
         run: |
           report="${{ github.workspace }}/live-provider-skips.md"
           if [ -s "$report" ]; then
@@ -2483,7 +2505,7 @@ jobs:
           retention-days: 7
 
   ui-budget-e2e:
-    name: UI Endpoint Budget Full-Stack E2E
+    name: UI Channel Budget Full-Stack E2E
     runs-on: ubuntu-latest
     needs:
       - changes
@@ -2511,9 +2533,9 @@ jobs:
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       DEPLOYMENT_GRADE: dev
       AUTH_MODE: none
-      FEATURE_APP_BUDGETS: "true"
+      FEATURE_APP_BUDGETS: "prod"
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
-      WORKER_GRPC_AUTH_TOKEN: endpoint-budget-e2e-token
+      WORKER_GRPC_AUTH_TOKEN: channel-budget-e2e-token
       PLAYWRIGHT_REAL_API_URL: http://localhost:9000
 
     defaults:
@@ -2580,8 +2602,8 @@ jobs:
           ./bin/everruns-worker > /tmp/everruns-budget-e2e-worker.log 2>&1 &
           echo "WORKER_PID=$!" >> "$GITHUB_ENV"
 
-      - name: Run endpoint budget full-stack test
-        run: pnpm exec playwright test e2e/endpoint-budget-refusal.spec.ts
+      - name: Run channel budget full-stack test
+        run: pnpm exec playwright test e2e/channel-budget-refusal.spec.ts
 
       - name: Show server and worker logs on failure
         if: failure()
@@ -2597,11 +2619,11 @@ jobs:
           kill "$WORKER_PID" 2>/dev/null || true
           kill "$SERVER_PID" 2>/dev/null || true
 
-      - name: Upload endpoint budget Playwright evidence
+      - name: Upload channel budget Playwright evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: endpoint-budget-playwright-evidence
+          name: channel-budget-playwright-evidence
           path: |
             apps/ui/e2e/playwright-report
             apps/ui/e2e/test-results
@@ -2825,7 +2847,7 @@ jobs:
           require_if_affected "ci:skip-postgres-integration" "${{ needs.changes.outputs.skip_postgres_integration }}" "${{ needs.changes.outputs.postgres_integration }}" "PostgreSQL integration tests"
           require_if_affected "ci:skip-sdk-compat" "${{ needs.changes.outputs.skip_sdk_compat }}" "${{ needs.changes.outputs.sdk_compat }}" "SDK compatibility checks"
           require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.ui }}" "UI Playwright smoke"
-          require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.budget_e2e }}" "UI endpoint budget full-stack E2E"
+          require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.budget_e2e }}" "UI channel budget full-stack E2E"
           require_if_affected "ci:skip-docs-notebooks" "${{ needs.changes.outputs.skip_docs_notebooks }}" "${{ needs.changes.outputs.docs_notebooks }}" "docs notebook execution"
           require_if_affected "ci:skip-docker" "${{ needs.changes.outputs.skip_docker }}" "${{ needs.changes.outputs.docker }}" "Docker image build validation"
           require_if_affected "ci:skip-integration-workflows" "${{ needs.changes.outputs.skip_integration_workflows }}" "$standalone_integration_affected" "standalone Brave Search, DuckDuckGo, or Parallel MCP integration workflows"

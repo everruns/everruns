@@ -17,7 +17,7 @@ Verify that payment account, policy, and attempt APIs are unavailable when machi
 ## Preconditions
 
 - Canonical local stack running with `AUTH_MODE=none`
-- `FEATURE_MACHINE_PAYMENTS=false` (or unset)
+- `FEATURE_MACHINE_PAYMENTS=off` (or unset)
 
 ## Test Data
 

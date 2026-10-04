@@ -36,7 +36,7 @@ use everruns_core::events::ToolCallRequestedData;
 use everruns_platform::{AgUiChannelConfig, SessionStatus};
 use serde_json::{Value, json};
 
-use crate::api::endpoint_a2a::ask_user::{ask_user_answer_schema, pending_ask_user_from_request};
+use crate::api::channel_a2a::ask_user::{ask_user_answer_schema, pending_ask_user_from_request};
 use crate::api::question_answers::{
     PendingQuestions, QUESTION_LOOKBACK_EVENTS, QuestionAnswersRequest, QuestionResolver,
     ResolveError, SubmittedStatus,

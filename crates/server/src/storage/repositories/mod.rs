@@ -1,8 +1,8 @@
 // Repository layer for database operations
 // Decision: PostgreSQL-backed, split into per-entity modules (EVE-100).
 
+mod agent_channels;
 mod agent_check_rules;
-mod agent_endpoints;
 mod agent_health_checks;
 mod agent_mcp_secret_bindings;
 mod agent_triggers;

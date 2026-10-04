@@ -9,7 +9,7 @@
 //   high SSE concurrency (50+ streams over single HTTP/2 connection). We set
 //   2MB stream windows, 16MB connection windows, and enable adaptive flow control.
 
-use crate::api::endpoint_a2a::A2aPushListener;
+use crate::api::channel_a2a::A2aPushListener;
 use crate::api::sse::{SseConnectionLimits, SseConnectionTracker};
 use crate::auth::{self, AuthBackend};
 use crate::direct_worker_adapters::DirectWorkerAdapters;
@@ -586,11 +586,11 @@ impl ServerAppBuilder {
                 }
             }
         };
-        let deployment_grade = everruns_core::DeploymentGrade::from_env();
-        let feature_flags = everruns_platform::FeatureFlags::from_env(&deployment_grade);
+        let feature_flag_policy = everruns_platform::FeatureFlagPolicy::current();
+        let feature_flags = feature_flag_policy.deployment_flags();
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
             .with_db(db.clone())
-            .with_system_feature_flags(feature_flags.clone());
+            .with_feature_flag_policy(feature_flag_policy.clone());
         let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
 
@@ -1090,10 +1090,8 @@ impl ServerAppBuilder {
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
             .with_run_context(eval_run_ctx);
-        // Agent health checks (knowledge/evaluation/agent-checks.md, tier-3). Built once and
-        // shared by the agents HTTP state and the MCP endpoint state so the
-        // catalog commands work over both surfaces. Gated on the utility LLM
-        // (generates/judges cases) and a default harness (hosts the sessions).
+        // Agent health checks are shared by HTTP and MCP (knowledge/evaluation/agent-checks.md).
+        // They need a utility LLM to generate/judge cases and a default harness to host sessions.
         let utility_llm = host_composition.utility_llm_service();
         let health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>> =
             if utility_llm.is_configured()
@@ -1139,14 +1137,15 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
             auth_config.base_url.clone(),
-        );
+        )
+        .with_decisions(host_composition.decisions());
         let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("webhook", client)
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         };
-        let endpoint_webhooks_state = api::endpoint_webhooks::EndpointWebhookState::new(
+        let channel_webhooks_state = api::channel_webhooks::ChannelWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1171,7 +1170,7 @@ impl ServerAppBuilder {
         };
         // api_endpoint execution keys get their own rate-limiter namespace so
         // their per-channel cap is never shared with AG-UI / A2A / FCP buckets.
-        let api_endpoint_rate_limiter = match valkey_for_channel_rate_limits.clone() {
+        let api_channel_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("apikey", client)
             }
@@ -1191,7 +1190,7 @@ impl ServerAppBuilder {
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("public_chat"),
         };
-        let endpoint_a2a_state = api::endpoint_a2a::EndpointA2aState::new(
+        let channel_a2a_state = api::channel_a2a::ChannelA2aState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
@@ -1202,13 +1201,13 @@ impl ServerAppBuilder {
             a2a_replay_store,
             auth_config.frontend_url.clone(),
         );
-        let endpoint_api_state = api::endpoint_api::EndpointApiState::new(
+        let channel_api_state = api::channel_api::ChannelApiState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
             notifications_enabled,
             event_delivery.clone(),
-            api_endpoint_rate_limiter,
+            api_channel_rate_limiter,
         );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),
@@ -1483,14 +1482,14 @@ impl ServerAppBuilder {
                 db: db.clone(),
                 auth: auth_state.clone(),
                 encryption: encryption.clone(),
-                verifier: api::endpoint_auth::EndpointAuthVerifier::new(),
+                verifier: api::channel_auth::ChannelAuthVerifier::new(),
             }))
             .merge(api::virtual_users::routes(virtual_users_state))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
-            .merge(api::agent_endpoints::routes(agent_triggers_state.clone()))
+            .merge(api::agent_channels::routes(agent_triggers_state.clone()))
             .merge(api::agent_triggers::routes(agent_triggers_state))
             // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harness_examples::routes(harness_examples_state))
@@ -1543,7 +1542,7 @@ impl ServerAppBuilder {
                 api::org_feature_flags::AppState::new(
                     db.clone(),
                     auth_state.clone(),
-                    feature_flags.clone(),
+                    feature_flag_policy.clone(),
                 ),
             ))
             .merge(api::memory::routes(memory_state))
@@ -1573,9 +1572,9 @@ impl ServerAppBuilder {
                     slack_provisioning,
                 ),
             ))
-            .merge(api::endpoint_webhooks::routes(endpoint_webhooks_state))
-            .merge(api::endpoint_a2a::routes(endpoint_a2a_state))
-            .merge(api::endpoint_api::routes(endpoint_api_state))
+            .merge(api::channel_webhooks::routes(channel_webhooks_state))
+            .merge(api::channel_a2a::routes(channel_a2a_state))
+            .merge(api::channel_api::routes(channel_api_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::public_chat::routes(public_chat_state))
             .merge(api::fcp::routes(fcp_state))

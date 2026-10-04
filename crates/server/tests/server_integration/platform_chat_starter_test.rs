@@ -48,10 +48,15 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         .await
         .expect("initialize built-in harnesses");
     let platform_chat = backend
-        .get_harness_by_name(TEST_ORG_ID, "platform-chat")
+        .get_harness_by_name(TEST_ORG_ID, "generic")
         .await
         .expect("load Platform Chat harness")
         .expect("Platform Chat harness is seeded");
+    let agent = backend
+        .get_agent_by_name(TEST_ORG_ID, "platform-chat")
+        .await
+        .unwrap()
+        .unwrap();
     let starter = CreateSessionRow {
         playground_user_id: None,
 
@@ -59,10 +64,10 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
         workspace_id: None,
         org_id: TEST_ORG_ID,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         trigger_id: None,
         harness_id: Some(platform_chat.id),
-        agent_id: None,
+        agent_id: Some(agent.id),
         agent_version_id: None,
         agent_config_hash: None,
         virtual_user_id: None,
@@ -187,5 +192,48 @@ async fn duplicate_platform_chat_starter_is_409_without_warning() {
     assert!(
         !logged.contains("database uniqueness conflict"),
         "expected starter conflict to stay below WARN, got: {logged}"
+    );
+}
+
+/// Exclude the permanent conversation before counting and paginating history.
+#[tokio::test]
+async fn platform_chat_history_pages_only_side_conversations() {
+    let server = TestServer::new().await;
+    server
+        .post("/v1/sessions/platform-chat", json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+    server
+        .post(
+            "/v1/sessions",
+            json!({"source":"chat", "agent_name":"platform-chat", "tags":["chat"]}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+    let query = format!(
+        "/v1/sessions?source=chat&agent_id={}&mine=true&limit=1",
+        server.seed_chat_agent_id
+    );
+    let all = server
+        .get(&query)
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    let sides = server
+        .get(&format!("{query}&side_chats_only=true"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    assert_eq!(
+        all["total"].as_u64().unwrap(),
+        sides["total"].as_u64().unwrap() + 1
+    );
+    assert_eq!(sides["data"].as_array().unwrap().len(), 1);
+    assert!(
+        !sides["data"][0]["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t == "platform-chat-starter")
     );
 }

@@ -209,9 +209,19 @@ async fn create_agent(server: &TestServer) -> Agent {
 
 /// A session parked exactly where the act pauses on a client-side tool call.
 async fn parked_session(server: &TestServer) -> SessionId {
+    parked_session_for_agent(server, false).await
+}
+async fn parked_session_for_agent(server: &TestServer, platform: bool) -> SessionId {
     let agent = create_agent(server).await;
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/sessions",
+            if platform {
+                json!({"agent_name":"platform-chat"})
+            } else {
+                json!({ "agent_id": agent.public_id })
+            },
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -232,7 +242,7 @@ async fn parked_session(server: &TestServer) -> SessionId {
 }
 
 async fn another_users_platform_chat_session(server: &TestServer) -> SessionId {
-    let session_id = parked_session(server).await;
+    let session_id = parked_session_for_agent(server, true).await;
     let owner = server
         .db
         .create_user(everruns_server::storage::models::CreateUserRow {

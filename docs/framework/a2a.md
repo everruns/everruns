@@ -31,8 +31,8 @@ Every top-level agent in the app is then served at:
 
 | Route | What it is |
 | --- | --- |
-| `POST /v1/e/{agent}/a2a` | A2A 1.0 JSON-RPC. Requests need the `A2A-Version: 1.0` header. |
-| `GET /v1/e/{agent}/a2a/.well-known/agent-card.json` | The Agent Card, built from the agent's name and `description`. |
+| `POST /v1/channels/{agent}/a2a` | A2A 1.0 JSON-RPC. Requests need the `A2A-Version: 1.0` header. |
+| `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json` | The Agent Card, built from the agent's name and `description`. |
 
 Nothing else changes in the agent. A `description` is worth setting, because
 it is what other agents read on the card:
@@ -54,7 +54,7 @@ fn researcher() -> Agent {
 Try it with the `a2a` CLI against a dev server:
 
 ```bash
-CARD=http://localhost:3000/v1/e/researcher/a2a/.well-known/agent-card.json
+CARD=http://localhost:3000/v1/channels/researcher/a2a/.well-known/agent-card.json
 a2a card get -a "$CARD"
 a2a send -a "$CARD" "Tide pools"
 a2a send -a "$CARD" --stream "Coral reefs"
@@ -115,7 +115,7 @@ let agent = Agent::builder()
             "id": "researcher",
             "name": "Researcher",
             "description": "Researches a topic and answers with short factual notes.",
-            "base_url": "https://agents.example.com/v1/e/researcher/a2a"
+            "base_url": "https://agents.example.com/v1/channels/researcher/a2a"
         }]
     })))
     // Delegated runs are recorded in session storage.

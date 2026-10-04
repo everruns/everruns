@@ -175,7 +175,7 @@ else:
     ]
     for affected_output, check_name in [
         ("needs.changes.outputs.ui", "UI Playwright smoke"),
-        ("needs.changes.outputs.budget_e2e", "UI endpoint budget full-stack E2E"),
+        ("needs.changes.outputs.budget_e2e", "UI channel budget full-stack E2E"),
     ]:
         if not any(
             affected_output in line and check_name in line for line in ui_guard_lines
@@ -192,5 +192,5 @@ print("ci.yml: label-event runs cannot cancel real runs, Build Check refuses "
       "to pass a run that executed nothing unless a real run passed on the "
       "same head SHA — waiting, bounded, for one still in flight rather than "
       "failing closed on it — and UI E2E opt-outs cannot suppress affected "
-      "smoke or endpoint-budget coverage")
+      "smoke or channel-budget coverage")
 PY

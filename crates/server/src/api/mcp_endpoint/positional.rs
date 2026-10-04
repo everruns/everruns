@@ -454,8 +454,8 @@ mod tests {
         // List endpoints have no path params — must not be present.
         assert!(!map.contains_key("list_agents"));
         assert!(!map.contains_key("list_sessions"));
-        // Multi-path-param ops (e.g. delete_agent_endpoint has two) must not be
+        // Multi-path-param ops (e.g. delete_agent_channel has two) must not be
         // present: positional ordering would be ambiguous.
-        assert!(!map.contains_key("delete_agent_endpoint"));
+        assert!(!map.contains_key("delete_agent_channel"));
     }
 }

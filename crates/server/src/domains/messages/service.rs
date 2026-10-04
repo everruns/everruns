@@ -771,7 +771,7 @@ mod tests {
             org_id,
             harness_id: None,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             trigger_id: None,
             agent_id: None,
             agent_version_id: None,

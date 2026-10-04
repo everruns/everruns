@@ -1,4 +1,4 @@
-//! The AG-UI channel: `POST /v1/e/{agent}/ag-ui` serves an agent to AG-UI
+//! The AG-UI channel: `POST /v1/channels/{agent}/ag-ui` serves an agent to AG-UI
 //! clients (CopilotKit, `@ag-ui/client`) as AG-UI 1.0 server-sent events.
 //! Requires the `ag-ui` feature.
 //!
@@ -9,7 +9,7 @@
 //!   projection the facade and the everruns server use; serve adds routing,
 //!   the thread map, and its interrupts.
 //! - The path has the shape of the everruns server's channel route
-//!   (`/v1/e/{id}/ag-ui`), so a front end moves between serve and Everruns
+//!   (`/v1/channels/{id}/ag-ui`), so a front end moves between serve and Everruns
 //!   by base URL and id alone. Here the id is the agent's name: every
 //!   top-level agent is an endpoint, and none is declared separately.
 //! - One session per (agent, AG-UI `threadId`), kept in the same thread map
@@ -49,7 +49,7 @@ use crate::host::{ApiError, Host, NewSession};
 
 /// The route of `agent`'s AG-UI endpoint.
 pub(crate) fn route(agent: &str) -> String {
-    format!("/v1/e/{agent}/ag-ui")
+    format!("/v1/channels/{agent}/ag-ui")
 }
 
 /// The thread-map channel key of `agent`'s AG-UI threads.
@@ -57,7 +57,7 @@ fn thread_channel(agent: &str) -> String {
     format!("ag-ui:{agent}")
 }
 
-/// `POST /v1/e/{agent}/ag-ui`: one AG-UI run. A malformed body or input the
+/// `POST /v1/channels/{agent}/ag-ui`: one AG-UI run. A malformed body or input the
 /// run cannot use is a 400 problem; an unknown agent a 404.
 pub(crate) async fn run(
     State(host): State<Arc<Host>>,

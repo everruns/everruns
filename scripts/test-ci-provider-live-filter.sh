@@ -15,7 +15,7 @@
 # fix's own PR and the break surfaced on the merge commit instead (EVE-936).
 #
 # An enumeration cannot notice a crate that was never added to it, so the filter
-# uses directory-wide globs and this test pins that: every crate owning provider
+# covers every driver's source and this test pins that: every crate owning provider
 # wire behaviour must be matched by some `provider_live` glob. Re-narrowing the
 # filter to a hand-kept list turns this red instead of silently dropping a
 # driver from live coverage.
@@ -128,5 +128,85 @@ if uncovered:
         "(EVE-936): " + ", ".join(uncovered)
     )
 
-print(f"{FILTER} covers all {len(required)} provider-owning crates and gates {JOB}")
+# Unrelated workspace/deployment changes must not buy a full live matrix.
+for probe in [
+    "Cargo.lock", "Cargo.toml", "rust-toolchain.toml", ".github/workflows/ci.yml",
+    "crates/drivers/drivers/Cargo.toml", "crates/provider/README.md",
+    "crates/server/src/api/sessions.rs", "apps/ui/src/app/page.tsx",
+]:
+    assert not any(matches(pattern, probe) for pattern in patterns), probe
+
+for probe in [
+    "crates/contracts/src/model_profile_data/profiles/gpt6.rs",
+    "crates/server/src/seed/models.rs",
+    "crates/server/src/platform.rs",
+]:
+    assert any(matches(pattern, probe) for pattern in patterns), probe
+
+# Nightly/on-demand runs bypass change detection, but never the main-only
+# credential boundary. Their binaries must build even without a Rust diff.
+doc = yaml.safe_load(workflow.read_text())
+triggers = doc.get("on", doc.get(True))
+schedule = triggers.get("schedule", [])
+assert len(schedule) == 1, "missing nightly live coverage"
+assert schedule[0]["cron"].split()[2:] == ["*", "*", "*"], "sweep must run daily"
+assert "workflow_dispatch" in triggers
+assert "github.event_name == 'schedule'" in job_if
+assert "github.ref == 'refs/heads/main'" in job_if
+assert "outputs.provider_live" in jobs["build-binaries"]["if"]
+assert "outputs.provider_live" in jobs["workflow-test"]["if"]
+
+# Exercise the actual workflow expressions, including the empty filter outputs
+# when schedules skip change detection. A PR must never reach either paid job.
+def resolve(expression, values):
+    expression = expression.removeprefix("${{").removesuffix("}}")
+    expression = re.sub(
+        r"\b(?:github|needs|steps)(?:\.[a-zA-Z_][a-zA-Z_0-9]*)+",
+        lambda m: repr(values[m.group()]), expression,
+    )
+    return bool(eval(expression.replace("&&", " and ").replace("||", " or "), {"__builtins__": {}}))
+
+
+for event, ref, changed, rust, paid_expected, workflow_expected in [
+    ("push", "refs/heads/main", "true", "true", True, True),
+    ("push", "refs/heads/main", "false", "true", False, True),
+    ("push", "refs/heads/main", "false", "false", False, False),
+    ("pull_request", "refs/pull/1/merge", "true", "true", False, False),
+    ("schedule", "refs/heads/main", "", "", True, True),
+    ("workflow_dispatch", "refs/heads/main", "", "", True, True),
+    ("workflow_dispatch", "refs/heads/topic", "", "", False, False),
+]:
+    values = {
+        "github.event_name": event, "github.ref": ref,
+        "steps.core_filter.outputs.provider_live": changed,
+        "needs.changes.outputs.run_ci": "true",
+        "needs.changes.outputs.rust": rust,
+        "needs.changes.outputs.budget_e2e": "",
+        "needs.changes.outputs.skip_slow_rust": "false",
+    }
+    paid = resolve(jobs["changes"]["outputs"][FILTER], values)
+    values["needs.changes.outputs.provider_live"] = str(paid).lower()
+    assert resolve(job_if, values) == paid_expected, (event, ref)
+    assert resolve(jobs["workflow-test"]["if"], values) == workflow_expected, (event, ref)
+    if workflow_expected:
+        assert resolve(jobs["build-binaries"]["if"], values), (event, ref)
+
+# Ordinary Rust pushes retain llmsim coverage without fetching provider keys.
+steps = jobs["workflow-test"]["steps"]
+paid = next(s for s in steps if s.get("name") == "Run workflow tests")
+assert "outputs.provider_live == 'true'" in paid["if"]
+sim = next(s for s in steps if s.get("name") == "Run llmsim workflow tests")
+assert "outputs.provider_live != 'true'" in sim["if"]
+assert "DOPPLER_TOKEN" not in sim.get("env", {})
+assert "doppler" not in sim["run"]
+for test in [
+    "test_no_duplicate_tool_calls", "test_agent_execution_openai_with_tool_calls",
+    "test_agent_execution_anthropic_with_tool_calls",
+    "test_agent_filesystem_and_bash_workspace_integration",
+    "test_anthropic_extended_thinking", "test_anthropic_extended_thinking_with_tools",
+    "test_reasoning_reaches_api_sanitized_and_classified",
+]:
+    assert f"--skip {test}" in sim["run"], test
+
+print(f"{FILTER}: provider/model changes and nightly coverage; ordinary CI stays unpaid")
 PY

@@ -2,13 +2,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { CodeBlock } from "@/components/ui/code-block";
-import { getInvocationSessionModeDisplayName } from "@/lib/endpoint-display";
+import { getInvocationSessionModeDisplayName } from "@/lib/channel-display";
 import { codingAgentPrompt, webhookSamples } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Globe, KeyRound } from "lucide-react";
 
 interface WebhookSetupGuidanceProps {
-  endpointUrl: string;
+  channelUrl: string;
   sessionMode: InvocationSessionMode;
   message: string;
   tokenConfigured: boolean;
@@ -17,7 +17,7 @@ interface WebhookSetupGuidanceProps {
 }
 
 export function WebhookSetupGuidance({
-  endpointUrl,
+  channelUrl,
   sessionMode,
   message,
   tokenConfigured,
@@ -39,11 +39,11 @@ export function WebhookSetupGuidance({
       </div>
 
       <div>
-        <p className="text-sm font-medium">Endpoint</p>
+        <p className="text-sm font-medium">Channel</p>
         <div className="mt-2 flex items-center gap-2 bg-muted p-3">
           <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <code className="flex-1 truncate text-sm">{endpointUrl}</code>
-          <CopyButton value={endpointUrl} />
+          <code className="flex-1 truncate text-sm">{channelUrl}</code>
+          <CopyButton value={channelUrl} />
         </div>
       </div>
 
@@ -78,7 +78,7 @@ export function WebhookSetupGuidance({
       <div>
         <p className="text-sm font-medium">Call it from your system</p>
         <div className="mt-2">
-          <CodeBlock samples={webhookSamples({ origin, endpointUrl })} />
+          <CodeBlock samples={webhookSamples({ origin, channelUrl })} />
         </div>
       </div>
 
@@ -90,7 +90,7 @@ export function WebhookSetupGuidance({
               {
                 label: "Prompt",
                 language: "text",
-                code: codingAgentPrompt({ origin, kind: "webhook", endpointUrl }),
+                code: codingAgentPrompt({ origin, kind: "webhook", channelUrl }),
               },
             ]}
           />

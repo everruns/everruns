@@ -17,7 +17,7 @@ Verify that payment navigation and wallet/policy management remain available whe
 ## Preconditions
 
 - Canonical local stack running with `AUTH_MODE=none`
-- `FEATURE_MACHINE_PAYMENTS=true`
+- `FEATURE_MACHINE_PAYMENTS=prod`
 - Browser session open as the local organization owner
 
 ## Test Data

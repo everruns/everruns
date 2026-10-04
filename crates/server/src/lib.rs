@@ -103,6 +103,7 @@ pub mod durable_seal;
 
 // Organization initialization (built-in harnesses, reconciliation)
 pub mod org_init;
+pub(crate) mod platform_chat_agent;
 
 // Service seeding (default agents, providers, models)
 pub(crate) mod agent_templates;

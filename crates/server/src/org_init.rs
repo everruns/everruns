@@ -323,12 +323,8 @@ pub async fn initialize_org_harnesses_with_definitions(
         }
     }
 
-    if harnesses
-        .iter()
-        .any(|harness| harness.name == "platform-chat")
-        && db.consolidate_platform_chat(org_id).await?
-    {
-        result.updated += 1;
+    if harnesses.iter().any(|h| h.name == "generic") {
+        crate::platform_chat_agent::initialize(db, org_id).await?;
     }
 
     sync_org_harness_settings_with_definitions(db, org_id, harnesses).await?;
@@ -604,29 +600,20 @@ mod tests {
         assert_eq!(settings.default_harness_id, Some(generic_id));
         assert_eq!(settings.base_harness_id, Some(base_id));
 
-        let chat = provisioned_harnesses
-            .iter()
-            .find(|h| h.name == "platform-chat")
-            .expect("chat harness");
-        assert_eq!(chat.parent_harness_id, Some(base_id));
-
-        let chat_caps = db.get_harness_capabilities(chat.id.uuid()).await.unwrap();
-        let chat_cap_ids = chat_caps
-            .iter()
-            .map(|cap| cap.capability_id.as_str())
-            .collect::<Vec<_>>();
-        // Derive from the definition rather than a second literal: the list is
-        // already pinned by `platform_chat_has_a_focused_tool_surface`, and this
-        // test's job is that provisioning persists it verbatim and in order.
-        let expected_chat_cap_ids = harnesses()
-            .into_iter()
-            .find(|definition| definition.name == "platform-chat")
-            .expect("platform-chat definition")
-            .capabilities
-            .iter()
-            .map(|capability| capability.capability_id().to_string())
-            .collect::<Vec<_>>();
-        assert_eq!(chat_cap_ids, expected_chat_cap_ids);
+        let chat = db
+            .get_agent_by_name(DEFAULT_ORG_ID, crate::platform_chat_agent::NAME)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(chat.is_built_in);
+        assert_eq!(chat.harness_id, generic_id);
+        assert!(chat.system_prompt.contains("/memory/shared"));
+        assert!(!chat.starters.as_array().unwrap().is_empty());
+        let caps = db.get_agent_capabilities(chat.id.uuid()).await.unwrap();
+        assert!(
+            caps.iter()
+                .any(|c| c.capability_id == "platform" && c.config["surface"] == "shell")
+        );
     }
 
     #[tokio::test]
@@ -695,11 +682,7 @@ mod tests {
         initialize_org_harnesses(&db, org2.org_id).await.unwrap();
 
         let harnesses = db.list_harnesses(org2.org_id, None, false).await.unwrap();
-        let chat_id = harnesses
-            .iter()
-            .find(|h| h.name == "platform-chat")
-            .unwrap()
-            .id;
+        let chat_id = harnesses.iter().find(|h| h.name == "base").unwrap().id;
 
         db.patch_organization_settings(
             org2.org_id,

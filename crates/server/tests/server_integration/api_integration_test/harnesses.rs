@@ -547,131 +547,29 @@ async fn test_session_features_generic_harness() {
 }
 
 #[tokio::test]
-async fn test_chat_harness_exists_in_seed() {
+async fn test_chat_is_a_managed_agent_on_generic() {
     let server = TestServer::new().await;
-
-    // Verify the Platform Chat harness was seeded (response is {"data": [...]})
-    let body = server
-        .get("/v1/harnesses")
+    let agent: Value = server
+        .get("/v1/agents/platform-chat")
         .await
         .assert_success()
-        .json_value();
-    let harnesses: Vec<Harness> =
-        serde_json::from_value(body["data"].clone()).expect("Failed to parse harnesses data");
-
-    let chat_harness = harnesses
-        .iter()
-        .find(|h| h.name == "platform-chat")
-        .expect("Platform Chat harness should exist in seed data");
-
-    assert_eq!(chat_harness.id.to_string(), server.seed_chat_harness_id);
-    assert!(chat_harness.tags.contains(&"chat".to_string()));
-}
-
-#[tokio::test]
-async fn test_chat_harness_exposes_shell_platform_surface() {
-    let server = TestServer::new().await;
-
-    let harness: Harness = server
-        .get(&format!("/v1/harnesses/{}", server.seed_chat_harness_id))
-        .await
-        .assert_status(StatusCode::OK)
         .json();
-
-    assert_eq!(harness.name, "platform-chat");
-    assert_eq!(
-        harness.parent_harness_id.as_ref().map(ToString::to_string),
-        Some(server.seed_base_harness_id.to_string()),
-        "Platform Chat should inherit from Base to keep its tool surface focused"
-    );
-
-    let cap_ids: Vec<&str> = harness
-        .capabilities
-        .iter()
-        .map(|c| c.capability_id())
-        .collect();
-
-    assert_eq!(
-        cap_ids,
-        vec![
-            "platform",
-            "session_file_system",
-            "bashkit_shell",
-            "btw",
-            "human_intent",
-            "current_time",
-            "message_metadata",
-            "parallel_tool_calls",
-            "stateless_todo_list",
-            "prompt_caching",
-            "tool_call_repair",
-            "loop_detection",
-            "error_disclosure",
-            "compaction",
-            "tool_output_persistence",
-            "tool_output_distillation",
-            "ask_user",
-            "soft_approval"
-        ],
-        "Platform Chat should keep shell operations, files, and runtime safeguards locally"
-    );
-
-    let platform = harness
-        .capabilities
-        .iter()
-        .find(|cap| cap.capability_id() == "platform")
-        .expect("platform capability must be configured");
-    assert_eq!(platform.config_value(), &json!({"surface": "shell"}));
-
-    let preview: Value = server
-        .post(
-            "/v1/harnesses/preview",
-            json!({
-                "system_prompt": harness.system_prompt,
-                "parent_harness_id": harness.parent_harness_id,
-                "capabilities": harness.capabilities,
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    let tool_names: Vec<&str> = preview["tools"]
-        .as_array()
-        .expect("preview tools should be an array")
-        .iter()
-        .filter_map(|tool| tool["name"].as_str())
-        .collect();
-
-    for expected in [
-        "bash",
-        "read_file",
-        "write_file",
-        "ask_user",
-        "request_approval",
-    ] {
-        assert!(
-            tool_names.contains(&expected),
-            "Platform Chat preview should include {expected}"
-        );
-    }
+    assert_eq!(agent["name"], "platform-chat");
+    assert_eq!(agent["harness_id"], server.seed_generic_harness_id);
     assert!(
-        !tool_names.contains(&"manage_harnesses"),
-        "Platform Chat should use the catalog surface, not legacy management tools"
+        agent["capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["ref"] == "platform" && c["config"]["surface"] == "shell")
     );
-    for excluded in [
-        "discover",
-        "query",
-        "execute",
-        "web_fetch",
-        "secret_store",
-        "schedule_create",
-    ] {
-        assert!(
-            !tool_names.contains(&excluded),
-            "Platform Chat should not expose additional {excluded} tools"
-        );
-    }
+    let harness: Harness = server
+        .get(&format!("/v1/harnesses/{}", server.seed_generic_harness_id))
+        .await
+        .assert_success()
+        .json();
+    assert!(harness.intro_markdown.is_none());
+    assert!(harness.starters.is_empty());
 }
 
 // ============================================

@@ -26,7 +26,7 @@ Tenant users, public channel senders, browsers, remote identity providers, MCP p
 
 - Cross-organization access is the primary isolation risk: every storage query, resource lookup, SSE subscription, and command must retain the resolved organization boundary.
 - The internal worker gRPC credential is highly privileged and shared across organizations; accidental public exposure would permit client-supplied organization IDs to reach Caller::internal paths.
-- Public agent channels can create durable work and model spend, making signature checks, endpoint liveness, request limits, deduplication, and rate limits security controls.
+- Public agent channels can create durable work and model spend, making signature checks, channel liveness, request limits, deduplication, and rate limits security controls.
 - Outbound HTTP, OAuth discovery, JWKS retrieval, MCP servers, git operations, and provider integrations create SSRF and credential-exfiltration risk.
 - Model output can select tools and arguments; filesystem, shell, network, connection-secret, and durable-resource tools need workspace boundaries and policy enforcement independent of the model.
 
@@ -35,7 +35,7 @@ Tenant users, public channel senders, browsers, remote identity providers, MCP p
 These patterns deserve focused review because they encode the project's principal trust boundaries.
 
 - HTTP handlers that omit AuthUser, ResolvedOrg, or OrgContext, use unscoped lookups, or construct Caller::internal outside a documented internal path.
-- Public channel handlers (`endpoint_webhooks`, `endpoint_a2a`, `ag_ui`, `slack_events`) that parse or enqueue a body before token/signature verification, endpoint liveness, or rate limiting.
+- Public channel handlers (`channel_webhooks`, `channel_a2a`, `ag_ui`, `slack_events`) that parse or enqueue a body before token/signature verification, channel liveness, or rate limiting.
 - Direct outbound clients that bypass validate_safe_url, DNS/public-IP checks, pinned resolution, EgressService, or configured network ACLs.
 - Tools registered without required context services, argument-schema validation, permission resolution, workspace confinement, or an appropriate PreToolUseHook.
 - Queue consumers that trust NATS payloads as authoritative instead of claiming durable rows with ownership and organization checks.

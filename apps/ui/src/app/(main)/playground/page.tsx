@@ -1,252 +1,282 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { FlaskConical, Plus, Users } from "lucide-react";
-import { listSessions } from "@/lib/api/sessions";
-import { threadTitle } from "@/lib/chat-threads";
-import { activityLabel } from "@/lib/session-filters";
+import { Boxes, FlaskConical, ListFilter, Plus, Users, X } from "lucide-react";
+import { getSessionFacets, listSessions } from "@/lib/api/sessions";
+import { getDisplayName } from "@/lib/entity-lifecycle";
+import type { PlaygroundGroupBy } from "@/lib/playground-list";
 import { useOrg } from "@/providers/org-provider";
 import { useAgents, usePageTitle } from "@/hooks";
-import { useVirtualUser } from "@/hooks/use-virtual-users";
-import { getDisplayName } from "@/lib/entity-lifecycle";
-import { Button, LinkButton } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button, LinkButton, buttonVariants } from "@/components/ui/button";
+import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { VirtualUserSelect } from "@/components/virtual-user/virtual-user-select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPositioner,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { PlaygroundChatList } from "@/components/playground/playground-chat-list";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import {
+  PageBreadcrumb,
+  PageContainer,
+  PageControlStrip,
+  PageFooter,
+  PageMasthead,
+  SectionTabs,
+} from "@/components/layout/page-layout";
+import { cn } from "@/lib/utils";
 
-function SubjectName({ id }: { id?: string | null }) {
-  const { data } = useVirtualUser(id ?? undefined);
-  return <>{data?.name ?? id ?? "—"}</>;
-}
+const PAGE_SIZE = 20;
+
+const GROUP_OPTIONS: Array<{ value: PlaygroundGroupBy; label: string }> = [
+  { value: "day", label: "Day" },
+  { value: "agent", label: "Agent" },
+  { value: "none", label: "None" },
+];
 
 function PlaygroundLibrary() {
   const { currentOrg } = useOrg();
   const { data: agents = [] } = useAgents();
   const [search, setSearch] = useState("");
-  const [agent, setAgent] = useState("all");
-  const [subject, setSubject] = useState("");
+  const [agentId, setAgentId] = useState<string | null>(null);
   const [archived, setArchived] = useState(false);
+  const [groupBy, setGroupBy] = useState<PlaygroundGroupBy>("day");
   const [page, setPage] = useState(0);
+  const orgId = currentOrg?.public_id;
   const { data, isLoading, error } = useQuery({
-    queryKey: [
-      "sessions",
-      "playground",
-      currentOrg?.public_id,
-      search,
-      agent,
-      subject,
-      archived,
-      page,
-    ],
+    queryKey: ["sessions", "playground", orgId, search, agentId, archived, page],
     queryFn: () =>
       listSessions({
         source: "playground",
         search,
-        agentId: agent === "all" ? undefined : agent,
-        playgroundUserId: subject || undefined,
+        agentId: agentId ?? undefined,
         archivedOnly: archived,
         order: "last_activity",
-        limit: 20,
-        offset: page * 20,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      }),
+    enabled: !!currentOrg,
+  });
+  const { data: activeFacets } = useQuery({
+    queryKey: ["sessions", "playground", "facets", "active", orgId],
+    queryFn: () => getSessionFacets({ source: "playground" }),
+    enabled: !!currentOrg,
+  });
+  const { data: agentFacets, isLoading: agentFacetsLoading } = useQuery({
+    queryKey: ["sessions", "playground", "facets", "agents", orgId, search, archived],
+    queryFn: () =>
+      getSessionFacets({
+        source: "playground",
+        search: search || undefined,
+        archivedOnly: archived,
       }),
     enabled: !!currentOrg,
   });
   usePageTitle("Playground");
+
+  const selectedAgent = agents.find((agent) => agent.id === agentId);
+  const selectedAgentLabel = agentId
+    ? selectedAgent
+      ? getDisplayName(selectedAgent)
+      : agentId
+    : null;
+  const filtering = Boolean(search || agentId);
+  const agentOptions = (agentFacets?.by_agent ?? []).map((bucket) => {
+    const agent = agents.find((candidate) => candidate.id === bucket.value);
+    return {
+      id: bucket.value,
+      label: agent ? getDisplayName(agent) : bucket.value,
+      count: bucket.count,
+    };
+  });
+
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 sm:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <FlaskConical className="size-6 text-primary" />
-            Playground
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Try agents as virtual users. Every conversation is shared with your organisation.
-          </p>
-        </div>
-        <LinkButton href="/playground/new">
-          <Plus className="size-4" />
-          New conversation
-        </LinkButton>
-      </header>
-      <div className="flex flex-wrap items-center gap-3 border-y py-3">
-        <div className="flex gap-1">
-          <Button
-            variant={!archived ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => {
-              setArchived(false);
-              setPage(0);
-            }}
-          >
-            Active
-          </Button>
-          <Button
-            variant={archived ? "secondary" : "ghost"}
-            size="sm"
-            onClick={() => {
-              setArchived(true);
-              setPage(0);
-            }}
-          >
-            Archived
-          </Button>
-        </div>
-        <Input
-          className="min-w-48 flex-1"
-          aria-label="Search conversations"
-          placeholder="Search conversations…"
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Playground" }]} />
+      <PageMasthead
+        icon={<FlaskConical />}
+        title="Playground"
+        badges={activeFacets ? <Badge variant="outline">{activeFacets.total}</Badge> : undefined}
+        description="Test agents as virtual users. Playground chats are shared with your organisation."
+        actions={
+          <LinkButton href="/playground/new" variant="accent">
+            <Plus className="size-4" />
+            New chat
+          </LinkButton>
+        }
+      />
+      <PageControlStrip className="flex flex-wrap items-center gap-2">
+        <SearchInput
+          containerClassName="w-64"
+          aria-label="Search Playground chats"
+          placeholder="Search Playground chats…"
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
+          onChange={(event) => {
+            setSearch(event.target.value);
             setPage(0);
           }}
         />
-        <Select
-          value={agent}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className={cn(
+              buttonVariants({ variant: "outline" }),
+              "border-dashed bg-transparent text-muted-foreground shadow-none hover:bg-muted",
+            )}
+          >
+            <ListFilter className="size-3.5 opacity-70" />
+            Filter
+          </DropdownMenuTrigger>
+          <DropdownMenuPositioner align="start">
+            <DropdownMenuContent className="w-56">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Agent</DropdownMenuLabel>
+                {agentOptions.length === 0 ? (
+                  <DropdownMenuItem disabled>
+                    {agentFacetsLoading ? "Loading agents" : "No agents"}
+                  </DropdownMenuItem>
+                ) : (
+                  agentOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.id}
+                      onClick={() => {
+                        setAgentId(option.id);
+                        setPage(0);
+                      }}
+                    >
+                      <Boxes className="size-3.5 opacity-60" />
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground">
+                        {option.count}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenuPositioner>
+        </DropdownMenu>
+        {selectedAgentLabel && (
+          <span className="inline-flex h-7 items-center gap-1.5 border bg-card pr-1 pl-2 text-xs">
+            <span className="text-muted-foreground">Agent is</span>
+            <span className="font-medium">{selectedAgentLabel}</span>
+            <button
+              type="button"
+              aria-label="Remove filter"
+              className="inline-flex size-5 items-center justify-center hover:bg-muted"
+              onClick={() => {
+                setAgentId(null);
+                setPage(0);
+              }}
+            >
+              <X className="size-3 opacity-60" />
+            </button>
+          </span>
+        )}
+        <div className="flex-1" />
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span id="playground-group-label">Group by</span>
+          <div
+            role="radiogroup"
+            aria-labelledby="playground-group-label"
+            className="flex border bg-card"
+          >
+            {GROUP_OPTIONS.map((option, index) => {
+              const selected = groupBy === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setGroupBy(option.value)}
+                  className={cn(
+                    "px-2.5 py-1 text-xs",
+                    index > 0 && "border-l",
+                    selected
+                      ? "bg-muted font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-muted",
+                  )}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <SectionTabs
+          className="ml-2 w-auto shrink-0 gap-3 border-b-0"
+          value={archived ? "archived" : "active"}
           onValueChange={(value) => {
-            setAgent(value);
+            setArchived(value === "archived");
             setPage(0);
           }}
-        >
-          <SelectTrigger className="w-48" aria-label="Filter by agent">
-            <SelectValue placeholder="All agents" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All agents</SelectItem>
-            {agents.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {getDisplayName(a)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <VirtualUserSelect
-          usage="end_user"
-          value={subject}
-          onValueChange={(value) => {
-            setSubject(value);
-            setPage(0);
-          }}
-          noneLabel="All virtual users"
-          placeholder="Filter by virtual user"
-          className="w-52"
+          items={[
+            { value: "active", label: "Active" },
+            { value: "archived", label: "Archived" },
+          ]}
         />
-      </div>
+      </PageControlStrip>
       {error ? (
-        <ChatErrorAlert message="Could not load Playground conversations." />
+        <ChatErrorAlert message="Could not load Playground chats." />
       ) : isLoading ? (
         <Skeleton className="h-56 w-full" />
       ) : data?.data.length ? (
-        <div className="border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Conversation</TableHead>
-                <TableHead>Agent</TableHead>
-                <TableHead>Talk as</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last activity</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.data.map((session) => (
-                <TableRow key={session.id}>
-                  <TableCell className="max-w-sm">
-                    <Link
-                      href={`/playground/${session.id}`}
-                      className="block truncate font-medium hover:text-primary"
-                    >
-                      {threadTitle(session, "New conversation")}
-                    </Link>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {session.preview ?? "No messages yet"}
-                    </p>
-                  </TableCell>
-                  <TableCell>
-                    {(() => {
-                      const agent = agents.find((a) => a.id === session.agent_id);
-                      return agent ? getDisplayName(agent) : "Harness conversation";
-                    })()}
-                  </TableCell>
-                  <TableCell>
-                    <SubjectName id={session.playground_user_id} />
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{activityLabel(session.activity ?? "idle")}</Badge>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted-foreground">
-                    {new Date(session.updated_at).toLocaleString()}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <PlaygroundChatList sessions={data.data} agents={agents} groupBy={groupBy} />
       ) : (
-        <div className="border border-dashed px-6 py-16 text-center">
-          <FlaskConical className="mx-auto mb-3 size-8 text-muted-foreground" />
-          <h2 className="font-medium">
-            {archived
-              ? "No archived conversations"
-              : search || agent !== "all" || subject
-                ? "No matching conversations"
-                : "Start your first experiment"}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Choose an agent and a virtual user to try a conversation together.
+        <div className="flex flex-col items-center gap-2 border bg-card px-6 py-12 text-center">
+          <FlaskConical className="size-5 text-muted-foreground" />
+          <div className="text-sm font-semibold">
+            {filtering
+              ? "No matching Playground chats"
+              : archived
+                ? "No archived Playground chats"
+                : "No Playground chats yet"}
+          </div>
+          <p className="text-[13px] text-muted-foreground">
+            Choose an agent and a virtual user to start a shared chat.
           </p>
         </div>
       )}
-      {!!data?.total && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            {page * 20 + 1}–{Math.min((page + 1) * 20, data.total)} of {data.total}
-          </span>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page === 0}
-              onClick={() => setPage(page - 1)}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={(page + 1) * 20 >= data.total}
-              onClick={() => setPage(page + 1)}
-            >
-              Next
-            </Button>
+      <PageFooter>
+        <span className="flex items-center gap-2">
+          <Users className="size-3.5" />
+          Visible to everyone in {currentOrg?.name ?? "your organisation"}
+        </span>
+        {!!data?.total && (
+          <div className="flex items-center gap-4">
+            <span>
+              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, data.total)} of{" "}
+              {data.total}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 0}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={(page + 1) * PAGE_SIZE >= data.total}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
-      <p className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Users className="size-3.5" />
-        Visible to everyone in {currentOrg?.name ?? "your organisation"}
-      </p>
-    </div>
+        )}
+      </PageFooter>
+    </PageContainer>
   );
 }
 

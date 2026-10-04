@@ -188,7 +188,7 @@ impl WorkerAdapters for NoopAdapters {
     ) -> CoreResult<crate::worker_adapters::TurnContext> {
         unimplemented!()
     }
-    async fn invoke_scheduled_endpoint(
+    async fn invoke_scheduled_channel(
         &self,
         _org_id: i64,
         _app_id: &str,

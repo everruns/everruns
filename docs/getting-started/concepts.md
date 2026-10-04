@@ -48,14 +48,14 @@ A reusable unit that extends a harness, agent, or session. A capability can cont
 
 A capability exists because the tool definition, the prompt text that teaches the model when to use it, and the session state it needs travel together. See [Capabilities](/features/capabilities/).
 
-### Endpoint
+### Channel
 
-An Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use an endpoint with transport-specific configuration.
+An Agent-owned way for an external caller to reach that Agent. Slack, AG-UI, A2A, FCP, and Public Chat each use a channel with transport-specific configuration.
 
-- Each endpoint belongs to exactly one Agent and has its own publish state, credentials, identity, session routing, and version policy.
-- An Agent can own several endpoints, each published or revoked independently.
+- Each channel belongs to exactly one Agent and has its own publish state, credentials, identity, session routing, and version policy.
+- An Agent can own several channels, each published or revoked independently.
 
-Create and manage endpoints from the Agent's **Integrations** tab. See [Endpoints](/features/endpoints/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.
+Create and manage channels from the Agent's **Integrations** tab. See [Channels](/features/channels/). For proactive scheduled work, use [Agent triggers](/features/agent-triggers/) instead.
 
 ### Everruns user and virtual user
 

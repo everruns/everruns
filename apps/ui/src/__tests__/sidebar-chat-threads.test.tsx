@@ -55,12 +55,15 @@ describe("SidebarChatThreads", () => {
   it("caps the list and offers the way out to all chats", () => {
     setThreads(Array.from({ length: 8 }, (_, index) => thread(`sess_${index}`, `Thread ${index}`)));
 
-    render(<SidebarChatThreads pathname="/chats" />);
+    render(<SidebarChatThreads pathname="/chats/history" />);
 
     expect(screen.getByText("Thread 0")).toBeInTheDocument();
     expect(screen.getByText(`Thread ${SIDEBAR_THREAD_LIMIT - 1}`)).toBeInTheDocument();
     expect(screen.queryByText(`Thread ${SIDEBAR_THREAD_LIMIT}`)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "All chats" })).toHaveAttribute("href", "/chats");
+    expect(screen.getByRole("link", { name: "All chats" })).toHaveAttribute(
+      "href",
+      "/chats/history",
+    );
     expect(screen.getByRole("link", { name: /New chat/ })).toHaveAttribute("href", "/chats/new");
   });
 
@@ -69,9 +72,12 @@ describe("SidebarChatThreads", () => {
     // so the link must not disappear with the list.
     setThreads([]);
 
-    render(<SidebarChatThreads pathname="/chats" />);
+    render(<SidebarChatThreads pathname="/chats/history" />);
 
-    expect(screen.getByRole("link", { name: "All chats" })).toHaveAttribute("href", "/chats");
+    expect(screen.getByRole("link", { name: "All chats" })).toHaveAttribute(
+      "href",
+      "/chats/history",
+    );
   });
 
   it("marks pinned threads", () => {
@@ -82,7 +88,7 @@ describe("SidebarChatThreads", () => {
       error: null,
     });
 
-    render(<SidebarChatThreads pathname="/chats" />);
+    render(<SidebarChatThreads pathname="/chats/history" />);
 
     expect(screen.getByLabelText("Pinned")).toBeInTheDocument();
   });
@@ -92,19 +98,19 @@ describe("SidebarChatThreads", () => {
     const second = thread("sess_b", "Beta");
     setThreads([first, second]);
 
-    const { rerender, container } = render(<SidebarChatThreads pathname="/chats" />);
+    const { rerender, container } = render(<SidebarChatThreads pathname="/chats/history" />);
     const list = container.firstElementChild as HTMLElement;
 
     fireEvent.mouseEnter(list);
     // A turn lands on Beta and re-sorts the query result under the cursor.
     setThreads([second, first]);
-    rerender(<SidebarChatThreads pathname="/chats" />);
+    rerender(<SidebarChatThreads pathname="/chats/history" />);
 
     const titles = screen.getAllByRole("link").map((link) => link.textContent);
     expect(titles.slice(0, 2)).toEqual(["Alpha", "Beta"]);
 
     fireEvent.mouseLeave(list);
-    rerender(<SidebarChatThreads pathname="/chats" />);
+    rerender(<SidebarChatThreads pathname="/chats/history" />);
 
     const reordered = screen.getAllByRole("link").map((link) => link.textContent);
     expect(reordered.slice(0, 2)).toEqual(["Beta", "Alpha"]);
@@ -118,7 +124,7 @@ describe("SidebarChatThreads", () => {
       error: null,
     });
 
-    const { container } = render(<SidebarChatThreads pathname="/chats" />);
+    const { container } = render(<SidebarChatThreads pathname="/chats/history" />);
 
     expect(container).toBeEmptyDOMElement();
   });

@@ -1,6 +1,6 @@
 ---
 title: Slack
-description: Deploy an Everruns agent as a Slack bot through an Agent-owned endpoint, and let it react, update messages, upload files, and look up users with the slack capability.
+description: Deploy an Everruns agent as a Slack bot through an Agent-owned channel, and let it react, update messages, upload files, and look up users with the slack capability.
 appliesTo: [platform, cloud]
 ---
 
@@ -8,7 +8,7 @@ appliesTo: [platform, cloud]
 
 Everruns connects an Agent to Slack in two parts:
 
-- A **Slack endpoint** owned by the Agent receives Slack Events API requests, routes each conversation to a session, and posts the Agent's responses back to Slack. This is how users talk to the Agent in Slack.
+- A **Slack channel** owned by the Agent receives Slack Events API requests, routes each conversation to a session, and posts the Agent's responses back to Slack. This is how users talk to the Agent in Slack.
 - The **`slack` capability** lets the Agent act in that conversation beyond replying: reactions, message updates, file uploads, and user lookups. See [Slack actions](#slack-actions).
 
 ## What You Get
@@ -17,7 +17,7 @@ Everruns connects an Agent to Slack in two parts:
 - **Session routing**: Conversations map to sessions by thread, channel, or user.
 - **Secure webhooks**: Everruns verifies requests with Slack's signing secret.
 - **Async responses**: Everruns acknowledges Slack immediately and posts the Agent's response when it is ready.
-- **Per-endpoint Slack bots**: Each Slack endpoint has its own Slack app, credentials, identity, and lifecycle.
+- **Per-channel Slack bots**: Each Slack channel has its own Slack app, credentials, identity, and lifecycle.
 
 ## Before You Start
 
@@ -45,62 +45,62 @@ The token can create and change any Slack app in that workspace, and your Slack 
 
 ## Connect an Agent to Slack
 
-### 1. Create a Slack Endpoint
+### 1. Create a Slack Channel
 
 1. Open the Agent.
 2. Select **Integrations**.
-3. Select **Add endpoint**.
+3. Select **Add channel**.
 4. Select **Slack**.
 5. If your organization has connected more than one Slack workspace, choose one.
 6. Choose the session strategy and reply mode. Leave the Slack credentials empty.
-7. Select **Save endpoint**.
+7. Select **Save channel**.
 
-Everruns opens the endpoint editor after it saves the endpoint.
+Everruns opens the channel editor after it saves the channel.
 
-### 2. Publish the Endpoint
+### 2. Publish the Channel
 
-Select **Publish** in the endpoint editor. Publishing makes only this endpoint live.
+Select **Publish** in the channel editor. Publishing makes only this channel live.
 
-Publish before you create the Slack app. The generated Slack manifest contains the endpoint's Request URL, and Slack verifies that URL when it creates the app.
+Publish before you create the Slack app. The generated Slack manifest contains the channel's Request URL, and Slack verifies that URL when it creates the app.
 
 ### 3. Add the Agent to Slack
 
-Select **Add to Slack** in the endpoint editor. Everruns creates the Agent's Slack app in the chosen workspace and opens Slack's consent screen with that workspace selected. Approve it, and Everruns stores the app's signing secret, bot token, and workspace ID on this endpoint. The endpoint then shows **Live in Slack** with an **Open in Slack** link.
+Select **Add to Slack** in the channel editor. Everruns creates the Agent's Slack app in the chosen workspace and opens Slack's consent screen with that workspace selected. Approve it, and Everruns stores the app's signing secret, bot token, and workspace ID on this channel. The channel then shows **Live in Slack** with an **Open in Slack** link.
 
 If your Slack workspace requires administrators to approve apps, Slack sends an approval request instead of installing straight away.
 
 Deployments without `SECRETS_ENCRYPTION_KEY` do not create Slack apps. If Everruns reports that one-click setup is unavailable:
 
 1. Return to the Agent's **Integrations** tab.
-2. Expand the live Slack endpoint.
+2. Expand the live Slack channel.
 3. Select **Create Slack app**.
 4. Review Slack's pre-filled manifest and select **Create**.
 5. Install the app to your workspace.
 6. Copy the **Signing Secret** from **Basic Information**.
 7. Copy the **Bot User OAuth Token** (`xoxb-...`) from **OAuth & Permissions**.
-8. Select **Configure** on the endpoint, enter both values, and select **Save**.
+8. Select **Configure** on the channel, enter both values, and select **Save**.
 
-The manifest already contains the bot scopes, event subscriptions, interactivity URL, and canonical endpoint Request URL:
+The manifest already contains the bot scopes, event subscriptions, interactivity URL, and canonical channel Request URL:
 
 ```text
-https://your-everruns-host/api/v1/e/{endpoint_id}/slack/events
+https://your-everruns-host/api/v1/channels/{channel_id}/slack/events
 ```
 
-Do not replace `{endpoint_id}` with an Agent ID or an App ID.
+Do not replace `{channel_id}` with an Agent ID or an App ID.
 
 ### 4. Invite and Test
 
 1. In Slack, enter `/invite @botname` in a channel.
 2. Mention the bot or send it a direct message.
-3. Return to the Agent's **Integrations** tab and expand the Slack endpoint.
+3. Return to the Agent's **Integrations** tab and expand the Slack channel.
 4. Confirm that the setup checklist records the first message.
 
 ## Configure a Slack App Manually
 
 Use this flow only when you cannot use **Add to Slack** or **Create Slack app**.
 
-1. Create and publish a Slack endpoint from the Agent's **Integrations** tab.
-2. Copy its Request URL from the expanded endpoint row.
+1. Create and publish a Slack channel from the Agent's **Integrations** tab.
+2. Copy its Request URL from the expanded channel row.
 3. In [Slack API Apps](https://api.slack.com/apps), select **Create New App** > **From scratch**.
 4. Add these bot token scopes under **OAuth & Permissions**:
    - `chat:write`
@@ -116,22 +116,22 @@ Use this flow only when you cannot use **Add to Slack** or **Create Slack app**.
    - `message.im`
    - `message.mpim`
    - `app_mention`
-6. Paste the endpoint Request URL into Slack's **Request URL** field.
+6. Paste the channel Request URL into Slack's **Request URL** field.
 7. Install the Slack app to your workspace.
-8. Copy the signing secret and bot token into the endpoint's **Configure manually** fields.
-9. Save the endpoint.
+8. Copy the signing secret and bot token into the channel's **Configure manually** fields.
+9. Save the channel.
 
 ## Existing Installs
 
-Existing Slack installs that use `/v1/apps/{app_id}/…` URLs continue to work. Everruns keeps those routes as permanent compatibility aliases. New installs use `/v1/e/{endpoint_id}/…`, which is the canonical endpoint-owned form.
+Existing Slack installs that use `/v1/apps/{app_id}/…` URLs continue to work. Everruns keeps those routes as permanent compatibility aliases. New installs use `/v1/channels/{channel_id}/…`, which is the canonical channel-owned form.
 
-## Endpoint Configuration
+## Channel Configuration
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `signing_secret` | Before use | Slack app signing secret for HMAC-SHA256 verification. It can be empty while you create the endpoint, but the endpoint rejects all Slack requests until it is set. |
-| `bot_token` | Before use | Bot User OAuth Token (`xoxb-...`) for sending responses. It can be empty while you create the endpoint. |
-| `channel_id` | No | Restrict the endpoint to one channel, such as `C0123456789`. |
+| `signing_secret` | Before use | Slack app signing secret for HMAC-SHA256 verification. It can be empty while you create the channel, but the channel rejects all Slack requests until it is set. |
+| `bot_token` | Before use | Bot User OAuth Token (`xoxb-...`) for sending responses. It can be empty while you create the channel. |
+| `channel_id` | No | Restrict the channel to one channel, such as `C0123456789`. |
 | `team_id` | No | Slack workspace ID. |
 | `session_strategy` | No | `per_thread` by default, `per_channel`, or `per_user`. |
 | `agent_surface_enabled` | No | `false` by default. Also serve Slack's agent pane; see [Agent Surface](#agent-surface). |
@@ -176,10 +176,10 @@ Use `per_thread` for most Slack bots.
 
 **Inbound path:**
 
-1. Slack posts a message event to `/v1/e/{endpoint_id}/slack/events`.
-2. The endpoint verifies the signing secret and rejects duplicates.
+1. Slack posts a message event to `/v1/channels/{channel_id}/slack/events`.
+2. The channel verifies the signing secret and rejects duplicates.
 3. Everruns acknowledges Slack within three seconds.
-4. The endpoint finds or creates a session from the configured strategy.
+4. The channel finds or creates a session from the configured strategy.
 5. Everruns creates a user message and starts an Agent turn.
 
 **Outbound path:**
@@ -194,27 +194,27 @@ Use `per_thread` for most Slack bots.
 
 ### URL Verification Failed
 
-- Confirm that the endpoint is published.
+- Confirm that the channel is published.
 - Confirm that `PUBLIC_APP_URL` is a public HTTPS origin and that Everruns restarted after the value changed.
-- Confirm that the Request URL contains `/v1/e/{endpoint_id}/slack/events`.
+- Confirm that the Request URL contains `/v1/channels/{channel_id}/slack/events`.
 
 ### Bot Does Not Respond
 
-- Confirm that the endpoint is published and enabled.
+- Confirm that the channel is published and enabled.
 - Invite the bot to the channel with `/invite @botname`.
 - Confirm that the Slack app has the required bot events and the `chat:write` scope.
-- Confirm that the endpoint has the correct signing secret and bot token.
+- Confirm that the channel has the correct signing secret and bot token.
 
 ### Request Verification Failed
 
-- Confirm that the endpoint's signing secret matches the value under the Slack app's **Basic Information** page.
+- Confirm that the channel's signing secret matches the value under the Slack app's **Basic Information** page.
 - Confirm that the Everruns server clock is accurate.
 
 ## Approvals
 
 When an Agent pauses for approval, Slack renders **Approve** and **Decline** buttons in the thread. Only the person whose message the Agent is answering can use them.
 
-The generated manifest already points Slack interactivity at this endpoint. A Slack app created before interactive approvals existed must save a fresh manifest once.
+The generated manifest already points Slack interactivity at this channel. A Slack app created before interactive approvals existed must save a fresh manifest once.
 
 ## Task Progress
 
@@ -229,20 +229,20 @@ When an Agent delegates work, Slack shows one **Tasks** message and updates it a
 | **Features** | `slack_actions` |
 | **Dependencies** | None |
 
-An agent published to a Slack endpoint can reply in its thread. The `slack` capability lets it do
+An agent published to a Slack channel can reply in its thread. The `slack` capability lets it do
 the rest, as the same bot the workspace invited: react to a message, rewrite one it posted, share a
 file, or resolve a user ID to a name.
 
-No second credential. The tools resolve the endpoint's own bot token server-side, so there is
+No second credential. The tools resolve the channel's own bot token server-side, so there is
 nothing extra to provision, scope, or rotate.
 
 ### Requirements
 
 The tools only work in a session a Slack message created. An agent that has the capability enabled
-but is running from the API, a schedule, or another channel has no Slack endpoint to act as, and
-every tool returns an error saying so rather than acting as some other endpoint's bot.
+but is running from the API, a schedule, or another channel has no Slack channel to act as, and
+every tool returns an error saying so rather than acting as some other channel's bot.
 
-Where an agent carries two Slack endpoints, each with its own bot, the tools act as the endpoint
+Where an agent carries two Slack channels, each with its own bot, the tools act as the channel
 that created the session.
 
 Your Slack app needs the scope for each action you use: `reactions:write` for reactions,
@@ -252,6 +252,14 @@ missing scope with an error the agent sees.
 ### Tools
 
 #### `slack_add_reaction`
+
+Slack messages include their exact channel and timestamp in the agent's context.
+The agent uses that reference to target a reaction; a message's date or rounded
+timestamp cannot identify it.
+
+If a bot was installed before reaction permission was included, reconnect the
+Slack app and approve `reactions:write`. Deploying an updated manifest does not
+add permissions to an existing bot token.
 
 Add an emoji reaction to a message. The cheapest acknowledgement available — prefer it over posting
 "working on it".
@@ -308,7 +316,7 @@ Content is capped at 8 MiB.
 - Posting to an arbitrary channel is deliberately not offered. The blast radius of "anywhere the bot
   is" is wider than "the thread that asked". The control plane verifies the channel and thread
   against trusted session metadata before sending an action to Slack.
-- A retired or disabled endpoint stops acting immediately, even for a session it created earlier.
+- A retired or disabled channel stops acting immediately, even for a session it created earlier.
 - Slack rate limits reach the agent with Slack's own retry advice rather than as a generic failure.
 - The [Slack MCP server](/features/mcp/) stays supported for anything this does not cover. This
   removes the second credential for the common cases; it does not replace MCP.
@@ -316,5 +324,5 @@ Content is capped at 8 MiB.
 ## See also
 
 - [Publish an Agent to Slack](/how-to/publish-to-slack/): a step-by-step guide.
-- [Endpoints](/features/endpoints/): every endpoint type and the endpoint lifecycle.
+- [Channels](/features/channels/): every channel type and the channel lifecycle.
 - [Slack API Documentation](https://api.slack.com/docs) and the [Slack Events API](https://api.slack.com/events-api).

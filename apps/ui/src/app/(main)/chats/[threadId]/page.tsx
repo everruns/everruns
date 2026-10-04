@@ -22,45 +22,38 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { ChatThreadHeader } from "@/components/chat/chat-thread-header";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useHarnesses, usePageTitle } from "@/hooks";
+import { usePageTitle } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
-import { isChatThread, threadTitle } from "@/lib/chat-threads";
+import {
+  isChatThread,
+  threadTitle,
+  PLATFORM_CHAT_STARTER_TAG,
+  PLATFORM_CHAT_AGENT_NAME,
+} from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
-import { isPlatformChatThread, resolvePlatformChatIntro } from "@/lib/platform-chat-intro";
+import { resolvePlatformChatIntro } from "@/lib/platform-chat-intro";
 
 function ThreadContent({ threadId }: { threadId: string }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
-  const { data: harnesses } = useHarnesses();
   // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
   // an untitled thread takes its display title from the same list the sidebar
   // reads. Both surfaces then name the thread identically. Archived threads are
   // included: opening one by URL must still name it properly.
   const { threads } = useChatThreads({ includeArchived: true });
   const listEntry = threads.find((candidate) => candidate.id === threadId);
-  const title = threadTitle({
-    title: session?.title ?? null,
-    preview: session?.preview ?? listEntry?.preview ?? null,
-  });
+  const permanent = session?.tags.includes(PLATFORM_CHAT_STARTER_TAG) ?? false;
+  const title = permanent
+    ? "Chat"
+    : threadTitle({
+        title: session?.title ?? null,
+        preview: session?.preview ?? listEntry?.preview ?? null,
+      });
 
-  // A Platform Chat thread is bound to a harness rather than an agent; name that
-  // harness so the binding still reads as a fact instead of a blank.
-  const harness = session?.harness_id
-    ? harnesses?.find((candidate) => candidate.id === session.harness_id)
-    : undefined;
-  const counterpart = agentId
-    ? getDisplayName(agent)
-    : harness
-      ? getDisplayName(harness)
-      : undefined;
+  const counterpart = getDisplayName(agent);
 
-  // Intro box, header description, and starters are Platform Chat-only: they
-  // render on threads bound to the built-in Platform Chat harness, with the
-  // bound agent winning per field when one is set.
-  const platformIntro = isPlatformChatThread(harness?.name)
-    ? resolvePlatformChatIntro(agent, harness)
-    : null;
+  const platformIntro = agent ? resolvePlatformChatIntro(agent) : null;
 
-  usePageTitle(session ? title : null, "Chats");
+  usePageTitle(session ? title : null, "Chat");
 
   if (sessionLoading) {
     return (
@@ -77,17 +70,17 @@ function ThreadContent({ threadId }: { threadId: string }) {
         title="Thread not found"
         description="This thread may have been deleted, moved to another organization, or the URL may be wrong."
         backHref="/chats"
-        backLabel="Back to chats"
+        backLabel="Back to Chat"
         resourceId={threadId}
       />
     );
   }
 
-  if (!isChatThread(session)) {
+  if (!isChatThread(session) || !agent || agent.name !== PLATFORM_CHAT_AGENT_NAME) {
     return (
       <ResourceNotFound
         title="Thread not found"
-        description="This session is a read-only recording. Fork it into a chat before continuing the conversation."
+        description="This session is available as a recording. Use Playground to test its Agent."
         backHref={`/sessions/${threadId}/transcript`}
         backLabel="Open recording"
         resourceId={threadId}
@@ -118,7 +111,8 @@ function ThreadContent({ threadId }: { threadId: string }) {
       <ChatPanel
         replyToLabel={counterpart}
         showRunCards
-        platformIcon={harness?.icon}
+        showParticipants={false}
+        platformIcon="everruns"
         platformIntro={platformIntro?.intro ?? null}
         platformStarters={platformIntro?.starters ?? []}
       />

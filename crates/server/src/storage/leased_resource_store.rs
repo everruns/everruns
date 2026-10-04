@@ -279,7 +279,7 @@ mod tests {
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             trigger_id: None,
             harness_id: None,
             agent_id: None,
@@ -387,7 +387,7 @@ mod tests {
                 display_name: Some("Persistent browser".to_string()),
                 owner_user_id: None,
                 lease_duration_seconds: 0,
-                metadata: json!({ "ws_endpoint": "wss://example.com/browser/abc" }),
+                metadata: json!({ "ws_channel": "wss://example.com/browser/abc" }),
             })
             .await
             .expect("leased resource should be created");
@@ -410,7 +410,7 @@ mod tests {
                 display_name: Some("Persistent browser".to_string()),
                 owner_user_id: None,
                 lease_duration_seconds: 20 * 60,
-                metadata: json!({ "ws_endpoint": "wss://example.com/browser/abc" }),
+                metadata: json!({ "ws_channel": "wss://example.com/browser/abc" }),
             })
             .await
             .expect("leased resource should refresh");

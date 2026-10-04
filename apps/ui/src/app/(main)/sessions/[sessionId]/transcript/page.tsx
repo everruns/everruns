@@ -13,7 +13,7 @@ import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-con
 import { useLocale } from "@/providers/locale-provider";
 
 export default function TranscriptPage() {
-  const { sessionId, session } = useSessionContext();
+  const { sessionId, session, agent } = useSessionContext();
   const { t } = useLocale();
 
   return (
@@ -29,6 +29,8 @@ export default function TranscriptPage() {
             sessionId={sessionId}
             sessionTitle={session?.title ?? null}
             sessionTags={session?.tags ?? []}
+            agentId={session?.agent_id ?? undefined}
+            platformChat={agent?.name === "platform-chat"}
             className="mt-4"
           />
         </div>

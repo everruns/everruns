@@ -29,6 +29,14 @@ impl SessionService {
             .ok_or_else(|| ResourceNotFoundError::new("Session"))?;
         let parent = Self::row_to_session(parent_row, &caller.org_public_id, None);
 
+        if !crate::domains::sessions::platform_chat_owner_matches_session(&self.db, caller, &parent)
+            .await?
+        {
+            return Err(
+                everruns_core::PolicyError::denied("platform_chat_owner", "session owner").into(),
+            );
+        }
+
         // Resolve the agent's internal id (public -> internal) when one is
         // assigned, mirroring CreateSession.
         let agent_public = overrides.agent_id.or(parent.agent_id);
@@ -53,6 +61,22 @@ impl SessionService {
             (None, None)
         };
 
+        // THREAT[TM-AGENT-017]: Forking must not bypass the managed Agent's
+        // fixed configuration, including for an API-origin conversation.
+        if crate::platform_chat_agent::is_platform_chat(&self.db, org_id, parent.agent_id).await?
+            && (agent_public != parent.agent_id || overrides.system_prompt.is_some())
+        {
+            return Err(BadRequestError::new(
+                "Platform Chat forks must keep the managed Agent configuration",
+            )
+            .into());
+        }
+        if parent.source == SessionSource::Playground {
+            return Err(BadRequestError::new(
+                "Start a fresh Playground conversation to test another configuration",
+            )
+            .into());
+        }
         let title = overrides.title.or_else(|| {
             Some(match parent.title.as_deref() {
                 Some(t) => format!("{t} (fork)"),
@@ -76,7 +100,12 @@ impl SessionService {
             title,
             goal,
             locale: overrides.locale.or(parent.locale),
-            tags: overrides.tags.unwrap_or(parent.tags),
+            tags: overrides
+                .tags
+                .unwrap_or(parent.tags)
+                .into_iter()
+                .filter(|t| t != PLATFORM_CHAT_STARTER_TAG)
+                .collect(),
             model_id: overrides.model_id.or(parent.model_id),
             capabilities: parent.capabilities,
             environment: None,
@@ -103,7 +132,7 @@ impl SessionService {
                 agent_public_id,
                 None,
                 // A fork is not an ingress arrival: it has no `app_id` today
-                // and gets no `endpoint_id` or `trigger_id` for the same
+                // and gets no `channel_id` or `trigger_id` for the same
                 // reason. It keeps only the origin, below.
                 None,
                 None,

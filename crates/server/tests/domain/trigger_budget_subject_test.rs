@@ -2,7 +2,7 @@
 //! (EVE-1138, migration 153).
 //!
 //! `app_channel` was the last budget subject resolved from a session tag.
-//! Migration 137 had converted every one of them to `agent_endpoint` and
+//! Migration 137 had converted every one of them to `agent_channel` and
 //! asserted none remained; migration 138 then moved App webhooks onto
 //! `agent_triggers`, moved exactly those budgets back to `app_channel`, and
 //! deleted the endpoint rows they had been keyed on. For a webhook trigger the
@@ -224,7 +224,7 @@ async fn seed_app_channel_budget(
         // constraint still rejects new rows, which is all these tests need.
         "ALTER TABLE budgets ADD CONSTRAINT budgets_subject_type_check
          CHECK (subject_type IN ('session', 'agent', 'user', 'org', 'agent_trigger',
-                                 'agent_endpoint'))
+                                 'agent_channel'))
          NOT VALID",
     )
     .execute(&mut **tx)

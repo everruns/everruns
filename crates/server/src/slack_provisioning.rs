@@ -787,9 +787,9 @@ mod tests {
             "Support Agent",
             "Support Agent",
             Some("Answers questions"),
-            "https://example.com/api/v1/e/test/slack/events",
-            "https://example.com/api/v1/e/test/slack/interactivity",
-            "https://example.com/api/v1/e/test/slack/oauth/callback",
+            "https://example.com/api/v1/channels/test/slack/events",
+            "https://example.com/api/v1/channels/test/slack/interactivity",
+            "https://example.com/api/v1/channels/test/slack/oauth/callback",
             true,
             &[],
         );

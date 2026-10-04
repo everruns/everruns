@@ -32,7 +32,7 @@ use super::models::*;
 use super::org_slack_connections::*;
 use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
-use super::{CreateAgentEndpointRow, IngressEndpointRow, UpdateAgentEndpointRow};
+use super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use crate::api::common::Pagination;
 
 /// Hard upper bound on a single retention-prune batch (EVE-580). Caps the
@@ -115,11 +115,11 @@ pub enum SlackInstallLock<'a> {
 impl StorageBackend {
     pub async fn lock_slack_install(
         &self,
-        endpoint_id: uuid::Uuid,
+        channel_id: uuid::Uuid,
     ) -> anyhow::Result<SlackInstallLock<'_>> {
         match self {
             Self::Postgres(db) => Ok(SlackInstallLock::Postgres(
-                db.lock_slack_install(endpoint_id).await?,
+                db.lock_slack_install(channel_id).await?,
             )),
             Self::InMemory(db) => Ok(SlackInstallLock::InMemory(
                 db.slack_install_lock.lock().await,

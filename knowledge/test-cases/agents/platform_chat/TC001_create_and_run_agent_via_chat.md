@@ -22,8 +22,8 @@ rendering, tool-call formatting, and error-banner suppression.
 
 - Control-plane running (`just start-dev` or `just start-all`)
 - An LLM API key configured (OpenAI, Anthropic, or Gemini — Platform Chat works with any frontier chat model)
-- The signed-in user has a fresh Platform Chat thread (or is willing to start one). The old singleton `/chat` page was retired with EVE-855; a Platform Chat conversation is now an ordinary chat thread bound to the built-in `platform-chat` harness
-- Default org has the built-in `platform-chat`, `generic`, and `base` harnesses provisioned (handled by org init)
+- The signed-in user has a fresh Platform Chat thread (or is willing to start one). The old singleton `/chat` page was retired with EVE-855; a Platform Chat conversation is now an ordinary chat thread bound to the managed Platform Chat Agent on Generic
+- Default org has the managed Platform Chat Agent and the `generic` and `base` harnesses provisioned (handled by org init)
 
 ## Test Data
 
@@ -88,7 +88,7 @@ rendering, tool-call formatting, and error-banner suppression.
 
 ### Capability Wiring
 
-- Platform Chat session uses the focused `platform-chat` built-in harness (which inherits from `base` and adds `platform` plus runtime safeguards).
+- Platform Chat session uses the managed Platform Chat Agent on Generic.
 - The trace uses `discover` when command names or schemas are unknown, `query`
   for reads, and `execute` for the requested mutations.
 - Underlying agent/session commands succeed without authorization,

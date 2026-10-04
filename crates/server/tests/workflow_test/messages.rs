@@ -351,8 +351,7 @@ async fn test_post_message_wait_returns_completed_turn() {
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "provider_id": provider.id,
-            "model_id": model_id,
+            "default_model_id": model.id,
             "name": agent_name,
             "system_prompt": "You are a helpful test assistant."
         }))
@@ -361,6 +360,8 @@ async fn test_post_message_wait_returns_completed_turn() {
         .expect("Failed to create agent");
     assert_eq!(agent_response.status(), 201);
     let agent: Agent = agent_response.json().await.expect("Failed to parse agent");
+    // This must execute the simulator, even when a real org default is seeded.
+    assert_eq!(agent.default_model_id, Some(model.id));
 
     // Step 2: Create a session for the agent.
     let session_response = client

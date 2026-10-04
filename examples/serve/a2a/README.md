@@ -3,8 +3,8 @@
 Two agents talking over [A2A](https://a2a-protocol.org) 1.0:
 
 - `researcher` is a [serve](../../../crates/serve) app. The `a2a` feature serves
-  it at `POST /v1/e/researcher/a2a`, with its Agent Card at
-  `/v1/e/researcher/a2a/.well-known/agent-card.json`, the same route shape as
+  it at `POST /v1/channels/researcher/a2a`, with its Agent Card at
+  `/v1/channels/researcher/a2a/.well-known/agent-card.json`, the same route shape as
   an Everruns A2A endpoint.
 - `writer` is an `everruns` agent with the `a2a_agent_delegation` capability.
   It asks the researcher for notes with `spawn_agent` (target
@@ -56,7 +56,7 @@ The official [A2A CLI](https://github.com/a2aproject/a2a-cli) takes the card
 URL:
 
 ```sh
-CARD=http://localhost:3000/v1/e/researcher/a2a/.well-known/agent-card.json
+CARD=http://localhost:3000/v1/channels/researcher/a2a/.well-known/agent-card.json
 a2a card get $CARD
 a2a send -a $CARD --context-id demo "Tide pools"
 a2a send -a $CARD --context-id demo --stream "Now kelp forests"   # same session
@@ -75,7 +75,7 @@ a2a task list -a $CARD
 Requests need `A2A-Version: 1.0`:
 
 ```sh
-URL=http://localhost:3000/v1/e/researcher/a2a
+URL=http://localhost:3000/v1/channels/researcher/a2a
 curl -s $URL -H 'content-type: application/json' -H 'A2A-Version: 1.0' -d '{
   "jsonrpc": "2.0", "id": 1, "method": "SendMessage",
   "params": { "message": {

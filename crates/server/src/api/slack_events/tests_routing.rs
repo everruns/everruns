@@ -447,12 +447,12 @@ fn test_manifest_yaml_escapes_request_url() {
 fn test_slack_webhook_url_shape() {
     assert_eq!(
         slack_webhook_url("https://example.com/api", "channel_abc"),
-        "https://example.com/api/v1/e/channel_abc/slack/events"
+        "https://example.com/api/v1/channels/channel_abc/slack/events"
     );
     // A configured base with a trailing slash must not double up.
     assert_eq!(
         slack_webhook_url("https://example.com/api/", "channel_abc"),
-        "https://example.com/api/v1/e/channel_abc/slack/events"
+        "https://example.com/api/v1/channels/channel_abc/slack/events"
     );
 }
 

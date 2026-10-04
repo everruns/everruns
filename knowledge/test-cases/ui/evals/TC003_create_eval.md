@@ -18,7 +18,7 @@ Verify that a new eval can be created with required fields (name, agent, harness
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `evals` enabled (`FEATURE_EVALS=true`)
+- Feature flag `evals` enabled (`FEATURE_EVALS=prod`)
 - At least one agent exists
 - At least one harness exists
 

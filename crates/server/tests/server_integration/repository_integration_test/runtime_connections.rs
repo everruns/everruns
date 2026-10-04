@@ -37,7 +37,7 @@ async fn test_session_connection_resolution_never_borrows_owner_or_other_user() 
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
-            endpoint_id: None,
+            channel_id: None,
             harness_id: None,
             agent_id: None,
             agent_version_id: None,

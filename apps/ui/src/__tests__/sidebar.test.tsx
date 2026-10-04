@@ -329,7 +329,7 @@ describe("Sidebar", () => {
   it("renders all navigation items", () => {
     render(<Sidebar />);
 
-    expect(screen.getByText("Chats")).toBeInTheDocument();
+    expect(screen.getByText("Chat")).toBeInTheDocument();
     expect(screen.getByText("Sessions")).toBeInTheDocument();
     expect(screen.getByText("Reports")).toBeInTheDocument();
     expect(screen.getByText("Harnesses")).toBeInTheDocument();
@@ -368,13 +368,13 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Chats" })).toHaveAttribute("href", "/chats");
+    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
   });
 
   it("renders correct navigation links", () => {
     render(<Sidebar />);
 
-    const chatsLink = screen.getByRole("link", { name: /chats/i });
+    const chatsLink = screen.getByRole("link", { name: /^chat$/i });
     const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
     const agentsLink = screen.getByRole("link", { name: "Agents" });
     const memoryLink = screen.getByRole("link", { name: "Memory" });

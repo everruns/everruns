@@ -1,4 +1,4 @@
-//! `GET /v1/e/{endpoint_id}/ag-ui/capabilities`: the AG-UI 1.0
+//! `GET /v1/channels/{channel_id}/ag-ui/capabilities`: the AG-UI 1.0
 //! `AgentCapabilities` an endpoint declares, behind the run route's auth.
 
 use crate::test_harness;
@@ -7,7 +7,7 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-async fn published_endpoint(server: &TestServer, channel_config: Value) -> String {
+async fn published_channel(server: &TestServer, channel_config: Value) -> String {
     let agent: Value = server
         .post(
             "/v1/agents",
@@ -22,32 +22,32 @@ async fn published_endpoint(server: &TestServer, channel_config: Value) -> Strin
     let agent_id = agent["id"].as_str().unwrap();
     let endpoint: Value = server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints"),
+            &format!("/v1/agents/{agent_id}/channels"),
             json!({ "channel_type": "ag_ui", "channel_config": channel_config }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    let endpoint_id = endpoint["id"].as_str().unwrap().to_string();
+    let channel_id = endpoint["id"].as_str().unwrap().to_string();
     server
         .post(
-            &format!("/v1/agents/{agent_id}/endpoints/{endpoint_id}/publish"),
+            &format!("/v1/agents/{agent_id}/channels/{channel_id}/publish"),
             json!({}),
         )
         .await
         .assert_success();
-    endpoint_id
+    channel_id
 }
 
 async fn get_capabilities(
     server: &TestServer,
-    endpoint_id: &str,
+    channel_id: &str,
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
     server
         .request_raw(
             Method::GET,
-            &format!("/v1/e/{endpoint_id}/ag-ui/capabilities"),
+            &format!("/v1/channels/{channel_id}/ag-ui/capabilities"),
             headers,
             Vec::new(),
         )
@@ -55,9 +55,9 @@ async fn get_capabilities(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn ag_ui_capabilities_follow_the_endpoint_config() {
+async fn ag_ui_capabilities_follow_the_channel_config() {
     let server = TestServer::in_memory().await;
-    let defaults = published_endpoint(&server, json!({ "anonymous": true })).await;
+    let defaults = published_channel(&server, json!({ "anonymous": true })).await;
     let caps: Value = get_capabilities(&server, &defaults, vec![])
         .await
         .assert_status(StatusCode::OK)
@@ -74,7 +74,7 @@ async fn ag_ui_capabilities_follow_the_endpoint_config() {
     );
     assert_eq!(caps["custom"]["everruns"]["usage"], false);
 
-    let opted_in = published_endpoint(
+    let opted_in = published_channel(
         &server,
         json!({
             "anonymous": true,
@@ -97,7 +97,7 @@ async fn ag_ui_capabilities_follow_the_endpoint_config() {
 async fn ag_ui_capabilities_use_the_run_routes_auth() {
     let server = TestServer::in_memory().await;
     let gated =
-        published_endpoint(&server, json!({ "anonymous": true, "token": "caps-token" })).await;
+        published_channel(&server, json!({ "anonymous": true, "token": "caps-token" })).await;
     get_capabilities(&server, &gated, vec![])
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
@@ -112,7 +112,7 @@ async fn ag_ui_capabilities_use_the_run_routes_auth() {
     .await
     .assert_status(StatusCode::OK);
 
-    let closed = published_endpoint(&server, json!({ "anonymous": false })).await;
+    let closed = published_channel(&server, json!({ "anonymous": false })).await;
     get_capabilities(&server, &closed, vec![])
         .await
         .assert_status(StatusCode::NOT_FOUND);

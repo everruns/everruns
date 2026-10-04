@@ -7,8 +7,8 @@ This check compares each against its source of truth without compiling Rust:
 
 - Capabilities: ``docs/api/capability-catalog.json``, the registry snapshot that
   ``crates/integrations-catalog/src/docs_catalog.rs`` writes and keeps fresh.
-- Harnesses: the capability lists in ``crates/contracts/src/capability/presets.rs``
-  (generic) and ``crates/server/src/harnesses/platform_chat.rs``.
+- Generic and Platform Chat Agent: the capability lists in ``crates/contracts/src/capability/presets.rs``
+  (generic) and ``crates/server/src/platform_chat_agent.rs``.
 - Events: the event-type constants in ``crates/core/src/events/mod.rs``.
 - Environment variables: string literals the Rust sources read.
 
@@ -32,7 +32,7 @@ ENV_PAGE = "docs/sre/environment-variables.md"
 GENERIC_PAGE = "docs/built-ins/harnesses/generic.md"
 GENERIC_SOURCE = "crates/contracts/src/capability/presets.rs"
 PLATFORM_CHAT_PAGE = "docs/built-ins/harnesses/platform-chat.md"
-PLATFORM_CHAT_SOURCE = "crates/server/src/harnesses/platform_chat.rs"
+PLATFORM_CHAT_SOURCE = "crates/server/src/platform_chat_agent.rs"
 SERVER_MANIFEST = "crates/server/Cargo.toml"
 CATALOG_MANIFEST = "crates/integrations-catalog/Cargo.toml"
 
@@ -309,6 +309,14 @@ def harness_source_ids(text: str, start: str, end: str) -> list[str]:
     return CAPABILITY_CALL.findall(text[begin : finish if finish >= 0 else len(text)])
 
 
+def agent_source_ids(text: str) -> list[str]:
+    begin = text.find("let capabilities = vec![")
+    if begin < 0:
+        return []
+    finish = text.find("];", begin)
+    return re.findall(r'\("([a-z_]+)"\.into\(\),', text[begin:finish])
+
+
 def check_harness(
     root: pathlib.Path,
     page: str,
@@ -473,7 +481,7 @@ def main() -> int:
         root,
         PLATFORM_CHAT_PAGE,
         PLATFORM_CHAT_SOURCE,
-        harness_source_ids(read(root, PLATFORM_CHAT_SOURCE), ".with_capabilities([", "])"),
+        agent_source_ids(read(root, PLATFORM_CHAT_SOURCE)),
         catalog,
         resolver,
         report,

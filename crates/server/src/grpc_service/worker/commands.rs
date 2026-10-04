@@ -289,7 +289,7 @@ impl WorkerServiceImpl {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
-            &everruns_platform::FeatureFlags::current(),
+            &everruns_platform::FeatureFlagPolicy::current(),
         )
         .await
         .map_err(|error| {

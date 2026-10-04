@@ -70,6 +70,9 @@ async fn test_server() -> TestServer {
     .await
 }
 async fn waiting_session(server: &TestServer) -> SessionId {
+    waiting_session_for_agent(server, false).await
+}
+async fn waiting_session_for_agent(server: &TestServer, platform: bool) -> SessionId {
     let agent: Agent = server
         .post(
             "/v1/agents",
@@ -84,7 +87,14 @@ async fn waiting_session(server: &TestServer) -> SessionId {
         .assert_status(StatusCode::CREATED)
         .json();
     let session: Session = server
-        .post("/v1/sessions", json!({ "agent_id": agent.public_id }))
+        .post(
+            "/v1/sessions",
+            if platform {
+                json!({"agent_name":"platform-chat"})
+            } else {
+                json!({ "agent_id": agent.public_id })
+            },
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -107,7 +117,7 @@ async fn waiting_session(server: &TestServer) -> SessionId {
 }
 
 async fn platform_chat_waiting_session(server: &TestServer, owner: Uuid) -> SessionId {
-    let session_id = waiting_session(server).await;
+    let session_id = waiting_session_for_agent(server, true).await;
     server
         .db
         .update_session(

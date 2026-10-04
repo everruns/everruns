@@ -1,7 +1,7 @@
 // Minimal AG-UI client for the isolated Public Chat web app.
 //
-// The Public Chat surface talks only to the app-scoped public endpoints
-// (`/api/v1/apps/{appId}/public-chat`), never to the console session APIs, so
+// The Public Chat surface talks to channel ingress, with archived App links
+// retained as aliases, so
 // it stays isolated from the rest of Everruns. The server speaks the AG-UI wire
 // protocol (RunAgentInput in, AG-UI SSE out); this module builds the request
 // and parses the SSE stream into simple message callbacks.
@@ -24,7 +24,8 @@ export interface ChatMessage {
 }
 
 function endpointBase(appId: string): string {
-  return `/api/v1/apps/${encodeURIComponent(appId)}/public-chat`;
+  const resource = appId.startsWith("appchan_") ? "channels" : "apps";
+  return `/api/v1/${resource}/${encodeURIComponent(appId)}/public-chat`;
 }
 
 /** Fetch the non-secret bootstrap config (branding, sign-in, captcha). */

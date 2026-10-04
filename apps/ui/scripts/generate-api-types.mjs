@@ -26,12 +26,15 @@ const legacyTypesPaths = [
 // so the bare App-era name does not reappear next to the UI type. Drop an entry
 // once the server renames the component.
 const renamedLegacySchemas = new Map([
-  ["AppChannel", "AgentEndpoint"],
-  ["AppEndpointAuthConfig", "EndpointAuthConfig"],
-  ["AppEndpointAuthMode", "EndpointAuthMode"],
-  ["AppEndpointAuthProviderConfig", "EndpointAuthProviderConfig"],
-  ["AppEndpointAuthRequirements", "EndpointAuthRequirements"],
-  ["ChannelType", "EndpointTransport"],
+  ["EndpointStatus", "ChannelStatus"],
+  ["CreateAgentEndpointRequest", "CreateAgentChannelRequest"],
+  ["UpdateAgentEndpointRequest", "UpdateAgentChannelRequest"],
+  ["TriggerAgentEndpointOutput", "TriggerAgentChannelOutput"],
+  ["AppChannel", "AgentChannel"],
+  ["AppEndpointAuthConfig", "ChannelAuthConfig"],
+  ["AppEndpointAuthMode", "ChannelAuthMode"],
+  ["AppEndpointAuthProviderConfig", "ChannelAuthProviderConfig"],
+  ["AppEndpointAuthRequirements", "ChannelAuthRequirements"],
 ]);
 const check = process.argv.includes("--check");
 
@@ -67,7 +70,7 @@ function exportedLegacyTypeNames() {
     }
   }
   for (const [schemaName, uiName] of renamedLegacySchemas) {
-    if (!names.has(uiName)) {
+    if (!names.has(uiName) && !spec.components.schemas[uiName]) {
       throw new Error(`${schemaName} is mapped to missing hand-maintained UI type ${uiName}`);
     }
     names.add(schemaName);

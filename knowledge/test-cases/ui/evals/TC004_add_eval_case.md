@@ -18,7 +18,7 @@ Verify that a test case can be added to an existing eval with messages and score
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `evals` enabled (`FEATURE_EVALS=true`)
+- Feature flag `evals` enabled (`FEATURE_EVALS=prod`)
 - An eval already exists (from TC003 or created via API)
 
 ## Test Data

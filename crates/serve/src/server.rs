@@ -11,8 +11,8 @@
 //!   errors. serve adds optional fields (`build_id`, `agent_name`,
 //!   `pending_approvals`, `pending_questions`) and a few serve-only routes
 //!   (approvals, channels, the agent card, dev schedules). With the `ag-ui`
-//!   feature, `POST /v1/e/{agent}/ag-ui` mirrors the server's AG-UI channel
-//!   route (see `ag_ui`); with `a2a`, `POST /v1/e/{agent}/a2a` and its Agent
+//!   feature, `POST /v1/channels/{agent}/ag-ui` mirrors the server's AG-UI channel
+//!   route (see `ag_ui`); with `a2a`, `POST /v1/channels/{agent}/a2a` and its Agent
 //!   Card mirror the server's A2A endpoint (see `a2a`).
 //! - Events are the engine's durable canonical log, replayed then followed
 //!   live through `Session::events_from`; serve writes none.
@@ -62,7 +62,9 @@ pub(crate) fn router(host: Arc<Host>) -> Router {
         .route("/v1/channels/{name}", post(channel));
     #[cfg(feature = "ag-ui")]
     {
-        router = router.route("/v1/e/{name}/ag-ui", post(crate::ag_ui::run));
+        router = router
+            .route("/v1/channels/{name}/ag-ui", post(crate::ag_ui::run))
+            .route("/v1/e/{name}/ag-ui", post(crate::ag_ui::run));
     }
     #[cfg(feature = "a2a")]
     {

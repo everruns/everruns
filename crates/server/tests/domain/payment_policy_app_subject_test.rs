@@ -180,7 +180,7 @@ async fn seed_app_policy(tx: &mut Transaction<'_, Postgres>, fx: &Fixture, per_r
     .await;
     sqlx::query(
         "ALTER TABLE payment_policies ADD CONSTRAINT payment_policies_subject_type_check
-         CHECK (subject_type IN ('user', 'virtual_user', 'agent', 'agent_endpoint', 'session',
+         CHECK (subject_type IN ('user', 'virtual_user', 'agent', 'agent_channel', 'session',
                                  'org'))
          NOT VALID",
     )
@@ -285,9 +285,9 @@ async fn an_agentless_app_policy_has_no_conversion_target() {
     );
 }
 
-/// The subject types are a closed set: `app` is out, `agent_endpoint` is in.
+/// The subject types are a closed set: `app` is out, `agent_channel` is in.
 #[tokio::test]
-async fn subject_type_check_rejects_app_and_accepts_agent_endpoint() {
+async fn subject_type_check_rejects_app_and_accepts_agent_channel() {
     let pool = pool().await;
     let mut tx = pool.begin().await.expect("begin");
     let fx = seed(&mut tx, "payment-retire-check", true).await;
@@ -296,7 +296,7 @@ async fn subject_type_check_rejects_app_and_accepts_agent_endpoint() {
         "user",
         "virtual_user",
         "agent",
-        "agent_endpoint",
+        "agent_channel",
         "session",
         "org",
     ] {

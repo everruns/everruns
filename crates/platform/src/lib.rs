@@ -47,15 +47,16 @@ pub mod platform_store;
 pub mod vector_store;
 
 // Hosted control-plane orchestration records carved out of `everruns-core`
-// (EVE-841). `App`/`AgentEndpoint` and their channel configs, plus `AgentTrigger`,
+// (EVE-841). `App`/`AgentChannel` and their channel configs, plus `AgentTrigger`,
 // are persisted/API records not consumed during a turn. Turn-consumed neutral
 // values (`DeploymentGrade`, `SessionSchedule` and its store) stay in core.
+pub mod agent_channel;
 pub mod agent_trigger;
 pub mod agent_version_policy;
 pub mod app;
 
-// The seam a Slack-native capability acts through; the Slack endpoint row it
-// resolves against lives in `app` (EVE-1024).
+// The seam a Slack-native capability acts through; the Slack channel row it
+// resolves against lives in `agent_channel` (EVE-1024).
 pub mod slack_action;
 pub mod slack_channel;
 pub mod slack_provisioning;
@@ -222,8 +223,8 @@ pub use eval::{
 };
 pub use exposure::PublicToolVisibility;
 pub use feature_flags::{
-    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
-    is_platform_managed,
+    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagGrade, FeatureFlagMap,
+    FeatureFlagPolicy, FeatureFlags,
 };
 pub use observer::{
     LlmJudgeConfig, Observer, ObserverMatch, ObserverScope, ObserverScorerConfig, ObserverStatus,
@@ -243,23 +244,20 @@ pub use agent_trigger::{
 };
 pub use everruns_core::channel::SessionBinding;
 
-pub use app::{
-    A2aChannelConfig, AgUiChannelConfig, AgentEndpoint, AgentVersionPolicy,
-    ApiEndpointChannelConfig, App, AppStatus, CaptchaProvider, EndpointAuthConfig,
-    EndpointAuthMode, EndpointAuthProviderConfig, EndpointAuthRequirements, EndpointStatus,
-    EndpointTransport, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
-    PublicChatChannelConfig, SlackReplyMode,
+pub use agent_channel::{
+    A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentVersionPolicy, ApiChannelConfig,
+    CaptchaProvider, ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig,
+    ChannelAuthRequirements, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatBranding,
+    PublicChatCaptchaConfig, PublicChatChannelConfig, SlackReplyMode,
 };
-/// Endpoint ID. Lives in `everruns-provider` and keeps its `appchan_` wire
+/// Agent channel ID. Lives in `everruns-contracts` and keeps its `appchan_` wire
 /// prefix, which is stored in rows, tags, and third-party registrations.
-pub use everruns_contracts::typed_id::AgentEndpointId;
-// EVE-1131 dropped the App-era Rust aliases (`AppChannel`, `ChannelType`,
-// `AppEndpointAuth*`). Their OpenAPI component names stay via `schema(as = ...)`.
-// `App`/`AppStatus` are the frozen `apps` row and keep their names.
+pub use everruns_contracts::typed_id::AgentChannelId;
+// The server OpenAPI document retains deprecated App-era schema aliases.
 #[cfg(test)]
-mod endpoint_wire_names_tests;
+mod channel_wire_names_tests;
 // Carved out of `app` for the size ratchet; the public path is unchanged.
-pub use slack_channel::SlackChannelConfig;
+pub use slack_channel::{SlackChannelConfig, SlackResponsePolicy};
 
 // Payment accounting records (EVE-838). The execution-contract types
 // (PaymentRail/PaymentMethod/MachinePaymentRequest/MachinePaymentResponse) stay
@@ -294,3 +292,5 @@ pub use email::{
 };
 #[cfg(feature = "email-resend")]
 pub use email::{ResendEmailConfig, ResendEmailSender};
+
+pub use app::{App, AppStatus};

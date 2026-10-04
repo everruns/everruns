@@ -32,6 +32,7 @@ pub struct ServerPaymentAuthority {
     encryption: Option<Arc<EncryptionService>>,
     org_id: i64,
     agent_id: Option<AgentId>,
+    feature_flag_policy: everruns_platform::FeatureFlagPolicy,
 }
 
 impl ServerPaymentAuthority {
@@ -46,6 +47,7 @@ impl ServerPaymentAuthority {
             encryption,
             org_id,
             agent_id,
+            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
         }
     }
 }
@@ -63,6 +65,22 @@ impl PaymentAuthority for ServerPaymentAuthority {
         session_id: SessionId,
         request: MachinePaymentRequest,
     ) -> Result<MachinePaymentResponse> {
+        // Re-check durable policy at spend time: an already-loaded tool must not
+        // bypass an organisation opt-out or a deployment kill switch.
+        let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            self.org_id,
+            &self.feature_flag_policy,
+        )
+        .await
+        .map_err(|error| {
+            AgentLoopError::store(format!("Failed to resolve payment feature: {error}"))
+        })?;
+        if !flags.machine_payments {
+            return Err(AgentLoopError::config(
+                "feature_not_enabled: machine_payments",
+            ));
+        }
         validate_request_shape(&request)?;
         let request_hash = request_hash(&request);
         let selected = match self.select_policy(session_id, &request).await {
@@ -229,10 +247,10 @@ impl ServerPaymentAuthority {
                 })?,
             None => None,
         };
-        let endpoint_public_id = match session.endpoint_id {
-            Some(endpoint_id) => self
+        let channel_public_id = match session.channel_id {
+            Some(channel_id) => self
                 .db
-                .get_agent_endpoint_public_id(self.org_id, endpoint_id)
+                .get_agent_channel_public_id(self.org_id, channel_id)
                 .await
                 .map_err(|error| {
                     AgentLoopError::store(format!("Failed to resolve payment endpoint: {error}"))
@@ -245,7 +263,7 @@ impl ServerPaymentAuthority {
             agent_public_id,
             session.virtual_user_id,
             session.resolved_owner_user_id,
-            endpoint_public_id,
+            channel_public_id,
         );
         let mut policies = Vec::new();
         let mut seen_policy_ids = HashSet::new();
@@ -524,7 +542,7 @@ fn request_host(url: &str) -> Result<String> {
 /// session. A policy authorizes a payment only on an exact match, so a subject
 /// missing from here is a subject that can be stored and never applied.
 ///
-/// `agent_public_id` and `endpoint_public_id` are resolved by the caller,
+/// `agent_public_id` and `channel_public_id` are resolved by the caller,
 /// because both need a lookup. They are the identifiers the API and the UI
 /// expose, and therefore the only ones an operator can put in a policy
 /// (EVE-1130) — the typed ids taken off the session row spell internal uuids.
@@ -540,15 +558,15 @@ fn subject_candidates(
     agent_public_id: Option<String>,
     virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     user_id: Option<uuid::Uuid>,
-    endpoint_public_id: Option<String>,
+    channel_public_id: Option<String>,
 ) -> Vec<(&'static str, String)> {
     let mut candidates = vec![
         ("session", session_id.to_string()),
         ("session", session_id.uuid().to_string()),
         ("org", "org".to_string()),
     ];
-    if let Some(endpoint_public_id) = endpoint_public_id {
-        candidates.push(("agent_endpoint", endpoint_public_id));
+    if let Some(channel_public_id) = channel_public_id {
+        candidates.push(("agent_channel", channel_public_id));
     }
     if let Some(agent_public_id) = agent_public_id {
         candidates.push(("agent", agent_public_id));
@@ -785,6 +803,43 @@ fn request_hash(request: &MachinePaymentRequest) -> String {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn payment_execution_observes_org_revocation_before_request_or_spend() {
+        use everruns_core::{DeploymentGrade, FeatureFlagGrade};
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut authority = ServerPaymentAuthority::new(db.clone(), None, 42, None);
+        authority.feature_flag_policy =
+            everruns_platform::FeatureFlagPolicy::from_env(DeploymentGrade::Prod)
+                .with_grade("machine_payments", FeatureFlagGrade::Prod);
+        // An invalid request cannot reach a transport, even when the flag is on.
+        let request = MachinePaymentRequest {
+            capability: "parallel".into(),
+            operation: "search".into(),
+            method: PaymentMethod::Post,
+            url: String::new(),
+            body: None,
+            max_amount_usd: 0.01,
+            rail_preference: vec![],
+            metadata: json!({}),
+        };
+        let before = authority
+            .execute_machine_payment(SessionId::new(), request.clone())
+            .await
+            .unwrap_err();
+        assert!(!before.to_string().contains("feature_not_enabled"));
+        db.replace_org_feature_flags(
+            42,
+            &std::collections::HashMap::from([("machine_payments".into(), false)]),
+        )
+        .await
+        .unwrap();
+        let after = authority
+            .execute_machine_payment(SessionId::new(), request)
+            .await
+            .unwrap_err();
+        assert!(after.to_string().contains("feature_not_enabled"));
+    }
+
     /// Anvil development key #0. Public test vector, never a real key.
     const TEST_PRIVATE_KEY: &str =
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -874,14 +929,14 @@ mod tests {
         assert!(candidates.contains(&("agent", agent_id.to_string())));
     }
 
-    /// `agent_endpoint` is offered as a subject, so it has to resolve. A subject
+    /// `agent_channel` is offered as a subject, so it has to resolve. A subject
     /// that can be selected and stored but never matched is worse than one that
     /// is absent: it reads as authority scoped to an endpoint while nothing
     /// enforces the scope.
     #[test]
-    fn agent_endpoint_is_a_candidate_when_the_session_arrived_through_one() {
+    fn agent_channel_is_a_candidate_when_the_session_arrived_through_one() {
         let session_id = SessionId::new();
-        let endpoint_public_id = "appchan_0199f0c2d4b17a3e9c1155aa77e30b41".to_string();
+        let channel_public_id = "appchan_0199f0c2d4b17a3e9c1155aa77e30b41".to_string();
 
         let candidates = subject_candidates(
             session_id,
@@ -889,11 +944,11 @@ mod tests {
             None,
             None,
             None,
-            Some(endpoint_public_id.clone()),
+            Some(channel_public_id.clone()),
         );
 
         assert!(
-            candidates.contains(&("agent_endpoint", endpoint_public_id)),
+            candidates.contains(&("agent_channel", channel_public_id)),
             "an endpoint-scoped policy must be reachable: {candidates:?}"
         );
     }

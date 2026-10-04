@@ -32,7 +32,7 @@ The pilot is intentionally Agent-specific (`agent_versions`) instead of a generi
 
 - Sessions capture `agent_version_id` when created if the Agent or the exposure that started them resolves to a version.
 - Worker turn loading uses the captured version snapshot instead of the current Agent draft.
-- Every exposure carries its own version policy: each endpoint (`agent_endpoints`) and each trigger
+- Every exposure carries its own version policy: each endpoint (`agent_channels`) and each trigger
   (`agent_triggers.agent_version_*`). A staging endpoint on `latest` and a production
   endpoint `pinned` on the same Agent is the case this exists for.
   - `default`: use the Agent's `default_version_id`. A trigger row with no stored policy means this.
@@ -62,7 +62,9 @@ The pilot is intentionally Agent-specific (`agent_versions`) instead of a generi
 
 ### Feature Flag
 
-The pilot is gated by API-visible flag `agent_versions`, resolved from `FEATURE_AGENT_VERSIONS` and auto-enabled in dev grade.
+Agent versions follow the rollout-grade policy for `agent_versions`;
+`FEATURE_AGENT_VERSIONS` overrides the catalog default. See
+[Feature Flags](../security/feature-flags.md).
 
 When disabled:
 - Version UI is hidden.

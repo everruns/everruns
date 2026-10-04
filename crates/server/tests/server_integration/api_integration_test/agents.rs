@@ -325,7 +325,7 @@ async fn test_agent_versions_snapshot_diff_default_and_session_capture() {
     // Feature flags are process-level env in this pilot; enable explicitly for
     // the in-process server before it computes route state.
     unsafe {
-        std::env::set_var("FEATURE_AGENT_VERSIONS", "true");
+        std::env::set_var("FEATURE_AGENT_VERSIONS", "prod");
     }
     let server = TestServer::in_memory().await;
 
@@ -1397,7 +1397,7 @@ async fn test_invalid_scoped_mcp_config_is_rejected_with_400_and_a_reason() {
 }
 
 #[tokio::test]
-async fn test_agent_channel_summaries_follow_endpoint_lifecycle() {
+async fn test_agent_channel_summaries_follow_channel_lifecycle() {
     let server = TestServer::in_memory().await;
     let agent: Value = server
         .post(
@@ -1408,12 +1408,12 @@ async fn test_agent_channel_summaries_follow_endpoint_lifecycle() {
         .assert_status(StatusCode::CREATED)
         .json();
     let id = agent["id"].as_str().unwrap();
-    let endpoints_path = format!("/v1/agents/{id}/endpoints");
+    let endpoints_path = format!("/v1/agents/{id}/channels");
     let endpoint: Value = server.post(&endpoints_path, json!({
         "channel_type": "webhook", "enabled": true,
         "channel_config": {"token": "summary-must-not-leak", "message": "Process {{payload}}"}
     })).await.assert_status(StatusCode::CREATED).json();
-    let endpoint_id = endpoint["id"].as_str().unwrap();
+    let channel_id = endpoint["id"].as_str().unwrap();
     for (action, status) in [
         (None, "draft"),
         (Some("publish"), "live"),
@@ -1422,7 +1422,7 @@ async fn test_agent_channel_summaries_follow_endpoint_lifecycle() {
         if let Some(action) = action {
             server
                 .post(
-                    &format!("{endpoints_path}/{endpoint_id}/{action}"),
+                    &format!("{endpoints_path}/{channel_id}/{action}"),
                     json!({}),
                 )
                 .await
@@ -1439,7 +1439,7 @@ async fn test_agent_channel_summaries_follow_endpoint_lifecycle() {
             .assert_status(StatusCode::OK)
             .json();
         assert_eq!(detail["channels"], listed["data"][0]["channels"]);
-        assert_eq!(detail["channels"][0]["id"], endpoint_id);
+        assert_eq!(detail["channels"][0]["id"], channel_id);
         assert_eq!(detail["channels"][0]["channel_type"], "webhook");
         assert_eq!(detail["channels"][0]["status"], status);
         assert_eq!(detail["channels"][0].as_object().unwrap().len(), 4);
@@ -1451,7 +1451,7 @@ async fn test_agent_channel_summaries_follow_endpoint_lifecycle() {
     }
     server
         .patch(
-            &format!("{endpoints_path}/{endpoint_id}"),
+            &format!("{endpoints_path}/{channel_id}"),
             json!({"enabled": false}),
         )
         .await

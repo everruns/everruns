@@ -9,13 +9,13 @@ import {
   A2aAgentCard,
   A2aAgentCardPreview,
 } from "@/components/agents/integrations/a2a-agent-card-preview";
-import { getInvocationSessionModeDisplayName } from "@/lib/endpoint-display";
+import { getInvocationSessionModeDisplayName } from "@/lib/channel-display";
 import { a2aSamples, codingAgentPrompt } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, Globe, KeyRound, RefreshCw } from "lucide-react";
 
 interface A2aSetupGuidanceProps {
-  endpointUrl: string;
+  channelUrl: string;
   agentCardUrl: string;
   apiKeyPrefix: string;
   sessionMode: InvocationSessionMode;
@@ -31,7 +31,7 @@ interface A2aSetupGuidanceProps {
 }
 
 export function A2aSetupGuidance({
-  endpointUrl,
+  channelUrl,
   agentCardUrl,
   apiKeyPrefix,
   sessionMode,
@@ -84,16 +84,16 @@ export function A2aSetupGuidance({
         <span className="text-sm text-muted-foreground">
           {isPublished
             ? "Ready to accept authenticated A2A JSON-RPC requests."
-            : "Publish the endpoint to accept A2A requests."}
+            : "Publish the channel to accept A2A requests."}
         </span>
       </div>
 
       <div>
-        <p className="text-sm font-medium">JSON-RPC endpoint</p>
+        <p className="text-sm font-medium">JSON-RPC channel</p>
         <div className="mt-2 flex items-center gap-2 bg-muted p-3">
           <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <code className="flex-1 truncate text-sm">{endpointUrl}</code>
-          <CopyButton value={endpointUrl} />
+          <code className="flex-1 truncate text-sm">{channelUrl}</code>
+          <CopyButton value={channelUrl} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
           Send <code>POST</code> with a JSON-RPC 2.0 envelope. Only the <code>message/send</code>{" "}
@@ -109,8 +109,8 @@ export function A2aSetupGuidance({
           <CopyButton value={agentCardUrl} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Public discovery document for A2A clients. Returns 404 unless the endpoint is published
-          and enabled.
+          Public discovery document for A2A clients. Returns 404 unless the channel is published and
+          enabled.
         </p>
       </div>
 
@@ -176,7 +176,7 @@ export function A2aSetupGuidance({
         </div>
         {!canFetchAgentCard ? (
           <div className="rounded-md border p-3 text-sm text-muted-foreground">
-            Publish and enable this endpoint to fetch the public Agent Card. Until then, discovery
+            Publish and enable this channel to fetch the public Agent Card. Until then, discovery
             returns 404.
           </div>
         ) : agentCard ? (
@@ -207,7 +207,7 @@ export function A2aSetupGuidance({
       <div>
         <p className="text-sm font-medium">Call it from your client</p>
         <div className="mt-2">
-          <CodeBlock samples={a2aSamples({ origin, endpointUrl })} />
+          <CodeBlock samples={a2aSamples({ origin, channelUrl })} />
         </div>
       </div>
 
@@ -219,7 +219,7 @@ export function A2aSetupGuidance({
               {
                 label: "Prompt",
                 language: "text",
-                code: codingAgentPrompt({ origin, kind: "a2a", endpointUrl }),
+                code: codingAgentPrompt({ origin, kind: "a2a", channelUrl }),
               },
             ]}
           />

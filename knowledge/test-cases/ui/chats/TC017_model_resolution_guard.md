@@ -54,3 +54,5 @@ an explicit model becomes available.
 | Explicit model | Selecting a valid model re-enables the composer and submission |
 | Follow-up | The later message completes normally in the same thread |
 | Terminal lifecycle | The valid turn emits `turn.completed` and `session.idled`; the session ends idle |
+
+Repeat the model guard on `/chats/new`: the effective default resolves without a session, and a blocked first send creates no side conversation.

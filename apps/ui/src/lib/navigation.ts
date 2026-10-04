@@ -60,7 +60,7 @@ export type NavigationSection = {
 };
 
 export const defaultChatsNavigation: NavigationItem[] = [
-  { name: "Chats", href: "/chats", icon: MessageCircle },
+  { name: "Chat", href: "/chats", icon: MessageCircle, exact: true },
 ];
 
 export const defaultOperationalNavigation: NavigationItem[] = [
@@ -85,8 +85,6 @@ export const defaultBuildingNavigation: NavigationItem[] = [
     name: "Playground",
     href: "/playground",
     icon: FlaskConical,
-    flag: "playground",
-    experimental: true,
   },
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Harnesses", href: "/harnesses", icon: Shield },

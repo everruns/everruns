@@ -27,7 +27,7 @@ pub(super) async fn create_session_with_owner(
     agent_id: Option<AgentId>,
     resolved_owner_user_id: Option<Uuid>,
 ) -> SessionRow {
-    create_session_with_owner_tags_and_endpoint(
+    create_session_with_owner_tags_and_channel(
         db,
         org_id,
         agent_id,
@@ -38,17 +38,17 @@ pub(super) async fn create_session_with_owner(
     .await
 }
 
-async fn create_session_with_owner_tags_and_endpoint(
+async fn create_session_with_owner_tags_and_channel(
     db: &Arc<StorageBackend>,
     org_id: i64,
     agent_id: Option<AgentId>,
     resolved_owner_user_id: Option<Uuid>,
     tags: Vec<String>,
-    endpoint_id: Option<Uuid>,
+    channel_id: Option<Uuid>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
         org_id,
-        endpoint_id,
+        channel_id,
         agent_id,
         owner_principal_id: PrincipalId::new(),
         resolved_owner_user_id,
@@ -112,7 +112,7 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
     db.create_session(input).await.unwrap()
 }
 
-async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
+async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
     let (svc, db) = make_service();
     let harness_id = everruns_contracts::typed_id::HarnessId::new();
     let agent = db
@@ -142,7 +142,7 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         )
         .await
         .unwrap();
-    let endpoint_public_id = format!("appchan_{}", Uuid::new_v4().simple());
+    let channel_public_id = format!("appchan_{}", Uuid::new_v4().simple());
     let app = db
         .create_app(
             1,
@@ -165,10 +165,10 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         .await
         .unwrap();
     let endpoint = db
-        .create_legacy_alias_endpoint(
+        .create_legacy_alias_channel(
             app.id,
-            CreateLegacyAliasEndpointRow {
-                public_id: endpoint_public_id.clone(),
+            CreateLegacyAliasChannelRow {
+                public_id: channel_public_id.clone(),
                 channel_type: channel_type.into(),
                 channel_config: serde_json::json!({}),
                 channel_config_encrypted: None,
@@ -181,25 +181,25 @@ async fn assert_endpoint_budget_exhausts_and_stops(channel_type: &str) {
         .await
         .unwrap();
     assert!(
-        db.get_agent_endpoint_public_id(2, endpoint.id)
+        db.get_agent_channel_public_id(2, endpoint.id)
             .await
             .unwrap()
             .is_none()
     );
-    let session = create_session_with_owner_tags_and_endpoint(
+    let session = create_session_with_owner_tags_and_channel(
         &db,
         1,
         Some(agent.id),
         None,
-        vec![format!("{channel_type}:endpoint:{endpoint_public_id}")],
+        vec![format!("{channel_type}:endpoint:{channel_public_id}")],
         Some(endpoint.id),
     )
     .await;
     let budget = db
         .create_budget(CreateBudgetRow {
             org_id: session.org_id,
-            subject_type: "agent_endpoint".into(),
-            subject_id: endpoint_public_id,
+            subject_type: "agent_channel".into(),
+            subject_id: channel_public_id,
             currency: "tokens".into(),
             limit: 150.0,
             soft_limit: None,
@@ -1227,13 +1227,13 @@ async fn test_list_budgets_for_session_hierarchy_resolves_user_and_org_from_sess
 }
 
 #[tokio::test]
-async fn test_slack_endpoint_budget_exhausts_and_stops_session() {
-    assert_endpoint_budget_exhausts_and_stops("slack").await;
+async fn test_slack_channel_budget_exhausts_and_stops_session() {
+    assert_channel_budget_exhausts_and_stops("slack").await;
 }
 
 #[tokio::test]
-async fn test_fcp_endpoint_budget_exhausts_and_stops_session() {
-    assert_endpoint_budget_exhausts_and_stops("fcp").await;
+async fn test_fcp_channel_budget_exhausts_and_stops_session() {
+    assert_channel_budget_exhausts_and_stops("fcp").await;
 }
 
 #[tokio::test]

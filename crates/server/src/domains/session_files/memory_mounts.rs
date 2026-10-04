@@ -183,23 +183,26 @@ impl MemoryMountRouter {
         Ok(mounts)
     }
 
-    /// The reserved Memory name a session's harness shares, if any.
-    ///
-    /// Keyed on the harness rather than on a capability because the file
-    /// service must derive this from the session row alone; resolving an
-    /// effective capability set would mean walking the harness chain on every
-    /// cold read.
-    async fn shared_memory_name(
+    /// Preserve the operator namespace across the Agent migration and resumed sessions.
+    pub(crate) async fn shared_memory_name(
         &self,
         session: &crate::storage::models::SessionRow,
     ) -> Result<Option<String>> {
-        let Some(harness_id) = session.harness_id else {
-            return Ok(None);
-        };
-        let Some(harness) = self.db.get_harness(session.org_id, harness_id).await? else {
-            return Ok(None);
-        };
-        Ok(shared_memory_name_for_harness(&harness.name))
+        if crate::platform_chat_agent::is_platform_chat(&self.db, session.org_id, session.agent_id)
+            .await?
+        {
+            return Ok(Some(PLATFORM_CHAT_SHARED_MEMORY_NAME.to_string()));
+        }
+        // Legacy custom bindings retain their original shared namespace.
+        match session.harness_id {
+            Some(id) => Ok(self
+                .db
+                .get_harness(session.org_id, id)
+                .await?
+                .filter(|h| h.is_built_in)
+                .and_then(|h| shared_memory_name_for_harness(&h.name))),
+            None => Ok(None),
+        }
     }
 
     async fn push_scoped(
@@ -398,26 +401,12 @@ impl MemoryMountRouter {
     }
 }
 
-/// The reserved Memory name a harness shares across all of its sessions.
-///
-/// One entry today. A harness that wants shared memory declares it here rather
-/// than by configuration, so the name cannot drift between the session service
-/// that creates the Memory and the file service that mounts it.
-///
-// THREAT[TM-TENANT-015]: a harness listed here gets one org-scoped Memory that
-// every session of it reads and writes, so a note one member leaves is visible
-// to every other member of that org who can open the same surface. That is the
-// feature, not a leak, but it is the one place `/memory` is deliberately not
-// private: `/memory/agent` and `/memory/user` stay scoped by owner, and
-// `/memory/user` additionally goes through the `resolved_owner_user_id` check
-// in `queries::verify_session`. Adding a harness here widens that blast radius
-// to its whole org, so it is a source-level allowlist rather than
-// configuration, and sharing is not reversible once written.
+/// Legacy built-in bindings retain the operator namespace after harness retirement.
+// THREAT[TM-TENANT-015]: This allowlist preserves existing sharing only. New platform
+// conversations are keyed on the managed built-in Agent, never a user-authored name.
 pub fn shared_memory_name_for_harness(harness_name: &str) -> Option<String> {
     match harness_name {
-        crate::harnesses::platform_chat::PLATFORM_CHAT_HARNESS_NAME => {
-            Some(PLATFORM_CHAT_SHARED_MEMORY_NAME.to_string())
-        }
+        "platform-chat" | "platform-chat-v2" => Some(PLATFORM_CHAT_SHARED_MEMORY_NAME.to_string()),
         _ => None,
     }
 }

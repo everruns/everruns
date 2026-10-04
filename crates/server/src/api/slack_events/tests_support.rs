@@ -15,12 +15,12 @@ pub(crate) fn make_signature(secret: &str, timestamp: &str, body: &str) -> Strin
 }
 
 pub(crate) struct TestIngress {
-    context: crate::api::endpoint_ingress::IngressContext,
-    pub(crate) channels: Vec<crate::api::endpoint_ingress::IngressEndpoint>,
+    context: crate::api::channel_ingress::IngressContext,
+    pub(crate) channels: Vec<crate::api::channel_ingress::IngressChannel>,
 }
 
 impl Deref for TestIngress {
-    type Target = crate::api::endpoint_ingress::IngressContext;
+    type Target = crate::api::channel_ingress::IngressContext;
 
     fn deref(&self) -> &Self::Target {
         &self.context
@@ -34,19 +34,19 @@ impl DerefMut for TestIngress {
 }
 
 pub(crate) fn test_app() -> TestIngress {
-    use everruns_platform::AgentEndpointId;
-    use everruns_platform::{EndpointStatus, EndpointTransport};
+    use everruns_platform::AgentChannelId;
+    use everruns_platform::{ChannelStatus, ChannelType};
 
     TestIngress {
-        context: crate::api::endpoint_ingress::IngressContext::for_test("Test App", None),
-        channels: vec![crate::api::endpoint_ingress::IngressEndpoint {
-            public_id: AgentEndpointId::from_uuid(uuid::Uuid::nil()),
+        context: crate::api::channel_ingress::IngressContext::for_test("Test App", None),
+        channels: vec![crate::api::channel_ingress::IngressChannel {
+            public_id: AgentChannelId::from_uuid(uuid::Uuid::nil()),
             internal_id: uuid::Uuid::nil(),
-            channel_type: EndpointTransport::Slack,
+            channel_type: ChannelType::Slack,
             channel_config: serde_json::json!({}),
             auth: None,
             enabled: true,
-            status: EndpointStatus::Live,
+            status: ChannelStatus::Live,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }],
@@ -63,10 +63,12 @@ pub(crate) fn test_config(strategy: SessionBinding) -> SlackChannelConfig {
         team_id: None,
         session_strategy: strategy,
         reply_mode: SlackReplyMode::AllMessages,
+        response_policy: Default::default(),
         webhook_verified_at: None,
         first_message_received_at: None,
         tool_visibility: Default::default(),
-        generic_tool_text: everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
+        generic_tool_text: everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+            .to_string(),
     }
 }
 
@@ -115,7 +117,7 @@ pub(crate) async fn setup_test_session(
         workspace_id: None,
         org_id: 1,
         app_id: None,
-        endpoint_id: None,
+        channel_id: None,
         trigger_id: None,
         harness_id: Some(everruns_contracts::typed_id::HarnessId::from_uuid(
             uuid::Uuid::nil(),
@@ -155,11 +157,11 @@ pub(crate) async fn setup_test_session(
 // ==========================================
 
 pub(crate) const TEST_INTERACTIVITY_URL: &str =
-    "https://api.example.com/v1/e/appchan_test/slack/interactivity";
+    "https://api.example.com/v1/channels/appchan_test/slack/interactivity";
 pub(crate) const TEST_REQUEST_URL: &str =
     "https://example.com/api/v1/apps/app_test123/slack/events";
 pub(crate) const TEST_REDIRECT_URL: &str =
-    "https://api.example.com/v1/e/appchan_test/slack/oauth/callback";
+    "https://api.example.com/v1/channels/appchan_test/slack/oauth/callback";
 
 pub(crate) fn test_starter(text: &str) -> ConversationStarter {
     ConversationStarter {

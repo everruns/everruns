@@ -522,7 +522,7 @@ mod tests {
                 source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
-                endpoint_id: None,
+                channel_id: None,
                 trigger_id: None,
                 harness_id: Some(harness.id),
                 agent_id: Some(host_agent.id),
@@ -684,7 +684,7 @@ mod tests {
                 source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
-                endpoint_id: None,
+                channel_id: None,
                 trigger_id: None,
                 harness_id: Some(harness.id),
                 agent_id: None,
@@ -714,6 +714,9 @@ mod tests {
             })
             .await
             .expect("create Platform Chat session");
+        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+            .await
+            .expect("initialize managed Agent");
         let caller = Caller {
             org_id: DEFAULT_ORG_ID,
             org_public_id: everruns_core::organization::org_public_id_from_internal(DEFAULT_ORG_ID),

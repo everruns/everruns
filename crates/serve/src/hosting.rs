@@ -161,7 +161,7 @@ impl Server {
     }
 
     /// One AG-UI run of `agent` from a raw `RunAgentInput` JSON body: the
-    /// AG-UI 1.0 event stream, or the problem `POST /v1/e/{agent}/ag-ui`
+    /// AG-UI 1.0 event stream, or the problem `POST /v1/channels/{agent}/ag-ui`
     /// would answer. Requires the `ag-ui` feature.
     #[cfg(feature = "ag-ui")]
     pub async fn ag_ui(&self, agent: &str, body: &[u8]) -> axum::response::Response {

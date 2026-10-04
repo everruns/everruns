@@ -159,11 +159,12 @@ soft-approval layer this capability generalizes.
 
 ### Defaults
 
-Enabled at `normal` on both auto-provisioned harnesses that can act:
+Enabled at `normal` on the auto-provisioned Generic harness:
 
 - **Generic** (`crates/server/src/harnesses/generic.rs`): shell, file system,
   and network, so an unattended agent can delete or publish for real.
-- **Platform Chat** (`crates/server/src/harnesses/platform_chat.rs`): platform
+- **Platform Chat Agent** (`crates/server/src/platform_chat_agent.rs`) inherits
+  soft approval from Generic for platform
   tools that create, mutate, and delete entities for a whole organization. Its
   prompt keeps the platform-specific confirmation cases (creating a harness or
   agent) and defers the mechanics of pausing to `request_approval`.
