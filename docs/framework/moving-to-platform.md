@@ -12,7 +12,7 @@ lifecycle closures, an approver) is rebuilt with a Platform mechanism instead.
 
 Everruns Cloud is the hosted Platform. Everything here applies to both, except
 that Cloud runs the production deployment grade: capabilities marked dev-only,
-such as [Agent Handoff](/capabilities/agent-handoff/), are not offered there.
+such as [Computer Use](/capabilities/computer-use/), are not offered there.
 
 ## What transfers
 

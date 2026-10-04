@@ -18,8 +18,9 @@ Agents compose capabilities; enable only what you need.
 Every capability a production deployment offers, with the number of tools it
 adds by default. The table is checked against the capability registry in CI
 (`scripts/check_docs_catalogs.py`). Rows marked **dev-only** are registered only
-at the `dev` deployment grade; a `FEATURE_*` variable means the deployment has
-to switch the capability on.
+at the `dev` deployment grade. A `FEATURE_*` variable identifies a
+[rollout grade override](/sre/environment-variables/#feature-rollout-grades);
+organisation enrolment also applies before assigning or using gated capabilities.
 
 ### Core
 
@@ -40,7 +41,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 | [Auto-Continue After Usage Limit](/capabilities/usage-limit-auto-continue/) | `usage_limit_auto_continue` | 0 |
 | [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
-| [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
+| [Agent Skills](/capabilities/agent-skills/) | `skills` | 2; `FEATURE_SKILLS` grade |
 | Channel Thread Context | `channel_context` | 0 |
 | System Commands | `system_commands` | 0 |
 
@@ -53,8 +54,8 @@ Delegating work to other sessions and running it in the background.
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 0 (contributes the `spawn_agent` delegation target) |
 | Session Tasks | `session_tasks` | 5 |
 | Background Execution | `background_execution` | 1 |
-| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (dev-only, contributes the `agent` `spawn_agent` target) |
-| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (dev-only, contributes the `external_a2a` `spawn_agent` target) |
+| [Agent Handoff](/capabilities/agent-handoff/) | `agent_handoff` | 0 (organisation opt-in, contributes the `agent` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
+| [A2A Agent Delegation](/capabilities/a2a-agent-delegation/) | `a2a_agent_delegation` | 0 (organisation opt-in, contributes the `external_a2a` `spawn_agent` target); `FEATURE_AGENT_DELEGATION` grade |
 
 ### Sandboxes
 
@@ -88,9 +89,9 @@ Structured data, knowledge retrieval, and memory.
 | [Retrieval Citations](/capabilities/citation-retrieval/) | `citation_retrieval` | 0 |
 | [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
 | [Data Knowledge](/capabilities/data-knowledge/) | `data_knowledge` | 0 |
-| [Knowledge Base](/capabilities/knowledge-base/) | `knowledge_base` | 1 |
-| [Knowledge Index](/capabilities/knowledge-index/) | `knowledge_index` | 0 (adds `search_index` when `indexes` is set) |
-| [Memory](/capabilities/memory/) | `memory` | 0 |
+| [Knowledge Base](/capabilities/knowledge-base/) | `knowledge_base` | 1; `FEATURE_KNOWLEDGE` grade |
+| [Knowledge Index](/capabilities/knowledge-index/) | `knowledge_index` | 0 (adds `search_index` when `indexes` is set); `FEATURE_KNOWLEDGE` grade |
+| [Memory](/capabilities/memory/) | `memory` | 0; `FEATURE_MEMORY` grade |
 
 ### Media
 
@@ -110,7 +111,7 @@ Provider-executed tools and model selection.
 | [OpenRouter Server Tools](/capabilities/openrouter-server-tools/) | `openrouter_server_tools` | 0 |
 | Model Scout | `model_scout` | 0 |
 | OpenRouter Workspace | `openrouter_workspace` | 2 |
-| OpenAI Agents API Runtime | `openai_agents_api_runtime` | 0 |
+| OpenAI Agents API Runtime | `openai_agents_api_runtime` | 0; `FEATURE_OPENAI_AGENTS_API` grade |
 
 ### Integrations
 

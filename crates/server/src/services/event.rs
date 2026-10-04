@@ -942,12 +942,15 @@ mod tests {
             .create_session(service_session_input(Some(VirtualUserId::new())))
             .await
             .unwrap();
+        // Warm optional version metadata so the one-shot fault targets the
+        // mandatory provenance lookup regardless of feature rollout defaults.
+        let mut request = service_tool_event(session.id);
+        event_service
+            .attach_agent_version_metadata(&mut request)
+            .await;
         db.force_storage_failure("get_session_unscoped");
 
-        let error = event_service
-            .emit(service_tool_event(session.id))
-            .await
-            .unwrap_err();
+        let error = event_service.emit(request).await.unwrap_err();
 
         assert!(
             error
