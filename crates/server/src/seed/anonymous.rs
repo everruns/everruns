@@ -106,6 +106,123 @@ mod tests {
     use everruns_core::DeploymentGrade;
     use std::sync::Arc;
 
+    async fn prepare_without_background(db: Arc<StorageBackend>, auth: &AuthConfig) {
+        let task = crate::seed::prepare_seed_task(
+            db,
+            auth,
+            crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev),
+            crate::platform::oss_built_in_harnesses(),
+            None,
+        )
+        .await
+        .unwrap();
+        task.abort();
+        let _ = task.await;
+    }
+
+    #[tokio::test]
+    async fn prepare_seed_task_exposes_runtime_owner_before_background() {
+        let db = Arc::new(StorageBackend::in_memory());
+        prepare_without_background(db.clone(), &AuthConfig::default()).await;
+
+        let mut caller = everruns_core::Caller::internal(DEFAULT_ORG_ID);
+        caller.is_internal = false;
+        caller.user_id = Some(ANONYMOUS_USER_ID);
+        let owner = crate::services::PrincipalService::new(db.clone())
+            .default_runtime_owner_principal(&caller, None)
+            .await
+            .expect("runtime ownership must be ready before background seeding");
+        assert_eq!(owner.kind, "virtual_user");
+        assert_eq!(owner.resolved_user_id, Some(ANONYMOUS_USER_ID));
+        assert_eq!(
+            db.get_organization_member(DEFAULT_ORG_ID, ANONYMOUS_USER_ID)
+                .await
+                .unwrap()
+                .unwrap()
+                .role,
+            "owner"
+        );
+        assert!(
+            db.get_harness_by_name(DEFAULT_ORG_ID, "conversation")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            db.list_providers(DEFAULT_ORG_ID).await.unwrap().is_empty(),
+            "provider catalog seeding must remain in the background"
+        );
+    }
+
+    async fn assert_prepared_pat_policy(mode: AuthMode) {
+        let db = Arc::new(StorageBackend::in_memory());
+        super::super::seed_default_organization(&db).await.unwrap();
+        seed_anonymous_user(&db, &[]).await.unwrap();
+        let generated = crate::auth::personal_access_token::generate_personal_access_token();
+        db.create_personal_access_token(CreatePersonalAccessTokenRow {
+            user_id: ANONYMOUS_USER_ID,
+            name: "existing-none-mode-token".into(),
+            token_hash: generated.token_hash,
+            token_prefix: generated.token_prefix,
+            scopes: vec!["*".into()],
+            expires_at: None,
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+        let auth = AuthConfig {
+            admin: (mode == AuthMode::Admin).then(|| crate::auth::config::AdminConfig {
+                email: "startup-admin@example.com".into(),
+                password: "development-test-password".into(),
+            }),
+            mode: mode.clone(),
+            ..AuthConfig::default()
+        };
+
+        prepare_without_background(db.clone(), &auth).await;
+
+        let tokens = db
+            .list_personal_access_tokens_for_user(ANONYMOUS_USER_ID)
+            .await
+            .unwrap();
+        assert_eq!(
+            tokens.len(),
+            usize::from(mode == AuthMode::None),
+            "anonymous PAT policy must apply before serving {mode:?} traffic"
+        );
+        if let Some(admin) = auth.admin {
+            let user = db.get_user_by_email(&admin.email).await.unwrap().unwrap();
+            assert_eq!(
+                db.get_organization_member(DEFAULT_ORG_ID, user.id)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .role,
+                "owner"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn prepare_seed_task_revokes_anonymous_pats_in_admin_mode() {
+        assert_prepared_pat_policy(AuthMode::Admin).await;
+    }
+
+    #[tokio::test]
+    async fn prepare_seed_task_revokes_anonymous_pats_in_full_mode() {
+        assert_prepared_pat_policy(AuthMode::Full).await;
+    }
+
+    #[tokio::test]
+    async fn prepare_seed_task_revokes_anonymous_pats_in_external_mode() {
+        assert_prepared_pat_policy(AuthMode::External).await;
+    }
+
+    #[tokio::test]
+    async fn prepare_seed_task_preserves_anonymous_pats_in_none_mode() {
+        assert_prepared_pat_policy(AuthMode::None).await;
+    }
+
     #[tokio::test]
     async fn anonymous_pats_revoked_when_leaving_auth_mode_none() {
         let db = Arc::new(StorageBackend::in_memory());
