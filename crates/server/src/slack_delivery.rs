@@ -1,8 +1,7 @@
 // Slack delivery dispatcher — event-driven Slack message posting
 //
-// Design Decision: Replaces the 120s polling deadline in wait_and_post_response()
-// with an event-driven approach. Subscribes to EventNotificationBroadcaster and
-// dispatches Slack messages as output.message.completed events arrive.
+// Design Decision: No delivery deadline. Woken per session by the PostgreSQL
+// event listener, or by polling active sessions where none runs (`wake.rs`).
 //
 // Design Decision: No durable queue for the Slack HTTP call. Events are already
 // durably stored — if the server restarts, startup recovery re-registers active
@@ -21,6 +20,7 @@ use everruns_core::channel::{
 };
 mod message_receipts;
 mod recovery_endpoint;
+mod wake;
 use crate::records::SlackReplyMode;
 use crate::records::exposure::{PublicToolVisibility, public_tool_activity_text};
 use everruns_core::events;
@@ -30,8 +30,8 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+pub use wake::DeliveryWake;
 
-use crate::event_notifications::EventNotificationPayload;
 use crate::services::run_summary::is_terminal_turn_event;
 use crate::slack_api::{
     SLACK_API_BASE, post_slack_blocks, post_slack_message_returning_ts, slack_api_call,
@@ -234,18 +234,15 @@ pub struct SlackDeliveryDispatcher {
 }
 
 impl SlackDeliveryDispatcher {
-    /// Create and start the dispatcher.
-    ///
-    /// `event_rx` is a broadcast receiver from EventNotificationBroadcaster.
-    /// The dispatcher runs a background task that listens for event notifications.
+    /// Create and start the dispatcher, woken by `wake` (see [`DeliveryWake`]).
     pub fn start(
         db: Arc<StorageBackend>,
-        event_rx: broadcast::Receiver<EventNotificationPayload>,
+        wake: impl Into<DeliveryWake>,
         frontend_url: String,
     ) -> Arc<Self> {
         Self::start_with_adapter(
             db,
-            event_rx,
+            wake,
             frontend_url,
             Arc::new(SlackDeliveryAdapter::new()),
         )
@@ -254,7 +251,7 @@ impl SlackDeliveryDispatcher {
     /// `start`, with the Slack API base injected. Tests point this at a mock.
     pub fn start_with_adapter(
         db: Arc<StorageBackend>,
-        event_rx: broadcast::Receiver<EventNotificationPayload>,
+        wake: impl Into<DeliveryWake>,
         frontend_url: String,
         adapter: Arc<dyn ChannelDeliveryAdapter>,
     ) -> Arc<Self> {
@@ -269,9 +266,9 @@ impl SlackDeliveryDispatcher {
             adapter,
         });
 
-        let dispatcher_clone = dispatcher.clone();
+        let (dispatcher_clone, wake) = (dispatcher.clone(), wake.into());
         tokio::spawn(async move {
-            dispatcher_clone.event_loop(event_rx, shutdown_rx).await;
+            dispatcher_clone.event_loop(wake, shutdown_rx).await;
         });
 
         dispatcher
@@ -342,10 +339,10 @@ impl SlackDeliveryDispatcher {
 
     async fn event_loop(
         self: Arc<Self>,
-        mut event_rx: broadcast::Receiver<EventNotificationPayload>,
+        mut wake: DeliveryWake,
         mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
     ) {
-        info!("Slack delivery dispatcher started");
+        info!(polling = wake.polls(), "Slack delivery dispatcher started");
 
         let mut flush = tokio::time::interval(STREAM_FLUSH_INTERVAL);
         flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -360,25 +357,24 @@ impl SlackDeliveryDispatcher {
                     // one thread, and one rhythm keeps their ordering
                     // predictable (EVE-1026).
                     self.flush_task_progress_all().await;
+                    if wake.polls() {
+                        self.schedule_all_active(&mut scheduler).await;
+                    }
                 }
-                result = event_rx.recv() => {
+                result = wake.recv() => {
                     match result {
-                        Ok(payload) => {
-                            if !self.active_sessions.read().await.contains(&payload.session_id) {
+                        Ok(session_id) => {
+                            if !self.active_sessions.read().await.contains(&session_id) {
                                 continue;
                             }
-                            scheduler.schedule(self.clone(), payload.session_id);
+                            scheduler.schedule(self.clone(), session_id);
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             warn!(
                                 skipped = n,
                                 "Slack delivery dispatcher lagged, processing all active sessions"
                             );
-                            let sessions: Vec<Uuid> =
-                                self.active_sessions.read().await.iter().copied().collect();
-                            for session_id in sessions {
-                                scheduler.schedule(self.clone(), session_id);
-                            }
+                            self.schedule_all_active(&mut scheduler).await;
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             info!("Event broadcaster closed, stopping Slack delivery dispatcher");
@@ -1753,9 +1749,12 @@ pub(crate) async fn post_slack_message(
 
 #[cfg(test)]
 mod tests {
+    use crate::event_notifications::EventNotificationPayload;
     use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     #[path = "concurrency_tests.rs"]
     mod concurrency_tests;
+    #[path = "polling_wake_tests.rs"]
+    mod polling_wake_tests;
     #[path = "response_text_tests.rs"]
     mod response_text_tests;
 

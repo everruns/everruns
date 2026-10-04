@@ -897,23 +897,8 @@ pub(crate) async fn process_slack_message(
             })
             .await;
     } else {
-        // Fallback for DEV_MODE without EventNotificationBroadcaster:
-        // use the legacy polling approach
-        let db = state.db.clone();
-        let reply_mode = slack_config.reply_mode;
-        tokio::spawn(async move {
-            if let Err(e) = wait_and_post_response(
-                &db, session_id, message_id, &bot_token, &channel, &thread_ts, reply_mode,
-            )
-            .await
-            {
-                tracing::error!(
-                    session_id = %session_id,
-                    error = %e,
-                    "Failed to post Slack response"
-                );
-            }
-        });
+        // Only test states are built without one; the app always starts it.
+        tracing::debug!(session_id = %session.id, "No Slack delivery dispatcher; reply not posted");
     }
 
     Ok(())

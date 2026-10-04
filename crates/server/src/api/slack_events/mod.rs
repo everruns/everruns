@@ -57,7 +57,7 @@ pub struct SlackState {
     pub event_service: Arc<EventService>,
     /// Cache of Slack user ID → display name. Shared across requests.
     user_name_cache: SlackUserCache,
-    /// Event-driven Slack delivery dispatcher (None in DEV_MODE without PostgreSQL).
+    /// Slack delivery dispatcher. The app always starts one; `None` only in tests.
     pub delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
     /// Backend origin including the API prefix (e.g. `https://app.example.com/api`).
     /// The generated manifest needs it to name this server's own webhook URL.

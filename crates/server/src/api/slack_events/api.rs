@@ -107,17 +107,6 @@ pub(crate) async fn resolve_slack_user_name_base(
     }
 }
 
-/// Post a message to Slack using the Bot API.
-/// Delegates to the shared implementation in `slack_delivery`.
-pub(crate) async fn post_to_slack(
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-    text: &str,
-) -> anyhow::Result<()> {
-    crate::slack_delivery::post_to_slack(bot_token, channel, thread_ts, text).await
-}
-
 /// Verify Slack request signature using HMAC-SHA256.
 ///
 /// Slack signs requests with:
