@@ -31,6 +31,38 @@ pub(crate) const PERMANENT_SLACK_ERRORS: &[&str] = &[
     "already_reacted",
 ];
 
+/// Slack error codes that describe the workspace's own install, not a fault
+/// in this server: a scope the admin has not approved, a revoked token, a
+/// channel the bot is not in. Callers already surface these where they can be
+/// fixed (health issues, tool errors that say "reconnect"), so the shared
+/// call path reports them as warnings rather than paging as errors
+/// (EVERRUNS-2A).
+const WORKSPACE_STATE_SLACK_ERRORS: &[&str] = &[
+    "missing_scope",
+    "no_permission",
+    "not_in_channel",
+    "channel_not_found",
+    "is_archived",
+    "not_authed",
+    "invalid_auth",
+    "token_expired",
+    "token_revoked",
+    "account_inactive",
+];
+
+/// Level at which a failed Slack call is logged where it happens.
+///
+/// `already_reacted` is the satisfied outcome its caller reads it as, and a
+/// rate limit is routine backpressure. Anything else outside the workspace
+/// state list may be a fault here, so it stays an error.
+pub(crate) fn failure_log_level(error: &SlackApiError) -> tracing::Level {
+    match error.code() {
+        Some("ratelimited" | "already_reacted") => tracing::Level::DEBUG,
+        Some(code) if WORKSPACE_STATE_SLACK_ERRORS.contains(&code) => tracing::Level::WARN,
+        _ => tracing::Level::ERROR,
+    }
+}
+
 /// Prefix `SlackApiError::from_code` renders a Slack `error` code behind.
 ///
 /// Kept beside `from_code` and `code` so the one place that writes the wrapping
@@ -164,6 +196,27 @@ mod tests {
             assert_eq!(error.code(), Some(code));
         }
         assert!(!SlackApiError::from_code("internal_error", None).is_permanent());
+    }
+
+    #[test]
+    fn workspace_state_failures_are_warnings_not_errors() {
+        use tracing::Level;
+        let level = |code: &str| failure_log_level(&SlackApiError::from_code(code, None));
+
+        // EVERRUNS-2A: a workspace that has not approved `reactions:write`.
+        assert_eq!(level("missing_scope"), Level::WARN);
+        assert_eq!(level("not_in_channel"), Level::WARN);
+        assert_eq!(level("token_revoked"), Level::WARN);
+        assert_eq!(level("already_reacted"), Level::DEBUG);
+        assert_eq!(level("ratelimited"), Level::DEBUG);
+        // Codes that can mean this server sent something wrong stay errors.
+        assert_eq!(level("invalid_arguments"), Level::ERROR);
+        assert_eq!(level("no_text"), Level::ERROR);
+        assert_eq!(level("internal_error"), Level::ERROR);
+        assert_eq!(
+            failure_log_level(&SlackApiError::Transient("connection reset".into())),
+            Level::ERROR
+        );
     }
 
     #[test]

@@ -9,8 +9,8 @@
 //! a `Retry-After` header on a rate limit. Decision therefore lives in one
 //! place (EVE-974) rather than being rewritten per endpoint.
 
-use crate::slack_api_error::{SlackApiError, parse_retry_after};
-use tracing::{debug, error};
+use crate::slack_api_error::{SlackApiError, failure_log_level, parse_retry_after};
+use tracing::{Level, debug, error, warn};
 
 /// Slack Web API base.
 pub(crate) const SLACK_API_BASE: &str = "https://slack.com/api";
@@ -105,20 +105,27 @@ pub(crate) async fn slack_api_call(
 
         let failure = SlackApiError::from_code(error, retry_after);
 
-        if matches!(failure, SlackApiError::RateLimited { .. }) {
-            debug!(
+        // Rate limits and `already_reacted` are routine, and workspace install
+        // state is the admin's to fix, so only the rest pages as an error.
+        match failure_log_level(&failure) {
+            Level::DEBUG => debug!(
                 method = method,
+                error = error,
                 retry_after_secs = ?retry_after.map(|d| d.as_secs()),
-                status = %status,
-                "Slack rate limited the call"
-            );
-        } else {
-            error!(
+                "Slack API call declined"
+            ),
+            Level::WARN => warn!(
                 method = method,
                 error = error,
                 status = %status,
                 "Slack API call failed"
-            );
+            ),
+            _ => error!(
+                method = method,
+                error = error,
+                status = %status,
+                "Slack API call failed"
+            ),
         }
         return Err(failure);
     }
