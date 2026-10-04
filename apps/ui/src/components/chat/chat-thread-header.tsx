@@ -5,15 +5,11 @@
  * The agent binding is shown as a fact, not a control — a thread's transcript is
  * only meaningful against the agent that produced it, so switching agents starts
  * a new thread (knowledge/ui/information-architecture.md).
- *
- * "Share" copies the thread URL. A thread is an ordinary session, so access is
- * the session's access: the link works for people who can already see the org's
- * sessions, and mints nothing.
  */
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Copy, ExternalLink, MessageCircle, Pencil } from "lucide-react";
+import { ExternalLink, MessageCircle, Pencil } from "lucide-react";
 import { PLATFORM_CHAT_STARTER_TAG } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { PageMasthead } from "@/components/layout/page-layout";
@@ -21,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { ChatArchiveButton } from "@/components/chat/chat-archive-button";
 import { ChatPinButton } from "@/components/chat/chat-pin-button";
-import { Button, LinkButton } from "@/components/ui/button";
+import { LinkButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
@@ -95,35 +91,6 @@ function ThreadTitle({
   );
 }
 
-function ShareButton({ href }: { href?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1500);
-    return () => clearTimeout(timer);
-  }, [copied]);
-
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="max-sm:w-7 max-sm:px-0"
-      aria-label={copied ? "Link copied" : "Share"}
-      onClick={async () => {
-        await navigator.clipboard?.writeText(
-          href ? new URL(href, window.location.origin).href : window.location.href,
-        );
-        setCopied(true);
-      }}
-    >
-      {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-      <span className="max-sm:hidden">{copied ? "Link copied" : "Share"}</span>
-    </Button>
-  );
-}
-
 export function ChatThreadHeader({
   session,
   title,
@@ -136,15 +103,12 @@ export function ChatThreadHeader({
   showPin = true,
   extraActions,
   threadMode = false,
-  shareHref,
 }: {
   contextLabel?: ReactNode;
   layout?: "chat" | "page";
   showPin?: boolean;
   extraActions?: ReactNode;
   threadMode?: boolean;
-  /** Split panes share their own conversation, not whichever pane owns the URL. */
-  shareHref?: string;
   session: Session;
   /** Display title, already resolved through the thread-title fallbacks. */
   title: string;
@@ -180,7 +144,6 @@ export function ChatThreadHeader({
           />
         </>
       )}
-      <ShareButton href={shareHref} />
       <LinkButton
         href={`/sessions/${session.id}/transcript`}
         variant="outline"

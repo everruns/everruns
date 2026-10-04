@@ -102,7 +102,6 @@ function ThreadContent({
         session={session}
         extraActions={extraActions}
         threadMode={threadMode}
-        shareHref={permanent ? "/chats" : `/chats/${session.id}`}
         title={title}
         counterpart={counterpart}
         platformIntro={platformIntro?.intro ?? null}
