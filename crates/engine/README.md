@@ -12,7 +12,7 @@ deterministic turn planner. It transforms phase outcomes and host-resolved facts
 into the next plan and ordered lifecycle effects.
 
 Planning is pure. Execution effects cross injected contracts from
-`everruns-core` and `everruns-provider`; the engine does not select a store,
+`everruns-core` and `everruns-contracts`; the engine does not select a store,
 transport, process runner, server, worker, platform, or durable backend.
 
 It is a focused implementation crate in the [Everruns](https://everruns.com)

@@ -3,7 +3,7 @@
 //! turns. Exercised by `scripts/test-external-consumer.sh`.
 //!
 //! The second turn installs capabilities from `external-capability-pack`, a
-//! crate that depends on the neutral `everruns-capability` contract alone
+//! crate that depends on the neutral `everruns-contracts` contract alone
 //! (EVE-873): a code-defined `Definition` executes a scripted tool call, and
 //! an `IntoCapability` value activates an open third-party reference — with
 //! no core/host imports and no central enum edit anywhere.

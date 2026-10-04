@@ -2,8 +2,7 @@
 //
 // A Model is a specific model via a specific provider (provider FK + wire
 // model id). ModelProfile is the model's identity and metadata; profile
-// types and data live in the `everruns-model-profiles` crate and are
-// re-exported below for source compatibility.
+// types and data live in this crate's model_profile_data module.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

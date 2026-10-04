@@ -8,7 +8,7 @@ in process without credentials or network access and preserves deterministic
 tool calls, injected failures, latency controls, and request capture.
 
 It is part of the [Everruns](https://everruns.com) ecosystem, builds on the
-provider contracts in `everruns-provider`, and optionally pairs with
+provider contracts in `everruns-contracts`, and optionally pairs with
 `everruns-host` for runtime-builder integration.
 
 ## Quick start

@@ -1,7 +1,7 @@
 // Capability type definitions
 //
 // Design Decision (EVE-873): capability identity and per-agent configuration
-// are the neutral `everruns-capability` contract — `CapabilityId`,
+// are the neutral `everruns-contracts` contract — `CapabilityId`,
 // `CapabilityRef`, validation, and registry index bookkeeping live there and
 // are imported here for the execution-facing vocabulary. Core owns only the
 // runtime-facing vocabulary that needs engine types (capability status,

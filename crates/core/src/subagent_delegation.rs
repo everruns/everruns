@@ -3,7 +3,7 @@
 //! Hosted delegation capabilities drive child sessions — create, message,
 //! wait, read — through this narrow `everruns-core`-owned trait instead of the
 //! full hosted [`PlatformStore`](https://docs.rs/everruns-platform) seam. The
-//! platform crate implements it by delegating to `PlatformStore`, so core owns
+//! platform crate implements it by forwarding runtime views from `PlatformStore`, so core owns
 //! only the execution contract while server/worker keep identical behavior.
 //!
 //! The request/message DTOs live here (not in `everruns-platform`) because the
@@ -50,20 +50,20 @@ pub struct PlatformCreateSessionRequest {
 #[async_trait]
 pub trait SubagentSessionDelegate: Send + Sync {
     /// Look up an agent's execution definition by id (target validation for
-    /// handoff/spawn). Stored persistence records stay behind the hosted
-    /// platform adapter (EVE-877).
+    /// handoff/spawn). Stored persistence records stay behind the host
+    /// adapter (EVE-877).
     async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<AgentDefinition>>;
 
     /// Look up a harness's effective (inheritance-resolved) execution
     /// configuration by id. Parent-chain walking, cycle guarding, and the
-    /// stored persistence record stay behind the hosted platform adapter
+    /// stored persistence record stay behind the host adapter
     /// (EVE-881).
     async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>>;
 
     /// Add an agent as a member participant in an existing session.
     ///
     /// Returns the new participant row's id (a neutral correlation value);
-    /// the stored participant record stays behind the platform seam (EVE-882).
+    /// the stored participant record stays behind the host seam (EVE-882).
     async fn add_agent_session_participant(
         &self,
         session_id: SessionId,

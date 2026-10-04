@@ -1603,6 +1603,9 @@ message SessionSqlDbQueryResponse {
 // === Generic domain command transport ===
 
 message ExecuteCommandRequest {
+    // Delegation-only response projection. Domain authorization still applies;
+    // false preserves management records for existing command consumers.
+    bool runtime_view = 10;
     optional Uuid platform_session_id = 8;
     optional Uuid input_message_id = 9;
     string name = 1;

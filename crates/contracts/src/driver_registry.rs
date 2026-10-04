@@ -879,8 +879,7 @@ impl ChatDriver for RequestOptionsDriver {
 /// has a driver trait today; the set is additive and new kinds gain factories
 /// on [`DriverDescriptor`] when their first consumer lands.
 ///
-/// Defined in `everruns-model-profiles` (profile data is keyed by service
-/// kind) and re-exported here for source compatibility.
+/// Shared with this crate's model profile data, which is keyed by service kind.
 pub use crate::model_profile_data::ServiceKind;
 
 pub use crate::driver_oauth::DriverOAuthFlow;

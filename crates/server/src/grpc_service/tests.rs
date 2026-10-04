@@ -316,46 +316,6 @@ async fn test_list_commands_includes_platform_catalog_commands() {
 }
 
 #[tokio::test]
-async fn test_execute_command_lists_seeded_harnesses() {
-    let service = test_worker_service().await;
-
-    let response = service
-        .execute_command(Request::new(ExecuteCommandRequest {
-            input_message_id: None,
-            platform_session_id: None,
-
-            name: "list_harnesses".to_string(),
-            api_version: "v1".to_string(),
-            params_json: br#"{}"#.to_vec(),
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            user_id: None,
-            idempotency_key: None,
-            metadata: Default::default(),
-        }))
-        .await
-        .expect("execute_command should succeed")
-        .into_inner();
-
-    let proto::execute_command_response::Result::OkJson(ok_json) =
-        response.result.expect("command result should be present")
-    else {
-        panic!("expected OkJson response");
-    };
-
-    let harnesses: serde_json::Value =
-        serde_json::from_slice(&ok_json).expect("response should be valid JSON");
-    let names: Vec<&str> = harnesses
-        .as_array()
-        .expect("list_harnesses should return an array")
-        .iter()
-        .filter_map(|h| h.get("name").and_then(|name| name.as_str()))
-        .collect();
-
-    assert!(names.contains(&"generic"));
-    assert!(!names.contains(&"platform-chat"));
-}
-
-#[tokio::test]
 async fn test_execute_command_denies_org_disabled_feature() {
     let service = test_worker_service().await;
     service
@@ -369,6 +329,7 @@ async fn test_execute_command_denies_org_disabled_feature() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            runtime_view: false,
             input_message_id: None,
             platform_session_id: None,
 
@@ -400,6 +361,7 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            runtime_view: false,
             input_message_id: None,
             platform_session_id: None,
 
@@ -438,6 +400,7 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
     ] {
         let response = service
             .execute_command(Request::new(ExecuteCommandRequest {
+                runtime_view: false,
                 input_message_id: None,
                 platform_session_id: None,
 
@@ -1027,6 +990,7 @@ async fn test_execute_command_uses_user_permissions() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
+            runtime_view: false,
             input_message_id: None,
             platform_session_id: None,
 
@@ -1495,3 +1459,6 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
         task_id
     );
 }
+
+#[path = "tests_runtime_command_view.rs"]
+mod runtime_command_view;
