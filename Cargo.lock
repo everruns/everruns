@@ -2667,7 +2667,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable-engine"
-version = "0.34.2"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "async-trait",
