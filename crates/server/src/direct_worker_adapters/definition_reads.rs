@@ -15,7 +15,7 @@ impl DirectWorkerAdapters {
             .get_agent_by_public_id(org_id, &public_id)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to get agent: {}", e);
+                tracing::error!(error = %e, "Failed to get agent");
                 store_error("Failed to get agent")
             })?;
         match row {
