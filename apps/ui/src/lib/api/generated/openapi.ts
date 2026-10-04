@@ -10602,6 +10602,7 @@ export interface components {
       agent_id: string;
       agent_name: string;
       body: string;
+      channel_id: string;
       code: string;
       error_code?: string | null;
       /** Format: date-time */
@@ -10618,7 +10619,6 @@ export interface components {
       stale: boolean;
       status: string;
       title: string;
-      channel_id: string;
     };
     HealthIssueList: {
       data: components["schemas"]["HealthIssue"][];
