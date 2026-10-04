@@ -3,7 +3,7 @@
 //! call meets the same pre-tool chain a model call does, and assert that the
 //! nested target call meets it too.
 
-use super::tests::{
+use super::test_support::{
     InMemoryTaskRegistry, NoopStorageStore, TestFileStore, TestScheduleStore, TestSubagentDelegate,
 };
 use super::*;
@@ -120,7 +120,7 @@ impl EventEmitter for NullEmitter {
     }
 }
 
-struct Harness {
+struct Fixture {
     session_id: SessionId,
     bash: Arc<Mutex<Vec<String>>>,
     tasks: Arc<InMemoryTaskRegistry>,
@@ -130,7 +130,7 @@ struct Harness {
     registry: Arc<ToolRegistry>,
 }
 
-impl Harness {
+impl Fixture {
     fn new() -> Self {
         let bash = RecordingBash::default();
         let ran = bash.ran.clone();
@@ -227,11 +227,11 @@ fn only_result(result: &ActResult) -> &ToolResult {
 
 #[tokio::test]
 async fn bash_denial_also_blocks_the_same_command_through_spawn_background() {
-    let harness = Harness::new();
-    let atom = harness.atom(vec![Arc::new(DenyBashRm)], vec![]);
+    let fixture = Fixture::new();
+    let atom = fixture.atom(vec![Arc::new(DenyBashRm)], vec![]);
 
     // The policy denies the command when the model calls bash directly...
-    let direct = harness
+    let direct = fixture
         .call(&atom, "bash", json!({ "command": "rm -rf /workspace" }))
         .await;
     assert!(
@@ -240,7 +240,7 @@ async fn bash_denial_also_blocks_the_same_command_through_spawn_background() {
     );
 
     // ...and wrapping it as background work must not change the answer.
-    let wrapped = harness
+    let wrapped = fixture
         .call(
             &atom,
             "spawn_background",
@@ -256,25 +256,25 @@ async fn bash_denial_also_blocks_the_same_command_through_spawn_background() {
         "the target tool's denial is reported, got: {error}"
     );
     assert!(
-        harness.background_tasks().await.is_empty(),
+        fixture.background_tasks().await.is_empty(),
         "no background run is scheduled for a denied call"
     );
 
     // Nothing ran, in the foreground or the background.
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assert!(
-        harness.ran().is_empty(),
+        fixture.ran().is_empty(),
         "denied command ran: {:?}",
-        harness.ran()
+        fixture.ran()
     );
 }
 
 #[tokio::test]
 async fn allowed_background_commands_still_run() {
-    let harness = Harness::new();
-    let atom = harness.atom(vec![Arc::new(DenyBashRm)], vec![]);
+    let fixture = Fixture::new();
+    let atom = fixture.atom(vec![Arc::new(DenyBashRm)], vec![]);
 
-    let result = harness
+    let result = fixture
         .call(
             &atom,
             "spawn_background",
@@ -286,12 +286,12 @@ async fn allowed_background_commands_still_run() {
         .clone()
         .expect("allowed background run starts");
     assert!(only_result(&result).error.is_none(), "{value}");
-    let task = harness
+    let task = fixture
         .wait_for_task(value["task_id"].as_str().unwrap())
         .await;
 
     assert_eq!(task.state, SessionTaskState::Succeeded);
-    assert_eq!(harness.ran(), vec!["ls /workspace".to_string()]);
+    assert_eq!(fixture.ran(), vec!["ls /workspace".to_string()]);
 }
 
 /// Rewrites every bash command, the way a user `pre_tool_use` hook may.
@@ -315,10 +315,10 @@ impl PreToolUseHook for ForceDryRun {
 
 #[tokio::test]
 async fn the_detached_run_executes_the_arguments_the_policy_authorized() {
-    let harness = Harness::new();
-    let atom = harness.atom(vec![Arc::new(ForceDryRun)], vec![]);
+    let fixture = Fixture::new();
+    let atom = fixture.atom(vec![Arc::new(ForceDryRun)], vec![]);
 
-    let result = harness
+    let result = fixture
         .call(
             &atom,
             "spawn_background",
@@ -326,11 +326,11 @@ async fn the_detached_run_executes_the_arguments_the_policy_authorized() {
         )
         .await;
     let value = only_result(&result).result.clone().unwrap();
-    let task = harness
+    let task = fixture
         .wait_for_task(value["task_id"].as_str().unwrap())
         .await;
 
-    assert_eq!(harness.ran(), vec!["make deploy --dry-run".to_string()]);
+    assert_eq!(fixture.ran(), vec!["make deploy --dry-run".to_string()]);
     // The task records what ran, so a re-attach cannot revive the original.
     assert_eq!(
         task.spec["arguments"],
@@ -340,10 +340,10 @@ async fn the_detached_run_executes_the_arguments_the_policy_authorized() {
 
 #[tokio::test]
 async fn nested_arguments_are_held_to_the_target_schema() {
-    let harness = Harness::new();
-    let atom = harness.atom(vec![], vec![]);
+    let fixture = Fixture::new();
+    let atom = fixture.atom(vec![], vec![]);
 
-    let result = harness
+    let result = fixture
         .call(
             &atom,
             "spawn_background",
@@ -356,9 +356,9 @@ async fn nested_arguments_are_held_to_the_target_schema() {
         .clone()
         .expect("invalid args fail");
     assert!(error.contains("invalid_tool_arguments"), "{error}");
-    assert!(harness.background_tasks().await.is_empty());
+    assert!(fixture.background_tasks().await.is_empty());
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert!(harness.ran().is_empty());
+    assert!(fixture.ran().is_empty());
 }
 
 /// Defers every bash call the way the hosted `tool_approval` gate does while
@@ -404,10 +404,10 @@ impl PreToolUseHook for DeferBash {
 
 #[tokio::test]
 async fn a_target_needing_approval_parks_the_turn_instead_of_running() {
-    let harness = Harness::new();
-    let atom = harness.atom(vec![Arc::new(DeferBash)], vec![]);
+    let fixture = Fixture::new();
+    let atom = fixture.atom(vec![Arc::new(DeferBash)], vec![]);
 
-    let result = harness
+    let result = fixture
         .call(
             &atom,
             "spawn_background",
@@ -431,17 +431,17 @@ async fn a_target_needing_approval_parks_the_turn_instead_of_running() {
             .any(|call| call.name == everruns_contracts::tool_types::APPROVE_TOOL_CALL_TOOL),
         "the turn parks on an approval request"
     );
-    assert!(harness.background_tasks().await.is_empty());
+    assert!(fixture.background_tasks().await.is_empty());
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assert!(harness.ran().is_empty());
+    assert!(fixture.ran().is_empty());
 }
 
 #[tokio::test]
 async fn a_denied_target_is_not_scheduled_either() {
-    let harness = Harness::new();
-    let atom = harness.atom(vec![Arc::new(DenyBashRm)], vec![]);
+    let fixture = Fixture::new();
+    let atom = fixture.atom(vec![Arc::new(DenyBashRm)], vec![]);
 
-    let result = harness
+    let result = fixture
         .call(
             &atom,
             "spawn_background",
@@ -454,8 +454,8 @@ async fn a_denied_target_is_not_scheduled_either() {
         .await;
 
     assert!(only_result(&result).error.is_some());
-    assert!(harness.schedules.schedules.lock().unwrap().is_empty());
-    assert!(harness.background_tasks().await.is_empty());
+    assert!(fixture.schedules.schedules.lock().unwrap().is_empty());
+    assert!(fixture.background_tasks().await.is_empty());
 }
 
 /// Withholds bash output that mentions a secret, as a `tool_output`
@@ -486,10 +486,10 @@ impl PostToolExecHook for WithholdSecrets {
 
 #[tokio::test]
 async fn post_tool_hooks_see_the_background_result_before_anyone_else() {
-    let harness = Harness::new();
-    let atom = harness.atom(vec![], vec![Arc::new(WithholdSecrets)]);
+    let fixture = Fixture::new();
+    let atom = fixture.atom(vec![], vec![Arc::new(WithholdSecrets)]);
 
-    let result = harness
+    let result = fixture
         .call(
             &atom,
             "spawn_background",
@@ -497,14 +497,14 @@ async fn post_tool_hooks_see_the_background_result_before_anyone_else() {
         )
         .await;
     let value = only_result(&result).result.clone().unwrap();
-    let task = harness
+    let task = fixture
         .wait_for_task(value["task_id"].as_str().unwrap())
         .await;
     let run_id = value["run_id"].as_str().unwrap();
 
     let read = |path: String| {
-        let files = harness.files.clone();
-        let session_id = harness.session_id;
+        let files = fixture.files.clone();
+        let session_id = fixture.session_id;
         async move {
             use everruns_core::session_files::SessionFileSystem;
             files
@@ -517,9 +517,9 @@ async fn post_tool_hooks_see_the_background_result_before_anyone_else() {
     };
     let result_json = read(format!("/.background/{run_id}/result.json")).await;
     let log = read(format!("/.background/{run_id}/output.log")).await;
-    let signals = harness.signals.sent_messages.lock().unwrap().clone();
+    let signals = fixture.signals.sent_messages.lock().unwrap().clone();
 
-    assert_eq!(harness.ran(), vec!["cat secret.txt".to_string()]);
+    assert_eq!(fixture.ran(), vec!["cat secret.txt".to_string()]);
     assert_eq!(task.summary.as_deref(), Some("[withheld by guardrail]"));
     assert!(
         result_json.contains("[withheld by guardrail]"),
@@ -535,15 +535,15 @@ async fn post_tool_hooks_see_the_background_result_before_anyone_else() {
 
 #[tokio::test]
 async fn spawn_background_refuses_to_run_outside_the_act_phase() {
-    let harness = Harness::new();
+    let fixture = Fixture::new();
     // A context without the act phase's chains: nothing to hold the target to.
     let context = ToolContext::with_stores(
-        harness.session_id,
-        harness.files.clone(),
+        fixture.session_id,
+        fixture.files.clone(),
         Arc::new(NoopStorageStore),
     )
-    .with_tool_registry(harness.registry.clone())
-    .with_session_task_registry(harness.tasks.clone());
+    .with_tool_registry(fixture.registry.clone())
+    .with_session_task_registry(fixture.tasks.clone());
 
     let result = SpawnBackgroundTool
         .execute_with_context(
@@ -556,5 +556,5 @@ async fn spawn_background_refuses_to_run_outside_the_act_phase() {
         panic!("spawn_background must fail closed without a tool policy");
     };
     assert!(message.contains("tool policy"), "{message}");
-    assert!(harness.background_tasks().await.is_empty());
+    assert!(fixture.background_tasks().await.is_empty());
 }

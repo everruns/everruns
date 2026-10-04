@@ -732,16 +732,13 @@ mod engine {
         child.tool_registry = None;
         child.tool_call_id = Some(format!("lua:{name}"));
         match tool.execute_with_context(args, &child).await {
-            R::Success(v) => Ok(v),
-            R::SuccessWithImages { result, .. } => Ok(result),
+            R::Success(v) | R::SuccessWithImages { result: v, .. } => Ok(v),
             R::ToolError(e) => Err(e),
             R::InternalError(_) => Err("tool internal error".to_string()),
             R::ConnectionRequired { provider, .. } => {
                 Err(format!("tool requires a connection: {provider}"))
             }
-            R::PolicyOutcome(result) => Err(result
-                .error
-                .unwrap_or_else(|| "tool call was not allowed by policy".to_string())),
+            R::PolicyOutcome(result) => Err(result.error.unwrap_or_default()),
         }
     }
 

@@ -1410,11 +1410,8 @@ impl ReadManyFilesTool {
                     "path": batch_input_display_path(context, path),
                     "error": error
                 }),
-                ToolExecutionResult::InternalError(error) => {
-                    return ToolExecutionResult::InternalError(error);
-                }
-                required @ ToolExecutionResult::ConnectionRequired { .. } => return required,
-                settled @ ToolExecutionResult::PolicyOutcome(_) => return settled,
+                // Internal errors, connection prompts and policy outcomes end the batch.
+                stop => return stop,
             };
 
             let mut candidate = results.clone();

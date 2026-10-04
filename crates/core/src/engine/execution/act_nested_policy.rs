@@ -19,7 +19,7 @@ use crate::engine::tool_execution::ToolExecutor;
 use crate::engine::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::tool_hooks::NestedToolPolicy;
 
-use super::act_hooks::{self, PostToolExecHook, PreToolUseHook};
+use crate::engine::execution::act_hooks::{self, PostToolExecHook, PreToolUseHook};
 
 struct ActNestedToolPolicy {
     pre_tool_hooks: Vec<Arc<dyn PreToolUseHook>>,

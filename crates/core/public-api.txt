@@ -1585,6 +1585,7 @@ everruns_core::tool_fingerprint::tool_call_parts_fingerprint	function
 everruns_core::tool_fingerprint::tool_error_fingerprint	function
 everruns_core::tool_fingerprint::tool_result_fingerprint	function
 everruns_core::tool_hooks	module
+everruns_core::tool_hooks::NestedToolPolicy	trait
 everruns_core::tool_hooks::PolicyGate	struct
 everruns_core::tool_hooks::PostToolExecHook	trait
 everruns_core::tool_hooks::PostToolExecHookPriority	enum
@@ -1685,6 +1686,7 @@ everruns_core::tools::Tool::narrate	function
 everruns_core::tools::Tool::required_context_services	function
 everruns_core::tools::ToolRegistry	struct
 everruns_core::tools::ToolRegistryBuilder	struct
+everruns_core::tools::validate_tool_arguments	function
 everruns_core::truncation_info	module
 everruns_core::truncation_info::TruncationInfo	struct
 everruns_core::truncation_info::TruncationReason	enum
