@@ -29,8 +29,10 @@ export const THREAD_SCAN_LIMIT = 100;
 
 export function isChatThread(session: Session): boolean {
   return (
-    session.source !== "playground" &&
-    (session.tags.includes(CHAT_THREAD_TAG) || session.tags.includes(LEGACY_GLOBAL_CHAT_TAG))
+    // Chat identity survives ordinary tag edits; tags identify legacy conversations.
+    session.source === "chat" ||
+    (session.source !== "playground" &&
+      (session.tags.includes(CHAT_THREAD_TAG) || session.tags.includes(LEGACY_GLOBAL_CHAT_TAG)))
   );
 }
 
