@@ -1,12 +1,11 @@
 /**
- * New chat: pick a counterpart, then talk. The counterpart is chosen up front
- * because a thread is bound to it for its lifetime — afterwards the
- * binding is shown as a fact, not an editable control
- * (knowledge/ui/information-architecture.md).
+ * New Playground chat: pick an Agent or harness, virtual user, and optional
+ * Agent Environment before creating the session. Those bindings stay fixed
+ * for the session lifetime (knowledge/ui/information-architecture.md).
  *
- * A thread is an ordinary session: this posts `POST /v1/sessions` with either
- * an agent or a harness binding. Direct harness chats let users start from a
- * configured runtime without creating an otherwise-empty agent first.
+ * Personal Chats do not use this form. They always run the managed Platform
+ * Chat Agent on its fixed runtime; Playground owns arbitrary Agent, harness,
+ * identity, and Environment selection.
  *
  * An org with no model to chat with never reaches this form: both hosts own
  * their empty-state frame, so they swap the whole frame for the
@@ -30,40 +29,28 @@ import {
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
-import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import type { CreateSessionRequest } from "@/lib/api/types";
 
 const AGENT_VALUE_PREFIX = "agent:";
 const HARNESS_VALUE_PREFIX = "harness:";
 
-export function NewChatForm({
-  onStartingChange,
+export function NewPlaygroundChatForm({
   initialAgentId,
-  surface = "chat",
   endUserId,
   children,
 }: {
-  surface?: "chat" | "playground";
   initialAgentId?: string;
   endUserId?: string;
   children?: ReactNode;
-  /**
-   * Fired when a thread starts being created, and again with `false` if it
-   * fails. Creating a thread invalidates the session list, and a host that swaps
-   * this form out on the first result would unmount it before the navigation
-   * below runs — so the host holds the form in place until this says otherwise.
-   */
-  onStartingChange?: (starting: boolean) => void;
 } = {}) {
   const router = useRouter();
   const { data: allAgents = [], isLoading: agentsLoading } = useAgents();
   const agents = allAgents.filter((a) => !(a.name === "platform-chat"));
   const { data: allHarnesses = [], isLoading: harnessesLoading } = useHarnesses();
-  const harnesses =
-    surface === "playground"
-      ? allHarnesses.filter((h) => !h.is_built_in || !h.name.startsWith("platform-chat"))
-      : allHarnesses;
+  const harnesses = allHarnesses.filter(
+    (h) => !h.is_built_in || !h.name.startsWith("platform-chat"),
+  );
   const createSession = useCreateSession();
   const [selection, setSelection] = useState(
     initialAgentId ? `${AGENT_VALUE_PREFIX}${initialAgentId}` : "",
@@ -76,6 +63,7 @@ export function NewChatForm({
     : undefined;
   const environmentProfiles = selectedAgent?.environments?.profiles ?? {};
   const environmentNames = Object.keys(environmentProfiles);
+  const selectedEnvironment = environment || selectedAgent?.environments?.default || "";
 
   const selectCounterpart = (value: string) => {
     setSelection(value);
@@ -88,7 +76,6 @@ export function NewChatForm({
   const start = async () => {
     if (!selection) return;
     setError(null);
-    onStartingChange?.(true);
     const binding: Partial<CreateSessionRequest> = selection.startsWith(HARNESS_VALUE_PREFIX)
       ? { harness_name: selection.slice(HARNESS_VALUE_PREFIX.length) }
       : { agent_id: selection.slice(AGENT_VALUE_PREFIX.length) };
@@ -97,18 +84,15 @@ export function NewChatForm({
       const session = await createSession.mutateAsync({
         request: {
           ...binding,
-          ...(selectedAgent?.environments && environment
-            ? { environment: { use: environment } }
+          ...(selectedAgent?.environments && selectedEnvironment
+            ? { environment: { use: selectedEnvironment } }
             : {}),
-          source: surface,
-          ...(surface === "playground"
-            ? { playground_user_id: endUserId }
-            : { tags: [CHAT_THREAD_TAG] }),
+          source: "playground",
+          playground_user_id: endUserId,
         },
       });
-      router.push(`/${surface === "playground" ? "playground" : "chats"}/${session.id}`);
+      router.push(`/playground/${session.id}`);
     } catch (e) {
-      onStartingChange?.(false);
       setError(e instanceof Error ? e.message : "Could not start the chat.");
     }
   };
@@ -126,18 +110,9 @@ export function NewChatForm({
 
   return (
     <div className="space-y-3">
-      <div
-        className={
-          surface === "playground"
-            ? "flex flex-col gap-3"
-            : "flex flex-wrap items-center justify-center gap-2"
-        }
-      >
+      <div className="flex flex-col gap-3">
         <Select value={selection} onValueChange={selectCounterpart} disabled={optionsLoading}>
-          <SelectTrigger
-            className={surface === "playground" ? "w-full" : "w-64"}
-            aria-label="Chat counterpart"
-          >
+          <SelectTrigger className="w-full" aria-label="Chat counterpart">
             <SelectValue
               placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
             />
@@ -166,11 +141,8 @@ export function NewChatForm({
           </SelectContent>
         </Select>
         {selectedAgent?.environments && environmentNames.length > 0 ? (
-          <Select value={environment} onValueChange={setEnvironment}>
-            <SelectTrigger
-              className={surface === "playground" ? "w-full" : "w-56"}
-              aria-label="Environment"
-            >
+          <Select value={selectedEnvironment} onValueChange={setEnvironment}>
+            <SelectTrigger className="w-full" aria-label="Environment">
               <SelectValue placeholder="Pick an environment" />
             </SelectTrigger>
             <SelectContent>
@@ -192,18 +164,16 @@ export function NewChatForm({
         ) : null}
         {children}
         <Button
-          variant={surface === "playground" ? "accent" : "default"}
+          variant="accent"
           onClick={start}
-          disabled={
-            !selection || createSession.isPending || (surface === "playground" && !endUserId)
-          }
+          disabled={!selection || createSession.isPending || !endUserId}
         >
           {createSession.isPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <MessageCircle className="size-4" />
           )}
-          {surface === "playground" ? "Start Playground chat" : "Start chat"}
+          Start Playground chat
         </Button>
       </div>
       {error && <ChatErrorAlert message={error} />}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Users, FlaskConical } from "lucide-react";
-import { NewChatForm } from "@/components/chat/new-chat-form";
+import { NewPlaygroundChatForm } from "@/components/chat/new-chat-form";
 import { VirtualUserSelect } from "@/components/virtual-user/virtual-user-select";
 import { useVirtualUser } from "@/hooks/use-virtual-users";
 import { useOrg } from "@/providers/org-provider";
@@ -46,8 +46,7 @@ function Setup() {
         <PageMain>
           <div className="border bg-card p-6">
             <div className="max-w-lg">
-              <NewChatForm
-                surface="playground"
+              <NewPlaygroundChatForm
                 endUserId={subject}
                 initialAgentId={searchParams.get("agent") ?? undefined}
               >
@@ -71,7 +70,7 @@ function Setup() {
                     </p>
                   )}
                 </div>
-              </NewChatForm>
+              </NewPlaygroundChatForm>
             </div>
           </div>
         </PageMain>

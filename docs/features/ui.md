@@ -77,11 +77,12 @@ Header actions:
   input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply
   to new sessions only.
 - **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
-- **Test chat**: start an interactive chat thread with this agent
+- **Test in Playground**: open Playground setup with this Agent selected
 
-Use **More > Environments** to add named Bashkit or Daytona execution profiles. On **Chats > New
-chat**, choose the Agent and then the Environment profile before starting the thread. See
-[Environments](/features/environments/) for recovery and lifecycle behavior.
+Use **More > Environments** to add named Bashkit or Daytona execution profiles. Then select the
+Agent and Environment when starting a **New Playground chat**. Personal Chats always use the
+managed Platform Chat Agent and do not expose a sandbox selector. See [Environments]
+(/features/environments/) for recovery and lifecycle behavior.
 
 ## Sessions
 

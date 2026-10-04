@@ -9,6 +9,11 @@
 
 ## 2026-10-03
 
+* **Agent testing belongs to Playground.** The Agent masthead opens Playground setup with the
+  Agent preselected; personal Chats remain bound to the managed Platform Chat Agent and its fixed
+  runtime. Playground owns Agent, harness, virtual-user, and Environment selection. See
+  [Agent Page](ui/agent-page.md) and [Execution Environments](harnesses/execution-environments.md).
+
 * **Paid CI coverage follows provider/model changes and a nightly sweep.**
   Ordinary Rust merges retain llmsim workflows without provider credentials.
   Scheduled and manual live coverage still runs only trusted main-branch code.
@@ -40,10 +45,6 @@
   containment is already `danger-full-access`. `git status` asks unless the
   command disables repository fsmonitor and hooks. See
   [Threat Model](security/threat-model.md) TM-BASH-028.
-
-* **Agent page Test chat.** The gold masthead CTA starts an interactive chat
-  thread (`source: chat` → `/chats/{id}`) instead of opening a read-only
-  session recording. See [Agent Page](ui/agent-page.md).
 
 * **A2A outbound SSRF hardening.** External A2A delegation DNS-pins discovery
   and every AgentCard interface URL, disables redirects, keeps the merged

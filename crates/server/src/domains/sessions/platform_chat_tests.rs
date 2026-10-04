@@ -104,6 +104,7 @@ async fn side_chat_starts_empty_on_the_same_agent_and_generic() {
         json!({"source":"chat", "harness_name":"generic"}),
         json!({"source":"chat", "agent_name":"platform-chat", "capabilities":[{"ref":"platform"}]}),
         json!({"source":"chat", "agent_name":"platform-chat", "system_prompt":"Override"}),
+        json!({"source":"chat", "agent_name":"platform-chat", "environment":{"target":{"kind":"vfs", "provider":"bashkit"}}}),
         json!({"source":"chat", "agent_name":"platform-chat", "harness_name":"base"}),
     ] {
         assert!(
