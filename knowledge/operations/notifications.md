@@ -18,6 +18,10 @@ Provide a generic, durable notification system for user-facing delivery surfaces
 
 Notifications are canonical server records. UI surfaces are projections of the same data, not separate systems.
 
+For persistent unresolved operational conditions and guided recovery, see
+[Actionable Health Issues](health-issues.md). That contract separates condition state
+from per-user notification viewing; its detector and recovery contract live there.
+
 ## Scope
 
 Initial notification type:

@@ -1097,6 +1097,11 @@ impl TestServer {
 
         // Build API routes
         let mut api_routes = Router::new()
+            .merge(api::health_issues::routes(api::health_issues::AppState {
+                db: db.clone(),
+                auth: auth_state.clone(),
+                encryption: encryption.clone(),
+            }))
             .merge(api::agents::routes(agents_state))
             .merge(api::budgets::routes(budgets_state))
             .merge(api::agent_credentials::routes(agent_credentials_state))

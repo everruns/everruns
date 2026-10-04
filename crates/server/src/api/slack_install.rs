@@ -371,6 +371,15 @@ async fn begin_install(
     Path(channel_id): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<Json<BeginInstallResponse>, (StatusCode, Json<ErrorResponse>)> {
+    crate::domains::agents::AGENT_MANAGE
+        .evaluate_with(
+            state.auth.permission_resolver.as_ref(),
+            &everruns_core::Caller::from(&org),
+        )
+        .map_err(|_| {
+            ErrorResponse::new("Agent management permission is required")
+                .into_response(StatusCode::FORBIDDEN)
+        })?;
     // The body is optional so a single-workspace organization can keep
     // posting nothing; an empty body means "the only workspace".
     let request: BeginInstallRequest = if body.is_empty() {
@@ -447,6 +456,18 @@ async fn begin_install(
     }
     let mut provisioned = match reusable {
         Some(mut existing) => {
+            if !config.bot_token.is_empty() {
+                state
+                    .provisioner
+                    .update_permissions(
+                        org.org_id,
+                        existing.team_id.as_deref(),
+                        &existing.app_id,
+                        &super::slack_events::slack_bot_scopes(config.agent_surface_enabled),
+                    )
+                    .await
+                    .map_err(provisioning_error_response)?;
+            }
             if existing.team_id.is_none() {
                 existing.team_id = team_id.clone();
             }
@@ -545,6 +566,19 @@ async fn finish_install(
         tracing::warn!(%channel_id, reason, "Slack install callback rejected");
         Redirect::to(&format!("{ui_base}/agents?slack_install=failed")).into_response()
     };
+    let (_context, endpoint) = match resolve_install_channel(&state.slack, &channel_id).await {
+        Ok(endpoint) => endpoint,
+        Err(_) => return rejected("endpoint not found"),
+    };
+    let _install_lock = match state
+        .slack
+        .db
+        .lock_slack_install(endpoint.internal_id)
+        .await
+    {
+        Ok(lock) => lock,
+        Err(_) => return rejected("could not lock installation"),
+    };
     let (context, endpoint) = match resolve_install_channel(&state.slack, &channel_id).await {
         Ok(endpoint) => endpoint,
         Err(_) => return rejected("endpoint not found"),
@@ -561,6 +595,15 @@ async fn finish_install(
         return rejected(reason);
     }
 
+    // Consume the nonce durably even if consent is declined or the exchange fails.
+    config.provisioned_app = Some(provisioned.clone());
+    if persist(&state, endpoint.internal_id, &config)
+        .await
+        .is_err()
+    {
+        return rejected("could not consume install state");
+    }
+
     // Endpoint editors are agent-scoped. Only a valid install nonce may expose
     // the owning agent in this unauthenticated callback's return URL.
     let editor_url = match context.agent_id {
@@ -570,8 +613,22 @@ async fn finish_install(
         ),
         None => format!("{ui_base}/agents"),
     };
-    let outcome = match finish_install_inner(&state, &endpoint, config, provisioned, query).await {
-        Ok(()) => "ok",
+    let result = finish_install_inner(&state, &endpoint, config, provisioned, query).await;
+    drop(_install_lock);
+    let outcome = match result {
+        Ok(()) => {
+            if let Err(error) = crate::domains::health_issues::service::SlackHealthService::new(
+                state.slack.db.clone(),
+                state.slack.encryption.clone(),
+            )
+            .with_api_base(state.slack_api_base.clone())
+            .check(&channel_id)
+            .await
+            {
+                tracing::warn!(%error,"Could not verify refreshed Slack permissions");
+            }
+            "ok"
+        }
         Err(reason) => {
             // The operator sees a generic marker; the detail stays in the log.
             // This page is reached by a redirect an attacker can also trigger.
@@ -613,6 +670,20 @@ async fn finish_install_inner(
 
     // The nonce was taken above, so storing `provisioned` back spends it in the
     // same write that records the result and a replay finds nothing to match.
+    if provisioned
+        .team_id
+        .as_deref()
+        .is_some_and(|team| team != exchanged.team_id)
+        || config
+            .team_id
+            .as_deref()
+            .is_some_and(|team| team != exchanged.team_id)
+    {
+        return Err("oauth workspace mismatch");
+    }
+    if exchanged.app_id.as_deref() != Some(provisioned.app_id.as_str()) {
+        return Err("oauth app mismatch");
+    }
     config.provisioned_app = Some(provisioned);
     config.bot_token = exchanged.bot_token;
     config.team_id = Some(exchanged.team_id);
@@ -654,6 +725,7 @@ fn spend_install_state(
 struct ExchangedInstall {
     bot_token: String,
     team_id: String,
+    app_id: Option<String>,
 }
 
 async fn exchange_code(
@@ -663,7 +735,11 @@ async fn exchange_code(
     code: &str,
     redirect_uri: &str,
 ) -> Result<ExchangedInstall, &'static str> {
-    let response = reqwest::Client::new()
+    let response = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|_| "oauth client unavailable")?
         .post(format!(
             "{}/oauth.v2.access",
             api_base.trim_end_matches('/')
@@ -699,7 +775,15 @@ async fn exchange_code(
         .filter(|id| !id.is_empty())
         .ok_or("oauth exchange returned no team id")?
         .to_string();
-    Ok(ExchangedInstall { bot_token, team_id })
+    let app_id = body
+        .get("app_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    Ok(ExchangedInstall {
+        bot_token,
+        team_id,
+        app_id,
+    })
 }
 
 /// The endpoint's Slack config, or an empty one when it will not parse.

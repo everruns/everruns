@@ -8127,6 +8127,186 @@
         }
       }
     },
+    "/v1/health-issues": {
+      "get": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "List pending operational health issues visible to the caller in the current organization.",
+        "operationId": "list_health_issues",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "query",
+            "description": "Filter by public channel identifier.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of matching issues to skip; defaults to zero.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size from 1 through 100; defaults to 20.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthIssueList"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}": {
+      "get": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "Get current issue evidence and recovery guidance in the current organization.",
+        "operationId": "get_health_issue",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthIssue"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/check": {
+      "post": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.",
+        "operationId": "check_health_issue",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthIssue"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health-issues/{issue_id}/snooze": {
+      "post": {
+        "tags": [
+          "health-issues"
+        ],
+        "summary": "Snooze the authenticated user's reminders for one day while keeping the shared issue pending.",
+        "operationId": "snooze_health_issue",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthIssue"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/images": {
       "get": {
         "tags": [
@@ -29618,6 +29798,163 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "HealthIssue": {
+        "type": "object",
+        "description": "An organization-scoped operational issue and its current recovery evidence.",
+        "required": [
+          "id",
+          "code",
+          "agent_id",
+          "agent_name",
+          "channel_id",
+          "status",
+          "title",
+          "body",
+          "missing_scopes",
+          "first_detected_at",
+          "last_checked_at",
+          "stale",
+          "href"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Public identifier of the owning agent.",
+            "example": "agent_550e8400e29b41d4a716446655440000"
+          },
+          "agent_name": {
+            "type": "string",
+            "description": "Display name of the owning agent.",
+            "example": "Support assistant"
+          },
+          "body": {
+            "type": "string",
+            "description": "Explanation of the impact and recovery action.",
+            "example": "Reconnect Slack to grant the required permissions."
+          },
+          "channel_id": {
+            "type": "string",
+            "description": "Public identifier of the affected channel.",
+            "example": "appchan_550e8400e29b41d4a716446655440000"
+          },
+          "code": {
+            "type": "string",
+            "description": "Detector code identifying the affected integration check.",
+            "example": "slack.permissions"
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized provider or verification error code, when available.",
+            "example": "missing_scope"
+          },
+          "first_detected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the current issue episode was first detected.",
+            "example": "2026-10-03T12:00:00Z"
+          },
+          "href": {
+            "type": "string",
+            "description": "Application-relative link to the issue details.",
+            "example": "/settings/health?issue=550e8400-e29b-41d4-a716-446655440000"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable identifier of the canonical issue.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "last_checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the latest accepted verification evidence was observed.",
+            "example": "2026-10-03T12:05:00Z"
+          },
+          "missing_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required Slack scopes absent from the verified grant.",
+            "example": [
+              "reactions:write"
+            ]
+          },
+          "notification_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current user's announcement identifier, when notifications are enabled.",
+            "example": "notification_550e8400e29b41d4a716446655440001"
+          },
+          "snoozed_until": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Current user's reminder suppression deadline, if snoozed.",
+            "example": "2026-10-04T12:00:00Z"
+          },
+          "stale": {
+            "type": "boolean",
+            "description": "Whether the evidence is old, unavailable, or for a previous channel revision.",
+            "example": false
+          },
+          "status": {
+            "type": "string",
+            "description": "Current issue state: open, needs_check, resolved, or inapplicable.",
+            "example": "open"
+          },
+          "title": {
+            "type": "string",
+            "description": "Human-readable summary of the required action.",
+            "example": "Slack permissions need updating"
+          }
+        }
+      },
+      "HealthIssueList": {
+        "type": "object",
+        "description": "A page of pending operational health issues visible to the current caller.",
+        "required": [
+          "data",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HealthIssue"
+            },
+            "description": "Issues in this page.",
+            "example": []
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Effective page size.",
+            "example": 20
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Effective pagination offset.",
+            "example": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of issues matching the current filter.",
+            "example": 1
           }
         }
       },

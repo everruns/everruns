@@ -68,6 +68,18 @@ Publish first because Slack verifies the manifest's channel Request URL when it 
 
 To stop new Slack messages without deleting the configuration, select **Unpublish** on this channel. Existing sessions remain available.
 
+## Resolve installation issues
+
+Open **Settings** > **Health** to review pending Slack permission or credential issues.
+The same warning appears beside the endpoint and under **Action required** in notifications
+when notifications are enabled. Reading or snoozing an announcement leaves the issue open.
+
+For an app Everruns created, select **Reconnect Slack** and approve the additional permissions.
+For a manually configured app, add the listed bot scopes in Slack, reinstall the existing app,
+and save the refreshed bot token in the endpoint editor. Your Slack administrator may need
+to approve the change. Use **Check again** to verify the installation; unavailable or stale
+permission evidence keeps the issue open until a current check succeeds.
+
 ## See also
 
 - [Slack Integration](/capabilities/slack/), including scopes, manual setup, and troubleshooting.

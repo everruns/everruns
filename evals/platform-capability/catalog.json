@@ -975,6 +975,32 @@
     "read_only": true
   },
   {
+    "category": "health_issues",
+    "cli": null,
+    "description": "Verify an installation's current health without modifying provider data.",
+    "input_schema": {
+      "description": "Request fresh, non-mutating verification of one health issue.",
+      "properties": {
+        "issue_id": {
+          "description": "Stable identifier of the issue in the current organization.",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "check_health_issue",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/check",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "providers",
     "cli": null,
     "description": "Check a provider API key without storing it.",
@@ -9618,6 +9644,32 @@
     "read_only": true
   },
   {
+    "category": "health_issues",
+    "cli": null,
+    "description": "Get an operational health issue.",
+    "input_schema": {
+      "description": "Read the current evidence and recovery guidance for one health issue.",
+      "properties": {
+        "issue_id": {
+          "description": "Stable identifier of the issue in the current organization.",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_health_issue",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "images",
     "cli": null,
     "description": "Get image data by ID.",
@@ -12721,6 +12773,49 @@
     "read_only": true
   },
   {
+    "category": "health_issues",
+    "cli": null,
+    "description": "List pending operational health issues.",
+    "input_schema": {
+      "description": "Pagination and optional channel filter for pending health issues.",
+      "properties": {
+        "channel_id": {
+          "description": "Restrict results to this public channel identifier.",
+          "example": "appchan_550e8400e29b41d4a716446655440000",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Page size, clamped to 1 through 100; defaults to 20.",
+          "example": 20,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "description": "Number of matching issues to skip; defaults to zero.",
+          "example": 0,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_health_issues",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "images",
     "cli": null,
     "description": "List uploaded images. Supports pagination (limit/offset).",
@@ -15639,6 +15734,32 @@
     "name": "set_default_agent_version",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/versions/default",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "health_issues",
+    "cli": null,
+    "description": "Snooze health reminders for the current user for one day.",
+    "input_schema": {
+      "description": "Suppress the current user's reminders for one day without resolving the issue.",
+      "properties": {
+        "issue_id": {
+          "description": "Stable identifier of the issue in the current organization.",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "snooze_health_issue",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/snooze",
     "positional_arg": null,
     "read_only": false
   },

@@ -2210,6 +2210,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/health-issues": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List pending operational health issues visible to the caller in the current organization. */
+    get: operations["list_health_issues"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get current issue evidence and recovery guidance in the current organization. */
+    get: operations["get_health_issue"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}/check": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown. */
+    post: operations["check_health_issue"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/health-issues/{issue_id}/snooze": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Snooze the authenticated user's reminders for one day while keeping the shared issue pending. */
+    post: operations["snooze_health_issue"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/images": {
     parameters: {
       query?: never;
@@ -10533,6 +10601,121 @@ export interface components {
       total_input_tokens: number;
       /** Format: int64 */
       total_output_tokens: number;
+    };
+    /** @description An organization-scoped operational issue and its current recovery evidence. */
+    HealthIssue: {
+      /**
+       * @description Public identifier of the owning agent.
+       * @example agent_550e8400e29b41d4a716446655440000
+       */
+      agent_id: string;
+      /**
+       * @description Display name of the owning agent.
+       * @example Support assistant
+       */
+      agent_name: string;
+      /**
+       * @description Explanation of the impact and recovery action.
+       * @example Reconnect Slack to grant the required permissions.
+       */
+      body: string;
+      /**
+       * @description Public identifier of the affected channel.
+       * @example appchan_550e8400e29b41d4a716446655440000
+       */
+      channel_id: string;
+      /**
+       * @description Detector code identifying the affected integration check.
+       * @example slack.permissions
+       */
+      code: string;
+      /**
+       * @description Sanitized provider or verification error code, when available.
+       * @example missing_scope
+       */
+      error_code?: string | null;
+      /**
+       * Format: date-time
+       * @description Time the current issue episode was first detected.
+       * @example 2026-10-03T12:00:00Z
+       */
+      first_detected_at: string;
+      /**
+       * @description Application-relative link to the issue details.
+       * @example /settings/health?issue=550e8400-e29b-41d4-a716-446655440000
+       */
+      href: string;
+      /**
+       * Format: uuid
+       * @description Stable identifier of the canonical issue.
+       * @example 550e8400-e29b-41d4-a716-446655440000
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description Time the latest accepted verification evidence was observed.
+       * @example 2026-10-03T12:05:00Z
+       */
+      last_checked_at: string;
+      /**
+       * @description Required Slack scopes absent from the verified grant.
+       * @example [
+       *       "reactions:write"
+       *     ]
+       */
+      missing_scopes: string[];
+      /**
+       * @description Current user's announcement identifier, when notifications are enabled.
+       * @example notification_550e8400e29b41d4a716446655440001
+       */
+      notification_id?: string | null;
+      /**
+       * Format: date-time
+       * @description Current user's reminder suppression deadline, if snoozed.
+       * @example 2026-10-04T12:00:00Z
+       */
+      snoozed_until?: string | null;
+      /**
+       * @description Whether the evidence is old, unavailable, or for a previous channel revision.
+       * @example false
+       */
+      stale: boolean;
+      /**
+       * @description Current issue state: open, needs_check, resolved, or inapplicable.
+       * @example open
+       */
+      status: string;
+      /**
+       * @description Human-readable summary of the required action.
+       * @example Slack permissions need updating
+       */
+      title: string;
+    };
+    /** @description A page of pending operational health issues visible to the current caller. */
+    HealthIssueList: {
+      /**
+       * @description Issues in this page.
+       * @example []
+       */
+      data: components["schemas"]["HealthIssue"][];
+      /**
+       * Format: int64
+       * @description Effective page size.
+       * @example 20
+       */
+      limit: number;
+      /**
+       * Format: int64
+       * @description Effective pagination offset.
+       * @example 0
+       */
+      offset: number;
+      /**
+       * Format: int64
+       * @description Number of issues matching the current filter.
+       * @example 1
+       */
+      total: number;
     };
     /** @description System health response */
     HealthResponse: {
@@ -28473,6 +28656,119 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_health_issues: {
+    parameters: {
+      query?: {
+        /** @description Filter by public channel identifier. */
+        channel_id?: string | null;
+        /** @description Number of matching issues to skip; defaults to zero. */
+        offset?: number | null;
+        /** @description Page size from 1 through 100; defaults to 20. */
+        limit?: number | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HealthIssueList"];
+        };
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_health_issue: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HealthIssue"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  check_health_issue: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HealthIssue"];
+        };
+      };
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  snooze_health_issue: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        issue_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HealthIssue"];
         };
       };
     };

@@ -43,6 +43,24 @@ impl Command for ListNotifications {
             .await
             .map_err(classify_anyhow)?;
 
+        let health_count = ctx
+            .db
+            .count_unviewed_notifications_by_kind(ctx.org_id(), user_id, "health.issue")
+            .await
+            .map_err(classify_anyhow)?;
+        let health_visible = if crate::domains::health_issues::can_receive_health(ctx).await? {
+            ctx.db
+                .count_visible_health_notifications(ctx.org_id(), user_id)
+                .await
+                .map_err(classify_anyhow)?
+        } else {
+            0
+        };
+        let notifications =
+            crate::domains::health_issues::filter_notifications(ctx, notifications).await?;
+        let unviewed_count = unviewed_count
+            .saturating_sub(health_count)
+            .saturating_add(health_visible);
         Ok(ListNotificationsResponse {
             data: notifications
                 .into_iter()
@@ -87,6 +105,18 @@ impl Command for MarkNotificationViewed {
             .notification_id
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid notification ID: {e}")))?;
+        let existing = ctx
+            .db
+            .get_notification(ctx.org_id(), user_id, notification_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Notification"))?;
+        if crate::domains::health_issues::filter_notifications(ctx, vec![existing])
+            .await?
+            .is_empty()
+        {
+            return Err(CommandError::not_found("Notification"));
+        }
         let notification = crate::domains::notifications::NotificationService::new(ctx.db.clone())
             .mark_viewed(ctx.org_id(), user_id, notification_id)
             .await

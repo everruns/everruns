@@ -23,6 +23,8 @@ use crate::supervised_task::{RestartPolicy, TaskSupervisor};
 use crate::{api, org_init, seed, services};
 use everruns_host::HostComposition;
 
+mod health;
+
 use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
@@ -1543,6 +1545,11 @@ impl ServerAppBuilder {
                     feature_flag_policy.clone(),
                 ),
             ))
+            .merge(health::routes(
+                db.clone(),
+                auth_state.clone(),
+                encryption.clone(),
+            ))
             .merge(api::memory::routes(memory_state))
             .merge(api::workspaces::routes(workspaces_state))
             .merge(api::workspace_files::routes(workspace_files_state))
@@ -2345,19 +2352,6 @@ impl ServerAppBuilder {
             );
         }
 
-        // -- Agent health-check reaper (both prod and dev) --
-        // A previous process may have died mid-run, leaving health-check rows
-        // stuck in `running`/`pending` forever (a user-visible perpetual
-        // spinner). A fresh process has no run in flight, so transition every
-        // such orphan to `failed` on boot. See knowledge/evaluation/agent-checks.md and EVE-586.
-        match db.reap_running_agent_health_check_runs().await {
-            Ok(0) => {}
-            Ok(count) => tracing::info!(count, "Reaped interrupted agent health-check runs"),
-            Err(e) => {
-                tracing::error!(error = %e, "Failed to reap interrupted agent health-check runs")
-            }
-        }
-
         // -- Durable task scheduler (both prod and dev) --
         if let Some(store) = background_scheduler_store {
             if let Err(e) =
@@ -2383,6 +2377,8 @@ impl ServerAppBuilder {
             let _scheduler_shutdown = scheduler.spawn();
             tracing::info!("Durable task scheduler started");
         }
+
+        health::start(&mut supervisor, background_db.clone(), encryption.clone()).await;
 
         // MCP event trigger subscriptions are renewed before their refreshBefore.
         supervisor.track(
