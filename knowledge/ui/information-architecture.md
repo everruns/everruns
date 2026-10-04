@@ -176,8 +176,7 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   session model and adds persistence of a query.
 * **The breadcrumb names the owning group, and derives it from the nav table.** The
   sidebar teaches the five-group model to people who navigate; the breadcrumb teaches it
-  to everyone arriving by a shared link, which is the normal way to arrive now that Share
-  copies a thread URL and saved views are links. `PageBreadcrumb` reads the group from the
+  to everyone arriving by a direct link or saved view. `PageBreadcrumb` reads the group from the
   section definitions in [`navigation.ts`](../../apps/ui/src/lib/navigation.ts) rather than
   taking it as a prop, so a page's group is never stated in two places that can disagree
   and moving a route between groups needs no page-level change. The group is a label, not a

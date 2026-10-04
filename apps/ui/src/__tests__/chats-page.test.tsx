@@ -235,9 +235,7 @@ describe("Thread surface", () => {
     expect(mockUnarchiveMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
   });
 
-  it("shares permanent Chat independently of the selected side-pane route", async () => {
-    const writeText = jest.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  it("does not offer sharing for permanent Chat", () => {
     mockSessionContext.mockReturnValue({
       session: thread({ id: "permanent", tags: ["chat", "platform-chat-starter"] }),
       agent: { id: "agent_1", name: "platform-chat", display_name: "Platform Chat" },
@@ -245,8 +243,7 @@ describe("Thread surface", () => {
       sessionLoading: false,
     });
     render(<ChatThreadView threadId="permanent" />);
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Share" })));
-    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/chats`);
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
   });
 
   it("does not mount mutable chat controls for a recording", async () => {
@@ -279,7 +276,7 @@ describe("Thread surface", () => {
     expect(openSession).toHaveClass("h-7");
     expect(screen.getByRole("button", { name: "Pin chat" })).toHaveClass("h-7");
     expect(screen.getByRole("button", { name: "Archive chat" })).toHaveClass("h-7");
-    expect(screen.getByRole("button", { name: "Share" })).toHaveClass("h-7");
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Pin chat" }));
     expect(mockPinMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
   });
