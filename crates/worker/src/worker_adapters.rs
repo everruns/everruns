@@ -39,6 +39,7 @@ use everruns_contracts::tool_types::ToolDefinition;
 use everruns_platform::{Agent, Harness};
 
 use crate::phase_reads::PhaseReads;
+use crate::write_behind::{WriteBehind, provisional_event};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -674,6 +675,8 @@ pub struct SessionAdapter<A: WorkerAdapters> {
     org_id: Option<i64>,
     /// Told about each emitted event, to time phase setup.
     reads: Option<PhaseReads>,
+    /// Stores a phase's lifecycle start events in the background.
+    write_behind: Option<WriteBehind>,
 }
 
 impl<A: WorkerAdapters> SessionAdapter<A> {
@@ -699,12 +702,19 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
             event_metadata: None,
             org_id: None,
             reads: None,
+            write_behind: None,
         }
     }
 
     /// Report emitted events to a phase's read memo (see `crate::phase_reads`).
     pub fn with_reads(mut self, reads: PhaseReads) -> Self {
         self.reads = Some(reads);
+        self
+    }
+
+    /// Queue lifecycle start events behind `queue` (see `crate::write_behind`).
+    pub fn with_write_behind(mut self, queue: WriteBehind) -> Self {
+        self.write_behind = Some(queue);
         self
     }
 
@@ -948,6 +958,20 @@ impl<A: WorkerAdapters> everruns_core::event_emitter::EventEmitter for SessionAd
         }
         if let Some(reads) = &self.reads {
             reads.note_event(&request.event_type);
+        }
+        if let Some(queue) = &self.write_behind {
+            if WriteBehind::queues(&request) {
+                let event = provisional_event(&request);
+                let adapters = self.adapters.clone();
+                queue.enqueue(Box::pin(async move {
+                    let event_type = request.event_type.clone();
+                    if let Err(error) = adapters.emit_event(request).await {
+                        tracing::warn!(event_type, error = %error, "queued event store failed");
+                    }
+                }));
+                return Ok(event);
+            }
+            queue.flush().await;
         }
         self.adapters.emit_event(request).await
     }

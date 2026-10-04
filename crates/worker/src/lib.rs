@@ -36,6 +36,7 @@ mod unified_worker_test_adapters;
 #[cfg(test)]
 mod unified_worker_wake_tests;
 pub mod worker_adapters;
+pub mod write_behind;
 
 // Re-export main types
 pub use durable_execution::DurableExecution;

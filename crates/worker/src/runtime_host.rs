@@ -36,6 +36,7 @@ use uuid::Uuid;
 
 use crate::phase_reads::PhaseReads;
 use crate::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
+use crate::write_behind::WriteBehind;
 
 /// Resolves an `mcp_*` server prefix to a connection by asking the control
 /// plane over gRPC (`get_mcp_server_by_prefix`). The control plane returns a
@@ -272,9 +273,16 @@ pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     cancel_requested: Option<tokio::sync::watch::Receiver<bool>>,
     event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reads: PhaseReads,
+    write_behind: WriteBehind,
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
+    /// Wait for the events a phase queued to be stored (see `write_behind`).
+    /// Call after the phase, so nothing emitted later lands before them.
+    pub async fn flush_events(&self) {
+        self.write_behind.flush().await;
+    }
+
     /// Start the phase's setup reads now, concurrently (see `phase_reads`).
     pub fn prefetching(self, ids: Option<crate::phase_reads::PhaseIds>) -> Self {
         if let Some(ids) = ids {
@@ -306,6 +314,7 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
             cancel_requested: None,
             event_metadata: metadata,
             reads: PhaseReads::new(),
+            write_behind: WriteBehind::new(),
         }
     }
 }
@@ -450,7 +459,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Arc::new(
             SessionAdapter::new(self.adapters.clone())
                 .with_event_metadata(self.event_metadata.clone())
-                .with_reads(self.reads.clone()),
+                .with_reads(self.reads.clone())
+                .with_write_behind(self.write_behind.clone()),
         )
     }
 
