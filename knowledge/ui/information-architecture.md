@@ -83,12 +83,13 @@ The initial experience starts with a fresh workspace. Workspace is a secondary i
 not a prerequisite for starting a conversation. Realtime voice remains on the personal Chat surface
 until its direct transcript path supports fixed test-subject attribution. A persistent Open session action leads to the same
 recording and its timeline. Archiving is shared. Pinning stays on personal Chats. The library offers
-server-paginated search, agent and virtual-user filters, and active/archived views.
+server-paginated search, an agent filter, grouping by day, agent, or none, and active/archived
+views.
 
 Playground is a standard surface, available without deployment or organisation feature flags.
 Its list, setup, and detail pages use the shared page layout: breadcrumbs, masthead, control strip,
-and context rail. The list exposes an explicit Open chat action; linked agent and virtual-user
-facts lead to their detail pages. The UI consistently calls these Playground chats.
+and context rail. Each list row opens its chat. Agent and virtual-user chips link to their detail
+pages, and the row shows who started the chat. The UI consistently calls these Playground chats.
 See [source and binding policy](../../crates/server/src/domains/sessions/playground.rs) and
 [shared creation flow](../../apps/ui/src/components/chat/new-chat-form.tsx).
 

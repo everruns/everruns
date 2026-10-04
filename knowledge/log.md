@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-04
+
+* **Playground list is dense rows.** The library groups the current page by day,
+  agent, or none, filters by agent, and opens a chat from the row. Agent and
+  virtual-user chips still link to their pages. See
+  [Information Architecture](ui/information-architecture.md).
+
 ## 2026-10-03
 
 * **Paid CI coverage follows provider/model changes and a nightly sweep.**
