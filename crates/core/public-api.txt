@@ -1604,6 +1604,7 @@ everruns_core::tool_fingerprint::tool_call_parts_fingerprint	function
 everruns_core::tool_fingerprint::tool_error_fingerprint	function
 everruns_core::tool_fingerprint::tool_result_fingerprint	function
 everruns_core::tool_hooks	module
+everruns_core::tool_hooks::PolicyGate	struct
 everruns_core::tool_hooks::PostToolExecHook	trait
 everruns_core::tool_hooks::PostToolExecHookPriority	enum
 everruns_core::tool_hooks::PostToolExecHookPriority::Guardrail	variant
