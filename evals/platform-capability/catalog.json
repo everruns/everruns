@@ -1411,6 +1411,7 @@
           "description": "Reproducible initialization pinned with the profile snapshot.",
           "properties": {
             "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
               "items": {
                 "type": "string"
               },
@@ -1431,16 +1432,20 @@
           "description": "What commands may touch.",
           "properties": {
             "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation"
+              "$ref": "#/$defs/EnvironmentEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
             },
             "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy"
+              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
             },
             "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel"
+              "$ref": "#/$defs/EnvironmentContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
             },
             "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy"
+              "$ref": "#/$defs/EnvironmentNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
             }
           },
           "required": [
@@ -1470,6 +1475,7 @@
           "description": "Filesystem paths the target permits command execution to mutate.",
           "properties": {
             "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
               "items": {
                 "type": "string"
               },
@@ -1490,9 +1496,11 @@
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
             "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction"
+              "$ref": "#/$defs/EnvironmentIdleAction",
+              "description": "Action Everruns requests after the idle interval."
             },
             "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -1567,12 +1575,14 @@
           "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
           "properties": {
             "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap"
+              "$ref": "#/$defs/EnvironmentBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
             },
             "containment": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile"
+                  "$ref": "#/$defs/EnvironmentContainmentProfile",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
                 },
                 {
                   "type": "null"
@@ -1582,7 +1592,8 @@
             "durability": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentDurability"
+                  "$ref": "#/$defs/EnvironmentDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
                 },
                 {
                   "type": "null"
@@ -1590,7 +1601,8 @@
               ]
             },
             "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle"
+              "$ref": "#/$defs/EnvironmentLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
             },
             "source_revision_id": {
               "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
@@ -1600,7 +1612,8 @@
               ]
             },
             "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile"
+              "$ref": "#/$defs/EnvironmentTargetProfile",
+              "description": "Provider-neutral target plus its concrete adapter binding."
             }
           },
           "required": [
@@ -1664,7 +1677,8 @@
               ]
             },
             "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind"
+              "$ref": "#/$defs/EnvironmentTargetKind",
+              "description": "Provider-neutral target class."
             },
             "options": {
               "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
@@ -6663,6 +6677,7 @@
           "description": "Reproducible initialization pinned with the profile snapshot.",
           "properties": {
             "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
               "items": {
                 "type": "string"
               },
@@ -6683,16 +6698,20 @@
           "description": "What commands may touch.",
           "properties": {
             "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation"
+              "$ref": "#/$defs/EnvironmentEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
             },
             "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy"
+              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
             },
             "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel"
+              "$ref": "#/$defs/EnvironmentContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
             },
             "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy"
+              "$ref": "#/$defs/EnvironmentNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
             }
           },
           "required": [
@@ -6722,6 +6741,7 @@
           "description": "Filesystem paths the target permits command execution to mutate.",
           "properties": {
             "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
               "items": {
                 "type": "string"
               },
@@ -6742,9 +6762,11 @@
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
             "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction"
+              "$ref": "#/$defs/EnvironmentIdleAction",
+              "description": "Action Everruns requests after the idle interval."
             },
             "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -6810,12 +6832,14 @@
           "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
           "properties": {
             "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap"
+              "$ref": "#/$defs/EnvironmentBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
             },
             "containment": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile"
+                  "$ref": "#/$defs/EnvironmentContainmentProfile",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
                 },
                 {
                   "type": "null"
@@ -6825,7 +6849,8 @@
             "durability": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentDurability"
+                  "$ref": "#/$defs/EnvironmentDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
                 },
                 {
                   "type": "null"
@@ -6833,7 +6858,8 @@
               ]
             },
             "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle"
+              "$ref": "#/$defs/EnvironmentLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
             },
             "source_revision_id": {
               "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
@@ -6843,7 +6869,8 @@
               ]
             },
             "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile"
+              "$ref": "#/$defs/EnvironmentTargetProfile",
+              "description": "Provider-neutral target plus its concrete adapter binding."
             }
           },
           "required": [
@@ -6892,7 +6919,8 @@
               ]
             },
             "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind"
+              "$ref": "#/$defs/EnvironmentTargetKind",
+              "description": "Provider-neutral target class."
             },
             "options": {
               "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
@@ -15744,6 +15772,7 @@
           "description": "Reproducible initialization pinned with the profile snapshot.",
           "properties": {
             "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
               "items": {
                 "type": "string"
               },
@@ -15764,16 +15793,20 @@
           "description": "What commands may touch.",
           "properties": {
             "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation"
+              "$ref": "#/$defs/EnvironmentEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
             },
             "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy"
+              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
             },
             "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel"
+              "$ref": "#/$defs/EnvironmentContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
             },
             "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy"
+              "$ref": "#/$defs/EnvironmentNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
             }
           },
           "required": [
@@ -15803,6 +15836,7 @@
           "description": "Filesystem paths the target permits command execution to mutate.",
           "properties": {
             "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
               "items": {
                 "type": "string"
               },
@@ -15823,9 +15857,11 @@
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
             "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction"
+              "$ref": "#/$defs/EnvironmentIdleAction",
+              "description": "Action Everruns requests after the idle interval."
             },
             "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -15900,12 +15936,14 @@
           "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
           "properties": {
             "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap"
+              "$ref": "#/$defs/EnvironmentBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
             },
             "containment": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile"
+                  "$ref": "#/$defs/EnvironmentContainmentProfile",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
                 },
                 {
                   "type": "null"
@@ -15915,7 +15953,8 @@
             "durability": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentDurability"
+                  "$ref": "#/$defs/EnvironmentDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
                 },
                 {
                   "type": "null"
@@ -15923,7 +15962,8 @@
               ]
             },
             "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle"
+              "$ref": "#/$defs/EnvironmentLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
             },
             "source_revision_id": {
               "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
@@ -15933,7 +15973,8 @@
               ]
             },
             "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile"
+              "$ref": "#/$defs/EnvironmentTargetProfile",
+              "description": "Provider-neutral target plus its concrete adapter binding."
             }
           },
           "required": [
@@ -15997,7 +16038,8 @@
               ]
             },
             "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind"
+              "$ref": "#/$defs/EnvironmentTargetKind",
+              "description": "Provider-neutral target class."
             },
             "options": {
               "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
@@ -21184,6 +21226,7 @@
           "description": "Reproducible initialization pinned with the profile snapshot.",
           "properties": {
             "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
               "items": {
                 "type": "string"
               },
@@ -21204,16 +21247,20 @@
           "description": "What commands may touch.",
           "properties": {
             "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation"
+              "$ref": "#/$defs/EnvironmentEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
             },
             "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy"
+              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
             },
             "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel"
+              "$ref": "#/$defs/EnvironmentContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
             },
             "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy"
+              "$ref": "#/$defs/EnvironmentNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
             }
           },
           "required": [
@@ -21243,6 +21290,7 @@
           "description": "Filesystem paths the target permits command execution to mutate.",
           "properties": {
             "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
               "items": {
                 "type": "string"
               },
@@ -21263,9 +21311,11 @@
           "description": "Control-plane lifecycle intent. Providers do not own these timers.",
           "properties": {
             "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction"
+              "$ref": "#/$defs/EnvironmentIdleAction",
+              "description": "Action Everruns requests after the idle interval."
             },
             "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -21340,12 +21390,14 @@
           "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
           "properties": {
             "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap"
+              "$ref": "#/$defs/EnvironmentBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
             },
             "containment": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile"
+                  "$ref": "#/$defs/EnvironmentContainmentProfile",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
                 },
                 {
                   "type": "null"
@@ -21355,7 +21407,8 @@
             "durability": {
               "oneOf": [
                 {
-                  "$ref": "#/$defs/EnvironmentDurability"
+                  "$ref": "#/$defs/EnvironmentDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
                 },
                 {
                   "type": "null"
@@ -21363,7 +21416,8 @@
               ]
             },
             "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle"
+              "$ref": "#/$defs/EnvironmentLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
             },
             "source_revision_id": {
               "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
@@ -21373,7 +21427,8 @@
               ]
             },
             "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile"
+              "$ref": "#/$defs/EnvironmentTargetProfile",
+              "description": "Provider-neutral target plus its concrete adapter binding."
             }
           },
           "required": [
@@ -21437,7 +21492,8 @@
               ]
             },
             "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind"
+              "$ref": "#/$defs/EnvironmentTargetKind",
+              "description": "Provider-neutral target class."
             },
             "options": {
               "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
