@@ -6,7 +6,7 @@ environment-variable summary are hand-written tables that drifted from the code.
 This check compares each against its source of truth without compiling Rust:
 
 - Capabilities: ``docs/api/capability-catalog.json``, the registry snapshot that
-  ``crates/integrations-catalog/src/docs_catalog.rs`` writes and keeps fresh.
+  ``crates/server/src/docs_catalog.rs`` writes and keeps fresh.
 - Generic and Platform Chat Agent: the capability lists in ``crates/contracts/src/capability/presets.rs``
   (generic) and ``crates/server/src/platform_chat_agent.rs``.
 - Events: the event-type constants in ``crates/core/src/events/mod.rs``.
@@ -33,8 +33,6 @@ GENERIC_PAGE = "docs/built-ins/harnesses/generic.md"
 GENERIC_SOURCE = "crates/contracts/src/capability/presets.rs"
 PLATFORM_CHAT_PAGE = "docs/built-ins/harnesses/platform-chat.md"
 PLATFORM_CHAT_SOURCE = "crates/server/src/platform_chat_agent.rs"
-SERVER_MANIFEST = "crates/server/Cargo.toml"
-CATALOG_MANIFEST = "crates/integrations-catalog/Cargo.toml"
 
 # Production-grade capabilities the index deliberately leaves out. Each one is
 # a building block a harness composes rather than something a user picks from
@@ -433,31 +431,6 @@ def check_env_summary(root: pathlib.Path, sources: RustSources, report: Report) 
                 report.error(ENV_PAGE, f"summary lists `{name}`, which no Rust source under crates/ or integrations/ reads")
 
 
-# --- feature parity ---------------------------------------------------------
-
-PLATFORM_FEATURES = re.compile(r'^everruns-capabilities\s*=\s*\{[^}]*features\s*=\s*\[([^\]]*)\]', re.MULTILINE)
-
-
-def platform_features(root: pathlib.Path, manifest: str) -> set[str] | None:
-    match = PLATFORM_FEATURES.search(read(root, manifest))
-    if not match:
-        return None
-    return set(re.findall(r'"([^"]+)"', match.group(1)))
-
-
-def check_feature_parity(root: pathlib.Path, report: Report) -> None:
-    server = platform_features(root, SERVER_MANIFEST)
-    snapshot = platform_features(root, CATALOG_MANIFEST)
-    if server is None or snapshot is None:
-        report.error(CATALOG_MANIFEST, "could not read the everruns-capabilities feature lists")
-    elif server != snapshot:
-        report.error(
-            CATALOG_MANIFEST,
-            f"the docs catalog snapshot builds everruns-capabilities with {sorted(snapshot)}, "
-            f"the server with {sorted(server)}; keep them equal",
-        )
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parent.parent)
@@ -488,7 +461,6 @@ def main() -> int:
     )
     check_events(root, report)
     check_env_summary(root, sources, report)
-    check_feature_parity(root, report)
 
     if report.errors:
         print("Docs catalogs drifted from the code:", file=sys.stderr)

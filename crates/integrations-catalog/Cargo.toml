@@ -38,13 +38,5 @@ everruns-integrations-parallel = { path = "../../integrations/parallel", version
 everruns-integrations-sprites = { path = "../../integrations/sprites", version = "0.38.0" }
 everruns-integrations-typesafe = { path = "../../integrations/typesafe", version = "0.38.0", features = ["hosted"] }
 
-[dev-dependencies]
-# The docs catalog snapshot (src/docs_catalog.rs) must describe the registry
-# the server serves, so the test build enables the same everruns-capabilities
-# features as crates/server/Cargo.toml. scripts/test-docs-catalogs.sh keeps the
-# two lists equal.
-everruns-capabilities = { workspace = true, features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
-serde_json.workspace = true
-
 [lints]
 workspace = true

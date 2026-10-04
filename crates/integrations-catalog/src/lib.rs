@@ -44,9 +44,6 @@
 // entry per integration, lets the compiler check it, and makes linkage a
 // consequence of a real reference.
 
-#[cfg(test)]
-mod docs_catalog;
-
 use everruns_contracts::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::{DeploymentGrade, ExecutionFeatureDecisions};

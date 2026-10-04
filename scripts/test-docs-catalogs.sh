@@ -9,7 +9,7 @@
 # the drift it exists to catch on a scratch copy and assert each one fails.
 #
 # The snapshot itself is kept fresh by a Rust test:
-#   UPDATE_DOCS_CATALOG=1 cargo test -p everruns-integrations-catalog docs_catalog
+#   UPDATE_DOCS_CATALOG=1 cargo test -p everruns-server docs_catalog
 
 set -euo pipefail
 
@@ -111,11 +111,6 @@ expect_drift "event reference lists a retired event" '`subagent.started` is in t
 scratch
 sed -i 's/^| \[`VALKEY_URL`\](#valkey_url) |/| [`VALKEY_ADDR`](#valkey_url) |/' "$WORK/repo/docs/sre/environment-variables.md"
 expect_drift "env summary names a variable nothing reads" '`VALKEY_ADDR`'
-
-scratch
-own crates/integrations-catalog/Cargo.toml
-sed -i 's/"email-resend", "container-sandbox"\]/"email-resend"]/' "$WORK/repo/crates/integrations-catalog/Cargo.toml"
-expect_drift "snapshot features diverge from the server" 'keep them equal'
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures docs catalog case(s) failed" >&2
