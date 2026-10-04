@@ -1327,70 +1327,53 @@ impl ResourceUrlable for crate::records::Harness {
     }
 }
 
-/// Hypermedia actions for an `App`. See `knowledge/execution/api-conventions.md`.
-pub fn app_allowed_actions(
-    id: &str,
-    status: &crate::records::AppStatus,
-    api_base: &str,
-) -> Vec<AllowedAction> {
-    use crate::records::AppStatus;
-    let mut actions = vec![
+/// Hypermedia actions for an archival `App`. See `knowledge/execution/api-conventions.md`.
+///
+/// Apps are retired (agent-exposure). Only the read endpoint survives, so `self`
+/// is the only action that resolves — advertising `update`, `runs`, `publish`,
+/// `unpublish` or `delete` here would hand a client four routes that no longer
+/// exist. Endpoint management lives under the owning agent.
+pub fn app_allowed_actions(id: &str, api_base: &str) -> Vec<AllowedAction> {
+    vec![
         AllowedAction::new("self")
             .with_method("GET")
             .with_operation_id("get_app")
             .with_href(format!("{api_base}/v1/apps/{id}"))
-            .with_hint("Fetch the latest representation of this app."),
-        AllowedAction::new("update")
-            .with_method("PATCH")
-            .with_operation_id("update_app")
-            .with_href(format!("{api_base}/v1/apps/{id}"))
-            .with_schema_ref("#/components/schemas/UpdateAppRequest")
-            .with_hint("Edit app metadata, channels, or agent binding."),
-        AllowedAction::new("runs")
-            .with_method("GET")
-            .with_operation_id("list_app_runs")
-            .with_href(format!("{api_base}/v1/apps/{id}/runs"))
-            .with_hint("List recent runs (sessions) initiated through this app."),
-    ];
-    match status {
-        AppStatus::Draft => actions.push(
-            AllowedAction::new("publish")
-                .with_method("POST")
-                .with_operation_id("publish_app")
-                .with_href(format!("{api_base}/v1/apps/{id}/publish"))
-                .with_hint("Publish this draft app so its configured channels accept traffic."),
-        ),
-        AppStatus::Published => actions.push(
-            AllowedAction::new("unpublish")
-                .with_method("POST")
-                .with_operation_id("unpublish_app")
-                .with_href(format!("{api_base}/v1/apps/{id}/unpublish"))
-                .with_hint("Revert this app to draft and stop accepting channel traffic."),
-        ),
-        AppStatus::Archived | AppStatus::Deleted => {}
+            .with_hint("Fetch this archival App record. Read-only and deprecated."),
+    ]
+}
+
+/// UI destination for an archival `App` record.
+///
+/// The `/apps` pages were deleted with the App surface, so a link there would
+/// 404. Send a reader to the agent that owns its endpoints now, or to the
+/// cross-agent exposures view when the row predates agent assignment.
+pub fn archival_app_ui_path(agent_id: Option<&str>) -> String {
+    match agent_id {
+        Some(agent_id) => format!("agents/{agent_id}?tab=integrations"),
+        None => "exposures".to_string(),
     }
-    actions.push(
-        AllowedAction::new("delete")
-            .with_method("DELETE")
-            .with_operation_id("delete_app")
-            .with_href(format!("{api_base}/v1/apps/{id}"))
-            .with_hint("Delete (or tombstone) this app."),
-    );
-    actions
 }
 
 impl ResourceUrlable for crate::records::App {
     fn api_path() -> &'static str {
         "v1/apps"
     }
+    /// Unused: `ui_url_path` is overridden, because the `/apps` pages were
+    /// deleted with the App surface and a link there would 404.
     fn ui_path() -> &'static str {
-        "apps"
+        "exposures"
     }
     fn resource_id(&self) -> String {
         self.public_id.to_string()
     }
+    /// An archival App record has no page of its own. See
+    /// [`archival_app_ui_path`].
+    fn ui_url_path(&self) -> String {
+        archival_app_ui_path(self.agent_id.as_ref().map(|id| id.to_string()).as_deref())
+    }
     fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
-        app_allowed_actions(&self.public_id.to_string(), &self.status, api_base)
+        app_allowed_actions(&self.public_id.to_string(), api_base)
     }
 }
 
@@ -2475,33 +2458,39 @@ mod tests {
     }
 
     #[test]
-    fn app_actions_flip_publish_unpublish_on_status() {
-        use crate::records::AppStatus;
-        let draft = app_allowed_actions("app_01", &AppStatus::Draft, "https://api.example");
-        let published = app_allowed_actions("app_01", &AppStatus::Published, "https://api.example");
-        let archived = app_allowed_actions("app_01", &AppStatus::Archived, "https://api.example");
+    fn app_actions_offer_only_the_read_route_that_still_exists() {
+        // Apps are retired: `/v1/apps/{id}` is GET-only, and publish,
+        // unpublish, runs, update and delete have no route registration left.
+        // Advertising any of them hands a client a 404 from a deprecated
+        // read-only resource.
+        let actions = app_allowed_actions("app_01", "https://api.example");
+        let rels: Vec<&str> = actions.iter().map(|a| a.rel.as_str()).collect();
 
-        let draft_rels: Vec<&str> = draft.iter().map(|a| a.rel.as_str()).collect();
-        let published_rels: Vec<&str> = published.iter().map(|a| a.rel.as_str()).collect();
-        let archived_rels: Vec<&str> = archived.iter().map(|a| a.rel.as_str()).collect();
-
-        assert!(
-            draft_rels.contains(&"publish") && !draft_rels.contains(&"unpublish"),
-            "draft app offers publish, not unpublish: {draft_rels:?}"
-        );
-        assert!(
-            published_rels.contains(&"unpublish") && !published_rels.contains(&"publish"),
-            "published app offers unpublish, not publish: {published_rels:?}"
-        );
-        assert!(
-            !archived_rels.contains(&"publish") && !archived_rels.contains(&"unpublish"),
-            "archived app offers neither: {archived_rels:?}"
-        );
-        // `runs` is always present.
-        for rels in [&draft_rels, &published_rels, &archived_rels] {
+        assert_eq!(rels, vec!["self"], "only `self` resolves: {rels:?}");
+        assert_eq!(actions[0].method.as_deref(), Some("GET"));
+        for dead in ["publish", "unpublish", "runs", "update", "delete"] {
             assert!(
-                rels.contains(&"runs"),
-                "expected runs rel in every state: {rels:?}"
+                !rels.contains(&dead),
+                "`{dead}` has no route and must not be advertised: {rels:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn archival_app_links_to_its_agent_rather_than_the_deleted_apps_page() {
+        // The `/apps` UI pages went with the App surface, so a `view_url` into
+        // them would 404.
+        let with_agent = archival_app_ui_path(Some("agent_07"));
+        assert_eq!(with_agent, "agents/agent_07?tab=integrations");
+
+        // Pre-agent rows have nowhere agent-specific to go; the cross-agent
+        // exposures view is the honest fallback.
+        assert_eq!(archival_app_ui_path(None), "exposures");
+
+        for path in [with_agent.as_str(), "exposures"] {
+            assert!(
+                !path.starts_with("apps/"),
+                "must not link into /apps: {path}"
             );
         }
     }

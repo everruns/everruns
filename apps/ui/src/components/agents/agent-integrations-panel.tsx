@@ -93,7 +93,7 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const publishEndpoint = usePublishAgentChannel(agent.id);
   const triggerEndpoint = useTriggerAgentChannel(agent.id);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const budgetsEnabled = useFeatureFlag("app_budgets");
+  const budgetsEnabled = useFeatureFlag("endpoint_budgets");
 
   const suspended = agent.exposures_suspended ?? false;
   const canManage = canAgent("agent.manage") && !isReadOnlyStatus(agent.status);

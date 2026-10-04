@@ -582,7 +582,7 @@ pub(crate) async fn run_app_agent_stream(
                     harness_id: app.harness_id.uuid(),
                     agent_id: Some(app.agent_internal_id),
                     session_id: session.session.id.uuid(),
-                    event_metadata: Some(execution_metadata::app_message_metadata(
+                    event_metadata: Some(execution_metadata::endpoint_message_metadata(
                         app.public_id,
                         app.owner_principal_id,
                         app.virtual_user_id,

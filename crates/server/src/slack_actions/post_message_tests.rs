@@ -29,7 +29,7 @@ async fn input(
         session_id:session, event_type:"input.message".into(), ts:chrono::Utc::now(),
         context:json!({"input_message_id":id}),
         data:json!({"message":{"id":id,"metadata":{"_app_channel_id":endpoint,"slack_channel":channel,"slack_thread_ts":thread}}}),
-        metadata:Some(if trusted {json!({"initiator":{"type":"app","app_id":app}})} else {json!({"initiator":{"type":"user"}})}),
+        metadata:Some(if trusted {json!({"initiator":{"type":"endpoint","endpoint_id":app}})} else {json!({"initiator":{"type":"user"}})}),
         tags:None,
     }).await.unwrap();
     id
@@ -215,7 +215,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
                 harness_id: app.harness_id.uuid(),
                 agent_id: app.agent_id.map(|id| id.uuid()),
                 session_id: session.uuid(),
-                event_metadata: Some(crate::execution_metadata::app_message_metadata(
+                event_metadata: Some(crate::execution_metadata::endpoint_message_metadata(
                     app.public_id,
                     app.owner_principal_id,
                     app.virtual_user_id,
@@ -252,7 +252,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
         .unwrap();
     assert_eq!(
         input.metadata.as_ref().unwrap()["source"]["initiator"]["type"],
-        "app"
+        "endpoint"
     );
     let slack = MockServer::start().await;
     Mock::given(method("POST"))

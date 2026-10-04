@@ -39,7 +39,7 @@ pub fn scheduled_run_metadata(
 }
 
 /// Provenance for a message injected by an agent's own schedule trigger
-/// (EVE-757). Mirrors [`app_message_metadata`] but keyed on the trigger; the
+/// (EVE-757). Mirrors [`endpoint_message_metadata`] but keyed on the trigger; the
 /// acting principal is the agent-owned session owner (no virtual-user layer).
 pub fn agent_trigger_message_metadata(
     trigger_id: TriggerId,
@@ -53,16 +53,26 @@ pub fn agent_trigger_message_metadata(
     })
 }
 
-pub fn app_message_metadata(
-    app_id: AppId,
+/// Metadata for a message arriving through an agent endpoint.
+///
+/// `endpoint_id` is the public identifier the caller addressed, which for an
+/// endpoint migrated from an App is still that App's public id — that is what
+/// keeps the permanent `/v1/apps/{app_id}/…` ingress aliases resolving. The
+/// `AppId` type name is the frozen schema's, not a claim that Apps are live.
+///
+/// Emits `type: "endpoint"`: these rows are written on every inbound Slack,
+/// AG-UI, FCP and A2A message, so a retired entity name here would keep
+/// accruing in fresh data rather than only in the archive.
+pub fn endpoint_message_metadata(
+    endpoint_id: AppId,
     owner_principal_id: PrincipalId,
     virtual_user_id: Option<VirtualUserId>,
 ) -> Value {
     let acting_principal = virtual_user_id
         .map(|identity_id| json!({ "type": "virtual_user", "virtual_user_id": identity_id }))
-        .unwrap_or_else(|| json!({ "type": "app", "app_id": app_id }));
+        .unwrap_or_else(|| json!({ "type": "endpoint", "endpoint_id": endpoint_id }));
     json!({
-        "initiator": { "type": "app", "app_id": app_id },
+        "initiator": { "type": "endpoint", "endpoint_id": endpoint_id },
         "acting_principal": acting_principal,
         "initiator_principal_id": owner_principal_id,
         "acting_principal_id": owner_principal_id,

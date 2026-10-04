@@ -650,7 +650,7 @@ impl TestServer {
         // org opt-in seeded just below).
         feature_flags.voice = true;
         feature_flags.agent_versions = true;
-        feature_flags.app_budgets = true;
+        feature_flags.endpoint_budgets = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
         feature_flags.knowledge = true;
@@ -671,7 +671,7 @@ impl TestServer {
             "voice",
             "agent_delegation",
             "agent_versions",
-            "app_budgets",
+            "endpoint_budgets",
             "mcp_events",
         ]
         .into_iter()

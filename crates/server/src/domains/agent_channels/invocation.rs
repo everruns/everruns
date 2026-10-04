@@ -420,7 +420,7 @@ async fn dispatch_invocation_message(
                 harness_id: ingress.harness_id.uuid(),
                 agent_id: Some(ingress.agent_internal_id),
                 session_id: session_id.uuid(),
-                event_metadata: Some(execution_metadata::app_message_metadata(
+                event_metadata: Some(execution_metadata::endpoint_message_metadata(
                     ingress.public_id,
                     ingress.owner_principal_id,
                     ingress.virtual_user_id,
