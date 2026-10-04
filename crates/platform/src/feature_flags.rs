@@ -34,10 +34,10 @@ pub struct FeatureFlags {
     pub knowledge: bool,
     /// Plugin marketplace and installed-plugin management UI. Experimental.
     pub plugins: bool,
-    /// App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
+    /// Agent / endpoint scoped budgets and periodic budget resets (`5h`, `1d`, ...).
     /// Experimental.
-    pub app_budgets: bool,
-    /// Immutable agent versions, snapshots, forks, and app version binding.
+    pub endpoint_budgets: bool,
+    /// Immutable agent versions, snapshots, forks, and endpoint version binding.
     /// Experimental.
     pub agent_versions: bool,
     /// Realtime voice endpoints and microphone controls. Experimental.
@@ -178,18 +178,18 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
-        name: "app_budgets",
-        label: "App budgets",
-        description: "Adds spending limits scoped to individual apps and channels, with automatic \
-             resets on a schedule. It helps you cap and control costs so a single app or channel \
-             can't run away with your usage.",
+        name: "endpoint_budgets",
+        label: "Endpoint budgets",
+        description: "Adds spending limits scoped to individual agents and endpoints, with \
+             automatic resets on a schedule. It helps you cap and control costs so a single agent \
+             or endpoint can't run away with your usage.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "agent_versions",
         label: "Agent versions",
         description: "Captures immutable snapshots of your agents so you can fork, roll back, and \
-             pin apps to a specific version. This gives you a safety net to experiment freely \
+             pin endpoints to a specific version. This gives you a safety net to experiment freely \
              and return to a known-good agent at any time.",
         grade: FeatureFlagGrade::Adoption,
     },
@@ -369,7 +369,7 @@ impl FeatureFlags {
             ("memory".to_string(), self.memory),
             ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
-            ("app_budgets".to_string(), self.app_budgets),
+            ("endpoint_budgets".to_string(), self.endpoint_budgets),
             ("agent_versions".to_string(), self.agent_versions),
             ("voice".to_string(), self.voice),
             ("agent_delegation".to_string(), self.agent_delegation),
@@ -397,7 +397,7 @@ impl FeatureFlags {
             "memory" => self.memory,
             "knowledge" => self.knowledge,
             "plugins" => self.plugins,
-            "app_budgets" => self.app_budgets,
+            "endpoint_budgets" => self.endpoint_budgets,
             "agent_versions" => self.agent_versions,
             "voice" => self.voice,
             "agent_delegation" => self.agent_delegation,
@@ -420,7 +420,7 @@ impl FeatureFlags {
             "memory" => self.memory = enabled,
             "knowledge" => self.knowledge = enabled,
             "plugins" => self.plugins = enabled,
-            "app_budgets" => self.app_budgets = enabled,
+            "endpoint_budgets" => self.endpoint_budgets = enabled,
             "agent_versions" => self.agent_versions = enabled,
             "voice" => self.voice = enabled,
             "agent_delegation" => self.agent_delegation = enabled,
@@ -480,7 +480,7 @@ impl FeatureFlags {
             memory: true,
             knowledge: true,
             plugins: true,
-            app_budgets: true,
+            endpoint_budgets: true,
             agent_versions: true,
             voice: true,
             agent_delegation: true,
@@ -634,7 +634,7 @@ mod tests {
             "chat_threads",
             "notifications",
             "evals",
-            "app_budgets",
+            "endpoint_budgets",
             "agent_versions",
             "agent_delegation",
             "observers",

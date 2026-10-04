@@ -29,7 +29,7 @@ async function mockAppApi(page: Page) {
         notifications: false,
         evals: false,
         knowledge: true,
-        app_budgets: false,
+        endpoint_budgets: false,
         agent_versions: false,
         voice: false,
         agent_delegation: false,
