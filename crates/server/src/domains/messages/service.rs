@@ -15,11 +15,15 @@ use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
 use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
-    CreateSessionParticipantRow, ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan,
+    AgentRow, CreateSessionParticipantRow, ReserveActiveTurnSlotResult, SessionRow, VirtualUserRow,
+    WaitingTurnResolutionPlan,
 };
+use crate::storage::runtime_identity::InvocationRows;
 use anyhow::Result;
 use chrono::Utc;
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, PrincipalId, SessionId};
+use everruns_contracts::typed_id::{
+    AgentId, HarnessId, MessageId, PrincipalId, SessionId, SessionParticipantId,
+};
 use everruns_core::Event;
 use everruns_core::builtins::ask_user::{ASK_USER_TOOL_NAME, AskUserStatus};
 use everruns_core::events::{
@@ -52,6 +56,17 @@ pub struct CreateMessageContext {
     pub request_id: Option<String>,
 }
 
+/// Records the caller already loaded for this request, reused by
+/// [`MessageService::create_with`]. Each is used only when it is the exact
+/// record the service would otherwise read; anything else is read fresh.
+#[derive(Debug, Default)]
+pub struct CreateMessagePrefetch {
+    /// The target session's stored row.
+    pub session: Option<SessionRow>,
+    /// The responder agent named by `CreateMessageContext::agent_id`.
+    pub responder: Option<AgentRow>,
+}
+
 impl MessageService {
     pub fn new(
         db: Arc<StorageBackend>,
@@ -81,10 +96,21 @@ impl MessageService {
         org_id: i64,
         session_id: SessionId,
         user_id: Uuid,
-    ) -> Result<PrincipalId> {
-        let principal = PrincipalService::new(self.db.clone())
-            .ensure_default_virtual_user_principal(org_id, user_id)
-            .await?;
+        default_subject: Option<&VirtualUserRow>,
+    ) -> Result<(PrincipalId, SessionParticipantId)> {
+        let principals = PrincipalService::new(self.db.clone());
+        let principal = match default_subject {
+            Some(row) => {
+                principals
+                    .ensure_default_virtual_user_principal_for(org_id, user_id, row)
+                    .await?
+            }
+            None => {
+                principals
+                    .ensure_default_virtual_user_principal(org_id, user_id)
+                    .await?
+            }
+        };
         let display_name = principal
             .metadata
             .get("name")
@@ -93,7 +119,8 @@ impl MessageService {
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| "User".to_string());
 
-        self.db
+        let participant = self
+            .db
             .ensure_active_user_session_participant(CreateSessionParticipantRow {
                 org_id,
                 session_id,
@@ -107,7 +134,7 @@ impl MessageService {
             })
             .await?;
 
-        Ok(principal.id)
+        Ok((principal.id, participant.id))
     }
 
     /// Create a user message from API request
@@ -119,6 +146,20 @@ impl MessageService {
         &self,
         ctx: CreateMessageContext,
         req: CreateMessageRequest,
+    ) -> Result<Message> {
+        self.create_with(ctx, req, CreateMessagePrefetch::default())
+            .await
+    }
+
+    /// [`Self::create`] reusing records the caller already loaded for this
+    /// request. Every send used to re-read the session, the responder agent
+    /// and the default runtime user several times over, one database round
+    /// trip each, before the turn could start.
+    pub async fn create_with(
+        &self,
+        ctx: CreateMessageContext,
+        req: CreateMessageRequest,
+        prefetch: CreateMessagePrefetch,
     ) -> Result<Message> {
         tracing::info!(
             session_id = %ctx.session_id,
@@ -138,6 +179,15 @@ impl MessageService {
         let now = Utc::now();
         let session_id = SessionId::from_uuid(ctx.session_id);
         let message_id_typed = MessageId::from_uuid(message_id);
+        // `default_virtual_user` is 4 round trips; resolve it once and hand
+        // the row to the invocation check and the participant upsert.
+        let default_subject = match (ctx.runtime_subject_principal_id, &ctx.event_metadata) {
+            (None, None) => match ctx.user_id {
+                Some(id) => Some((id, self.db.default_virtual_user(ctx.org_id, id).await?)),
+                None => None,
+            },
+            _ => None,
+        };
         let runtime_subject = if let Some(principal_id) = ctx.runtime_subject_principal_id {
             let p = self
                 .db
@@ -150,17 +200,23 @@ impl MessageService {
             p.subject_id
                 .map(everruns_contracts::typed_id::VirtualUserId::from_uuid)
         } else if ctx.event_metadata.is_none() {
-            match ctx.user_id {
-                Some(id) => Some(self.db.default_virtual_user(ctx.org_id, id).await?.id),
-                None => None,
-            }
+            default_subject.as_ref().map(|(_, row)| row.id)
         } else {
             None
         };
         // Other ingress adapters cannot retarget a shared Playground session or
         // bypass the source-specific command policy and feature gate.
-        if let Some(session) = self.db.get_session(ctx.org_id, session_id).await?
-            && let Some(subject) = session.playground_user_id
+        let playground_user_id = match prefetch.session {
+            Some(session) if session.id == session_id && session.org_id == ctx.org_id => {
+                session.playground_user_id
+            }
+            _ => self
+                .db
+                .get_session(ctx.org_id, session_id)
+                .await?
+                .and_then(|session| session.playground_user_id),
+        };
+        if let Some(subject) = playground_user_id
             && (runtime_subject != Some(subject)
                 || ctx
                     .event_metadata
@@ -171,22 +227,27 @@ impl MessageService {
         {
             anyhow::bail!("Playground messages must use the authorised Playground command path");
         }
-        let responder = if let Some(id) = ctx.agent_id {
+        let responder_row = if let Some(id) = ctx.agent_id {
             let public = everruns_contracts::typed_id::AgentId::from_uuid(id).to_string();
-            let row = match self.db.get_agent_by_public_id(ctx.org_id, &public).await? {
+            let prefetched = prefetch
+                .responder
+                .filter(|row| row.org_id == ctx.org_id && row.public_id == public);
+            let row = match prefetched {
                 Some(row) => Some(row),
-                None => self.db.get_agent(ctx.org_id, id.into()).await?,
+                None => match self.db.get_agent_by_public_id(ctx.org_id, &public).await? {
+                    Some(row) => Some(row),
+                    None => self.db.get_agent(ctx.org_id, id.into()).await?,
+                },
             };
             Some(
-                row.ok_or_else(|| anyhow::anyhow!("Responder not available in this organization"))?
-                    .id
-                    .uuid(),
+                row.ok_or_else(|| anyhow::anyhow!("Responder not available in this organization"))?,
             )
         } else {
             None
         };
+        let responder = responder_row.as_ref().map(|row| row.id.uuid());
         self.db
-            .record_runtime_invocation(
+            .record_runtime_invocation_with(
                 ctx.org_id,
                 session_id,
                 message_id,
@@ -197,6 +258,10 @@ impl MessageService {
                     None
                 },
                 responder,
+                InvocationRows {
+                    default_subject: default_subject.as_ref().map(|(user, row)| (*user, row)),
+                    responder: responder_row.as_ref(),
+                },
             )
             .await?;
 
@@ -239,10 +304,27 @@ impl MessageService {
         } else if let Some(metadata) = ctx.event_metadata.clone() {
             Some(metadata)
         } else if let Some(user_id) = ctx.user_id {
-            let principal_id = self
-                .ensure_active_user_participant(ctx.org_id, session_id, user_id)
+            let (principal_id, participant_id) = self
+                .ensure_active_user_participant(
+                    ctx.org_id,
+                    session_id,
+                    user_id,
+                    default_subject.as_ref().map(|(_, row)| row),
+                )
                 .await?;
-            execution_metadata::interactive_user_metadata(Some(user_id), Some(principal_id))
+            // Carrying the participant id spares event preparation from
+            // re-reading the session and its participants to find it.
+            execution_metadata::interactive_user_metadata(Some(user_id), Some(principal_id)).map(
+                |mut metadata| {
+                    if let Some(object) = metadata.as_object_mut() {
+                        object.insert(
+                            "participant_id".to_string(),
+                            serde_json::Value::String(participant_id.to_string()),
+                        );
+                    }
+                    metadata
+                },
+            )
         } else {
             self.session_owner_message_metadata(ctx.org_id, session_id)
                 .await

@@ -41,6 +41,44 @@ impl SessionService {
         }
     }
 
+    /// Lean session read for sending a message.
+    ///
+    /// [`Self::get`] also hydrates owner summaries and capability features,
+    /// which sending never uses and which cost several round trips per
+    /// message. This keeps the same row conversion and public agent id, and
+    /// returns the stored row and the agent row so the send path can reuse
+    /// them instead of reading them again.
+    pub async fn get_for_send(&self, caller: &Caller, id: Uuid) -> Result<Option<SessionForSend>> {
+        let Some(row) = self
+            .db
+            .get_session(caller.org_id, SessionId::from_uuid(id))
+            .await?
+        else {
+            return Ok(None);
+        };
+        let fallback = if row.harness_id.is_none() {
+            Some(org_init::base_harness_id(&self.db, caller.org_id).await?)
+        } else {
+            None
+        };
+        let agent = match row.agent_id {
+            Some(agent_id) => self.db.get_agent(caller.org_id, agent_id).await?,
+            None => None,
+        };
+        let mut session = Self::row_to_session(row.clone(), &caller.org_public_id, fallback);
+        // Same mapping as `resolve_session_agent_id`, from the row just read.
+        if let Some(public_id) = agent.as_ref().map(|agent| agent.public_id.as_str())
+            && let Ok(agent_id) = public_id.parse::<AgentId>()
+        {
+            session.agent_id = Some(agent_id);
+        }
+        Ok(Some(SessionForSend {
+            session,
+            row,
+            agent,
+        }))
+    }
+
     /// Resolve the model used by turns without a per-message override.
     ///
     /// Follows the runtime precedence: session, agent, harness, organization.
@@ -526,4 +564,12 @@ impl SessionService {
     ) -> Result<Option<crate::records::Harness>> {
         resolve_effective_harness(self.db.as_ref(), org_id, harness_id).await
     }
+}
+
+/// A session loaded by [`SessionService::get_for_send`].
+pub struct SessionForSend {
+    pub session: Session,
+    pub row: crate::storage::SessionRow,
+    /// The session's agent, when it has one.
+    pub agent: Option<crate::storage::models::AgentRow>,
 }

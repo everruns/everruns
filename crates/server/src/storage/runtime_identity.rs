@@ -15,6 +15,16 @@ pub struct VerifiedRuntimeIdentity {
     pub management_user_id: Option<Uuid>,
 }
 
+/// Rows already verified earlier in a request, reused by
+/// [`StorageBackend::record_runtime_invocation_with`].
+#[derive(Debug, Default, Clone, Copy)]
+pub struct InvocationRows<'a> {
+    /// The management user and the row `default_virtual_user` returned for it.
+    pub default_subject: Option<(Uuid, &'a VirtualUserRow)>,
+    /// The responder agent row.
+    pub responder: Option<&'a AgentRow>,
+}
+
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct VirtualUserBindingRow {
     pub id: Uuid,
@@ -455,26 +465,72 @@ impl StorageBackend {
         management_user_id: Option<Uuid>,
         responder_agent_id: Option<Uuid>,
     ) -> Result<()> {
+        self.record_runtime_invocation_with(
+            org_id,
+            session_id,
+            message_id,
+            subject,
+            management_user_id,
+            responder_agent_id,
+            InvocationRows::default(),
+        )
+        .await
+    }
+
+    /// Same checks as [`Self::record_runtime_invocation`], reusing rows the
+    /// caller loaded earlier in the same request instead of reading them
+    /// again. A supplied row is used only when it is the exact record being
+    /// checked; anything else falls back to a fresh read, so the checks never
+    /// weaken.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_runtime_invocation_with(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        message_id: Uuid,
+        subject: Option<VirtualUserId>,
+        management_user_id: Option<Uuid>,
+        responder_agent_id: Option<Uuid>,
+        rows: InvocationRows<'_>,
+    ) -> Result<()> {
+        // `default_subject` is `default_virtual_user(org_id, management_user)`
+        // as resolved by the caller in this request.
+        let default_subject = rows
+            .default_subject
+            .filter(|(user, row)| Some(*user) == management_user_id && row.org_id == org_id)
+            .map(|(_, row)| row);
         if let Some(id) = subject {
-            let row = self
-                .get_virtual_user(org_id, id)
-                .await?
-                .ok_or_else(|| anyhow::anyhow!("Runtime subject not found"))?;
+            let reused = default_subject.filter(|row| row.id == id).cloned();
+            let row = match reused {
+                Some(row) => row,
+                None => self
+                    .get_virtual_user(org_id, id)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("Runtime subject not found"))?,
+            };
             if row.status != "active" || row.usage != "end_user" {
                 bail!("Runtime subject is not an active end user");
             }
         }
-        if let Some(agent) = responder_agent_id
-            && self
-                .get_agent(org_id, agent.into())
-                .await?
-                .is_none_or(|a| a.status != "active")
-        {
-            bail!("Responder not available in this organization");
+        if let Some(agent) = responder_agent_id {
+            let reused = rows
+                .responder
+                .filter(|row| row.id.uuid() == agent && row.org_id == org_id)
+                .cloned();
+            let row = match reused {
+                Some(row) => Some(row),
+                None => self.get_agent(org_id, agent.into()).await?,
+            };
+            if row.is_none_or(|a| a.status != "active") {
+                bail!("Responder not available in this organization");
+            }
         }
         if let Some(user) = management_user_id {
-            let v = self.default_virtual_user(org_id, user).await?;
-            if subject != Some(v.id) {
+            let id = match default_subject {
+                Some(row) => row.id,
+                None => self.default_virtual_user(org_id, user).await?.id,
+            };
+            if subject != Some(id) {
                 bail!("Management authorization must match the verified default runtime subject");
             }
         }

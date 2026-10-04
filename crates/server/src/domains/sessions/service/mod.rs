@@ -156,6 +156,7 @@ mod fork;
 mod lifecycle;
 mod mounts;
 mod query;
+pub use query::SessionForSend;
 
 fn sanitize_session_capabilities(
     capabilities: Vec<AgentCapabilityConfig>,
