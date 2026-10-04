@@ -719,8 +719,8 @@ impl AgentsApiFunctionExecutor for LiveExecutor {
 /// Credentialed conformance: one client function and one allowed MCP tool,
 /// end to end through the durable driver against api.openai.com.
 ///
-/// `doppler run -- cargo test -p everruns-host --features openai-agents-api \
-///   --test openai_agents_api -- --ignored live_`
+/// `doppler run -- cargo test -p everruns --features openai-agents-api \
+///   --test host -- --ignored openai_agents_api::live_`
 #[tokio::test]
 #[ignore = "calls the paid OpenAI Agents API; needs OPENAI_API_KEY"]
 async fn live_conformance_one_client_function_and_one_allowed_mcp_tool() {
@@ -796,8 +796,8 @@ async fn live_conformance_one_client_function_and_one_allowed_mcp_tool() {
 /// Credentialed seeding (EVE-1146): a new provider session created from the
 /// Everruns record recalls the earlier exchange, a tool result included.
 ///
-/// `doppler run -- cargo test -p everruns-host --features openai-agents-api \
-///   --test openai_agents_api -- --ignored live_`
+/// `doppler run -- cargo test -p everruns --features openai-agents-api \
+///   --test host -- --ignored openai_agents_api::live_`
 #[tokio::test]
 #[ignore = "calls the paid OpenAI Agents API; needs OPENAI_API_KEY"]
 async fn live_seeded_session_recalls_the_earlier_conversation() {

@@ -1,15 +1,13 @@
 // EVE-872: dependency/source guards for the host execution contract.
 //
-// `crates/host/src/host.rs` owns the public host execution contract
+// `crates/core/src/host/host.rs` owns the public host execution contract
 // (`RuntimeHostAdapter`, `ResolvedTurnInputs`, `execute_*_activity`). Host
 // turn execution must consume the resolved execution snapshot, never stored
 // platform record aggregates, so this guard fails when the contract module
 // names the `Agent`, `Harness`, or `Session` record types again.
 //
-// The seeding surfaces (`InProcessRuntimeBuilder::harness/agent/session`,
-// `builders.rs`) intentionally keep accepting records: they are host
-// configuration compatibility APIs, not the execution contract, and are
-// removed separately.
+// Seeding accepts portable definitions and ExecutionSession, with stored
+// control-plane records projected at the server edge.
 
 use std::fs;
 use std::path::Path;
@@ -62,7 +60,7 @@ fn execution_contract_does_not_name_platform_record_types() {
     let flush = |identifier: &mut String| {
         if forbidden.contains(&identifier.as_str()) {
             panic!(
-                "crates/host/src/host.rs names platform record type `{identifier}`; \
+                "crates/core/src/host/host.rs names platform record type `{identifier}`; \
                  the host execution contract must consume ResolvedExecutionSnapshot \
                  instead of stored record aggregates (EVE-872)"
             );

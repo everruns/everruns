@@ -1,15 +1,10 @@
-//! Single integration-test binary for `everruns-host`.
+//! Runtime integration modules in the facade's single `host` test binary.
 //!
-//! Each `tests/*.rs` file is its own binary, and every binary links the whole
-//! `everruns-host` crate from scratch (see `knowledge/project/ci-build-time.md`).
-//! Merging these modules into one target pays that link cost once instead of
-//! once per file. `mcp_runtime_test` and `native_containment` (each declared
-//! via `[[test]]` in Cargo.toml, gated behind their own feature) and
-//! `dependency_direction.rs` (a static-analysis guard, not a runtime suite)
-//! stay separate binaries.
+//! Combining these modules with MCP, policy, and dependency-direction tests
+//! pays the host link cost once (see `knowledge/project/ci-build-time.md`).
 //!
-//! Run with: `cargo test -p everruns-host --features lua,bashkit,host-shell --test integration -- --test-threads=1`
-//! Run one module: `cargo test -p everruns-host --features lua,bashkit,host-shell --test integration <module>:: -- --test-threads=1`
+//! Run with: `cargo test -p everruns --features lua,bashkit,host-shell --test host -- --test-threads=1`
+//! Run one module: `cargo test -p everruns --features lua,bashkit,host-shell --test host integration::<module>:: -- --test-threads=1`
 
 mod durable_ask_user_pause_test;
 mod engine_planned_turn_test;
