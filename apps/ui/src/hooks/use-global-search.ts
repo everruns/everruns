@@ -401,13 +401,15 @@ export function useGlobalSearch(query: string) {
     const q = query.trim().toLowerCase();
     if (!q) {
       // Show top navigation pages when empty
-      return navigationPages.slice(0, 6).map((page): SearchResult => ({
-        id: `nav:${page.href}`,
-        category: "navigation",
-        icon: page.icon,
-        title: page.title,
-        href: page.href,
-      }));
+      return navigationPages.slice(0, 6).map(
+        (page): SearchResult => ({
+          id: `nav:${page.href}`,
+          category: "navigation",
+          icon: page.icon,
+          title: page.title,
+          href: page.href,
+        }),
+      );
     }
 
     const tokens = q.split(/\s+/).filter(Boolean);

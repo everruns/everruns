@@ -180,11 +180,11 @@ describe("downloadSessionExport", () => {
     global.fetch = fetchMock as unknown as typeof fetch;
     URL.createObjectURL = jest.fn(() => "blob:mock");
     URL.revokeObjectURL = jest.fn();
-    jest.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
-      this: HTMLAnchorElement,
-    ) {
-      downloads.push(this.download);
-    });
+    jest
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloads.push(this.download);
+      });
     consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
   });
 
