@@ -29,6 +29,13 @@
   fallback for Browserless cloud tokens without CDP. See
   [Threat Model](security/threat-model.md) TM-TOOL-056.
 
+* **Background runs pass the target tool's policy.** `spawn_background` puts its
+  target call through the act phase's pre-tool chain and the target's schema
+  before scheduling or starting it, runs only the authorized arguments, and runs
+  the post-tool hooks on the result before it is persisted or signalled. See
+  [Tool Execution](execution/tool-execution.md) and
+  [Threat Model](security/threat-model.md) TM-TOOL-055.
+
 * **MCP server card version is the platform release.** The card's `version` and
   `serverInfo.version`, and the server info on `initialize` and `server/discover`,
   are the running package version. A release tag updates them; they are not a

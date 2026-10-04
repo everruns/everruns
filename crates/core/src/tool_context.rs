@@ -415,6 +415,12 @@ pub struct ToolContext {
     /// waiting on an answer — which would otherwise outlive the call that
     /// created it. Clone the token into that work and let it die with the call.
     pub cancellation: Option<tokio_util::sync::CancellationToken>,
+
+    /// The act phase's pre- and post-tool chains, for a tool that runs another
+    /// tool on the model's behalf (`spawn_background`). Set by ActAtom on every
+    /// call it dispatches; a dispatching tool refuses to run without it so a
+    /// nested call can never skip the target tool's policy (EVE-1186).
+    pub nested_tool_policy: Option<Arc<dyn crate::tool_hooks::NestedToolPolicy>>,
 }
 
 impl ToolContext {
@@ -471,6 +477,7 @@ impl ToolContext {
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
             cancellation: None,
+            nested_tool_policy: None,
         }
     }
 
@@ -513,6 +520,7 @@ impl ToolContext {
             subagent_nesting_policy: services.subagent_nesting_policy,
             reasoning_effort_handle: services.reasoning_effort_handle.clone(),
             cancellation: None,
+            nested_tool_policy: None,
         }
     }
 
@@ -555,6 +563,7 @@ impl ToolContext {
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
             cancellation: None,
+            nested_tool_policy: None,
         }
     }
 
@@ -600,6 +609,7 @@ impl ToolContext {
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
             cancellation: None,
+            nested_tool_policy: None,
         }
     }
 
@@ -646,6 +656,7 @@ impl ToolContext {
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
             cancellation: None,
+            nested_tool_policy: None,
         }
     }
 
@@ -741,6 +752,7 @@ impl ToolContext {
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
             cancellation: None,
+            nested_tool_policy: None,
         }
     }
 
@@ -860,6 +872,14 @@ impl ToolContext {
     }
 
     /// Set the tool names visible to the model in this turn.
+    pub fn with_nested_tool_policy(
+        mut self,
+        policy: Arc<dyn crate::tool_hooks::NestedToolPolicy>,
+    ) -> Self {
+        self.nested_tool_policy = Some(policy);
+        self
+    }
+
     pub fn with_visible_tool_names(mut self, names: Arc<HashSet<String>>) -> Self {
         self.visible_tool_names = Some(names);
         self

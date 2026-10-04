@@ -22,10 +22,12 @@ use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::background::{BackgroundEventSink, BackgroundOutcome, BackgroundProgress};
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry};
+use everruns_core::tool_hooks::NestedToolPolicy;
+use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry, validate_tool_arguments};
 use serde_json::{Value, json};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -233,6 +235,43 @@ spawn_background payload:\n{payload_json}"
     )
 }
 
+/// Run the target call through the turn's pre-tool chain and the target's
+/// own schema, returning the call that may run or the outcome to record.
+///
+/// A refusal is the chain's own outcome, unchanged: a blocked call reads as
+/// it would when called directly, and a deferral (a hosted approval request)
+/// parks the turn for the target call, whose approval a retried
+/// `spawn_background` with the same arguments then finds.
+async fn authorize_target_call(
+    policy: &dyn NestedToolPolicy,
+    tool: &dyn Tool,
+    tool_def: &ToolDefinition,
+    requested: ToolCall,
+    context: &ToolContext,
+) -> std::result::Result<ToolCall, ToolExecutionResult> {
+    let target_name = requested.name.clone();
+    let authorized = policy
+        .authorize(requested, tool_def, context)
+        .await
+        .map_err(|outcome| ToolExecutionResult::PolicyOutcome(Box::new(outcome)))?;
+    // The decision covers this tool; a hook that retargets the call would
+    // run something no gate decided on as that tool.
+    if authorized.name != target_name {
+        return Err(ToolExecutionResult::tool_error(format!(
+            "A pre-tool hook changed the background target from {target_name} to {}; refusing to run it.",
+            authorized.name
+        )));
+    }
+    match validate_tool_arguments(tool, &authorized) {
+        Ok(None) => Ok(authorized),
+        Ok(Some(invalid)) => Err(ToolExecutionResult::tool_error(invalid)),
+        Err(error) => Err(ToolExecutionResult::internal_error(error)),
+    }
+}
+
+/// Text the run's log keeps when a post-tool hook withheld the output.
+const WITHHELD_OUTPUT_LOG: &str = "[output withheld by tool policy]\n";
+
 #[async_trait]
 impl Tool for SpawnBackgroundTool {
     fn narrate(
@@ -322,7 +361,7 @@ impl Tool for SpawnBackgroundTool {
             Some(name) if !name.trim().is_empty() => name.trim(),
             _ => return ToolExecutionResult::tool_error("Missing required parameter: tool"),
         };
-        let tool_args = match arguments.get("args") {
+        let requested_args = match arguments.get("args") {
             Some(args) if args.is_object() => args.clone(),
             _ => {
                 return ToolExecutionResult::tool_error(
@@ -375,6 +414,41 @@ impl Tool for SpawnBackgroundTool {
                     .unwrap_or_else(|| format!("Background {tool_name}"))
             });
 
+        // THREAT[TM-TOOL-055]: the outer call passed the policy chain as
+        // `spawn_background`; the target call has to pass it as itself before
+        // anything is scheduled or run (EVE-1186). Only the authorized call's
+        // arguments go any further, so a later rewrite cannot outlive the
+        // decision.
+        let Some(policy) = context.nested_tool_policy.clone() else {
+            return ToolExecutionResult::tool_error(
+                "spawn_background requires the turn's tool policy and can only run from an agent turn.",
+            );
+        };
+        let target_def = tool.to_definition();
+        let target_call = match authorize_target_call(
+            policy.as_ref(),
+            tool.as_ref(),
+            &target_def,
+            ToolCall {
+                id: context
+                    .tool_call_id
+                    .clone()
+                    .unwrap_or_else(|| self.name().to_string()),
+                name: tool_name.to_string(),
+                arguments: requested_args,
+            },
+            context,
+        )
+        .await
+        {
+            Ok(call) => call,
+            Err(refused) => return refused,
+        };
+        let tool_args = target_call.execution_arguments();
+
+        // A schedule fire re-enters `spawn_background` in a later turn and is
+        // authorized again then; checking here as well means a call the policy
+        // refuses never becomes a schedule or a monitor probe spec.
         if let Some(schedule_request) = schedule_request {
             let Some(schedule_store) = &context.schedule_store else {
                 return ToolExecutionResult::tool_error(
@@ -535,6 +609,8 @@ impl Tool for SpawnBackgroundTool {
         let run_id_for_task = run_id.clone();
         let tool_for_task = tool.clone();
         let tool_name_for_task = tool_name.to_string();
+        let policy_for_task = policy.clone();
+        let target_def_for_task = target_def.clone();
 
         // Clone registry/ids for the cancel-watcher inside the spawned task.
         let cancel_registry = context.session_task_registry.clone();
@@ -629,6 +705,14 @@ impl Tool for SpawnBackgroundTool {
             let finalize_result = if is_canceled_outcome(&outcome) {
                 sink.finalize_canceled().await
             } else {
+                let outcome = sink
+                    .apply_post_tool_policy(
+                        policy_for_task.as_ref(),
+                        &target_call,
+                        &target_def_for_task,
+                        outcome,
+                    )
+                    .await;
                 sink.finalize(outcome).await
             };
             if let Err(err) = finalize_result {
@@ -667,6 +751,8 @@ struct SessionBackgroundState {
     output_log: String,
     output_log_chars: usize,
     output_log_truncated: bool,
+    /// The log as the post-tool chain left it; replaces the streamed log.
+    output_log_override: Option<String>,
 }
 
 const MAX_BACKGROUND_OUTPUT_LOG_CHARS: usize = 256 * 1024;
@@ -787,17 +873,7 @@ impl SessionBackgroundSink {
                 }
             }
             Err(err) => {
-                let message = match err {
-                    ToolExecutionResult::ToolError(msg) => msg,
-                    ToolExecutionResult::InternalError(inner) => inner.message,
-                    ToolExecutionResult::ConnectionRequired { provider, .. } => {
-                        format!("Background tool requires connection setup: {provider}")
-                    }
-                    ToolExecutionResult::Success(_)
-                    | ToolExecutionResult::SuccessWithImages { .. } => {
-                        "Background run ended unexpectedly".to_string()
-                    }
-                };
+                let message = failure_message(err);
                 let output_log = {
                     let state = self.state.lock().await;
                     Self::final_output_log(&state)
@@ -937,6 +1013,90 @@ impl BackgroundEventSink for SessionBackgroundSink {
 }
 
 impl SessionBackgroundSink {
+    /// Run the turn's post-tool chain on the finished run, as for a direct
+    /// call of the target tool (EVE-1186).
+    ///
+    /// Hooks see the run's result, its summary (what the session is told) and
+    /// its output log, and what they leave is what gets persisted and
+    /// signalled: an output guardrail that withholds the result also withholds
+    /// the summary and the log.
+    async fn apply_post_tool_policy(
+        &self,
+        policy: &dyn NestedToolPolicy,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult>,
+    ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+        let streamed_log = {
+            let state = self.state.lock().await;
+            Self::final_output_log(&state)
+        };
+        let failed = outcome.is_err();
+        let mut result = match outcome {
+            Ok(outcome) => ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: Some(json!({ "summary": outcome.summary, "result": outcome.result })),
+                images: None,
+                error: None,
+                connection_required: None,
+                raw_output: Some(outcome.raw_output.unwrap_or(streamed_log)),
+            },
+            Err(err) => {
+                let message = failure_message(err);
+                ToolResult {
+                    tool_call_id: tool_call.id.clone(),
+                    result: Some(json!({ "error": &message })),
+                    images: None,
+                    error: Some(message),
+                    connection_required: None,
+                    raw_output: Some(streamed_log),
+                }
+            }
+        };
+
+        policy
+            .after_exec(tool_call, tool_def, &mut result, &self.context)
+            .await;
+
+        {
+            let mut state = self.state.lock().await;
+            state.output_log_override = Some(
+                result
+                    .raw_output
+                    .take()
+                    .unwrap_or_else(|| WITHHELD_OUTPUT_LOG.to_string()),
+            );
+        }
+
+        let value = result.result.take().unwrap_or(Value::Null);
+        let text = || match &value {
+            Value::String(text) => text.clone(),
+            Value::Null => String::new(),
+            other => other.to_string(),
+        };
+        if failed || result.error.is_some() {
+            let message = result.error.take().unwrap_or_else(text);
+            return Err(ToolExecutionResult::ToolError(message));
+        }
+        match (
+            value.get("summary").and_then(Value::as_str),
+            value.get("result"),
+        ) {
+            (Some(summary), Some(inner)) => Ok(BackgroundOutcome {
+                summary: summary.to_string(),
+                result: inner.clone(),
+                raw_output: None,
+            }),
+            // A hook replaced the whole result (an output guardrail's notice):
+            // that replacement is all anyone gets to see.
+            _ => Ok(BackgroundOutcome {
+                summary: text(),
+                result: value.clone(),
+                raw_output: None,
+            }),
+        }
+    }
+
     fn append_to_output_log(state: &mut SessionBackgroundState, prefix: &str, delta: &str) {
         if state.output_log_chars >= MAX_BACKGROUND_OUTPUT_LOG_CHARS {
             state.output_log_truncated = true;
@@ -960,6 +1120,9 @@ impl SessionBackgroundSink {
     }
 
     fn final_output_log(state: &SessionBackgroundState) -> String {
+        if let Some(log) = &state.output_log_override {
+            return log.clone();
+        }
         if !state.output_log_truncated {
             return state.output_log.clone();
         }
@@ -968,6 +1131,23 @@ impl SessionBackgroundSink {
             "{}\n[system] background output truncated at {} characters\n",
             state.output_log, MAX_BACKGROUND_OUTPUT_LOG_CHARS
         )
+    }
+}
+
+/// What a failed run reports to its result file and the session.
+fn failure_message(err: ToolExecutionResult) -> String {
+    match err {
+        ToolExecutionResult::ToolError(msg) => msg,
+        ToolExecutionResult::InternalError(inner) => inner.message,
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
+            format!("Background tool requires connection setup: {provider}")
+        }
+        ToolExecutionResult::PolicyOutcome(result) => result
+            .error
+            .unwrap_or_else(|| "Background run was not allowed by policy".to_string()),
+        ToolExecutionResult::Success(_) | ToolExecutionResult::SuccessWithImages { .. } => {
+            "Background run ended unexpectedly".to_string()
+        }
     }
 }
 
@@ -1184,6 +1364,10 @@ async fn ensure_directory(
     let _ = file_store.create_directory(session_id, path).await?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "background_run_policy_tests.rs"]
+mod policy_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1446,6 +1630,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
             .with_subagent_delegate(platform_store.clone())
             .with_session_task_registry(task_registry.clone());
 
@@ -1511,6 +1696,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
             .with_session_task_registry(task_registry.clone());
 
         let result = SpawnBackgroundTool
@@ -1584,6 +1770,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store, storage_store)
             .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
             .with_session_task_registry(task_registry.clone());
 
         let mut task_ids = Vec::new();
@@ -1688,7 +1875,8 @@ mod tests {
 
         // No task_registry wired — should fail.
         let context = ToolContext::with_stores(session_id, file_store, storage_store)
-            .with_tool_registry(Arc::new(tool_registry));
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy());
 
         let result = SpawnBackgroundTool
             .execute_with_context(
@@ -1719,6 +1907,7 @@ mod tests {
         // No file_store wired — should fail.
         let context = ToolContext::with_storage_store(session_id, storage_store)
             .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
             .with_session_task_registry(task_registry);
 
         let result = SpawnBackgroundTool
@@ -1750,6 +1939,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
             .with_session_task_registry(task_registry.clone());
 
         let result = SpawnBackgroundTool
@@ -1806,6 +1996,7 @@ mod tests {
 
         let context = ToolContext::with_storage_store(session_id, storage_store)
             .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
             .with_schedule_store(schedule_store.clone());
 
         let result = SpawnBackgroundTool
@@ -1923,6 +2114,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
             .with_session_task_registry(task_registry.clone());
 
         let result = SpawnBackgroundTool
@@ -2125,8 +2317,36 @@ mod tests {
         assert!(!is_canceled_outcome(&success));
     }
 
+    /// The act phase's chains with no hooks registered: every call passes.
+    struct AllowAllPolicy;
+
+    #[async_trait]
+    impl NestedToolPolicy for AllowAllPolicy {
+        async fn authorize(
+            &self,
+            tool_call: ToolCall,
+            _tool_def: &ToolDefinition,
+            _context: &ToolContext,
+        ) -> std::result::Result<ToolCall, ToolResult> {
+            Ok(tool_call)
+        }
+
+        async fn after_exec(
+            &self,
+            _tool_call: &ToolCall,
+            _tool_def: &ToolDefinition,
+            _result: &mut ToolResult,
+            _context: &ToolContext,
+        ) {
+        }
+    }
+
+    fn allow_all_policy() -> Arc<dyn NestedToolPolicy> {
+        Arc::new(AllowAllPolicy)
+    }
+
     #[derive(Default)]
-    struct TestBackgroundTool;
+    pub(super) struct TestBackgroundTool;
 
     #[async_trait]
     impl BackgroundExecutableTool for TestBackgroundTool {
@@ -2196,7 +2416,7 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct NoopStorageStore;
+    pub(super) struct NoopStorageStore;
 
     #[async_trait]
     impl everruns_core::session_services::SessionStorageStore for NoopStorageStore {
@@ -2259,7 +2479,7 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct TestFileStore {
+    pub(super) struct TestFileStore {
         files: Mutex<HashMap<String, SessionFile>>,
     }
 
@@ -2385,8 +2605,8 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct TestSubagentDelegate {
-        sent_messages: Mutex<Vec<String>>,
+    pub(super) struct TestSubagentDelegate {
+        pub(super) sent_messages: Mutex<Vec<String>>,
     }
 
     #[async_trait]
@@ -2451,8 +2671,8 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct InMemoryTaskRegistry {
-        tasks: Mutex<HashMap<String, everruns_core::session_task::SessionTask>>,
+    pub(super) struct InMemoryTaskRegistry {
+        pub(super) tasks: Mutex<HashMap<String, everruns_core::session_task::SessionTask>>,
     }
 
     #[async_trait]
@@ -2564,8 +2784,8 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct TestScheduleStore {
-        schedules: Mutex<Vec<everruns_core::session_schedule::SessionSchedule>>,
+    pub(super) struct TestScheduleStore {
+        pub(super) schedules: Mutex<Vec<everruns_core::session_schedule::SessionSchedule>>,
     }
 
     #[async_trait]

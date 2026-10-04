@@ -520,11 +520,12 @@ async fn run_probe_for_task(
                 Utc::now().to_rfc3339()
             )
         }
-        // InternalError and ConnectionRequired cannot produce a useful probe
+        // InternalError, ConnectionRequired and PolicyOutcome cannot produce a useful probe
         // observation — fall back so the caller records the legacy placeholder
         // and starts a normal scheduled agent turn.
         everruns_core::ToolExecutionResult::InternalError(_)
-        | everruns_core::ToolExecutionResult::ConnectionRequired { .. } => {
+        | everruns_core::ToolExecutionResult::ConnectionRequired { .. }
+        | everruns_core::ToolExecutionResult::PolicyOutcome(_) => {
             return ProbeOutcome::Skipped;
         }
         everruns_core::ToolExecutionResult::SuccessWithImages { ref result, .. } => {

@@ -1414,6 +1414,7 @@ impl ReadManyFilesTool {
                     return ToolExecutionResult::InternalError(error);
                 }
                 required @ ToolExecutionResult::ConnectionRequired { .. } => return required,
+                settled @ ToolExecutionResult::PolicyOutcome(_) => return settled,
             };
 
             let mut candidate = results.clone();

@@ -240,6 +240,13 @@ Background eligibility rules:
 - The target tool must set `ToolHints.supports_background = Some(true)`.
 - The target tool must implement `BackgroundExecutableTool`.
 - `spawn_background` must run with a worker-side `ToolContext` that includes the current `ToolRegistry`.
+- `spawn_background` must run with the act phase's `ToolContext::nested_tool_policy`; without it the tool refuses to dispatch.
+
+Target-tool policy (EVE-1186):
+- Hooks see the outer `spawn_background` call, so the target call is put through the same pre-tool chain as a direct call of the target, under the target's own definition, before anything is scheduled or started. A block is the outcome of the outer call; a deferral (a hosted approval request) parks the turn for the target call, and a retried `spawn_background` with the same arguments finds the recorded decision.
+- The target call's final (possibly hook-rewritten) arguments are then checked against the target's schema. Only those authorized arguments reach the detached run, the task spec, and any schedule; a hook may not retarget the call to another tool.
+- When the run finishes, the capability post-tool hooks run on its result, summary, and log before anything is persisted or signalled, so an output guardrail that withholds the result also withholds them. The final (context-window) hooks do not run; the run's artifacts are the output.
+- Live progress (status, streamed output tail) is not filtered; the post-tool chain decides what is persisted and signalled.
 
 Contract:
 - Input: `{ "tool": "...", "args": { ... }, "title"?: "...", "signal_on_completion"?: true, "schedule"?: { "cron_expression"?: "...", "scheduled_at"?: "...", "timezone"?: "..." } }`

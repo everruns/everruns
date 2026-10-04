@@ -25,6 +25,11 @@ pub fn map_tool_error(err: ToolExecutionResult) -> CommandError {
         ToolExecutionResult::ConnectionRequired { provider, .. } => {
             CommandError::unprocessable(format!("Connection required: {provider}"))
         }
+        ToolExecutionResult::PolicyOutcome(result) => CommandError::bad_request(
+            result
+                .error
+                .unwrap_or_else(|| "Tool call was not allowed by policy".to_string()),
+        ),
         ToolExecutionResult::Success(_) | ToolExecutionResult::SuccessWithImages { .. } => {
             unreachable!("tool error mapper called with success result")
         }

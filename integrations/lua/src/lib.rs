@@ -739,6 +739,9 @@ mod engine {
             R::ConnectionRequired { provider, .. } => {
                 Err(format!("tool requires a connection: {provider}"))
             }
+            R::PolicyOutcome(result) => Err(result
+                .error
+                .unwrap_or_else(|| "tool call was not allowed by policy".to_string())),
         }
     }
 

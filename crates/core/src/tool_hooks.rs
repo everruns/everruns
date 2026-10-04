@@ -103,3 +103,35 @@ pub trait PostToolExecHook: Send + Sync {
         context: &ToolContext,
     );
 }
+
+/// The act phase's per-call policy, handed to a tool that runs another tool on
+/// the model's behalf (`spawn_background`).
+///
+/// THREAT[TM-TOOL-055]: hooks see the outer call, so without this a nested
+/// target call skips the target tool's approval, guardrail, and user hook
+/// decisions (EVE-1186). The engine installs it on every act-phase
+/// [`ToolContext`]; a dispatching tool runs its nested call through it and
+/// refuses to dispatch when it is absent.
+#[async_trait]
+pub trait NestedToolPolicy: Send + Sync {
+    /// Run the pre-tool chain on a nested call, exactly as for a direct one.
+    ///
+    /// `Ok` is the call to run, possibly rewritten by hooks; only it may be
+    /// executed. `Err` is the outcome to record instead (a block, or a
+    /// deferral such as a hosted approval request).
+    async fn authorize(
+        &self,
+        tool_call: ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> Result<ToolCall, ToolResult>;
+
+    /// Run the post-tool chain on the nested call's result.
+    async fn after_exec(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        result: &mut ToolResult,
+        context: &ToolContext,
+    );
+}
