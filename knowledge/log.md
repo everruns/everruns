@@ -11,6 +11,13 @@
   Worker as the fixed Bashkit child of Worker. See
   [Sandbox Platform Architecture](harnesses/sandbox-abstraction.md).
 
+* **Browserless browsers have no network of their own.** Pages run in a context
+  with a dead proxy and Everruns performs every request they make, so redirects
+  and DNS answers to private, loopback, link-local, or metadata addresses are
+  refused per hop. Stateless tools use one-shot CDP browsers; REST is only a
+  fallback for Browserless cloud tokens without CDP. See
+  [Threat Model](security/threat-model.md) TM-TOOL-056.
+
 * **MCP server card version is the platform release.** The card's `version` and
   `serverInfo.version`, and the server info on `initialize` and `server/discover`,
   are the running package version. A release tag updates them; they are not a

@@ -2807,6 +2807,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "fancy-regex 0.14.0",
+ "flate2",
  "futures-util",
  "reqwest",
  "rustls",

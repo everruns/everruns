@@ -24,9 +24,11 @@ Once connected, agents with the Browserless capability can use the tools below.
 
 ## Two operating modes
 
-**Stateless (default).** Each tool call launches a fresh browser that is destroyed after the response. Nothing persists between calls, and no cleanup is needed. Use it for one-shot screenshots or scraping.
+**Stateless (default).** Each tool call opens a fresh browser that is destroyed after the response. Nothing persists between calls, and no cleanup is needed. Use it for one-shot screenshots or scraping.
 
-**Persistent session (CDP).** `browserless_open_browser` creates a browser over the Chrome DevTools Protocol that stays alive between tool calls, keeping login state, cookies, and navigation history. Tools use the CDP session automatically when one is active and the REST API otherwise. `browserless_scrape` always uses the REST API. A CDP browser expires after 60 seconds of inactivity by default; call `browserless_close_browser` when done for immediate cleanup.
+**Persistent session (CDP).** `browserless_open_browser` creates a browser over the Chrome DevTools Protocol that stays alive between tool calls, keeping login state, cookies, and navigation history. Tools use the persistent browser automatically when one is active. A persistent browser expires after 60 seconds of inactivity by default; call `browserless_close_browser` when done for immediate cleanup.
+
+Both modes connect over the Chrome DevTools Protocol, so the Browserless token needs WebSocket (CDP) access. A Browserless cloud token without it falls back to the Browserless REST API for the stateless tools; see [Security](#security).
 
 A typical flow for a login-protected page:
 
@@ -131,6 +133,10 @@ Navigate to a URL, then perform a sequence of actions.
 
 - API tokens are encrypted at rest (AES-256-GCM envelope encryption).
 - Browser sessions are isolated on Browserless servers.
+- The browser has no network access of its own. Everruns makes every request the page makes, including each redirect hop, scripts, and images. Private, loopback, link-local, and cloud metadata addresses are refused, both as URLs and as DNS answers, and the session's network access list applies to every request. A blocked page load returns an error, never the page.
+- WebSockets and other connections a page opens outside HTTP requests are refused.
+- A relayed response is limited to 10 MB.
+- The REST fallback for Browserless cloud tokens without CDP access runs in Browserless' network and checks only the URL you pass. A self-hosted Browserless never falls back.
 - CDP session state stores only the WebSocket endpoint (no secrets), scoped per session.
 - Large DOM responses are truncated to 100KB to prevent context flooding.
 

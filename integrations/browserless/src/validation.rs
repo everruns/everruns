@@ -37,6 +37,7 @@ pub(crate) fn is_local_browser_url(url: &str) -> bool {
         || url.starts_with("blob:")
 }
 
+#[cfg(test)] // The canonical predicate the transport patterns are tested against.
 /// Static SSRF policy plus the session network ACL.
 ///
 /// Local browser documents are allowed. A missing or empty access list adds no

@@ -87,8 +87,10 @@ Screenshots are billed as image tokens. A smaller display, or turning off
 - **Keep credentials out of reach.** Do not give a computer-use agent a browser
   that is signed in to accounts it should not use.
 - **Egress.** `navigate` refuses private and internal addresses and follows the
-  session's network access list. If a page navigates somewhere blocked on its
-  own, the page is reset to a blank page and the action reports an error.
+  session's network access list. Everruns makes every request the page makes and
+  applies the same rules to each one, including redirects and DNS answers. If a
+  page navigates somewhere blocked on its own, the page is reset to a blank page
+  and the action reports an error.
 - **Budget.** `max_actions_per_session` stops runaway loops.
 
 Each screenshot shows as a thumbnail on the tool call in the session view;
