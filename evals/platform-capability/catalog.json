@@ -979,8 +979,11 @@
     "cli": null,
     "description": "Verify an installation's current health without modifying provider data.",
     "input_schema": {
+      "description": "Request fresh, non-mutating verification of one health issue.",
       "properties": {
         "issue_id": {
+          "description": "Stable identifier of the issue in the current organization.",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
           "format": "uuid",
           "type": "string"
         }
@@ -9645,8 +9648,11 @@
     "cli": null,
     "description": "Get an operational health issue.",
     "input_schema": {
+      "description": "Read the current evidence and recovery guidance for one health issue.",
       "properties": {
         "issue_id": {
+          "description": "Stable identifier of the issue in the current organization.",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
           "format": "uuid",
           "type": "string"
         }
@@ -12771,14 +12777,19 @@
     "cli": null,
     "description": "List pending operational health issues.",
     "input_schema": {
+      "description": "Pagination and optional channel filter for pending health issues.",
       "properties": {
         "channel_id": {
+          "description": "Restrict results to this public channel identifier.",
+          "example": "appchan_550e8400e29b41d4a716446655440000",
           "type": [
             "string",
             "null"
           ]
         },
         "limit": {
+          "description": "Page size, clamped to 1 through 100; defaults to 20.",
+          "example": 20,
           "format": "int64",
           "type": [
             "integer",
@@ -12786,6 +12797,8 @@
           ]
         },
         "offset": {
+          "description": "Number of matching issues to skip; defaults to zero.",
+          "example": 0,
           "format": "int64",
           "type": [
             "integer",
@@ -15729,8 +15742,11 @@
     "cli": null,
     "description": "Snooze health reminders for the current user for one day.",
     "input_schema": {
+      "description": "Suppress the current user's reminders for one day without resolving the issue.",
       "properties": {
         "issue_id": {
+          "description": "Stable identifier of the issue in the current organization.",
+          "example": "550e8400-e29b-41d4-a716-446655440000",
           "format": "uuid",
           "type": "string"
         }

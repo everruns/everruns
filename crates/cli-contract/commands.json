@@ -4408,7 +4408,8 @@
         "field": "issue_id",
         "long": "issue-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Stable identifier of the issue in the current organization."
       }
     ]
   },
@@ -4426,7 +4427,8 @@
         "field": "issue_id",
         "long": "issue-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Stable identifier of the issue in the current organization."
       }
     ]
   },
@@ -4444,19 +4446,22 @@
         "field": "channel_id",
         "long": "channel-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Restrict results to this public channel identifier."
       },
       {
         "field": "limit",
         "long": "limit",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Page size, clamped to 1 through 100; defaults to 20."
       },
       {
         "field": "offset",
         "long": "offset",
         "kind": "integer",
-        "required": false
+        "required": false,
+        "help": "Number of matching issues to skip; defaults to zero."
       }
     ]
   },
@@ -4474,7 +4479,8 @@
         "field": "issue_id",
         "long": "issue-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Stable identifier of the issue in the current organization."
       }
     ]
   },

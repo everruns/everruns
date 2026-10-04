@@ -128,10 +128,17 @@ async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
     Ok(row)
 }
 
+/// Pagination and optional channel filter for pending health issues.
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListHealthIssues {
+    /// Restrict results to this public channel identifier.
+    #[schema(example = "appchan_550e8400e29b41d4a716446655440000")]
     pub channel_id: Option<String>,
+    /// Number of matching issues to skip; defaults to zero.
+    #[schema(example = 0)]
     pub offset: Option<i64>,
+    /// Page size, clamped to 1 through 100; defaults to 20.
+    #[schema(example = 20)]
     pub limit: Option<i64>,
 }
 impl Command for ListHealthIssues {
@@ -176,8 +183,11 @@ impl Command for ListHealthIssues {
 }
 inventory::submit! {CommandDescriptor::of::<ListHealthIssues>()}
 
+/// Read the current evidence and recovery guidance for one health issue.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetHealthIssue {
+    /// Stable identifier of the issue in the current organization.
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
 impl Command for GetHealthIssue {
@@ -200,8 +210,11 @@ impl Command for GetHealthIssue {
 }
 inventory::submit! {CommandDescriptor::of::<GetHealthIssue>()}
 
+/// Request fresh, non-mutating verification of one health issue.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CheckHealthIssue {
+    /// Stable identifier of the issue in the current organization.
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
 impl Command for CheckHealthIssue {
@@ -235,8 +248,11 @@ impl Command for CheckHealthIssue {
 }
 inventory::submit! {CommandDescriptor::of::<CheckHealthIssue>()}
 
+/// Suppress the current user's reminders for one day without resolving the issue.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SnoozeHealthIssue {
+    /// Stable identifier of the issue in the current organization.
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
 impl Command for SnoozeHealthIssue {
