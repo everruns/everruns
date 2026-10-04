@@ -35,7 +35,7 @@ async function mockAppApi(page: Page) {
       json = {
         notifications: false,
         evals: false,
-        endpoint_budgets: false,
+        channel_budgets: false,
         agent_versions: false,
         voice: false,
         agent_delegation: false,

@@ -30,7 +30,7 @@ async function mockAgentDetailApi(page: Page) {
         notifications: false,
         evals: true,
         plugins: true,
-        endpoint_budgets: false,
+        channel_budgets: false,
         agent_versions: true,
         voice: false,
         agent_delegation: false,

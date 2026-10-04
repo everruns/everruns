@@ -2,18 +2,21 @@
 //! thread context is insufficient for per-user and per-channel session reuse.
 use super::*;
 
-/// The endpoint a server-authored event provenance names as initiator, or
-/// `None` when the provenance is not endpoint-initiated.
+/// The channel a server-authored event provenance names as initiator, or
+/// `None` when the provenance is not channel-initiated.
 ///
-/// Writes are endpoint-shaped (`execution_metadata::endpoint_message_metadata`).
-/// Reads also accept the frozen `app` shape, because the caller gate reads
-/// *persisted* provenance: a session mid-thread when that rename shipped still
-/// carries the old key, and rejecting it would silence a live Slack
-/// conversation until its next inbound message. Same posture as the permanent
-/// ingress aliases — nothing new is written in the old shape.
-fn initiator_endpoint_id(provenance: &serde_json::Value) -> Option<&str> {
+/// Writes are channel-shaped (`execution_metadata::channel_message_metadata`).
+/// Reads also accept the two older shapes, `endpoint` and the frozen `app`,
+/// because the caller gate reads *persisted* provenance: a session mid-thread
+/// when either rename shipped still carries the old key, and rejecting it would
+/// silence a live Slack conversation until its next inbound message. All three
+/// name the same channel public id, so the authorized set does not widen. Same
+/// posture as the permanent ingress aliases — nothing new is written in an old
+/// shape.
+fn initiator_channel_id(provenance: &serde_json::Value) -> Option<&str> {
     let initiator = &provenance["initiator"];
     match initiator["type"].as_str() {
+        Some("channel") => initiator["channel_id"].as_str(),
         Some("endpoint") => initiator["endpoint_id"].as_str(),
         Some("app") => initiator["app_id"].as_str(),
         _ => None,
@@ -121,13 +124,13 @@ impl DbSlackActionInvoker {
         // THREAT[TM-SLACK-005]: bind posts to this invocation's signed ingress.
         // Event provenance is server-authored; message metadata alone is
         // caller-controlled on ordinary API inputs and cannot authorize a post.
-        // Writes are endpoint-shaped (`execution_metadata::endpoint_message_metadata`).
+        // Writes are channel-shaped (`execution_metadata::channel_message_metadata`).
         // Reads also accept the frozen `app` shape, because this gate reads
         // *persisted* provenance: a session mid-thread when this shipped still
         // carries the old key, and rejecting it would silence a live Slack
         // conversation until its next inbound message. Same posture as the
         // permanent ingress aliases — nothing new is written in that shape.
-        if initiator_endpoint_id(provenance) != Some(app_public_id.to_string().as_str())
+        if initiator_channel_id(provenance) != Some(app_public_id.to_string().as_str())
             || metadata["_app_channel_id"].as_str() != Some(endpoint.public_id.to_string().as_str())
         {
             return Err(SlackActionError::NoSlackSession);
@@ -205,36 +208,45 @@ pub(super) async fn post_message(
 
 #[cfg(test)]
 mod initiator_provenance_tests {
-    use super::initiator_endpoint_id;
+    use super::initiator_channel_id;
     use serde_json::json;
 
     #[test]
-    fn endpoint_shaped_provenance_names_its_endpoint() {
-        let p = json!({"initiator": {"type": "endpoint", "endpoint_id": "app_01"}});
-        assert_eq!(initiator_endpoint_id(&p), Some("app_01"));
+    fn channel_shaped_provenance_names_its_channel() {
+        let p = json!({"initiator": {"type": "channel", "channel_id": "app_01"}});
+        assert_eq!(initiator_channel_id(&p), Some("app_01"));
     }
 
     #[test]
-    fn frozen_app_shaped_provenance_still_names_its_endpoint() {
+    fn endpoint_shaped_provenance_still_names_its_channel() {
+        // Persisted by the short-lived `endpoint` writer.
+        let p = json!({"initiator": {"type": "endpoint", "endpoint_id": "app_01"}});
+        assert_eq!(initiator_channel_id(&p), Some("app_01"));
+    }
+
+    #[test]
+    fn frozen_app_shaped_provenance_still_names_its_channel() {
         // Persisted by the pre-rename writer. A live Slack thread must keep
         // posting across the deploy that renamed the key.
         let p = json!({"initiator": {"type": "app", "app_id": "app_01"}});
-        assert_eq!(initiator_endpoint_id(&p), Some("app_01"));
+        assert_eq!(initiator_channel_id(&p), Some("app_01"));
     }
 
     #[test]
     fn other_initiators_authorize_nothing() {
-        // THREAT[TM-SLACK-005]: only endpoint ingress authorizes a post. A
+        // THREAT[TM-SLACK-005]: only channel ingress authorizes a post. A
         // user- or trigger-initiated turn must not, and neither must a
         // caller-shaped object that merely carries an id.
         for p in [
             json!({"initiator": {"type": "user", "user_id": "user_01"}}),
             json!({"initiator": {"type": "agent_trigger", "trigger_id": "trg_01"}}),
+            json!({"initiator": {"type": "channel"}}),
+            json!({"initiator": {"channel_id": "app_01"}}),
             json!({"initiator": {"type": "endpoint"}}),
             json!({"initiator": {"endpoint_id": "app_01"}}),
             json!({}),
         ] {
-            assert_eq!(initiator_endpoint_id(&p), None, "authorized: {p}");
+            assert_eq!(initiator_channel_id(&p), None, "authorized: {p}");
         }
     }
 }
