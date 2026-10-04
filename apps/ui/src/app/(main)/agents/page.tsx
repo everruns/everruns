@@ -140,12 +140,14 @@ export default function AgentsPage() {
         }
       />
 
-      <AgentImportDialog
-        file={importFile}
-        agents={agents ?? []}
-        onClose={() => setImportFile(null)}
-        onImported={(agent) => router.push(`/agents/${agent.id}`)}
-      />
+      {importFile && (
+        <AgentImportDialog
+          file={importFile}
+          agents={agents ?? []}
+          onClose={() => setImportFile(null)}
+          onImported={(agent) => router.push(`/agents/${agent.id}`)}
+        />
+      )}
 
       <PageControlStrip className="flex flex-wrap items-center gap-3">
         <SearchInput

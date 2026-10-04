@@ -170,7 +170,8 @@ test.describe("Page masthead responsive layout", () => {
     await moreActions.click({ trial: true });
     await moreActions.click();
     await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Export" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Export package (ZIP)", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Export Markdown", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Version history" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Archive agent" })).toBeVisible();
