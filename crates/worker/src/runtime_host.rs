@@ -400,6 +400,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             agent_definition.as_ref(),
             &context.session,
         )?;
+        if let Some(model_id) = snapshot.default_model_id {
+            self.reads
+                .prefetch_model(&self.adapters, org_id, model_id.uuid(), session_id);
+        }
         Ok(ResolvedTurnInputs {
             snapshot,
             messages: context.messages,
@@ -432,7 +436,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     }
 
     fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore> {
-        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id).with_reads(self.reads.clone()))
     }
 
     fn message_store(&self) -> Arc<dyn everruns_core::MessageRetriever> {
