@@ -157,7 +157,9 @@ mod tests {
     async fn assert_prepared_pat_policy(mode: AuthMode) {
         let db = Arc::new(StorageBackend::in_memory());
         super::super::seed_default_organization(&db).await.unwrap();
-        seed_anonymous_user(&db, &[]).await.unwrap();
+        seed_anonymous_user(&db, &crate::platform::oss_built_in_harnesses())
+            .await
+            .unwrap();
         let generated = crate::auth::personal_access_token::generate_personal_access_token();
         db.create_personal_access_token(CreatePersonalAccessTokenRow {
             user_id: ANONYMOUS_USER_ID,
