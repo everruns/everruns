@@ -1,13 +1,13 @@
-version: 0.40.0
+version: 0.41.0
 date: 2026-10-04
 headline:
-  - Core runtime.
-  - Facade batteries.
+  - 37 crates.
+  - Every capability.
 summary:
-  - Runtime APIs move to everruns-core features.
-  - The facade composes drivers and integrations.
-  - Five old crate names ship deprecated shims.
+  - The five core migration shims are retired.
+  - Library hosts use portable runtime contracts.
+  - Server and durable own database connections.
 highlights:
-  - title: Core feature migration
-    description: Use everruns-core for runtime features and everruns for integration composition.
-    source: "#4083"
+  - title: Database ownership
+    description: Durable owns embedded SQLite connections and private worker execution.
+    source: "#4084"
