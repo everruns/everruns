@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-10-04
+
+### What's Changed
+
+- Fold engine, host, builtins, MCP and AG-UI into `everruns-core` features, move the A2A protocol client into core, and compose drivers and integrations through the `everruns` facade ([#4083](https://github.com/everruns/everruns/pull/4083)). Core remains wasm-safe by default, and existing runtime capabilities remain available.
+- Allow platform operators to enroll and revoke adoption features through the existing organization feature route, while retaining tenant administration and platform-only internal enrollment ([#4154](https://github.com/everruns/everruns/pull/4154)).
+- Advertise the running platform version consistently on the MCP server card, initialize response and server discovery response ([#4155](https://github.com/everruns/everruns/pull/4155)).
+- Support Rust 1.97 strict Clippy checks with equivalent AG-UI error lookup, evaluation scoring and capability-count iteration ([#4159](https://github.com/everruns/everruns/pull/4159)).
+
+### Crate Releases
+
+All 42 published crates ship at the platform version 0.40.0.
+
+The five runtime crate names ship their first deprecated forwarding release:
+
+- `everruns-engine` → `everruns-core::engine`
+- `everruns-host` → `everruns-core::host`; integration and driver composition uses `everruns`.
+- `everruns-builtins` → `everruns-core::builtins`
+- `everruns-mcp` → `everruns-core::mcp`
+- `everruns-ag-ui` → `everruns-core::ag_ui`
+
+Enable the matching core features when migrating imports. The A2A client is available through core's `a2a` feature; the hosted delegation capability remains in `everruns-capabilities`. Effectful integrations remain opt-in and no capability is removed.
+
+`everruns-platform` leaves the workspace after its verified deprecated 0.39.0 release; hosted execution services use `everruns-capabilities`. The five runtime shims leave the workspace in the following release after this publication is verified. Their last published versions remain available and are not yanked.
+
 ## [0.39.0] - 2026-10-04
 
 ### What's Changed
@@ -20,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Apply pre-tool hooks to client-side tools before they are dispatched, preserving approval and policy checks ([#4148](https://github.com/everruns/everruns/pull/4148)).
 - Remove the misleading Chat share button and simplify permanent Chat navigation ([#4150](https://github.com/everruns/everruns/pull/4150), [#4153](https://github.com/everruns/everruns/pull/4153)).
 - refactor(server): own control-plane records and hosted capabilities ([#4081](https://github.com/everruns/everruns/pull/4081)) by [@chaliy](https://github.com/chaliy)
+- Distinguish side conversations beneath permanent Chat with a Side chats group, a clearer selected state, and visible keyboard focus ([#4157](https://github.com/everruns/everruns/pull/4157)).
 
 Hosted capabilities now have a canonical SDK crate, `everruns-capabilities`. Persisted control-plane records and their lifecycle types live in `crates/server/`; library hosts use portable runtime definitions. HTTP API shapes and existing authorization and execution behavior are preserved.
 

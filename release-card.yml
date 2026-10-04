@@ -1,13 +1,13 @@
-version: 0.39.0
+version: 0.40.0
 date: 2026-10-04
 headline:
-  - Hosted SDK.
-  - Server records.
+  - Core runtime.
+  - Facade batteries.
 summary:
-  - SDK imports move to everruns-capabilities.
-  - Stored records stay in the server.
-  - HTTP API shapes are unchanged.
+  - Runtime APIs move to everruns-core features.
+  - The facade composes drivers and integrations.
+  - Five old crate names ship deprecated shims.
 highlights:
-  - title: Hosted SDK migration
-    description: Move hosted imports to everruns-capabilities; use portable definitions in library hosts.
-    source: "#4081"
+  - title: Core feature migration
+    description: Use everruns-core for runtime features and everruns for integration composition.
+    source: "#4083"
