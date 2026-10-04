@@ -99,6 +99,8 @@ See [source and binding policy](../../crates/server/src/domains/sessions/playgro
   Platform Chat conversation. The permanent conversation cannot be renamed, unpinned,
   archived, deleted, or reassigned. Server resolution and database uniqueness arbitrate
   concurrent tabs and retries; an existing conversation is always adopted.
+  Its sidebar entry remains a prominent navigation control on every route;
+  **New side chat** is the subordinate action for a separate conversation.
 * **Chat has one managed Agent on Generic.** The Agent owns identity, platform access,
   instructions, introduction, and starters. No Agent or harness picker appears in Chat.
   New chat opens an empty draft and creates a fresh side conversation on first send,
