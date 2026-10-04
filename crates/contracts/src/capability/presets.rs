@@ -13,10 +13,95 @@
 //! record's presentation fields (`icon`, `starters`, `intro_markdown`) stay
 //! with the platform: a written world-description drifts from the world it
 //! describes, and presentation has no meaning in a library. See
-//! `knowledge/framework/harnesses.md` — "What can be shared with the platform,
-//! and what cannot".
+//! `knowledge/framework/harnesses.md` for the shared-preset boundary.
 
 use crate::capability::CapabilityRef;
+
+/// Canonical presets shared by hosted provisioning and the application framework.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuiltInHarnessPreset {
+    /// Zero-capability foundation.
+    Base,
+    /// Dialogue with bounded conversation context.
+    Conversation,
+    /// Files, bash and project instructions.
+    WorkerBase,
+    /// Skills, long context, budgeting and delegation.
+    Worker,
+}
+
+impl BuiltInHarnessPreset {
+    /// Stable addressable built-in name.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Base => "base",
+            Self::Conversation => "conversation",
+            Self::WorkerBase => "worker-base",
+            Self::Worker => "worker",
+        }
+    }
+
+    /// The live parent on the hosted platform.
+    pub const fn parent(self) -> Option<Self> {
+        match self {
+            Self::Base => None,
+            Self::Conversation => Some(Self::Base),
+            Self::WorkerBase => Some(Self::Conversation),
+            Self::Worker => Some(Self::WorkerBase),
+        }
+    }
+
+    /// Only this layer's additions; hosted harnesses inherit the parent live.
+    pub fn local_capabilities(self) -> Vec<CapabilityRef> {
+        match self {
+            Self::Base => vec![],
+            Self::Conversation => vec![
+                CapabilityRef::with_config(
+                    "compaction",
+                    serde_json::json!({
+                        "strategy": "auto", "proactive": true, "budget_percent": 0.85
+                    }),
+                ),
+                CapabilityRef::new("error_disclosure"),
+                CapabilityRef::new("tool_call_repair"),
+                CapabilityRef::new("loop_detection"),
+            ],
+            Self::WorkerBase => vec![
+                CapabilityRef::new("session_file_system"),
+                CapabilityRef::new("bashkit_shell"),
+                CapabilityRef::new("agent_instructions"),
+                CapabilityRef::new("session"),
+                CapabilityRef::new("tool_output_persistence"),
+                CapabilityRef::new("tool_output_distillation"),
+                CapabilityRef::with_config(
+                    "parallel_tool_calls",
+                    serde_json::json!({"mode": "prefer"}),
+                ),
+                CapabilityRef::new("soft_approval"),
+            ],
+            Self::Worker => vec![
+                CapabilityRef::new("skills"),
+                CapabilityRef::new("infinity_context"),
+                CapabilityRef::new("auto_tool_search"),
+                CapabilityRef::new("budgeting"),
+                CapabilityRef::new("self_budget"),
+                CapabilityRef::new("stateless_todo_list"),
+                CapabilityRef::new("subagents"),
+                CapabilityRef::new("session_tasks"),
+            ],
+        }
+    }
+
+    /// Flatten the same parent chain for frameworks without stored harness rows.
+    pub fn effective_capabilities(self) -> Vec<CapabilityRef> {
+        let mut capabilities = self
+            .parent()
+            .map(Self::effective_capabilities)
+            .unwrap_or_default();
+        capabilities.extend(self.local_capabilities());
+        capabilities
+    }
+}
 
 /// The name built-in harnesses are addressed by.
 ///
@@ -91,6 +176,40 @@ pub fn generic_capabilities() -> Vec<CapabilityRef> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn levels_have_distinct_effective_surfaces() {
+        use BuiltInHarnessPreset::*;
+        assert!(Base.effective_capabilities().is_empty());
+        for preset in [Conversation, WorkerBase, Worker] {
+            let caps = preset.effective_capabilities();
+            let ids: Vec<_> = caps.iter().map(CapabilityRef::capability_id).collect();
+            let unique: std::collections::HashSet<_> = ids.iter().collect();
+            assert_eq!(ids.len(), unique.len());
+            assert_eq!(ids.contains(&"bashkit_shell"), preset != Conversation);
+            assert_eq!(ids.contains(&"subagents"), preset == Worker);
+            assert_eq!(ids.contains(&"session_tasks"), preset == Worker);
+            for opt_in in [
+                "web_fetch",
+                "session_storage",
+                "session_schedule",
+                "memory",
+                "citation_retrieval",
+                "ask_user",
+            ] {
+                assert!(
+                    !ids.contains(&opt_in),
+                    "{opt_in} leaked into {}",
+                    preset.name()
+                );
+            }
+        }
+        assert!(
+            !generic_capabilities()
+                .iter()
+                .any(|cap| cap.capability_id() == "subagents")
+        );
+    }
 
     #[test]
     fn generic_carries_no_duplicate_capability() {

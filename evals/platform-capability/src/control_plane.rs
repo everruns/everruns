@@ -539,7 +539,7 @@ fn build_shell(catalog: Arc<Vec<Value>>, store: Arc<Mutex<Store>>) -> bashkit::B
     // subject.
     fs.add_file(
         "/workspace/docs/harnesses.md",
-        b"# Harnesses\n\nA harness is a reusable bundle of capabilities and a system prompt.\n          The built-in `Generic` harness carries file system, bash, storage, schedules and\n          context compaction, and is the default when a session names no harness.\n",
+        b"# Harnesses\n\nA harness is a reusable bundle of capabilities and a system prompt.\n          The built-in `Conversation` harness is the default when a session names no harness.\n          `Worker Base` adds files and bash; `Worker` adds subagents and task controls.\n          `Generic` is deprecated and remains available for existing bindings.\n",
         0o644,
     );
 
@@ -556,15 +556,17 @@ impl Store {
         families.insert(
             "agents".into(),
             vec![
-                json!({"id":"agent_01triage","name":"Triage","description":"Triages incoming issues.","harness_id":"harness_01generic","default_model_id":"model_01terra","status":"active","ui_link":"/agents/agent_01triage"}),
-                json!({"id":"agent_01docs","name":"Docs Bot","description":"Answers product questions.","harness_id":"harness_01generic","default_model_id":"model_01terra","status":"active","ui_link":"/agents/agent_01docs"}),
+                json!({"id":"agent_01triage","name":"Triage","description":"Triages incoming issues.","harness_id":"harness_01conversation","default_model_id":"model_01terra","status":"active","ui_link":"/agents/agent_01triage"}),
+                json!({"id":"agent_01docs","name":"Docs Bot","description":"Answers product questions.","harness_id":"harness_01conversation","default_model_id":"model_01terra","status":"active","ui_link":"/agents/agent_01docs"}),
             ],
         );
         families.insert(
             "harnesses".into(),
             vec![
-                json!({"id":"harness_01generic","name":"Generic","description":"Filesystem, bash, storage, schedules, compaction.","ui_link":"/harnesses/harness_01generic"}),
-                json!({"id":"harness_01platform","name":"platform-chat","description":"Platform administration chat.","ui_link":"/harnesses/harness_01platform"}),
+                json!({"id":"harness_01generic","name":"Generic","description":"Deprecated legacy bundle.","ui_link":"/harnesses/harness_01generic"}),
+                json!({"id":"harness_01conversation","name":"conversation","description":"Conversation reliability; default harness.","ui_link":"/harnesses/harness_01conversation"}),
+                json!({"id":"harness_01workerbase","name":"worker-base","description":"Conversation plus files and bash.","ui_link":"/harnesses/harness_01workerbase"}),
+                json!({"id":"harness_01worker","name":"worker","description":"Worker Base plus delegation and task controls.","ui_link":"/harnesses/harness_01worker"}),
                 json!({"id":"harness_01base","name":"base","description":"Minimal base harness.","ui_link":"/harnesses/harness_01base"}),
             ],
         );

@@ -29,7 +29,7 @@ impl UserConnectionResolver for GrpcAdapter {
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<String>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .get_connection_token(proto::GetConnectionTokenRequest {
                 input_message_id: self.input_message_id.map(uuid_to_proto),
@@ -47,7 +47,7 @@ impl UserConnectionResolver for GrpcAdapter {
         provider: &str,
         acts_as: everruns_core::McpServerActsAs,
     ) -> Result<Option<String>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .get_mcp_connection_token(proto::GetMcpConnectionTokenRequest {
                 server_prefix: self.mcp_server_prefix.clone(),
@@ -66,7 +66,7 @@ impl UserConnectionResolver for GrpcAdapter {
         session_id: SessionId,
         provider: &str,
     ) -> Result<Option<Uuid>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .get_connection_user(proto::GetConnectionUserRequest {
                 input_message_id: self.input_message_id.map(uuid_to_proto),
@@ -89,7 +89,7 @@ impl UserConnectionResolver for GrpcAdapter {
         acts_as: everruns_core::McpServerActsAs,
         rejected_credential_fingerprint: &str,
     ) -> Result<()> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         client
             .invalidate_mcp_connection(proto::InvalidateMcpConnectionRequest {
                 server_prefix: self.mcp_server_prefix.clone(),
@@ -109,7 +109,7 @@ impl UserConnectionResolver for GrpcAdapter {
         user_id: Uuid,
         provider: &str,
     ) -> Result<Option<String>> {
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .get_connection_token_for_user(proto::GetConnectionTokenForUserRequest {
                 user_id: Some(uuid_to_proto(user_id)),

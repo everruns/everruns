@@ -2,7 +2,11 @@
 // Request types double as catalog entries and auto-register with inventory.
 
 use super::environment as environment_profiles;
-use super::managed::{check_high_risk_caps, validate_managed_name};
+pub(crate) use super::managed::check_harness_assignment;
+use super::managed::{
+    check_high_risk_caps, resolve_create_harness_id, resolve_update_harness_id,
+    validate_managed_name,
+};
 use super::preview::PreviewAgent;
 use super::queries as q;
 use super::types::{
@@ -91,80 +95,6 @@ async fn persist_harness_source(
         .ok_or_else(|| CommandError::not_found("Agent"))
 }
 
-async fn resolve_create_harness_id(
-    ctx: &Ctx,
-    harness_id: Option<HarnessId>,
-    harness_name: Option<&str>,
-) -> Result<HarnessId, CommandError> {
-    resolve_harness_id(ctx, harness_id, harness_name, true)
-        .await?
-        .ok_or_else(|| CommandError::not_found("Harness"))
-}
-
-async fn resolve_update_harness_id(
-    ctx: &Ctx,
-    harness_id: Option<HarnessId>,
-    harness_name: Option<&str>,
-) -> Result<Option<HarnessId>, CommandError> {
-    resolve_harness_id(ctx, harness_id, harness_name, false).await
-}
-
-async fn resolve_harness_id(
-    ctx: &Ctx,
-    harness_id: Option<HarnessId>,
-    harness_name: Option<&str>,
-    default_when_omitted: bool,
-) -> Result<Option<HarnessId>, CommandError> {
-    if harness_id.is_some() && harness_name.is_some() {
-        return Err(CommandError::bad_request(
-            "harness_id and harness_name are mutually exclusive",
-        ));
-    }
-
-    let row = if let Some(id) = harness_id {
-        ctx.db
-            .get_harness(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
-    } else if let Some(name) = harness_name {
-        ctx.db
-            .get_harness_by_name(ctx.org_id(), name)
-            .await
-            .map_err(classify_anyhow)?
-    } else if default_when_omitted {
-        let id = crate::domains::sessions::queries::resolve_session_harness_id(
-            &ctx.db,
-            ctx.org_id(),
-            None,
-            None,
-            ctx.fallback_harness_name.as_deref().or(Some("generic")),
-        )
-        .await
-        .map_err(classify_anyhow)?;
-        ctx.db
-            .get_harness(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
-    } else {
-        None
-    };
-
-    let Some(row) = row else {
-        return if default_when_omitted || harness_id.is_some() || harness_name.is_some() {
-            Err(CommandError::not_found("Harness"))
-        } else {
-            Ok(None)
-        };
-    };
-
-    if row.status != "active" {
-        return Err(CommandError::bad_request(
-            "Archived or deleted harnesses cannot be assigned to agents",
-        ));
-    }
-    Ok(Some(row.id))
-}
-
 // CreateAgent
 
 /// Create a new agent with a name, system prompt, and optional capabilities.
@@ -201,7 +131,7 @@ impl Command for CreateAgent {
             ])
             .with_examples(&[CliExample::new(
                 "Create an agent on the organization's default harness",
-                "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness generic",
+                "everruns agents create --name triage --system-prompt 'Triage incoming issues' --harness conversation",
             )]);
         Some(ROUTE)
     }

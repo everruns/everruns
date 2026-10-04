@@ -16,6 +16,30 @@
     }
   ],
   "paths": {
+    "/v1/agent-examples": {
+      "get": {
+        "tags": [
+          "agent-examples"
+        ],
+        "summary": "GET /v1/agent-examples — list all available examples",
+        "operationId": "list_examples",
+        "responses": {
+          "200": {
+            "description": "List of agent examples",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentExample"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents": {
       "get": {
         "tags": [
@@ -20276,6 +20300,167 @@
           }
         }
       },
+      "AgentExample": {
+        "type": "object",
+        "description": "A read-only agent example defined in code",
+        "required": [
+          "name",
+          "display_name",
+          "description",
+          "harness_name",
+          "tags",
+          "capabilities",
+          "dev_only"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
+            },
+            "description": "Capability IDs this example uses",
+            "example": [
+              "current_time"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description",
+            "example": "A friendly agent that tells dad jokes and knows what time it is."
+          },
+          "dev_only": {
+            "type": "boolean",
+            "description": "Whether this example requires dev/experimental mode",
+            "example": false
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable display name (e.g. \"Dad Jokes Agent\")",
+            "example": "Dad Jokes Agent"
+          },
+          "harness_name": {
+            "type": "string",
+            "description": "Explicit harness selected when importing this example.",
+            "example": "conversation"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name (e.g. \"dad-jokes-agent\")",
+            "example": "dad-jokes-agent"
+          },
+          "setup": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentExampleSetup",
+                "description": "Guided setup to run after importing, for templates that need one."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for categorization",
+            "example": [
+              "humor",
+              "demo"
+            ]
+          }
+        }
+      },
+      "AgentExampleSetting": {
+        "type": "object",
+        "description": "One setup choice. Turning it on sets `config_key` to `true` in the config\nof the agent's `capability`.",
+        "required": [
+          "key",
+          "label",
+          "description",
+          "capability",
+          "config_key",
+          "default"
+        ],
+        "properties": {
+          "capability": {
+            "type": "string",
+            "description": "Capability whose configuration this option changes.",
+            "example": "github"
+          },
+          "config_key": {
+            "type": "string",
+            "description": "Boolean configuration property controlled by this option.",
+            "example": "allow_pull_requests"
+          },
+          "default": {
+            "type": "boolean",
+            "description": "Initial value shown during guided setup.",
+            "example": false
+          },
+          "description": {
+            "type": "string",
+            "description": "Explains the effect of enabling this option.",
+            "example": "Let the scanner open draft pull requests for high-confidence fixes."
+          },
+          "key": {
+            "type": "string",
+            "description": "Stable setup option key.",
+            "example": "open_fix_pull_requests"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable setup option label.",
+            "example": "Open fix pull requests"
+          }
+        }
+      },
+      "AgentExampleSetup": {
+        "type": "object",
+        "description": "What the UI walks the user through after importing a template.",
+        "required": [
+          "connect_github",
+          "connections",
+          "repository_placeholder",
+          "trigger",
+          "settings"
+        ],
+        "properties": {
+          "connect_github": {
+            "type": "boolean",
+            "description": "The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`).",
+            "example": true
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Other connection providers the agent's service account needs.",
+            "example": [
+              "daytona"
+            ]
+          },
+          "repository_placeholder": {
+            "type": "string",
+            "description": "Text in `trigger` to replace with the picked `owner/repo`.",
+            "example": "${repository}"
+          },
+          "settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentExampleSetting"
+            },
+            "description": "Yes/no choices, each stored as one capability config key.",
+            "example": []
+          },
+          "trigger": {
+            "type": "object",
+            "description": "Body for `POST /v1/agents/{agent_id}/triggers` once the placeholder is\nreplaced."
+          }
+        }
+      },
       "AgentHarnessSource": {
         "type": "string",
         "enum": [
@@ -24130,7 +24315,7 @@
               "string",
               "null"
             ],
-            "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe org's built-in `generic` harness is used.",
+            "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe organization default is used (Conversation for new organizations).",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "harness_name": {
@@ -24139,7 +24324,7 @@
               "null"
             ],
             "description": "Addressable harness name. Alternative to `harness_id`.",
-            "example": "generic"
+            "example": "conversation"
           },
           "id": {
             "type": [
@@ -25639,7 +25824,7 @@
               "string",
               "null"
             ],
-            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the harness is derived from the agent (when one is supplied),\nelse the org default harness, else the built-in fallback. New orgs default\nthat to Generic. Mutually exclusive with `harness_name`.",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the harness is derived from the agent (when one is supplied),\nelse the org default harness, else the built-in fallback. New orgs default\nthat to Conversation. Mutually exclusive with `harness_name`.",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "harness_name": {
@@ -25647,8 +25832,8 @@
               "string",
               "null"
             ],
-            "description": "Harness name (e.g. \"generic\", \"deep-research\").\nAlternative to `harness_id` — looked up by name within the org.\nMutually exclusive with `harness_id`.",
-            "example": "generic"
+            "description": "Harness name (e.g. \"conversation\", \"deep-research\").\nAlternative to `harness_id` — looked up by name within the org.\nMutually exclusive with `harness_id`.",
+            "example": "conversation"
           },
           "hints": {
             "type": [
@@ -29015,7 +29200,7 @@
               "null"
             ],
             "description": "Human-readable display name shown in UI.",
-            "example": "Generic Harness"
+            "example": "Conversation"
           },
           "embedder_metadata": {
             "type": "object",
@@ -29062,8 +29247,8 @@
           },
           "name": {
             "type": "string",
-            "description": "Name, unique per org (e.g. \"generic\").",
-            "example": "generic"
+            "description": "Name, unique per org (e.g. \"conversation\").",
+            "example": "conversation"
           },
           "network_access": {
             "oneOf": [
@@ -31487,7 +31672,7 @@
                     "null"
                   ],
                   "description": "Human-readable display name shown in UI.",
-                  "example": "Generic Harness"
+                  "example": "Conversation"
                 },
                 "embedder_metadata": {
                   "type": "object",
@@ -31534,8 +31719,8 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Name, unique per org (e.g. \"generic\").",
-                  "example": "generic"
+                  "description": "Name, unique per org (e.g. \"conversation\").",
+                  "example": "conversation"
                 },
                 "network_access": {
                   "oneOf": [
@@ -33869,7 +34054,7 @@
                             "null"
                           ],
                           "description": "Human-readable display name shown in UI.",
-                          "example": "Generic Harness"
+                          "example": "Conversation"
                         },
                         "embedder_metadata": {
                           "type": "object",
@@ -33916,8 +34101,8 @@
                         },
                         "name": {
                           "type": "string",
-                          "description": "Name, unique per org (e.g. \"generic\").",
-                          "example": "generic"
+                          "description": "Name, unique per org (e.g. \"conversation\").",
+                          "example": "conversation"
                         },
                         "network_access": {
                           "oneOf": [
@@ -44707,7 +44892,7 @@
               "null"
             ],
             "description": "Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.",
-            "example": "generic"
+            "example": "conversation"
           },
           "initial_files": {
             "type": [
@@ -45687,7 +45872,7 @@
               "null"
             ],
             "description": "Alternative to `default_harness_id` — looked up by stable name within the org.\nMutually exclusive with `default_harness_id`.",
-            "example": "generic"
+            "example": "conversation"
           },
           "default_model_id": {
             "type": [
@@ -48070,7 +48255,7 @@
                   "null"
                 ],
                 "description": "Human-readable display name shown in UI.",
-                "example": "Generic Harness"
+                "example": "Conversation"
               },
               "embedder_metadata": {
                 "type": "object",
@@ -48117,8 +48302,8 @@
               },
               "name": {
                 "type": "string",
-                "description": "Name, unique per org (e.g. \"generic\").",
-                "example": "generic"
+                "description": "Name, unique per org (e.g. \"conversation\").",
+                "example": "conversation"
               },
               "network_access": {
                 "oneOf": [
@@ -48789,7 +48974,7 @@
                       "null"
                     ],
                     "description": "Human-readable display name shown in UI.",
-                    "example": "Generic Harness"
+                    "example": "Conversation"
                   },
                   "embedder_metadata": {
                     "type": "object",
@@ -48836,8 +49021,8 @@
                   },
                   "name": {
                     "type": "string",
-                    "description": "Name, unique per org (e.g. \"generic\").",
-                    "example": "generic"
+                    "description": "Name, unique per org (e.g. \"conversation\").",
+                    "example": "conversation"
                   },
                   "network_access": {
                     "oneOf": [

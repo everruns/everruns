@@ -12,15 +12,15 @@ pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
     /// If omitted, the harness is derived from the agent (when one is supplied),
     /// else the org default harness, else the built-in fallback. New orgs default
-    /// that to Generic. Mutually exclusive with `harness_name`.
+    /// that to Conversation. Mutually exclusive with `harness_name`.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: Option<HarnessId>,
-    /// Harness name (e.g. "generic", "deep-research").
+    /// Harness name (e.g. "conversation", "deep-research").
     /// Alternative to `harness_id` — looked up by name within the org.
     /// Mutually exclusive with `harness_id`.
     #[serde(default)]
-    #[schema(example = "generic")]
+    #[schema(example = "conversation")]
     pub harness_name: Option<String>,
     /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
     /// When supplied without a harness, the session inherits the agent's harness.

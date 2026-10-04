@@ -52,7 +52,7 @@ impl everruns_platform::slack_action::SlackActionInvoker for GrpcSlackActionInvo
             action: Some(action.into()),
         };
 
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .invoke_slack_action(request)
             .await

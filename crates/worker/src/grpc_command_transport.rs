@@ -41,7 +41,7 @@ impl GrpcAdapter {
         acting_for_session: Option<SessionId>,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
         let org_id = self.require_org(surface)?;
-        let mut client = self.client.inner.lock().await;
+        let mut client = self.client.inner.client();
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
                 runtime_view: false,

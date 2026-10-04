@@ -36,4 +36,4 @@ export interface AgentExampleSetup {
   settings: AgentExampleSetting[];
 }
 
-export type GuidedAgentExample = AgentExample & { setup?: AgentExampleSetup };
+export type GuidedAgentExample = Omit<AgentExample, "setup"> & { setup?: AgentExampleSetup };

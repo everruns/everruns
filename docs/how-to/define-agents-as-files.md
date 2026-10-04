@@ -46,8 +46,8 @@ everruns agents create -f hackernews-reader.md
 name = "research-assistant"
 description = "Helps with research tasks"
 # Base execution harness for this agent (id or name). Omit to default to the
-# org's built-in `generic` harness. Sessions started from the agent inherit it.
-harness_name = "generic"
+# org's default harness (Conversation in a new org). Sessions started from the agent inherit it.
+harness_name = "worker-base"
 system_prompt = """
 You are a helpful research assistant.
 Always cite your sources.
@@ -68,8 +68,8 @@ If `./agent.toml` exists in the current directory and you don't pass inline flag
 ```yaml
 name: "research-assistant"
 description: "Helps with research tasks"
-# Base execution harness (id or name); omit to default to the built-in `generic`.
-harness_name: "generic"
+# Base execution harness (id or name); omit to inherit the organization default (Conversation in a new org).
+harness_name: "worker-base"
 system_prompt: |
   You are a helpful research assistant.
   Always cite your sources.

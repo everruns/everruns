@@ -2,6 +2,7 @@ use super::types::{
     AddSessionParticipantRequest, CancelStatus, CancelTurnResponse, CreateSessionRequest,
     ForkSessionRequest, SessionFacetsResponse, SessionStatsResponse, UpdateSessionRequest,
 };
+use super::validation::{limit_validation_error, validation_error};
 use super::{platform_chat_starter as starter, queries as q};
 use crate::domains::common::*;
 use crate::services::PrincipalService;
@@ -24,30 +25,6 @@ use everruns_platform::{
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
-
-fn validation_error(
-    error: (
-        axum::http::StatusCode,
-        axum::Json<crate::api::common::ErrorResponse>,
-    ),
-) -> CommandError {
-    let body = error.1.0;
-    let message = body.detail.unwrap_or_else(|| {
-        if body.title.is_empty() {
-            "Request failed".to_string()
-        } else {
-            body.title
-        }
-    });
-    match error.0 {
-        axum::http::StatusCode::NOT_FOUND => CommandError::not_found_msg(message),
-        _ => CommandError::bad_request(message),
-    }
-}
-
-fn limit_validation_error(_: crate::api::validation::ValidationError) -> CommandError {
-    CommandError::bad_request(crate::api::validation::VALIDATION_ERROR_MESSAGE)
-}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateSession(pub CreateSessionRequest);
@@ -220,6 +197,8 @@ impl Command for CreateSession {
             }
         }
 
+        let assigns_harness =
+            req.harness_id.is_some() || (agent_internal_id.is_none() && agent_harness_id.is_none());
         let harness_id = q::resolve_session_harness_id(
             &ctx.db,
             ctx.org_id(),
@@ -229,6 +208,9 @@ impl Command for CreateSession {
         )
         .await
         .map_err(classify_anyhow)?;
+        if assigns_harness {
+            crate::domains::agents::commands::check_harness_assignment(ctx, harness_id).await?;
+        }
         req.harness_id = Some(harness_id);
 
         let harness = ctx

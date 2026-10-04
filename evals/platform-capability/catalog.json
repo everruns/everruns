@@ -1976,7 +1976,7 @@
           ]
         },
         "harness_id": {
-          "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe org's built-in `generic` harness is used.",
+          "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe organization default is used (Conversation for new organizations).",
           "example": "harness_01933b5a00007000800000000000001",
           "type": [
             "string",
@@ -1985,7 +1985,7 @@
         },
         "harness_name": {
           "description": "Addressable harness name. Alternative to `harness_id`.",
-          "example": "generic",
+          "example": "conversation",
           "type": [
             "string",
             "null"
@@ -7167,7 +7167,7 @@
           ]
         },
         "harness_id": {
-          "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the harness is derived from the agent (when one is supplied),\nelse the org default harness, else the built-in fallback. New orgs default\nthat to Generic. Mutually exclusive with `harness_name`.",
+          "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the harness is derived from the agent (when one is supplied),\nelse the org default harness, else the built-in fallback. New orgs default\nthat to Conversation. Mutually exclusive with `harness_name`.",
           "example": "harness_01933b5a00007000800000000000001",
           "type": [
             "string",
@@ -7175,8 +7175,8 @@
           ]
         },
         "harness_name": {
-          "description": "Harness name (e.g. \"generic\", \"deep-research\").\nAlternative to `harness_id` — looked up by name within the org.\nMutually exclusive with `harness_id`.",
-          "example": "generic",
+          "description": "Harness name (e.g. \"conversation\", \"deep-research\").\nAlternative to `harness_id` — looked up by name within the org.\nMutually exclusive with `harness_id`.",
+          "example": "conversation",
           "type": [
             "string",
             "null"
@@ -11458,7 +11458,7 @@
           ]
         },
         "harness_id": {
-          "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe org's built-in `generic` harness is used.",
+          "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe organization default is used (Conversation for new organizations).",
           "example": "harness_01933b5a00007000800000000000001",
           "type": [
             "string",
@@ -11467,7 +11467,7 @@
         },
         "harness_name": {
           "description": "Addressable harness name. Alternative to `harness_id`.",
-          "example": "generic",
+          "example": "conversation",
           "type": [
             "string",
             "null"
@@ -16996,7 +16996,7 @@
             },
             "harness_name": {
               "description": "Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.",
-              "example": "generic",
+              "example": "conversation",
               "type": [
                 "string",
                 "null"
@@ -21611,7 +21611,7 @@
               ]
             },
             "harness_id": {
-              "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe org's built-in `generic` harness is used.",
+              "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe organization default is used (Conversation for new organizations).",
               "example": "harness_01933b5a00007000800000000000001",
               "type": [
                 "string",
@@ -21620,7 +21620,7 @@
             },
             "harness_name": {
               "description": "Addressable harness name. Alternative to `harness_id`.",
-              "example": "generic",
+              "example": "conversation",
               "type": [
                 "string",
                 "null"

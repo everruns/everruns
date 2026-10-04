@@ -102,7 +102,7 @@ export interface CreateAgentRequest {
   /** Conversation starters (agent wins when non-empty). */
   starters?: ConversationStarter[];
   system_prompt: string;
-  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to default to the org's built-in `generic` harness. */
+  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to use the organization default (Conversation for new organizations). */
   harness_id?: string;
   /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
   harness_name?: string;
@@ -152,16 +152,6 @@ export interface UpdateAgentRequest {
   forked_from_session_id?: string | null;
   /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
   forked_from_sequence?: number | null;
-}
-
-/** Read-only agent example defined in code, adoptable as a real Agent */
-export interface AgentExample {
-  name: string;
-  display_name: string;
-  description: string;
-  tags: string[];
-  capabilities: AgentCapabilityConfig[];
-  dev_only: boolean;
 }
 
 export type FindingSeverity = "warning" | "info" | "suggestion";

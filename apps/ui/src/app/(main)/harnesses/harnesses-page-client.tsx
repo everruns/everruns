@@ -25,6 +25,8 @@ import {
 } from "@/components/layout";
 import { useLocale } from "@/providers/locale-provider";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
+import { Button } from "@/components/ui/button";
+import { isHarnessDeprecated } from "@/lib/harness-deprecation";
 import { cn } from "@/lib/utils";
 import { resolveHarnessInheritance } from "@/lib/harness-inheritance";
 
@@ -40,6 +42,7 @@ export default function HarnessesPageClient() {
   const importExample = useImportHarnessExample();
   const [importingName, setImportingName] = useState<string | null>(null);
 
+  const [showDeprecated, setShowDeprecated] = useState(false);
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -60,10 +63,10 @@ export default function HarnessesPageClient() {
   );
 
   const counts = useMemo(() => {
-    const list = harnesses ?? [];
+    const list = (harnesses ?? []).filter((h) => showDeprecated || !isHarnessDeprecated(h));
     const archived = list.filter((h) => isArchivedStatus(h.status)).length;
     return { all: list.length, active: list.length - archived, archived };
-  }, [harnesses]);
+  }, [harnesses, showDeprecated]);
 
   const harnessesById = useMemo(
     () => new Map((harnesses ?? []).map((harness) => [harness.id, harness])),
@@ -73,6 +76,7 @@ export default function HarnessesPageClient() {
   const filteredHarnesses = useMemo(() => {
     const query = search.trim().toLowerCase();
     return (harnesses ?? []).filter((harness) => {
+      if (!showDeprecated && isHarnessDeprecated(harness)) return false;
       if (statusTab === "active" && isArchivedStatus(harness.status)) return false;
       if (statusTab === "archived" && !isArchivedStatus(harness.status)) return false;
       if (!query) return true;
@@ -82,7 +86,7 @@ export default function HarnessesPageClient() {
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [harnesses, search, statusTab]);
+  }, [harnesses, search, statusTab, showDeprecated]);
 
   const previewExamples = examples?.slice(0, EXAMPLE_PREVIEW_LIMIT);
   const hasMoreExamples = (examples?.length ?? 0) > EXAMPLE_PREVIEW_LIMIT;
@@ -117,6 +121,14 @@ export default function HarnessesPageClient() {
           containerClassName="w-64"
         />
         <div className="flex-1" />
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-pressed={showDeprecated}
+          onClick={() => setShowDeprecated((shown) => !shown)}
+        >
+          {showDeprecated ? "Hide deprecated" : "Show deprecated"}
+        </Button>
         <SectionTabs
           value={statusTab}
           onValueChange={(v) => setStatusTab(v as StatusTab)}

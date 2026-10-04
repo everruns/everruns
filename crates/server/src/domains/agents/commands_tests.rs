@@ -221,19 +221,25 @@ async fn create_test_harness(db: &StorageBackend, name: &str) -> HarnessId {
 }
 
 #[tokio::test]
-async fn create_agent_defaults_to_generic_harness() {
+async fn create_agent_defaults_to_conversation_harness() {
     let db = Arc::new(StorageBackend::in_memory());
     let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
-    let generic_id = crate::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
+    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
-        .expect("generic harness id");
+        .unwrap();
+    let conversation_id = db
+        .get_harness_by_name(DEFAULT_ORG_ID, "conversation")
+        .await
+        .unwrap()
+        .unwrap()
+        .id;
 
     let created = CreateAgent(basic_agent_request("default-harness-agent"))
         .run(&ctx)
         .await
         .expect("agent is created");
 
-    assert_eq!(created.harness_id, generic_id);
+    assert_eq!(created.harness_id, conversation_id);
 }
 
 #[tokio::test]

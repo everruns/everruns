@@ -91,12 +91,12 @@ pub struct Harness {
     /// Unique identifier for the harness (format: harness_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
     pub id: HarnessId,
-    /// Name, unique per org (e.g. "generic").
-    #[cfg_attr(feature = "openapi", schema(example = "generic"))]
+    /// Name, unique per org (e.g. "conversation").
+    #[cfg_attr(feature = "openapi", schema(example = "conversation"))]
     pub name: String,
     /// Human-readable display name shown in UI.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Generic Harness"))]
+    #[cfg_attr(feature = "openapi", schema(example = "Conversation"))]
     pub display_name: Option<String>,
     /// Display glyph name rendered by the UI (e.g. "message-circle").
     ///
@@ -405,7 +405,7 @@ pub use everruns_contracts::CapabilityRef as BuiltInCapabilityDefinition;
 /// assigned by the seeder at provisioning time — never hardcoded.
 #[derive(Debug, Clone)]
 pub struct BuiltInHarnessDefinition {
-    /// Name, unique per org (e.g. "generic").
+    /// Name, unique per org (e.g. "conversation").
     pub name: String,
     /// Human-readable display name shown in UI.
     pub display_name: String,

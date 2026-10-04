@@ -15,7 +15,7 @@ Gives the agent one tool for collecting decisions it cannot make on its own. Ins
 
 The user sees a card with the questions. Choice questions show described options, and text questions show a free-form field. Answering resumes the turn.
 
-Enabled by default on the [Generic](/built-ins/harnesses/generic/) and [Platform Chat](/built-ins/harnesses/platform-chat/) harnesses. Not on [Base](/built-ins/harnesses/base/), which has no interactive surface.
+Opt-in on the canonical levels. Included in deprecated [Generic](/built-ins/harnesses/generic/) and [Platform Chat](/built-ins/harnesses/platform-chat/) harnesses. Not on [Base](/built-ins/harnesses/base/), which has no interactive surface.
 
 ## When to enable it
 

@@ -66,7 +66,7 @@ There are four capabilities, two mechanisms (hosted vs client-side). The two hos
 - **`openai_tool_search`**: uses OpenAI's hosted tool_search (namespaces + `defer_loading` + `{"type":"tool_search"}`). Gated on the OpenAI `LlmModelProfile.tool_search`. Hosted mode only. See `crates/builtins/src/openai_tool_search.rs`.
 - **`claude_tool_search`**: uses Anthropic's hosted tool_search: each deferrable tool gets `defer_loading: true` and a `tool_search_tool_bm25_20251119` server-tool entry is added (no namespaces, Anthropic defers each tool individually). Gated on the Anthropic `LlmModelProfile.tool_search`. The Anthropic driver renders it; see `crates/drivers/drivers/src/anthropic/driver.rs::convert_tools_with_search` and `crates/builtins/src/claude_tool_search.rs`.
 - **`tool_search`**: generic, provider-agnostic client-side deferral that works with any model (Gemini, OpenAI Completions, Claude/GPT reached via a gateway that masks the hosted format, ...). See `crates/builtins/src/tool_search.rs` and below.
-- **`auto_tool_search`**: model-adaptive: picks the matching hosted mechanism on models that support it and the generic client-side mechanism everywhere else. This is the right default for a multi-provider harness (it is what the `generic` harness uses). See `crates/builtins/src/auto_tool_search.rs`.
+- **`auto_tool_search`**: model-adaptive: picks the matching hosted mechanism on models that support it and the generic client-side mechanism everywhere else. This is the right default for a multi-provider harness (it is what Worker and deprecated Generic use). See `crates/builtins/src/auto_tool_search.rs`.
 
 ### Auto resolution
 

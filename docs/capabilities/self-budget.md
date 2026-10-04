@@ -10,7 +10,7 @@ appliesTo: [framework, platform, cloud]
 | **Category** | System |
 | **Features** | *(none)* |
 | **Tools** | *(none)* |
-| **Included in** | Generic harness (default) |
+| **Included in** | Worker harness |
 | **Dependencies** | None |
 
 Teaches the agent how to self-manage an **indicative** budget that the user mentions in conversation, for example, "you have $7" or "keep this under 20k tokens". The capability contributes prompt text only; it adds no tools and performs no enforcement.
@@ -28,7 +28,7 @@ For platform-enforced budgets (authoritative limits that pause or stop sessions 
 - The agent avoids claiming exact cost certainty when only token counts or partial pricing are available.
 - The agent distinguishes between platform-enforced budgets and user-requested indicative budgets when reporting progress.
 
-There is no `self_budget` tool. Usage data comes from `get_session_info`, which is provided by the [`session`](/capabilities/session/) capability (bundled by default in the Generic harness).
+There is no `self_budget` tool. Usage data comes from `get_session_info`, which is provided by the [`session`](/capabilities/session/) capability (bundled by default in the Worker harness).
 
 ## Self-Budget vs Budgeting
 
@@ -40,7 +40,7 @@ There is no `self_budget` tool. Usage data comes from `get_session_info`, which 
 | Data source | `get_session_info` cumulative usage | Budgets table / ledger |
 | Use case | User says "you have $7" in chat | Org/session has a configured budget in the platform |
 
-The two capabilities are non-conflicting and can run together. The Generic harness includes both.
+The two capabilities are non-conflicting and can run together. The Worker harness includes both.
 
 ## Related
 

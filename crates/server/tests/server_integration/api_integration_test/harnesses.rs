@@ -30,7 +30,7 @@ async fn test_create_session_nonexistent_harness_returns_404() {
 }
 
 #[tokio::test]
-async fn test_list_harnesses_includes_base_and_generic() {
+async fn test_list_harnesses_includes_levels_and_deprecated_generic() {
     let server = TestServer::new().await;
 
     let data: Value = server
@@ -41,8 +41,8 @@ async fn test_list_harnesses_includes_base_and_generic() {
 
     let harnesses = data["data"].as_array().expect("Expected array");
     assert!(
-        harnesses.len() >= 2,
-        "Should have at least Base and Generic harnesses"
+        harnesses.len() >= 5,
+        "Should have the canonical levels and legacy Generic"
     );
 
     let names: Vec<&str> = harnesses
@@ -51,6 +51,18 @@ async fn test_list_harnesses_includes_base_and_generic() {
         .collect();
     assert!(names.contains(&"base"), "Should have Base harness");
     assert!(names.contains(&"generic"), "Should have Generic harness");
+    for name in ["conversation", "worker-base", "worker"] {
+        assert!(names.contains(&name), "Missing {name}");
+    }
+    let generic = harnesses.iter().find(|h| h["name"] == "generic").unwrap();
+    assert_eq!(generic["status"], "active");
+    assert!(
+        generic["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|tag| tag == "deprecated")
+    );
 }
 
 #[tokio::test]
@@ -84,7 +96,8 @@ async fn test_get_generic_harness() {
 
     assert_eq!(harness.name, "generic");
     assert!(harness.tags.contains(&"generic".to_string()));
-    assert!(harness.tags.contains(&"default".to_string()));
+    assert!(harness.tags.contains(&"deprecated".to_string()));
+    assert!(!harness.tags.contains(&"default".to_string()));
 
     // Verify Generic harness has the expected built-in defaults
     let cap_ids: Vec<&str> = harness
@@ -438,7 +451,10 @@ async fn test_copy_seed_generic_harness() {
         .json();
 
     assert_eq!(copied.name, "generic-copy");
-    assert_eq!(copied.display_name.as_deref(), Some("Generic (copy)"));
+    assert_eq!(
+        copied.display_name.as_deref(),
+        Some("Generic — deprecated (copy)")
+    );
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),

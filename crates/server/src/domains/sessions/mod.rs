@@ -15,6 +15,7 @@ mod playground_tests;
 pub mod queries;
 pub mod service;
 pub mod types;
+mod validation;
 
 pub use commands::*;
 pub use service::*;

@@ -994,7 +994,7 @@ Following the agentskills.io specification:
 
 - **ID**: `soft_approval`
 - **Purpose**: Asks the agent to pause for spoken consent before critical actions, batching safe work without interruption
-- **Status**: Registered and enabled by default on the Generic harness and Platform Chat Agent at level `normal`
+- **Status**: Registered and included in Worker Base, Worker, deprecated Generic and the Platform Chat Agent at level `normal`
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/builtins/src/soft_approval.rs`

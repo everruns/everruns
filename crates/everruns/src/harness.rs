@@ -45,13 +45,43 @@ impl Harness {
         }
     }
 
-    /// The `generic` Harness: the same capability floor a hosted org is
-    /// provisioned with.
+    /// Minimal harness with zero capabilities.
+    pub fn base() -> Self {
+        Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::Base)
+    }
+
+    /// Dialogue and bounded conversation context, without filesystem or shell tools.
+    pub fn conversation() -> Self {
+        Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::Conversation)
+    }
+
+    /// Working files, bash, project instructions and durable tool output.
+    pub fn worker_base() -> Self {
+        Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::WorkerBase)
+    }
+
+    /// A worker with skills, long-context support, budgeting and task coordination.
+    /// Enable the corresponding host integrations to execute these capabilities.
+    /// Delegation needs a host with subagent and task backends.
+    pub fn worker() -> Self {
+        Self::preset(everruns_contracts::capability::BuiltInHarnessPreset::Worker)
+    }
+
+    fn preset(preset: everruns_contracts::capability::BuiltInHarnessPreset) -> Self {
+        let mut builder = Self::builder(preset.name());
+        for capability in preset.effective_capabilities() {
+            builder = builder.capability(capability);
+        }
+        builder
+            .build()
+            .expect("built-in harness capabilities are valid")
+    }
+
+    /// Deprecated legacy Generic bundle, identical to the hosted legacy harness.
     ///
     /// One definition, not a copy. Both this and `crates/server/src/harnesses/`
     /// read `everruns_contracts::generic_capabilities`, so an application
-    /// stops approximating the platform default with a builder chain that
-    /// silently drifts from it (EVE-1041).
+    /// preserves its existing bundle without a separate builder list that drifts.
     ///
     /// What it does *not* carry is the platform's base system prompt or its
     /// presentation fields — a Harness holds neither, by design. Compose
@@ -61,6 +91,9 @@ impl Harness {
     /// Capabilities the built binary did not compile in are inert rather than
     /// fatal, the same as any other reference to an unregistered capability,
     /// so this is usable from a facade built with a narrower feature set.
+    #[deprecated(
+        note = "Choose base(), conversation(), worker_base(), or worker(); Generic retains its legacy tool surface."
+    )]
     pub fn generic() -> Self {
         let mut builder = Harness::builder(everruns_contracts::capability::GENERIC_HARNESS_NAME);
         for capability in everruns_contracts::generic_capabilities() {
@@ -473,6 +506,7 @@ impl EnvironmentSessionBuilder {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use std::sync::Arc;
 
@@ -546,6 +580,30 @@ mod tests {
             }))
             .build()
             .expect("valid test environment")
+    }
+
+    #[test]
+    fn canonical_presets_preserve_shared_config_and_serialization() {
+        use everruns_contracts::capability::BuiltInHarnessPreset::*;
+        for (preset, harness) in [
+            (Base, Harness::base()),
+            (Conversation, Harness::conversation()),
+            (WorkerBase, Harness::worker_base()),
+            (Worker, Harness::worker()),
+        ] {
+            let expected = preset.effective_capabilities();
+            assert_eq!(harness.name(), preset.name());
+            assert_eq!(
+                serde_json::to_value(harness.capabilities()).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+            let serialized = serde_json::to_string(&harness).unwrap();
+            let round_trip: Harness = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(
+                serde_json::to_value(round_trip).unwrap(),
+                serde_json::to_value(harness).unwrap()
+            );
+        }
     }
 
     #[test]
