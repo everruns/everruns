@@ -5,12 +5,13 @@
  */
 "use client";
 
+import { useChatWorkspace } from "@/components/chat/chat-workspace-context";
 import { useEffect, useState } from "react";
 import { Bot, Cpu, ExternalLink, ListTodo, Radar } from "lucide-react";
 import type { SessionTask, SessionTaskState } from "@/lib/api/types";
 import { formatWorkedDuration } from "@/components/chat/turn-delimiter";
 import { runDurationMs, type ChatRun } from "@/components/chat/run-cards";
-import { LinkButton } from "@/components/ui/button";
+import { Button, LinkButton } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const STATUS_DOT: Record<SessionTaskState, string> = {
@@ -49,6 +50,7 @@ function runHref(task: SessionTask): string {
 
 export function RunCard({ run, now }: { run: ChatRun; now: number }) {
   const { task, subagentCount } = run;
+  const workspace = useChatWorkspace();
   const durationMs = runDurationMs(task, now);
   const label = task.display_name || task.id;
 
@@ -74,10 +76,21 @@ export function RunCard({ run, now }: { run: ChatRun; now: number }) {
         {durationMs != null && <span>{formatWorkedDuration(durationMs)}</span>}
       </span>
 
-      <LinkButton href={runHref(task)} variant="outline" size="sm" className="ml-auto">
-        <ExternalLink className="size-4" />
-        Open session
-      </LinkButton>
+      {workspace?.sessionId === task.session_id ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={() => workspace.openTask(task.id)}
+        >
+          View thread
+        </Button>
+      ) : (
+        <LinkButton href={runHref(task)} variant="outline" size="sm" className="ml-auto">
+          <ExternalLink className="size-4" />
+          Open session
+        </LinkButton>
+      )}
     </div>
   );
 }

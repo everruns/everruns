@@ -1,5 +1,7 @@
 # Chats (UI)
 
+* [TC018: Chat - Adopted Threads Workspace](TC018_adopted_threads_workspace.md) - Verify adoption opt-in, permanent Chat, separate conversation context, and background-work lifecycle in the integrated Threads panel.
+
 * [TC001: Chat - Permanent Landing and Fresh Side Draft](TC001_chats_landing_and_new_thread.md) - Verify that landing opens permanent Chat and New chat creates a fresh side conversation only on first send.
 * [TC002: Global Chat - Create Agent via Chat](TC002_create_agent_via_chat.md) - Verify that the global chat agent can create a new agent when asked, using the `manage_agents` platform management tool.
 * [TC003: Global Chat - Create 10 Random Agents](TC003_create_10_random_agents.md) - Verify that the global chat agent can create 10 distinct agents in a single conversation when asked.

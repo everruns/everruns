@@ -20,16 +20,27 @@ export function ChatArchiveButton({
   session,
   showLabel = false,
   className,
+  resolve = false,
+  disabled = false,
 }: {
   session: Pick<Session, "id" | "archived_at"> & Partial<Pick<Session, "tags">>;
   showLabel?: boolean;
   className?: string;
+  resolve?: boolean;
+  disabled?: boolean;
 }) {
   const archiveSession = useArchiveSession();
   const unarchiveSession = useUnarchiveSession();
   const isArchived = !!session.archived_at;
   const isPending = archiveSession.isPending || unarchiveSession.isPending;
-  const label = isArchived ? "Unarchive chat" : "Archive chat";
+  // Resolve/Reopen reuse the existing explicit, durable archive lifecycle.
+  const label = resolve
+    ? isArchived
+      ? "Reopen thread"
+      : "Resolve thread"
+    : isArchived
+      ? "Unarchive chat"
+      : "Archive chat";
 
   if (session.tags?.includes(PLATFORM_CHAT_STARTER_TAG)) return null;
   return (
@@ -41,7 +52,7 @@ export function ChatArchiveButton({
       aria-label={label}
       aria-pressed={isArchived}
       title={label}
-      disabled={isPending}
+      disabled={isPending || disabled}
       onClick={() => {
         const mutation = isArchived ? unarchiveSession : archiveSession;
         mutation.mutate({ sessionId: session.id });

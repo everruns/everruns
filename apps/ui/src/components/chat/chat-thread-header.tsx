@@ -95,7 +95,7 @@ function ThreadTitle({
   );
 }
 
-function ShareButton() {
+function ShareButton({ href }: { href?: string }) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -112,7 +112,9 @@ function ShareButton() {
       className="max-sm:w-7 max-sm:px-0"
       aria-label={copied ? "Link copied" : "Share"}
       onClick={async () => {
-        await navigator.clipboard?.writeText(window.location.href);
+        await navigator.clipboard?.writeText(
+          href ? new URL(href, window.location.origin).href : window.location.href,
+        );
         setCopied(true);
       }}
     >
@@ -133,11 +135,16 @@ export function ChatThreadHeader({
   layout = "chat",
   showPin = true,
   extraActions,
+  threadMode = false,
+  shareHref,
 }: {
   contextLabel?: ReactNode;
   layout?: "chat" | "page";
   showPin?: boolean;
   extraActions?: ReactNode;
+  threadMode?: boolean;
+  /** Split panes share their own conversation, not whichever pane owns the URL. */
+  shareHref?: string;
   session: Session;
   /** Display title, already resolved through the thread-title fallbacks. */
   title: string;
@@ -164,11 +171,16 @@ export function ChatThreadHeader({
     <>
       {!permanent && (
         <>
-          {showPin && <ChatPinButton session={session} showLabel />}
-          <ChatArchiveButton session={session} showLabel />
+          {showPin && !threadMode && <ChatPinButton session={session} showLabel />}
+          <ChatArchiveButton
+            session={session}
+            showLabel
+            resolve={threadMode}
+            disabled={threadMode && !session.archived_at && session.status !== "idle"}
+          />
         </>
       )}
-      <ShareButton />
+      <ShareButton href={shareHref} />
       <LinkButton
         href={`/sessions/${session.id}/transcript`}
         variant="outline"
@@ -189,7 +201,9 @@ export function ChatThreadHeader({
         title={<ThreadTitle session={session} title={title} large />}
         badges={
           session.archived_at ? (
-            <span className="border px-1.5 text-xs text-muted-foreground">Archived</span>
+            <span className="border px-1.5 text-xs text-muted-foreground">
+              {threadMode ? "Resolved" : "Archived"}
+            </span>
           ) : undefined
         }
         description={
@@ -215,7 +229,7 @@ export function ChatThreadHeader({
           )}
           {session.archived_at && (
             <span className="flex-none border border-border/70 px-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-              Archived
+              {threadMode ? "Resolved" : "Archived"}
             </span>
           )}
         </span>
