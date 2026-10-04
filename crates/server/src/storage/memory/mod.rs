@@ -26,6 +26,7 @@ mod events;
 mod files;
 mod github_apps;
 mod harnesses;
+mod health_issues;
 mod knowledge_bases;
 mod knowledge_indexes;
 mod late_generation_usage;
@@ -126,6 +127,7 @@ pub(crate) fn matches_search_tokens(search: Option<&str>, texts: &[&str]) -> boo
 type PinnedSessionData = (i64, DateTime<Utc>);
 type ReportingOutboxKey = (i64, String, String, String, String);
 type McpServiceToolCacheKey = (i64, Uuid, Uuid, String, String);
+type HealthReminder = (Uuid, DateTime<Utc>);
 
 #[derive(Clone)]
 struct WaitingTurnResolutionState {
@@ -190,6 +192,8 @@ pub struct InMemoryDatabase {
     user_preferences: RwLock<HashMap<(Uuid, String), UserPreferenceRow>>,
     // Pinned sessions: (user_id, session_id) -> (org_id, pinned_at)
     pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
+    health_issues: RwLock<HashMap<Uuid, crate::storage::HealthIssueRow>>,
+    health_reminders: RwLock<HashMap<(Uuid, Uuid), HealthReminder>>,
     // Durable UI notifications
     notifications: RwLock<HashMap<NotificationId, NotificationRow>>,
     notification_turn_requests: RwLock<HashMap<MessageId, NotificationTurnRequestRow>>,
@@ -377,6 +381,8 @@ impl Default for InMemoryDatabase {
             virtual_user_preferences: RwLock::new(HashMap::new()),
             user_preferences: RwLock::new(HashMap::new()),
             pinned_sessions: RwLock::new(HashMap::new()),
+            health_issues: RwLock::new(HashMap::new()),
+            health_reminders: RwLock::new(HashMap::new()),
             notifications: RwLock::new(HashMap::new()),
             notification_turn_requests: RwLock::new(HashMap::new()),
             session_schedules: RwLock::new(HashMap::new()),

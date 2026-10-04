@@ -73,14 +73,14 @@ export function TaskProgressBar({ task }: { task: SessionTask }) {
  * not typed here: session detail is a read-only recording (EVE-854), so the
  * prompt is a fact. Fork the session into a chat to actually answer it.
  */
-function TaskInputPrompt({ task }: { task: SessionTask }) {
+function TaskInputPrompt({ task, replyHint }: { task: SessionTask; replyHint?: string }) {
   if (task.state !== "awaiting_input" || !task.input_request) return null;
 
   return (
     <div className="space-y-1 rounded border border-warning/50 bg-warning/10 px-3 py-2">
       <div className="text-sm text-foreground">{task.input_request.prompt}</div>
       <div className="text-xs text-muted-foreground">
-        Waiting for input. Fork this session into a chat to answer.
+        {replyHint ?? "Waiting for input. Fork this session into a chat to answer."}
       </div>
     </div>
   );
@@ -174,9 +174,12 @@ function TaskDrilldown({ task, sessionId }: { task: SessionTask; sessionId: stri
 export function TaskCard({
   task,
   sessionId,
+  inputReplyHint,
 }: {
   task: SessionTask;
   sessionId: string | undefined;
+  /** A live Chat surface can offer an answer beside this read-only card. */
+  inputReplyHint?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const terminal = isTerminalTaskState(task.state);
@@ -186,11 +189,11 @@ export function TaskCard({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <ListTodo className="h-4 w-4 text-muted-foreground" />
-            <div>
-              <CardTitle className="text-base">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <ListTodo className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <CardTitle className="break-words text-base">
                 <EntityIdentity value={task.id}>{task.display_name || task.id}</EntityIdentity>
               </CardTitle>
               <CardDescription>
@@ -198,7 +201,7 @@ export function TaskCard({
               </CardDescription>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {taskStateBadge(task.state)}
             {!terminal && task.cancel_requested_at ? (
               <span className="text-xs text-muted-foreground">Cancel requested</span>
@@ -295,7 +298,7 @@ export function TaskCard({
             </Link>
           </div>
         ) : null}
-        <TaskInputPrompt task={task} />
+        <TaskInputPrompt task={task} replyHint={inputReplyHint} />
         {expanded ? <TaskDrilldown task={task} sessionId={sessionId} /> : null}
       </CardContent>
     </Card>

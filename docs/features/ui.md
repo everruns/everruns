@@ -30,6 +30,23 @@ The sidebar provides access to main sections:
 | Capabilities | Browse available capabilities |
 | Settings | Configure providers, personal access tokens, and team members |
 
+## Chat and Threads
+
+**Chat** opens your permanent conversation with the Platform Chat Agent for managing
+Everruns. Agent testing lives in Playground.
+
+Organization owners and admins can opt into **Chat threads** in **Settings → Features**.
+It is an adoption feature, disabled by default. With it enabled, the sidebar contains
+only Chat, and a **Threads** button opens conversations and ongoing work beside the
+permanent conversation. Create a **New thread**, search existing conversations, or open
+work from a **View thread** card. The panel can expand and becomes a full-screen drawer
+on mobile.
+
+Idle conversations remain **Open**. **Resolve thread** puts one away without losing its
+history; **Reopen thread** lets you continue. Background work shows its actual progress,
+input requests, and failures. Disabling the feature restores the existing Chat interface
+and preserves conversations and their URLs.
+
 ## Dashboard
 
 The dashboard provides an at-a-glance view of your system:

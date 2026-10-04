@@ -99,7 +99,7 @@ export function SidebarUserMenu({
               {user.name ? getInitials(user.name) : <User className="h-4 w-4" />}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 text-left">
+          <div className="min-w-0 flex-1 text-left">
             <p className="truncate font-semibold leading-5">{user.name || user.email}</p>
             {!requiresAuth ? (
               <p className="truncate text-[11px] text-muted-foreground">Local user</p>

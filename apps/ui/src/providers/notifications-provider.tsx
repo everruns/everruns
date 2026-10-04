@@ -17,6 +17,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { useMountEffect } from "@/hooks/use-mount-effect";
@@ -122,6 +123,7 @@ function updateViewedInState(state: NotificationState, notificationId: string): 
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const { requiresAuth, user } = useAuth();
   const notificationsFeatureEnabled = useFeatureFlag("notifications");
@@ -296,6 +298,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       eventSource.addEventListener("notification.upsert", (messageEvent) => {
         try {
           const incoming = JSON.parse(messageEvent.data) as Notification;
+          if (incoming.kind === "health.issue") {
+            void queryClient.invalidateQueries({ queryKey: ["health-issues"] });
+            void queryClient.invalidateQueries({ queryKey: ["health-issue"] });
+          }
           const suppressed = shouldSuppressNotification(
             incoming,
             activeTargetKeyRef.current,
@@ -306,9 +312,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
           let shouldToast = false;
           setState((prev) => {
             const next = upsertNotification(prev, incoming);
-            const existed = prev.rawNotifications.some((item) => item.id === incoming.id);
+            const previous = prev.rawNotifications.find((item) => item.id === incoming.id);
+            const existed = !!previous;
             shouldToast =
-              !existed &&
+              (!existed || (incoming.kind === "health.issue" && !!previous?.viewed_at)) &&
               !incoming.viewed_at &&
               !suppressed &&
               isVisibleRef.current &&
@@ -344,7 +351,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       eventSourceRef.current?.close();
     };
-  }, [enqueueToast, isEnabled, markViewed, state.initialized]);
+  }, [enqueueToast, isEnabled, markViewed, state.initialized, queryClient]);
 
   const suppressedUnreadIds = useMemo(
     () =>

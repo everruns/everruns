@@ -95,6 +95,30 @@ See [source and binding policy](../../crates/server/src/domains/sessions/playgro
 
 ## Surface contracts
 
+### Adopted Chat workspace
+
+The Chat threads adoption feature is disabled by default. An organisation owner/admin
+opts in through Features settings; deployment availability alone is not enrolment.
+Without that opt-in, the existing sidebar and conversation routes retain their behavior.
+
+In the adopted workspace the global sidebar contains only Chat. The permanent conversation
+stays alongside an integrated Threads panel containing personal side conversations and
+background work owned by that permanent conversation. Creation, search, history, and
+resolution live in the panel. Opening a thread preserves the permanent conversation;
+the panel can expand and becomes a full-screen drawer on mobile. Existing URLs remain valid.
+
+An idle conversation remains open. Explicit Resolve/Reopen reuse the durable archive
+lifecycle; resolved conversations retain their transcript and require reopening to send.
+Background work retains its existing task lifecycle and input/cancellation controls.
+Failed work needs attention rather than disappearing as resolved. Work cards link directly
+into the panel. Agent, harness, owner, and Playground boundaries remain unchanged.
+
+Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx),
+[rollout catalog](../../crates/server/src/records/feature_flags.rs), and
+[lifecycle grouping](../../apps/ui/src/lib/chat-thread-work.ts).
+
+### Default Chat
+
 * **Chat is the unconditional landing route.** It directly opens the user's permanent
   Platform Chat conversation. The permanent conversation cannot be renamed, unpinned,
   archived, deleted, or reassigned. Server resolution and database uniqueness arbitrate

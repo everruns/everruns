@@ -60,7 +60,17 @@ async fn missing_reaction_scope_explains_how_to_reconnect() {
         })))
         .mount(&server)
         .await;
-    let error = add_reaction(&server.uri(), "test-token", "C1", "1.2", "thumbsup")
+    let fixture = Fixture::new();
+    let (app, endpoint, _) = fixture
+        .seed_app_with_channel(ORG, "slack", "test-token")
+        .await;
+    let session = fixture
+        .seed_session(ORG, Some(app), Some(endpoint), vec![])
+        .await;
+    let error = fixture
+        .invoker(ORG, session)
+        .with_api_base(server.uri())
+        .invoke(add_reaction_action())
         .await
         .unwrap_err();
     assert!(

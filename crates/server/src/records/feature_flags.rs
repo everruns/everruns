@@ -79,6 +79,9 @@ pub struct FeatureFlags {
     /// Personal ChatGPT plan connections; deployment availability and org enrolment required.
     #[serde(default)]
     pub chatgpt_plan: bool,
+    /// Platform Chat workspace with an integrated Threads panel. Org opt-in.
+    #[serde(default)]
+    pub chat_threads: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -118,6 +121,12 @@ pub struct FeatureFlagDefinition {
 
 /// One catalog for hosted flags, including infrastructure capabilities.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
+    FeatureFlagDefinition {
+        name: "chat_threads",
+        label: "Chat threads",
+        description: "Manage conversations and ongoing work in a Threads panel alongside permanent Chat.",
+        grade: FeatureFlagGrade::Adoption,
+    },
     FeatureFlagDefinition {
         name: "chatgpt_plan",
         label: "ChatGPT plan connections",
@@ -352,6 +361,7 @@ impl FeatureFlags {
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
             ("chatgpt_plan".to_string(), self.chatgpt_plan),
+            ("chat_threads".to_string(), self.chat_threads),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
@@ -379,6 +389,7 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
             "chatgpt_plan" => self.chatgpt_plan,
+            "chat_threads" => self.chat_threads,
             "notifications" => self.notifications,
             "evals" => self.evals,
             "skills" => self.skills,
@@ -423,6 +434,7 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
             "chatgpt_plan" => self.chatgpt_plan = enabled,
+            "chat_threads" => self.chat_threads = enabled,
             _ => unreachable!("catalog and boolean fields must agree"),
         }
     }
@@ -460,6 +472,7 @@ impl FeatureFlags {
             container_sandbox: true,
             lua: true,
             chatgpt_plan: true,
+            chat_threads: true,
             notifications: true,
             evals: true,
             skills: true,
@@ -493,6 +506,37 @@ mod tests {
                 .iter()
                 .map(|def| (def.name.to_string(), grade))
                 .collect(),
+        }
+    }
+
+    #[test]
+    fn chat_threads_require_org_adoption_on_every_deployment() {
+        let definition = API_FEATURE_FLAG_DEFINITIONS
+            .iter()
+            .find(|definition| definition.name == "chat_threads")
+            .unwrap();
+        assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
+        let enrolled = HashMap::from([("chat_threads".to_string(), true)]);
+        for deployment in [
+            DeploymentGrade::Dev,
+            DeploymentGrade::Preview,
+            DeploymentGrade::Prod,
+        ] {
+            let available = policy(deployment, definition.grade);
+            assert!(available.deployment_flags().chat_threads);
+            assert!(!available.for_org(&HashMap::new()).chat_threads);
+            assert!(available.for_org(&enrolled).chat_threads);
+            assert!(
+                !available
+                    .for_org(&HashMap::from([("chat_threads".to_string(), false)]))
+                    .chat_threads
+            );
+            assert!(
+                !available
+                    .with_grade("chat_threads", FeatureFlagGrade::Off)
+                    .for_org(&enrolled)
+                    .chat_threads
+            );
         }
     }
 
@@ -586,6 +630,7 @@ mod tests {
                 .collect(),
         };
         let adoption_flags = [
+            "chat_threads",
             "notifications",
             "evals",
             "app_budgets",

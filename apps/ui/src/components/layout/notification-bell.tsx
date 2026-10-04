@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell } from "lucide-react";
+import { useHealthIssues } from "@/hooks/use-health-issues";
+import { Bell, AlertTriangle } from "lucide-react";
 import {
   useNotificationsContext,
   useOptionalNotificationsContext,
@@ -33,6 +34,10 @@ function formatNotificationTime(timestamp: string): string {
 function NotificationMenuContent() {
   const router = useRouter();
   const { notifications, isEnabled, openNotification, markViewed } = useNotificationsContext();
+  const health = useHealthIssues(undefined, 0, isEnabled);
+  const activity = notifications.filter(
+    (n) => n.kind !== "health.issue" || n.payload?.status === "resolved",
+  );
 
   if (!isEnabled) {
     return null;
@@ -41,12 +46,52 @@ function NotificationMenuContent() {
   return (
     <>
       <DropdownMenuGroup>
-        <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+        <DropdownMenuLabel className="flex items-center justify-between">
+          Action required
+          <span className="text-xs text-muted-foreground">
+            {health.data?.total ?? "…"} unresolved
+          </span>
+        </DropdownMenuLabel>
+        {health.isError && (
+          <div className="px-3 py-2 text-xs text-muted-foreground">
+            Could not load integration health.
+          </div>
+        )}
+        {health.data?.total === 0 && (
+          <div className="px-3 py-2 text-xs text-muted-foreground">No pending issues detected</div>
+        )}
+        {(health.data?.data ?? []).slice(0, 5).map((issue) => (
+          <DropdownMenuItem
+            key={issue.id}
+            className="block px-3 py-3"
+            onClick={() => {
+              if (issue.notification_id) void markViewed(issue.notification_id);
+              router.push(issue.href);
+            }}
+          >
+            <div className="flex gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{issue.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {issue.agent_name} · {issue.stale ? "Needs check" : "Action required"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{issue.body}</p>
+                <p className="mt-2 text-xs underline">Review issue</p>
+              </div>
+            </div>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuItem onClick={() => router.push("/settings/health")}>
+          View all health issues
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {notifications.length === 0 ? (
+        <DropdownMenuLabel>Activity</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {activity.length === 0 ? (
           <div className="px-3 py-6 text-sm text-muted-foreground">No notifications</div>
         ) : (
-          notifications.map((notification) => (
+          activity.map((notification) => (
             <DropdownMenuItem
               key={notification.id}
               className="block px-3 py-3"
@@ -92,7 +137,9 @@ function NotificationMenuContent() {
           ))
         )}
       </DropdownMenuGroup>
-      {notifications.some((notification) => notification.href) && (
+      {notifications.some(
+        (notification) => notification.target_type === "session" && notification.href,
+      ) && (
         <>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => router.push("/sessions")}>
@@ -106,6 +153,8 @@ function NotificationMenuContent() {
 
 export function NotificationBell() {
   const { unviewedCount, isEnabled } = useNotificationsContext();
+  const health = useHealthIssues(undefined, 0, isEnabled);
+  const hasIssues = (health.data?.total ?? 0) > 0;
 
   if (!isEnabled) {
     return null;
@@ -118,9 +167,12 @@ export function NotificationBell() {
           "relative inline-flex h-9 w-9 items-center justify-center border border-transparent transition-colors hover:border-border hover:bg-background",
           unviewedCount > 0 ? "text-foreground" : "text-muted-foreground",
         )}
-        aria-label="Notifications"
+        aria-label={`Notifications, ${unviewedCount} unread, ${health.data?.total ?? 0} unresolved issues`}
       >
         <Bell className="h-4 w-4" />
+        {hasIssues && (
+          <span className="absolute bottom-0 right-0 size-2 bg-warning" aria-hidden="true" />
+        )}
         {unviewedCount > 0 && (
           <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground">
             {unviewedCount > 9 ? "9+" : unviewedCount}
@@ -128,7 +180,7 @@ export function NotificationBell() {
         )}
       </DropdownMenuTrigger>
       <DropdownMenuPositioner side="bottom" align="end">
-        <DropdownMenuContent className="w-[22rem]">
+        <DropdownMenuContent className="w-[22rem] max-w-[calc(100vw-1rem)]">
           <NotificationMenuContent />
         </DropdownMenuContent>
       </DropdownMenuPositioner>
@@ -138,16 +190,25 @@ export function NotificationBell() {
 
 export function NotificationIndicator() {
   const context = useOptionalNotificationsContext();
+  const health = useHealthIssues(undefined, 0, !!context?.isEnabled);
+  const hasIssues = (health.data?.total ?? 0) > 0;
 
-  if (!context?.isEnabled || context.unviewedCount === 0) {
+  if (!context?.isEnabled || (context.unviewedCount === 0 && !hasIssues)) {
     return null;
   }
 
   return (
     <>
-      <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full bg-primary" />
+      <span
+        aria-hidden="true"
+        className={
+          hasIssues
+            ? "h-2.5 w-2.5 shrink-0 rounded-full bg-warning"
+            : "h-2.5 w-2.5 shrink-0 rounded-full bg-primary"
+        }
+      />
       <span className="sr-only">
-        {context.unviewedCount} unread notification{context.unviewedCount === 1 ? "" : "s"}
+        {context.unviewedCount} unread notifications; {health.data?.total ?? 0} unresolved issues
       </span>
     </>
   );
@@ -155,6 +216,8 @@ export function NotificationIndicator() {
 
 export function NotificationMenuSub() {
   const context = useOptionalNotificationsContext();
+  const health = useHealthIssues(undefined, 0, !!context?.isEnabled);
+  const hasIssues = (health.data?.total ?? 0) > 0;
 
   if (!context?.isEnabled) {
     return null;
@@ -165,13 +228,14 @@ export function NotificationMenuSub() {
       <DropdownMenuSubTrigger>
         <Bell className="icon-sharp mr-2 h-4 w-4" />
         Notifications
+        {hasIssues && <AlertTriangle className="ml-1 h-3 w-3 text-warning" />}
         {context.unviewedCount > 0 && (
           <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium leading-none text-primary-foreground">
             {context.unviewedCount > 9 ? "9+" : context.unviewedCount}
           </span>
         )}
       </DropdownMenuSubTrigger>
-      <DropdownMenuSubContent className="w-[22rem]">
+      <DropdownMenuSubContent className="w-[22rem] max-w-[calc(100vw-1rem)]">
         <NotificationMenuContent />
       </DropdownMenuSubContent>
     </DropdownMenuSub>

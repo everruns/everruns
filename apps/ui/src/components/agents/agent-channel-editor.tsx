@@ -14,6 +14,7 @@ import {
 } from "@/hooks/use-agent-channels";
 import { usePolicies } from "@/hooks/use-policies";
 import { Badge } from "@/components/ui/badge";
+import { ChannelHealthWarning } from "@/components/health/channel-health-warning";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -258,6 +259,7 @@ function AgentChannelForm({
       >
         <PageColumns>
           <PageMain>
+            {channel.channel_type === "slack" && <ChannelHealthWarning channelId={channel.id} />}
             {slackInstallFailure !== undefined && (
               <Notice variant="destructive" icon={<CircleAlert className="size-4" />} role="alert">
                 <NoticeTitle>Slack install did not start</NoticeTitle>

@@ -1,3 +1,6 @@
+jest.mock("@/hooks/use-health-issues", () => ({
+  useHealthIssues: () => ({ data: { data: [], total: 0 }, isError: false }),
+}));
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Suspense } from "react";
 import EditAgentChannelPage from "@/app/(main)/agents/[agentId]/channels/[channelId]/page";

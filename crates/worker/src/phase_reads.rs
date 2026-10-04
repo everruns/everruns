@@ -40,6 +40,10 @@ use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
+use everruns_contracts::driver_registry::ProviderConfig;
+use everruns_contracts::model_spec::ModelSpec;
+use everruns_contracts::runtime_provider::ProviderKey;
+use everruns_contracts::typed_id::SessionId;
 
 /// How long a memoized read stays usable. Covers setup (under a second even
 /// with a remote database).
@@ -48,6 +52,8 @@ const FRESH_FOR: Duration = Duration::from_secs(2);
 type Key = (i64, Uuid);
 /// Org, session, and input message.
 type TurnKey = (i64, Uuid, Uuid);
+/// Org, provider, and the session whose overrides apply, if any.
+type ProviderKeyed = (i64, String, Option<Uuid>);
 
 struct Entry<T> {
     at: Instant,
@@ -72,6 +78,8 @@ struct State {
     harnesses: HashMap<Key, Entry<DefinitionRead<HarnessDefinition>>>,
     sessions: HashMap<Key, Entry<Option<ExecutionSession>>>,
     turn_contexts: HashMap<TurnKey, Entry<TurnContext>>,
+    models: HashMap<Key, Entry<Option<ModelSpec>>>,
+    providers: HashMap<ProviderKeyed, Entry<Option<ProviderConfig>>>,
     fetched: u32,
     saved: u32,
     /// The phase started: stop memoizing.
@@ -94,6 +102,14 @@ fn sessions(s: &mut State) -> &mut HashMap<Key, Entry<Option<ExecutionSession>>>
 
 fn turn_contexts(s: &mut State) -> &mut HashMap<TurnKey, Entry<TurnContext>> {
     &mut s.turn_contexts
+}
+
+fn models(s: &mut State) -> &mut HashMap<Key, Entry<Option<ModelSpec>>> {
+    &mut s.models
+}
+
+fn providers(s: &mut State) -> &mut HashMap<ProviderKeyed, Entry<Option<ProviderConfig>>> {
+    &mut s.providers
 }
 
 /// The ids a phase's setup reads. Known when the worker claims the task.
@@ -255,6 +271,66 @@ impl PhaseReads {
             || adapters.load_turn_context_for_execution(org_id, session_id, input_message_id),
         )
         .await
+    }
+
+    pub async fn model_spec<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        model_id: Uuid,
+    ) -> Result<Option<ModelSpec>> {
+        self.read_through(models, (org_id, model_id), || {
+            adapters.get_model_spec(org_id, model_id)
+        })
+        .await
+    }
+
+    /// The provider's configuration, credentials included, as seen by
+    /// `session` when one is given.
+    pub async fn provider_config<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        provider: &ProviderKey,
+        session: Option<SessionId>,
+    ) -> Result<Option<ProviderConfig>> {
+        let key = (
+            org_id,
+            provider.as_str().to_string(),
+            session.map(|id| id.uuid()),
+        );
+        self.read_through(providers, key, || async move {
+            match session {
+                Some(session) => {
+                    adapters
+                        .get_provider_config_for_session(org_id, provider, session)
+                        .await
+                }
+                None => adapters.get_provider_config(org_id, provider).await,
+            }
+        })
+        .await
+    }
+
+    /// Start resolving the turn's model and its provider as soon as the
+    /// snapshot names it, so they are ready when context assembly asks after
+    /// loading history. A model switched by an earlier message wastes this read.
+    pub fn prefetch_model<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        model_id: Uuid,
+        session: SessionId,
+    ) {
+        let (reads, adapters) = (self.clone(), adapters.clone());
+        tokio::spawn(async move {
+            if let Ok(Some(spec)) = reads.model_spec(&adapters, org_id, model_id).await {
+                let provider = &spec.provider;
+                let _ = reads
+                    .provider_config(&adapters, org_id, provider, Some(session))
+                    .await;
+            }
+        });
     }
 
     /// Keep records another read already returned (the batched turn context
@@ -1070,5 +1146,96 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 6);
+    }
+
+    #[tokio::test]
+    async fn provider_credentials_never_cross_org_provider_or_session_keys() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let first = Uuid::now_v7();
+        let second = Uuid::now_v7();
+        let keys = [
+            (1, "provider-a".to_owned(), Some(first)),
+            (1, "provider-a".to_owned(), Some(first)),
+            (1, "provider-a".to_owned(), Some(second)),
+            (1, "provider-a".to_owned(), None),
+            (2, "provider-a".to_owned(), Some(first)),
+            (1, "provider-b".to_owned(), Some(first)),
+        ];
+        for key in keys {
+            let expected = format!("test-credential-{key:?}");
+            let mut config = ProviderConfig::for_provider(
+                key.1.clone(),
+                everruns_contracts::provider::DriverId::OpenAI,
+            );
+            config.api_key = Some(expected.clone());
+            let got = reads
+                .read_through(providers, key, || async {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(Some(config))
+                })
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(got.api_key.as_deref(), Some(expected.as_str()));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 5);
+    }
+
+    #[tokio::test]
+    async fn provider_credentials_retry_errors_expire_and_are_detached_at_phase_start() {
+        let reads = PhaseReads::new();
+        let key = (1, "provider".to_owned(), Some(Uuid::now_v7()));
+        let failed: Result<Option<ProviderConfig>> = reads
+            .read_through(providers, key.clone(), || async {
+                Err(everruns_contracts::error::AgentLoopError::store(
+                    "credential read refused",
+                ))
+            })
+            .await;
+        assert!(failed.is_err());
+        let calls = AtomicU32::new(0);
+        let fetch = || async {
+            let version = calls.fetch_add(1, Ordering::SeqCst);
+            let mut config = ProviderConfig::new(everruns_contracts::provider::DriverId::OpenAI);
+            config.api_key = Some(format!("test-credential-{version}"));
+            Ok(Some(config))
+        };
+        let first = reads
+            .read_through(providers, key.clone(), fetch)
+            .await
+            .unwrap()
+            .unwrap();
+        let cached = reads
+            .read_through(providers, key.clone(), fetch)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached.api_key, first.api_key);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        reads.with_state(|state| {
+            state.providers.get_mut(&key).unwrap().at = Instant::now() - FRESH_FOR
+        });
+        let fresh = reads
+            .read_through(providers, key.clone(), fetch)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(fresh.api_key, first.api_key);
+        reads.note_event(everruns_core::REASON_STARTED);
+        assert!(reads.with_state(|state| state.providers.is_empty()));
+        let after = reads
+            .read_through(providers, key.clone(), fetch)
+            .await
+            .unwrap()
+            .unwrap();
+        let again = reads
+            .read_through(providers, key, fetch)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(after.api_key, again.api_key);
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+        assert!(reads.with_state(|state| state.providers.is_empty()));
     }
 }

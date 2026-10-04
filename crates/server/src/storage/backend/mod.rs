@@ -143,6 +143,7 @@ mod a2a_push_configs;
 mod agent_trigger_mcp_subscriptions;
 mod environments;
 mod harnesses_sessions;
+mod health_issues;
 mod identity;
 mod knowledge;
 mod late_generation_usage;
