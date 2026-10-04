@@ -2923,10 +2923,9 @@ export interface paths {
     /**
      * PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a
      *     platform-managed feature.
-     * @description Platform users only, and limited to platform-managed flags: an operator
-     *     setting a tenant's own preferences would be acting as the tenant, which this
-     *     surface does not do. Omitted flags are unchanged, so enrolling one org in one
-     *     feature cannot disturb another setting.
+     * @description Platform users may enroll internal and adoption features. Tenant admins retain
+     *     adoption authority; production preferences and deployment availability stay
+     *     outside this route. Omitted overrides are unchanged.
      */
     patch: operations["update_platform_feature_flags"];
     trace?: never;
