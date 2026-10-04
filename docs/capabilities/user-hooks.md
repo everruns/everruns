@@ -206,6 +206,13 @@ Hooks chain in capability-declaration order, then array order within each
 capability. The first `block` decision wins; mutations from earlier hooks
 survive even if a later hook blocks.
 
+Tool approval and `tool_use` guardrails always run after your
+`pre_tool_use` hooks, whatever order the capabilities are declared in. They
+judge the arguments your hooks produced, so a `mutate` decision cannot turn
+an approved call into one nobody approved, and an approval request shows the
+rewritten arguments. A hook that blocks a call means no one is asked to
+approve it.
+
 Capabilities other than `user_hooks` can ship hook bundles, see [Hook
 bundles from other capabilities](#hook-bundles-from-other-capabilities).
 To mute a bundled hook, list its `HookId` under

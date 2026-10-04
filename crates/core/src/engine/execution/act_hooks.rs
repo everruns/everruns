@@ -27,12 +27,62 @@ use uuid::Uuid;
 use super::ExecutionContext;
 use super::act::ActResult;
 
+/// Upper bound on full gate passes when a policy gate itself rewrites the call.
+/// Real gates never rewrite, so a second pass is already the exceptional path.
+const MAX_POLICY_GATE_PASSES: usize = 3;
+
 /// Run every registered `PreToolUseHook` against `tool_call`. Hooks chain
 /// sequentially; the first `Block` or `Defer` aborts the chain and is returned. If
 /// every hook returns `Continue`, the final (potentially mutated)
 /// `ToolCall` is returned.
+///
+/// THREAT[TM-HOOK-007]: policy gates (tool approval, guardrails) authorize the
+/// exact call they see, so they run after every transforming hook, whatever
+/// the declaration order. Before EVE-1184 a gate declared first approved the
+/// model's arguments and a later user hook could rewrite them into a call no
+/// gate decided on. If a gate itself rewrites the call, the gates that already
+/// ran decided on stale arguments, so all gates run again; a chain that does
+/// not settle fails closed.
 pub(super) async fn run_pre_tool_use_hooks(
     hooks: &[Arc<dyn PreToolUseHook>],
+    mut tool_call: ToolCall,
+    tool_def: &ToolDefinition,
+    context: &ToolContext,
+) -> PreToolUseDecision {
+    let (gates, transforms): (Vec<_>, Vec<_>) =
+        hooks.iter().partition(|hook| hook.is_policy_gate());
+    tool_call = match run_hooks_in_order(&transforms, tool_call, tool_def, context).await {
+        PreToolUseDecision::Continue(updated) => updated,
+        stop => return stop,
+    };
+    if gates.is_empty() {
+        return PreToolUseDecision::Continue(tool_call);
+    }
+    for _ in 0..MAX_POLICY_GATE_PASSES {
+        let decided = tool_call.clone();
+        tool_call = match run_hooks_in_order(&gates, tool_call, tool_def, context).await {
+            PreToolUseDecision::Continue(updated) => updated,
+            stop => return stop,
+        };
+        if tool_call == decided {
+            return PreToolUseDecision::Continue(tool_call);
+        }
+    }
+    tracing::warn!(
+        session_id = %context.session_id,
+        tool_call_id = %tool_call.id,
+        tool_name = %tool_call.name,
+        "ActAtom: policy gates kept rewriting the call; blocking it"
+    );
+    PreToolUseDecision::Block {
+        tool_call,
+        reason: "policy hooks did not settle on the arguments to run".to_string(),
+        user_message: None,
+    }
+}
+
+async fn run_hooks_in_order(
+    hooks: &[&Arc<dyn PreToolUseHook>],
     mut tool_call: ToolCall,
     tool_def: &ToolDefinition,
     context: &ToolContext,
@@ -1304,3 +1354,7 @@ mod tests {
         assert!(t.ends_with(TRUNCATION_SUFFIX));
     }
 }
+
+#[cfg(test)]
+#[path = "act_hooks_policy_gate_tests.rs"]
+mod policy_gate_tests;

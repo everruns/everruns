@@ -42,6 +42,39 @@ pub trait PreToolUseHook: Send + Sync {
         tool_def: &ToolDefinition,
         context: &ToolContext,
     ) -> PreToolUseDecision;
+
+    /// Whether this hook's decision authorizes the exact call it saw (tool
+    /// approval, guardrails), rather than transforming or observing it.
+    ///
+    /// The engine runs every policy gate after all other hooks, so a gate
+    /// always decides on the arguments that will execute (EVE-1184). Wrap a
+    /// hook in [`PolicyGate`] to mark it.
+    fn is_policy_gate(&self) -> bool {
+        false
+    }
+}
+
+/// Marks a [`PreToolUseHook`] as a policy gate: its `Continue` is an
+/// authorization for that exact call, so it must see the final arguments.
+///
+/// THREAT[TM-HOOK-007]: a transforming hook that ran after a gate could
+/// otherwise rewrite an approved call into one nobody approved.
+pub struct PolicyGate<H>(pub H);
+
+#[async_trait]
+impl<H: PreToolUseHook> PreToolUseHook for PolicyGate<H> {
+    async fn before_exec(
+        &self,
+        tool_call: ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> PreToolUseDecision {
+        self.0.before_exec(tool_call, tool_def, context).await
+    }
+
+    fn is_policy_gate(&self) -> bool {
+        true
+    }
 }
 
 /// Ordering for capability-contributed post-tool hooks.

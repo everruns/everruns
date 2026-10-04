@@ -53,7 +53,10 @@ client-side tool or an MCP elicitation parks it.
 
 ## Lifecycle
 
-1. The gate classifies the call. If it is gated, the durable approver looks for
+1. The gate classifies the call as it will execute: it is a policy gate, so it
+   runs after every `pre_tool_use` hook that may rewrite the arguments
+   (EVE-1184), and the preview and fingerprint describe the rewritten call. If
+   it is gated, the durable approver looks for
    a decision in session storage: an "always" rule for the tool, then a one-off
    answer for this exact call.
 2. With no decision, the call does not run. It completes with a structured
