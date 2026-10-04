@@ -271,17 +271,39 @@ impl WorkerServiceImpl {
             .await
         {
             Ok(()) => {
-                // Record ActivityCompleted event
-                if let Some(info) = task_info {
-                    record_activity_completed(
-                        store.as_ref(),
-                        info.workflow_id,
-                        info.activity_id,
-                        output,
-                    )
-                    .await;
-                }
-                Ok(Response::new(CompleteDurableTaskResponse { success: true }))
+                let Some(info) = task_info else {
+                    return Ok(Response::new(CompleteDurableTaskResponse {
+                        success: true,
+                        drained_signal_count: None,
+                    }));
+                };
+                let workflow_id = info.workflow_id;
+                // Drain only after the completion succeeded, as the worker's
+                // own consume call would. A failed drain is left to the worker.
+                let drain = async {
+                    let signal_type = req.drain_signal_type.as_deref()?;
+                    match store
+                        .consume_pending_signals_by_type(workflow_id?, signal_type)
+                        .await
+                    {
+                        Ok(signals) => Some(signals.len() as u32),
+                        Err(e) => {
+                            tracing::warn!(%task_id, error = %e, "Failed to drain signals on completion");
+                            None
+                        }
+                    }
+                };
+                let record = record_activity_completed(
+                    store.as_ref(),
+                    workflow_id,
+                    info.activity_id,
+                    output,
+                );
+                let ((), drained_signal_count) = tokio::join!(record, drain);
+                Ok(Response::new(CompleteDurableTaskResponse {
+                    success: true,
+                    drained_signal_count,
+                }))
             }
             Err(StoreError::TaskNotOwned(_)) => {
                 // Task was reclaimed by another worker - not an error, just return false
@@ -292,6 +314,7 @@ impl WorkerServiceImpl {
                 );
                 Ok(Response::new(CompleteDurableTaskResponse {
                     success: false,
+                    drained_signal_count: None,
                 }))
             }
             Err(e) => {

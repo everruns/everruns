@@ -362,11 +362,13 @@ impl GrpcDurableStore {
         task_id: Uuid,
         worker_id: &str,
         output: serde_json::Value,
-    ) -> Result<()> {
+        drain_signal_type: Option<&str>,
+    ) -> Result<Option<u32>> {
         let request = CompleteDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
             worker_id: worker_id.to_string(),
             output: Some(json_to_proto_struct(&output)),
+            drain_signal_type: drain_signal_type.map(str::to_string),
         };
 
         let response = self.client.complete_durable_task(request).await?;
@@ -375,7 +377,7 @@ impl GrpcDurableStore {
         if !inner.success {
             anyhow::bail!("Task not owned by worker (was reclaimed or already completed)")
         }
-        Ok(())
+        Ok(inner.drained_signal_count)
     }
 
     /// Fail a task
