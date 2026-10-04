@@ -213,3 +213,137 @@ async fn saturated_request_pool_returns_retryable_service_unavailable_after_acqu
     assert_eq!(body["code"], "database_pool_exhausted");
     assert_eq!(body["retry_after_seconds"], 1);
 }
+
+/// A request pool small enough that a handful of lock contenders can fill it.
+async fn tiny_request_pool() -> Database {
+    let mut config = scaled_config(0);
+    config.max_connections = 2;
+    Database::connect_with_config(&database_url(), config)
+        .await
+        .expect("connect")
+}
+
+/// The lock holder's critical section draws more connections from the same
+/// pool (Slack install re-reads and persists the endpoint). Before the fix,
+/// every waiter parked a connection inside `pg_advisory_xact_lock`, so this
+/// query hit the 500ms acquire timeout and the holder could never finish.
+#[tokio::test(flavor = "multi_thread")]
+async fn slack_install_lock_waiters_do_not_starve_request_queries() {
+    let db = tiny_request_pool().await;
+    let endpoint_id = uuid::Uuid::now_v7();
+    let first = db
+        .lock_slack_install(endpoint_id)
+        .await
+        .expect("first Slack install lock");
+
+    let holders = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut waiters = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let db = db.clone();
+        let holders = holders.clone();
+        waiters.spawn(async move {
+            let guard = db
+                .lock_slack_install(endpoint_id)
+                .await
+                .expect("contending Slack install lock");
+            // Mutual exclusion still holds: nobody else is inside, and the
+            // holder can use the pool while waiters keep polling.
+            let inside = holders.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            assert_eq!(inside, 0, "two Slack install lock holders at once");
+            sqlx::query("SELECT 1")
+                .execute(db.pool())
+                .await
+                .expect("holder query under contention");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            holders.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+            drop(guard);
+        });
+    }
+    // Let the waiters reach the lock before measuring.
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    tokio::time::timeout(Duration::from_millis(400), async {
+        sqlx::query("SELECT 1")
+            .execute(db.pool())
+            .await
+            .expect("unrelated request query");
+    })
+    .await
+    .expect("lock waiters must release request-pool connections between attempts");
+
+    drop(first);
+    while let Some(waiter) = waiters.join_next().await {
+        waiter.expect("lock waiter task");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn advisory_lock_wait_is_bounded() {
+    let db = tiny_request_pool().await;
+    let key = uuid::Uuid::now_v7().to_string();
+    let _held = db
+        .advisory_xact_lock_polling("test_bounded", &key, Duration::from_secs(1))
+        .await
+        .expect("first lock");
+
+    let started = std::time::Instant::now();
+    let error = db
+        .advisory_xact_lock_polling("test_bounded", &key, Duration::from_millis(200))
+        .await
+        .expect_err("a held lock must time out the contender");
+    assert!(error.to_string().contains("timed out"), "{error}");
+    assert!(started.elapsed() < Duration::from_secs(2));
+
+    // A different key is independent of the held one.
+    db.advisory_xact_lock_polling("test_bounded", "other", Duration::from_millis(200))
+        .await
+        .expect("unrelated key");
+}
+
+/// The ChatGPT token lease spans a load, an OAuth refresh and a save through
+/// the shared pool; concurrent model calls for one provider must not park
+/// pool connections behind it.
+#[tokio::test(flavor = "multi_thread")]
+async fn chatgpt_token_lease_waiters_do_not_starve_request_queries() {
+    use everruns_drivers::chatgpt::auth::TokenStore;
+    use everruns_server::services::chatgpt::DbTokenStore;
+    use everruns_server::storage::{EncryptionService, StorageBackend};
+
+    let backend = std::sync::Arc::new(StorageBackend::Postgres(tiny_request_pool().await));
+    let StorageBackend::Postgres(db) = backend.as_ref() else {
+        unreachable!()
+    };
+    let store = DbTokenStore {
+        db: backend.clone(),
+        encryption: std::sync::Arc::new(
+            EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
+                .unwrap(),
+        ),
+        org: 1,
+        provider: everruns_contracts::typed_id::ProviderId::new(),
+    };
+    let first = store.lock().await.expect("first lease");
+
+    let mut waiters = tokio::task::JoinSet::new();
+    for _ in 0..8 {
+        let store = store.clone();
+        waiters.spawn(async move {
+            let _lease = store.lock().await.expect("contending lease");
+        });
+    }
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    tokio::time::timeout(Duration::from_millis(400), async {
+        sqlx::query("SELECT 1")
+            .execute(db.pool())
+            .await
+            .expect("unrelated request query");
+    })
+    .await
+    .expect("lease waiters must not hold request-pool connections");
+
+    drop(first);
+    while let Some(waiter) = waiters.join_next().await {
+        waiter.expect("lease waiter task");
+    }
+}
