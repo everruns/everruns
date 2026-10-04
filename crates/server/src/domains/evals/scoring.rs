@@ -101,7 +101,7 @@ pub fn score_rule(
                 reason: format!("Turns: {turns} (max: {max})"),
             }
         }
-        Scorer::JsonSchema { schema: _, .. } => {
+        Scorer::JsonSchema { .. } => {
             // JSON schema validation requires a jsonschema crate dependency.
             // For now, verify the output is valid JSON.
             let is_json = serde_json::from_str::<serde_json::Value>(final_content).is_ok();
