@@ -1,19 +1,13 @@
-version: 0.37.0
+version: 0.38.0
 date: 2026-10-03
 headline:
-  - Your approvals.
-  - Your channels.
+  - Stock subagents.
+  - Custom hosts.
 summary:
-  - Review recorded consent and agent channels.
-  - Agent tabs survive refresh. SDK contracts
-  - move to one shared home.
+  - Use the stock delegation tools with
+  - portable runtime stores. Complete the
+  - shared-contract import migration.
 highlights:
-  - title: Approval history
-    description: See consent requests and records in chat; admins can filter existing audit history.
-    source: "#4110"
-  - title: Channels at a glance
-    description: See live, draft and disabled channels on agent cards, with links to Integrations.
-    source: "#4109"
-  - title: SDK import migration
-    description: Move provider, capability and model imports to everruns-contracts.
-    source: "#4077"
+  - title: Subagents for library hosts
+    description: Run stock subagent and handoff tools without constructing control-plane records.
+    source: "#4078"

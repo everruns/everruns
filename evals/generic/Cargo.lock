@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -731,7 +731,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-contracts"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -782,7 +782,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-drivers"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -890,7 +890,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-bashkit"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "bashkit",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-typesafe"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "everruns-contracts",
@@ -937,7 +937,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -950,7 +950,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.37.0"
+version = "0.38.0"
 dependencies = [
  "proc-macro2",
  "quote",
