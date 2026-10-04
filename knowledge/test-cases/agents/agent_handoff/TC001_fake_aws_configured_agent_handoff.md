@@ -78,7 +78,7 @@ accepted only for child sessions owned by the source session.
 
 5. Verify the first run requests connection setup instead of handing work off.
 
-6. Add a Fake AWS user connection through Settings > Connections or the API:
+6. Add a Fake AWS user connection through Settings → My agent experience or the API:
 
    ```bash
    curl -s -X POST "http://localhost:27100/api/v1/user/connections/fake_aws" \

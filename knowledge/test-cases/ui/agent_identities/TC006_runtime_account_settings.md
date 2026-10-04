@@ -31,7 +31,7 @@ An authenticated management user belongs to two organizations. Each has a defaul
 
 1. Open Settings → My agent experience, change the runtime name and defaults, and save.
 2. Open Account and verify the management name remains unchanged.
-3. Open Connections, then open the same virtual user's Connections tab; verify they show the same grants.
+3. On My agent experience, confirm the connections list, then open the same virtual user's Connections tab; verify they show the same grants. Visiting `/settings/connections` opens the same page.
 4. Switch organizations and verify the second runtime profile and connections remain separate.
 5. Create a service virtual user, assign it to an agent in Overview, and open its Connections tab.
 6. Open Linked identities and Sessions; verify the console binding and owned chat are visible.

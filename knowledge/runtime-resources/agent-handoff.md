@@ -180,7 +180,7 @@ Create an RDS database named app-db in us-east-1.
 
 4. The first handoff should return `connection_required: "fake_aws"` if the
    fake AWS connection is not configured.
-5. Add a Fake AWS connection in Settings → Connections. Any non-empty key is
+5. Add a Fake AWS connection in Settings → My agent experience. Any non-empty key is
    accepted by the fake provider for local testing.
 6. Retry the user request. The welcome agent should call
    `spawn_agent` with `target.type = "agent"`, and the child AWS Operator session

@@ -19,7 +19,7 @@ sandbox is deleted.
 ## Preconditions
 
 - Canonical local stack running with `AUTH_MODE=none`
-- Valid Daytona connection in **Settings > Connections**
+- Valid Daytona connection in **Settings → My agent experience**
 - LLM provider configured
 - Coding harness imported as `coding`
 - Active Agent using the Coding harness

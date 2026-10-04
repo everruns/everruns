@@ -55,7 +55,7 @@ public reference registry plus `tool_search`.
 ### 2. (Optional) Connect a registry token
 
 For registries that require authentication, connect **Agentic Resource
-Discovery** under **Settings → Connections** (provider `ard`) and paste a bearer
+Discovery** under **Settings → My agent experience** (provider `ard`) and paste a bearer
 token, or set the `ARD_REGISTRY_TOKEN` session secret. Public anonymous-read
 registries need no token.
 

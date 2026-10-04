@@ -22,7 +22,7 @@ executes through the provider-neutral tool surface.
 - LLM provider configured
 - Coding harness imported as `coding`
 - Agent version has a default managed Daytona Environment profile
-- **No** existing Daytona connection in Settings > Connections (disconnect first if present)
+- **No** existing Daytona connection in Settings → My agent experience (disconnect first if present)
 - Valid Daytona API key available for test
 
 ## Test Data

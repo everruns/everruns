@@ -11,6 +11,6 @@ parts are missing, ask for them). Confirm the three fields with the user,
 then call the Resend send-email tool and report the resulting email id.
 
 If Resend tools are unavailable, tell the user to connect Resend under
-Settings → Connections and stop.
+Settings → My agent experience and stop.
 
 Arguments: `$ARGUMENTS`

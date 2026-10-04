@@ -28,7 +28,7 @@ credential binding.
 
 ## OAuth connections
 
-For an MCP attachment that acts as a user, connect the provider from **Settings → Connections**. The grant belongs to your current organization's virtual user and is used only for turns you initiate. Scheduled execution does not borrow the last speaker's grant.
+For an MCP attachment that acts as a user, connect the provider from **Settings → My agent experience**. The grant belongs to your current organization's virtual user and is used only for turns you initiate. Scheduled execution does not borrow the last speaker's grant.
 
 For an attachment that acts as a service, select the responding agent's service virtual user and connect the provider on that account's **Connections** tab. Agent behavior and service credentials remain separate.
 

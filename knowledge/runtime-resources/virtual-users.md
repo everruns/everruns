@@ -248,7 +248,7 @@ in [leased resources](../../crates/core/src/leased_resource.rs) and
 
 ## Console proxy and settings
 
-Existing Chats and Settings > Connections resolve through the default self
+Existing Chats and Settings > My agent experience resolve through the default self
 binding and call the same virtual-user services used by external consumers.
 Legacy `/user/connections` routes may be thin adapters during cutover; they
 must not keep separate storage, resolver rules, or writes. Cache keys include
@@ -297,8 +297,9 @@ scope visible where it affects which account an action uses.
 | Session inspector | Participants and per-operation acting identity. Show management authorization separately in audit details. |
 | External chat/setup | Consumer-facing profile and connection setup through verified runtime auth. No console navigation or org membership requirement. |
 
-Settings > Connections and Virtual users > detail > Connections render the
-same connection component over the same virtual-user service. Permissions and
+My agent experience and Virtual users > detail > Connections render the
+same connection component over the same virtual-user service. `/settings/connections`
+redirects to My agent experience. Permissions and
 available actions depend on self-service versus service-account administration;
 the current management policy must not expose every end user's private grants.
 Administrative inspection is not impersonation, and there is no generic
@@ -434,7 +435,7 @@ The [API contract](../../crates/server/specs/virtual-users.md) links the exact r
 
 Existing identity IDs retain their `identity_` prefix. Usage is immutable in ordinary profile updates.
 Single-org legacy credentials move once; multi-org credentials remain in a restricted migration queue
-until their owner chooses an org in Settings → Connections. The queue is never a runtime credential source.
+until their owner chooses an org in Settings → My agent experience. The queue is never a runtime credential source.
 Associated leases retain their organization-scoped runtime owner. Cleanup pauses until that owner has an explicit grant; selecting a destination cannot transfer another organization's resources.
 
 Runtime credentials expire after 15 minutes, bind one live endpoint and verified binding, and permit

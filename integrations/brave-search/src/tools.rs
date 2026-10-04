@@ -48,7 +48,7 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
     }
 
     Err(ToolExecutionResult::tool_error(
-        "Brave Search API key not configured. Connect Brave Search in Settings > Connections, \
+        "Brave Search API key not configured. Connect Brave Search in Settings > My agent experience, \
          or use `secret_store set BRAVE_SEARCH_API_KEY <your-key>`. \
          Get a free API key at https://brave.com/search/api/",
     ))

@@ -514,6 +514,7 @@ describe("Sidebar", () => {
     "/settings/features",
     "/settings/payments",
     "/settings/profile",
+    "/settings/agent-experience",
     "/settings/connections",
     "/settings/personal-access-tokens",
   ])("keeps Settings active on %s", (pathname) => {

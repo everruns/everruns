@@ -1,7 +1,7 @@
 ---
 type: Test Case
 title: "TC001: TypeSafe Connection - Typed Classification"
-description: "Verify that an agent with the TypeSafe capability prompts for an API key via Settings > Connections, validates it, and returns calibrated numbers from jev_evaluate rather than a prose opinion."
+description: "Verify that an agent with the TypeSafe capability prompts for an API key via Settings → My agent experience, validates it, and returns calibrated numbers from jev_evaluate rather than a prose opinion."
 tags:
   - everruns
   - test-case
@@ -13,7 +13,7 @@ tags:
 ## Description
 
 Verify that an agent with the TypeSafe capability prompts for an API key via
-Settings > Connections, validates it, and returns calibrated numbers from
+Settings → My agent experience, validates it, and returns calibrated numbers from
 `jev_evaluate` rather than a prose opinion.
 
 ## Preconditions
@@ -22,7 +22,7 @@ Settings > Connections, validates it, and returns calibrated numbers from
   capability is `experimental_only` and is not registered in prod
 - User logged in
 - LLM API key configured
-- No existing TypeSafe connection in Settings > Connections
+- No existing TypeSafe connection in Settings → My agent experience
 - Valid TypeSafe API key available (`TYPESAFE_API_KEY` in Doppler)
 
 ## Test Data
@@ -39,9 +39,9 @@ Settings > Connections, validates it, and returns calibrated numbers from
    capability. Save.
 2. Start a session with the agent and send the first message.
 3. Observe the tool call. **Expected:** the turn fails with a message naming
-   `TYPESAFE_API_KEY` and pointing at Settings > Connections, because no
+   `TYPESAFE_API_KEY` and pointing at Settings → My agent experience, because no
    connection exists yet. The turn is not wedged.
-4. Go to **Settings > Connections**, find **TypeSafe**, click **Connect**, and
+4. Go to **Settings → My agent experience**, find **TypeSafe**, click **Connect**, and
    paste an invalid key (e.g. `ts-nope`). **Expected:** validation rejects it
    with "Invalid API key", and no connection is stored.
 5. Paste the valid key and connect. **Expected:** the connection saves and shows

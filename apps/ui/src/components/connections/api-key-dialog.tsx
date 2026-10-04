@@ -2,7 +2,7 @@
 
 /**
  * Shared ApiKeyDialog for entering API key connections.
- * Used by both the Settings > Connections page and inline chat connection prompts.
+ * Used by My agent experience and inline chat connection prompts.
  */
 
 import { useEffect, useState } from "react";

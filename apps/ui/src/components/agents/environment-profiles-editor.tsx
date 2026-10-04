@@ -262,8 +262,8 @@ function ProfileEditor({
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             Daytona uses the connection of the person starting the chat. Configure it in{" "}
-            <Link href="/settings/connections" className="underline underline-offset-2">
-              Settings → Connections
+            <Link href="/settings/agent-experience" className="underline underline-offset-2">
+              Settings → My agent experience
             </Link>
             .
           </p>

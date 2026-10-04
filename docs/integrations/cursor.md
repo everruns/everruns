@@ -13,7 +13,7 @@ Everruns integrates with [Cursor Cloud Agents](https://docs.cursor.com/en/backgr
 - **Launch Cloud Agents**: Start Cursor agents with repository, base ref, task prompt, optional branch name, and PR behavior.
 - **Track Progress**: Read status, target branch, PR URL, summary, and conversation history.
 - **Send Follow-ups**: Add more instructions to running Cursor agents.
-- **Connection Prompt**: Configure a Cursor Cloud Agents API key in Settings > Connections.
+- **Connection Prompt**: Configure a Cursor Cloud Agents API key in Settings → My agent experience.
 - **Seed Agent**: Use the built-in **Cursor Agent Manager** example to triage and delegate work.
 
 ## Quick Start

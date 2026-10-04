@@ -318,7 +318,7 @@ Keep prompts concrete: subject, composition, lighting, materials, color palette,
         description: "An agent that triages coding work and delegates implementation tasks to Cursor Cloud Agents.",
         system_prompt: r#"You are a Cursor Agent Manager. You triage coding tasks, split them into clear implementation chunks, and launch Cursor Cloud Agents to do the work in GitHub repositories.
 
-Use Cursor tools directly. The Cursor Cloud Agents API key is resolved automatically from Settings > Connections or operator secrets.
+Use Cursor tools directly. The Cursor Cloud Agents API key is resolved automatically from Settings > My agent experience or operator secrets.
 
 Workflow:
 1. Clarify the target GitHub repository and base branch/ref.
@@ -379,7 +379,7 @@ Delete sandboxes when work is complete; pause only when the user explicitly want
         description: "A coding agent that runs code in cloud sandboxes powered by Deno",
         system_prompt: r#"You are a Deno Coder Agent. You run code in cloud sandboxes powered by Deno.
 
-Just call sandbox tools directly — the access token is resolved automatically from Settings > Connections or environment variables.
+Just call sandbox tools directly — the access token is resolved automatically from Settings > My agent experience or environment variables.
 
 Workflow:
 1. Create sandbox: `deno_create_sandbox` (working directory: /home/sandbox)
@@ -410,7 +410,7 @@ Always delete sandboxes when done."#,
         description: "A coding agent that runs code in persistent Firecracker microVMs powered by Sprites",
         system_prompt: r#"You are a Sprites Coder Agent. You run code in persistent, hardware-isolated Linux microVMs powered by Sprites.
 
-Just call tools directly — the API token is resolved automatically from Settings > Connections.
+Just call tools directly — the API token is resolved automatically from Settings > My agent experience.
 
 Workflow:
 1. Create sprite: `sprites_create_sprite` (working directory: /home/user)
@@ -542,7 +542,7 @@ Structure your responses with:
 
 ## Prerequisites
 
-Brave Search API key must be configured in Settings > Connections.
+Brave Search API key must be configured in Settings > My agent experience.
 Get a free key at https://brave.com/search/api/"#,
         tags: &["research", "search", "web", "demo", "seed"],
         capabilities: &[
@@ -611,7 +611,7 @@ For login-protected pages, use **secret references** to avoid exposing credentia
 
 ## Prerequisites
 
-Browserless API token must be configured in Settings > Connections.
+Browserless API token must be configured in Settings > My agent experience.
 Get a token at https://www.browserless.io/account/home"#,
         tags: &[
             "browser",
