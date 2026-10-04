@@ -17653,9 +17653,9 @@ export interface components {
     /**
      * @description A typed service a provider driver can offer (see knowledge/foundations/providers.md).
      *
-     *     Declared in code by each driver, never stored in the database. Only `Chat`
-     *     has a driver trait today; the set is additive and new kinds gain factories
-     *     on `DriverDescriptor` when their first consumer lands.
+     *     Drivers declare supported services in code; catalog models persist their
+     *     selected service. One provider account composes typed chat, decision and
+     *     embedding drivers over shared authentication.
      * @enum {string}
      */
     ServiceKind: "chat" | "decisions" | "embeddings" | "realtime" | "images" | "rerank";

@@ -42319,7 +42319,7 @@
       },
       "ServiceKind": {
         "type": "string",
-        "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDeclared in code by each driver, never stored in the database. Only `Chat`\nhas a driver trait today; the set is additive and new kinds gain factories\non `DriverDescriptor` when their first consumer lands.",
+        "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
         "enum": [
           "chat",
           "decisions",

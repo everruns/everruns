@@ -13,9 +13,9 @@ pub const CLEAR_AT_PARAMETER: &str = "clear_at";
 
 /// A typed service a provider driver can offer (see knowledge/foundations/providers.md).
 ///
-/// Declared in code by each driver, never stored in the database. Only `Chat`
-/// has a driver trait today; the set is additive and new kinds gain factories
-/// on `DriverDescriptor` when their first consumer lands.
+/// Drivers declare supported services in code; catalog models persist their
+/// selected service. One provider account composes typed chat, decision and
+/// embedding drivers over shared authentication.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -25,7 +25,7 @@ pub enum ServiceKind {
     Chat,
     /// Typed decisions over application state.
     Decisions,
-    /// Text embeddings (planned: knowledge-base hybrid retrieval).
+    /// Text embeddings.
     Embeddings,
     /// Realtime voice sessions (server-side adapter using provider credentials).
     Realtime,

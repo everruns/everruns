@@ -5528,6 +5528,37 @@
     ]
   },
   {
+    "wire_name": "get_default_decision_model",
+    "path": [
+      "models",
+      "decision-default"
+    ],
+    "verb": "get",
+    "description": "Get the selected decision model.",
+    "method": "GET",
+    "http_path": "/v1/models/decision-default",
+    "args": []
+  },
+  {
+    "wire_name": "set_default_decision_model",
+    "path": [
+      "models",
+      "decision-default"
+    ],
+    "verb": "set",
+    "description": "Set the selected decision model.",
+    "method": "PUT",
+    "http_path": "/v1/models/decision-default",
+    "args": [
+      {
+        "field": "model_id",
+        "long": "model-id",
+        "kind": "string",
+        "required": false
+      }
+    ]
+  },
+  {
     "wire_name": "get_default_model",
     "path": [
       "models",
@@ -5600,6 +5631,12 @@
         "required": false
       },
       {
+        "field": "service",
+        "long": "service",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "source",
         "long": "source",
         "kind": "string",
@@ -5658,11 +5695,23 @@
         "help": "LLM model's prefixed public identifier."
       },
       {
+        "field": "profile_key",
+        "long": "profile-key",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "provider_id",
         "long": "provider-id",
         "kind": "string",
         "required": false,
         "help": "LLM provider's prefixed public identifier."
+      },
+      {
+        "field": "service",
+        "long": "service",
+        "kind": "string",
+        "required": false
       }
     ]
   },
@@ -6914,11 +6963,23 @@
         "help": "LLM model's prefixed public identifier."
       },
       {
+        "field": "profile_key",
+        "long": "profile-key",
+        "kind": "string",
+        "required": false
+      },
+      {
         "field": "provider_id",
         "long": "provider-id",
         "kind": "string",
         "required": true,
         "help": "LLM provider's prefixed public identifier."
+      },
+      {
+        "field": "service",
+        "long": "service",
+        "kind": "string",
+        "required": false
       }
     ]
   },

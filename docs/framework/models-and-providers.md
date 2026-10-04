@@ -102,7 +102,7 @@ provider from [Supported providers](#supported-providers).
 ## Supported providers
 
 Everruns talks to model vendors through **drivers**. A driver owns one vendor's
-wire protocol; a `Provider` pairs a driver with an endpoint and a credential.
+wire protocol; a `Provider` pairs typed service drivers with one endpoint and authentication boundary.
 The set below is what ships today. The boundary is open, so a
 [custom driver](#custom-providers) is a first-class peer of these.
 
@@ -117,7 +117,8 @@ The set below is what ships today. The boundary is open, so a
 | Anthropic | `everruns-drivers` (`anthropic`) | Anthropic Messages | chat | yes |
 | Google Gemini | `everruns-drivers` (`gemini`) | Gemini `generateContent` | chat | yes |
 | AWS Bedrock | `everruns-drivers` (`bedrock`) | Bedrock `ConverseStream` (SigV4) | chat | no |
-| OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible | chat | yes |
+| OpenRouter | `everruns-drivers` (`openrouter`) | OpenAI Responses-compatible, System One | chat, decisions | yes |
+| TypeSafe | `everruns-drivers` (`typesafe`) | System One | decisions | curated Jev profiles |
 | Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
 | Meta Model API | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
@@ -210,6 +211,7 @@ let model = Model::new(
 | Anthropic | `ANTHROPIC_API_KEY` | — (see below) |
 | Google Gemini | `GEMINI_API_KEY`, or `GOOGLE_API_KEY` | `GEMINI_BASE_URL` |
 | OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_BASE_URL` |
+| TypeSafe | `TYPESAFE_API_KEY` | `TYPESAFE_BASE_URL` |
 | Fireworks AI | `FIREWORKS_API_KEY` | `FIREWORKS_BASE_URL` |
 | Meta Model API | `LLAMA_API_KEY`, or `META_API_KEY` | `LLAMA_BASE_URL` |
 | AWS Bedrock | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (or `AWS_DEFAULT_REGION`), `AWS_SESSION_TOKEN` | — (the region selects it) |
