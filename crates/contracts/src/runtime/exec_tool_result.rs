@@ -103,7 +103,7 @@ mod tests {
             ("concise", 0, 2048),
             ("normal", 0, 8192),
             ("verbose", 0, 16384),
-            ("auto", 0, 384),
+            ("auto", 0, 1024),
             ("auto", 1, 8192),
             ("unknown", 0, 2048),
         ] {
@@ -160,7 +160,7 @@ mod tests {
         assert!(!payload.success);
         assert_eq!(payload.exit_code, 1);
         assert!(payload.truncated);
-        assert!(payload.stdout.len() > 384 && payload.stdout.len() <= 8192);
+        assert!(payload.stdout.len() > 1024 && payload.stdout.len() <= 8192);
         assert!(
             payload
                 .stdout

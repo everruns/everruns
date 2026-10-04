@@ -27,9 +27,16 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
+<<<<<<< HEAD:crates/core/src/builtins/tool_output_persistence.rs
 use crate::builtins::tool_hooks::PostToolExecHook;
 use crate::builtins::tool_output_sanitizer::{
     output_verbosity_budget, priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
+=======
+use crate::tool_hooks::PostToolExecHook;
+use crate::tool_output_sanitizer::{
+    AUTO_SUCCESS_BUDGET, output_verbosity_budget, output_verbosity_budget_with_auto_success,
+    priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
+>>>>>>> d25730033 (feat(core): raise auto success budget to 1KiB with per-agent override):crates/builtins/src/tool_output_persistence.rs
 };
 use crate::builtins::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::builtins::typed_id::SessionId;
@@ -37,6 +44,58 @@ use crate::{session_files::SessionFileSystem, tool_context::ToolContext};
 
 /// Max bytes persisted per output stream file to avoid storage exhaustion.
 const MAX_PERSISTED_STREAM_BYTES: usize = 1024 * 1024; // 1 MiB
+
+/// Per-agent config for [`ToolOutputPersistenceCapability`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolOutputPersistenceConfig {
+    /// Inline `stdout` budget for `auto` success results. Defaults to
+    /// [`AUTO_SUCCESS_BUDGET`]; failure/concise/normal/verbose/full budgets
+    /// are unchanged.
+    pub auto_success_budget: usize,
+}
+
+impl ToolOutputPersistenceConfig {
+    /// Parse per-agent config; missing or mistyped values warn and fall back
+    /// to the default (mirrors the `computer_use` settings pattern).
+    pub fn from_value(config: &serde_json::Value) -> Self {
+        let auto_success_budget = match config.get("auto_success_budget") {
+            None => AUTO_SUCCESS_BUDGET,
+            Some(serde_json::Value::Number(n)) => {
+                n.as_u64().map(|v| v as usize).unwrap_or_else(|| {
+                    tracing::warn!(
+                        "tool_output_persistence.auto_success_budget must be a non-negative integer, got {n}; using default {AUTO_SUCCESS_BUDGET}"
+                    );
+                    AUTO_SUCCESS_BUDGET
+                })
+            }
+            Some(other) => {
+                tracing::warn!(
+                    "tool_output_persistence.auto_success_budget must be a non-negative integer, got {other}; using default {AUTO_SUCCESS_BUDGET}"
+                );
+                AUTO_SUCCESS_BUDGET
+            }
+        };
+        Self {
+            auto_success_budget,
+        }
+    }
+
+    pub fn json_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "auto_success_budget": {
+                    "type": "integer",
+                    "title": "Auto success budget",
+                    "description": "Inline stdout budget in bytes for auto success results. Typical git/gh output (1-3 KiB) stays inline at the 1024 default; larger output is persisted with a pointer.",
+                    "minimum": 0,
+                    "default": AUTO_SUCCESS_BUDGET
+                }
+            }
+        })
+    }
+}
+
 const OUTPUT_DIR: &str = "/outputs";
 
 /// Result of persisting large exec output to session VFS.
@@ -327,12 +386,52 @@ impl Capability for ToolOutputPersistenceCapability {
     }
 
     fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn PostToolExecHook>> {
-        vec![Arc::new(PersistOutputHook)]
+        vec![Arc::new(PersistOutputHook::default())]
+    }
+
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(ToolOutputPersistenceConfig::json_schema())
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        if !config.is_object() {
+            return Err("tool_output_persistence config must be an object".to_string());
+        }
+        match config.get("auto_success_budget") {
+            None => Ok(()),
+            Some(serde_json::Value::Number(n)) if n.as_u64().is_some() => Ok(()),
+            Some(value) => Err(format!(
+                "auto_success_budget must be a non-negative integer, got {value}"
+            )),
+        }
+    }
+
+    fn post_tool_exec_hooks_with_config(
+        &self,
+        config: &serde_json::Value,
+    ) -> Vec<Arc<dyn PostToolExecHook>> {
+        let parsed = ToolOutputPersistenceConfig::from_value(config);
+        vec![Arc::new(PersistOutputHook {
+            auto_success_budget: parsed.auto_success_budget,
+        })]
     }
 }
 
 /// Hook that persists tool output to VFS when `persist_output` hint is set.
-pub struct PersistOutputHook;
+pub struct PersistOutputHook {
+    auto_success_budget: usize,
+}
+
+impl Default for PersistOutputHook {
+    fn default() -> Self {
+        Self {
+            auto_success_budget: AUTO_SUCCESS_BUDGET,
+        }
+    }
+}
 
 #[async_trait]
 impl PostToolExecHook for PersistOutputHook {
@@ -399,7 +498,10 @@ impl PostToolExecHook for PersistOutputHook {
             {
                 let mut output_files = Vec::new();
                 let exit_code = result_exit_code(obj);
-                let budget = output_verbosity_budget(resolve_auto_mode(output_mode, exit_code));
+                let budget = output_verbosity_budget_with_auto_success(
+                    resolve_auto_mode(output_mode, exit_code),
+                    self.auto_success_budget,
+                );
                 let stdout_needs_recovery =
                     model_stream_needs_recovery(obj, &["stdout", "output"], stdout.len(), budget)
                         || model_stream_differs_from_full(obj, &["stdout", "output"], stdout);
@@ -761,7 +863,7 @@ mod tests {
             raw_output: Some(complete.to_string()),
         };
 
-        PersistOutputHook
+        PersistOutputHook::default()
             .after_exec(&tool_call, &persistence_tool_def(), &mut result, &context)
             .await;
 
@@ -808,7 +910,7 @@ mod tests {
             raw_output: Some(full_output.clone()),
         };
 
-        PersistOutputHook
+        PersistOutputHook::default()
             .after_exec(&tool_call, &persistence_tool_def(), &mut result, &context)
             .await;
 
@@ -1126,6 +1228,58 @@ mod tests {
             inline.len() <= NORMAL_BUDGET + 200,
             "compact_stderr_inline must cap stderr to budget ({} bytes got)",
             inline.len()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tool_output_persistence_config_tests {
+    use super::*;
+
+    #[test]
+    fn config_defaults_to_1kib() {
+        let cfg = ToolOutputPersistenceConfig::from_value(&serde_json::json!({}));
+        assert_eq!(cfg.auto_success_budget, AUTO_SUCCESS_BUDGET);
+        assert_eq!(AUTO_SUCCESS_BUDGET, 1024);
+    }
+
+    #[test]
+    fn config_override_parses_and_applies_to_auto() {
+        let cfg = ToolOutputPersistenceConfig::from_value(
+            &serde_json::json!({"auto_success_budget": 100}),
+        );
+        assert_eq!(cfg.auto_success_budget, 100);
+        assert_eq!(
+            output_verbosity_budget_with_auto_success("auto", cfg.auto_success_budget),
+            Some(100)
+        );
+    }
+
+    #[test]
+    fn config_rejects_wrong_type_but_parses_with_default() {
+        let capability = ToolOutputPersistenceCapability;
+        assert!(
+            capability
+                .validate_config(&serde_json::json!({"auto_success_budget": 2048}))
+                .is_ok()
+        );
+        assert!(
+            capability
+                .validate_config(&serde_json::json!({"auto_success_budget": "lots"}))
+                .is_err()
+        );
+        let cfg = ToolOutputPersistenceConfig::from_value(
+            &serde_json::json!({"auto_success_budget": "lots"}),
+        );
+        assert_eq!(cfg.auto_success_budget, AUTO_SUCCESS_BUDGET);
+    }
+
+    #[test]
+    fn schema_advertises_auto_success_budget() {
+        let schema = ToolOutputPersistenceConfig::json_schema();
+        assert_eq!(
+            schema["properties"]["auto_success_budget"]["default"],
+            serde_json::json!(1024)
         );
     }
 }

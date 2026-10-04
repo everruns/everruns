@@ -1478,7 +1478,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
 
     #[cfg(feature = "builtins")]
     {
-        atom = atom.with_final_post_tool_hook(Arc::new(crate::builtins::PersistOutputHook));
+        atom = atom.with_final_post_tool_hook(Arc::new(crate::builtins::PersistOutputHook::default()));
     }
 
     if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
