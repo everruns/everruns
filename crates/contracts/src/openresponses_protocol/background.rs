@@ -85,7 +85,10 @@ pub(super) fn mark(body: &mut Value, background: bool) {
         body.insert("store".into(), true.into());
     } else {
         body.remove("background");
-        body.remove("store");
+        // Explicit stateless extensions (ChatGPT plan/Codex) require store:false.
+        if body.get("store") != Some(&Value::Bool(false)) {
+            body.remove("store");
+        }
     }
 }
 

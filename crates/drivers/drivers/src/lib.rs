@@ -23,6 +23,8 @@
 //! | `anthropic` | [`anthropic`] | Anthropic Claude | Anthropic Messages |
 //! | `bedrock` | [`bedrock`] | AWS Bedrock | Bedrock Converse |
 //! | `bedrock-default-credentials` | [`bedrock`] | AWS default credential chain for Bedrock | |
+//! | `chatgpt` | [`chatgpt`] | Personal ChatGPT plan | Open-source sign-in and Responses |
+//! | `codex` | [`codex`] | Legacy Codex backend | Stateless Responses and native compaction |
 //! | `cloudflare` | [`cloudflare`] | Cloudflare AI Gateway | OpenAI Chat Completions |
 //! | `fireworks` | [`fireworks`] | Fireworks AI | OpenAI Chat Completions |
 //! | `gemini` | [`gemini`] | Google Gemini | Gemini API |
@@ -47,8 +49,12 @@
 pub mod anthropic;
 #[cfg(feature = "bedrock")]
 pub mod bedrock;
+#[cfg(feature = "chatgpt")]
+pub mod chatgpt;
 #[cfg(feature = "cloudflare")]
 pub mod cloudflare;
+#[cfg(feature = "codex")]
+pub mod codex;
 #[cfg(feature = "fireworks")]
 pub mod fireworks;
 #[cfg(feature = "gemini")]
@@ -84,6 +90,8 @@ pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
     not(any(
         feature = "anthropic",
         feature = "bedrock",
+        feature = "chatgpt",
+        feature = "codex",
         feature = "cloudflare",
         feature = "fireworks",
         feature = "gemini",
@@ -96,6 +104,10 @@ pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
     allow(unused_variables)
 )]
 pub fn register_drivers(registry: &mut DriverRegistry) {
+    #[cfg(feature = "chatgpt")]
+    chatgpt::register_driver(registry);
+    #[cfg(feature = "codex")]
+    codex::register_driver(registry);
     #[cfg(feature = "anthropic")]
     anthropic::register_driver(registry);
     #[cfg(feature = "bedrock")]

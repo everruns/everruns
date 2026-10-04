@@ -208,6 +208,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         everruns_core::provider_resolution::ProviderStore::get_default_model_spec(&store).await
     }
 
+    async fn get_provider_config_for_session(
+        &self,
+        org_id: i64,
+        provider: &everruns_contracts::ProviderKey,
+        session: SessionId,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        self.client
+            .get_provider_config_for_session(org_id, provider.as_str(), Some(session))
+            .await
+    }
+
     async fn get_provider_config(
         &self,
         org_id: i64,

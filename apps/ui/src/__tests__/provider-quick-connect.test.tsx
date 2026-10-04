@@ -3,6 +3,13 @@ import { QuickConnect } from "@/app/(main)/settings/providers/quick-connect";
 import type { Provider } from "@/lib/api/types";
 
 const mockCreateProvider = jest.fn();
+const mockRouterPush = jest.fn();
+const mockStartChatGptLogin = jest.fn();
+let mockChatGptEnabled = false;
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: mockRouterPush }) }));
+jest.mock("@/lib/api/chatgpt", () => ({
+  startChatGptLogin: (...args: unknown[]) => mockStartChatGptLogin(...args),
+}));
 const mockCheckCredentials = jest.fn();
 
 jest.mock("@/hooks/use-providers", () => ({
@@ -11,6 +18,9 @@ jest.mock("@/hooks/use-providers", () => ({
     data: {
       policies: {},
       drivers: [
+        ...(mockChatGptEnabled
+          ? [{ driver: "chatgpt", supports_oauth: true, credential_schema: { fields: [] } }]
+          : []),
         { driver: "anthropic", supports_oauth: false, credential_schema: { fields: [] } },
         { driver: "openrouter", supports_oauth: true, credential_schema: { fields: [] } },
       ],
@@ -45,6 +55,7 @@ const VERIFY_TIMEOUT = { timeout: 3000 };
 describe("QuickConnect", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockChatGptEnabled = false;
     mockCheckCredentials.mockResolvedValue({ status: "valid", models: 12 });
     mockCreateProvider.mockResolvedValue({ id: "provider-new" });
   });
@@ -59,6 +70,29 @@ describe("QuickConnect", () => {
       expect(screen.getByText(name)).toBeInTheDocument();
     }
     expect(screen.getByText("Another provider")).toBeInTheDocument();
+  });
+
+  it("hides ChatGPT until the server enables it for the current organization", () => {
+    renderGrid();
+    expect(screen.queryByText("ChatGPT plan")).not.toBeInTheDocument();
+  });
+
+  it("connects the personal plan without an API key and opens its existing settings page", async () => {
+    mockChatGptEnabled = true;
+    const popup = { opener: {}, location: { assign: jest.fn() }, close: jest.fn() };
+    const open = jest.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+    mockStartChatGptLogin.mockResolvedValue({ authorize_url: "https://auth.openai.com/authorize" });
+    renderGrid();
+    fireEvent.click(screen.getByRole("button", { name: "Continue with ChatGPT" }));
+    await waitFor(() => expect(mockStartChatGptLogin).toHaveBeenCalledWith("provider-new"));
+    expect(mockCreateProvider).toHaveBeenCalledWith({
+      name: "ChatGPT plan",
+      provider_type: "chatgpt",
+    });
+    expect(mockRouterPush).toHaveBeenCalledWith("/settings/providers/provider-new");
+    expect(popup.location.assign).toHaveBeenCalledWith("https://auth.openai.com/authorize");
+    expect(popup.opener).toBeNull();
+    open.mockRestore();
   });
 
   it("hands the full driver catalog to the advanced dialog", () => {

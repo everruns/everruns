@@ -62,6 +62,8 @@ export function ModelPicker({
       if (a.provider_name !== b.provider_name) {
         return a.provider_name.localeCompare(b.provider_name);
       }
+      // Account catalogs supply their own model preference order.
+      if (a.provider_id === b.provider_id && a.provider_type === "chatgpt") return 0;
       // Then by display name
       return a.display_name.localeCompare(b.display_name);
     });

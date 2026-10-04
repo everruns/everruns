@@ -1102,6 +1102,7 @@ message GetDefaultProviderCredentialsRequest {
     // Exact provider identity for model execution. Empty preserves the legacy
     // tool-side lookup by provider type.
     string provider_id = 3;
+    optional Uuid session_id = 4;
 }
 
 message GetDefaultProviderCredentialsResponse {

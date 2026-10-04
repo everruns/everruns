@@ -76,6 +76,9 @@ pub struct FeatureFlags {
     pub container_sandbox: bool,
     #[serde(default)]
     pub lua: bool,
+    /// Personal ChatGPT plan connections; deployment availability and org enrolment required.
+    #[serde(default)]
+    pub chatgpt_plan: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -116,6 +119,12 @@ pub struct FeatureFlagDefinition {
 
 /// One catalog for hosted flags, including infrastructure capabilities.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
+    FeatureFlagDefinition {
+        name: "chatgpt_plan",
+        label: "ChatGPT plan connections",
+        description: "Connect your personal ChatGPT plan for private agent conversations.",
+        grade: FeatureFlagGrade::Off,
+    },
     FeatureFlagDefinition {
         name: "notifications",
         label: "Notifications",
@@ -343,6 +352,7 @@ impl FeatureFlags {
             ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
+            ("chatgpt_plan".to_string(), self.chatgpt_plan),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
@@ -369,6 +379,7 @@ impl FeatureFlags {
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
+            "chatgpt_plan" => self.chatgpt_plan,
             "notifications" => self.notifications,
             "evals" => self.evals,
             "skills" => self.skills,
@@ -412,6 +423,7 @@ impl FeatureFlags {
             "docker_capability" => self.docker_capability = enabled,
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
+            "chatgpt_plan" => self.chatgpt_plan = enabled,
             _ => unreachable!("catalog and boolean fields must agree"),
         }
     }
@@ -448,6 +460,7 @@ impl FeatureFlags {
             docker_capability: true,
             container_sandbox: true,
             lua: true,
+            chatgpt_plan: true,
             notifications: true,
             evals: true,
             skills: true,
@@ -482,6 +495,22 @@ mod tests {
                 .map(|def| (def.name.to_string(), grade))
                 .collect(),
         }
+    }
+
+    #[test]
+    fn chatgpt_connections_require_deployment_and_org_enrolment() {
+        let off = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off);
+        let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
+        assert!(!off.for_org(&enrolled).chatgpt_plan);
+        let available = off.with_grade("chatgpt_plan", FeatureFlagGrade::Adoption);
+        assert!(available.deployment_flags().chatgpt_plan);
+        assert!(!available.for_org(&HashMap::new()).chatgpt_plan);
+        assert!(available.for_org(&enrolled).chatgpt_plan);
+        assert!(
+            !available
+                .for_org(&HashMap::from([("chatgpt_plan".into(), false)]))
+                .chatgpt_plan
+        );
     }
 
     #[test]

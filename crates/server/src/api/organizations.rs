@@ -637,6 +637,12 @@ pub async fn update_organization(
             return Err(ErrorResponse::new("Default model must be an enabled model")
                 .into_response(StatusCode::BAD_REQUEST));
         }
+        if model.provider_type == "chatgpt" {
+            return Err(
+                ErrorResponse::new("Personal providers cannot be organization defaults")
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
+        }
     }
     if default_harness_name.is_none()
         && let Some(default_harness_id) = default_harness_id
@@ -658,10 +664,11 @@ pub async fn update_organization(
     }
     // Validate every pinned provider exists in the org. Capability (the driver
     // actually declaring the service) is enforced fail-closed at resolve time in
-    // ProviderResolverService::resolve_service, so we only guard existence here.
+    // ProviderResolverService::resolve_service. Personal grants cannot be shared
+    // through an organization default, even by their owner.
     if let Some(ref defaults) = default_provider_per_service {
         for provider_id in defaults.values() {
-            state
+            let provider = state
                 .db
                 .get_provider(org_row.org_id, provider_id.uuid())
                 .await
@@ -670,6 +677,12 @@ pub async fn update_organization(
                     ErrorResponse::new(format!("Provider {provider_id} not found"))
                         .into_response(StatusCode::BAD_REQUEST)
                 })?;
+            if provider.provider_type == "chatgpt" {
+                return Err(ErrorResponse::new(
+                    "Personal providers cannot be organization defaults",
+                )
+                .into_response(StatusCode::BAD_REQUEST));
+            }
         }
     }
 

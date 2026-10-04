@@ -12,86 +12,94 @@ use everruns_worker::adapters::create_driver_registry;
 
 /// The published table, in `docs/framework/models-and-providers.md` order:
 /// (driver, display name, services, offers OAuth).
-const PUBLISHED: &[(DriverId, &str, &[ServiceKind], bool)] = &[
-    (
-        DriverId::OpenAI,
-        "OpenAI",
-        &[
-            ServiceKind::Chat,
-            ServiceKind::Realtime,
-            ServiceKind::Embeddings,
-        ],
-        false,
-    ),
-    (
-        DriverId::OpenAICompletions,
-        "OpenAI (Chat Completions)",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::AzureOpenAI,
-        "Azure OpenAI",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::Anthropic,
-        "Anthropic",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::Gemini,
-        "Google Gemini",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::Bedrock,
-        "AWS Bedrock",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    // The one driver offering an interactive "Connect with …" flow.
-    (
-        DriverId::OpenRouter,
-        "OpenRouter",
-        &[ServiceKind::Chat],
-        true,
-    ),
-    (DriverId::Mai, "Microsoft MAI", &[ServiceKind::Chat], false),
-    (
-        DriverId::Fireworks,
-        "Fireworks AI",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::Meta,
-        "Meta Model API",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::Cloudflare,
-        "Cloudflare AI Gateway",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::Vercel,
-        "Vercel AI Gateway",
-        &[ServiceKind::Chat],
-        false,
-    ),
-    (
-        DriverId::LlmSim,
-        "LLM Simulator",
-        &[ServiceKind::Chat],
-        false,
-    ),
-];
+fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
+    vec![
+        (
+            DriverId::OpenAI,
+            "OpenAI",
+            &[
+                ServiceKind::Chat,
+                ServiceKind::Realtime,
+                ServiceKind::Embeddings,
+            ],
+            false,
+        ),
+        (
+            DriverId::external("chatgpt"),
+            "ChatGPT plan",
+            &[ServiceKind::Chat],
+            true,
+        ),
+        (
+            DriverId::OpenAICompletions,
+            "OpenAI (Chat Completions)",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::AzureOpenAI,
+            "Azure OpenAI",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::Anthropic,
+            "Anthropic",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::Gemini,
+            "Google Gemini",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::Bedrock,
+            "AWS Bedrock",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        // API providers can also offer an interactive connect flow.
+        (
+            DriverId::OpenRouter,
+            "OpenRouter",
+            &[ServiceKind::Chat],
+            true,
+        ),
+        (DriverId::Mai, "Microsoft MAI", &[ServiceKind::Chat], false),
+        (
+            DriverId::Fireworks,
+            "Fireworks AI",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::Meta,
+            "Meta Model API",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::Cloudflare,
+            "Cloudflare AI Gateway",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::Vercel,
+            "Vercel AI Gateway",
+            &[ServiceKind::Chat],
+            false,
+        ),
+        (
+            DriverId::LlmSim,
+            "LLM Simulator",
+            &[ServiceKind::Chat],
+            false,
+        ),
+    ]
+}
 
 #[test]
 fn the_published_table_lists_every_registered_driver() {
@@ -103,7 +111,7 @@ fn the_published_table_lists_every_registered_driver() {
         .collect();
     registered.sort();
 
-    let mut published: Vec<String> = PUBLISHED.iter().map(|(id, ..)| id.to_string()).collect();
+    let mut published: Vec<String> = published().iter().map(|(id, ..)| id.to_string()).collect();
     published.sort();
 
     assert_eq!(
@@ -116,11 +124,11 @@ fn the_published_table_lists_every_registered_driver() {
 #[test]
 fn each_driver_powers_the_services_the_page_claims() {
     let registry = create_driver_registry();
-    for (id, display_name, services, offers_oauth) in PUBLISHED {
-        let descriptor = registry.descriptor(id).expect("registered");
+    for (id, display_name, services, offers_oauth) in published() {
+        let descriptor = registry.descriptor(&id).expect("registered");
 
         assert_eq!(
-            descriptor.display_name, *display_name,
+            descriptor.display_name, display_name,
             "{id}'s display name changed; the published table names it \
              {display_name}"
         );
@@ -131,7 +139,7 @@ fn each_driver_powers_the_services_the_page_claims() {
         );
         assert_eq!(
             descriptor.oauth.is_some(),
-            *offers_oauth,
+            offers_oauth,
             "{id}'s interactive connect flow changed; the page says \
              offers_oauth={offers_oauth}"
         );

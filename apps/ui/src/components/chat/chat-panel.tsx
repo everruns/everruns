@@ -730,6 +730,10 @@ export function ChatPanel({
                   : undefined
             }
             selectedModelId={selectedModelId}
+            usingChatGptPlan={
+              selectedModel?.provider_type === "chatgpt" ||
+              (!selectedModelId && llmModel?.provider_type === "chatgpt")
+            }
             recentModels={recentModels}
             onModelChange={handleModelChange}
             modelTriggerLabel={

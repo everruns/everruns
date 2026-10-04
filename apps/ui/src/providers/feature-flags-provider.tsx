@@ -27,6 +27,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   public_chat: false,
   webmcp: false,
   reports: false,
+  chatgpt_plan: false,
   machine_payments: false,
 };
 

@@ -88,22 +88,33 @@ impl LlmErrorKind {
     pub fn from_provider_code(code: &str) -> Option<Self> {
         let code = code.trim().to_ascii_lowercase();
         match code.as_str() {
-            "insufficient_quota"
+            "subscription_sharing_usage_limit_exceeded"
+            | "insufficient_quota"
             | "billing_hard_limit_reached"
             | "credit_balance_too_low"
             | "credit_balance_exhausted" => Some(Self::QuotaExhausted),
-            "authentication_error" | "invalid_api_key" | "permission_denied" => {
-                Some(Self::Authentication)
-            }
+            "subscription_sharing_user_not_eligible"
+            | "subscription_sharing_invalid_user"
+            | "chatpass_v2_scope_not_authorized"
+            | "chatpass_v2_invalid_authorization_context"
+            | "authentication_error"
+            | "invalid_api_key"
+            | "permission_denied" => Some(Self::Authentication),
             "rate_limit_exceeded" | "rate_limit_error" | "overloaded_error" => {
                 Some(Self::RateLimited)
             }
-            "server_error"
+            "subscription_sharing_usage_unavailable"
+            | "subscription_sharing_user_unavailable"
+            | "server_error"
             | "internal_error"
             | "processing_error"
             | "service_unavailable"
             | "timeout" => Some(Self::Unavailable),
-            "invalid_request_error" | "model_not_found" => Some(Self::InvalidRequest),
+            "subscription_sharing_unsupported_capability"
+            | "subscription_sharing_route_not_supported"
+            | "invalid_request_error"
+            | "model_not_found" => Some(Self::InvalidRequest),
+            "malformed_response" => Some(Self::MalformedResponse),
             _ => None,
         }
     }

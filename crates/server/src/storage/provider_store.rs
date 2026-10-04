@@ -121,6 +121,13 @@ impl ProviderStore for DbProviderStore {
         else {
             return Ok(None);
         };
+        // This legacy store has no session identity. Personal connections are
+        // resolved through ProviderResolverService's session-scoped path.
+        if row.provider_type == "chatgpt" || row.settings.get("chatgpt").is_some() {
+            return Err(AgentLoopError::Configuration(
+                "A personal provider requires a session runtime identity".into(),
+            ));
+        }
         let with_key = self
             .db
             .get_provider_with_api_key(&row, &self.encryption)

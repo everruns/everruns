@@ -29,6 +29,12 @@
   Environment overrides select grades; explicit false organisation overrides
   preserve production opt-outs. See [Feature Flags](security/feature-flags.md).
 
+* **Personal ChatGPT plan drivers.** Shared OAuth, Responses transport, and
+  legacy Codex drivers live in `everruns-drivers`; host adapters supply storage
+  and browser navigation. Self-hosted account connections require deployment
+  enablement plus org opt-in and exact personal runtime ownership. See
+  [Providers](foundations/providers.md#personal-chatgpt-plan-connections).
+
 * **Session storage reads require session view.** Listing key/value entries
   or secret names now evaluates `SESSION_VIEW` before the store is read, so a
   same-org caller a custom resolver denies cannot see plaintext values or

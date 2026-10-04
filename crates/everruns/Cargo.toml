@@ -113,6 +113,8 @@ a2a = ["local", "everruns-platform/a2a"]
 # Configure real OpenAI-backed models via `everruns::providers::openai`. Off by
 # default so the standard facade build pulls in no provider or Reqwest edge; the
 # `OpenAI` config type and its driver wiring compile only with this feature.
+chatgpt = ["dep:everruns-drivers", "everruns-drivers/chatgpt"]
+codex = ["dep:everruns-drivers", "everruns-drivers/codex"]
 openai = ["dep:everruns-drivers", "everruns-drivers/openai"]
 openrouter = ["dep:everruns-drivers", "everruns-drivers/openrouter"]
 # Anthropic Messages and Google Gemini, the same shape as `openai`:

@@ -221,6 +221,63 @@ async fn organization_rejects_stale_default_model() {
 }
 
 #[tokio::test]
+async fn organization_rejects_personal_model_and_service_defaults() {
+    use crate::storage::models::{CreateModelRow, CreateProviderRow};
+    let (app, db, user_id) = create_org_app(None);
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
+    let provider = db
+        .create_provider(
+            DEFAULT_ORG_ID,
+            CreateProviderRow {
+                name: "Personal ChatGPT".into(),
+                provider_type: "chatgpt".into(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: Some(
+                    serde_json::json!({"chatgpt":{"owner_user_id":user_id.to_string()}}),
+                ),
+            },
+        )
+        .await
+        .unwrap();
+    let model = db
+        .create_model(
+            DEFAULT_ORG_ID,
+            CreateModelRow {
+                provider_id: provider.id,
+                model_id: "gpt-test".into(),
+                display_name: "Test".into(),
+                capabilities: vec![],
+                is_favorite: false,
+                enabled: true,
+                source: "discovered".into(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+    for body in [
+        serde_json::json!({"default_model_id":model.id}),
+        serde_json::json!({"default_provider_per_service":{"realtime":provider.id}}),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(update_default_org_json_request(body.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let error: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            error["detail"],
+            "Personal providers cannot be organization defaults"
+        );
+    }
+}
+
+#[tokio::test]
 async fn create_organization_rejects_empty_name() {
     let (app, db, user_id) = create_org_app(None);
 

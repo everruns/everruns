@@ -25,6 +25,8 @@ vendor features turn on the matching features here and re-export this crate as
 | `anthropic` | `anthropic` | Anthropic Claude | Anthropic Messages |
 | `bedrock` | `bedrock` | AWS Bedrock | Bedrock Converse |
 | `bedrock-default-credentials` | `bedrock` | AWS default credential chain | |
+| `chatgpt` | `chatgpt` | Personal ChatGPT plan | Stateless Responses + open-source OAuth |
+| `codex` | `codex` | Legacy Codex | Codex Responses |
 | `cloudflare` | `cloudflare` | Cloudflare AI Gateway | OpenAI Chat Completions |
 | `fireworks` | `fireworks` | Fireworks AI | OpenAI Chat Completions |
 | `gemini` | `gemini` | Google Gemini | Gemini API |
@@ -52,7 +54,8 @@ register_drivers(&mut registry);
 ```
 
 `register_drivers` registers every enabled vendor. Each module also has its own
-`register_driver`, `descriptor`, and `from_env`.
+`register_driver` and `descriptor`. API vendors offer `from_env`; personal
+ChatGPT and Codex connections use host-owned authentication instead.
 
 ## What It Provides
 
@@ -93,3 +96,16 @@ and `everruns_openai::X` with `everruns_drivers::openai::X`. Bedrock's
 ## License
 
 Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+
+## Personal ChatGPT authentication
+
+Enable `chatgpt` for the public plan route or `codex` for the legacy backend.
+Hosts provide the browser opener and an implementation of
+`chatgpt::auth::TokenStore`; `RotatingAuth` loads credentials under its lease and
+persists the full rotated pair before producing authentication headers. Hosts
+with writers outside that lease must implement atomic `compare_and_save`.
+`chatgpt::login::LoginAttempt` handles loopback PKCE and verified dynamic
+registration; credentials and registration are host-owned.
+
+The `chatgpt-login` example provides a private-file handoff for remote self-hosted
+installations. See [ChatGPT plan](https://docs.everruns.com/features/chatgpt/).

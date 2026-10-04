@@ -20,6 +20,15 @@ pub trait ProviderStore: Send + Sync {
     /// Return the default credential-free model selection.
     async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>>;
 
+    /// Resolve credentials under a persisted session's runtime identity.
+    async fn get_provider_config_for_session(
+        &self,
+        provider: &ProviderKey,
+        _session: crate::typed_id::SessionId,
+    ) -> Result<Option<crate::driver_registry::ProviderConfig>> {
+        self.get_provider_config(provider).await
+    }
+
     /// Resolve runtime service configuration independently from the model.
     ///
     /// Implementors must make credential ownership explicit. Return a config
@@ -42,6 +51,16 @@ impl<T: ProviderStore + ?Sized> ProviderStore for std::sync::Arc<T> {
 
     async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>> {
         (**self).get_default_model_spec().await
+    }
+
+    async fn get_provider_config_for_session(
+        &self,
+        provider: &ProviderKey,
+        session: crate::typed_id::SessionId,
+    ) -> Result<Option<crate::driver_registry::ProviderConfig>> {
+        (**self)
+            .get_provider_config_for_session(provider, session)
+            .await
     }
 
     async fn get_provider_config(

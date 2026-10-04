@@ -710,6 +710,7 @@ export const ChatMessageList = memo(function ChatMessageList({
               <ChatErrorAlert
                 key={event.id}
                 message={getTurnFailedMessage(locale, turnFailedData)}
+                manageChatGptUsage={turnFailedData.error_code === "provider_usage_limit_reached"}
               />
             );
           }
