@@ -2,6 +2,11 @@
 
 ## 2026-10-04
 
+* **MCP server card version is the platform release.** The card's `version` and
+  `serverInfo.version`, and the server info on `initialize` and `server/discover`,
+  are the running package version. A release tag updates them; they are not a
+  separately edited string. See [MCP](integrations/mcp.md).
+
 * **Client-side tools pass server pre-tool policy.** Approval, guardrail, and
   user hooks run before a client execution request, including mixed batches. A
   denial is a tool result and is absent from the request; an allowed call keeps

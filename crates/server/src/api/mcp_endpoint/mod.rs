@@ -142,6 +142,11 @@ impl JsonRpcResponse {
 // ============================================================================
 
 pub const MCP_SERVER_NAME: &str = "everruns";
+/// Implementation version advertised by `initialize`, `server/discover`, and
+/// the MCP server card. This is the workspace package version, which the
+/// release tags, so those documents move with the platform release. Do not
+/// replace it with a literal: a stale string is what catalogs keep showing
+/// after the binary has moved on.
 pub const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
 const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";

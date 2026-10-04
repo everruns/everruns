@@ -230,6 +230,9 @@ self-hosted deployment describes itself:
 - Content follows `AUTH_MODE`. Under `AUTH_MODE=none` both documents state that
   no credentials are required instead of describing an OAuth flow that is not
   enforced.
+- The server card `version` and `serverInfo.version` are the running server's
+  release version, the same value `/health` reports. A release updates them
+  with the binary.
 
 ### Reverse proxy configuration (required)
 
