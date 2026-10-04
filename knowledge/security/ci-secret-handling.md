@@ -89,6 +89,19 @@ Entropy is deliberately not the discriminator. `debug-ubuntu-latest` scores 3.35
 threshold a hex key could clear, since hex caps at 4.0. The signal is an unbroken alphanumeric run,
 which a credential has and a hyphenated setting name does not.
 
+## The vault token's boundary
+
+`DOPPLER_TOKEN` unlocks the whole vault, so it gets a narrower boundary than one credential. [`scripts/test-workflow-vault-token-scope.sh`](../../scripts/test-workflow-vault-token-scope.sh) enforces three rules on every workflow:
+
+- **Step scope.** Only a `run:` step's `env:` may carry it. Job-level `env:` hands it to every action in the job.
+- **Immutable neighbours.** Every external action in a job that holds it is SHA-pinned. An action that ran earlier can
+  replace `doppler` or plant a shell hook, so step scoping alone does not protect the credentialed command from a
+  repointed tag.
+- **Trusted refs.** The job's `if:` has a trusted-ref conjunct. `workflow_dispatch` runs whatever branch the dispatcher
+  picks, so a push/dispatch gate alone lets unreviewed code run under the vault.
+
+Unpinned actions remain fine in jobs that never see the token; pinning is scoped to where it buys protection.
+
 ## Residual risks
 
 - **Detection latency.** The sweep is hourly. It is scheduled rather than `workflow_run`-triggered

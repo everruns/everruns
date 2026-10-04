@@ -68,23 +68,22 @@ jobs:
   live-test:
     name: ARD Live Registry Tests
     runs-on: ubuntu-latest
-    # if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     if: false
     timeout-minutes: 10
     env:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
       # Public reference registry base URL (not a secret). Required by the
       # fail-closed live tests.
       ARD_LIVE_REGISTRY_URL: https://agenticresourcediscovery.org/api/v1
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "debug"
 
@@ -93,7 +92,7 @@ jobs:
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -101,11 +100,13 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       # Optional bearer token for the registry. The reference registry is
       # anonymous-read; `doppler run` injects ARD_REGISTRY_TOKEN only when it is
       # configured, so an absent token stays absent rather than empty. Writing it
       # to $GITHUB_ENV instead would print it unmasked in every later step.
       - name: Run live registry tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-ard --features ard-live-tests --test live_api_test

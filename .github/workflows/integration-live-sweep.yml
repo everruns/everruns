@@ -25,10 +25,11 @@ env:
 jobs:
   doppler-backed-live-tests:
     name: ${{ matrix.name }}
+    # A manual dispatch may pick any branch; only main runs beside the vault
+    # token (EVE-1190). Schedules always run on the default branch.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
     strategy:
       fail-fast: false
       matrix:
@@ -71,14 +72,14 @@ jobs:
           # See EVE-659.
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Doppler CLI
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -86,13 +87,13 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "debug"
 
@@ -100,6 +101,8 @@ jobs:
       # An $GITHUB_ENV export would add nothing but an unmasked copy in every
       # later step's env block.
       - name: Run live tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- ${{ matrix.command }}
 
   duckduckgo-integration-test:

@@ -85,6 +85,9 @@ jobs:
   update-homebrew:
     name: Update Homebrew formula
     needs: build
+    # Static trusted-ref gate for the vault token (EVE-1190); the step below
+    # still validates the full tag shape before anything credentialed runs.
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
