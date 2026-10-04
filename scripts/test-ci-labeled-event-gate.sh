@@ -30,7 +30,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(dirname "$SCRIPT_DIR")"
 
 python3 - <<'PY'
+import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -103,6 +106,54 @@ if 'select(.conclusion == "success")' not in verify:
         "verdict it inherits to a successful run, so a gated-off run could "
         "report a pass the real run never gave (EVE-939)."
     )
+
+# Exercise the production shell body. A failed prerequisite skips the event-gate
+# step and leaves run_ci empty; that must never be mistaken for an intentional
+# run_ci=false label event, even when the head has a historical passing check.
+with tempfile.TemporaryDirectory() as temp_dir:
+    gh = Path(temp_dir) / "gh"
+    gh.write_text("#!/usr/bin/env bash\necho 1\n")
+    gh.chmod(0o755)
+
+    def run_verify(run_ci, results):
+        env = os.environ.copy()
+        env.update(
+            {
+                "RUN_CI": run_ci,
+                "RESULTS": results,
+                "HEAD_SHA": "abc123",
+                "GITHUB_REPOSITORY": "everruns/everruns",
+                "PATH": f"{temp_dir}:{env['PATH']}",
+            }
+        )
+        return subprocess.run(
+            ["bash", "-c", verify],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    for run_ci, results, scenario in [
+        ("", '["failure", "skipped"]', "missing run_ci after a failed prerequisite"),
+        ("false", '["failure", "skipped"]', "failed prerequisite with run_ci=false"),
+        ("", '["success", "skipped"]', "missing run_ci without a reported failure"),
+    ]:
+        result = run_verify(run_ci, results)
+        if result.returncode == 0:
+            errors.append(
+                f"{workflow}: Build Check passed for {scenario} by inheriting a "
+                "historical success; only an explicit run_ci=false from a successful "
+                f"changes job may defer. Output:\n{result.stdout}{result.stderr}"
+            )
+
+    intentional_skip = run_verify("false", '["success", "skipped"]')
+    if intentional_skip.returncode != 0:
+        errors.append(
+            f"{workflow}: Build Check no longer defers an intentional run_ci=false "
+            "label event to the historical success. Output:\n"
+            f"{intentional_skip.stdout}{intentional_skip.stderr}"
+        )
 
 # Reading those check runs needs the scope; without it the query 404s and the
 # deferral silently becomes the blanket refusal it replaced.
