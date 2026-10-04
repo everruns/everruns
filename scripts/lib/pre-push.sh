@@ -75,32 +75,50 @@ else
   fail "Cargo.lock outdated — run: cargo fetch"
 fi
 
+# Both UI checks resolve their tool from apps/ui/node_modules, so an installed
+# tree that lags the lockfile makes them answer with the wrong tool's rules —
+# green locally while CI, which installs from the lockfile, disagrees. Decide
+# once whether the toolchain can be trusted, and report the drift instead of a
+# formatting or lint verdict derived from it.
+UI_DEPS_STALE=0
+UI_DEPS_DRIFT=""
+if [ "$UI_CHANGED" = "1" ] && [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
+  if ! UI_DEPS_DRIFT="$(bash "$PROJECT_ROOT/scripts/lib/check-node-deps-lockfile.sh" apps/ui 2>&1)"; then
+    UI_DEPS_STALE=1
+  fi
+fi
+
 # 4. UI formatting (skip if node_modules missing)
 echo "4/28 UI formatting"
 if [ "$UI_CHANGED" != "1" ]; then
   skip "no UI changes"
-elif [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
+elif [ ! -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
+  echo "   ⏭️  skipped (no node_modules)"
+elif [ "$UI_DEPS_STALE" = "1" ]; then
+  printf '%s\n' "$UI_DEPS_DRIFT" | sed 's/^/   /'
+  fail "UI format — stale node_modules; run: cd apps/ui && pnpm install"
+else
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run format:check 2>/dev/null); then
     pass "UI format"
   else
     fail "UI format — run: cd apps/ui && pnpm run format"
   fi
-else
-  echo "   ⏭️  skipped (no node_modules)"
 fi
 
 # 5. UI linting (skip if node_modules missing)
 echo "5/28 UI linting"
 if [ "$UI_CHANGED" != "1" ]; then
   skip "no UI changes"
-elif [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
+elif [ ! -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
+  echo "   ⏭️  skipped (no node_modules)"
+elif [ "$UI_DEPS_STALE" = "1" ]; then
+  fail "UI lint — stale node_modules; run: cd apps/ui && pnpm install"
+else
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run lint 2>/dev/null); then
     pass "UI lint"
   else
     fail "UI lint — run: cd apps/ui && pnpm run lint -- --fix"
   fi
-else
-  echo "   ⏭️  skipped (no node_modules)"
 fi
 
 # 6. Migration ordering check
