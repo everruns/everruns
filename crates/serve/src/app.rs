@@ -43,11 +43,11 @@ impl Mode {
 /// A discovered agent.
 #[derive(Clone)]
 pub(crate) struct AgentEntry {
-    pub name: &'static str,
-    pub doc: &'static str,
+    pub name: String,
+    pub doc: String,
     pub sub: bool,
     pub default: bool,
-    pub source: &'static str,
+    pub source: String,
     pub spec: Agent,
 }
 
@@ -173,9 +173,26 @@ impl App {
 pub struct AppBuilder {
     discover: bool,
     config: Option<AppConfig>,
+    packages: Vec<(String, crate::Result<Agent>)>,
 }
 
 impl AppBuilder {
+    /// Load a file-based agent before freezing the app. Assets are read once;
+    /// restart the app to apply edits. Errors join discovery diagnostics.
+    pub fn agent_package(mut self, path: impl AsRef<std::path::Path>) -> Self {
+        let path = path.as_ref();
+        self.packages
+            .push((path.display().to_string(), Agent::from_package(path)));
+        self
+    }
+
+    /// Add an already materialized file agent, for example an embedded ZIP.
+    pub fn package(mut self, package: everruns::AgentPackage) -> Self {
+        self.packages
+            .push(("agent-package".into(), Agent::package(package)));
+        self
+    }
+
     /// Collect everything the attribute macros registered in this binary.
     pub fn discover(mut self) -> Self {
         self.discover = true;
@@ -194,7 +211,7 @@ impl AppBuilder {
     pub fn build(self) -> App {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
-        if !self.discover {
+        if !self.discover && self.packages.is_empty() {
             warnings.push("App built without .discover(); it has no agents".to_string());
         }
         let assets: Vec<&'static AssetRegistration> = if self.discover {
@@ -245,6 +262,41 @@ impl AppBuilder {
         };
         if self.discover {
             discover(&mut app);
+        }
+        for (source, spec) in self.packages {
+            match spec {
+                Ok(spec) => {
+                    let Some(package) = spec.package.as_ref() else {
+                        app.errors
+                            .push(format!("{source}: missing package definition"));
+                        continue;
+                    };
+                    let name = package.manifest().name.clone();
+                    if app.agents.iter().any(|a| a.name == name) {
+                        app.errors.push(format!("duplicate agent {name}"));
+                        continue;
+                    }
+                    for tool in spec.tools.iter().flatten() {
+                        if !app.tools.iter().any(|t| t.name == tool) {
+                            app.errors
+                                .push(format!("agent {name} requires host tool {tool}"));
+                        }
+                    }
+                    app.agents.push(AgentEntry {
+                        name,
+                        doc: String::new(),
+                        source,
+                        sub: false,
+                        default: false,
+                        spec,
+                    });
+                }
+                Err(error) => app.errors.push(format!("{source}: {error}")),
+            }
+        }
+        if !app.agents.iter().any(|a| !a.sub) {
+            app.errors
+                .push("no agents found; register an agent or load .agent_package(path)".into());
         }
         App {
             inner: Arc::new(app),
@@ -314,20 +366,17 @@ fn discover(app: &mut AppInner) {
             ));
         }
         app.agents.push(AgentEntry {
-            name: registration.name,
-            doc: registration.doc,
+            name: registration.name.into(),
+            doc: registration.doc.into(),
             sub: registration.sub,
             default: registration.default,
-            source: registration.source,
+            source: registration.source.into(),
             spec,
         });
     }
     let top: Vec<_> = app.agents.iter().filter(|a| !a.sub).collect();
     let defaults = top.iter().filter(|a| a.default).count();
-    if top.is_empty() {
-        app.errors
-            .push("no #[agent] found; add one (subagents alone cannot serve sessions)".into());
-    } else if defaults > 1 {
+    if defaults > 1 {
         app.errors
             .push("more than one #[agent(default)]; mark exactly one".into());
     } else if top.len() > 1 && defaults == 0 {

@@ -269,6 +269,13 @@ impl fmt::Debug for LifecycleHooks {
 }
 
 impl LifecycleHooks {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.agent_start.is_empty()
+            && self.turn_start.is_empty()
+            && self.tool_start.is_empty()
+            && self.tool_end.is_empty()
+            && self.completion.is_empty()
+    }
     pub(crate) fn on_agent_start<F, Fut, O>(&mut self, callback: F)
     where
         F: Fn(AgentStartContext) -> Fut + Send + Sync + 'static,

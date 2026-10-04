@@ -14,6 +14,10 @@
 //! [`session_files`], [`durability`], and [`event_emitter`]; there is no
 //! catch-all service-traits module.
 //!
+//! Portable file/folder agents are available through `agent_package` with the
+//! `agent-package` feature. Native disk effects require `agent-package-fs`;
+//! neither is enabled by default. Framework applications use `everruns::AgentPackage`.
+//!
 //! # Main Surfaces
 //!
 //! - Agent, harness, session, message, and event models
@@ -123,6 +127,9 @@ pub mod budget;
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent_definition;
+// Authored packages belong with portable definitions, not in another publish slot.
+#[cfg(feature = "agent-package")]
+pub mod agent_package;
 pub mod ard_attachment;
 pub mod capability_dto;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,

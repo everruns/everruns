@@ -740,12 +740,59 @@
     ]
   },
   {
+    "wire_name": "diff_agent_package",
+    "path": [
+      "agents"
+    ],
+    "verb": "diff",
+    "description": "Compare an agent package with an existing agent by name without applying changes.",
+    "method": "POST",
+    "http_path": "/v1/agents/diff",
+    "args": [
+      {
+        "field": "file",
+        "long": "file",
+        "position": 1,
+        "kind": "string",
+        "required": false,
+        "help": "Path in the current Platform Chat session workspace (never server disk)."
+      },
+      {
+        "field": "content",
+        "long": "content",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown/TOML/YAML/JSON agent definition, with assets embedded."
+      },
+      {
+        "field": "format",
+        "long": "format",
+        "kind": "string",
+        "required": false,
+        "help": "Text encoding: auto, markdown, toml, yaml or json."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "string",
+        "required": false,
+        "help": "Existing agent name to update or compare."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Review package changes against an existing agent",
+        "command": "everruns agents diff /agents/triage --target triage"
+      }
+    ]
+  },
+  {
     "wire_name": "export_agent",
     "path": [
       "agents"
     ],
     "verb": "export",
-    "description": "Export agent as JSON.",
+    "description": "Export a portable agent definition as JSON, without IDs or credentials.",
     "method": "GET",
     "http_path": "/v1/agents/{id}/export",
     "args": [
@@ -755,13 +802,27 @@
         "position": 1,
         "kind": "string",
         "required": true,
-        "help": "Prefixed public identifier."
+        "help": "Agent name (legacy IDs are also accepted)."
+      },
+      {
+        "field": "format",
+        "long": "format",
+        "kind": "string",
+        "required": false,
+        "help": "Output format; defaults to JSON for responses and Markdown for artifacts."
+      },
+      {
+        "field": "out",
+        "long": "out",
+        "kind": "string",
+        "required": false,
+        "help": "New artifact path in the current session workspace."
       }
     ],
     "examples": [
       {
-        "intent": "Save an agent's definition to a file",
-        "command": "everruns agents export agt_01h9 > agent.json"
+        "intent": "Export portable configuration by agent name",
+        "command": "everruns agents export triage --format json"
       }
     ]
   },
@@ -934,158 +995,44 @@
       "agents"
     ],
     "verb": "import",
-    "description": "Import an agent from a definition.",
+    "description": "Import an agent package; target explicitly updates an existing agent by name.",
     "method": "POST",
     "http_path": "/v1/agents/import",
     "args": [
       {
-        "field": "capabilities",
-        "long": "capabilities",
-        "kind": "json",
-        "required": false,
-        "help": "Capabilities to enable for this agent with per-agent configuration. Each capability has a `re..."
-      },
-      {
-        "field": "default_model_id",
-        "long": "default-model-id",
+        "field": "file",
+        "long": "file",
+        "position": 1,
         "kind": "string",
         "required": false,
-        "help": "The ID of the default LLM model to use for this agent. If not specified, the system default m..."
+        "help": "Path in the current Platform Chat session workspace (never server disk)."
       },
       {
-        "field": "description",
-        "long": "description",
+        "field": "content",
+        "long": "content",
         "kind": "string",
         "required": false,
-        "help": "A human-readable description of what the agent does."
+        "help": "Markdown/TOML/YAML/JSON agent definition, with assets embedded."
       },
       {
-        "field": "display_name",
-        "long": "display-name",
+        "field": "format",
+        "long": "format",
         "kind": "string",
         "required": false,
-        "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
+        "help": "Text encoding: auto, markdown, toml, yaml or json."
       },
       {
-        "field": "environments",
-        "long": "environments",
-        "kind": "json",
-        "required": false
-      },
-      {
-        "field": "harness_id",
-        "long": "harness-id",
+        "field": "target",
+        "long": "target",
         "kind": "string",
         "required": false,
-        "help": "Harness ID used as this agent's base execution environment."
-      },
-      {
-        "field": "harness_name",
-        "long": "harness-name",
-        "kind": "string",
-        "required": false,
-        "help": "Addressable harness name."
-      },
-      {
-        "field": "id",
-        "long": "id",
-        "kind": "string",
-        "required": false,
-        "help": "Client-supplied agent ID (format: agent_{32-hex}). If not provided, one is auto-generated."
-      },
-      {
-        "field": "initial_files",
-        "long": "initial-files",
-        "kind": "json",
-        "required": false,
-        "help": "Starter files copied into each new session for this agent."
-      },
-      {
-        "field": "intro_markdown",
-        "long": "intro-markdown",
-        "kind": "string",
-        "required": false,
-        "help": "Markdown intro shown as an intro box on a fresh Platform Chat thread. Images are allowed."
-      },
-      {
-        "field": "max_iterations",
-        "long": "max-iterations",
-        "kind": "integer",
-        "required": false,
-        "help": "Maximum number of LLM iterations per turn for this agent."
-      },
-      {
-        "field": "mcpServers",
-        "long": "mcpServers",
-        "kind": "json",
-        "required": false
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Name, unique per org."
-      },
-      {
-        "field": "network_access",
-        "long": "network-access",
-        "kind": "json",
-        "required": false
-      },
-      {
-        "field": "parallel_tool_calls",
-        "long": "parallel-tool-calls",
-        "kind": "boolean",
-        "required": false,
-        "help": "Request-level parallel tool calling preference (EVE-598)."
-      },
-      {
-        "field": "service_virtual_user_id",
-        "long": "service-virtual-user-id",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "short_description",
-        "long": "short-description",
-        "kind": "string",
-        "required": false,
-        "help": "One-line description in simplified Markdown, shown below the chat title once the intro is hid..."
-      },
-      {
-        "field": "starters",
-        "long": "starters",
-        "kind": "json",
-        "required": false,
-        "help": "Conversation starters for a fresh Platform Chat thread."
-      },
-      {
-        "field": "system_prompt",
-        "long": "system-prompt",
-        "kind": "string",
-        "required": true,
-        "help": "The system prompt that defines the agent's behavior and capabilities. This is sent as the fir..."
-      },
-      {
-        "field": "tags",
-        "long": "tags",
-        "kind": "string_list",
-        "required": false,
-        "help": "Tags for organizing and filtering agents."
-      },
-      {
-        "field": "tools",
-        "long": "tools",
-        "kind": "json",
-        "required": false,
-        "help": "Client-side tools for this agent. These tools are sent to the LLM but executed by the client,..."
+        "help": "Existing agent name to update or compare."
       }
     ],
     "examples": [
       {
-        "intent": "Recreate an agent from a definition you already have",
-        "command": "everruns agents import --name triage --system-prompt 'Triage incoming issues'"
+        "intent": "Import an agent folder from the current workspace",
+        "command": "everruns agents import /agents/triage"
       }
     ]
   },
@@ -1987,6 +1934,53 @@
       {
         "intent": "Create or replace an agent at a known id, for a scripted deploy",
         "command": "everruns agents upsert agt_01h9 --name triage --system-prompt 'Triage incoming issues'"
+      }
+    ]
+  },
+  {
+    "wire_name": "validate_agent_package",
+    "path": [
+      "agents"
+    ],
+    "verb": "validate",
+    "description": "Validate an agent package and destination dependencies without changing resources.",
+    "method": "POST",
+    "http_path": "/v1/agents/validate",
+    "args": [
+      {
+        "field": "file",
+        "long": "file",
+        "position": 1,
+        "kind": "string",
+        "required": false,
+        "help": "Path in the current Platform Chat session workspace (never server disk)."
+      },
+      {
+        "field": "content",
+        "long": "content",
+        "kind": "string",
+        "required": false,
+        "help": "Markdown/TOML/YAML/JSON agent definition, with assets embedded."
+      },
+      {
+        "field": "format",
+        "long": "format",
+        "kind": "string",
+        "required": false,
+        "help": "Text encoding: auto, markdown, toml, yaml or json."
+      },
+      {
+        "field": "target",
+        "long": "target",
+        "kind": "string",
+        "required": false,
+        "help": "Existing agent name to update or compare."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Validate a workspace package without changing resources",
+        "command": "everruns agents validate /agents/triage"
       }
     ]
   },

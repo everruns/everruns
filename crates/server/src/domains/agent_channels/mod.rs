@@ -4,7 +4,7 @@ pub mod invocation;
 pub mod queries;
 mod redaction;
 pub mod types;
-mod validation;
+pub(crate) mod validation;
 
 pub use commands::*;
 pub use invocation::*;

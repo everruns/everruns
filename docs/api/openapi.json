@@ -318,19 +318,95 @@
         }
       }
     },
+    "/v1/agents/diff": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Generate a semantic diff against an existing agent without mutation.",
+        "operationId": "diff_agent_package",
+        "parameters": [
+          {
+            "name": "from-example",
+            "in": "query",
+            "description": "Import from a built-in example by name (e.g. `dad-jokes-agent`).\nWhen set, the request body is ignored.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "description": "Explicit target agent name for an update. Omit to create a new agent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Input format: markdown, toml, yaml, json or zip. Omit to detect it.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Semantic changes",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/import": {
       "post": {
         "tags": [
           "agents"
         ],
         "summary": "POST /v1/agents/import - Import agent from file or built-in example",
-        "description": "Two modes:\n1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)\n2. **From file** — `POST /v1/agents/import` with a text body in Markdown/YAML/JSON\n\nFile mode accepts:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as system prompt, name auto-generated)\n\nIf the file contains an `id` field and an agent with that ID already exists,\nthe agent is updated (upsert). Returns 201 on create, 200 on update.",
+        "description": "Two modes:\n1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)\n2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.\n\nPackage mode accepts:\n- Markdown with YAML front matter (if starts with ---)\n- Pure YAML\n- Pure JSON\n- Plain text (treated as instructions; defaults to name agent)\n- TOML and ZIP folders, with complete assets and skill directories\n\nIf the file contains an `id` field and an agent with that ID already exists,\nthe agent is updated (upsert). Returns 201 on create, 200 on update.",
         "operationId": "import_agent",
         "parameters": [
           {
             "name": "from-example",
             "in": "query",
             "description": "Import from a built-in example by name (e.g. `dad-jokes-agent`).\nWhen set, the request body is ignored.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "description": "Explicit target agent name for an update. Omit to create a new agent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Input format: markdown, toml, yaml, json or zip. Omit to detect it.",
             "required": false,
             "schema": {
               "type": "string"
@@ -467,6 +543,64 @@
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/validate": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Validate an agent package and its destination dependencies without mutation.",
+        "operationId": "validate_agent_package",
+        "parameters": [
+          {
+            "name": "from-example",
+            "in": "query",
+            "description": "Import from a built-in example by name (e.g. `dad-jokes-agent`).\nWhen set, the request body is ignored.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "target",
+            "in": "query",
+            "description": "Explicit target agent name for an update. Omit to create a new agent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Input format: markdown, toml, yaml, json or zip. Omit to detect it.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Validation diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {}
               }
             }
           }
@@ -1797,8 +1931,17 @@
           {
             "name": "agent_id",
             "in": "path",
-            "description": "Agent ID (prefixed, e.g., agt_...)",
+            "description": "Agent name or ID",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "markdown (default), json, yaml, toml, or zip.",
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -1806,9 +1949,13 @@
         ],
         "responses": {
           "200": {
-            "description": "Agent exported as Markdown",
+            "description": "Portable agent definition (format selects text or ZIP)",
             "content": {
-              "text/markdown": {}
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Manifest"
+                }
+              }
             }
           },
           "400": {
@@ -22698,6 +22845,27 @@
           }
         }
       },
+      "Channel": {
+        "type": "object",
+        "description": "Portable channel intent. Authentication and installation are host bindings.\nChannels default to disabled; enabled intent still requires host publication.",
+        "required": [
+          "type"
+        ],
+        "properties": {
+          "config": {
+            "description": "Declarative transport settings, excluding credentials and destination resource IDs."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Request an enabled draft; false by default. Publication remains a host operation."
+          },
+          "type": {
+            "type": "string",
+            "description": "Ingress transport type, such as ag_ui, public_chat, fcp or slack."
+          }
+        },
+        "additionalProperties": false
+      },
       "ChannelAuthConfig": {
         "type": "object",
         "description": "Authentication config for one channel/channel.",
@@ -28136,6 +28304,20 @@
           "url"
         ]
       },
+      "File": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/FileSource"
+          },
+          {
+            "$ref": "#/components/schemas/InitialFile"
+          }
+        ],
+        "description": "Embedded files and folder-relative sources share the same manifest field."
+      },
       "FileContentPart": {
         "type": "object",
         "description": "File content part (reference to an uploaded file, e.g. a PDF)\n\nThis is used for files uploaded via the /files API.\nThe file data is stored separately and referenced by ID.",
@@ -28202,6 +28384,31 @@
             "example": 1048576
           }
         }
+      },
+      "FileSource": {
+        "type": "object",
+        "description": "A package-relative file or glob and its workspace destination.",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "is_readonly": {
+            "type": "boolean",
+            "description": "Whether the initial workspace file is read-only. Defaults to true."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Workspace destination; omitted paths are derived from the package source."
+          },
+          "source": {
+            "type": "string",
+            "description": "Relative file path or glob confined to the package directory."
+          }
+        },
+        "additionalProperties": false
       },
       "FileStat": {
         "type": "object",
@@ -35378,6 +35585,163 @@
           }
         }
       },
+      "Manifest": {
+        "type": "object",
+        "description": "Authored values only: no organisation, agent, model, harness or channel IDs.",
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PackageCapability"
+            },
+            "description": "Named capabilities, optionally with configuration; the host validates availability."
+          },
+          "channels": {
+            "type": "object",
+            "description": "Named channel descriptions, upserted without removing omitted destination channels.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description of the agent's purpose."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable agent label. Defaults to the stable name at the host."
+          },
+          "environments": {
+            "description": "Platform-specific environment requirements; other hosts must bind or reject them."
+          },
+          "harness": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Named harness requirement. Omission uses the host's default harness."
+          },
+          "initial_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "description": "Embedded initial files or package-relative sources. Folder loading defaults to files/."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Authored instructions. Legacy system_prompt input is also accepted."
+          },
+          "instructions_file": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Package-relative instructions source. Folder loading defaults to instructions.md."
+          },
+          "intro_markdown": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional Markdown introduction shown before the conversation starts."
+          },
+          "max_iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Optional tool-loop iteration limit. Omission keeps the host default.",
+            "minimum": 0
+          },
+          "mcpServers": {
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "Named scoped MCP definitions. Credential placeholders require explicit host bindings."
+          },
+          "model": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PackageModel",
+                "description": "Provider and model names. Omission uses the host's default model."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Stable agent name used for destination lookup; resource IDs are not portable."
+          },
+          "network_access": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NetworkAccessList",
+                "description": "Optional outbound network policy enforced by the host."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "parallel_tool_calls": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether independent tool calls may run concurrently. Omission keeps the host default."
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Portable format version. Currently 1; omitted values default to 1.",
+            "minimum": 0
+          },
+          "short_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional short description for agent discovery surfaces."
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Package-relative skill folders including SKILL.md and supporting assets."
+          },
+          "starters": {
+            "type": "array",
+            "items": {},
+            "description": "Suggested opening messages in the platform's starter format."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Discovery tags, compared as an unordered set."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ToolDefinition"
+            },
+            "description": "Tool schemas whose executable implementations must be bound by the host."
+          }
+        },
+        "additionalProperties": false
+      },
       "ManualMemorySourceResponse": {
         "type": "object",
         "description": "Response body for manual memory source."
@@ -37386,6 +37750,83 @@
             "type": "string",
             "description": "Turn ID this output belongs to",
             "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "PackageCapability": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/PackageCapabilityReference"
+          }
+        ],
+        "description": "A named capability or a named capability with host-validated configuration."
+      },
+      "PackageCapabilityReference": {
+        "type": "object",
+        "description": "A capability requirement identified by a stable reference and optional settings.",
+        "required": [
+          "ref"
+        ],
+        "properties": {
+          "config": {
+            "description": "Configuration validated against the destination capability schema."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Built-in or catalog capability name. Destination resource IDs are rejected."
+          }
+        }
+      },
+      "PackageInput": {
+        "type": "object",
+        "description": "A self-contained agent definition or package in the current session workspace.",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Markdown/TOML/YAML/JSON agent definition, with assets embedded."
+          },
+          "file": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Path in the current Platform Chat session workspace (never server disk)."
+          },
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection."
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Existing agent name to update or compare. Omit to create."
+          }
+        },
+        "additionalProperties": false
+      },
+      "PackageModel": {
+        "type": "object",
+        "description": "A portable provider/model name pair, resolved at the destination.",
+        "required": [
+          "provider",
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Provider-native model name, rather than a platform model ID."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Stable provider name, such as openai or anthropic."
           }
         }
       },

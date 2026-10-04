@@ -73,7 +73,8 @@ tree-sitter-typescript
 url
 utoipa
 uuid
-web-time'
+web-time
+zip'
 ACTUAL_NORMAL=$(printf '%s' "$CORE_PACKAGE" | jq -r '.dependencies[] | select((.kind // "normal") == "normal") | .name' | sort -u)
 if [ "$ACTUAL_NORMAL" != "$EXPECTED_NORMAL" ]; then
   fail "everruns-core direct dependency set changed; re-audit every entry and update this guard intentionally:"
@@ -103,7 +104,8 @@ tree-sitter-bash
 tree-sitter-python
 tree-sitter-rust
 tree-sitter-typescript
-utoipa'
+utoipa
+zip'
 if [ "$OPTIONAL" != "$EXPECTED_OPTIONAL" ]; then
   fail "everruns-core optional dependency set changed; expected audited feature-owned implementations only:"
   diff -u <(printf '%s\n' "$EXPECTED_OPTIONAL") <(printf '%s\n' "$OPTIONAL") || true
@@ -140,8 +142,17 @@ if matches=$(core_kernel_source_files | xargs grep -nE "$SOURCE_PATTERN" 2>/dev/
   echo "$matches"
 fi
 
+# Archive and native disk support must stay explicit. No new publish slot is
+# needed for the authored package module (EVE-1155).
+if [ "$(printf '%s' "$CORE_PACKAGE" | jq -c '.features["agent-package"]')" != '["dep:zip"]' ]; then
+  fail "agent-package must activate only the optional ZIP codec"
+fi
+if [ "$(printf '%s' "$CORE_PACKAGE" | jq -c '.features["agent-package-fs"]')" != '["agent-package"]' ]; then
+  fail "agent-package-fs must be an explicit extension of the portable codec"
+fi
+
 CORE_TREE=$(guard_cargo_tree -p everruns-core --edges normal,build --prefix none)
-FORBIDDEN_TREE='^(a2a-lf|a2a-client-lf|fs2|ignore|chrono-tz|serde_urlencoded|rustls|rustls-webpki|reqwest|hyper|hyper-util|hyper-rustls|h2|tower-http|eventsource-stream|sqlx|opentelemetry|opentelemetry_sdk|opentelemetry-otlp|opentelemetry-http|opentelemetry-proto|tracing-opentelemetry|tree-sitter|tree-sitter-rust|tree-sitter-typescript|tree-sitter-python|utoipa|mlua|bashkit|deno_core|wasmtime) '
+FORBIDDEN_TREE='^(a2a-lf|a2a-client-lf|fs2|ignore|chrono-tz|serde_urlencoded|rustls|rustls-webpki|reqwest|hyper|hyper-util|hyper-rustls|h2|tower-http|eventsource-stream|sqlx|opentelemetry|opentelemetry_sdk|opentelemetry-otlp|opentelemetry-http|opentelemetry-proto|tracing-opentelemetry|tree-sitter|tree-sitter-rust|tree-sitter-typescript|tree-sitter-python|utoipa|zip|mlua|bashkit|deno_core|wasmtime) '
 if echo "$CORE_TREE" | grep -qE "$FORBIDDEN_TREE"; then
   fail "everruns-core default tree contains a forbidden implementation dependency:"
   echo "$CORE_TREE" | grep -E "$FORBIDDEN_TREE" | sort -u

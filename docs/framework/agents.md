@@ -224,3 +224,9 @@ let agent = Agent::builder()
 
 `FunctionTool::needs_approval(|args: &Value| ..)` and
 `FunctionTool::always_needs_approval()` are the dynamic forms.
+
+## File-based agents
+
+Load and export the shared portable package format, including initial files and
+complete skill directories. See [Define agents as files](/how-to/define-agents-as-files/)
+for validation, diffs, model bindings and runnable examples.

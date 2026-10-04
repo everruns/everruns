@@ -239,7 +239,7 @@ impl Host {
             .filter(|id| !id.is_empty())
             .unwrap_or_else(|| crate::manifest::build_id(&app));
         let (notices, _) = broadcast::channel(1024);
-        Ok(Arc::new_cyclic(|me| Host {
+        let host = Arc::new_cyclic(|me| Host {
             app,
             mode,
             build_id,
@@ -256,7 +256,15 @@ impl Host {
             #[cfg(feature = "ag-ui")]
             parked_on: broadcast::channel(64).0,
             me: me.clone(),
-        }))
+        });
+        // Validate package runtime bindings before accepting a request. This
+        // builds configuration only; no model calls or MCP processes execute.
+        for entry in &host.app.inner.agents {
+            if entry.spec.package.is_some() {
+                host.build_agent(entry, None, false)?;
+            }
+        }
+        Ok(host)
     }
 
     /// Install the hosting target's microVM adapter. Set once, before any
@@ -309,7 +317,10 @@ impl Host {
         }
         .clone();
         let agent = self.build_agent(&entry, None, true)?;
-        let session = self.engine.create(agent);
+        let session = match &entry.spec.package {
+            Some(package) => package.create(&self.engine, agent)?,
+            None => self.engine.create(agent),
+        };
         let id = session.id();
         let at = now();
         self.store.insert_session(&SessionRow {
@@ -845,7 +856,7 @@ impl Host {
             surface,
         };
         let mut builder = everruns::Agent::builder()
-            .name(entry.name)
+            .name(&entry.name)
             .model(model)
             .instructions(instructions)
             .approver(gate.clone())
@@ -857,14 +868,19 @@ impl Host {
         if !skills.is_empty() {
             builder = builder.capability(everruns::Skills);
             for skill in skills {
-                builder = builder.readonly_file(
-                    format!(".agents/skills/{}/SKILL.md", skill.name),
-                    load_asset(skill.asset, hot),
-                );
+                let prefix = format!("skills/{}/", skill.name);
+                for asset in &self.app.inner.assets {
+                    if let Some(relative) = asset.path.strip_prefix(&prefix) {
+                        builder = builder.readonly_file(
+                            format!(".agents/skills/{}/{relative}", skill.name),
+                            load_asset(asset, hot),
+                        );
+                    }
+                }
             }
         }
         for tool in self.app.tools_for(entry) {
-            builder = builder.tool(self.function_tool(tool, entry.name));
+            builder = builder.tool(self.function_tool(tool, entry.name.clone()));
         }
         if !entry.sub {
             for sub in self.app.inner.agents.iter().filter(|agent| agent.sub) {
@@ -899,6 +915,10 @@ impl Host {
         if let Some(customize) = &spec.customize {
             builder = customize(builder);
         }
+        if let Some(package) = &spec.package {
+            let package = package.clone().bind_mcp(|key| std::env::var(key).ok())?;
+            builder = package.apply_to(builder)?;
+        }
         builder
             .build()
             .map_err(|err| anyhow!("agent `{}`: {err}", entry.name))
@@ -906,14 +926,14 @@ impl Host {
 
     /// A `#[tool]` as an everruns tool: each call gets a `Cx` over its
     /// `ToolCallContext`, and its approval rule becomes the runtime's gate.
-    fn function_tool(&self, tool: &'static ToolRegistration, agent: &'static str) -> FunctionTool {
+    fn function_tool(&self, tool: &'static ToolRegistration, agent: String) -> FunctionTool {
         let host = self.me.clone();
         let function = FunctionTool::with_context(
             tool.name,
             tool.description,
             (tool.schema)(),
             move |call: ToolCallContext, args: Value| {
-                (tool.call)(Cx::tool(host.clone(), agent, call), args)
+                (tool.call)(Cx::tool(host.clone(), agent.clone(), call), args)
             },
         );
         match tool.approval {
@@ -962,7 +982,13 @@ impl Host {
                     };
                     // A child session on the host's own engine, persisted in
                     // the same store as its parent.
-                    let child = host.engine.create(agent);
+                    let child = match &sub.spec.package {
+                        Some(package) => match package.create(&host.engine, agent) {
+                            Ok(child) => child,
+                            Err(err) => return Ok(ToolResponse::error(err.to_string())),
+                        },
+                        None => host.engine.create(agent),
+                    };
                     drop(host);
                     let mut events = child.events();
                     let run = child.send_and_wait(task.as_str());
@@ -972,7 +998,7 @@ impl Host {
                             turn = &mut run => break turn,
                             event = events.recv() => {
                                 if let Ok(Some(event)) = event
-                                    && let Some(line) = child_progress(sub.name, &event)
+                                    && let Some(line) = child_progress(&sub.name, &event)
                                 {
                                     call.progress(line).await;
                                 }

@@ -18,6 +18,10 @@
   including redirects and discovered requests on transports that can pause them.
   See [Threat Model](security/threat-model.md) TM-TOOL-053.
 
+* **Portable agents share one contract.** File/folder/ZIP loading, legacy Markdown,
+  validation and semantic diffs reuse one codec across Platform and Framework
+  hosts. See [Portable Agent Packages](runtime-resources/agent-packages.md).
+
 * **Playground list is dense rows.** The library groups the current page by day,
   agent, or none, filters by agent, and opens a chat from the row. Agent and
   virtual-user chips still link to their pages. See

@@ -99,6 +99,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/diff": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Generate a semantic diff against an existing agent without mutation. */
+    post: operations["diff_agent_package"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/import": {
     parameters: {
       query?: never;
@@ -112,13 +129,14 @@ export interface paths {
      * POST /v1/agents/import - Import agent from file or built-in example
      * @description Two modes:
      *     1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)
-     *     2. **From file** — `POST /v1/agents/import` with a text body in Markdown/YAML/JSON
+     *     2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.
      *
-     *     File mode accepts:
+     *     Package mode accepts:
      *     - Markdown with YAML front matter (if starts with ---)
      *     - Pure YAML
      *     - Pure JSON
-     *     - Plain text (treated as system prompt, name auto-generated)
+     *     - Plain text (treated as instructions; defaults to name agent)
+     *     - TOML and ZIP folders, with complete assets and skill directories
      *
      *     If the file contains an `id` field and an agent with that ID already exists,
      *     the agent is updated (upsert). Returns 201 on create, 200 on update.
@@ -145,6 +163,23 @@ export interface paths {
      *     This is useful for previewing what the agent will look like before saving.
      */
     post: operations["preview_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/validate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Validate an agent package and its destination dependencies without mutation. */
+    post: operations["validate_agent_package"];
     delete?: never;
     options?: never;
     head?: never;
@@ -6694,6 +6729,18 @@ export interface components {
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
     /**
+     * @description Portable channel intent. Authentication and installation are host bindings.
+     *     Channels default to disabled; enabled intent still requires host publication.
+     */
+    Channel: {
+      /** @description Declarative transport settings, excluding credentials and destination resource IDs. */
+      config?: unknown;
+      /** @description Request an enabled draft; false by default. Publication remains a host operation. */
+      enabled?: boolean;
+      /** @description Ingress transport type, such as ag_ui, public_chat, fcp or slack. */
+      type: string;
+    };
+    /**
      * @description Authentication config for one channel/channel.
      * @example {
      *       "mode": "api_key",
@@ -9744,6 +9791,8 @@ export interface components {
      * @enum {string}
      */
     FieldType: "password" | "text" | "url";
+    /** @description Embedded files and folder-relative sources share the same manifest field. */
+    File: string | components["schemas"]["FileSource"] | components["schemas"]["InitialFile"];
     /**
      * @description File content part (reference to an uploaded file, e.g. a PDF)
      *
@@ -9787,6 +9836,15 @@ export interface components {
        * @example 1048576
        */
       size_bytes: number;
+    };
+    /** @description A package-relative file or glob and its workspace destination. */
+    FileSource: {
+      /** @description Whether the initial workspace file is read-only. Defaults to true. */
+      is_readonly?: boolean;
+      /** @description Workspace destination; omitted paths are derived from the package source. */
+      path?: string | null;
+      /** @description Relative file path or glob confined to the package directory. */
+      source: string;
     };
     /** @description File stat information */
     FileStat: {
@@ -13726,6 +13784,56 @@ export interface components {
       /** @description Absolute path of the sandbox workspace root. */
       workspace_path?: string | null;
     };
+    /** @description Authored values only: no organisation, agent, model, harness or channel IDs. */
+    Manifest: {
+      /** @description Named capabilities, optionally with configuration; the host validates availability. */
+      capabilities?: components["schemas"]["PackageCapability"][];
+      /** @description Named channel descriptions, upserted without removing omitted destination channels. */
+      channels?: {
+        [key: string]: components["schemas"]["Channel"];
+      };
+      /** @description Optional description of the agent's purpose. */
+      description?: string | null;
+      /** @description Human-readable agent label. Defaults to the stable name at the host. */
+      display_name?: string | null;
+      /** @description Platform-specific environment requirements; other hosts must bind or reject them. */
+      environments?: unknown;
+      /** @description Named harness requirement. Omission uses the host's default harness. */
+      harness?: string | null;
+      /** @description Embedded initial files or package-relative sources. Folder loading defaults to files/. */
+      initial_files?: components["schemas"]["File"][];
+      /** @description Authored instructions. Legacy system_prompt input is also accepted. */
+      instructions?: string;
+      /** @description Package-relative instructions source. Folder loading defaults to instructions.md. */
+      instructions_file?: string | null;
+      /** @description Optional Markdown introduction shown before the conversation starts. */
+      intro_markdown?: string | null;
+      /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
+      max_iterations?: number | null;
+      /** @description Named scoped MCP definitions. Credential placeholders require explicit host bindings. */
+      mcpServers?: components["schemas"]["BTreeMap"];
+      model?: components["schemas"]["PackageModel"] | null;
+      /** @description Stable agent name used for destination lookup; resource IDs are not portable. */
+      name?: string;
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
+      /** @description Whether independent tool calls may run concurrently. Omission keeps the host default. */
+      parallel_tool_calls?: boolean | null;
+      /**
+       * Format: int32
+       * @description Portable format version. Currently 1; omitted values default to 1.
+       */
+      schema_version?: number;
+      /** @description Optional short description for agent discovery surfaces. */
+      short_description?: string | null;
+      /** @description Package-relative skill folders including SKILL.md and supporting assets. */
+      skills?: string[];
+      /** @description Suggested opening messages in the platform's starter format. */
+      starters?: unknown[];
+      /** @description Discovery tags, compared as an unordered set. */
+      tags?: string[];
+      /** @description Tool schemas whose executable implementations must be bound by the host. */
+      tools?: components["schemas"]["ToolDefinition"][];
+    };
     /** @description Response body for manual memory source. */
     ManualMemorySourceResponse: Record<string, unknown>;
     /**
@@ -14859,6 +14967,33 @@ export interface components {
        * @example turn_01933b5a00007000800000000000001
        */
       turn_id: string;
+    };
+    /** @description A named capability or a named capability with host-validated configuration. */
+    PackageCapability: string | components["schemas"]["PackageCapabilityReference"];
+    /** @description A capability requirement identified by a stable reference and optional settings. */
+    PackageCapabilityReference: {
+      /** @description Configuration validated against the destination capability schema. */
+      config?: unknown;
+      /** @description Built-in or catalog capability name. Destination resource IDs are rejected. */
+      ref: string;
+    };
+    /** @description A self-contained agent definition or package in the current session workspace. */
+    PackageInput: {
+      /** @description Markdown/TOML/YAML/JSON agent definition, with assets embedded. */
+      content?: string;
+      /** @description Path in the current Platform Chat session workspace (never server disk). */
+      file?: string | null;
+      /** @description Text encoding: auto, markdown, toml, yaml or json. Defaults to auto-detection. */
+      format?: string | null;
+      /** @description Existing agent name to update or compare. Omit to create. */
+      target?: string | null;
+    };
+    /** @description A portable provider/model name pair, resolved at the destination. */
+    PackageModel: {
+      /** @description Provider-native model name, rather than a platform model ID. */
+      model: string;
+      /** @description Stable provider name, such as openai or anthropic. */
+      provider: string;
     };
     /**
      * @description Response wrapper for paginated list endpoints.
@@ -22603,6 +22738,40 @@ export interface operations {
       };
     };
   };
+  diff_agent_package: {
+    parameters: {
+      query?: {
+        /**
+         * @description Import from a built-in example by name (e.g. `dad-jokes-agent`).
+         *     When set, the request body is ignored.
+         */
+        "from-example"?: string;
+        /** @description Explicit target agent name for an update. Omit to create a new agent. */
+        target?: string;
+        /** @description Input format: markdown, toml, yaml, json or zip. Omit to detect it. */
+        format?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PackageInput"];
+      };
+    };
+    responses: {
+      /** @description Semantic changes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
   import_agent: {
     parameters: {
       query?: {
@@ -22611,6 +22780,10 @@ export interface operations {
          *     When set, the request body is ignored.
          */
         "from-example"?: string;
+        /** @description Explicit target agent name for an update. Omit to create a new agent. */
+        target?: string;
+        /** @description Input format: markdown, toml, yaml, json or zip. Omit to detect it. */
+        format?: string;
       };
       header?: never;
       path?: never;
@@ -22725,6 +22898,40 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  validate_agent_package: {
+    parameters: {
+      query?: {
+        /**
+         * @description Import from a built-in example by name (e.g. `dad-jokes-agent`).
+         *     When set, the request body is ignored.
+         */
+        "from-example"?: string;
+        /** @description Explicit target agent name for an update. Omit to create a new agent. */
+        target?: string;
+        /** @description Input format: markdown, toml, yaml, json or zip. Omit to detect it. */
+        format?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PackageInput"];
+      };
+    };
+    responses: {
+      /** @description Validation diagnostics */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
         };
       };
     };
@@ -23688,23 +23895,26 @@ export interface operations {
   };
   export_agent: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description markdown (default), json, yaml, toml, or zip. */
+        format?: string;
+      };
       header?: never;
       path: {
-        /** @description Agent ID (prefixed, e.g., agt_...) */
+        /** @description Agent name or ID */
         agent_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Agent exported as Markdown */
+      /** @description Portable agent definition (format selects text or ZIP) */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "text/markdown": unknown;
+          "application/json": components["schemas"]["Manifest"];
         };
       };
       /** @description Invalid agent ID */

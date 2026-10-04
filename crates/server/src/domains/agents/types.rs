@@ -55,6 +55,7 @@ pub struct CreateAgentRequest {
     /// The system prompt that defines the agent's behavior and capabilities.
     /// This is sent as the first message in every conversation.
     #[schema(example = "You are a helpful customer support agent. Be polite and professional.")]
+    #[serde(alias = "instructions")]
     pub system_prompt: String,
     /// The ID of the default LLM model to use for this agent.
     /// If not specified, the system default model will be used.
@@ -156,6 +157,7 @@ pub struct UpdateAgentRequest {
     /// The system prompt that defines the agent's behavior and capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are an updated helpful assistant.")]
+    #[serde(alias = "instructions")]
     pub system_prompt: Option<String>,
     /// The ID of the default LLM model to use for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -377,6 +379,10 @@ pub struct ImportAgentQuery {
     /// When set, the request body is ignored.
     #[serde(rename = "from-example")]
     pub from_example: Option<String>,
+    /// Explicit target agent name for an update. Omit to create a new agent.
+    pub target: Option<String>,
+    /// Input format: markdown, toml, yaml, json or zip. Omit to detect it.
+    pub format: Option<String>,
 }
 
 // See `crate::api::sessions::filter_or_reject_client_side_tools` for the

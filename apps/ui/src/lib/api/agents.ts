@@ -58,20 +58,72 @@ export async function exportAgent(agentId: string): Promise<string> {
   return response.text();
 }
 
-export async function importAgent(markdown: string): Promise<Agent> {
-  // Raw fetch needed: sends text/markdown Content-Type
-  const response = await fetch("/api/v1/agents/import", {
+function packageQuery(file?: File, target?: string): string {
+  const params = new URLSearchParams();
+  if (file) {
+    const extension = file.name.split(".").pop();
+    if (extension && ["md", "toml", "yaml", "yml", "json", "zip"].includes(extension))
+      params.set("format", extension);
+  }
+  if (target) params.set("target", target);
+  return params.size ? `?${params.toString()}` : "";
+}
+
+export type AgentImport = string | { file: File; target?: string };
+
+function packageRequest(input: AgentImport): { body: BodyInit; headers: HeadersInit } {
+  const body = typeof input === "string" ? input : input.file;
+  return {
+    body,
+    headers: withOrgHeader({
+      "Content-Type":
+        body instanceof File && body.name.endsWith(".zip") ? "application/zip" : "text/plain",
+    }),
+  };
+}
+
+export async function importAgent(input: AgentImport): Promise<Agent> {
+  const target = typeof input === "string" ? undefined : input.target;
+  const response = await fetch(
+    `/api/v1/agents/import${packageQuery(typeof input === "string" ? undefined : input.file, target)}`,
+    {
+      method: "POST",
+      credentials: "include",
+      ...packageRequest(input),
+    },
+  );
+  if (!response.ok) await throwApiError(response);
+  return response.json();
+}
+
+export async function inspectAgentPackage(
+  file: File,
+  operation: "validate" | "diff",
+  target?: string,
+): Promise<{
+  valid?: boolean;
+  diagnostics?: { path: string; message: string }[];
+  changes?: { path: string; before: unknown; after: unknown }[];
+}> {
+  const response = await fetch(`/api/v1/agents/${operation}${packageQuery(file, target)}`, {
     method: "POST",
     credentials: "include",
-    headers: withOrgHeader({
-      "Content-Type": "text/markdown",
-    }),
-    body: markdown,
+    ...packageRequest({ file }),
   });
-  if (!response.ok) {
-    await throwApiError(response);
-  }
+  if (!response.ok) await throwApiError(response);
   return response.json();
+}
+
+export async function exportAgentPackage(
+  agentName: string,
+  format: "zip" | "toml" | "yaml" | "json" = "zip",
+): Promise<Blob> {
+  const response = await fetch(
+    `/api/v1/agents/${encodeURIComponent(agentName)}/export?format=${format}`,
+    { credentials: "include", headers: withOrgHeader() },
+  );
+  if (!response.ok) await throwApiError(response);
+  return response.blob();
 }
 
 export async function copyAgent(agentId: string): Promise<Agent> {

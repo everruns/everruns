@@ -44,7 +44,7 @@ describe("form validation schemas", () => {
 
     const messages = parsed.error.issues.map((issue) => issue.message);
     expect(messages).toContain("Name must contain only lowercase letters, numbers, and hyphens");
-    expect(messages).toContain("System prompt is required");
+    expect(messages).toContain("Instructions is required");
   });
 
   it("parses harness tags into a clean list", () => {

@@ -116,7 +116,7 @@ describe("create editor layouts", () => {
       target: { value: "Support Agent" },
     });
     fireEvent.change(screen.getByLabelText(/Harness/), { target: { value: "harness_123" } });
-    fireEvent.change(screen.getByLabelText("System Prompt"), {
+    fireEvent.change(screen.getByLabelText("Instructions"), {
       target: { value: "You are helpful." },
     });
     fireEvent.change(screen.getByLabelText("Allowed hosts"), {

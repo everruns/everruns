@@ -6,6 +6,7 @@
 * [Agent credentials](agent_credentials/) - 1 manual UI case.
 * [Virtual users](agent_identities/) - 3 manual UI cases.
 * [Agent integrations](agent_integrations/) - 2 manual UI cases.
+* [Agent packages](agent_packages/) - 1 manual UI case.
 * [Agent MCP attachments](agent_mcp_attachments/) - 1 manual UI case.
 * [Agent triggers](agent_triggers/) - 1 manual UI case.
 * [Agent versions](agent_versions/) - 1 manual UI case.

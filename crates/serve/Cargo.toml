@@ -36,6 +36,8 @@ categories = ["development-tools", "web-programming::http-server"]
 name = "serve"
 
 [features]
+# Explicit opt-in for file-package MCP subprocess transports.
+mcp-stdio = ["everruns/mcp-stdio"]
 # `POST /v1/channels/{agent}/ag-ui`: serve every top-level agent to AG-UI 1.0 clients
 # (CopilotKit, `@ag-ui/client`) through `everruns::ag_ui`.
 ag-ui = ["everruns/ag-ui-axum"]
@@ -49,7 +51,7 @@ a2a = ["dep:a2a", "dep:a2a-server"]
 bedrock = ["everruns/bedrock"]
 
 [dependencies]
-everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit"] }
+everruns = { workspace = true, default-features = true, features = ["local", "openai", "openrouter", "mcp", "bashkit", "agent-package-fs"] }
 everruns-serve-macros.workspace = true
 a2a = { workspace = true, optional = true }
 a2a-server = { workspace = true, optional = true }

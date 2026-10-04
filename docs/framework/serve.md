@@ -268,3 +268,9 @@ replayed. See [Serve on celld](/framework/serve-celld/).
 
 The full guide, wire reference and hosting contract live next to the crate in
 [`crates/serve/docs`](https://github.com/everruns/everruns/tree/main/crates/serve/docs).
+
+## File-based agents
+
+Load and export the shared portable package format, including initial files and
+complete skill directories. See [Define agents as files](/how-to/define-agents-as-files/)
+for validation, diffs, model bindings and runnable examples.

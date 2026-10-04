@@ -151,6 +151,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::delete_agent,
         api::agents::export_agent,
         api::agents::import_agent,
+        api::agents::validate_agent_package,
+        api::agents::diff_agent_package,
         api::agents::agent_config,
         api::agents::check_agent_name,
         api::agent_credentials::list_credentials,

@@ -3,6 +3,7 @@
 * [Agent Instructions Specification](agent-instructions.md) - AGENTS.md support (dynamic project instructions).
 * [Legacy Agent Identities](agent-identities.md) - Refactored into virtual users.
 * [Virtual Users and Everruns Users](virtual-users.md) - Canonical runtime accounts separate from platform management users.
+* [Portable Agent Packages](agent-packages.md) - Shared authored definitions, assets, validation and diffs.
 * [Agent Blueprints](agent-blueprints.md) - Pre-built agent definitions.
 * [Agent Versions](agent-versions.md) - Immutable Agent configuration snapshots.
 * [Agent Handoff](agent-handoff.md) - Agent handoff behavior.

@@ -28,6 +28,8 @@ assert!(drivers.registered_providers().is_empty());
 
 | Feature | Public module | Purpose |
 | --- | --- | --- |
+| `agent-package` | `agent_package` | Authored formats, ZIP, virtual folders and semantic diffs |
+| `agent-package-fs` | `agent_package` | Native disk loading and export |
 | `engine` | `engine` | Portable Input/Reason/Act algorithms and turn planning |
 | `builtins` | `builtins` | First-party policies over injected execution contracts |
 | `host` | `host` | Host composition, stores, filesystem and runtime orchestration |
@@ -51,6 +53,8 @@ concrete vendor drivers or depends on integration crates.
 The deprecated `everruns-engine`, `everruns-host`, `everruns-builtins`,
 `everruns-mcp`, and `everruns-ag-ui` crates forward to these modules for one
 release. Migrate imports and features to `everruns-core` before their removal.
+
+The Framework exposes portable definitions through `everruns::AgentPackage`. See the [file-based agent guide](https://docs.everruns.com/how-to/define-agents-as-files/).
 
 ## Documentation
 

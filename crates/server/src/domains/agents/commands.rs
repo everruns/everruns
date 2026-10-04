@@ -768,6 +768,9 @@ inventory::submit! { CommandDescriptor::of::<DeleteAgent>() }
 /// Upsert agent — create or update by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertAgent {
+    /// Internal replacement mode used by complete portable manifests.
+    #[serde(skip)]
+    pub(crate) replace_capabilities: bool,
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
@@ -920,7 +923,7 @@ impl Command for UpsertAgent {
         let row = persist_harness_source(ctx, row, harness_source).await?;
         let agent_uuid = row.id.uuid();
 
-        let final_caps = if !caps.is_empty() {
+        let final_caps = if self.replace_capabilities || !caps.is_empty() {
             persist_capabilities(&ctx.db, agent_uuid, &caps).await?;
             caps
         } else if was_created {
@@ -1033,111 +1036,6 @@ impl Command for CopyAgent {
 }
 
 inventory::submit! { CommandDescriptor::of::<CopyAgent>() }
-
-// ============================================================================
-// ExportAgent
-// ============================================================================
-
-/// Get agent data for export.
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct ExportAgent {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    pub id: String,
-}
-
-impl Command for ExportAgent {
-    type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "export_agent",
-            category: "agents",
-            description: "Export agent as JSON.",
-            method: "GET",
-            path: "/v1/agents/{id}/export",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["agents"], "export")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Save an agent's definition to a file",
-                "everruns agents export agt_01h9 > agent.json",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        q::get_by_public_id(&ctx.db, ctx.org_id(), &self.id)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Agent"))
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<ExportAgent>() }
-
-// ============================================================================
-// ImportAgent
-// ============================================================================
-
-/// Import agent from JSON.
-#[derive(Debug, Deserialize)]
-pub struct ImportAgent(pub CreateAgentRequest);
-
-impl CommandSchema for ImportAgent {
-    fn param_schema() -> serde_json::Value {
-        delegated_param_schema::<CreateAgentRequest>()
-    }
-}
-
-impl Command for ImportAgent {
-    type Output = Agent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "import_agent",
-            category: "agents",
-            description: "Import an agent from a definition.",
-            method: "POST",
-            path: "/v1/agents/import",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["agents"], "import").with_examples(&[CliExample::new(
-                "Recreate an agent from a definition you already have",
-                "everruns agents import --name triage --system-prompt 'Triage incoming issues'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&AGENT_MANAGE)
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        CreateAgent(self.0).execute(ctx).await
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<ImportAgent>() }
 
 // ============================================================================
 // Agent versions

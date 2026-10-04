@@ -74,31 +74,31 @@ fn thread_channel(agent: &str) -> String {
 /// Mount every top-level agent's endpoint and card on `router`, and answer
 /// any other name with a 404 problem.
 pub(crate) fn routes(host: &Arc<Host>, mut router: Router<Arc<Host>>) -> Router<Arc<Host>> {
-    let agents: Vec<&'static str> = host
+    let agents: Vec<String> = host
         .app
         .inner
         .agents
         .iter()
         .filter(|agent| !agent.sub)
-        .map(|agent| agent.name)
+        .map(|agent| agent.name.clone())
         .collect();
     for agent in agents {
         let executor = SessionExecutor {
             host: Arc::downgrade(host),
-            agent,
+            agent: agent.clone(),
         };
         let handler = DefaultRequestHandler::new(executor, InMemoryTaskStore::default())
             .with_capabilities(capabilities());
         let card = CardSource {
             host: Arc::downgrade(host),
-            agent,
+            agent: agent.clone(),
         };
         let endpoint = jsonrpc_router(Arc::new(handler))
             .route(WELL_KNOWN_AGENT_CARD_PATH, get(agent_card).with_state(card));
         router = router
-            .nest_service(&route(agent), endpoint.clone())
+            .nest_service(&route(&agent), endpoint.clone())
             .nest_service(
-                &route(agent).replacen("/v1/channels/", "/v1/e/", 1),
+                &route(&agent).replacen("/v1/channels/", "/v1/e/", 1),
                 endpoint,
             );
     }
@@ -135,7 +135,7 @@ fn capabilities() -> AgentCapabilities {
 #[derive(Clone)]
 struct CardSource {
     host: Weak<Host>,
-    agent: &'static str,
+    agent: String,
 }
 
 /// `GET /v1/channels/{agent}/a2a/.well-known/agent-card.json`.
@@ -153,11 +153,11 @@ async fn agent_card(State(source): State<CardSource>, headers: HeaderMap) -> Res
                 .get("x-forwarded-proto")
                 .and_then(|value| value.to_str().ok())
                 .unwrap_or("http");
-            format!("{scheme}://{authority}{}", route(source.agent))
+            format!("{scheme}://{authority}{}", route(&source.agent))
         }
-        None => route(source.agent),
+        None => route(&source.agent),
     };
-    let card = card(&host, source.agent, url);
+    let card = card(&host, &source.agent, url);
     ([(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")], Json(card)).into_response()
 }
 
@@ -205,21 +205,21 @@ type Events = BoxStream<'static, Result<StreamResponse, A2AError>>;
 struct SessionExecutor {
     /// Weak: the router outlives no host, and must not keep one alive.
     host: Weak<Host>,
-    agent: &'static str,
+    agent: String,
 }
 
 impl AgentExecutor for SessionExecutor {
     fn execute(&self, ctx: ExecutorContext) -> Events {
         let (tx, rx) = mpsc::channel(8);
         let host = self.host.clone();
-        let agent = self.agent;
+        let agent = self.agent.clone();
         tokio::spawn(async move { run_task(host, agent, ctx, tx).await });
         receive(rx)
     }
 
     fn cancel(&self, ctx: ExecutorContext) -> Events {
         let host = self.host.clone();
-        let channel = thread_channel(self.agent);
+        let channel = thread_channel(&self.agent);
         Box::pin(futures::stream::once(async move {
             if let Some(host) = host.upgrade()
                 && let Ok(Some(session)) = host.thread_session(&channel, &ctx.context_id)
@@ -242,7 +242,7 @@ fn receive(rx: mpsc::Receiver<Result<StreamResponse, A2AError>>) -> Events {
 /// `failed`. Input the turn cannot use is a JSON-RPC error instead.
 async fn run_task(
     host: Weak<Host>,
-    agent: &'static str,
+    agent: String,
     ctx: ExecutorContext,
     tx: mpsc::Sender<Result<StreamResponse, A2AError>>,
 ) {
@@ -268,7 +268,7 @@ async fn run_task(
         return;
     }
     let outcome = async {
-        let session = context_session(&host, agent, &ctx.context_id).await?;
+        let session = context_session(&host, &agent, &ctx.context_id).await?;
         host.send(&session, input).await?.wait().await
     }
     .await;

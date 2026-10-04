@@ -133,7 +133,7 @@ export function SelectedCapabilityList({
                     {localizedCapabilityDescription(cap, locale)}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    It no longer provides tools or a system prompt. Remove it.
+                    It no longer provides tools or a instructions. Remove it.
                   </p>
                 </div>
                 <button
