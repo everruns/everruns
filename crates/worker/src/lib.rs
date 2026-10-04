@@ -30,6 +30,7 @@ pub mod task_error;
 mod task_heartbeat;
 #[cfg(test)]
 mod task_heartbeat_tests;
+pub mod task_store;
 pub mod task_wakeup;
 pub mod unified_worker;
 #[cfg(test)]

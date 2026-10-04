@@ -791,6 +791,10 @@ message DurableClaimedTask {
     google.protobuf.Struct input = 5;
     int32 attempt = 6;
     int32 max_attempts = 7;
+    // Status of the task's workflow when it was claimed. A worker checks it
+    // before running the task (a cancelled workflow's task is skipped), and
+    // reading it here saves that check a round trip.
+    optional DurableWorkflowStatus workflow_status = 8;
 }
 
 // === Create workflow ===
@@ -858,12 +862,18 @@ message CompleteDurableTaskRequest {
     Uuid task_id = 1;
     string worker_id = 2;  // Required: prevents duplicate completion when task is reclaimed
     google.protobuf.Struct output = 3;
+    // When set, consume the workflow's pending signals of this type once the
+    // task completes, saving the worker a separate round trip at a hand-off.
+    optional string drain_signal_type = 4;
 }
 
 message CompleteDurableTaskResponse {
     // Whether the task was successfully completed
     // False if task was reclaimed by another worker or already completed
     bool success = 1;
+    // How many signals were consumed for `drain_signal_type`. Absent when no
+    // drain was asked for or it failed; the worker then drains on its own.
+    optional uint32 drained_signal_count = 2;
 }
 
 // === Fail task ===

@@ -83,6 +83,9 @@ impl TaskStore for GrpcDurableStore {
     }
 
     async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
+        if let Some(status) = self.take_claimed_status(workflow_id) {
+            return Ok(grpc_status_to_workflow_status(status));
+        }
         let mut store = self.clone();
         let (status, _, _) = GrpcDurableStore::get_workflow_status(&mut store, workflow_id)
             .await
@@ -101,9 +104,22 @@ impl TaskStore for GrpcDurableStore {
         worker_id: &str,
         output: serde_json::Value,
     ) -> Result<(), StoreError> {
-        let mut store = self.clone();
-        GrpcDurableStore::complete_task(&mut store, task.id, worker_id, output)
+        self.complete_task_and_drain(task, worker_id, output, None)
             .await
+            .map(|_| ())
+    }
+
+    async fn complete_task_and_drain(
+        &self,
+        task: &ClaimedTask,
+        worker_id: &str,
+        output: serde_json::Value,
+        drain: Option<&str>,
+    ) -> Result<Option<usize>, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::complete_task(&mut store, task.id, worker_id, output, drain)
+            .await
+            .map(|drained| drained.map(|count| count as usize))
             .map_err(store_error)
     }
 

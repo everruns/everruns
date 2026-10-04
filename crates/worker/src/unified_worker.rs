@@ -9,15 +9,9 @@
 // while preserving the different deployment models (in-process vs external).
 
 use anyhow::Result;
-use async_trait::async_trait;
 use everruns_contracts::typed_id::{ExecId, TurnId};
 use everruns_core::ExecutionContext;
-use everruns_durable::{
-    ActivityOptions, ClaimedTask, EventLog, HeartbeatResponse, SignalStore, StoreError,
-    TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
-    WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
-    record_activity_failed, record_activity_started, record_workflow_failed,
-};
+use everruns_durable::{ClaimedTask, TaskFailureOutcome, WorkerInfo, WorkflowStatus};
 use everruns_engine::{ActInput, ActPlan, TurnPlan};
 use everruns_host::{
     RuntimeSessionLifecycle, advance_host_execution,
@@ -37,7 +31,7 @@ use crate::durable_runner::DurableTurnInput;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
 use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
-use crate::task_wakeup::{TaskWakeups, spawn_wakeup_listener};
+use crate::task_wakeup::spawn_wakeup_listener;
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledChannelInput,
@@ -206,265 +200,7 @@ impl TaskWorkerConfig {
 // Unified Worker
 // =============================================================================
 
-#[async_trait]
-pub trait TaskStore: Send + Sync + 'static {
-    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError>;
-
-    async fn worker_heartbeat(
-        &self,
-        worker_id: &str,
-        current_load: usize,
-        accepting_tasks: bool,
-    ) -> Result<(), StoreError>;
-
-    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError>;
-
-    async fn claim_task(
-        &self,
-        worker_id: &str,
-        activity_types: &[String],
-        max_tasks: usize,
-    ) -> Result<Vec<ClaimedTask>, StoreError>;
-
-    async fn heartbeat_task(
-        &self,
-        task_id: Uuid,
-        worker_id: &str,
-        details: Option<serde_json::Value>,
-    ) -> Result<HeartbeatResponse, StoreError>;
-
-    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError>;
-
-    async fn record_activity_started(&self, task: &ClaimedTask, worker_id: &str);
-
-    async fn complete_task_and_record(
-        &self,
-        task: &ClaimedTask,
-        worker_id: &str,
-        output: serde_json::Value,
-    ) -> Result<(), StoreError>;
-
-    async fn fail_task_and_record(
-        &self,
-        task: &ClaimedTask,
-        error: &str,
-        retryable: bool,
-    ) -> Result<TaskFailureOutcome, StoreError>;
-
-    async fn enqueue_task_and_record(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> Result<Uuid, StoreError>;
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<WorkflowError>,
-    ) -> Result<(), StoreError>;
-
-    async fn complete_workflow(
-        &self,
-        workflow_id: Uuid,
-        event_output: serde_json::Value,
-        stored_output: Option<serde_json::Value>,
-        error: Option<WorkflowError>,
-    ) -> Result<(), StoreError>;
-
-    async fn consume_pending_signals(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
-
-    async fn consume_pending_signals_by_type(
-        &self,
-        workflow_id: Uuid,
-        signal_type: &str,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
-
-    /// Open a push channel that signals new claimable work.
-    ///
-    /// `Ok(None)` means the store has none and the worker polls only. See
-    /// `crate::task_wakeup` for why the worker wants one.
-    async fn subscribe_task_wakeups(
-        &self,
-        _worker_id: &str,
-        _activity_types: &[String],
-    ) -> Result<Option<TaskWakeups>, StoreError> {
-        Ok(None)
-    }
-}
-
-#[async_trait]
-impl<S> TaskStore for S
-where
-    S: WorkflowEventStore,
-{
-    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
-        WorkerRegistry::register_worker(self, worker).await
-    }
-
-    async fn worker_heartbeat(
-        &self,
-        worker_id: &str,
-        current_load: usize,
-        accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
-        WorkerRegistry::worker_heartbeat(self, worker_id, current_load, accepting_tasks).await
-    }
-
-    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
-        WorkerRegistry::deregister_worker(self, worker_id).await
-    }
-
-    async fn claim_task(
-        &self,
-        worker_id: &str,
-        activity_types: &[String],
-        max_tasks: usize,
-    ) -> Result<Vec<ClaimedTask>, StoreError> {
-        TaskQueue::claim_task(self, worker_id, activity_types, max_tasks).await
-    }
-
-    async fn heartbeat_task(
-        &self,
-        task_id: Uuid,
-        worker_id: &str,
-        details: Option<serde_json::Value>,
-    ) -> Result<HeartbeatResponse, StoreError> {
-        TaskQueue::heartbeat_task(self, task_id, worker_id, details).await
-    }
-
-    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
-        EventLog::get_workflow_status(self, workflow_id).await
-    }
-
-    async fn record_activity_started(&self, task: &ClaimedTask, worker_id: &str) {
-        record_activity_started(
-            self,
-            task.workflow_id,
-            task.activity_id.clone(),
-            task.attempt,
-            worker_id.to_string(),
-        )
-        .await;
-    }
-
-    async fn complete_task_and_record(
-        &self,
-        task: &ClaimedTask,
-        worker_id: &str,
-        output: serde_json::Value,
-    ) -> Result<(), StoreError> {
-        TaskQueue::complete_task(self, task.id, worker_id, output.clone()).await?;
-        record_activity_completed(self, task.workflow_id, task.activity_id.clone(), output).await;
-        Ok(())
-    }
-
-    async fn fail_task_and_record(
-        &self,
-        task: &ClaimedTask,
-        error: &str,
-        retryable: bool,
-    ) -> Result<TaskFailureOutcome, StoreError> {
-        let outcome = match TaskQueue::fail_task_with_retry(self, task.id, error, retryable).await {
-            Ok(outcome) => outcome,
-            Err(StoreError::TaskNotOwned(_)) => return Ok(TaskFailureOutcome::MovedToDlq),
-            Err(error) => return Err(error),
-        };
-        let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
-        record_activity_failed(
-            self,
-            task.workflow_id,
-            task.activity_id.clone(),
-            error.to_string(),
-            will_retry,
-        )
-        .await;
-        if matches!(outcome, TaskFailureOutcome::MovedToDlq)
-            && let Some(workflow_id) = task.workflow_id
-            && EventLog::try_fail_workflow(self, workflow_id, WorkflowError::new(error)).await?
-        {
-            record_workflow_failed(self, workflow_id, error.to_string()).await;
-            return Ok(TaskFailureOutcome::ExhaustedRetries);
-        }
-        Ok(outcome)
-    }
-
-    async fn enqueue_task_and_record(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> Result<Uuid, StoreError> {
-        let event = WorkflowEvent::ActivityScheduled {
-            activity_id: activity_id.clone(),
-            activity_type: activity_type.clone(),
-            input: input.clone(),
-            options: ActivityOptions::default(),
-        };
-        append_event(self, workflow_id, event).await?;
-        TaskQueue::enqueue_task(
-            self,
-            TaskDefinition {
-                workflow_id: Some(workflow_id),
-                activity_id,
-                activity_type,
-                input,
-                options: ActivityOptions::default(),
-            },
-        )
-        .await
-    }
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<WorkflowError>,
-    ) -> Result<(), StoreError> {
-        EventLog::update_workflow_status(self, workflow_id, status, output, error).await
-    }
-
-    async fn complete_workflow(
-        &self,
-        workflow_id: Uuid,
-        event_output: serde_json::Value,
-        stored_output: Option<serde_json::Value>,
-        error: Option<WorkflowError>,
-    ) -> Result<(), StoreError> {
-        everruns_durable::record_workflow_completed(self, workflow_id, event_output).await;
-        EventLog::update_workflow_status(
-            self,
-            workflow_id,
-            WorkflowStatus::Completed,
-            stored_output,
-            error,
-        )
-        .await
-    }
-
-    async fn consume_pending_signals(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
-        SignalStore::consume_pending_signals(self, workflow_id).await
-    }
-
-    async fn consume_pending_signals_by_type(
-        &self,
-        workflow_id: Uuid,
-        signal_type: &str,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
-        SignalStore::consume_pending_signals_by_type(self, workflow_id, signal_type).await
-    }
-}
+pub use crate::task_store::TaskStore;
 
 /// Unified worker that executes tasks from the durable task queue
 ///
@@ -949,13 +685,18 @@ where
 
     match result {
         Ok(output) => {
-            // Complete the task - verify ownership
+            // Complete the task (verifying ownership), draining wake signals
+            // in the same call when this boundary is a drain point.
+            let schedules = turn_input_opt.is_some() && task.workflow_id.is_some();
+            let final_answer = reason_final_answer(&task.activity_type, &output).unwrap_or(false);
+            let drain = (schedules && drains_wake_signals_after(&task.activity_type, final_answer))
+                .then_some(crate::durable_turn::USER_MESSAGE);
             let complete_result = store
-                .complete_task_and_record(task, worker_id, output.clone())
+                .complete_task_and_drain(task, worker_id, output.clone(), drain)
                 .await;
 
             match complete_result {
-                Ok(()) => {
+                Ok(drained) => {
                     info!(
                         task_id = %task.id,
                         activity_type = %task.activity_type,
@@ -971,6 +712,7 @@ where
                             &task.activity_type,
                             &turn_input,
                             &output,
+                            drained,
                         )
                         .await?;
                     }
@@ -1208,25 +950,21 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     completed_activity: &str,
     input: &DurableTurnInput,
     output: &serde_json::Value,
+    drained: Option<usize>,
 ) -> Result<()> {
-    // A reason that produced a final answer (no tool calls, no pause) is winding
-    // the turn down; a reason that emitted tool calls or paused is not.
-    let reason_final_answer = if completed_activity == "reason" {
-        let reason_result: ReasonResult = serde_json::from_value(output.clone())
-            .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
-        let continues = reason_result.has_tool_calls || reason_result.waiting_for_tool_results;
-        reason_result.success && !continues
-    } else {
-        false
-    };
+    let reason_final_answer = reason_final_answer(completed_activity, output)?;
 
     // Drain queued USER_MESSAGE steering signals (task wakes) at the boundaries
     // that precede another reason iteration. The already-persisted wake message
     // is picked up by that reason (it re-reads full history); consuming the
     // signal here is what governs turn continuation and, being destructive,
     // gives exactly-once delivery — see `drains_wake_signals_after`.
-    let pending_user_message_count =
-        count_drained_wakes(store, workflow_id, completed_activity, reason_final_answer).await?;
+    let pending_user_message_count = match drained {
+        Some(count) => count,
+        None => {
+            count_drained_wakes(store, workflow_id, completed_activity, reason_final_answer).await?
+        }
+    };
 
     if completed_activity == "act" && pending_user_message_count > 0 {
         debug!(
@@ -1279,6 +1017,18 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     }
 
     Ok(())
+}
+
+/// Whether a completed `reason` produced a final answer (no tool calls, no
+/// pause), winding the turn down. Always false for other activities.
+fn reason_final_answer(completed_activity: &str, output: &serde_json::Value) -> Result<bool> {
+    if completed_activity != "reason" {
+        return Ok(false);
+    }
+    let reason_result: ReasonResult = serde_json::from_value(output.clone())
+        .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
+    let continues = reason_result.has_tool_calls || reason_result.waiting_for_tool_results;
+    Ok(reason_result.success && !continues)
 }
 
 fn turn_output_with_stop_reason(
@@ -1375,7 +1125,10 @@ mod tests {
     use crate::unified_worker_test_adapters::NoopAdapters;
 
     use super::*;
-    use everruns_durable::DurableAdmin;
+    use everruns_durable::{
+        ActivityOptions, DurableAdmin, EventLog, HeartbeatResponse, StoreError, TaskDefinition,
+        TaskQueue, WorkerRegistry, WorkflowError,
+    };
     use std::sync::atomic::AtomicBool;
 
     // ---- EVE-681: mid-turn task wake drain ----
@@ -1513,6 +1266,46 @@ mod tests {
         // Turn start and unknown activities never drain.
         assert!(!drains_wake_signals_after("process_input", false));
         assert!(!drains_wake_signals_after("input", false));
+    }
+
+    #[tokio::test]
+    async fn completion_drains_only_where_the_store_folds_it_in() {
+        // `execute_task` asks the completion to drain at a final-answer reason
+        // and after act; a store that cannot fold the drain in returns None so
+        // `schedule_next_activity` consumes the wakes itself.
+        let reason = |has_tool_calls| {
+            serde_json::to_value(ReasonResult {
+                success: true,
+                has_tool_calls,
+                ..ReasonResult::default()
+            })
+            .unwrap()
+        };
+        assert!(reason_final_answer("reason", &reason(false)).unwrap());
+        assert!(!reason_final_answer("reason", &reason(true)).unwrap());
+        assert!(!reason_final_answer("act", &serde_json::json!({})).unwrap());
+        assert!(reason_final_answer("reason", &serde_json::json!({})).is_err());
+
+        let store = RecordingStore {
+            signals: vec![user_message_signal()],
+            consume_calls: Arc::new(AtomicUsize::new(0)),
+        };
+        let task = ClaimedTask {
+            id: Uuid::now_v7(),
+            workflow_id: Some(Uuid::now_v7()),
+            activity_id: "act-1".into(),
+            activity_type: "act".into(),
+            input: serde_json::json!({}),
+            options: ActivityOptions::default(),
+            attempt: 1,
+            max_attempts: 1,
+        };
+        let drained = store
+            .complete_task_and_drain(&task, "w", serde_json::json!({}), Some("user_message"))
+            .await
+            .unwrap();
+        assert_eq!(drained, None);
+        assert_eq!(store.consume_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]

@@ -3,6 +3,8 @@
 // Decision: No direct database access from workers - all operations go through gRPC
 // Decision: Supports push-based task notifications with polling fallback
 
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -106,6 +108,9 @@ pub fn grpc_client_tls_from_env() -> Option<tonic::transport::ClientTlsConfig> {
 #[derive(Clone)]
 pub struct GrpcDurableStore {
     client: WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>,
+    /// Workflow status the claim reported, read once by the worker's
+    /// pre-execution check instead of asking again (see `claim_tasks`).
+    claimed_status: Arc<Mutex<HashMap<Uuid, WorkflowStatus>>>,
 }
 
 impl GrpcDurableStore {
@@ -160,7 +165,10 @@ impl GrpcDurableStore {
                             "Connected to control-plane gRPC"
                         );
                     }
-                    return Ok(Self { client });
+                    return Ok(Self {
+                        client,
+                        claimed_status: Arc::default(),
+                    });
                 }
                 Err(e) => {
                     let elapsed = start.elapsed();
@@ -297,12 +305,16 @@ impl GrpcDurableStore {
             .tasks
             .into_iter()
             .map(|t| {
+                let status = t.workflow_status.map(|_| t.workflow_status());
                 let id =
                     t.id.as_ref()
                         .map(parse_proto_uuid)
                         .transpose()?
                         .unwrap_or_else(Uuid::nil);
                 let workflow_id = t.workflow_id.as_ref().map(parse_proto_uuid).transpose()?;
+                if let (Some(workflow_id), Some(status)) = (workflow_id, status) {
+                    self.remember_claimed_status(workflow_id, proto_status_to_workflow(status));
+                }
                 let input = t
                     .input
                     .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
@@ -324,6 +336,23 @@ impl GrpcDurableStore {
         Ok(tasks)
     }
 
+    fn remember_claimed_status(&self, workflow_id: Uuid, status: WorkflowStatus) {
+        let mut statuses = self
+            .claimed_status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        statuses.insert(workflow_id, status);
+    }
+
+    /// The workflow status the latest claim reported, once. Later reads go to
+    /// the control plane.
+    pub fn take_claimed_status(&self, workflow_id: Uuid) -> Option<WorkflowStatus> {
+        self.claimed_status
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&workflow_id)
+    }
+
     /// Complete a task
     ///
     /// The worker_id must match the worker that claimed the task.
@@ -333,11 +362,13 @@ impl GrpcDurableStore {
         task_id: Uuid,
         worker_id: &str,
         output: serde_json::Value,
-    ) -> Result<()> {
+        drain_signal_type: Option<&str>,
+    ) -> Result<Option<u32>> {
         let request = CompleteDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
             worker_id: worker_id.to_string(),
             output: Some(json_to_proto_struct(&output)),
+            drain_signal_type: drain_signal_type.map(str::to_string),
         };
 
         let response = self.client.complete_durable_task(request).await?;
@@ -346,7 +377,7 @@ impl GrpcDurableStore {
         if !inner.success {
             anyhow::bail!("Task not owned by worker (was reclaimed or already completed)")
         }
-        Ok(())
+        Ok(inner.drained_signal_count)
     }
 
     /// Fail a task
@@ -789,6 +820,24 @@ mod tests {
     use tonic::service::Interceptor;
 
     static TLS_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+    #[tokio::test]
+    async fn a_claimed_status_is_read_once() {
+        let channel = Channel::from_static("http://127.0.0.1:1").connect_lazy();
+        let store = GrpcDurableStore {
+            client: WorkerServiceClient::with_interceptor(channel, GrpcClientAuth::from_env()),
+            claimed_status: Arc::default(),
+        };
+        let workflow_id = Uuid::now_v7();
+        store.remember_claimed_status(workflow_id, WorkflowStatus::Cancelled);
+        // Clones share what the claim reported, as the worker's store does.
+        let reader = store.clone();
+        assert_eq!(
+            reader.take_claimed_status(workflow_id),
+            Some(WorkflowStatus::Cancelled)
+        );
+        assert_eq!(store.take_claimed_status(workflow_id), None);
+    }
 
     struct TlsEnvGuard {
         _lock: MutexGuard<'static, ()>,

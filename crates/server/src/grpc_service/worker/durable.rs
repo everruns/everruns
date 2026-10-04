@@ -218,9 +218,14 @@ impl WorkerServiceImpl {
                 Status::internal("Failed to claim tasks")
             })?;
 
-        let proto_tasks: Vec<proto::DurableClaimedTask> = tasks
-            .into_iter()
-            .map(|t| proto::DurableClaimedTask {
+        let mut proto_tasks = Vec::with_capacity(tasks.len());
+        for t in tasks {
+            // Best effort: on a failed read the worker checks status itself.
+            let workflow_status = match t.workflow_id {
+                Some(workflow_id) => store.get_workflow_status(workflow_id).await.ok(),
+                None => None,
+            };
+            proto_tasks.push(proto::DurableClaimedTask {
                 id: Some(uuid_to_proto_uuid(t.id)),
                 workflow_id: t.workflow_id.map(uuid_to_proto_uuid),
                 activity_id: t.activity_id,
@@ -228,8 +233,9 @@ impl WorkerServiceImpl {
                 input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),
                 attempt: t.attempt as i32,
                 max_attempts: t.max_attempts as i32,
-            })
-            .collect();
+                workflow_status: workflow_status.map(|s| workflow_status_to_proto(s).into()),
+            });
+        }
 
         Ok(Response::new(ClaimDurableTasksResponse {
             tasks: proto_tasks,
@@ -265,17 +271,39 @@ impl WorkerServiceImpl {
             .await
         {
             Ok(()) => {
-                // Record ActivityCompleted event
-                if let Some(info) = task_info {
-                    record_activity_completed(
-                        store.as_ref(),
-                        info.workflow_id,
-                        info.activity_id,
-                        output,
-                    )
-                    .await;
-                }
-                Ok(Response::new(CompleteDurableTaskResponse { success: true }))
+                let Some(info) = task_info else {
+                    return Ok(Response::new(CompleteDurableTaskResponse {
+                        success: true,
+                        drained_signal_count: None,
+                    }));
+                };
+                let workflow_id = info.workflow_id;
+                // Drain only after the completion succeeded, as the worker's
+                // own consume call would. A failed drain is left to the worker.
+                let drain = async {
+                    let signal_type = req.drain_signal_type.as_deref()?;
+                    match store
+                        .consume_pending_signals_by_type(workflow_id?, signal_type)
+                        .await
+                    {
+                        Ok(signals) => Some(signals.len() as u32),
+                        Err(e) => {
+                            tracing::warn!(%task_id, error = %e, "Failed to drain signals on completion");
+                            None
+                        }
+                    }
+                };
+                let record = record_activity_completed(
+                    store.as_ref(),
+                    workflow_id,
+                    info.activity_id,
+                    output,
+                );
+                let ((), drained_signal_count) = tokio::join!(record, drain);
+                Ok(Response::new(CompleteDurableTaskResponse {
+                    success: true,
+                    drained_signal_count,
+                }))
             }
             Err(StoreError::TaskNotOwned(_)) => {
                 // Task was reclaimed by another worker - not an error, just return false
@@ -286,6 +314,7 @@ impl WorkerServiceImpl {
                 );
                 Ok(Response::new(CompleteDurableTaskResponse {
                     success: false,
+                    drained_signal_count: None,
                 }))
             }
             Err(e) => {
