@@ -11,7 +11,7 @@ use everruns_core::Caller;
 use everruns_core::channel::{
     InboundAttachment, InboundChannelEvent, SessionBinding, ThreadContext,
 };
-use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
+use everruns_core::channel_messaging::sync_slack_reply_mode_tags;
 use everruns_platform::{ChannelType, SlackChannelConfig, SlackReplyMode};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use std::collections::HashMap;
@@ -846,7 +846,7 @@ pub(crate) async fn process_slack_message(
     // Through the adapter rather than the Slack client directly (EVE-972), so the
     // trait's ack path is exercised by its only implementation instead of being
     // dead code a second platform would have to discover the gaps in.
-    if slack_config.reply_mode == SlackReplyMode::ReportProgressOnly
+    if slack_config.reply_mode == SlackReplyMode::ToolOnly
         && !channel.is_empty()
         && !thread_ts.is_empty()
     {
@@ -977,6 +977,16 @@ pub(crate) fn slack_message_metadata(
         (
             "slack_ts".to_string(),
             serde_json::Value::String(event.ts.clone().unwrap_or_default()),
+        ),
+        (
+            "slack_thread_ts".to_string(),
+            serde_json::Value::String(
+                event
+                    .thread_ts
+                    .clone()
+                    .or_else(|| event.ts.clone())
+                    .unwrap_or_default(),
+            ),
         ),
         // Needed by `chat.startStream` after a restart: recovery has no event to
         // read the sender from (EVE-974).

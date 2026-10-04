@@ -374,7 +374,7 @@ There are two delivery paths, selected by whether the parent has an active turn:
 - **Idle parent → between-turn steering.** The waker injects a synthetic user
   message and starts (or steers) a turn. Unchanged.
 - **Active parent → mid-turn injection.** The wake payload (task snapshot plus
-  the outbound message / `report_progress` data) is enqueued and consumed at the
+  the outbound message or explicit channel post) is enqueued and consumed at the
   parent's next agentic-loop iteration boundary, before the next LLM call,
   appearing as injected context alongside the reloaded conversation, so the
   parent reacts within the same turn instead of after it idles.

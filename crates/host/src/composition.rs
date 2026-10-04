@@ -7,7 +7,7 @@
 //! host owns the bundle that selects a deployment's shape (EVE-887).
 //!
 //! Each field is a focused component owned by its own layer — the driver
-//! registry comes from `everruns-provider`, the capability registry from the
+//! registry comes from `everruns-contracts`, the capability registry from the
 //! neutral capability contract, the egress and utility-LLM services from their
 //! own contracts. This type only carries them together for the runtime; it is
 //! not a registry of registries and adds no vendor branching.

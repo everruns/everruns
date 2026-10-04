@@ -2,7 +2,7 @@
 //! Microsoft MAI provider driver for Everruns.
 //!
 //! The `mai` module of `everruns-drivers` is part of the [Everruns](https://everruns.com) ecosystem. It
-//! implements the [`ChatDriver`] contract from `everruns-provider` and registers a
+//! implements the [`ChatDriver`] contract from `everruns-contracts` and registers a
 //! Microsoft MAI provider (e.g. `mai-code-1-flash`) into a [`DriverRegistry`].
 //!
 //! Microsoft MAI models are served via [Azure AI Foundry](https://ai.azure.com)

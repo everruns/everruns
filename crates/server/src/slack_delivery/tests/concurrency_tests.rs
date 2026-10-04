@@ -41,10 +41,6 @@ impl ChannelDeliveryAdapter for BlockingAdapter {
     ) -> ChannelDeliveryResult {
         ChannelDeliveryResult::Ok
     }
-
-    fn format_progress_report(&self, report: &ProgressReportPayload) -> String {
-        format_progress_report_for_slack(report)
-    }
 }
 
 async fn register_test_delivery(

@@ -7,7 +7,6 @@ everruns
 everruns-ag-ui
 everruns-ard
 everruns-builtins
-everruns-capability
 everruns-cli
 everruns-cli-contract
 everruns-contracts
@@ -38,9 +37,7 @@ everruns-integrations-web-fetch
 everruns-llmsim
 everruns-macros
 everruns-mcp
-everruns-model-profiles
 everruns-platform
-everruns-provider
 everruns-serve
 everruns-serve-agentcore
 everruns-serve-build

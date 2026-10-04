@@ -1603,6 +1603,9 @@ message SessionSqlDbQueryResponse {
 // === Generic domain command transport ===
 
 message ExecuteCommandRequest {
+    // Delegation-only response projection. Domain authorization still applies;
+    // false preserves management records for existing command consumers.
+    bool runtime_view = 10;
     optional Uuid platform_session_id = 8;
     optional Uuid input_message_id = 9;
     // The session whose runtime this caller is, when it is one.
@@ -1617,7 +1620,7 @@ message ExecuteCommandRequest {
     //
     // An internal caller that declares no session (Slack, FCP, the capability
     // service, the durable seal) is outside that entitlement.
-    optional Uuid acting_for_session_id = 10;
+    optional Uuid acting_for_session_id = 11;
     string name = 1;
     string api_version = 2;
     bytes params_json = 3;
@@ -1763,6 +1766,12 @@ message SlackAddReaction {
     string name = 3;
 }
 
+message SlackPostMessage {
+    string input_message_id = 1;
+    string tool_call_id = 2;
+    string text = 3;
+}
+
 message SlackUpdateMessage {
     string channel = 1;
     string timestamp = 2;
@@ -1789,6 +1798,7 @@ message InvokeSlackActionRequest {
         SlackUpdateMessage update_message = 4;
         SlackLookupUser lookup_user = 5;
         SlackUploadFile upload_file = 6;
+        SlackPostMessage post_message = 7;
     }
 }
 
@@ -1797,6 +1807,11 @@ message SlackReactionAdded {
 }
 
 message SlackMessageUpdated {
+    string channel = 1;
+    string timestamp = 2;
+}
+
+message SlackMessagePosted {
     string channel = 1;
     string timestamp = 2;
 }
@@ -1844,6 +1859,7 @@ message InvokeSlackActionResponse {
         SlackUser user = 3;
         SlackFileUploaded file_uploaded = 4;
         SlackActionError error = 5;
+        SlackMessagePosted message_posted = 6;
     }
 }
 

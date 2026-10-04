@@ -8,14 +8,14 @@
 #                             external capability pack.
 #   external-capability-pack  implements `IntoCapability` and a code-defined
 #                             capability against the neutral
-#                             `everruns-capability` contract ALONE (EVE-873),
+#                             `everruns-contracts` contract ALONE (EVE-873),
 #                             so the open capability seams fail here if they
 #                             stop being usable without core/host access.
 #   external-builtin-pack     composes `everruns-builtins` into a fresh core
 #                             registry without relying on link-time discovery.
 #   external-provider-pack    implements the `ChatDriver` contract and driver
 #                             registration against the provider SPI
-#                             (`everruns-provider`) ALONE (EVE-874), so custom
+#                             (`everruns-contracts`) ALONE (EVE-874), so custom
 #                             downstream providers fail here if they stop
 #                             compiling without core/host access.
 #   external-event-log        implements the canonical `EventLog`/`EventReader`
@@ -26,6 +26,8 @@
 #                             contracts from core, and verifies the concrete
 #                             filesystem/command hosts are host-owned, without
 #                             importing platform.
+#   external-platform-store    executes stock subagent delegation through a
+#                             runtime-only store and a real offline child turn.
 #   external-workspace-backend implements the open workspace lifecycle SPI
 #                             using only the published host crate.
 #
@@ -59,7 +61,7 @@ echo "External consumer runs on the public everruns facade and everruns-llmsim u
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-capability-pack
 
-echo "External capability pack builds on the neutral everruns-capability contract under -D warnings."
+echo "External capability pack builds on the neutral everruns-contracts capability contract under -D warnings."
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-builtin-pack
@@ -69,7 +71,7 @@ echo "External host composes the portable built-in policy bundle explicitly unde
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-provider-pack
 
-echo "External provider pack builds on the provider SPI (everruns-provider) alone under -D warnings."
+echo "External provider pack builds on the provider SPI (everruns-contracts) alone under -D warnings."
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-event-log
@@ -85,3 +87,8 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-workspace-backend
 
 echo "External workspace backend implements the open host SPI under -D warnings."
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-platform-store
+
+echo "External runtime host executes the stock subagents capability through portable PlatformStore views."

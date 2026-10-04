@@ -55,7 +55,7 @@ default = ["macros", "capabilities", "builtins", "filesystem"]
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
 macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # Curated service-provider interface for code-defined capabilities. The
-# authoring types live in the neutral `everruns-capability` contract crate
+# authoring types live in the neutral `everruns-contracts` contract crate
 # (EVE-873); this feature turns on its `definition` surface plus the runtime
 # adapters here. It shares serde/schemars with `macros` but remains
 # independently gateable so the bare facade still compiles with

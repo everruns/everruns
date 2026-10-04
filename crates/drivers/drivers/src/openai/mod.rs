@@ -2,7 +2,7 @@
 //! OpenAI provider drivers for Everruns.
 //!
 //! The `openai` module of `everruns-drivers` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider` and
+//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-contracts` and
 //! registers OpenAI providers into a [`DriverRegistry`].
 //!
 //! The crate exposes two drivers:

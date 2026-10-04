@@ -249,8 +249,7 @@ or promise the entire upstream catalog. Provider-filtered enumeration preserves
 point lookup's capability masking. Identity-bearing entries keep variants and
 service kinds distinct from model families; live discovery remains authoritative
 for provider request ids and account availability. Registry order is deterministic,
-not a recommendation or flagship ranking. See the [enumeration contract and
-examples](../../crates/model-profiles/README.md#offline-enumeration) and
+not a recommendation or flagship ranking. See the [typed enumeration adapter](../../crates/contracts/src/model_profiles.rs) and
 [registry implementation](../../crates/contracts/src/model_profile_data/profiles.rs).
 
 ## Resolution Contract

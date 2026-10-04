@@ -197,7 +197,7 @@ impl Capability for McpCapability {
 /// MCP-namespace helpers for [`CapabilityId`].
 ///
 /// An extension trait because the ID type lives in the neutral
-/// `everruns-capability` contract crate while the `mcp:` namespace is owned
+/// `everruns-contracts` contract crate while the `mcp:` namespace is owned
 /// by this capability implementation.
 pub trait McpCapabilityIdExt: Sized {
     /// Check if this capability ID is for an MCP server

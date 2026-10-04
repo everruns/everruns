@@ -14,6 +14,11 @@
   runtime. Playground owns Agent, harness, virtual-user, and Environment selection. See
   [Agent Page](ui/agent-page.md) and [Execution Environments](harnesses/execution-environments.md).
 
+* **Hosted feature enrolment names and defaults.** Internal features require
+  platform enrolment; adoption remains organisation opt-in. The seven features
+  already offered for SaaS opt-in now use adoption defaults, preserving that
+  behavior without enabling every organisation. See [Feature Flags](security/feature-flags.md).
+
 * **Paid CI coverage follows provider/model changes and a nightly sweep.**
   Ordinary Rust merges retain llmsim workflows without provider credentials.
   Scheduled and manual live coverage still runs only trusted main-branch code.
@@ -62,7 +67,6 @@
   PATs owned by the seeded anonymous admin, and PAT validation rejects that
   identity even if a stale row remains (EVE-1153). See
   [Authentication](security/authentication.md) and TM-AUTH-032.
->>>>>>> 18ea41401 (fix(auth): revoke anonymous PATs when leaving AUTH_MODE=none — Fixes EVE-1153)
 
 * **Sandbox secret forgery closed.** Capability-owned sandbox secret prefixes
   (`container_sandbox:`, `daytona_sandbox:`, `e2b_sandbox:`, `deno_sandbox:`,

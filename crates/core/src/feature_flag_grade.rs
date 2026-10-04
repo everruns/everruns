@@ -14,7 +14,7 @@ pub enum FeatureFlagGrade {
     /// Available only on local development deployments.
     Dev,
     /// Available after platform-owned organisation enrolment.
-    Preview,
+    Internal,
     /// Available after organisation opt-in.
     Adoption,
     /// Enabled by default with organisation opt-out.
@@ -30,7 +30,7 @@ impl FeatureFlagGrade {
         match self {
             Self::Off => false,
             Self::Dev => deployment.is_dev(),
-            Self::Preview | Self::Adoption | Self::Prod => true,
+            Self::Internal | Self::Adoption | Self::Prod => true,
         }
     }
 
@@ -69,7 +69,7 @@ impl fmt::Display for FeatureFlagGrade {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Dev => "dev",
-            Self::Preview => "preview",
+            Self::Internal => "internal",
             Self::Adoption => "adoption",
             Self::Prod => "prod",
             Self::Off => "off",
@@ -83,11 +83,11 @@ impl FromStr for FeatureFlagGrade {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value {
             "dev" => Ok(Self::Dev),
-            "preview" => Ok(Self::Preview),
+            "internal" => Ok(Self::Internal),
             "adoption" => Ok(Self::Adoption),
             "prod" => Ok(Self::Prod),
             "off" => Ok(Self::Off),
-            _ => Err("expected dev, preview, adoption, prod, or off"),
+            _ => Err("expected dev, internal, adoption, prod, or off"),
         }
     }
 }
@@ -111,7 +111,7 @@ mod tests {
                     deployment.is_dev(),
                     deployment.is_dev(),
                 ),
-                (FeatureFlagGrade::Preview, true, false, false),
+                (FeatureFlagGrade::Internal, true, false, false),
                 (FeatureFlagGrade::Adoption, true, false, true),
                 (FeatureFlagGrade::Prod, true, true, true),
                 (FeatureFlagGrade::Off, false, false, false),
@@ -127,12 +127,12 @@ mod tests {
 
     #[test]
     fn grade_wire_values_are_explicit() {
-        for value in ["dev", "preview", "adoption", "prod", "off"] {
+        for value in ["dev", "internal", "adoption", "prod", "off"] {
             let grade: FeatureFlagGrade = value.parse().unwrap();
             assert_eq!(grade.to_string(), value);
             assert_eq!(serde_json::to_value(grade).unwrap(), value);
         }
-        for value in ["true", "false", "1", "0", "DEV", "", " prod "] {
+        for value in ["preview", "true", "false", "1", "0", "DEV", "", " prod "] {
             assert!(value.parse::<FeatureFlagGrade>().is_err());
         }
     }

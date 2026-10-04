@@ -28,7 +28,7 @@ contracts instead of on server internals.
 
 ```rust
 use everruns_core::CapabilityRegistry;
-use everruns_provider::DriverRegistry;
+use everruns_contracts::DriverRegistry;
 
 let capabilities = CapabilityRegistry::new();
 let drivers = DriverRegistry::new();
@@ -43,7 +43,7 @@ driver registry. Neither owns the bundle that selects a deployment's shape. An e
 
 Core's default feature set is empty. `openapi` and
 `tree-sitter-outlines` are explicit opt-ins, and concrete protocol drivers and
-TLS/HTTP setup belong to `everruns-provider` and their host startup owners.
+TLS/HTTP setup belong to `everruns-contracts` and their host startup owners.
 
 `everruns-core` does not register a policy catalog. Applications that want the
 standard backend-neutral policies compose `everruns-builtins`; environment and

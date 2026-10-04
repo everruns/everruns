@@ -1,6 +1,6 @@
 //! Portable async runtime primitives: time, timers and task spawning.
 //!
-//! The execution algorithms in `everruns-provider`, `everruns-core` and
+//! The execution algorithms in `everruns-contracts`, `everruns-core` and
 //! `everruns-engine` run on Tokio in every native host. They also run inside a
 //! JavaScript isolate (a celld or Cloudflare Durable Object, a browser) built
 //! for `wasm32-unknown-unknown`, where there is no Tokio runtime, no thread to

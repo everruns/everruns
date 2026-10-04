@@ -44,6 +44,7 @@ impl GrpcAdapter {
         let mut client = self.client.inner.lock().await;
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
+                runtime_view: false,
                 input_message_id: None,
                 platform_session_id: None,
                 acting_for_session_id: acting_for_session.map(|id| uuid_to_proto(id.uuid())),

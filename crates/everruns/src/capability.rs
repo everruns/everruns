@@ -7,10 +7,10 @@
 //! engine contracts needed by capability authors without exposing registries,
 //! stores, tenancy, or host implementation types.
 //!
-//! The authoring types are the neutral `everruns-capability` contract
+//! The authoring types are the neutral `everruns-contracts` contract
 //! (EVE-873), re-exported here at their stable Framework paths. Capability
 //! packages that want a dependency-light build can depend on
-//! `everruns-capability` directly (its `definition` module is this same
+//! `everruns-contracts` directly (its `capability::definition` module is this same
 //! surface); applications keep depending only on `everruns`. This module
 //! additionally owns the private adapters that install a [`Definition`] onto
 //! the in-process runtime.

@@ -1,9 +1,6 @@
-// Adapter over the `everruns-model-profiles` crate, which owns the model
-// profile registry and lookup logic (knowledge/foundations/providers.md,
-// knowledge/foundations/models.md). That crate does not depend on this one
-// (it takes provider identity as a plain wire-id string rather than
-// `DriverId`, to avoid a dependency cycle), so this module adapts the
-// `DriverId`-typed signatures existing callers use.
+// Typed access to the model profile registry in this crate's model_profile_data.
+// The data uses plain provider wire IDs; these helpers accept DriverId.
+// See knowledge/foundations/providers.md and knowledge/foundations/models.md.
 
 use crate::driver_registry::ServiceKind;
 use crate::model::{ModelProfile, ModelVendor};

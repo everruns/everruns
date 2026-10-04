@@ -118,7 +118,7 @@ mod tests {
 
     /// The product's default platform composition must register every official
     /// provider driver (EVE-874). Protocol drivers live in provider crates on
-    /// the everruns-provider SPI; the worker is the composition point that
+    /// the everruns-contracts SPI; the worker is the composition point that
     /// assembles them into the default product registry, so a provider crate
     /// dropping out of the assembly fails here.
     #[test]

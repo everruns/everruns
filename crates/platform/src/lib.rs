@@ -57,6 +57,7 @@ pub mod app;
 
 // The seam a Slack-native capability acts through; the Slack channel row it
 // resolves against lives in `agent_channel` (EVE-1024).
+pub mod channel_message_sender;
 pub mod slack_action;
 pub mod slack_channel;
 pub mod slack_provisioning;

@@ -397,6 +397,23 @@ describe("Sidebar", () => {
     expect(settingsLink).toHaveAttribute("href", "/settings/organization");
   });
 
+  it.each(["/chats", "/chats/new", "/chats/history", "/sessions"])(
+    "keeps permanent Chat a distinct entry on %s",
+    (pathname) => {
+      mockPathname.mockReturnValue(pathname);
+      render(<Sidebar />);
+
+      const chat = screen.getByRole("link", { name: "Chat" });
+      expect(chat).toHaveAttribute("href", "/chats");
+      expect(chat).toHaveClass("border", "text-foreground");
+      if (pathname === "/chats") {
+        expect(chat).toHaveAttribute("aria-current", "page");
+      } else {
+        expect(chat).not.toHaveAttribute("aria-current");
+      }
+    },
+  );
+
   it("renders distinct semantic icons for registry navigation", () => {
     render(<Sidebar />);
 

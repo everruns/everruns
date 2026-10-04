@@ -44,6 +44,8 @@ export type NavigationItem = {
   prefetch?: boolean;
   flag?: keyof FeatureFlags;
   exact?: boolean;
+  /** Keep a primary destination visibly actionable even when another route is open. */
+  prominent?: boolean;
   experimental?: boolean;
   warningTooltip?: string;
   /** Minimum organization role required to see this destination. */
@@ -60,7 +62,7 @@ export type NavigationSection = {
 };
 
 export const defaultChatsNavigation: NavigationItem[] = [
-  { name: "Chat", href: "/chats", icon: MessageCircle, exact: true },
+  { name: "Chat", href: "/chats", icon: MessageCircle, exact: true, prominent: true },
 ];
 
 export const defaultOperationalNavigation: NavigationItem[] = [

@@ -7,11 +7,12 @@
         "session_tasks"
       ],
       "docs_slug": "a2a-agent-delegation",
-      "feature_flag": null,
+      "feature_flag": "agent_delegation",
       "features": [
         "agent_runs"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "a2a_agent_delegation",
@@ -42,11 +43,12 @@
         "session_tasks"
       ],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "agent_delegation",
       "features": [
         "agent_runs"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "ag_ui_delegation",
@@ -58,11 +60,12 @@
       "category": "Orchestration",
       "dependencies": [],
       "docs_slug": "agent-handoff",
-      "feature_flag": null,
+      "feature_flag": "agent_delegation",
       "features": [
         "agent_handoffs"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "agent_handoff",
@@ -679,7 +682,7 @@
       "category": "Knowledge",
       "dependencies": [],
       "docs_slug": "knowledge-base",
-      "feature_flag": null,
+      "feature_flag": "knowledge",
       "features": [
         "knowledge"
       ],
@@ -698,7 +701,7 @@
       "category": "Knowledge",
       "dependencies": [],
       "docs_slug": "knowledge-index",
-      "feature_flag": null,
+      "feature_flag": "knowledge",
       "features": [
         "knowledge"
       ],
@@ -732,7 +735,7 @@
         "session_file_system"
       ],
       "docs_slug": "memory",
-      "feature_flag": null,
+      "feature_flag": "memory",
       "features": [
         "file_system"
       ],
@@ -794,7 +797,7 @@
       "category": "Runtime",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "openai_agents_api",
       "features": [],
       "grades": [
         "prod",
@@ -1227,7 +1230,7 @@
         "session_file_system"
       ],
       "docs_slug": "agent-skills",
-      "feature_flag": null,
+      "feature_flag": "skills",
       "features": [],
       "grades": [
         "prod",

@@ -1,7 +1,7 @@
 //! OpenRouter per-call options: routing controls, server tools, plugins, attribution.
 //!
 //! These types version with the OpenRouter API, so they live in the OpenRouter
-//! driver crate — not in `everruns-provider`. The abstract provider crate only
+//! driver crate — not in `everruns-contracts`. The abstract provider crate only
 //! carries them opaquely: routing travels in `LlmCallConfig::driver_options`
 //! under [`OPENROUTER_ROUTING_OPTION_KEY`], and attribution travels in
 //! `LlmCallConfig::metadata` under the keys below. Nothing outside this crate

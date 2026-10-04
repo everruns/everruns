@@ -39,7 +39,7 @@ fn build_settings(
             let grade = policy.grade(definition.name);
             let org_configurable = grade.org_configurable(policy.deployment);
             // Tenant settings expose only flags the tenant can change. Platform
-            // operators see every grade, but may only enrol preview features.
+            // operators see every grade, but may only enrol internal features.
             if !platform && !org_configurable {
                 return None;
             }
@@ -54,7 +54,7 @@ fn build_settings(
                 org_override,
                 effective: grade.effective(policy.deployment, org_override),
                 can_manage: if platform {
-                    grade == FeatureFlagGrade::Preview
+                    grade == FeatureFlagGrade::Internal
                 } else {
                     org_configurable
                 },
@@ -115,7 +115,7 @@ fn validate_updates(
             ));
         }
         if platform {
-            if grade != FeatureFlagGrade::Preview {
+            if grade != FeatureFlagGrade::Internal {
                 return Err(format!(
                     "Feature flag '{name}' is the organization's own setting"
                 ));
@@ -143,7 +143,7 @@ mod tests {
         for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
             for grade in [
                 FeatureFlagGrade::Dev,
-                FeatureFlagGrade::Preview,
+                FeatureFlagGrade::Internal,
                 FeatureFlagGrade::Adoption,
                 FeatureFlagGrade::Prod,
                 FeatureFlagGrade::Off,
@@ -157,7 +157,7 @@ mod tests {
                     );
                     assert_eq!(
                         validate_platform_feature_flag_updates(&policy, &updates).is_ok(),
-                        grade == FeatureFlagGrade::Preview
+                        grade == FeatureFlagGrade::Internal
                     );
                 }
             }
@@ -177,7 +177,7 @@ mod tests {
         for grade in [
             FeatureFlagGrade::Off,
             FeatureFlagGrade::Dev,
-            FeatureFlagGrade::Preview,
+            FeatureFlagGrade::Internal,
         ] {
             let policy = policy(grade, DeploymentGrade::Prod);
             assert!(
@@ -191,7 +191,7 @@ mod tests {
                     .find(|row| row.name == "skills")
                     .unwrap()
                     .can_manage,
-                grade == FeatureFlagGrade::Preview
+                grade == FeatureFlagGrade::Internal
             );
         }
     }

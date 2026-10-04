@@ -115,10 +115,10 @@ normal Agent resource, not inherited runtime config and not a code-defined
 template. See [agent-handoff.md](../runtime-resources/agent-handoff.md).
 
 `agent_handoff`, `a2a_agent_delegation` and `ag_ui_delegation` are gated behind the
-`agent_delegation` feature flag (experimental, auto-enabled in dev, off in prod).
-When the flag is off, none of them is registered and none appears in the
-capability picker. Enable via `FEATURE_AGENT_DELEGATION=prod` or use a
-`DeploymentGrade::Dev` environment. See `knowledge/security/feature-flags.md` and EVE-506.
+`agent_delegation` feature flag. Its adoption default requires organisation opt-in;
+registration follows deployment availability, while assignment and execution use
+organisation-effective flags. See [Feature Flags](../security/feature-flags.md)
+and the [shared registration policy](../../crates/core/src/execution_features.rs).
 
 ### Guardrail Capabilities
 
@@ -1346,18 +1346,18 @@ instead.
 
 ##### Design Decision: PlatformStore Trait
 
-The `PlatformStore` trait and its management capabilities live in
-`everruns-platform`. `DirectPlatformStore` (in `everruns-server`) implements it
-using the existing `StorageBackend` and `SessionService`; core carries only the
-type-keyed extension boundary and the narrow neutral subagent delegate contract.
-Its legacy org-scoped CRUD methods outlived `platform_management`; the unused
-remainder was removed in EVE-953. What is left is the catalog-backed
-`platform_discover`/`platform_query`/`platform_execute` surface plus exactly the
-reads and writes delegation needs: `get_harness`, `get_harness_chain`,
-`get_agent_by_id`, `create_session_with_options`, `get_session_by_id`,
-`add_agent_session_participant`, `send_message`, `get_messages`, and
-`wait_for_idle`. Management flows go through the command catalog, not this
-trait; anything that wants harness/agent/app/session CRUD belongs there.
+The [`PlatformStore`](../../crates/platform/src/platform_store.rs) trait and its
+management capabilities live in `everruns-platform`. Its delegation operations
+consume portable agent and harness definitions, resolved harness configuration,
+execution session views, and participant correlation IDs. The existing narrow
+core delegate forwards these views without projecting hosted records.
+
+Server adapters authorize domain commands and resolve harness inheritance at
+that edge; direct and distributed workers receive the same runtime views. The
+local adapter forwards its runner's execution views directly. An embedded host
+can therefore use the stock subagents capability without fabricating platform
+records or replacing its tools. Management flows retain the catalog-backed JSON
+command surface; entity CRUD belongs in the command catalog.
 
 ### Experimental Capabilities
 

@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! AWS Bedrock Runtime provider driver for Everruns.
 //!
-//! The `bedrock` module of `everruns-drivers` implements the [`ChatDriver`] contract from `everruns-provider`
+//! The `bedrock` module of `everruns-drivers` implements the [`ChatDriver`] contract from `everruns-contracts`
 //! using the AWS Bedrock Runtime `ConverseStream` API.
 //! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
 //! the application-facing `everruns` crate.

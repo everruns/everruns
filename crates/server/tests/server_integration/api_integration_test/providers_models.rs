@@ -107,8 +107,8 @@ async fn test_feature_flags_endpoint() {
     assert!(body.get("notifications").is_some());
     assert!(body.get("mcp_endpoint").is_none());
     assert_eq!(body["machine_payments"], Value::Bool(false));
-    // In test env (DEV_MODE=true), experimental flags are enabled
-    assert_eq!(body["notifications"], Value::Bool(false));
+    // Deployment availability is separate from the default-off org opt-in.
+    assert_eq!(body["notifications"], Value::Bool(true));
 }
 
 #[tokio::test]
@@ -125,7 +125,14 @@ async fn test_org_feature_flags_opt_in() {
     let flags = settings["flags"].as_array().expect("flags array");
     assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
     assert!(flags.iter().all(|flag| flag["label"] != "Platform Chat"));
-    assert!(flags.iter().all(|flag| flag["name"] != "notifications"));
+    let notifications = flags
+        .iter()
+        .find(|flag| flag["name"] == "notifications")
+        .expect("notifications adoption setting");
+    assert_eq!(notifications["grade"], "adoption");
+    assert_eq!(notifications["default_enabled"], false);
+    assert_eq!(notifications["effective"], false);
+    assert_eq!(notifications["can_manage"], true);
 
     let patched: serde_json::Value = server
         .patch(
@@ -133,21 +140,35 @@ async fn test_org_feature_flags_opt_in() {
             serde_json::json!({ "flags": { "notifications": true } }),
         )
         .await
-        .assert_status(StatusCode::BAD_REQUEST)
+        .assert_status(StatusCode::OK)
         .json();
-    assert!(patched.get("detail").is_some());
+    assert_eq!(patched["notifications"], true);
 
     let effective: serde_json::Value = server
         .get(&format!("/v1/orgs/{org_id}/feature-flags"))
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(effective["notifications"], serde_json::Value::Bool(false));
+    assert_eq!(effective["notifications"], true);
     assert!(effective.get("mcp_endpoint").is_none());
     assert_eq!(
         effective["machine_payments"],
         serde_json::Value::Bool(false)
     );
+
+    server
+        .patch(
+            &format!("/v1/orgs/{org_id}/feature-flags"),
+            json!({ "flags": { "notifications": false } }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let disabled: Value = server
+        .get(&format!("/v1/orgs/{org_id}/feature-flags"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(disabled["notifications"], false);
 
     server
         .patch(

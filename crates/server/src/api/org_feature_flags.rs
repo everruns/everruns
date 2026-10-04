@@ -1,7 +1,7 @@
 // Organization feature flag opt-in API
 //
 // Grades own availability, defaults, and who can change an org override.
-// Tenant PATCH requires OrgAdmin; platform PATCH owns preview enrolments.
+// Tenant PATCH requires OrgAdmin; platform PATCH owns internal enrolments.
 // Decision: platform-managed flags are org-scoped but not the org's to set. A
 // separate PlatformUser-gated route owns them, so the operator console can
 // enrol one tenant without the tenant being able to enrol itself, and neither

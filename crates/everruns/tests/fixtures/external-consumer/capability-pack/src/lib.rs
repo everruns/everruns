@@ -1,5 +1,5 @@
 //! External capability package: implements `IntoCapability` and a
-//! code-defined capability against the neutral `everruns-capability` contract
+//! code-defined capability against the neutral `everruns-contracts` contract
 //! only — no `everruns`, `everruns-core`, `everruns-host`, or Tokio imports.
 
 use everruns_contracts::capability::definition::{

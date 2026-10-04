@@ -29,7 +29,7 @@ use everruns_platform::capabilities::PLATFORM_CAPABILITY_ID;
 use everruns_platform::{
     DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
     PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
-    SandboxStateStoreExt, SessionSqlDbStoreExt, SlackActionInvokerExt,
+    SandboxStateStoreExt, SessionSqlDbStoreExt,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -536,7 +536,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         // org and session; a deployment without a control-plane route provides
         // none and the Slack capability's tools fail closed.
         if let Some(invoker) = self.adapters.slack_action_invoker(org_id, session_id) {
-            extensions.insert(Arc::new(SlackActionInvokerExt(invoker)));
+            everruns_platform::channel_message_sender::install(&mut extensions, invoker);
         }
         if let Some(store) = self.adapters.sandbox_persistence_store() {
             let checkpoints: Arc<dyn everruns_platform::SandboxCheckpointStore> = store.clone();

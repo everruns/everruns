@@ -32,10 +32,8 @@ use everruns_core::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     provider_resolution::ProviderStore, session_services::LeasedResourceStore,
 };
-// EVE-882: the stored Session record and its lifecycle enums moved to
-// `everruns-platform`; the worker's PlatformStore surface still transports
-// them, while execution paths carry only the portable `ExecutionSession`.
-use everruns_platform::{Session, SessionParticipant, SessionStatus};
+// EVE-1158: PlatformStore receives only portable execution views projected
+// by the server; session lifecycle uses the neutral SessionExecutionState.
 // EVE-877: the stored Agent record moved to `everruns-platform`; the gRPC wire
 // still carries it between server and worker (proto shape unchanged).
 use everruns_internal_protocol::proto;
@@ -662,6 +660,7 @@ impl GrpcOrgAdapter {
         &self,
         name: &str,
         params: serde_json::Value,
+        runtime_view: bool,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
         if self.input_message_id.is_none() {
             return Err(AgentLoopError::config(
@@ -671,6 +670,7 @@ impl GrpcOrgAdapter {
         let mut client = self.client.inner.lock().await;
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
+                runtime_view,
                 name: name.to_string(),
                 api_version: COMMAND_API_VERSION_V1.to_string(),
                 params_json: serde_json::to_vec(&params).map_err(|e| {
@@ -742,7 +742,10 @@ impl GrpcOrgAdapter {
     where
         T: serde::de::DeserializeOwned,
     {
-        match self.execute_platform_command_raw(name, params).await? {
+        match self
+            .execute_platform_command_raw(name, params, false)
+            .await?
+        {
             Ok(value) => serde_json::from_value(value).map_err(|e| {
                 AgentLoopError::store(format!("Failed to parse command response: {}", e))
             }),
@@ -750,7 +753,22 @@ impl GrpcOrgAdapter {
         }
     }
 
-    async fn execute_platform_lookup<T>(
+    async fn execute_runtime_command<T>(&self, name: &str, params: serde_json::Value) -> Result<T>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self
+            .execute_platform_command_raw(name, params, true)
+            .await?
+        {
+            Ok(value) => serde_json::from_value(value).map_err(|error| {
+                AgentLoopError::store(format!("Failed to parse runtime response: {error}"))
+            }),
+            Err(error) => Err(grpc_command_error_to_error(error)),
+        }
+    }
+
+    async fn execute_runtime_lookup<T>(
         &self,
         name: &str,
         params: serde_json::Value,
@@ -758,9 +776,12 @@ impl GrpcOrgAdapter {
     where
         T: serde::de::DeserializeOwned,
     {
-        match self.execute_platform_command_raw(name, params).await? {
-            Ok(value) => serde_json::from_value(value).map(Some).map_err(|e| {
-                AgentLoopError::store(format!("Failed to parse command response: {}", e))
+        match self
+            .execute_platform_command_raw(name, params, true)
+            .await?
+        {
+            Ok(value) => serde_json::from_value(value).map(Some).map_err(|error| {
+                AgentLoopError::store(format!("Failed to parse runtime response: {error}"))
             }),
             Err(error) if error.kind == 3 => Ok(None),
             Err(error) => Err(grpc_command_error_to_error(error)),
@@ -2628,237 +2649,8 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
 // GrpcOrgAdapter - PlatformStore implementation over gRPC
 // ============================================================================
 
-#[async_trait]
-impl everruns_platform::PlatformStore for GrpcOrgAdapter {
-    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
-        let mut bound = self.clone();
-        bound.input_message_id = Some(id);
-        Some(Arc::new(bound))
-    }
-
-    async fn platform_discover(&self, arguments: serde_json::Value) -> Result<String> {
-        self.invoke_platform_command_surface(
-            proto::PlatformCommandSurfaceOperation::Discover,
-            arguments,
-        )
-        .await
-    }
-
-    async fn platform_query(&self, arguments: serde_json::Value) -> Result<String> {
-        self.invoke_platform_command_surface(
-            proto::PlatformCommandSurfaceOperation::Query,
-            arguments,
-        )
-        .await
-    }
-
-    async fn platform_execute(&self, arguments: serde_json::Value) -> Result<String> {
-        self.invoke_platform_command_surface(
-            proto::PlatformCommandSurfaceOperation::Execute,
-            arguments,
-        )
-        .await
-    }
-
-    // =========================================================================
-    // Harness Operations
-    // =========================================================================
-
-    async fn get_harness(
-        &self,
-        id: everruns_contracts::typed_id::HarnessId,
-    ) -> Result<Option<Harness>> {
-        self.execute_platform_lookup("get_harness", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    // =========================================================================
-    // Agent Operations
-    // =========================================================================
-
-    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<Agent>> {
-        self.execute_platform_lookup("get_agent", serde_json::json!({ "id": id.to_string() }))
-            .await
-    }
-
-    // =========================================================================
-    // App Operations
-    // =========================================================================
-
-    // =========================================================================
-    // Session Operations
-    // =========================================================================
-
-    async fn create_session_with_options(
-        &self,
-        request: everruns_platform::PlatformCreateSessionRequest,
-    ) -> Result<Session> {
-        self.execute_platform_command(
-            "create_session",
-            serde_json::json!({
-                "harness_id": request.harness_id.to_string(),
-                "agent_id": request.agent_id.map(|id| id.to_string()),
-                "title": request.title,
-                "goal": request.goal,
-                "locale": request.locale,
-                "tags": ["managed"],
-                "capabilities": [],
-                "tools": [],
-                "mcp_servers": {},
-                "initial_files": [],
-                "blueprint_id": request.blueprint_id,
-                "blueprint_config": request.blueprint_config,
-                "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
-                "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
-                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
-                "seed": request.seed,
-            }),
-        )
-        .await
-    }
-
-    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
-        self.execute_platform_lookup(
-            "get_session",
-            serde_json::json!({ "session_id": id.to_string() }),
-        )
-        .await
-    }
-
-    async fn add_agent_session_participant(
-        &self,
-        session_id: SessionId,
-        agent_id: AgentId,
-    ) -> Result<SessionParticipant> {
-        self.execute_platform_command(
-            "add_session_participant",
-            serde_json::json!({
-                "session_id": session_id.to_string(),
-                "kind": "agent",
-                "agent_id": agent_id.to_string(),
-            }),
-        )
-        .await
-    }
-
-    // =========================================================================
-    // Messaging
-    // =========================================================================
-
-    async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
-        let _: serde_json::Value = self
-            .execute_platform_command(
-                "create_message",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "message": {
-                        "content": [{ "type": "text", "text": content }],
-                    },
-                }),
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn get_messages(
-        &self,
-        session_id: SessionId,
-        limit: Option<usize>,
-    ) -> Result<Vec<everruns_platform::PlatformMessage>> {
-        let mut messages: Vec<RuntimeMessage> = self
-            .execute_platform_command(
-                "list_messages",
-                serde_json::json!({
-                    "session_id": session_id.to_string(),
-                    "limit": limit.unwrap_or(10),
-                }),
-            )
-            .await?;
-        messages.retain(|message| {
-            matches!(
-                message.role,
-                everruns_core::RuntimeMessageRole::User | everruns_core::RuntimeMessageRole::Agent
-            )
-        });
-
-        Ok(messages
-            .into_iter()
-            .filter_map(|message| {
-                let content = message
-                    .content
-                    .iter()
-                    .filter_map(|part| match part {
-                        everruns_core::ContentPart::Text(text) => Some(text.text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                if content.is_empty() {
-                    return None;
-                }
-                Some(everruns_platform::PlatformMessage {
-                    role: match message.role {
-                        everruns_core::RuntimeMessageRole::User => "user".to_string(),
-                        _ => "agent".to_string(),
-                    },
-                    content,
-                    created_at: message.created_at,
-                })
-            })
-            .collect())
-    }
-
-    // =========================================================================
-    // Turn Management
-    // =========================================================================
-
-    async fn wait_for_idle(
-        &self,
-        session_id: SessionId,
-        timeout_secs: Option<u64>,
-    ) -> Result<String> {
-        let timeout = std::time::Duration::from_secs(timeout_secs.unwrap_or(120));
-        let start = std::time::Instant::now();
-        let poll_interval = std::time::Duration::from_millis(500);
-
-        loop {
-            let session = self
-                .get_session_by_id(session_id)
-                .await?
-                .ok_or_else(|| AgentLoopError::store("Session not found"))?;
-
-            match session.status {
-                SessionStatus::Idle => {
-                    if let Some(status) = self.latest_terminal_turn_status(session_id).await? {
-                        return Ok(status);
-                    }
-                    // Session status flips to idle independently from terminal
-                    // turn-event persistence. Keep polling until the event lands
-                    // so callers can distinguish successful and failed idle turns.
-                }
-                SessionStatus::WaitingForToolResults => {
-                    return Ok("waiting_for_tool_results".to_string());
-                }
-                SessionStatus::Paused => return Ok("paused".to_string()),
-                SessionStatus::Started | SessionStatus::Active => {}
-            }
-
-            if start.elapsed() > timeout {
-                return Ok(format!("timeout (last status: {:?})", session.status));
-            }
-
-            tokio::time::sleep(poll_interval).await;
-        }
-    }
-
-    // =========================================================================
-    // Capabilities
-    // =========================================================================
-
-    // =========================================================================
-    // UI Links
-    // =========================================================================
-}
+#[path = "grpc_adapters/platform_store.rs"]
+mod platform_store;
 
 // ============================================================================
 // GrpcAdapter - SessionSqlDbStore implementation over gRPC

@@ -94,9 +94,7 @@ export function SlackConversationSettings({
               <SelectItem value="all_messages">
                 {getSlackReplyModeDisplayName("all_messages")}
               </SelectItem>
-              <SelectItem value="report_progress_only">
-                {getSlackReplyModeDisplayName("report_progress_only")}
-              </SelectItem>
+              <SelectItem value="tool_only">{getSlackReplyModeDisplayName("tool_only")}</SelectItem>
             </SelectContent>
           </Select>
           <p
@@ -104,11 +102,11 @@ export function SlackConversationSettings({
             className="text-xs leading-relaxed text-muted-foreground"
           >
             {replyMode === "all_messages" ? (
-              "Post every assistant response to the Slack conversation."
+              "Automatically post every assistant response to Slack. Replies stream in the agent pane."
             ) : (
               <>
-                Post only updates sent through <code>report_progress</code>. Regular assistant
-                messages stay in Everruns.
+                The agent chooses when to send updates, questions, and answers. Other assistant
+                messages stay in Everruns. Slack acknowledges each request while the agent works.
               </>
             )}
           </p>

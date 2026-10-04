@@ -48,7 +48,7 @@
 //! the session filesystem factory — is `everruns_host::HostComposition`
 //! (EVE-887); core owns the execution contracts, not the bundle that selects a
 //! deployment's shape. Provider identity, driver registration, typed IDs, and
-//! LLM wire abstractions live in `everruns-provider` and are imported from
+//! LLM wire abstractions live in `everruns-contracts` and are imported from
 //! that crate directly.
 //!
 //! # Example
@@ -179,8 +179,8 @@ pub mod workspace_roots;
 pub mod channel;
 
 // Permissions model (policies, rules, caller context)
+pub mod channel_messaging;
 pub mod permissions;
-pub mod progress_reporting;
 pub mod resource_names;
 
 // URL validation for SSRF prevention (shared utility)
@@ -209,7 +209,7 @@ pub mod guardrail_checks;
 pub mod guardrail_gallery;
 pub mod llm_error_hook;
 // Adapters from core domain types to provider driver types. Lives on the core
-// side to keep the crate dependency one-directional (core -> everruns-provider).
+// side to keep the crate dependency one-directional (core -> everruns-contracts).
 pub mod llm_conversions;
 pub mod message;
 pub mod message_filter;
@@ -256,7 +256,7 @@ pub mod turn;
 pub mod turn_completion;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) live in
-// everruns-drivers, one feature per vendor, and depend only on everruns-provider.
+// everruns-drivers, one feature per vendor, and depend only on everruns-contracts.
 // This enables dependency inversion - hosts register the drivers they enable at startup.
 
 // Re-exports for convenience
@@ -377,7 +377,7 @@ pub(crate) use driver_registry::{
 };
 
 // Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses
-// protocol drivers live in everruns-provider and the focused provider crates.
+// protocol drivers live in everruns-contracts and the focused provider crates.
 #[cfg(test)]
 pub(crate) use everruns_contracts::compact::CompactOutputItem;
 
@@ -434,7 +434,7 @@ pub(crate) use tool_types::{BuiltinTool, ToolCall};
 pub(crate) use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
 // Domain entity re-exports
-// Provider entities live in `everruns-provider`; import them from that crate.
+// Provider entities live in `everruns-contracts`; import them from that crate.
 // EVE-877: the stored `Agent`/`AgentVersion` persistence records, their
 // lifecycle/versioning enums, and the public-name/persistence helpers moved to
 // the `everruns-platform` crate. Core keeps only the portable authored

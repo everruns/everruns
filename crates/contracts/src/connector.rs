@@ -216,7 +216,7 @@ impl Default for ConnectorRegistryBuilder {
 
 // Form schema types are shared with provider drivers; see
 // `crate::credential_schema` and knowledge/foundations/providers.md
-// "Credentials". The schema itself stays in `everruns-provider`.
+// "Credentials". The schema itself stays in `everruns-contracts`.
 pub use crate::credential_schema::{FieldType, FormField};
 
 /// Credential form schema for connectors.

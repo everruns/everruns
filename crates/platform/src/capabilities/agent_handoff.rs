@@ -1548,11 +1548,7 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_handoff_requires_configured_connection() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(
-            store.agent.public_id,
-            store.session.harness_id,
-            vec!["fake_aws"],
-        );
+        let config = target_config(store.agent.id, store.session.harness_id, vec!["fake_aws"]);
         let tool = spawn_agent_tool(&config);
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::new(),
@@ -1580,7 +1576,7 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_handoff_rejects_other_target_types() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let context = context(store, None);
 
@@ -1606,11 +1602,7 @@ mod tests {
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
         });
-        let config = target_config(
-            store.agent.public_id,
-            store.session.harness_id,
-            vec!["fake_aws"],
-        );
+        let config = target_config(store.agent.id, store.session.harness_id, vec!["fake_aws"]);
         let tool = spawn_agent_tool(&config);
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = context(store.clone(), Some(resolver));
@@ -1652,7 +1644,7 @@ mod tests {
     async fn schema_bound_handoff_requires_report_result() {
         let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = context(store.clone(), None);
         context.session_task_registry = Some(registry.clone());
@@ -1697,7 +1689,7 @@ mod tests {
     #[tokio::test]
     async fn handoff_message_schema_is_task_backed_and_wakes_on_activity() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = context(store.clone(), None);
         context.session_task_registry = Some(registry.clone());
@@ -1738,7 +1730,7 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_handoff_background_returns_task_handle() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = context(store.clone(), None);
@@ -1791,7 +1783,7 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_handoff_invite_adds_member_participant() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let context = context(store.clone(), None);
 
@@ -1829,11 +1821,7 @@ mod tests {
             .expect("participants lock")
             .clone();
         assert_eq!(participants.len(), 1);
-        assert_eq!(participants[0].agent_id, Some(store.agent.public_id));
-        assert_eq!(
-            participants[0].role,
-            crate::session::SessionParticipantRole::Member
-        );
+        assert_eq!(participants[0], (store.session.id, store.agent.id));
     }
 
     #[tokio::test]
@@ -1844,7 +1832,6 @@ mod tests {
         // definition, so a capability inherited from a parent harness arrives
         // already folded into the child's configuration.
         let mut child_harness = store_value.harness.clone();
-        child_harness.id = child_harness_id;
         child_harness.capabilities = vec![everruns_contracts::CapabilityRef::with_config(
             "web_fetch",
             json!({"max_bytes": 1024}),
@@ -1859,7 +1846,7 @@ mod tests {
             harnesses.insert(child_harness_id, child_harness);
         }
         let store = Arc::new(store_value);
-        let config = target_config(store.agent.public_id, child_harness_id, vec![]);
+        let config = target_config(store.agent.id, child_harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let context = context(store.clone(), None);
 
@@ -1901,7 +1888,7 @@ mod tests {
             json!({"max_bytes": 2048}),
         )];
         let store = Arc::new(store_value);
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let config = target_config(store.agent.id, store.session.harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let context = context(store.clone(), None);
 
@@ -1947,7 +1934,7 @@ mod tests {
         // otherwise the assertion below cannot distinguish them.
         assert_ne!(store.session.harness_id, target_harness_id);
 
-        let config = target_config(store.agent.public_id, target_harness_id, vec!["fake_aws"]);
+        let config = target_config(store.agent.id, target_harness_id, vec!["fake_aws"]);
         let tool = spawn_agent_tool(&config);
         let context = context(store.clone(), Some(resolver));
 
