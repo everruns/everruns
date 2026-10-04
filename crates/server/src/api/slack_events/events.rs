@@ -794,7 +794,7 @@ pub(crate) async fn process_slack_message(
         tags: None,
         external_actor,
     };
-    let mut event_metadata = execution_metadata::endpoint_message_metadata(
+    let mut event_metadata = execution_metadata::channel_message_metadata(
         app.public_id,
         app.owner_principal_id,
         app.virtual_user_id,

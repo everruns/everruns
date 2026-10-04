@@ -20,7 +20,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   memory: false,
   knowledge: false,
   plugins: false,
-  endpoint_budgets: false,
+  channel_budgets: false,
   agent_versions: false,
   voice: false,
   agent_delegation: false,

@@ -297,7 +297,7 @@ jobs:
               - 'crates/server/src/domains/agent_channels/**'
               - 'crates/server/src/domains/budgets/**'
               - 'crates/server/src/storage/repositories/budgets.rs'
-              - 'crates/server/migrations/027_endpoint_budgets.sql'
+              - 'crates/server/migrations/027_channel_budgets.sql'
               - 'crates/server/migrations/137_endpoint_attribution.sql'
               - 'crates/server/migrations/166_agent_channels.sql'
               - '.github/workflows/ci.yml'
@@ -2537,7 +2537,7 @@ jobs:
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       DEPLOYMENT_GRADE: dev
       AUTH_MODE: none
-      FEATURE_ENDPOINT_BUDGETS: "prod"
+      FEATURE_CHANNEL_BUDGETS: "prod"
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
       WORKER_GRPC_AUTH_TOKEN: channel-budget-e2e-token
       PLAYWRIGHT_REAL_API_URL: http://localhost:9000

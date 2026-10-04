@@ -115,7 +115,7 @@ describe("AgentIntegrationsPanel budgets", () => {
 
     render(<AgentIntegrationsPanel agent={agent} />);
 
-    expect(mockUseFeatureFlag).toHaveBeenCalledWith("endpoint_budgets");
+    expect(mockUseFeatureFlag).toHaveBeenCalledWith("channel_budgets");
     expect(screen.getByTestId("channel-details-endpoint_1")).toBeInTheDocument();
     expect(screen.getByTestId("budget-agent-agent_1")).toHaveAttribute(
       "data-can-manage",
@@ -135,7 +135,7 @@ describe("AgentIntegrationsPanel budgets", () => {
     expect(screen.queryByTestId(/^budget-/)).not.toBeInTheDocument();
   });
 
-  it("does not mount any budget UI when endpoint_budgets is disabled", () => {
+  it("does not mount any budget UI when channel_budgets is disabled", () => {
     mockUseFeatureFlag.mockReturnValue(false);
     mockCanBudget.mockReturnValue(true);
 

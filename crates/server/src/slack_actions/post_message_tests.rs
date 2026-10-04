@@ -215,7 +215,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
                 harness_id: app.harness_id.uuid(),
                 agent_id: app.agent_id.map(|id| id.uuid()),
                 session_id: session.uuid(),
-                event_metadata: Some(crate::execution_metadata::endpoint_message_metadata(
+                event_metadata: Some(crate::execution_metadata::channel_message_metadata(
                     app.public_id,
                     app.owner_principal_id,
                     app.virtual_user_id,
@@ -252,7 +252,7 @@ async fn slack_ingress_principal_provenance_authorizes_the_neutral_post() {
         .unwrap();
     assert_eq!(
         input.metadata.as_ref().unwrap()["source"]["initiator"]["type"],
-        "endpoint"
+        "channel"
     );
     let slack = MockServer::start().await;
     Mock::given(method("POST"))
