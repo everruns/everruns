@@ -68,12 +68,17 @@ enum GetResponse {
 impl GrpcAdapter {
     /// Run a `session_files` command, keeping the command-error channel intact
     /// so callers can tell a not-found from a genuine failure.
+    /// Run a `session_files` command, declaring which session's runtime this
+    /// is so the private user-memory mount opens for that session and no
+    /// other.
     async fn files_command(
         &self,
+        session_id: SessionId,
         name: &str,
         params: Value,
     ) -> Result<std::result::Result<Value, proto::CommandError>> {
-        self.execute_session_command(SURFACE, name, params).await
+        self.execute_session_command(SURFACE, name, params, Some(session_id))
+            .await
     }
 }
 
@@ -86,6 +91,7 @@ impl SessionFileSystem for GrpcAdapter {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let result = self
             .files_command(
+                session_id,
                 "get_workspace_file",
                 json!({ "session_id": session_id.to_string(), "path": path }),
             )
@@ -122,12 +128,15 @@ impl SessionFileSystem for GrpcAdapter {
         }
 
         match self
-            .files_command("update_workspace_file", params.clone())
+            .files_command(session_id, "update_workspace_file", params.clone())
             .await?
         {
             Ok(value) => decode("update_workspace_file", value),
             Err(error) if is_not_found(&error) => {
-                match self.files_command("create_workspace_file", params).await? {
+                match self
+                    .files_command(session_id, "create_workspace_file", params)
+                    .await?
+                {
                     Ok(value) => decode("create_workspace_file", value),
                     Err(error) => Err(command_failure("create file", error)),
                 }
@@ -158,7 +167,10 @@ impl SessionFileSystem for GrpcAdapter {
             params["expected_encoding"] = json!(encoding);
         }
 
-        match self.files_command("update_workspace_file", params).await? {
+        match self
+            .files_command(session_id, "update_workspace_file", params)
+            .await?
+        {
             Ok(value) => decode("update_workspace_file", value).map(Some),
             // Both "the content moved under you" and "there is nothing there"
             // mean the same thing to this caller: the write did not happen.
@@ -185,6 +197,7 @@ impl SessionFileSystem for GrpcAdapter {
 
         match self
             .files_command(
+                session_id,
                 "delete_workspace_file",
                 json!({ "session_id": session_id.to_string(), "path": path, "recursive": recursive }),
             )
@@ -199,6 +212,7 @@ impl SessionFileSystem for GrpcAdapter {
     async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
         match self
             .files_command(
+                session_id,
                 "get_workspace_file",
                 json!({ "session_id": session_id.to_string(), "path": path }),
             )
@@ -217,6 +231,7 @@ impl SessionFileSystem for GrpcAdapter {
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         match self
             .files_command(
+                session_id,
                 "stat_workspace_file",
                 json!({ "session_id": session_id.to_string(), "path": path }),
             )
@@ -244,7 +259,10 @@ impl SessionFileSystem for GrpcAdapter {
             params["path_pattern"] = json!(path_pattern);
         }
 
-        match self.files_command("grep_workspace_files", params).await? {
+        match self
+            .files_command(session_id, "grep_workspace_files", params)
+            .await?
+        {
             Ok(value) => {
                 let grouped: Vec<GrepResult> = decode("grep_workspace_files", value)?;
                 Ok(grouped.into_iter().flat_map(|r| r.matches).collect())
@@ -279,7 +297,10 @@ impl SessionFileSystem for GrpcAdapter {
             params["max_bytes"] = json!(options.max_bytes);
         }
 
-        match self.files_command("search_workspace_files", params).await? {
+        match self
+            .files_command(session_id, "search_workspace_files", params)
+            .await?
+        {
             Ok(value) => decode("search_workspace_files", value),
             Err(error) => Err(command_failure("search files", error)),
         }
@@ -288,6 +309,7 @@ impl SessionFileSystem for GrpcAdapter {
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
         match self
             .files_command(
+                session_id,
                 "create_workspace_file",
                 json!({
                     "session_id": session_id.to_string(),

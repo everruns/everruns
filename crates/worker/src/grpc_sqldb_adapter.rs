@@ -42,7 +42,9 @@ impl GrpcAdapter {
         params: serde_json::Value,
     ) -> SqlDbResult<serde_json::Value> {
         match self
-            .execute_session_command("Session SQL database", name, params)
+            // No acting session: the only entitlement keyed on one is the private
+            // user-memory mount, which the sqldb surface does not touch.
+            .execute_session_command("Session SQL database", name, params, None)
             .await
         {
             Ok(Ok(value)) => Ok(value),

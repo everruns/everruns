@@ -329,10 +329,6 @@ async fn test_execute_command_denies_org_disabled_feature() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
-            runtime_view: false,
-            input_message_id: None,
-            platform_session_id: None,
-
             name: "list_skills".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
@@ -340,6 +336,7 @@ async fn test_execute_command_denies_org_disabled_feature() {
             user_id: None,
             idempotency_key: None,
             metadata: Default::default(),
+            ..Default::default()
         }))
         .await
         .expect("execute_command should return a structured command error")
@@ -361,10 +358,6 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
-            runtime_view: false,
-            input_message_id: None,
-            platform_session_id: None,
-
             name: "definitely_not_a_command".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
@@ -372,6 +365,7 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
             user_id: None,
             idempotency_key: None,
             metadata: Default::default(),
+            ..Default::default()
         }))
         .await
         .expect("execute_command should return a structured command error")
@@ -400,10 +394,6 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
     ] {
         let response = service
             .execute_command(Request::new(ExecuteCommandRequest {
-                runtime_view: false,
-                input_message_id: None,
-                platform_session_id: None,
-
                 name: COMMAND_NAME.to_string(),
                 api_version: "v1".to_string(),
                 params_json: serde_json::to_vec(&serde_json::json!({ "kind": kind }))
@@ -412,6 +402,7 @@ async fn test_execute_command_sanitizes_database_conflicts_only() {
                 user_id: None,
                 idempotency_key: None,
                 metadata: Default::default(),
+                ..Default::default()
             }))
             .await
             .expect("execute_command should return a structured conflict")
@@ -990,10 +981,6 @@ async fn test_execute_command_uses_user_permissions() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
-            runtime_view: false,
-            input_message_id: None,
-            platform_session_id: None,
-
             name: "create_harness".to_string(),
             api_version: "v1".to_string(),
             params_json: serde_json::to_vec(&serde_json::json!({
@@ -1009,6 +996,7 @@ async fn test_execute_command_uses_user_permissions() {
             user_id: Some(user.id.to_string()),
             idempotency_key: None,
             metadata: Default::default(),
+            ..Default::default()
         }))
         .await
         .expect("execute_command should return a structured command error")

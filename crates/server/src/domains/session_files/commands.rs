@@ -1259,4 +1259,134 @@ mod tests {
             other => panic!("expected the shared file, got {other:?}"),
         }
     }
+
+    /// An internal caller that does not say which session it runs gets no
+    /// private memory. Before this, `Caller::internal` alone opened the mount —
+    /// which meant Slack, FCP, the capability service and the durable seal were
+    /// all inside the entitlement, none of them being a session runtime.
+    #[tokio::test]
+    async fn undeclared_internal_caller_cannot_read_private_memory() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session = db
+            .create_session(session_row(None))
+            .await
+            .expect("create session");
+        crate::domains::session_files::WorkspaceFileService::new(db.clone())
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("private".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed private user memory file");
+
+        // Internal, and silent about which session's runtime it is.
+        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None);
+
+        let err = GetWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/memory/user/secret.md".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("an undeclared internal caller must not read private memory");
+        assert!(
+            matches!(err.kind, CommandErrorKind::Forbidden(_)),
+            "{err:?}"
+        );
+    }
+
+    /// The session's own runtime does reach its private memory: that is the
+    /// relationship the old `is_internal` arm was standing in for, and the one
+    /// the agent depends on (`platform-chat-v2` tells it `/memory/user` is its
+    /// private store).
+    #[tokio::test]
+    async fn declared_session_runtime_reads_its_own_private_memory() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session = db
+            .create_session(session_row(None))
+            .await
+            .expect("create session");
+        crate::domains::session_files::WorkspaceFileService::new(db.clone())
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("private".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed private user memory file");
+
+        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None)
+            .acting_for_session(session.id);
+
+        let got = GetWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/memory/user/secret.md".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect("the session's own runtime must read its private memory");
+        match got {
+            super::GetResponse::File(file) => {
+                assert_eq!(file.content.as_deref(), Some("private"));
+            }
+            other => panic!("expected the private file, got {other:?}"),
+        }
+    }
+
+    /// Declaring one session does not open another's. This is what makes the
+    /// new arm a scope and not a second blanket bypass: a worker token can
+    /// claim any org already (TM-AUTHZ-002), so the value of keying on the
+    /// declared session is that it is checked against the session being read.
+    #[tokio::test]
+    async fn declaring_one_session_does_not_open_anothers_private_memory() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let victim = db
+            .create_session(session_row(None))
+            .await
+            .expect("create victim session");
+        let other = db
+            .create_session(session_row(None))
+            .await
+            .expect("create other session");
+        crate::domains::session_files::WorkspaceFileService::new(db.clone())
+            .create_file(
+                victim.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("private".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed the victim's private user memory file");
+
+        // Runtime of `other`, reading `victim`.
+        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None)
+            .acting_for_session(other.id);
+
+        let err = GetWorkspaceFile {
+            session_id: victim.id.to_string(),
+            path: "/memory/user/secret.md".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("one session's runtime must not read another's private memory");
+        assert!(
+            matches!(err.kind, CommandErrorKind::Forbidden(_)),
+            "{err:?}"
+        );
+    }
 }
