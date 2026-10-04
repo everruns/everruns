@@ -18,10 +18,7 @@ use crate::core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertL
 use crate::core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use crate::core::{
     AgentDefinition, ExecutionSession, HarnessDefinition, MessageFilter, RuntimeMessage,
-    RuntimeMessageRole,
-};
-use crate::core::{
-    connection_services::ProviderCredentialStore, event_emitter::EventEmitter,
+    RuntimeMessageRole, connection_services::ProviderCredentialStore, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
     execution_loading::SessionStore, file_services::ResolvedFile,
     image_services::CreateStoredImage, image_services::ImageArtifactStore,
