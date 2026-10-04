@@ -110,7 +110,7 @@ everruns sessions create --agent agent_... --title "Debug session"
 # With session-level overrides
 everruns sessions create \
   --agent agent_... \
-  --harness generic \
+  --harness worker-base \
   --capability 'web_fetch={"timeout":10}' \
   --hint setup_connection=true \
   --network-allow api.example.com \

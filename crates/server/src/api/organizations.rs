@@ -168,7 +168,7 @@ pub struct UpdateOrganizationRequest {
     /// Alternative to `default_harness_id` — looked up by stable name within the org.
     /// Mutually exclusive with `default_harness_id`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "generic")]
+    #[schema(example = "conversation")]
     pub default_harness_name: Option<String>,
     /// Base harness to use when a session is started without an explicit harness_id.
     #[serde(skip_serializing_if = "Option::is_none")]

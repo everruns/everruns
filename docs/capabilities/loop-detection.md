@@ -22,8 +22,7 @@ is rebuilt from the conversation each time messages are loaded for the model,
 so it is never stored in session history, and later requests replay the same
 prompt prefix.
 
-The [Generic](/built-ins/harnesses/generic/) and
-[Platform Chat](/built-ins/harnesses/platform-chat/) harnesses include it.
+Conversation and both Worker levels include it, as do deprecated Generic and Platform Chat.
 
 ## What counts as a loop
 
@@ -70,4 +69,4 @@ let agent = Agent::builder()
 ## See also
 
 - [Tool Call Repair](/capabilities/tool-call-repair/), recovery for malformed tool-call arguments
-- [Generic harness](/built-ins/harnesses/generic/), the default capability set that includes it
+- [Conversation harness](/built-ins/harnesses/conversation/), the default foundation that includes it

@@ -3,7 +3,7 @@ title: Data Analyst Harness
 description: Data analysis harness with SQL databases, persistent memory, interactive charts, and a structured analysis pipeline inspired by OpenAI's Dash.
 ---
 
-The **Data Analyst** harness extends the [Generic harness](/built-ins/harnesses/generic/) with capabilities for data analysis: SQL databases, cross-session agent memory, rich visualization via OpenUI, and a curated knowledge scaffold. Its system prompt implements a structured 6-step analysis pipeline inspired by [OpenAI's Kepler data agent](https://openai.com/index/inside-our-in-house-data-agent/) and the open-source [Dash](https://github.com/agno-agi/dash) project.
+The **Data Analyst** harness extends the [Worker Base harness](/built-ins/harnesses/worker-base/) with capabilities for data analysis: SQL databases, cross-session agent memory, rich visualization via OpenUI, and a curated knowledge scaffold. Its system prompt implements a structured 6-step analysis pipeline inspired by [OpenAI's Kepler data agent](https://openai.com/index/inside-our-in-house-data-agent/) and the open-source [Dash](https://github.com/agno-agi/dash) project.
 
 ## When to Use
 
@@ -35,7 +35,7 @@ This mirrors the six-layer context pattern described in [OpenAI's data agent blo
 
 ## Bundled Capabilities
 
-All [Generic harness capabilities](/built-ins/harnesses/generic/#bundled-capabilities) plus:
+All [Worker Base harness capabilities](/built-ins/harnesses/worker-base/) plus:
 
 | Capability | What it provides |
 |------------|-----------------|
@@ -84,6 +84,6 @@ Agent: [reads /memory/agent/] [inspects any existing schema]
 
 ## See Also
 
-- [Generic Harness](/built-ins/harnesses/generic/), the parent harness this extends
+- [Worker Base Harness](/built-ins/harnesses/worker-base/), the parent harness this extends
 - [Capabilities overview](/features/capabilities/), full capability catalog including memory and OpenUI
 - [Harnesses feature guide](/features/harnesses/), harness selection and API management

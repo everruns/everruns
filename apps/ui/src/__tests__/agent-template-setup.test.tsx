@@ -53,6 +53,7 @@ const reviewerSetup: AgentExampleSetup = {
 };
 
 const example = (name: string, setup?: AgentExampleSetup): GuidedAgentExample => ({
+  harness_name: "worker-base",
   name,
   display_name: name,
   description: `${name} description`,

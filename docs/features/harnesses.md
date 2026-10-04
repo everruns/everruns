@@ -50,19 +50,24 @@ For the design rationale (why three configuration layers exist), see [Concepts](
 | Harness | What it provides | Best for |
 |---|---|---|
 | [Base](/built-ins/harnesses/base/) | Empty, no capabilities | Minimal agents, custom tool composition, testing |
-| [Generic](/built-ins/harnesses/generic/) | Core capabilities most agents need | General-purpose assistants, coding tasks, research |
-| [Data Analyst](/built-ins/harnesses/data-analyst/) | Generic plus SQL, charts, memory | Data workflows |
+| [Conversation](/built-ins/harnesses/conversation/) | Dialogue and context management | Simple assistants, Dad Jokes |
+| [Worker Base](/built-ins/harnesses/worker-base/) | Conversation plus files, bash and project instructions | Specialized workers |
+| [Worker](/built-ins/harnesses/worker/) | Worker Base plus skills, long context and delegation | General-purpose task execution |
+| [Generic (deprecated)](/built-ins/harnesses/generic/) | Preserved legacy bundle | Existing bindings |
+| [Data Analyst](/built-ins/harnesses/data-analyst/) | Worker Base plus SQL, charts, memory | Data workflows |
 
+Conversation is the default. Generic remains active for existing bindings and explicit legacy references; selectors hide it until you choose Show deprecated. See the [Built-in harnesses reference](/built-ins/harnesses/base/) for the exact capability bundle each one ships with.
 
-The Generic harness is the recommended default. [Platform Chat](/built-ins/harnesses/platform-chat/)
-is a managed Agent on Generic. Introductions, conversation starters, and conversational
-descriptions belong to Agents; harnesses describe reusable execution behavior. See the [Built-in harnesses reference](/built-ins/harnesses/base/) for the exact capability bundle each one ships with.
+For existing organizations, the [harness upgrade notes](/framework/upgrade-notes/#harness-levels)
+describe preservation of Generic bindings and handling of custom name collisions.
+
+[Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent with an explicit legacy Generic binding. Introductions and conversation starters belong to Agents; harnesses describe reusable execution behavior.
 
 ## Naming
 
 Every harness has two names:
 
-- **`name`**: stable URL-friendly slug (`generic`, `deep-research`). Unique per org. Use this in API calls, CLI, code.
+- **`name`**: stable URL-friendly slug (`conversation`, `worker-base`). Unique per org. Use this in API calls, CLI, code.
 - **`display_name`**: human label shown in the UI.
 
 `name` format: `[a-z0-9]+(-[a-z0-9]+)*`, max 64 chars, no consecutive hyphens.

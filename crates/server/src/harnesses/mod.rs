@@ -1,7 +1,8 @@
 //! Built-in harness definitions.
 //!
 //! Decision: Only platform-essential harnesses are auto-provisioned per org —
-//! `base` and `generic`. Platform Chat is a managed Agent. Specialized harnesses
+//! the canonical levels and deprecated `generic`. Platform Chat is a managed Agent.
+//! Specialized harnesses
 //! (`coding`, `data-analyst`) live in the
 //! `examples` module and are adopted on demand via `/v1/harness-examples`
 //! and `POST /v1/harnesses/import?from-example=…`.
@@ -17,7 +18,9 @@ mod coding_prompt;
 mod data_analyst;
 pub mod examples;
 mod generic;
+mod levels;
 
+use everruns_contracts::capability::BuiltInHarnessPreset;
 use everruns_platform::BuiltInHarnessDefinition;
 
 pub use examples::{
@@ -29,12 +32,92 @@ pub use examples::{
 /// Only platform-essential harnesses are listed here. Specialized harnesses
 /// (data analyst and coding) are adopted from `harness_examples()`.
 pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
-    vec![base::definition(), generic::definition()]
+    vec![
+        base::definition(),
+        levels::definition(BuiltInHarnessPreset::Conversation),
+        levels::definition(BuiltInHarnessPreset::WorkerBase),
+        levels::definition(BuiltInHarnessPreset::Worker),
+        generic::definition(),
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn effective_runtime_tools_match_level_boundaries() {
+        use everruns_core::capabilities::{
+            SystemPromptContext, collect_capabilities_with_configs, resolve_capability_configs,
+        };
+        let registry = crate::platform::oss_capability_registry();
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_contracts::typed_id::SessionId::new());
+        for preset in [
+            BuiltInHarnessPreset::Base,
+            BuiltInHarnessPreset::Conversation,
+            BuiltInHarnessPreset::WorkerBase,
+            BuiltInHarnessPreset::Worker,
+        ] {
+            let resolved =
+                resolve_capability_configs(&preset.effective_capabilities(), &registry).unwrap();
+            let collected = collect_capabilities_with_configs(&resolved, &registry, &ctx).await;
+            let tools: Vec<_> = collected.tools.iter().map(|tool| tool.name()).collect();
+            assert_eq!(
+                tools.contains(&"bash"),
+                matches!(
+                    preset,
+                    BuiltInHarnessPreset::WorkerBase | BuiltInHarnessPreset::Worker
+                )
+            );
+            assert_eq!(
+                tools.contains(&"spawn_agent"),
+                preset == BuiltInHarnessPreset::Worker
+            );
+            assert_eq!(
+                tools.contains(&"list_tasks"),
+                preset == BuiltInHarnessPreset::Worker
+            );
+            assert!(!tools.contains(&"secret_store"));
+            if preset == BuiltInHarnessPreset::Base || preset == BuiltInHarnessPreset::Conversation
+            {
+                assert!(tools.is_empty(), "unexpected tools: {tools:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn hosted_parent_chain_matches_the_framework_presets() {
+        let definitions = built_in_harnesses();
+        for preset in [
+            BuiltInHarnessPreset::Base,
+            BuiltInHarnessPreset::Conversation,
+            BuiltInHarnessPreset::WorkerBase,
+            BuiltInHarnessPreset::Worker,
+        ] {
+            let mut chain = vec![];
+            let mut current = definitions
+                .iter()
+                .find(|h| h.name == preset.name())
+                .unwrap();
+            loop {
+                chain.push(current);
+                match &current.parent_name {
+                    Some(name) => current = definitions.iter().find(|h| &h.name == name).unwrap(),
+                    None => break,
+                }
+            }
+            let effective: Vec<_> = chain
+                .into_iter()
+                .rev()
+                .flat_map(|h| h.capabilities.clone())
+                .collect();
+            assert_eq!(
+                serde_json::to_value(effective).unwrap(),
+                serde_json::to_value(preset.effective_capabilities()).unwrap()
+            );
+        }
+    }
 
     #[test]
     fn every_harness_definition_declares_an_icon() {
@@ -58,7 +141,10 @@ mod tests {
 
         // The default built-in list now contains only platform-essential
         // harnesses. Specialized coding/data harnesses moved to examples.
-        assert_eq!(names, vec!["base", "generic"]);
+        assert_eq!(
+            names,
+            vec!["base", "conversation", "worker-base", "worker", "generic",]
+        );
         for legacy in LEGACY_BUILT_IN_NAMES {
             assert!(
                 !names.iter().any(|n| n == legacy),

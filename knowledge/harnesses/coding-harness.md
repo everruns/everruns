@@ -9,7 +9,7 @@ tags:
 ---
 # Coding Harness
 
-`coding` is an adoptable, provider-neutral harness example. It inherits Generic
+`coding` is an adoptable, provider-neutral harness example. It inherits Worker Base
 and adds coding behavior plus `github_scout`; it does not select a compute
 provider.
 
@@ -18,7 +18,7 @@ and receives the same model-facing tools on every supported target:
 `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`. The resolved
 profile is pinned to the session's logical Environment.
 
-- A `vfs` profile retains Generic's session filesystem and Bashkit shell.
+- A `vfs` profile retains Worker Base's session filesystem and Bashkit shell.
 - A `managed` Daytona profile replaces both with `session_sandbox`, so shell and
   file tools address one remote `/workspace` rather than two filesystems.
 - The harness prompt names neither providers nor provider-specific tools. The

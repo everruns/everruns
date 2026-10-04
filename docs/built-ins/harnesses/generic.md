@@ -1,11 +1,11 @@
 ---
-title: Generic Harness
+title: Generic Harness (deprecated)
 description: The default harness, bundling core capabilities for general-purpose agent sessions.
 ---
 
-The **Generic** harness is the recommended default for most use cases. It configures 25 capabilities (source: `generic_capabilities()` in `crates/contracts/src/capability/presets.rs`). Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
+The **Generic** harness is deprecated. Existing agents, sessions and child harnesses retain its legacy behavior. Choose [Conversation](/built-ins/harnesses/conversation/) for dialogue, [Worker Base](/built-ins/harnesses/worker-base/) for files and bash, or [Worker](/built-ins/harnesses/worker/) for skills and delegation. Generic is not an alias for Worker. It configures 25 capabilities (source: `generic_capabilities()` in `crates/contracts/src/capability/presets.rs`). Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
 
-## When to Use
+## Legacy use
 
 - General-purpose assistants
 - Coding and scripting tasks
@@ -50,7 +50,7 @@ The **Generic** harness is the recommended default for most use cases. It config
 | Tool Loop Detection | Detects repeated tool loops and injects a warning to break them |
 | Error Disclosure | Shows full provider error detail (`detailed` mode) |
 
-Infinity Context and Context Compaction work together to keep long sessions unbounded. See [Context Compaction](/advanced/compaction/#generic-harness-defaults) for details.
+Infinity Context and Context Compaction work together to bound the active context while retaining older history. See [Context Compaction](/advanced/compaction/#worker-harness-defaults) for details.
 
 ## See Also
 

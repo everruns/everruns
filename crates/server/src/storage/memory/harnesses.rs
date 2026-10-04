@@ -9,6 +9,45 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
+    pub async fn migrate_generic_default(
+        &self,
+        org_id: i64,
+        conversation_id: HarnessId,
+    ) -> Result<bool> {
+        let mut harnesses = self.harnesses.write();
+        let mut settings = self.org_settings.write();
+        let Some(settings) = settings.get_mut(&org_id) else {
+            return Ok(false);
+        };
+        let Some(generic_id) = settings.default_harness_id.filter(|id| {
+            harnesses.get(id).is_some_and(|h| {
+                h.org_id == org_id
+                    && h.is_built_in
+                    && h.name == "generic"
+                    && h.tags.iter().any(|tag| tag == "default")
+            })
+        }) else {
+            return Ok(false);
+        };
+        for agent in self
+            .agents
+            .write()
+            .values_mut()
+            .filter(|a| a.org_id == org_id && a.harness_source == "organization_default")
+        {
+            agent.harness_id = generic_id;
+            agent.harness_source = "explicit".to_string();
+            agent.updated_at = Self::now();
+        }
+        if let Some(generic) = harnesses.get_mut(&generic_id) {
+            generic.tags.retain(|tag| tag != "default");
+            generic.updated_at = Self::now();
+        }
+        settings.default_harness_id = Some(conversation_id);
+        settings.updated_at = Self::now();
+        Ok(true)
+    }
+
     // ============================================
     // Harnesses
     // ============================================

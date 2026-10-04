@@ -9,6 +9,29 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 impl Database {
+    /// Preserve existing inherited agents before retiring Generic as the org default.
+    pub async fn migrate_generic_default(
+        &self,
+        org_id: i64,
+        conversation_id: HarnessId,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+        let generic_id: Option<Uuid> = sqlx::query_scalar(
+            "SELECT h.id FROM organization_settings s JOIN harnesses h ON h.id = s.default_harness_id AND h.org_id = s.org_id WHERE s.org_id = $1 AND h.name = 'generic' AND h.is_built_in AND 'default' = ANY(h.tags) FOR UPDATE OF s"
+        ).bind(org_id).fetch_optional(&mut *tx).await?;
+        let Some(generic_id) = generic_id else {
+            return Ok(false);
+        };
+        sqlx::query("UPDATE agents SET harness_id = $2, harness_source = 'explicit', updated_at = NOW() WHERE org_id = $1 AND harness_source = 'organization_default'")
+            .bind(org_id).bind(generic_id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE organization_settings SET default_harness_id = $2, updated_at = NOW() WHERE org_id = $1")
+            .bind(org_id).bind(conversation_id.uuid()).execute(&mut *tx).await?;
+        sqlx::query("UPDATE harnesses SET tags = array_remove(tags, 'default'), updated_at = NOW() WHERE org_id = $1 AND id = $2")
+            .bind(org_id).bind(generic_id).execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
     // ============================================
     // Harnesses (base configuration for sessions)
     // ============================================

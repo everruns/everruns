@@ -23,7 +23,7 @@ rendering, tool-call formatting, and error-banner suppression.
 - Control-plane running (`just start-dev` or `just start-all`)
 - An LLM API key configured (OpenAI, Anthropic, or Gemini — Platform Chat works with any frontier chat model)
 - The signed-in user has a fresh Platform Chat thread (or is willing to start one). The old singleton `/chat` page was retired with EVE-855; a Platform Chat conversation is now an ordinary chat thread bound to the managed Platform Chat Agent on Generic
-- Default org has the managed Platform Chat Agent and the `generic` and `base` harnesses provisioned (handled by org init)
+- Default org has the managed Platform Chat Agent and the canonical levels and deprecated Generic provisioned (handled by org init)
 
 ## Test Data
 
@@ -31,26 +31,26 @@ rendering, tool-call formatting, and error-banner suppression.
 |-------|-------|
 | Agent name to create | `weather-bot` |
 | Agent display name | `Weather Bot` |
-| Harness for the new agent | `generic` (built-in default) |
+| Harness for the new agent | `conversation` (built-in default) |
 | Run prompt | `What's the weather like in Paris?` (agent will answer from training data — no live tool needed) |
 
 ## Steps
 
 ### Happy path — create and run
 
-1. **Open Platform Chat** in the web UI: go to `/chats`, start a **New chat**, and pick the built-in **Platform Chat** harness. Note the thread URL (`/chats/{threadId}`).
+1. **Open Platform Chat** in the web UI: go to `/chats`, start a **New chat** on the managed **Platform Chat** Agent. Note the thread URL (`/chats/{threadId}`).
 
 2. **Send the create message:**
 
    ```
-   Create an agent named "weather-bot" with display name "Weather Bot" that answers weather questions. Use the generic harness.
+   Create an agent named "weather-bot" with display name "Weather Bot" that answers weather questions. Use the conversation harness.
    ```
 
 3. **Wait for Platform Chat to finish.** The reply should:
    - Confirm the agent was created.
    - Include a **clickable link to the agent** (e.g. the agent's display name rendered as an `<a>` tag pointing at `/agents/{id}`), not a bare `agent_...` prefixed ID copy-pasted into the prose.
 
-4. **Click the agent link.** The agent detail page for `weather-bot` should load and show the display name (`Weather Bot`) plus any capabilities Platform Chat configured. Navigate back to chat. (Harness is per-session, not per-agent — verify the harness on the spawned session page in step 6 instead.)
+4. **Click the agent link.** The agent detail page for `weather-bot` should load and show the display name (`Weather Bot`) plus any capabilities Platform Chat configured. Navigate back to chat. (Verify the assigned Conversation harness here and on the spawned session in step 6.)
 
 5. **Send the run message** in the same Platform Chat session:
 
@@ -62,7 +62,7 @@ rendering, tool-call formatting, and error-banner suppression.
    - Create a new session against `weather-bot` (or reuse one via tag), send the prompt, wait for idle, and fetch the reply.
    - Surface a **clickable link to the spawned session**, not a raw `session_...` ID.
    - Echo a coherent answer to the Paris weather question (typical/seasonal answer is fine — model-dependent).
-   - On the linked session page, the harness should be `generic`.
+   - On the linked session page, the harness should be `conversation`.
 
 ### Negative path A — empty agent name
 

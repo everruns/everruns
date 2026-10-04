@@ -15,9 +15,13 @@ target for new sessions.
 | Harness | Description | Capabilities |
 |---------|-------------|-------------|
 | [Base](/built-ins/harnesses/base/) | Empty harness, full control | None |
-| [Generic](/built-ins/harnesses/generic/) | Recommended default with core tools | 25 configured |
-| [Data Analyst](/built-ins/harnesses/data-analyst/) | SQL databases, charts, persistent memory | Generic + 5 data capabilities; available as a built-in example |
-| [Platform Chat](/built-ins/harnesses/platform-chat/) | Focused global operator chat | Platform + runtime safeguards |
+| [Conversation](/built-ins/harnesses/conversation/) | Default for dialogue | Context management |
+| [Worker Base](/built-ins/harnesses/worker-base/) | Files, bash, project instructions | Specialized workers |
+| [Worker](/built-ins/harnesses/worker/) | Skills, long context and delegation | Task coordination |
+| [Generic (deprecated)](/built-ins/harnesses/generic/) | Deprecated legacy bundle | 25 configured |
+| [Data Analyst](/built-ins/harnesses/data-analyst/) | SQL databases, charts, persistent memory | Worker Base + data capabilities; available as a built-in example |
+
+[Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent with an explicit legacy Generic binding.
 
 See the [Harnesses feature guide](/features/harnesses/) for harness selection, API management, and the prompt stack model.
 
@@ -28,7 +32,7 @@ Harness examples are adoptable templates. Import them when you want a preconfigu
 | Example | Import Name | Description |
 |---------|-------------|-------------|
 | Coding | `coding` | Provider-neutral coding behavior + GitHub Scout; the Agent Environment profile selects Bashkit, Daytona, or another target |
-| Data Analyst | `data-analyst` | Generic + SQL databases, charts, persistent memory, and curated data knowledge |
+| Data Analyst | `data-analyst` | Worker Base + SQL databases, charts, persistent memory, and curated data knowledge |
 
 ## Capabilities
 

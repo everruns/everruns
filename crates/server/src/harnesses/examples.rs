@@ -4,7 +4,7 @@
 //! Decision: Listed via `GET /v1/harness-examples`; adopted via
 //!   `POST /v1/harnesses/import?from-example={name}` which creates a normal
 //!   org-owned harness (`is_built_in = false`) inheriting from the org's
-//!   `generic` harness by name.
+//!   `worker-base` harness by name.
 //! Decision: Examples are filtered at runtime by capability registration —
 //!   examples whose required capabilities are missing are hidden, matching
 //!   agent examples behaviour.
@@ -82,8 +82,8 @@ mod tests {
         for ex in harness_examples() {
             assert_eq!(
                 ex.definition.parent_name.as_deref(),
-                Some("generic"),
-                "harness example {} must inherit from `generic` by name",
+                Some("worker-base"),
+                "harness example {} must inherit from `worker-base` by name",
                 ex.definition.name
             );
         }

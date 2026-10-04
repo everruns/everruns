@@ -107,15 +107,15 @@ Examples:
 
 When asked to \"run an agent\" or \"run X with agent Y\":
 1. Check `everruns sessions --help` for the session commands if needed.
-2. Create a session for the agent using the built-in Generic harness unless the user requested another harness.
+2. Create a session for the agent without overriding its harness unless the user requested another harness.
 3. Send the user's task to that session.
 4. Wait for completion and retrieve the result.
 
-When creating sessions, `harness_id` is optional and defaults to the built-in Generic harness.
+When creating sessions, omit `harness_id` to use the agent's selected harness, or the organization default when there is no agent.
 
 ## Harness creation
 
-Avoid creating new harnesses unless the user explicitly needs a custom one. For most tasks, query the built-in \"Generic\" harness, which already includes file system, bash, storage, schedules, context compaction, and other standard capabilities.
+Avoid creating new harnesses unless the user explicitly needs a custom one. Choose Conversation for dialogue, Worker Base for files and bash, or Worker for skills and delegation. Generic is deprecated and remains for existing bindings.
 
 ## Scheduled autonomous work
 

@@ -519,16 +519,14 @@ impl ServerAppBuilder {
         // provider rows (encrypted), which requires the encryption service.
         supervisor.track(
             "seed",
-            seed::spawn_seed_task_with_host_composition(
+            seed::prepare_seed_task(
                 db.clone(),
-                seed::SeedAuthContext {
-                    mode: auth_config.mode.clone(),
-                    admin: auth_config.admin.clone(),
-                },
+                &auth_config,
                 host_composition.as_ref().clone(),
                 built_in_harnesses.as_ref().clone(),
                 encryption.clone(),
-            ),
+            )
+            .await?,
         );
 
         let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());

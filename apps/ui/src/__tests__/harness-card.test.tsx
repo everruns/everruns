@@ -28,6 +28,16 @@ function harness(overrides: Partial<Harness> = {}): Harness {
 }
 
 describe("HarnessCard inheritance", () => {
+  it("keeps an active deprecated harness visible when rendered", () => {
+    render(
+      <HarnessCard
+        harness={harness({ is_built_in: true, tags: ["deprecated"], status: "active" })}
+      />,
+    );
+    expect(screen.getByText("Deprecated")).toBeInTheDocument();
+    expect(screen.getByText("Built-in")).toBeInTheDocument();
+  });
+
   it("keeps root cards quiet", () => {
     const root = harness();
 

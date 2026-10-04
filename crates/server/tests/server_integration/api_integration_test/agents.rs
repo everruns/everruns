@@ -552,7 +552,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
     );
     assert_eq!(
         explicit_item["effective_harness"]["display_name"],
-        "Generic"
+        "Generic — deprecated"
     );
     assert_eq!(explicit_item["effective_harness"]["source"], "explicit");
     assert_eq!(explicit_item["effective_harness"]["status"], "active");

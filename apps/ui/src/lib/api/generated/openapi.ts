@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+  "/v1/agent-examples": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/agent-examples — list all available examples */
+    get: operations["list_examples"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents": {
     parameters: {
       query?: never;
@@ -2018,7 +2035,7 @@ export interface paths {
       cookie?: never;
     };
     /** GET /v1/harness-examples — list all available harness examples. */
-    get: operations["list_examples"];
+    get: operations["list_examples_get_v1_harness_examples"];
     put?: never;
     post?: never;
     delete?: never;
@@ -5454,6 +5471,116 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description A read-only agent example defined in code */
+    AgentExample: {
+      /**
+       * @description Capability IDs this example uses
+       * @example [
+       *       "current_time"
+       *     ]
+       */
+      capabilities: components["schemas"]["AgentCapabilityConfig"][];
+      /**
+       * @description Short description
+       * @example A friendly agent that tells dad jokes and knows what time it is.
+       */
+      description: string;
+      /**
+       * @description Whether this example requires dev/experimental mode
+       * @example false
+       */
+      dev_only: boolean;
+      /**
+       * @description Human-readable display name (e.g. "Dad Jokes Agent")
+       * @example Dad Jokes Agent
+       */
+      display_name: string;
+      /**
+       * @description Explicit harness selected when importing this example.
+       * @example conversation
+       */
+      harness_name: string;
+      /**
+       * @description Name (e.g. "dad-jokes-agent")
+       * @example dad-jokes-agent
+       */
+      name: string;
+      setup?: components["schemas"]["AgentExampleSetup"] | null;
+      /**
+       * @description Tags for categorization
+       * @example [
+       *       "humor",
+       *       "demo"
+       *     ]
+       */
+      tags: string[];
+    };
+    /**
+     * @description One setup choice. Turning it on sets `config_key` to `true` in the config
+     *     of the agent's `capability`.
+     */
+    AgentExampleSetting: {
+      /**
+       * @description Capability whose configuration this option changes.
+       * @example github
+       */
+      capability: string;
+      /**
+       * @description Boolean configuration property controlled by this option.
+       * @example allow_pull_requests
+       */
+      config_key: string;
+      /**
+       * @description Initial value shown during guided setup.
+       * @example false
+       */
+      default: boolean;
+      /**
+       * @description Explains the effect of enabling this option.
+       * @example Let the scanner open draft pull requests for high-confidence fixes.
+       */
+      description: string;
+      /**
+       * @description Stable setup option key.
+       * @example open_fix_pull_requests
+       */
+      key: string;
+      /**
+       * @description Human-readable setup option label.
+       * @example Open fix pull requests
+       */
+      label: string;
+    };
+    /** @description What the UI walks the user through after importing a template. */
+    AgentExampleSetup: {
+      /**
+       * @description The agent needs its own GitHub App (`POST /v1/agents/{id}/github/connect`).
+       * @example true
+       */
+      connect_github: boolean;
+      /**
+       * @description Other connection providers the agent's service account needs.
+       * @example [
+       *       "daytona"
+       *     ]
+       */
+      connections: string[];
+      /**
+       * @description Text in `trigger` to replace with the picked `owner/repo`.
+       * @example ${repository}
+       */
+      repository_placeholder: string;
+      /**
+       * @description Yes/no choices, each stored as one capability config key.
+       * @example []
+       */
+      settings: components["schemas"]["AgentExampleSetting"][];
+      /**
+       * @description Body for `POST /v1/agents/{agent_id}/triggers` once the placeholder is
+       *     replaced.
+       */
+      trigger: Record<string, unknown>;
+    };
     /** @enum {string} */
     AgentHarnessSource: "explicit" | "organization_default";
     /** @enum {string} */
@@ -7469,13 +7596,13 @@ export interface components {
       environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Harness ID used as this agent's base execution environment. If omitted,
-       *     the org's built-in `generic` harness is used.
+       *     the organization default is used (Conversation for new organizations).
        * @example harness_01933b5a00007000800000000000001
        */
       harness_id?: string | null;
       /**
        * @description Addressable harness name. Alternative to `harness_id`.
-       * @example generic
+       * @example conversation
        */
       harness_name?: string | null;
       /**
@@ -8353,15 +8480,15 @@ export interface components {
        * @description ID of the harness for this session (format: harness_{32-hex}).
        *     If omitted, the harness is derived from the agent (when one is supplied),
        *     else the org default harness, else the built-in fallback. New orgs default
-       *     that to Generic. Mutually exclusive with `harness_name`.
+       *     that to Conversation. Mutually exclusive with `harness_name`.
        * @example harness_01933b5a00007000800000000000001
        */
       harness_id?: string | null;
       /**
-       * @description Harness name (e.g. "generic", "deep-research").
+       * @description Harness name (e.g. "conversation", "deep-research").
        *     Alternative to `harness_id` — looked up by name within the org.
        *     Mutually exclusive with `harness_id`.
-       * @example generic
+       * @example conversation
        */
       harness_name?: string | null;
       /**
@@ -10206,7 +10333,7 @@ export interface components {
       description?: string | null;
       /**
        * @description Human-readable display name shown in UI.
-       * @example Generic Harness
+       * @example Conversation
        */
       display_name?: string | null;
       /**
@@ -10245,8 +10372,8 @@ export interface components {
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
-       * @description Name, unique per org (e.g. "generic").
-       * @example generic
+       * @description Name, unique per org (e.g. "conversation").
+       * @example conversation
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
@@ -11625,7 +11752,7 @@ export interface components {
         description?: string | null;
         /**
          * @description Human-readable display name shown in UI.
-         * @example Generic Harness
+         * @example Conversation
          */
         display_name?: string | null;
         /**
@@ -11664,8 +11791,8 @@ export interface components {
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
-         * @description Name, unique per org (e.g. "generic").
-         * @example generic
+         * @description Name, unique per org (e.g. "conversation").
+         * @example conversation
          */
         name: string;
         network_access?: components["schemas"]["NetworkAccessList"] | null;
@@ -12891,7 +13018,7 @@ export interface components {
         description?: string | null;
         /**
          * @description Human-readable display name shown in UI.
-         * @example Generic Harness
+         * @example Conversation
          */
         display_name?: string | null;
         /**
@@ -12930,8 +13057,8 @@ export interface components {
         /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
         mcpServers?: components["schemas"]["BTreeMap"];
         /**
-         * @description Name, unique per org (e.g. "generic").
-         * @example generic
+         * @description Name, unique per org (e.g. "conversation").
+         * @example conversation
          */
         name: string;
         network_access?: components["schemas"]["NetworkAccessList"] | null;
@@ -19104,7 +19231,7 @@ export interface components {
       harness_id?: string | null;
       /**
        * @description Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.
-       * @example generic
+       * @example conversation
        */
       harness_name?: string | null;
       /**
@@ -19559,7 +19686,7 @@ export interface components {
       /**
        * @description Alternative to `default_harness_id` — looked up by stable name within the org.
        *     Mutually exclusive with `default_harness_id`.
-       * @example generic
+       * @example conversation
        */
       default_harness_name?: string | null;
       /**
@@ -20896,7 +21023,7 @@ export interface components {
       description?: string | null;
       /**
        * @description Human-readable display name shown in UI.
-       * @example Generic Harness
+       * @example Conversation
        */
       display_name?: string | null;
       /**
@@ -20935,8 +21062,8 @@ export interface components {
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
-       * @description Name, unique per org (e.g. "generic").
-       * @example generic
+       * @description Name, unique per org (e.g. "conversation").
+       * @example conversation
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
@@ -21341,7 +21468,7 @@ export interface components {
       description?: string | null;
       /**
        * @description Human-readable display name shown in UI.
-       * @example Generic Harness
+       * @example Conversation
        */
       display_name?: string | null;
       /**
@@ -21380,8 +21507,8 @@ export interface components {
       /** @description Remote MCP servers scoped to this harness and inherited by descendant layers. */
       mcpServers?: components["schemas"]["BTreeMap"];
       /**
-       * @description Name, unique per org (e.g. "generic").
-       * @example generic
+       * @description Name, unique per org (e.g. "conversation").
+       * @example conversation
        */
       name: string;
       network_access?: components["schemas"]["NetworkAccessList"] | null;
@@ -22082,6 +22209,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+  list_examples: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of agent examples */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentExample"][];
+        };
+      };
+    };
+  };
   list_agents: {
     parameters: {
       query?: {
@@ -27806,7 +27953,7 @@ export interface operations {
       };
     };
   };
-  list_examples: {
+  list_examples_get_v1_harness_examples: {
     parameters: {
       query?: never;
       header?: never;

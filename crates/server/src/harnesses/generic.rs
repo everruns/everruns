@@ -1,16 +1,15 @@
-//! Generic harness — batteries-included default for most use cases.
+//! Deprecated Generic bundle, retained for existing bindings.
 
-use everruns_platform::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+use everruns_platform::BuiltInHarnessDefinition;
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
-        "Generic",
-        "Everyday agents: files, a shell, the web, and the usual safeguards.",
+        "Generic — deprecated",
+        "Deprecated legacy bundle for existing agents. Choose Conversation for dialogue, Worker Base for files and bash, or Worker for delegation.",
         SYSTEM_PROMPT,
     )
     .with_icon("box")
-    .with_tags(["generic", "default", "built-in"])
-    .with_roles([BuiltInHarnessRole::Default])
+    .with_tags(["generic", "deprecated", "built-in"])
     // The one definition (EVE-1041). Org provisioning and the `everruns`
     // facade read the same list from `everruns-contracts`, so the two cannot
     // drift; `shared_generic_capabilities_are_the_platform_ones` fails if

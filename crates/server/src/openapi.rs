@@ -336,6 +336,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::harnesses::import_harness,
         api::harnesses::check_harness_name,
         // Harness examples
+        api::agent_examples::list_examples,
         api::harness_examples::list_examples,
         // Agents - additional
         api::agents::preview::preview_agent,
@@ -626,6 +627,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             domains::harnesses::types::UpdateHarnessRequest,
             domains::harnesses::types::PreviewHarnessRequest,
             domains::harnesses::types::HarnessPreviewResponse,
+            api::agent_examples::AgentExample,
             api::harness_examples::HarnessExample,
             ListResponse<everruns_platform::Harness>,
             api::users::User,

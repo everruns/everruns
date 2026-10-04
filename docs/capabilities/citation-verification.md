@@ -45,7 +45,7 @@ Each citation gets one of three verdicts, shown as a badge on the chip preview a
 ## Notes
 
 - **Feed-agnostic**: verifies citations from any feed via the shared render contract, so evals can hold the feed fixed and vary only the verifier.
-- **Enabled by default**: `citation_verification` is part of the generic (default) harness in `heuristic` mode, so citations are verified out of the box with no model cost.
+- **Opt-in**: add `citation_verification` in `heuristic` mode to a canonical harness to verify citations with no model cost. Deprecated Generic includes it.
 - **`llm` mode needs a utility model**: with none configured it degrades gracefully to the heuristic rather than failing.
 - **No new data egress**: the verifier reasons only over text the feed already retrieved.
 
