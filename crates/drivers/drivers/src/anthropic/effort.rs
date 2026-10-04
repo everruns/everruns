@@ -63,7 +63,8 @@ pub(crate) fn adaptive_room(effort: &str) -> u32 {
 /// thinking and come back empty, so the caller asks for more than the cap can
 /// give. Rather than overrun a limit the caller set deliberately, the driver
 /// drops thinking when this returns false and spends the whole cap on the
-/// answer.
+/// answer, or, on families where thinking cannot be disabled, lowers the effort
+/// to `low`.
 pub(crate) fn thinking_fits(cap: u32, budget: Option<u32>, adaptive_effort: Option<&str>) -> bool {
     match (budget, adaptive_effort) {
         // The API rejects a request whose `max_tokens` does not exceed the budget.

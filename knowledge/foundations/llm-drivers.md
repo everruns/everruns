@@ -265,9 +265,10 @@ following OpenAI's parameter rules rather than on a live request.
 value remains a hard limit on all generated tokens and is serialized unchanged. When thinking does not
 fit underneath it — measured against `budget_tokens` for budget-based thinking, or the effort-sized room
 adaptive thinking needs, since it carries no budget — the driver omits thinking rather than exceed the
-cap. For always-thinking families, where omission re-enables provider-default thinking, the driver
-rejects an incompatible cap before the network call instead. This prevents a small cap from yielding
-an empty visible answer while preserving the caller's resource limit. Source:
+cap. On always-thinking families omission does not disable thinking, it runs at the API's default
+effort, so the driver keeps thinking and sends `low` instead, the least the API allows. Rejecting the
+request was rejected: ordinary agent caps sit below the effort-sized room, so every turn would fail.
+Source:
 `crates/drivers/drivers/src/anthropic/effort.rs`.
 
 **Append-only history (Anthropic)**: Claude Opus 5.5, Sonnet 5.5, and Fable 5.1 bind each thinking block to the conversation prefix that produced it (`system`, tools, every earlier message), and every model's prompt cache needs the same prefix. Only the leading run of system messages goes into top-level `system`; later system messages stay in place on models whose profile advertises `mid_conversation_system`. Turn-scoped facts and reminders additionally carry `clear_at: "next_user_message"` under beta `mid-conversation-system-clear-at-2026-08-21`, so the transcript retains each copy while the API stops rendering it after the turn. Models without that profile capability retain the user facts and system-fold fallbacks. Requests to Opus 5.5, Sonnet 5.5, and Fable 5.1 set `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` (beta `thinking-binding-controls-2026-08-01`): context management edits earlier history by design, and a dropped block degrades that turn instead of failing it. Drops are logged from `input_transformations`. Source: `crates/drivers/drivers/src/anthropic/driver_layout.rs`.
