@@ -41,7 +41,7 @@ use crate::task_wakeup::{TaskWakeups, spawn_wakeup_listener};
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledChannelInput,
-    activities::activity_types,
+    activities::activity_types, phase_reads::PhaseIds,
 };
 
 // Re-export atom types
@@ -1163,7 +1163,8 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     });
     let result = runtime_execute_reason_activity(
         &WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata)
-            .with_turn_cancellation(cancellation, cancel_requested),
+            .with_turn_cancellation(cancellation, cancel_requested)
+            .prefetching(PhaseIds::reason(&reason_input)),
         input.org_id,
         reason_input,
     )
@@ -1190,9 +1191,8 @@ async fn execute_act_activity<A: WorkerAdapters>(
     );
 
     // Extract org_id early — must be set by callers for proper tenant isolation.
-    let result =
-        runtime_execute_act_activity(&WorkerRuntimeHost::new(adapters.clone()), input.clone())
-            .await?;
+    let host = WorkerRuntimeHost::new(adapters.clone()).prefetching(PhaseIds::act(input));
+    let result = runtime_execute_act_activity(&host, input.clone()).await?;
 
     Ok(serde_json::to_value(&result)?)
 }
