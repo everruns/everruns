@@ -1,6 +1,11 @@
 use super::*;
 
-pub(super) fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
+/// Map a tonic gRPC status to the appropriate AgentLoopError variant.
+///
+/// Preserves the semantic meaning of gRPC status codes so that callers
+/// (e.g. retry logic in the durable engine) can distinguish transient
+/// transport errors from permanent domain errors.
+pub(crate) fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
     let msg = status.message().to_string();
     match status.code() {
         tonic::Code::NotFound => {

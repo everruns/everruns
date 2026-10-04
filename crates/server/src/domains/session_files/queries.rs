@@ -72,23 +72,43 @@ pub async fn verify_session(
         .await
         .map_err(classify_storage)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
-    let user_memory_allowed = caller_owns_user_memory(row.resolved_owner_user_id, &ctx.caller);
+    // THREAT[TM-TENANT-013]: `/memory/user` is private to the session's owner.
+    // Two callers reach it: that owner, and the agent runtime executing that
+    // owner's session on their behalf.
+    //
+    // The runtime arm used to read `caller.is_internal`, which was far wider
+    // than the relationship it stood for. `Caller::internal` carries Owner
+    // role and bypasses policy evaluation (TM-AUTHZ-002), so this was the one
+    // check it did not already pass — the only thing between *any* internal
+    // path and a person's private files, including paths driven by inbound
+    // traffic (`api/slack_events`, `api/fcp`, the capability service, the
+    // durable seal). None of them read the file surface at all.
+    //
+    // `acting_for_session` names the relationship instead: the worker declares
+    // which session's turn it is running, and only that session's memory
+    // opens. An internal caller that declares nothing gets nothing.
+    let user_memory_allowed = caller_is_memory_owner(row.resolved_owner_user_id, &ctx.caller)
+        || ctx.acting_for_session == Some(session_id);
     Ok(SessionFileAccess {
         workspace_key: row.workspace_id,
         user_memory_allowed,
     })
 }
 
-/// Whether `caller` may touch the `/memory/user` subtree owned by `owner`.
+/// Whether `caller` *is* the owner of the `/memory/user` subtree owned by
+/// `owner`. Org role is deliberately irrelevant: an admin with
+/// `WORKSPACE_MANAGE` is still not the owner of another member's private
+/// memory.
 ///
-/// Only the resolved owner (or a trusted internal path) qualifies. Org role is
-/// deliberately irrelevant: an admin with `WORKSPACE_MANAGE` is still not the
-/// owner of another member's private memory.
-pub fn caller_owns_user_memory(owner: Option<Uuid>, caller: &everruns_core::Caller) -> bool {
+/// Owner identity only. The internal-path arm this used to carry is not an
+/// ownership fact, and conflating the two is what let every internal caller
+/// into the subtree; each surface now states its own trust rule beside its own
+/// call — the session surface through `Ctx::acting_for_session`, the workspace
+/// surface through its explicit early return.
+pub fn caller_is_memory_owner(owner: Option<Uuid>, caller: &everruns_core::Caller) -> bool {
     owner
         .zip(caller.user_id)
         .is_some_and(|(owner, caller)| owner == caller)
-        || caller.is_internal
 }
 
 /// `/memory/user` access for the canonical `/v1/workspaces/{id}/fs/*` surface,
@@ -114,7 +134,7 @@ pub async fn user_memory_allowed_for_workspace(
         .get_session(org_id, SessionId::from_uuid(workspace_key))
         .await?
         .and_then(|row| row.resolved_owner_user_id);
-    Ok(caller_owns_user_memory(owner, caller))
+    Ok(caller_is_memory_owner(owner, caller))
 }
 
 /// Resolve the session's workspace for a *write* and enforce the workspace

@@ -220,17 +220,11 @@ async fn test_execute_command_lists_seeded_harnesses() {
 
     let response = service
         .execute_command(Request::new(ExecuteCommandRequest {
-            runtime_view: false,
-            input_message_id: None,
-            platform_session_id: None,
-
             name: "list_harnesses".to_string(),
             api_version: "v1".to_string(),
             params_json: br#"{}"#.to_vec(),
             org_id: everruns_core::DEFAULT_ORG_ID,
-            user_id: None,
-            idempotency_key: None,
-            metadata: Default::default(),
+            ..Default::default()
         }))
         .await
         .expect("execute_command should succeed")

@@ -41,7 +41,7 @@ use crate::task_wakeup::{TaskWakeups, spawn_wakeup_listener};
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledChannelInput,
-    activities::activity_types,
+    activities::activity_types, phase_reads::PhaseIds,
 };
 
 // Re-export atom types
@@ -1161,13 +1161,12 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         );
         metadata
     });
-    let result = runtime_execute_reason_activity(
-        &WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata)
-            .with_turn_cancellation(cancellation, cancel_requested),
-        input.org_id,
-        reason_input,
-    )
-    .await?;
+    let host = WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata)
+        .with_turn_cancellation(cancellation, cancel_requested)
+        .prefetching(PhaseIds::reason(&reason_input));
+    let result = runtime_execute_reason_activity(&host, input.org_id, reason_input).await;
+    host.flush_events().await;
+    let result = result?;
 
     // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
     // emitted here. They are deferred to the workflow scheduler which checks for
@@ -1189,10 +1188,10 @@ async fn execute_act_activity<A: WorkerAdapters>(
         "Executing act activity"
     );
 
-    // Extract org_id early — must be set by callers for proper tenant isolation.
-    let result =
-        runtime_execute_act_activity(&WorkerRuntimeHost::new(adapters.clone()), input.clone())
-            .await?;
+    let host = WorkerRuntimeHost::new(adapters.clone()).prefetching(PhaseIds::act(input));
+    let result = runtime_execute_act_activity(&host, input.clone()).await;
+    host.flush_events().await;
+    let result = result?;
 
     Ok(serde_json::to_value(&result)?)
 }

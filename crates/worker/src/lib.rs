@@ -7,6 +7,7 @@ pub mod durable_execution;
 pub mod durable_runner;
 pub mod durable_turn;
 pub mod grpc_adapters;
+pub mod grpc_command_transport;
 pub mod grpc_durable_store;
 pub mod grpc_files_adapter;
 mod grpc_sandbox_persistence;
@@ -36,6 +37,7 @@ mod unified_worker_test_adapters;
 #[cfg(test)]
 mod unified_worker_wake_tests;
 pub mod worker_adapters;
+pub mod write_behind;
 
 // Re-export main types
 pub use durable_execution::DurableExecution;

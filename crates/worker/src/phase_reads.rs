@@ -16,30 +16,43 @@
 // scheduling). Session writes made through the host drop the session entry.
 // Errors are never memoized.
 //
+// Decision: the worker knows every id these reads need when it claims the
+// task, so `prefetch` starts them all at once instead of letting setup issue
+// them one after another (harness, agent, session, then the turn context).
+// Each read is a cell that later callers wait on while it is in flight, so a
+// prefetched read is never repeated. With the control plane tens of
+// milliseconds away, that turns four round trips before the model call into
+// one.
+//
 // Decision: the host's setup has no timing of its own, and production ships logs
 // only, so the memo also logs once per phase how long setup took (host creation
 // to the phase's start event) and how many reads it made and saved.
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use everruns_contracts::error::Result;
 use everruns_core::{AgentDefinition, DependencyBlocker, ExecutionSession, HarnessDefinition};
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
-use crate::worker_adapters::WorkerAdapters;
+use crate::worker_adapters::{TurnContext, WorkerAdapters};
 
 /// How long a memoized read stays usable. Covers setup (under a second even
 /// with a remote database).
 const FRESH_FOR: Duration = Duration::from_secs(2);
 
 type Key = (i64, Uuid);
+/// Org, session, and input message.
+type TurnKey = (i64, Uuid, Uuid);
 
 struct Entry<T> {
     at: Instant,
-    value: T,
+    cell: Arc<OnceCell<T>>,
+    pinned: Option<T>,
 }
 
 // Cache successful projections (including absence) separately from lifecycle
@@ -58,11 +71,14 @@ struct State {
     agents: HashMap<Key, Entry<DefinitionRead<AgentDefinition>>>,
     harnesses: HashMap<Key, Entry<DefinitionRead<HarnessDefinition>>>,
     sessions: HashMap<Key, Entry<Option<ExecutionSession>>>,
+    turn_contexts: HashMap<TurnKey, Entry<TurnContext>>,
     fetched: u32,
     saved: u32,
     /// The phase started: stop memoizing.
     setup_done: bool,
 }
+
+type Map<K, T> = fn(&mut State) -> &mut HashMap<K, Entry<T>>;
 
 fn agents(s: &mut State) -> &mut HashMap<Key, Entry<DefinitionRead<AgentDefinition>>> {
     &mut s.agents
@@ -76,7 +92,45 @@ fn sessions(s: &mut State) -> &mut HashMap<Key, Entry<Option<ExecutionSession>>>
     &mut s.sessions
 }
 
-/// Agent, harness, and session reads for one phase, memoized briefly.
+fn turn_contexts(s: &mut State) -> &mut HashMap<TurnKey, Entry<TurnContext>> {
+    &mut s.turn_contexts
+}
+
+/// The ids a phase's setup reads. Known when the worker claims the task.
+pub struct PhaseIds {
+    pub org_id: i64,
+    pub session_id: Uuid,
+    pub harness_id: Uuid,
+    pub agent_id: Option<Uuid>,
+    /// Set for a reason phase, which also loads the turn context.
+    pub input_message_id: Option<Uuid>,
+}
+
+impl PhaseIds {
+    pub fn reason(input: &everruns_engine::ReasonInput) -> Option<Self> {
+        let message_id = input.context.input_message_id.uuid();
+        Some(Self {
+            org_id: input.org_id,
+            session_id: input.context.session_id.uuid(),
+            harness_id: input.harness_id.uuid(),
+            agent_id: input.agent_id.map(|id| id.uuid()),
+            input_message_id: (!message_id.is_nil()).then_some(message_id),
+        })
+    }
+
+    pub fn act(input: &everruns_engine::ActInput) -> Option<Self> {
+        Some(Self {
+            org_id: input.org_id?,
+            session_id: input.context.session_id.uuid(),
+            harness_id: input.harness_id.uuid(),
+            agent_id: input.agent_id.map(|id| id.uuid()),
+            input_message_id: None,
+        })
+    }
+}
+
+/// Agent, harness, session, and turn-context reads for one phase, memoized
+/// briefly.
 #[derive(Clone)]
 pub struct PhaseReads {
     started: Instant,
@@ -94,6 +148,38 @@ impl PhaseReads {
         Self {
             started: Instant::now(),
             state: Arc::default(),
+        }
+    }
+
+    /// Start every read setup will make, concurrently, so setup waits on them
+    /// instead of issuing them in turn.
+    pub fn prefetch<A: WorkerAdapters>(&self, adapters: &A, ids: PhaseIds) {
+        let PhaseIds {
+            org_id,
+            session_id,
+            harness_id,
+            agent_id,
+            input_message_id,
+        } = ids;
+        let (reads, a) = (self.clone(), adapters.clone());
+        tokio::spawn(async move {
+            let _ = reads.session(&a, org_id, session_id).await;
+        });
+        let (reads, a) = (self.clone(), adapters.clone());
+        tokio::spawn(async move {
+            let _ = reads.harness(&a, org_id, harness_id).await;
+        });
+        if let Some(agent_id) = agent_id {
+            let (reads, a) = (self.clone(), adapters.clone());
+            tokio::spawn(async move {
+                let _ = reads.agent(&a, org_id, agent_id).await;
+            });
+        }
+        if let Some(message_id) = input_message_id {
+            let (reads, a) = (self.clone(), adapters.clone());
+            tokio::spawn(async move {
+                let _ = reads.turn_context(&a, org_id, session_id, message_id).await;
+            });
         }
     }
 
@@ -155,28 +241,66 @@ impl PhaseReads {
             .await
     }
 
-    /// Keep execution views another read returned (the batched turn context
+    /// The batched turn context a reason phase executes from.
+    pub async fn turn_context<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        session_id: Uuid,
+        input_message_id: Uuid,
+    ) -> Result<TurnContext> {
+        self.read_through(
+            turn_contexts,
+            (org_id, session_id, input_message_id),
+            || adapters.load_turn_context_for_execution(org_id, session_id, input_message_id),
+        )
+        .await
+    }
+
+    /// Keep records another read already returned (the batched turn context
     /// carries the session and agent), so later lookups reuse them.
     pub fn seed(&self, org_id: i64, session: &ExecutionSession, agent: Option<&AgentDefinition>) {
         let session_id = session.id.uuid();
-        self.store(sessions, (org_id, session_id), Some(session.clone()), false);
+        self.store(sessions, (org_id, session_id), Some(session.clone()));
         if let Some(agent) = agent {
             let key = (org_id, agent.id.uuid());
-            self.store(
-                agents,
-                key,
-                DefinitionRead {
+            self.with_state(|state| {
+                if state.setup_done {
+                    return;
+                }
+                if state
+                    .agents
+                    .get(&key)
+                    .is_some_and(|entry| entry.at.elapsed() >= FRESH_FOR)
+                {
+                    state.agents.remove(&key);
+                }
+                let entry = state.agents.entry(key).or_insert_with(|| Entry {
+                    at: Instant::now(),
+                    cell: Arc::new(OnceCell::new()),
+                    pinned: None,
+                });
+                // The batched execution definition is pinned to this turn.
+                // Keep the prefetch cell for its lifecycle probe, but overlay
+                // its current definition even if that fetch completes later.
+                let pinned = DefinitionRead {
                     definition: Some(Some(agent.clone())),
                     blocker: None,
-                },
-                false,
-            );
+                };
+                entry.pinned = Some(pinned.clone());
+                let _ = entry.cell.set(pinned);
+            });
         }
     }
 
-    /// Forget the session after a write, so the next read sees it.
+    /// Forget the session after a write, so the next read sees it. The turn
+    /// context carries the session too.
     pub fn invalidate_session(&self, org_id: i64, id: Uuid) {
-        self.with_state(|s| s.sessions.remove(&(org_id, id)));
+        self.with_state(|s| {
+            s.sessions.remove(&(org_id, id));
+            s.turn_contexts
+                .retain(|&(org, session, _), _| (org, session) != (org_id, id));
+        });
     }
 
     /// Log the phase's setup time when its start event goes out. Once per memo.
@@ -205,109 +329,172 @@ impl PhaseReads {
 
     async fn definition<T: Clone, F: Future<Output = Result<ResolvedRead<T>>>>(
         &self,
-        map: fn(&mut State) -> &mut HashMap<Key, Entry<DefinitionRead<T>>>,
+        map: Map<Key, DefinitionRead<T>>,
         key: Key,
         fetch: impl FnOnce() -> F,
     ) -> Result<Option<T>> {
-        if let Some(hit) = self.lookup_selected(map, key, |value| value.definition.clone()) {
-            return Ok(hit);
-        }
-        self.resolve(map, key, fetch).await?.0
+        self.resolve(map, key, true, fetch).await?.0
     }
 
     async fn blocker<T: Clone, F: Future<Output = Result<ResolvedRead<T>>>>(
         &self,
-        map: fn(&mut State) -> &mut HashMap<Key, Entry<DefinitionRead<T>>>,
+        map: Map<Key, DefinitionRead<T>>,
         key: Key,
         fetch: impl FnOnce() -> F,
     ) -> Result<Option<DependencyBlocker>> {
-        if let Some(hit) = self.lookup_selected(map, key, |value| Some(value.blocker)) {
-            return Ok(hit);
-        }
-        Ok(self.resolve(map, key, fetch).await?.1)
+        Ok(self.resolve(map, key, false, fetch).await?.1)
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "OnceCell invokes its initializer at most once; retry only follows another reader's failed projection"
+    )]
     async fn resolve<T: Clone, F: Future<Output = Result<ResolvedRead<T>>>>(
         &self,
-        map: fn(&mut State) -> &mut HashMap<Key, Entry<DefinitionRead<T>>>,
+        map: Map<Key, DefinitionRead<T>>,
         key: Key,
+        want_definition: bool,
         fetch: impl FnOnce() -> F,
     ) -> Result<ResolvedRead<T>> {
-        let (definition, blocker) = fetch().await?;
-        self.store(
-            map,
-            key,
-            DefinitionRead {
-                definition: definition.as_ref().ok().cloned(),
-                blocker,
-            },
-            true,
-        );
-        Ok((definition, blocker))
+        let mut fetch = Some(fetch);
+        loop {
+            // A projection failure leaves a usable lifecycle probe, but the
+            // original non-cloneable error belongs only to its initializer.
+            // A subsequent definition read starts a fresh cell and retries.
+            self.with_state(|state| {
+                let entries = map(state);
+                if want_definition
+                    && entries.get(&key).is_some_and(|entry| {
+                        entry.pinned.is_none()
+                            && entry
+                                .cell
+                                .get()
+                                .is_some_and(|value| value.definition.is_none())
+                    })
+                {
+                    entries.remove(&key);
+                }
+            });
+            let Some(cell) = self.cell(map, key) else {
+                return fetch.take().expect("fetch not yet invoked")().await;
+            };
+            let mut resolved = None;
+            let cached = cell
+                .get_or_try_init(|| async {
+                    let (definition, blocker) =
+                        fetch.take().expect("initializer owns fetch")().await?;
+                    let value = DefinitionRead {
+                        definition: definition.as_ref().ok().cloned(),
+                        blocker,
+                    };
+                    resolved = Some((definition, blocker));
+                    Ok::<_, everruns_contracts::error::AgentLoopError>(value)
+                })
+                .await;
+            let value = match cached {
+                Ok(value) => value,
+                Err(error) => {
+                    self.with_state(|state| {
+                        let entries = map(state);
+                        if entries.get(&key).is_some_and(|entry| {
+                            Arc::ptr_eq(&entry.cell, &cell)
+                                && entry.cell.get().is_none()
+                                && entry.pinned.is_none()
+                        }) {
+                            entries.remove(&key);
+                        }
+                    });
+                    return Err(error);
+                }
+            };
+            let pinned = self.with_state(|state| {
+                map(state)
+                    .get(&key)
+                    .filter(|entry| Arc::ptr_eq(&entry.cell, &cell))
+                    .and_then(|entry| entry.pinned.as_ref())
+                    .and_then(|value| value.definition.clone())
+            });
+            if let Some((definition, blocker)) = resolved {
+                self.with_state(|state| state.fetched += 1);
+                return Ok((pinned.map(Ok).unwrap_or(definition), blocker));
+            }
+            if let Some(definition) = pinned.or_else(|| value.definition.clone()) {
+                self.with_state(|state| state.saved += 1);
+                return Ok((Ok(definition), value.blocker));
+            }
+            if !want_definition {
+                self.with_state(|state| state.saved += 1);
+                return Ok((Ok(None), value.blocker));
+            }
+            // We waited on another reader whose projection failed. Its error
+            // cannot be cloned; our initializer remains available for retry.
+        }
     }
 
-    async fn read_through<T: Clone, F: Future<Output = Result<T>>>(
+    async fn read_through<K, T, F>(
         &self,
-        map: fn(&mut State) -> &mut HashMap<Key, Entry<T>>,
-        key: Key,
+        map: Map<K, T>,
+        key: K,
         fetch: impl FnOnce() -> F,
-    ) -> Result<T> {
-        if let Some(hit) = self.lookup(map, key) {
-            return Ok(hit);
-        }
-        let value = fetch().await?;
-        self.store(map, key, value.clone(), true);
+    ) -> Result<T>
+    where
+        K: Hash + Eq,
+        T: Clone,
+        F: Future<Output = Result<T>>,
+    {
+        let Some(cell) = self.cell(map, key) else {
+            return fetch().await;
+        };
+        let mut fetched = false;
+        let value = cell
+            .get_or_try_init(|| {
+                fetched = true;
+                fetch()
+            })
+            .await?
+            .clone();
+        self.with_state(|s| {
+            if fetched {
+                s.fetched += 1;
+            } else {
+                s.saved += 1;
+            }
+        });
         Ok(value)
     }
 
-    fn lookup<T: Clone>(
-        &self,
-        map: fn(&mut State) -> &mut HashMap<Key, Entry<T>>,
-        key: Key,
-    ) -> Option<T> {
-        self.lookup_selected(map, key, |value| Some(value.clone()))
-    }
-
-    fn lookup_selected<T, R>(
-        &self,
-        map: fn(&mut State) -> &mut HashMap<Key, Entry<T>>,
-        key: Key,
-        select: impl FnOnce(&T) -> Option<R>,
-    ) -> Option<R> {
+    /// The fresh cell for `key`, created if missing. `None` once setup is done.
+    fn cell<K: Hash + Eq, T>(&self, map: Map<K, T>, key: K) -> Option<Arc<OnceCell<T>>> {
         self.with_state(|s| {
-            let hit = map(s)
-                .get(&key)
-                .filter(|entry| entry.at.elapsed() < FRESH_FOR)
-                .and_then(|entry| select(&entry.value));
-            if hit.is_some() {
-                s.saved += 1;
+            if s.setup_done {
+                return None;
             }
-            hit
+            let map = map(s);
+            if let Some(entry) = map.get(&key)
+                && entry.at.elapsed() < FRESH_FOR
+            {
+                return Some(entry.cell.clone());
+            }
+            let cell = Arc::new(OnceCell::new());
+            let at = Instant::now();
+            map.insert(
+                key,
+                Entry {
+                    at,
+                    cell: cell.clone(),
+                    pinned: None,
+                },
+            );
+            Some(cell)
         })
     }
 
-    fn store<T>(
-        &self,
-        map: fn(&mut State) -> &mut HashMap<Key, Entry<T>>,
-        key: Key,
-        value: T,
-        fetched: bool,
-    ) {
-        self.with_state(|s| {
-            if s.setup_done {
-                return;
-            }
-            if fetched {
-                s.fetched += 1;
-            }
-            map(s).insert(
-                key,
-                Entry {
-                    at: Instant::now(),
-                    value,
-                },
-            );
-        });
+    /// Fill `key` with a value another read returned, unless it already has
+    /// one or a read of it is in flight.
+    fn store<K: Hash + Eq, T>(&self, map: Map<K, T>, key: K, value: T) {
+        if let Some(cell) = self.cell(map, key) {
+            let _ = cell.set(value);
+        }
     }
 
     fn with_state<R>(&self, f: impl FnOnce(&mut State) -> R) -> R {
@@ -357,6 +544,52 @@ mod tests {
         // Another org's record with the same id is a different read.
         read(&reads, (2, key.1), &calls).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn a_read_in_flight_is_awaited_not_repeated() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+        let (open, opened) = tokio::sync::oneshot::channel::<()>();
+        // The first read stays in flight until the second has started waiting.
+        let first = reads.read_through(sessions, key, || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            opened.await.ok();
+            Ok(Some(session()))
+        });
+        let second = async {
+            tokio::task::yield_now().await;
+            read(&reads, key, &calls).await
+        };
+        let release = async {
+            for _ in 0..3 {
+                tokio::task::yield_now().await;
+            }
+            open.send(()).ok();
+        };
+        let (first, second, ()) = tokio::join!(first, second, release);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(first.unwrap().unwrap().id, second.unwrap().unwrap().id);
+    }
+
+    #[tokio::test]
+    async fn a_seed_does_not_replace_a_fetched_record() {
+        let reads = PhaseReads::new();
+        let fetched = session();
+        let key = (1, fetched.id.uuid());
+        let stored = fetched.clone();
+        reads
+            .read_through(sessions, key, || async { Ok(Some(stored)) })
+            .await
+            .unwrap();
+        let mut other = fetched.clone();
+        other.locale = Some("uk".to_string());
+        reads.seed(1, &other, None);
+        let calls = AtomicU32::new(0);
+        let got = read(&reads, key, &calls).await.unwrap().unwrap();
+        assert_eq!(got.locale, fetched.locale);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
@@ -651,5 +884,191 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(got.system_prompt, pinned.system_prompt);
+    }
+
+    #[tokio::test]
+    async fn simultaneous_definition_and_lifecycle_reads_share_the_in_flight_cell() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let id = everruns_contracts::typed_id::AgentId::new();
+        let key = (1, id.uuid());
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            tokio::task::yield_now().await;
+            Ok((
+                Ok(Some(AgentDefinition::new(id, "agent", "current"))),
+                Some(DependencyBlocker::AgentArchived),
+            ))
+        };
+        let (definition, blocker) = tokio::join!(
+            reads.definition(agents, key, fetch),
+            reads.blocker(agents, key, fetch)
+        );
+        assert_eq!(definition.unwrap().unwrap().id, id);
+        assert!(matches!(
+            blocker.unwrap(),
+            Some(DependencyBlocker::AgentArchived)
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn pinned_batch_agent_wins_an_in_flight_current_prefetch_without_losing_lifecycle() {
+        let reads = PhaseReads::new();
+        let id = everruns_contracts::typed_id::AgentId::new();
+        let key = (1, id.uuid());
+        let current = AgentDefinition::new(id, "agent", "current version");
+        let pinned = AgentDefinition::new(id, "agent", "pinned batch version");
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let (release, released) = tokio::sync::oneshot::channel();
+        let pending_reads = reads.clone();
+        let pending = tokio::spawn(async move {
+            pending_reads
+                .definition(agents, key, || async {
+                    started.send(()).unwrap();
+                    released.await.unwrap();
+                    Ok((Ok(Some(current)), Some(DependencyBlocker::AgentArchived)))
+                })
+                .await
+        });
+        ready.await.unwrap();
+        reads.seed(1, &session(), Some(&pinned));
+        release.send(()).unwrap();
+        assert_eq!(
+            pending.await.unwrap().unwrap().unwrap().system_prompt,
+            pinned.system_prompt
+        );
+        let must_not_fetch = || async {
+            Err(everruns_contracts::error::AgentLoopError::store(
+                "prefetch must be reused",
+            ))
+        };
+        assert!(matches!(
+            reads.blocker(agents, key, must_not_fetch).await.unwrap(),
+            Some(DependencyBlocker::AgentArchived)
+        ));
+        assert_eq!(
+            reads
+                .definition(agents, key, must_not_fetch)
+                .await
+                .unwrap()
+                .unwrap()
+                .system_prompt,
+            pinned.system_prompt
+        );
+        // Closing the phase also detaches the pinned overlay, so later reads
+        // cannot reuse either its definition or its lifecycle probe.
+        reads.note_event(everruns_core::REASON_STARTED);
+        assert!(reads.definition(agents, key, must_not_fetch).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn pinned_batch_agent_replaces_an_initialized_current_definition_only() {
+        let reads = PhaseReads::new();
+        let id = everruns_contracts::typed_id::AgentId::new();
+        let key = (1, id.uuid());
+        reads
+            .definition(agents, key, || async {
+                Ok((
+                    Ok(Some(AgentDefinition::new(id, "agent", "current"))),
+                    Some(DependencyBlocker::AgentDeleted),
+                ))
+            })
+            .await
+            .unwrap();
+        let pinned = AgentDefinition::new(id, "agent", "pinned");
+        reads.seed(1, &session(), Some(&pinned));
+        let must_not_fetch =
+            || async { Err(everruns_contracts::error::AgentLoopError::store("cached")) };
+        assert_eq!(
+            reads
+                .definition(agents, key, must_not_fetch)
+                .await
+                .unwrap()
+                .unwrap()
+                .system_prompt,
+            "pinned"
+        );
+        assert!(matches!(
+            reads.blocker(agents, key, must_not_fetch).await.unwrap(),
+            Some(DependencyBlocker::AgentDeleted)
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_waiting_definition_retries_an_uncloneable_projection_error() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            tokio::task::yield_now().await;
+            Ok((
+                Err(everruns_contracts::error::AgentLoopError::config(
+                    "original projection error",
+                )),
+                Some(DependencyBlocker::AgentArchived),
+            ))
+        };
+        let (first, second) = tokio::join!(
+            reads.definition(agents, key, fetch),
+            reads.definition(agents, key, fetch)
+        );
+        for error in [first.unwrap_err(), second.unwrap_err()] {
+            assert!(
+                matches!(error, everruns_contracts::error::AgentLoopError::Configuration(message) if message == "original projection error")
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert!(matches!(
+            reads.blocker(agents, key, fetch).await.unwrap(),
+            Some(DependencyBlocker::AgentArchived)
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn turn_context_cells_are_org_session_input_scoped_and_invalidated_on_write() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let session = session();
+        let sid = session.id.uuid();
+        let input = Uuid::now_v7();
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok(TurnContext {
+                agent: None,
+                session: session.clone(),
+                messages: vec![],
+                model: None,
+                mcp_tool_definitions: vec![],
+            })
+        };
+        for key in [
+            (1, sid, input),
+            (1, sid, input),
+            (2, sid, input),
+            (1, sid, Uuid::now_v7()),
+            (1, Uuid::now_v7(), input),
+        ] {
+            reads.read_through(turn_contexts, key, fetch).await.unwrap();
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+        reads.invalidate_session(1, sid);
+        reads
+            .read_through(turn_contexts, (1, sid, input), fetch)
+            .await
+            .unwrap();
+        reads
+            .read_through(turn_contexts, (2, sid, input), fetch)
+            .await
+            .unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 5);
+        reads.note_event(everruns_core::ACT_STARTED);
+        reads
+            .read_through(turn_contexts, (2, sid, input), fetch)
+            .await
+            .unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 6);
     }
 }

@@ -11,6 +11,7 @@ use crate::records::FeatureFlags;
 use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
+use everruns_contracts::typed_id::SessionId;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
 use everruns_durable::WorkflowEventStore;
@@ -51,84 +52,8 @@ pub enum CommandErrorKind {
 }
 
 #[cfg(test)]
-pub(crate) mod transport_error_test_support {
-    use super::*;
-    use std::borrow::Cow;
-
-    pub(crate) const COMMAND_NAME: &str = "test_transport_conflict";
-    pub(crate) const RAW_DATABASE_DETAIL: &str = "duplicate key value violates unique constraint \"idx_transport_org_name\" at sqlx-postgres/src/connection.rs:666";
-    pub(crate) const SAFE_DOMAIN_DETAIL: &str = "Agent already exists";
-
-    #[derive(Debug)]
-    struct TestUniqueViolation;
-
-    impl std::fmt::Display for TestUniqueViolation {
-        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str(RAW_DATABASE_DETAIL)
-        }
-    }
-
-    impl std::error::Error for TestUniqueViolation {}
-
-    impl sqlx::error::DatabaseError for TestUniqueViolation {
-        fn message(&self) -> &str {
-            RAW_DATABASE_DETAIL
-        }
-
-        fn code(&self) -> Option<Cow<'_, str>> {
-            Some(Cow::Borrowed("23505"))
-        }
-
-        fn as_error(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
-            self
-        }
-
-        fn as_error_mut(&mut self) -> &mut (dyn std::error::Error + Send + Sync + 'static) {
-            self
-        }
-
-        fn into_error(self: Box<Self>) -> Box<dyn std::error::Error + Send + Sync + 'static> {
-            self
-        }
-
-        fn kind(&self) -> sqlx::error::ErrorKind {
-            sqlx::error::ErrorKind::UniqueViolation
-        }
-    }
-
-    #[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
-    pub(crate) struct TransportConflictCommand {
-        pub(crate) kind: String,
-    }
-
-    impl Command for TransportConflictCommand {
-        type Output = serde_json::Value;
-
-        fn meta() -> CommandMeta {
-            CommandMeta {
-                name: COMMAND_NAME,
-                category: "test",
-                description: "Exercise command transport error handling.",
-                method: "GET",
-                path: "/test/transport-conflict",
-            }
-        }
-
-        async fn execute(self, _ctx: &Ctx) -> Result<Self::Output, CommandError> {
-            let error = match self.kind.as_str() {
-                "database" => anyhow::Error::new(sqlx::Error::database(TestUniqueViolation))
-                    .context("create resource"),
-                "domain" => anyhow::anyhow!(SAFE_DOMAIN_DETAIL),
-                other => anyhow::anyhow!("Unknown test conflict kind: {other}"),
-            };
-            Err(classify_anyhow(error))
-        }
-    }
-
-    inventory::submit! {
-        CommandDescriptor::of::<TransportConflictCommand>()
-    }
-}
+#[path = "common_transport_error_test_support.rs"]
+pub(crate) mod transport_error_test_support;
 
 /// Command failure with optional agent-actionable extensions.
 ///
@@ -484,6 +409,14 @@ pub struct Ctx {
     pub message_service: Option<Arc<crate::domains::messages::MessageService>>,
     pub event_service: Option<Arc<crate::services::EventService>>,
     pub session_file_service: Option<Arc<crate::domains::session_files::WorkspaceFileService>>,
+    /// The session whose agent runtime this caller is, when it is one.
+    ///
+    /// Not the session a command operates on: that arrives in the command's
+    /// own params. This states who is calling, and gates exactly one thing —
+    /// the session's private `/memory/user` mount (TM-TENANT-013). Internal
+    /// callers that are not a session runtime (Slack, FCP, the capability
+    /// service, the durable seal) leave it `None`.
+    pub acting_for_session: Option<SessionId>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
     pub session_schedule_service:
@@ -548,6 +481,7 @@ impl Ctx {
             message_service: None,
             event_service: None,
             session_file_service: None,
+            acting_for_session: None,
             session_sandbox_service: None,
             session_schedule_service: None,
             notification_service: None,
@@ -651,6 +585,13 @@ impl Ctx {
 
     pub fn with_event_service(mut self, service: Arc<crate::services::EventService>) -> Self {
         self.event_service = Some(service);
+        self
+    }
+
+    /// Declare the session whose agent runtime this caller is. See
+    /// [`Ctx::acting_for_session`].
+    pub fn acting_for_session(mut self, session_id: SessionId) -> Self {
+        self.acting_for_session = Some(session_id);
         self
     }
 
