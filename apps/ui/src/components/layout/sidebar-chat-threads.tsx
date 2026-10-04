@@ -24,7 +24,8 @@ import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-const rowClass = "flex items-center gap-2 border-l-2 py-1 pl-9 pr-3 text-[13px] leading-5";
+const rowClass =
+  "flex items-center gap-2 py-1 pl-5 pr-2 text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 /** Hold `value` steady while `frozen` is true, adopting the latest on thaw. */
 function useFrozen<T>(value: T, frozen: boolean): T {
@@ -51,11 +52,17 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
 
   return (
     <div
+      role="group"
+      aria-label="Side chats"
+      className="ml-9 mr-2.5 mb-1 border-l border-border"
       onMouseEnter={() => setInteracting(true)}
       onMouseLeave={() => setInteracting(false)}
       onFocusCapture={() => setInteracting(true)}
       onBlurCapture={() => setInteracting(false)}
     >
+      <p className="py-1 pl-5 pr-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        Side chats
+      </p>
       {visible.map((thread) => {
         const href = `/chats/${thread.id}`;
         const isActive = pathname === href;
@@ -64,11 +71,12 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             key={thread.id}
             href={href}
             prefetch={false}
+            aria-current={isActive ? "page" : undefined}
             className={cn(
               rowClass,
               isActive
-                ? "border-l-primary bg-card font-medium text-foreground"
-                : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
+                ? "bg-muted font-medium text-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
             <span className="truncate">{threadTitle(thread)}</span>
@@ -82,7 +90,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
       <Link
         href="/chats/new"
         prefetch={false}
-        className={cn(rowClass, "border-l-transparent text-muted-foreground hover:text-foreground")}
+        className={cn(rowClass, "text-muted-foreground hover:bg-muted hover:text-foreground")}
       >
         <Plus className="size-3.5 shrink-0" />
         New side chat
@@ -93,7 +101,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
       <Link
         href="/chats/history"
         prefetch={false}
-        className={cn(rowClass, "border-l-transparent text-muted-foreground hover:text-foreground")}
+        className={cn(rowClass, "text-muted-foreground hover:bg-muted hover:text-foreground")}
       >
         All chats
       </Link>
