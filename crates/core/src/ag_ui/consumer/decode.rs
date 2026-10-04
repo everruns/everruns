@@ -251,10 +251,9 @@ fn locate_field(object: &Map<String, Value>, detail: &str) -> Option<String> {
         serde_json::from_str(number).ok()?
     } else if let Some(boolean) = between(detail, "invalid type: boolean `", "`") {
         serde_json::from_str(boolean).ok()?
-    } else if let Some(string) = between(detail, "invalid type: string \"", "\"") {
-        Value::String(string.to_owned())
     } else {
-        return None;
+        let string = between(detail, "invalid type: string \"", "\"")?;
+        Value::String(string.to_owned())
     };
     let mut matches = object
         .iter()

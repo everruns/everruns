@@ -223,7 +223,7 @@ async fn test_message_triggers_agent_workflow() {
                         "  Event {}: type={}, data_preview={}",
                         i,
                         event["type"].as_str().unwrap_or("?"),
-                        &event["data"]
+                        event["data"]
                             .to_string()
                             .chars()
                             .take(100)
