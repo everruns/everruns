@@ -54,7 +54,6 @@ permitted actor wrote it. Operators cannot change production preferences or prom
 an off/local-only feature. Platform permission is independent of tenant membership
 and never follows from ownership of any organisation (EVE-1206).
 
-
 The [HTTP API](../../crates/server/src/api/org_feature_flags.rs) owns wire shapes and route
 permissions. The public deployment flag map describes whether routes/capabilities can
 exist, while the organisation flag map returns the effective booleans. Settings include
