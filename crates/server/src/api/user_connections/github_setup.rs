@@ -193,7 +193,7 @@ pub async fn github_callback(
         .verify_installation(installation_id)
         .await
         .map_err(|e| {
-            tracing::error!("GitHub App installation verification failed: {}", e);
+            tracing::error!(error = %e, "GitHub App installation verification failed");
             (
                 StatusCode::BAD_REQUEST,
                 "GitHub App installation verification failed".to_string(),
@@ -207,7 +207,7 @@ pub async fn github_callback(
         .get_user_id_by_installation_id("github", result.installation_id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to resolve GitHub installation owner: {}", e);
+            tracing::error!(error = %e, "Failed to resolve GitHub installation owner");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to store connection".to_string(),
@@ -245,7 +245,7 @@ pub async fn github_callback(
         })
         .await
         .map_err(|e| {
-            tracing::error!("Failed to store GitHub App installation: {}", e);
+            tracing::error!(error = %e, "Failed to store GitHub App installation");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to store connection".to_string(),
