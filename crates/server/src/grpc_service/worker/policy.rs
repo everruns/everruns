@@ -144,12 +144,26 @@ impl WorkerServiceImpl {
             .map(everruns_internal_protocol::proto_value_to_json)
             .unwrap_or_else(|| serde_json::json!({}));
 
-        let authority = crate::domains::payments::ServerPaymentAuthority::new(
+        // The worker names the input that caused execution; whether it proves an
+        // interactive user is decided from the server's own invocation record
+        // (EVE-1187). Absent means unattended, which never reaches a user wallet.
+        let input_message_id = req
+            .input_message_id
+            .as_ref()
+            .map(|id| uuid::Uuid::parse_str(&id.value))
+            .transpose()
+            .map_err(|error| {
+                Status::invalid_argument(format!("Invalid input_message_id: {error}"))
+            })?;
+        let mut authority = crate::domains::payments::ServerPaymentAuthority::new(
             self.db.clone(),
             self.encryption.clone(),
             req.org_id,
             agent_id,
         );
+        if let Some(input_message_id) = input_message_id {
+            authority = authority.bound_to_input_message(input_message_id);
+        }
         let response = authority
             .execute_machine_payment(
                 session_id,

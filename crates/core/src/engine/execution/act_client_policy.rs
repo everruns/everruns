@@ -154,6 +154,11 @@ where
     {
         tool_context.session_creation_authority = Some(bound);
     }
+    if let Some(authority) = tool_context.payment_authority.as_ref()
+        && let Some(bound) = authority.for_execution(context.input_message_id.uuid())
+    {
+        tool_context.payment_authority = Some(bound);
+    }
     // Key file I/O by the attached workspace when known: pin the file store
     // to the workspace so shared-workspace sessions address the workspace's
     // files, not the session's own keyspace. For the default 1:1 case this

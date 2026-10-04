@@ -831,10 +831,12 @@ pub struct GrpcBudgetChecker {
 }
 
 /// Payment authority that forwards paid capability requests to the control plane.
+#[derive(Clone)]
 pub struct GrpcPaymentAuthority {
     client: GrpcClient,
     org_id: i64,
     agent_id: Option<String>,
+    input_message_id: Option<Uuid>,
 }
 
 /// Session-creation authority backed by the control-plane permission resolver.
@@ -867,6 +869,7 @@ impl GrpcPaymentAuthority {
             client,
             org_id,
             agent_id: None,
+            input_message_id: None,
         }
     }
 
@@ -2706,6 +2709,15 @@ impl crate::core::tool_execution::BudgetChecker for GrpcBudgetChecker {
 
 #[async_trait]
 impl crate::core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
+    fn for_execution(
+        &self,
+        id: Uuid,
+    ) -> Option<Arc<dyn crate::core::tool_execution::PaymentAuthority>> {
+        let mut bound = self.clone();
+        bound.input_message_id = Some(id);
+        Some(Arc::new(bound))
+    }
+
     async fn execute_machine_payment(
         &self,
         session_id: SessionId,
@@ -2733,6 +2745,7 @@ impl crate::core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
             metadata: Some(everruns_internal_protocol::json_to_proto_value(
                 &request.metadata,
             )),
+            input_message_id: self.input_message_id.map(uuid_to_proto),
         };
         let response = client
             .execute_machine_payment(proto_request)

@@ -1887,6 +1887,10 @@ message ExecuteMachinePaymentRequest {
     double max_amount_usd = 9;
     repeated string rail_preference = 10;
     google.protobuf.Value metadata = 11;
+    // The persisted input that caused this execution. The control plane reads
+    // its server-recorded invocation to decide whether a human user's wallet
+    // may be used; absent means unattended (EVE-1187).
+    optional Uuid input_message_id = 12;
 }
 
 message ExecuteMachinePaymentResponse {
