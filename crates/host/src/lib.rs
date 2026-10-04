@@ -366,5 +366,6 @@ pub mod capabilities {
     pub use everruns::batteries::{
         compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
     };
-    pub use everruns_core::host::capabilities::*;
+    #[cfg(feature = "host-shell")]
+    pub use everruns_core::host::capabilities::shell;
 }
