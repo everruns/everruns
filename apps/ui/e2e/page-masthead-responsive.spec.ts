@@ -144,7 +144,7 @@ test.describe("Page masthead responsive layout", () => {
   });
 
   // The agent page keeps a three-action header at every width (Edit, the
-  // overflow menu, Test chat); secondary actions live in the overflow.
+  // overflow menu, Test in Playground); secondary actions live in the overflow.
   test("keeps the agent actions contained with secondary actions in the overflow at mobile width", async ({
     page,
   }) => {
@@ -157,7 +157,7 @@ test.describe("Page masthead responsive layout", () => {
     const moreActions = page.getByRole("button", { name: "More actions" });
     await expect(title).toBeVisible();
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Test chat" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Test in Playground" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
     await expect(moreActions).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toHaveCount(0);
@@ -207,7 +207,7 @@ test.describe("Page masthead responsive layout", () => {
       const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
       const actions = masthead.locator('[data-slot="page-masthead-actions"]');
 
-      await expect(page.getByRole("button", { name: "Test chat" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Test in Playground" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "More actions" })).toBeVisible();
 
@@ -230,7 +230,7 @@ test.describe("Page masthead responsive layout", () => {
 
     const title = page.getByRole("heading", { name: "Jokes Agent" });
     const actions = page
-      .getByRole("button", { name: "Test chat" })
+      .getByRole("button", { name: "Test in Playground" })
       .locator("xpath=ancestor::div[@data-slot='page-masthead-actions'][1]");
     const titleBox = await title.boundingBox();
     const actionsBox = await actions.boundingBox();
