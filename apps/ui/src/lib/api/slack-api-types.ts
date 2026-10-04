@@ -2,7 +2,7 @@ import type { SessionStrategy } from "./legacy-api-types";
 
 export type SlackResponsePolicy = "all_messages" | "mentions_only" | "relevant_messages";
 
-export type SlackReplyMode = "all_messages" | "report_progress_only";
+export type SlackReplyMode = "all_messages" | "tool_only";
 
 export interface SlackChannelConfig {
   signing_secret?: string;

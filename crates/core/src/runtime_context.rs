@@ -328,8 +328,8 @@ async fn build_runtime_agent(
             .model(model)
             .build()
     };
-    if crate::progress_reporting::session_uses_report_progress(&snapshot.tags) {
-        runtime_agent = crate::progress_reporting::apply_report_progress_mode(runtime_agent);
+    if crate::channel_messaging::session_uses_channel_tools(&snapshot.tags) {
+        runtime_agent = crate::channel_messaging::apply_channel_message_mode(runtime_agent);
     }
     Ok(runtime_agent)
 }

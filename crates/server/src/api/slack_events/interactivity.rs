@@ -64,6 +64,40 @@ struct SlackChannelRef {
 #[derive(Debug, Deserialize)]
 struct SlackMessageRef {
     ts: String,
+    #[serde(default)]
+    thread_ts: Option<String>,
+}
+
+impl InteractionPayload {
+    /// The verified click carries the card's conversation, including its root
+    /// thread. Never use the session's last conversation for a resumed turn.
+    fn decision_event(&self, clicker: &str) -> Option<super::SlackEvent> {
+        let channel = self.channel.as_ref()?;
+        let message = self.message.as_ref()?;
+        if channel.id.is_empty() || message.ts.is_empty() {
+            return None;
+        }
+        Some(super::SlackEvent {
+            event_type: "message".into(),
+            user: Some(clicker.into()),
+            channel: Some(channel.id.clone()),
+            ts: Some(message.ts.clone()),
+            thread_ts: Some(
+                message
+                    .thread_ts
+                    .clone()
+                    .unwrap_or_else(|| message.ts.clone()),
+            ),
+            text: None,
+            title: None,
+            bot_id: None,
+            subtype: None,
+            channel_type: None,
+            assistant_thread: None,
+            files: vec![],
+            attachments: vec![],
+        })
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -263,6 +297,18 @@ async fn handle_block_action(
         return Ok(ack());
     };
 
+    let Some(event) = payload.decision_event(clicker) else {
+        tracing::warn!(app_id = %app_id, %session_id, "Slack approval click had no reply destination");
+        return Ok(ack());
+    };
+    if slack_config
+        .channel_id
+        .as_deref()
+        .is_some_and(|id| event.channel.as_deref() != Some(id))
+    {
+        return Ok(ack());
+    }
+
     // THREAT[TM-SLACK-004]: claim the exact pending card before creating the
     // consent message. Storage serializes this with event creation, so retries,
     // concurrent clicks, prose replies, and superseding asks all fail closed.
@@ -288,8 +334,9 @@ async fn handle_block_action(
     if let Err(error) = post_decision_message(
         state,
         app,
-        session.id,
-        session.org_id,
+        slack_channel,
+        &session,
+        &event,
         clicker,
         slack_config,
         &decision.as_message(&action_text),
@@ -365,8 +412,9 @@ async fn respond_ephemeral(payload: &InteractionPayload, text: &str) {
 async fn post_decision_message(
     state: &SlackState,
     app: &IngressContext,
-    session_id: everruns_contracts::typed_id::SessionId,
-    org_id: i64,
+    slack_channel: &IngressChannel,
+    session: &crate::storage::models::SessionRow,
+    event: &super::SlackEvent,
     clicker: &str,
     slack_config: &SlackChannelConfig,
     text: &str,
@@ -374,6 +422,8 @@ async fn post_decision_message(
 ) -> anyhow::Result<()> {
     use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 
+    let session_id = session.id;
+    let org_id = session.org_id;
     let mut actor_metadata = std::collections::HashMap::new();
     if let Some(team_id) = slack_config.team_id.as_ref() {
         actor_metadata.insert("team_id".to_string(), team_id.clone());
@@ -407,7 +457,7 @@ async fn post_decision_message(
         );
     }
 
-    state
+    let message = state
         .message_service
         .create(
             crate::domains::messages::CreateMessageContext {
@@ -427,12 +477,44 @@ async fn post_decision_message(
                 },
                 addressed_participant_id: None,
                 controls: None,
-                metadata: None,
+                metadata: Some(super::slack_message_metadata(
+                    app,
+                    slack_channel,
+                    event,
+                    Some(&participant),
+                )),
                 tags: None,
                 external_actor: Some(actor),
             },
         )
         .await?;
+    if let Some(dispatcher) = &state.delivery_dispatcher {
+        let channel = event.channel.clone().unwrap_or_default();
+        let hints = session
+            .hints
+            .clone()
+            .and_then(|hints| serde_json::from_value(hints).ok());
+        dispatcher
+            .register(crate::slack_delivery::DeliveryRegistration {
+                session_id: session_id.uuid(),
+                input_message_id: message.id.to_string(),
+                bot_token: slack_config.bot_token.clone(),
+                surface: crate::slack_delivery::classify_surface(
+                    slack_config.agent_surface_enabled,
+                    None,
+                    &channel,
+                ),
+                channel,
+                thread_ts: event.thread_ts.clone().unwrap_or_default(),
+                reply_mode: slack_config.reply_mode,
+                recipient_user_id: Some(clicker.into()),
+                recipient_team_id: slack_config.team_id.clone(),
+                tool_visibility: slack_config.tool_visibility,
+                generic_tool_text: slack_config.generic_tool_text.clone(),
+                approvals_enabled: crate::slack_approvals::approvals_enabled_in(hints.as_ref()),
+            })
+            .await;
+    }
     Ok(())
 }
 
@@ -486,6 +568,31 @@ mod tests {
         assert_eq!(payload.message.as_ref().map(|m| m.ts.as_str()), Some("1.2"));
         assert_eq!(payload.actions.len(), 1);
         assert_eq!(payload.actions[0].action_id, APPROVE_ACTION_ID);
+    }
+
+    #[test]
+    fn approval_resume_keeps_the_signed_card_thread() {
+        let mut body = click(APPROVE_ACTION_ID, "U_R", "U_R");
+        body["message"]["thread_ts"] = serde_json::json!("1.0");
+        let payload = parse_interaction(&form_body(&body)).unwrap();
+        let event = payload.decision_event("U_R").unwrap();
+        assert_eq!(event.channel.as_deref(), Some("C1"));
+        assert_eq!(event.thread_ts.as_deref(), Some("1.0"));
+        assert_eq!(event.user.as_deref(), Some("U_R"));
+        assert_eq!(event.ts.as_deref(), Some("1.2"));
+        body["message"].as_object_mut().unwrap().remove("thread_ts");
+        let payload = parse_interaction(&form_body(&body)).unwrap();
+        assert_eq!(
+            payload.decision_event("U_R").unwrap().thread_ts.as_deref(),
+            Some("1.2")
+        );
+        body.as_object_mut().unwrap().remove("channel");
+        assert!(
+            parse_interaction(&form_body(&body))
+                .unwrap()
+                .decision_event("U_R")
+                .is_none()
+        );
     }
 
     #[test]

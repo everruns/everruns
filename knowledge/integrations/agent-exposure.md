@@ -292,7 +292,7 @@ anonymous chat surface next to it.
 
 **Transport-typed config is confirmed, not questioned.** `agent_surface_enabled` governs
 manifest and event subscriptions, the delivery surface is detected per event, and pane
-streaming with `report_progress_only` on channel threads is a per-surface answer. None of
+streaming with agent-controlled messages on channel threads is a per-surface answer. None of
 that generalizes across transports. Shared exposure *policy* (tool visibility) moves to
 the neutral module; transport config stays typed per transport.
 

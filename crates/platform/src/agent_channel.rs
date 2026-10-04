@@ -307,15 +307,16 @@ pub enum SlackReplyMode {
     /// Forward completed assistant messages directly to Slack.
     #[default]
     AllMessages,
-    /// Only send deterministic updates emitted via `report_progress`.
-    ReportProgressOnly,
+    /// Only publish messages explicitly posted through `channel_post_message`.
+    #[serde(alias = "report_progress_only")]
+    ToolOnly,
 }
 
 impl From<SlackReplyMode> for everruns_core::channel::ChannelReplyMode {
     fn from(m: SlackReplyMode) -> Self {
         match m {
             SlackReplyMode::AllMessages => Self::AllMessages,
-            SlackReplyMode::ReportProgressOnly => Self::ReportProgressOnly,
+            SlackReplyMode::ToolOnly => Self::ToolOnly,
         }
     }
 }
@@ -324,9 +325,7 @@ impl From<everruns_core::channel::ChannelReplyMode> for SlackReplyMode {
     fn from(m: everruns_core::channel::ChannelReplyMode) -> Self {
         match m {
             everruns_core::channel::ChannelReplyMode::AllMessages => Self::AllMessages,
-            everruns_core::channel::ChannelReplyMode::ReportProgressOnly => {
-                Self::ReportProgressOnly
-            }
+            everruns_core::channel::ChannelReplyMode::ToolOnly => Self::ToolOnly,
         }
     }
 }

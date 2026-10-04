@@ -1185,23 +1185,29 @@ impl Database {
         Ok(row)
     }
 
-    /// Find all active sessions with Slack tags (for startup recovery).
-    /// Returns active sessions owned by apps with Slack channel configuration.
+    /// Find active Slack sessions through trusted endpoint or archival ownership.
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
-        let rows = sqlx::query_as::<_, SessionRow>(
+        let sql = format!(
             r#"
-            SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.channel_id, s.trigger_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.virtual_user_id, s.playground_user_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.created_at, s.updated_at, s.started_at, s.finished_at,
-                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_cost_usd, s.parent_session_id,
-                   s.blueprint_id, s.blueprint_config
+            SELECT {SESSION_COLUMNS}
             FROM sessions s
-            JOIN apps a ON a.id = s.app_id AND a.org_id = s.org_id
             WHERE s.status = 'active'
-              AND a.channel_type = 'slack'
-              AND a.status != 'deleted'
+              AND (
+                EXISTS (SELECT 1 FROM apps a WHERE a.id = s.app_id
+                    AND a.org_id = s.org_id AND a.channel_type = 'slack' AND a.status != 'deleted')
+                OR (s.app_id IS NULL AND EXISTS (
+                    SELECT 1 FROM agent_channels e JOIN agents a ON a.id = e.agent_id
+                    WHERE e.id = s.channel_id AND e.channel_type = 'slack'
+                        AND a.org_id = s.org_id AND a.id = s.agent_id
+                        AND e.enabled AND e.status = 'live'
+                ))
+              )
             "#,
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        );
+        // Only the static column projection is interpolated; no caller data.
+        let rows = sqlx::query_as::<_, SessionRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_all(&self.pool)
+            .await?;
 
         Ok(rows)
     }

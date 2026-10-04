@@ -45,11 +45,12 @@ discovered: the pane forces `PerThread` routing while channel threads keep whate
 config says. Rejecting `per_channel`/`per_user` at config time would be wrong, since the
 same app legitimately serves channels where those strategies mean something.
 
-**`report_progress_only` is scoped rather than retired.** It exists because silence
-during a long turn was unacceptable, and native streaming removes that need in the
-assistant pane. It survives as the channel-thread answer, because token-by-token
-streaming into a shared channel is not wanted. Streaming is the pane answer. Neither
-obsoletes the other, and no existing app needed migrating.
+**Agent-controlled communication replaces progress-only reporting.** The selective
+communication intent survives through a channel-neutral posting tool. Agents can
+ask questions and give final answers as well as report milestones, and the tool
+confirms platform acceptance. Channel threads receive an immediate acknowledgement;
+the pane retains its lifecycle status. See [Messaging Integrations](messaging-integrations.md)
+for the contract and source links.
 
 **Tool narration reuses `PublicToolVisibility`.** Mapping tool names directly to Slack
 status text would leak internals into a user-facing surface. AG-UI already solved this

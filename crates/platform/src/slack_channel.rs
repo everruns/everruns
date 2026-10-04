@@ -110,7 +110,7 @@ mod tests {
             "channel_id": "C123",
             "team_id": "T123",
             "session_strategy": "per_channel",
-            "reply_mode": "report_progress_only"
+            "reply_mode": "tool_only"
         }"#;
         let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.signing_secret, "sec123");
@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(config.channel_id.as_deref(), Some("C123"));
         assert_eq!(config.team_id.as_deref(), Some("T123"));
         assert_eq!(config.session_strategy, SessionBinding::Conversation);
-        assert_eq!(config.reply_mode, SlackReplyMode::ReportProgressOnly);
+        assert_eq!(config.reply_mode, SlackReplyMode::ToolOnly);
     }
 
     #[test]
@@ -190,10 +190,13 @@ mod tests {
 
     #[test]
     fn test_slack_reply_mode_serde_roundtrip() {
-        let json = serde_json::to_string(&SlackReplyMode::ReportProgressOnly).unwrap();
-        assert_eq!(json, r#""report_progress_only""#);
+        let json = serde_json::to_string(&SlackReplyMode::ToolOnly).unwrap();
+        assert_eq!(json, r#""tool_only""#);
         let parsed: SlackReplyMode = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, SlackReplyMode::ReportProgressOnly);
+        assert_eq!(parsed, SlackReplyMode::ToolOnly);
+        let legacy: SlackReplyMode = serde_json::from_str(r#""report_progress_only""#).unwrap();
+        assert_eq!(legacy, SlackReplyMode::ToolOnly);
+        assert_eq!(serde_json::to_string(&legacy).unwrap(), r#""tool_only""#);
     }
 
     #[test]
