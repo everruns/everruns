@@ -13,6 +13,11 @@
   the hook's arguments. See [Client-Side Tools](execution/client-side-tools.md)
   and [Threat Model](security/threat-model.md) TM-CLIENT-005.
 
+* **Browserless tools honor the session network ACL.** Screenshot, content, scrape,
+  interact, navigate, and persistent browsers reject hosts the session excludes,
+  including redirects and discovered requests on transports that can pause them.
+  See [Threat Model](security/threat-model.md) TM-TOOL-053.
+
 * **Playground list is dense rows.** The library groups the current page by day,
   agent, or none, filters by agent, and opens a chat from the row. Agent and
   virtual-user chips still link to their pages. See

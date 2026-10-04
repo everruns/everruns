@@ -46,7 +46,7 @@ use tracing::warn;
 use crate::cdp::{CdpSession, DEFAULT_RECONNECT_TIMEOUT_MS};
 use crate::session_tools::{register_session_endpoint, try_get_cdp_session};
 use crate::state::get_api_token;
-use crate::validation::validate_browserless_url;
+use crate::validation::{is_local_browser_url, validate_browserless_navigation};
 
 /// Session storage key for the last cursor position (`"x,y"`).
 const CURSOR_KEY: &str = "computer_use.cursor";
@@ -400,21 +400,20 @@ fn cdp_key(name: &str) -> CdpKey {
 
 /// URL policy shared by `navigate` and the post-action guard.
 fn url_blocked(context: &ToolContext, url: &str) -> Option<String> {
-    if let Err(ToolExecutionResult::ToolError(msg)) = validate_browserless_url(url) {
-        return Some(msg);
+    if is_local_browser_url(url) {
+        return None;
     }
-    if let Some(access) = context.network_access.as_ref()
-        && !access.is_url_allowed(url)
-    {
-        return Some("URL is blocked by the session's network access policy".to_string());
+    match validate_browserless_navigation(context.network_access.as_ref(), url) {
+        Ok(()) => None,
+        Err(ToolExecutionResult::ToolError(message)) => Some(message),
+        Err(other) => Some(format!("{other:?}")),
     }
-    None
 }
 
 /// Pages the guard leaves alone: blank pages and in-browser documents that
 /// never reach the network.
 fn is_local_page(url: &str) -> bool {
-    url.is_empty() || url.starts_with("about:") || url.starts_with("data:")
+    is_local_browser_url(url)
 }
 
 /// The `computer` backend on a persistent Browserless browser.
@@ -436,7 +435,7 @@ impl ComputerBackend for BrowserlessComputerBackend {
         display: DisplaySize,
     ) -> Result<Box<dyn ComputerSession>, ToolExecutionResult> {
         let api_token = get_api_token(context).await?;
-        let session = match try_get_cdp_session(context).await {
+        let mut session = match try_get_cdp_session(context).await {
             Some(session) => session,
             None => {
                 let ws_url = crate::browser_session_url(&crate::browserless_ws_base(), &api_token);
@@ -445,6 +444,15 @@ impl ComputerBackend for BrowserlessComputerBackend {
                     .map_err(ToolExecutionResult::tool_error)?
             }
         };
+        if let Some(access) = context
+            .network_access
+            .as_ref()
+            .filter(|access| !access.is_empty())
+            && let Err(error) = session.arm_request_policy(access).await
+        {
+            session.disconnect().await;
+            return Err(ToolExecutionResult::tool_error(error));
+        }
         let cursor = load_cursor(context).await;
         match CdpDisplay::attach(session, display, cursor).await {
             Ok(display) => Ok(Box::new(BrowserlessComputerSession {

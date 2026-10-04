@@ -20,7 +20,7 @@ use crate::state::{
     BrowserSessionState, browser_session_external_id, delete_browser_session, delete_cookies,
     get_api_token, get_browser_session, save_browser_session,
 };
-use crate::validation::validate_browserless_url;
+use crate::validation::validate_browserless_navigation;
 
 const BROWSER_SESSION_LEASE_DURATION_SECONDS: u32 = 20 * 60;
 
@@ -147,6 +147,16 @@ impl Tool for BrowserlessOpenBrowserTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
+        if let Some(url) = arguments
+            .get("url")
+            .and_then(|value| value.as_str())
+            .filter(|url| !url.is_empty())
+            && let Err(error) =
+                validate_browserless_navigation(context.network_access.as_ref(), url)
+        {
+            return error;
+        }
+
         context
             .emit_progress("browserless_open_browser", "Resolving connection…")
             .await;
@@ -161,6 +171,19 @@ impl Tool for BrowserlessOpenBrowserTool {
             if let Ok(url) = existing.validated_reconnect_url(&api_token) {
                 match CdpSession::connect(&url).await {
                     Ok(mut session) => {
+                        if let Some(access) = context
+                            .network_access
+                            .as_ref()
+                            .filter(|access| !access.is_empty())
+                            && let Err(error) = session.arm_request_policy(access).await
+                        {
+                            session.disconnect().await;
+                            return ToolExecutionResult::tool_error(error);
+                        }
+                        let landing_blocked = session
+                            .reset_if_landing_blocked(context.network_access.as_ref())
+                            .await
+                            .err();
                         let title = session.get_title().await.unwrap_or_default();
                         let current_url = session.get_url().await.unwrap_or_default();
 
@@ -184,6 +207,9 @@ impl Tool for BrowserlessOpenBrowserTool {
                                 }
                                 session.disconnect().await;
 
+                                if let Some(message) = landing_blocked {
+                                    return ToolExecutionResult::tool_error(message);
+                                }
                                 return ToolExecutionResult::Success(json!({
                                     "status": "already_open",
                                     "message": "Browser session is already active.",
@@ -225,9 +251,14 @@ impl Tool for BrowserlessOpenBrowserTool {
             .and_then(|v| v.as_str())
             .filter(|u| !u.is_empty())
         {
-            if let Err(e) = validate_browserless_url(url) {
+            if let Some(access) = context
+                .network_access
+                .as_ref()
+                .filter(|access| !access.is_empty())
+                && let Err(error) = session.arm_request_policy(access).await
+            {
                 session.disconnect().await;
-                return e;
+                return ToolExecutionResult::tool_error(error);
             }
             // Emit progress with host only to avoid leaking query params/tokens
             let host = url
@@ -254,6 +285,13 @@ impl Tool for BrowserlessOpenBrowserTool {
                 return ToolExecutionResult::tool_error(format!(
                     "Failed to navigate to {url}: {e}"
                 ));
+            }
+            if let Err(error) = session
+                .reset_if_landing_blocked(context.network_access.as_ref())
+                .await
+            {
+                session.disconnect().await;
+                return ToolExecutionResult::tool_error(error);
             }
         }
 

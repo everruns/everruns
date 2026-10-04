@@ -13,6 +13,7 @@ use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -25,6 +26,9 @@ use tokio_tungstenite::{
     connect_async_tls_with_config,
 };
 use tracing::debug;
+
+use crate::validation::{browser_request_allowed, validate_browserless_navigation};
+use everruns_core::network_access::NetworkAccessList;
 
 /// Timeout for the initial CDP WebSocket connection handshake.
 #[cfg(not(test))]
@@ -54,6 +58,9 @@ pub struct CdpSession {
     next_id: u32,
     page_target_id: String,
     page_session_id: String,
+    /// Session ACL installed by [`Self::arm_request_policy`]. While set, paused
+    /// Fetch requests are failed unless the static policy and the ACL allow them.
+    request_policy: Option<NetworkAccessList>,
 }
 
 impl CdpSession {
@@ -94,6 +101,7 @@ impl CdpSession {
             next_id: 1,
             page_target_id: String::new(),
             page_session_id: String::new(),
+            request_policy: None,
         };
         session.attach_page_target().await?;
         Ok(session)
@@ -125,6 +133,54 @@ impl CdpSession {
         self.send_command_with_session(method, params, None).await
     }
 
+    /// Pause every browser request and fail the ones the session ACL rejects.
+    ///
+    /// THREAT[TM-TOOL-053]: `Page.navigate` only names the first URL. Redirects
+    /// and requests the page discovers are separate network requests. Fetch
+    /// pauses them before they are sent; this session fails the paused request
+    /// unless the static SSRF check and the session access list both allow it.
+    /// Failing to arm is fail-closed: callers must not navigate after an error.
+    pub async fn arm_request_policy(&mut self, access: &NetworkAccessList) -> Result<(), String> {
+        if access.is_empty() {
+            return Ok(());
+        }
+        self.request_policy = Some(access.clone());
+        if let Err(error) = self
+            .send_command(
+                "Fetch.enable",
+                json!({
+                    "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
+                    "handleAuthRequests": false
+                }),
+            )
+            .await
+        {
+            self.request_policy = None;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// After a navigation, send the page back to `about:blank` when it landed
+    /// somewhere the session policy does not allow.
+    pub async fn reset_if_landing_blocked(
+        &mut self,
+        access: Option<&NetworkAccessList>,
+    ) -> Result<(), String> {
+        if access.is_none_or(|access| access.is_empty()) {
+            return Ok(());
+        }
+        let url = self.get_url().await?;
+        if let Err(result) = validate_browserless_navigation(access, &url) {
+            let _ = self.navigate("about:blank").await;
+            return Err(match result {
+                everruns_core::tools::ToolExecutionResult::ToolError(message) => message,
+                other => format!("{other:?}"),
+            });
+        }
+        Ok(())
+    }
+
     async fn send_command_with_session(
         &mut self,
         method: &str,
@@ -133,7 +189,59 @@ impl CdpSession {
     ) -> Result<Value, String> {
         let id = self.next_id;
         self.next_id += 1;
+        self.write_command(id, method, params, session_id).await?;
 
+        // Read messages until we find the response with matching id.
+        // Timeout prevents hanging when server accepts but never responds.
+        // Fetch.requestPaused is answered in this loop so a paused redirect
+        // cannot sit unanswered while we wait for the original command.
+        let method_owned = method.to_string();
+        let mut side_ids = HashSet::new();
+        tokio::time::timeout(CDP_COMMAND_TIMEOUT, async {
+            loop {
+                let parsed = self.read_message().await?;
+                if let Some(event_method) = parsed.get("method").and_then(|value| value.as_str()) {
+                    if event_method == "Fetch.requestPaused" {
+                        let side_id = self.answer_paused_request(&parsed).await?;
+                        side_ids.insert(side_id);
+                    } else {
+                        debug!("CDP event (skipped): {event_method}");
+                    }
+                    continue;
+                }
+
+                if let Some(message_id) = parsed.get("id").and_then(|value| value.as_u64()) {
+                    if side_ids.remove(&message_id) {
+                        continue;
+                    }
+                    if message_id == u64::from(id) {
+                        if let Some(error) = parsed.get("error") {
+                            let message = error
+                                .get("message")
+                                .and_then(|value| value.as_str())
+                                .unwrap_or("Unknown CDP error");
+                            return Err(format!("CDP error in {method_owned}: {message}"));
+                        }
+                        return Ok(parsed.get("result").cloned().unwrap_or(json!({})));
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|_| {
+            format!(
+                "CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"
+            )
+        })?
+    }
+
+    async fn write_command(
+        &mut self,
+        id: u32,
+        method: &str,
+        params: Value,
+        session_id: Option<String>,
+    ) -> Result<(), String> {
         let mut msg = json!({
             "id": id,
             "method": method,
@@ -147,64 +255,73 @@ impl CdpSession {
         self.sink
             .send(Message::Text(msg.to_string().into()))
             .await
-            .map_err(|e| format!("CDP send failed: {e}"))?;
+            .map_err(|e| format!("CDP send failed: {e}"))
+    }
 
-        // Read messages until we find the response with matching id.
-        // Timeout prevents hanging when server accepts but never responds.
-        let method_owned = method.to_string();
-        tokio::time::timeout(CDP_COMMAND_TIMEOUT, async {
-            loop {
-                match self.source.next().await {
-                    Some(Ok(Message::Text(text))) => {
-                        let parsed: Value = serde_json::from_str(&text)
-                            .map_err(|e| format!("CDP invalid JSON response: {e}"))?;
-
-                        // Check if this is our response (has matching id)
-                        if parsed.get("id").and_then(|v| v.as_u64()) == Some(id as u64) {
-                            // Check for CDP error
-                            if let Some(error) = parsed.get("error") {
-                                let msg = error
-                                    .get("message")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("Unknown CDP error");
-                                return Err(format!("CDP error in {method_owned}: {msg}"));
-                            }
-                            return Ok(parsed.get("result").cloned().unwrap_or(json!({})));
-                        }
-
-                        // Otherwise it's an event — skip it
-                        if let Some(event_method) = parsed.get("method").and_then(|v| v.as_str()) {
-                            debug!("CDP event (skipped): {event_method}");
-                        }
-                    }
-                    Some(Ok(Message::Binary(_))) => {
-                        // Binary frames — skip
-                        continue;
-                    }
-                    Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) => {
-                        continue;
-                    }
-                    Some(Ok(Message::Close(_))) => {
-                        return Err("CDP WebSocket closed unexpectedly".to_string());
-                    }
-                    Some(Ok(Message::Frame(_))) => {
-                        continue;
-                    }
-                    Some(Err(e)) => {
-                        return Err(format!("CDP WebSocket error: {e}"));
-                    }
-                    None => {
-                        return Err("CDP WebSocket stream ended".to_string());
-                    }
+    async fn read_message(&mut self) -> Result<Value, String> {
+        loop {
+            match self.source.next().await {
+                Some(Ok(Message::Text(text))) => {
+                    return serde_json::from_str(&text)
+                        .map_err(|e| format!("CDP invalid JSON response: {e}"));
                 }
+                Some(Ok(Message::Binary(_)))
+                | Some(Ok(Message::Ping(_)))
+                | Some(Ok(Message::Pong(_)))
+                | Some(Ok(Message::Frame(_))) => continue,
+                Some(Ok(Message::Close(_))) => {
+                    return Err("CDP WebSocket closed unexpectedly".to_string());
+                }
+                Some(Err(e)) => return Err(format!("CDP WebSocket error: {e}")),
+                None => return Err("CDP WebSocket stream ended".to_string()),
             }
-        })
-        .await
-        .map_err(|_| {
-            format!(
-                "CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"
+        }
+    }
+
+    /// Continue or fail one paused request. Returns the command id so the
+    /// reader can ignore that response without losing the command it is waiting for.
+    async fn answer_paused_request(&mut self, event: &Value) -> Result<u64, String> {
+        let request_id = event
+            .pointer("/params/requestId")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .to_string();
+        let url = event
+            .pointer("/params/request/url")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        let allowed =
+            !request_id.is_empty() && browser_request_allowed(self.request_policy.as_ref(), url);
+        if !allowed {
+            debug!(
+                "CDP blocked browser request to {}",
+                request_host_for_log(url)
+            );
+        }
+
+        let id = self.next_id;
+        self.next_id += 1;
+        let session_id = event
+            .get("sessionId")
+            .and_then(|value| value.as_str())
+            .map(ToOwned::to_owned)
+            .or_else(|| {
+                if self.page_session_id.is_empty() {
+                    None
+                } else {
+                    Some(self.page_session_id.clone())
+                }
+            });
+        let (method, params) = if allowed {
+            ("Fetch.continueRequest", json!({ "requestId": request_id }))
+        } else {
+            (
+                "Fetch.failRequest",
+                json!({ "requestId": request_id, "errorReason": "BlockedByClient" }),
             )
-        })?
+        };
+        self.write_command(id, method, params, session_id).await?;
+        Ok(u64::from(id))
     }
 
     async fn attach_page_target(&mut self) -> Result<(), String> {
@@ -828,10 +945,17 @@ fn key_to_code(key: &str) -> &str {
 }
 
 fn command_requires_page_session(method: &str) -> bool {
-    method
-        .split('.')
-        .next()
-        .is_some_and(|domain| matches!(domain, "Page" | "Runtime" | "Input" | "Emulation"))
+    method.split('.').next().is_some_and(|domain| {
+        matches!(domain, "Page" | "Runtime" | "Input" | "Emulation" | "Fetch")
+    })
+}
+
+/// Host only, so a blocked URL's query string is not written to the log.
+fn request_host_for_log(url: &str) -> String {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(ToOwned::to_owned))
+        .unwrap_or_else(|| "<unparsed>".to_string())
 }
 
 fn target_is_page(target: &Value) -> bool {

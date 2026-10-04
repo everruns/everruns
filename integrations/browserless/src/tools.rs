@@ -21,13 +21,19 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tracing::debug;
 
+use crate::cdp::CdpSession;
 use crate::client::BrowserlessClient;
+use crate::interaction_code::{build_interaction_code_with_policy, request_interception_prelude};
 use crate::session_tools::{keep_session_alive, try_get_cdp_session};
 use crate::state::{
-    build_cookie_extraction_code, build_cookie_injection_code, extract_secret_refs, get_api_token,
-    load_cookies, required_str, resolve_step_secrets, save_cookies, substitute_step_secrets,
+    build_cookie_injection_code, extract_secret_refs, get_api_token, load_cookies, required_str,
+    resolve_step_secrets, save_cookies, substitute_step_secrets,
 };
-use crate::validation::{validate_browserless_url, validate_interaction_steps};
+#[cfg(test)]
+use crate::validation::validate_browserless_url;
+use crate::validation::{
+    transport_reject_patterns, validate_browserless_navigation, validate_interaction_steps,
+};
 
 const MAX_HTML_BYTES: usize = 100_000;
 const MAX_WAIT_MS: u64 = 120_000;
@@ -90,8 +96,46 @@ fn png_image_result(mut result: Value, base64: String, size_bytes: usize) -> Too
     )
 }
 
+#[cfg(test)]
 fn validate_url(url: &str) -> Result<(), ToolExecutionResult> {
     validate_browserless_url(url)
+}
+
+fn validate_navigation(context: &ToolContext, url: &str) -> Result<(), ToolExecutionResult> {
+    validate_browserless_navigation(context.network_access.as_ref(), url)
+}
+
+fn reject_patterns(context: &ToolContext) -> Vec<String> {
+    context
+        .network_access
+        .as_ref()
+        .map(transport_reject_patterns)
+        .unwrap_or_default()
+}
+
+async fn begin_cdp_navigation(
+    context: &ToolContext,
+    session: &mut CdpSession,
+    url: &str,
+) -> Result<(), ToolExecutionResult> {
+    if let Some(access) = context
+        .network_access
+        .as_ref()
+        .filter(|access| !access.is_empty())
+    {
+        session
+            .arm_request_policy(access)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+    }
+    session.navigate(url).await.map_err(|error| {
+        ToolExecutionResult::tool_error(format!("CDP navigate failed: {error}"))
+    })?;
+    session
+        .reset_if_landing_blocked(context.network_access.as_ref())
+        .await
+        .map_err(ToolExecutionResult::tool_error)?;
+    Ok(())
 }
 
 /// Cap a wait/timeout value to MAX_WAIT_MS. // THREAT[TM-TOOL-016]
@@ -172,7 +216,7 @@ impl Tool for BrowserlessScreenshotTool {
             Ok(v) => v,
             Err(e) => return e,
         };
-        if let Err(e) = validate_url(url) {
+        if let Err(e) = validate_navigation(context, url) {
             return e;
         }
 
@@ -184,10 +228,10 @@ impl Tool for BrowserlessScreenshotTool {
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
             debug!("Using CDP session for screenshot");
-            if let Err(e) = session.navigate(url).await {
+            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
                 keep_session_alive(context, &mut session).await;
                 session.disconnect().await;
-                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+                return e;
             }
 
             // Wait for selector if specified
@@ -238,14 +282,16 @@ impl Tool for BrowserlessScreenshotTool {
         let stored_cookies = load_cookies(context).await;
 
         let client = BrowserlessClient::new(api_token);
+        let patterns = reject_patterns(context);
         match client
-            .screenshot(
+            .screenshot_with_policy(
                 url,
                 full_page,
                 selector,
                 wait_for_selector,
                 wait_for_timeout,
                 &stored_cookies,
+                &patterns,
             )
             .await
         {
@@ -332,17 +378,17 @@ impl Tool for BrowserlessContentTool {
             Ok(v) => v,
             Err(e) => return e,
         };
-        if let Err(e) = validate_url(url) {
+        if let Err(e) = validate_navigation(context, url) {
             return e;
         }
 
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
             debug!("Using CDP session for content");
-            if let Err(e) = session.navigate(url).await {
+            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
                 keep_session_alive(context, &mut session).await;
                 session.disconnect().await;
-                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+                return e;
             }
 
             if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
@@ -389,13 +435,15 @@ impl Tool for BrowserlessContentTool {
 
         let stored_cookies = load_cookies(context).await;
         let client = BrowserlessClient::new(api_token);
+        let patterns = reject_patterns(context);
         match client
-            .content(
+            .content_with_policy(
                 url,
                 wait_for_selector,
                 wait_for_timeout,
                 best_attempt,
                 &stored_cookies,
+                &patterns,
             )
             .await
         {
@@ -493,7 +541,7 @@ impl Tool for BrowserlessScrapeTool {
             Ok(v) => v,
             Err(e) => return e,
         };
-        if let Err(e) = validate_url(url) {
+        if let Err(e) = validate_navigation(context, url) {
             return e;
         }
 
@@ -516,13 +564,15 @@ impl Tool for BrowserlessScrapeTool {
 
         let stored_cookies = load_cookies(context).await;
         let client = BrowserlessClient::new(api_token);
+        let patterns = reject_patterns(context);
         match client
-            .scrape(
+            .scrape_with_policy(
                 url,
                 &elements,
                 wait_for_selector,
                 wait_for_timeout,
                 &stored_cookies,
+                &patterns,
             )
             .await
         {
@@ -544,157 +594,6 @@ impl Tool for BrowserlessScrapeTool {
 // ============================================================================
 
 pub struct BrowserlessInteractTool;
-
-/// Build Puppeteer function code from a list of interaction steps.
-/// Each step is executed sequentially in a fresh browser session.
-/// If `cookies` is non-empty, they are injected before navigation.
-/// Cookies are always extracted after steps for persistence.
-fn build_interaction_code(
-    url: &str,
-    steps: &[Value],
-    want_screenshot: bool,
-    want_content: bool,
-    cookies: &[Value],
-) -> String {
-    let mut code = String::new();
-    code.push_str("export default async ({ page }) => {\n");
-    code.push_str(&build_cookie_injection_code(cookies));
-    code.push_str(&format!(
-        "  await page.goto({}, {{ waitUntil: 'networkidle2', timeout: 30000 }});\n",
-        serde_json::to_string(url).unwrap_or_else(|_| format!("\"{}\"", url))
-    ));
-
-    for step in steps {
-        let action = step
-            .get("action")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let selector = step.get("selector").and_then(|v| v.as_str());
-        let value = step.get("value").and_then(|v| v.as_str());
-        let key = step.get("key").and_then(|v| v.as_str());
-        let x = step.get("x").and_then(|v| v.as_f64());
-        let y = step.get("y").and_then(|v| v.as_f64());
-        let wait_ms = step.get("wait_ms").and_then(|v| v.as_u64());
-
-        match action {
-            "click" => {
-                if let Some(sel) = selector {
-                    code.push_str(&format!(
-                        "  await page.waitForSelector({sel_js}, {{ timeout: 10000 }});\n\
-                         \x20 await page.click({sel_js});\n",
-                        sel_js = serde_json::to_string(sel).unwrap()
-                    ));
-                } else if let (Some(cx), Some(cy)) = (x, y) {
-                    code.push_str(&format!("  await page.mouse.click({cx}, {cy});\n"));
-                }
-            }
-            "type" => {
-                if let (Some(sel), Some(text)) = (selector, value) {
-                    code.push_str(&format!(
-                        "  await page.waitForSelector({sel_js}, {{ timeout: 10000 }});\n\
-                         \x20 await page.type({sel_js}, {val_js});\n",
-                        sel_js = serde_json::to_string(sel).unwrap(),
-                        val_js = serde_json::to_string(text).unwrap()
-                    ));
-                }
-            }
-            "keyboard" => {
-                if let Some(k) = key {
-                    code.push_str(&format!(
-                        "  await page.keyboard.press({key_js});\n",
-                        key_js = serde_json::to_string(k).unwrap()
-                    ));
-                }
-            }
-            "mouse_move" => {
-                if let (Some(mx), Some(my)) = (x, y) {
-                    code.push_str(&format!("  await page.mouse.move({mx}, {my});\n"));
-                }
-            }
-            "touch" => {
-                if let Some(sel) = selector {
-                    code.push_str(&format!(
-                        "  await page.waitForSelector({sel_js}, {{ timeout: 10000 }});\n\
-                         \x20 await page.tap({sel_js});\n",
-                        sel_js = serde_json::to_string(sel).unwrap()
-                    ));
-                }
-            }
-            "scroll" => {
-                let scroll_y = step.get("value").and_then(|v| v.as_i64()).unwrap_or(500);
-                code.push_str(&format!(
-                    "  await page.evaluate(() => window.scrollBy(0, {scroll_y}));\n"
-                ));
-            }
-            "wait" => {
-                let ms = cap_wait_ms(wait_ms.unwrap_or(1000));
-                code.push_str(&format!("  await new Promise(r => setTimeout(r, {ms}));\n"));
-            }
-            "wait_for_selector" => {
-                if let Some(sel) = selector {
-                    let timeout = cap_wait_ms(wait_ms.unwrap_or(10000));
-                    code.push_str(&format!(
-                        "  await page.waitForSelector({sel_js}, {{ timeout: {timeout} }});\n",
-                        sel_js = serde_json::to_string(sel).unwrap()
-                    ));
-                }
-            }
-            "navigate" => {
-                if let Some(nav_url) = value {
-                    code.push_str(&format!(
-                        "  await page.goto({url_js}, {{ waitUntil: 'networkidle2', timeout: 30000 }});\n",
-                        url_js = serde_json::to_string(nav_url).unwrap()
-                    ));
-                }
-            }
-            other => {
-                debug!("Unknown interaction action: {other}");
-            }
-        }
-
-        // Optional per-step wait
-        if action != "wait"
-            && let Some(ms) = wait_ms
-        {
-            let capped = cap_wait_ms(ms);
-            code.push_str(&format!(
-                "  await new Promise(r => setTimeout(r, {capped}));\n"
-            ));
-        }
-    }
-
-    // Capture final state
-    code.push_str("  const title = await page.title();\n");
-    code.push_str("  const url = page.url();\n");
-
-    if want_screenshot {
-        code.push_str(
-            "  const screenshot = await page.screenshot({ encoding: 'base64', fullPage: true });\n",
-        );
-    }
-    if want_content {
-        code.push_str("  const content = await page.content();\n");
-    }
-
-    // Extract cookies for persistence
-    code.push_str(build_cookie_extraction_code());
-
-    // Build return object with whichever fields were requested
-    let mut fields = vec!["title", "url", "__cookies"];
-    if want_screenshot {
-        fields.push("screenshot");
-    }
-    if want_content {
-        fields.push("content");
-    }
-    code.push_str(&format!(
-        "  return {{ data: JSON.stringify({{ {} }}), type: 'application/json' }};\n",
-        fields.join(", ")
-    ));
-
-    code.push_str("};\n");
-    code
-}
 
 #[async_trait]
 impl Tool for BrowserlessInteractTool {
@@ -803,7 +702,7 @@ impl Tool for BrowserlessInteractTool {
             );
         }
 
-        if let Err(e) = validate_url(url) {
+        if let Err(e) = validate_navigation(context, url) {
             return e;
         }
 
@@ -837,7 +736,7 @@ impl Tool for BrowserlessInteractTool {
         let steps = substitute_step_secrets(&steps, &resolved_secrets);
 
         // Validate interaction steps (including navigate URL validation) after substitution
-        if let Err(e) = validate_interaction_steps(&steps) {
+        if let Err(e) = validate_interaction_steps(context.network_access.as_ref(), &steps) {
             return e;
         }
 
@@ -861,10 +760,10 @@ impl Tool for BrowserlessInteractTool {
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
             debug!("Using CDP session for interact");
-            if let Err(e) = session.navigate(url).await {
+            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
                 keep_session_alive(context, &mut session).await;
                 session.disconnect().await;
-                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+                return e;
             }
 
             // Execute each step via CDP
@@ -938,7 +837,12 @@ impl Tool for BrowserlessInteractTool {
                     }
                     "navigate" => {
                         if let Some(nav_url) = value {
-                            session.navigate(nav_url).await.map(|_| ())
+                            begin_cdp_navigation(context, &mut session, nav_url)
+                                .await
+                                .map_err(|error| match error {
+                                    ToolExecutionResult::ToolError(message) => message,
+                                    other => format!("{other:?}"),
+                                })
                         } else {
                             Err("navigate requires value (URL)".to_string())
                         }
@@ -960,6 +864,17 @@ impl Tool for BrowserlessInteractTool {
                 {
                     tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
                 }
+            }
+
+            // A click or keypress can navigate. The Fetch gate stops the request;
+            // this catches a landing URL the gate did not see.
+            if let Err(e) = session
+                .reset_if_landing_blocked(context.network_access.as_ref())
+                .await
+            {
+                keep_session_alive(context, &mut session).await;
+                session.disconnect().await;
+                return ToolExecutionResult::tool_error(e);
             }
 
             // Capture result
@@ -1039,8 +954,15 @@ impl Tool for BrowserlessInteractTool {
         };
 
         let stored_cookies = load_cookies(context).await;
-        let code =
-            build_interaction_code(url, &steps, want_screenshot, want_content, &stored_cookies);
+        let patterns = reject_patterns(context);
+        let code = build_interaction_code_with_policy(
+            url,
+            &steps,
+            want_screenshot,
+            want_content,
+            &stored_cookies,
+            &patterns,
+        );
         debug!("Generated interaction code ({} bytes)", code.len());
 
         let client = BrowserlessClient::new(api_token);
@@ -1192,17 +1114,17 @@ impl Tool for BrowserlessNavigateTool {
             Ok(v) => v,
             Err(e) => return e,
         };
-        if let Err(e) = validate_url(url) {
+        if let Err(e) = validate_navigation(context, url) {
             return e;
         }
 
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
             debug!("Using CDP session for navigate");
-            if let Err(e) = session.navigate(url).await {
+            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
                 keep_session_alive(context, &mut session).await;
                 session.disconnect().await;
-                return ToolExecutionResult::tool_error(format!("CDP navigate failed: {e}"));
+                return e;
             }
 
             if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
@@ -1235,8 +1157,10 @@ impl Tool for BrowserlessNavigateTool {
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
 
         let stored_cookies = load_cookies(context).await;
+        let patterns = reject_patterns(context);
         let mut code = String::new();
         code.push_str("export default async ({ page }) => {\n");
+        code.push_str(&request_interception_prelude(&patterns));
         code.push_str(&build_cookie_injection_code(&stored_cookies));
         code.push_str(&format!(
             "  const response = await page.goto({}, {{ waitUntil: 'networkidle2', timeout: 30000 }});\n",
@@ -1344,13 +1268,146 @@ mod tests {
             "action": "navigate",
             "value": "http://127.0.0.1:8080"
         })];
-        let err = validate_interaction_steps(&steps).unwrap_err();
+        let err = validate_interaction_steps(None, &steps).unwrap_err();
         match err {
             ToolExecutionResult::ToolError(msg) => {
                 assert!(msg.contains("blocked"));
             }
             other => panic!("Expected ToolError, got: {other:?}"),
         }
+    }
+
+    fn acl_context(patterns: &[&str], block: bool) -> ToolContext {
+        use everruns_contracts::typed_id::SessionId;
+        use everruns_core::network_access::NetworkAccessList;
+        let mut context = ToolContext::new(SessionId::new());
+        context.network_access = Some(if block {
+            NetworkAccessList::block(patterns.iter().copied())
+        } else {
+            NetworkAccessList::allow_only(patterns.iter().copied())
+        });
+        context
+    }
+
+    async fn tool_error(tool: &dyn Tool, context: &ToolContext, args: Value) -> String {
+        match tool.execute_with_context(args, context).await {
+            ToolExecutionResult::ToolError(message) => message,
+            other => panic!("expected a tool error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn session_acl_blocks_a_public_host_before_any_request_and_keeps_an_allowed_host() {
+        use crate::session_tools::BrowserlessOpenBrowserTool;
+
+        let allow = acl_context(&["example.com"], false);
+        let block = acl_context(&["evil.test"], true);
+        let open = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
+
+        let cases: Vec<(Box<dyn Tool>, Value, Value)> = vec![
+            (
+                Box::new(BrowserlessScreenshotTool),
+                json!({"url": "https://evil.test/private"}),
+                json!({"url": "https://example.com/"}),
+            ),
+            (
+                Box::new(BrowserlessContentTool),
+                json!({"url": "https://evil.test/private"}),
+                json!({"url": "https://example.com/"}),
+            ),
+            (
+                Box::new(BrowserlessScrapeTool),
+                json!({"url": "https://evil.test/private", "elements": [{"selector": "h1"}]}),
+                json!({"url": "https://example.com/", "elements": [{"selector": "h1"}]}),
+            ),
+            (
+                Box::new(BrowserlessInteractTool),
+                json!({"url": "https://evil.test/private", "steps": [{"action": "wait", "wait_ms": 1}]}),
+                json!({"url": "https://example.com/", "steps": [{"action": "wait", "wait_ms": 1}]}),
+            ),
+            (
+                Box::new(BrowserlessNavigateTool),
+                json!({"url": "https://evil.test/private"}),
+                json!({"url": "https://example.com/"}),
+            ),
+            (
+                Box::new(BrowserlessOpenBrowserTool),
+                json!({"url": "https://evil.test/private"}),
+                json!({"url": "https://example.com/"}),
+            ),
+        ];
+
+        for (tool, denied, allowed) in cases {
+            let name = tool.name().to_string();
+            let denied_message = tool_error(tool.as_ref(), &allow, denied).await;
+            assert!(
+                denied_message.contains("network access"),
+                "{name} should reject the denied host before calling Browserless: {denied_message}"
+            );
+            assert!(
+                !denied_message.contains("API token"),
+                "{name} consulted the connection before the ACL: {denied_message}"
+            );
+
+            let allowed_message = tool_error(tool.as_ref(), &allow, allowed).await;
+            assert!(
+                allowed_message.contains("API token"),
+                "{name} should keep the allowed host usable past the ACL: {allowed_message}"
+            );
+            assert!(
+                !allowed_message.contains("network access"),
+                "{name} blocked an allowed host: {allowed_message}"
+            );
+        }
+
+        // A blocklist denies the named public host and still allows others.
+        let blocked = tool_error(
+            &BrowserlessScreenshotTool,
+            &block,
+            json!({"url": "https://evil.test/"}),
+        )
+        .await;
+        assert!(blocked.contains("network access"), "{blocked}");
+        let not_blocked = tool_error(
+            &BrowserlessScreenshotTool,
+            &block,
+            json!({"url": "https://example.com/"}),
+        )
+        .await;
+        assert!(not_blocked.contains("API token"), "{not_blocked}");
+
+        // No session ACL: a public host is not denied, a private host still is.
+        let public_host = tool_error(
+            &BrowserlessContentTool,
+            &open,
+            json!({"url": "https://evil.test/"}),
+        )
+        .await;
+        assert!(public_host.contains("API token"), "{public_host}");
+        let private_host = tool_error(
+            &BrowserlessContentTool,
+            &open,
+            json!({"url": "http://10.1.2.3/admin"}),
+        )
+        .await;
+        assert!(private_host.contains("blocked"), "{private_host}");
+        assert!(!private_host.contains("API token"), "{private_host}");
+    }
+
+    #[tokio::test]
+    async fn interact_nested_navigate_honors_the_session_acl() {
+        let allow = acl_context(&["example.com"], false);
+        let message = tool_error(
+            &BrowserlessInteractTool,
+            &allow,
+            json!({
+                "url": "https://example.com/",
+                "steps": [{ "action": "navigate", "value": "https://evil.test/next" }]
+            }),
+        )
+        .await;
+        assert!(message.contains("network access"), "{message}");
+        assert!(!message.contains("API token"), "{message}");
     }
 
     #[test]
@@ -1418,204 +1475,6 @@ mod tests {
                 tool.name()
             );
         }
-    }
-
-    #[test]
-    fn test_build_interaction_code_click() {
-        let steps = vec![json!({
-            "action": "click",
-            "selector": "#submit-btn"
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("page.goto"));
-        assert!(code.contains("page.click"));
-        assert!(code.contains("#submit-btn"));
-        assert!(code.contains("page.content()"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_type() {
-        let steps = vec![json!({
-            "action": "type",
-            "selector": "#username",
-            "value": "admin"
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("page.type"));
-        assert!(code.contains("#username"));
-        assert!(code.contains("admin"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_keyboard() {
-        let steps = vec![json!({
-            "action": "keyboard",
-            "key": "Enter"
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("page.keyboard.press"));
-        assert!(code.contains("Enter"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_mouse_move() {
-        let steps = vec![json!({
-            "action": "mouse_move",
-            "x": 100.0,
-            "y": 200.0
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("page.mouse.move(100, 200)"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_touch() {
-        let steps = vec![json!({
-            "action": "touch",
-            "selector": ".menu-item"
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("page.tap"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_scroll() {
-        let steps = vec![json!({
-            "action": "scroll",
-            "value": 1000
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("window.scrollBy(0, 1000)"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_with_screenshot() {
-        let steps = vec![json!({
-            "action": "click",
-            "selector": "button"
-        })];
-        let code = build_interaction_code("https://example.com", &steps, true, false, &[]);
-        assert!(code.contains("page.screenshot"));
-        assert!(!code.contains("page.content()"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_navigate_step() {
-        let steps = vec![json!({
-            "action": "navigate",
-            "value": "https://other.com/page"
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        // Should have two page.goto calls: initial + navigate step
-        assert!(code.contains("https://other.com/page"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_wait() {
-        let steps = vec![json!({
-            "action": "wait",
-            "wait_ms": 2000
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("setTimeout(r, 2000)"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_wait_for_selector() {
-        let steps = vec![json!({
-            "action": "wait_for_selector",
-            "selector": ".loaded",
-            "wait_ms": 5000
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("waitForSelector"));
-        assert!(code.contains(".loaded"));
-        assert!(code.contains("5000"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_click_by_coordinates() {
-        let steps = vec![json!({
-            "action": "click",
-            "x": 50.0,
-            "y": 75.0
-        })];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(code.contains("page.mouse.click(50, 75)"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_multi_step() {
-        let steps = vec![
-            json!({"action": "click", "selector": "#login-link"}),
-            json!({"action": "wait_for_selector", "selector": "#username"}),
-            json!({"action": "type", "selector": "#username", "value": "admin"}),
-            json!({"action": "type", "selector": "#password", "value": "secret"}),
-            json!({"action": "click", "selector": "#submit"}),
-            json!({"action": "wait", "wait_ms": 2000}),
-        ];
-        let code = build_interaction_code("https://example.com/home", &steps, true, false, &[]);
-        assert!(code.contains("#login-link"));
-        assert!(code.contains("#username"));
-        assert!(code.contains("#password"));
-        assert!(code.contains("#submit"));
-        assert!(code.contains("page.screenshot"));
-    }
-
-    #[test]
-    fn test_build_interaction_code_injects_cookies() {
-        let cookies = vec![json!({
-            "name": "session_id",
-            "value": "abc123",
-            "domain": "example.com"
-        })];
-        let steps = vec![json!({"action": "click", "selector": "#btn"})];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &cookies);
-        assert!(
-            code.contains("setCookie"),
-            "should inject cookies via setCookie: {code}"
-        );
-        assert!(
-            code.contains("session_id"),
-            "should contain cookie name: {code}"
-        );
-        assert!(
-            code.contains("page.cookies()"),
-            "should extract cookies via page.cookies(): {code}"
-        );
-    }
-
-    #[test]
-    fn test_build_interaction_code_no_cookies_no_injection() {
-        let steps = vec![json!({"action": "click", "selector": "#btn"})];
-        let code = build_interaction_code("https://example.com", &steps, false, true, &[]);
-        assert!(
-            !code.contains("setCookie"),
-            "should not inject cookies when none provided"
-        );
-        // Should still extract cookies for persistence
-        assert!(
-            code.contains("const __cookies = await page.cookies()"),
-            "should still extract cookies: {code}"
-        );
-    }
-
-    #[test]
-    fn test_build_interaction_code_both_screenshot_and_content() {
-        let steps = vec![json!({"action": "click", "selector": "#btn"})];
-        let code = build_interaction_code("https://example.com", &steps, true, true, &[]);
-        assert!(
-            code.contains("page.screenshot"),
-            "should include screenshot capture"
-        );
-        assert!(
-            code.contains("page.content()"),
-            "should include content capture"
-        );
-        assert!(
-            code.contains("screenshot") && code.contains("content"),
-            "return object should include both fields"
-        );
     }
 
     #[test]

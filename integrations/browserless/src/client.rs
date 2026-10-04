@@ -48,6 +48,33 @@ impl BrowserlessClient {
         wait_for_timeout: Option<u64>,
         cookies: &[Value],
     ) -> Result<Vec<u8>, String> {
+        self.screenshot_with_policy(
+            url,
+            full_page,
+            selector,
+            wait_for_selector,
+            wait_for_timeout,
+            cookies,
+            &[],
+        )
+        .await
+    }
+
+    /// Take a screenshot, aborting requests that match `reject_patterns`.
+    ///
+    /// Browserless applies these patterns to the document, redirects, and
+    /// subresources (`url.match(pattern)`), then aborts the match.
+    #[allow(clippy::too_many_arguments)] // `screenshot`'s arguments plus the session rejection patterns
+    pub async fn screenshot_with_policy(
+        &self,
+        url: &str,
+        full_page: bool,
+        selector: Option<&str>,
+        wait_for_selector: Option<&str>,
+        wait_for_timeout: Option<u64>,
+        cookies: &[Value],
+        reject_patterns: &[String],
+    ) -> Result<Vec<u8>, String> {
         let mut body = json!({
             "url": url,
             "options": {
@@ -68,6 +95,7 @@ impl BrowserlessClient {
         if !cookies.is_empty() {
             body["cookies"] = json!(cookies);
         }
+        apply_reject_patterns(&mut body, reject_patterns);
 
         debug!("Browserless screenshot: {url}");
 
@@ -102,6 +130,27 @@ impl BrowserlessClient {
         best_attempt: bool,
         cookies: &[Value],
     ) -> Result<String, String> {
+        self.content_with_policy(
+            url,
+            wait_for_selector,
+            wait_for_timeout,
+            best_attempt,
+            cookies,
+            &[],
+        )
+        .await
+    }
+
+    /// Get rendered HTML, aborting requests that match `reject_patterns`.
+    pub async fn content_with_policy(
+        &self,
+        url: &str,
+        wait_for_selector: Option<&str>,
+        wait_for_timeout: Option<u64>,
+        best_attempt: bool,
+        cookies: &[Value],
+        reject_patterns: &[String],
+    ) -> Result<String, String> {
         let mut body = json!({ "url": url });
 
         if let Some(wfs) = wait_for_selector {
@@ -116,6 +165,7 @@ impl BrowserlessClient {
         if !cookies.is_empty() {
             body["cookies"] = json!(cookies);
         }
+        apply_reject_patterns(&mut body, reject_patterns);
 
         debug!("Browserless content: {url}");
 
@@ -151,6 +201,27 @@ impl BrowserlessClient {
         wait_for_timeout: Option<u64>,
         cookies: &[Value],
     ) -> Result<Value, String> {
+        self.scrape_with_policy(
+            url,
+            elements,
+            wait_for_selector,
+            wait_for_timeout,
+            cookies,
+            &[],
+        )
+        .await
+    }
+
+    /// Scrape structured data, aborting requests that match `reject_patterns`.
+    pub async fn scrape_with_policy(
+        &self,
+        url: &str,
+        elements: &[Value],
+        wait_for_selector: Option<&str>,
+        wait_for_timeout: Option<u64>,
+        cookies: &[Value],
+        reject_patterns: &[String],
+    ) -> Result<Value, String> {
         let mut body = json!({
             "url": url,
             "elements": elements
@@ -165,6 +236,7 @@ impl BrowserlessClient {
         if !cookies.is_empty() {
             body["cookies"] = json!(cookies);
         }
+        apply_reject_patterns(&mut body, reject_patterns);
 
         debug!("Browserless scrape: {url}");
 
@@ -225,6 +297,12 @@ impl BrowserlessClient {
         }
 
         serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from Browserless: {e}"))
+    }
+}
+
+fn apply_reject_patterns(body: &mut Value, reject_patterns: &[String]) {
+    if !reject_patterns.is_empty() {
+        body["rejectRequestPattern"] = json!(reject_patterns);
     }
 }
 
@@ -524,6 +602,36 @@ mod tests {
                 None,
                 None,
                 &cookies,
+            )
+            .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_client_screenshot_sends_reject_patterns() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/screenshot"))
+            .and(wiremock::matchers::body_json(json!({
+                "url": "https://example.com/",
+                "options": {"fullPage": true, "type": "png"},
+                "rejectRequestPattern": ["^https?://evil\\.test"]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"PNG".to_vec()))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
+
+        let client = BrowserlessClient::with_base_url("test_token".to_string(), mock_server.uri());
+        let result = client
+            .screenshot_with_policy(
+                "https://example.com/",
+                true,
+                None,
+                None,
+                None,
+                &[],
+                &["^https?://evil\\.test".to_string()],
             )
             .await;
         assert!(result.is_ok());
