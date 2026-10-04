@@ -1,11 +1,9 @@
 // Organization feature flag opt-in API
 //
 // Grades own availability, defaults, and who can change an org override.
-// Tenant PATCH requires OrgAdmin; platform PATCH owns internal enrolments.
-// Decision: platform-managed flags are org-scoped but not the org's to set. A
-// separate PlatformUser-gated route owns them, so the operator console can
-// enrol one tenant without the tenant being able to enrol itself, and neither
-// actor can quietly do the other's job.
+// Tenant PATCH requires OrgAdmin; platform PATCH owns internal enrolment and
+// can also enroll adoption features. Adoption is shared authority: the latest
+// explicit org override wins, while tenants can never grant internal access.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -231,10 +229,9 @@ pub async fn get_platform_feature_flag_settings(
 /// PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a
 /// platform-managed feature.
 ///
-/// Platform users only, and limited to platform-managed flags: an operator
-/// setting a tenant's own preferences would be acting as the tenant, which this
-/// surface does not do. Omitted flags are unchanged, so enrolling one org in one
-/// feature cannot disturb another setting.
+/// Platform users may enroll internal and adoption features. Tenant admins retain
+/// adoption authority; production preferences and deployment availability stay
+/// outside this route. Omitted overrides are unchanged.
 #[utoipa::path(
     patch,
     path = "/v1/orgs/{org}/feature-flags/platform",

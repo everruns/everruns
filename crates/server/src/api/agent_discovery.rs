@@ -59,6 +59,22 @@ impl AppState {
     fn auth_enforced(&self) -> bool {
         self.auth_mode != AuthMode::None
     }
+
+    /// Discovery documents for this process. Name and version are the running
+    /// server's identity, the same value `initialize` reports.
+    pub fn for_deployment(
+        root_url: impl Into<String>,
+        api_base_url: impl Into<String>,
+        auth_mode: AuthMode,
+    ) -> Self {
+        Self::new(
+            root_url,
+            api_base_url,
+            auth_mode,
+            crate::api::mcp_endpoint::MCP_SERVER_NAME,
+            crate::api::mcp_endpoint::MCP_SERVER_VERSION,
+        )
+    }
 }
 
 pub fn routes(state: AppState) -> Router {
@@ -81,7 +97,10 @@ fn json_public(body: Value) -> Response {
 async fn mcp_server_card(axum::extract::State(state): axum::extract::State<AppState>) -> Response {
     let root = &state.root_url;
 
+    // `version` and `serverInfo.version` are the same implementation version.
+    // Catalogs read one or the other; a single source keeps them from drifting.
     let mut card = json!({
+        "version": state.mcp_server_version,
         "serverInfo": {
             "name": state.mcp_server_name,
             "version": state.mcp_server_version,
@@ -216,7 +235,7 @@ mod tests {
             "https://app.example.com/api/",
             mode,
             "everruns",
-            "0.25.0",
+            "9.9.9",
         )
     }
 
@@ -258,11 +277,32 @@ mod tests {
     async fn server_card_reports_real_identity_and_capabilities() {
         let body = card_json(AuthMode::External).await;
         assert_eq!(body["serverInfo"]["name"], "everruns");
-        assert_eq!(body["serverInfo"]["version"], "0.25.0");
+        // A sentinel, not the package version: this proves the card copies the
+        // configured identity instead of embedding its own literal.
+        assert_eq!(body["version"], "9.9.9");
+        assert_eq!(body["serverInfo"]["version"], "9.9.9");
         assert_eq!(body["endpoint"], "https://app.example.com/mcp");
         assert_eq!(body["capabilities"]["tools"]["listChanged"], false);
         assert!(body["capabilities"].get("prompts").is_none());
         assert_eq!(body["authentication"]["type"], "oauth2");
+    }
+
+    #[tokio::test]
+    async fn server_card_reports_the_deployed_package_version() {
+        let state = AppState::for_deployment(
+            "https://app.example.com",
+            "https://app.example.com/api",
+            AuthMode::External,
+        );
+        let response = mcp_server_card(axum::extract::State(state)).await;
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body");
+        let body: Value = serde_json::from_slice(&bytes).expect("json");
+        let package_version = env!("CARGO_PKG_VERSION");
+        assert_eq!(body["version"], package_version);
+        assert_eq!(body["serverInfo"]["name"], "everruns");
+        assert_eq!(body["serverInfo"]["version"], package_version);
     }
 
     #[tokio::test]

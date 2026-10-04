@@ -1446,12 +1446,10 @@ impl ServerAppBuilder {
 
         // Agent discovery: MCP server card + auth.md, both derived from the
         // live auth config so a self-hosted deployment describes itself.
-        let agent_discovery_state = api::agent_discovery::AppState::new(
+        let agent_discovery_state = api::agent_discovery::AppState::for_deployment(
             mcp_root_url.clone(),
             auth_config.base_url.clone(),
             auth_config.mode.clone(),
-            api::mcp_endpoint::MCP_SERVER_NAME,
-            api::mcp_endpoint::MCP_SERVER_VERSION,
         );
         let http_signing_keys_state = api::http_signing_keys::AppState::from_env();
 

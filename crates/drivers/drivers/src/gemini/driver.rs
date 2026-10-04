@@ -533,11 +533,8 @@ impl ChatDriver for GeminiChatDriver {
                     &config.model,
                 )
                 .and_then(|p| {
-                    p.limits.and_then(|l| {
-                        u32::try_from(l.output)
-                            .ok()
-                            .and_then(|v| if v > 0 { Some(v) } else { None })
-                    })
+                    p.limits
+                        .and_then(|l| u32::try_from(l.output).ok().filter(|&v| v > 0))
                 })
                 .unwrap_or(8_192),
             );

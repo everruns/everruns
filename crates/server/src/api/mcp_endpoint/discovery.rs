@@ -70,3 +70,35 @@ pub(super) fn handle_server_discover(id: Option<Value>, events: bool) -> JsonRpc
         }),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::{MCP_SERVER_NAME, MCP_SERVER_VERSION};
+    use super::{handle_initialize, handle_server_discover};
+    use serde_json::json;
+
+    #[test]
+    fn initialize_reports_the_package_version() {
+        let result = handle_initialize(Some(json!(1)), json!({}))
+            .result
+            .expect("result");
+        assert_eq!(result["serverInfo"]["name"], MCP_SERVER_NAME);
+        assert_eq!(result["serverInfo"]["version"], MCP_SERVER_VERSION);
+        assert_eq!(MCP_SERVER_VERSION, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn server_discover_reports_the_package_version() {
+        let result = handle_server_discover(Some(json!(1)), false)
+            .result
+            .expect("result");
+        assert_eq!(
+            result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
+            MCP_SERVER_NAME
+        );
+        assert_eq!(
+            result["_meta"]["io.modelcontextprotocol/serverInfo"]["version"],
+            MCP_SERVER_VERSION
+        );
+    }
+}
