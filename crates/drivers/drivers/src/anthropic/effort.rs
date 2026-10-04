@@ -63,7 +63,8 @@ pub(crate) fn adaptive_room(effort: &str) -> u32 {
 /// thinking and come back empty, so the caller asks for more than the cap can
 /// give. Rather than overrun a limit the caller set deliberately, the driver
 /// drops thinking when this returns false and spends the whole cap on the
-/// answer.
+/// answer, or, on families where thinking cannot be disabled, lowers the effort
+/// to `low`.
 pub(crate) fn thinking_fits(cap: u32, budget: Option<u32>, adaptive_effort: Option<&str>) -> bool {
     match (budget, adaptive_effort) {
         // The API rejects a request whose `max_tokens` does not exceed the budget.
@@ -111,7 +112,7 @@ pub(crate) fn default_effort(
     profile?.reasoning_effort.as_ref().map(|r| r.default)
 }
 
-fn thinking_always_on(wire_model: &str) -> bool {
+pub(crate) fn thinking_always_on(wire_model: &str) -> bool {
     let family = normalize_anthropic_id(wire_model);
     THINKING_ALWAYS_ON_FAMILIES
         .iter()
@@ -162,6 +163,19 @@ mod tests {
         // Where omitting `thinking` turns it off, `None` keeps meaning off.
         let opus48 = resolve(&config, "claude-opus-4-8", &profile("claude-opus-4-8"));
         assert_eq!(opus48, Some(ReasoningEffort::None));
+    }
+
+    #[test]
+    fn always_on_detection_handles_versioned_model_ids() {
+        for model in [
+            "claude-opus-5-5",
+            "claude-opus-5-5-20260901",
+            "claude-fable-5",
+            "claude-fable-5-1-20260901",
+        ] {
+            assert!(thinking_always_on(model), "{model}");
+        }
+        assert!(!thinking_always_on("claude-opus-4-8"));
     }
 
     #[test]

@@ -167,8 +167,8 @@ impl ChatDriver for AnthropicChatDriver {
         // what the caller sized it for. Both forms are covered — budget-based
         // thinking against its own budget, adaptive thinking (which carries no
         // budget) against the effort-sized room it needs. Missing the adaptive
-        // case would leave a 64-token cap on Fable 5.x or Opus 5.5 thinking with
-        // a 64-token ceiling and returning nothing.
+        // case would leave a 64-token cap on Opus 4.8 thinking with a 64-token
+        // ceiling and returning nothing.
         let thinking_fits = {
             let budget = match thinking {
                 Some(AnthropicThinking::Enabled { budget_tokens }) => Some(budget_tokens),
@@ -181,6 +181,25 @@ impl ChatDriver for AnthropicChatDriver {
         };
         let (thinking, output_config) = if thinking_fits {
             (thinking, output_config)
+        } else if crate::anthropic::effort::thinking_always_on(wire_model) {
+            // Omitting `thinking` does not turn thinking off on this family: the
+            // API then runs adaptive thinking at its own default effort, which
+            // spends more of the cap than any explicit level. Keep the cap and
+            // send the lowest effort the API accepts, the closest request to
+            // "no thinking" it offers. Rejecting instead would fail every
+            // ordinary agent whose `max_tokens` sits below the effort's room.
+            tracing::warn!(
+                model = %config.model,
+                max_tokens = ?config.max_tokens,
+                thinking = ?thinking,
+                "AnthropicDriver: lowering effort to low; thinking cannot be disabled and does not fit the caller's cap"
+            );
+            (
+                thinking,
+                Some(AnthropicOutputConfig {
+                    effort: "low".to_string(),
+                }),
+            )
         } else {
             tracing::warn!(
                 model = %config.model,

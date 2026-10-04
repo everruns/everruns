@@ -419,6 +419,57 @@ async fn requests_resolve_model_limits_and_complete_reasoning_policies() {
     }
 }
 
+#[tokio::test]
+async fn small_caps_lower_effort_where_thinking_cannot_be_disabled() {
+    use everruns_contracts::{Provider, StaticHeaderAuth};
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // Omitting `thinking` on these families runs adaptive thinking at the API's
+    // default effort, so a cap too small for the requested effort must keep
+    // thinking explicit at `low` rather than drop it, and must not fail the
+    // request either: ordinary agents set caps below the effort's room.
+    for model in [
+        "claude-fable-5",
+        "claude-fable-5-1",
+        "claude-opus-5-5",
+        "claude-opus-5-5-20260901",
+        "claude-sonnet-5-5",
+    ] {
+        for (effort, cap) in [
+            (Some(ReasoningEffort::Low), 64),
+            (Some(ReasoningEffort::None), 64),
+            (Some(ReasoningEffort::High), 8_000),
+            (None, 2_000),
+        ] {
+            let server = MockServer::builder().start().await;
+            Mock::given(method("POST"))
+                .respond_with(
+                    ResponseTemplate::new(400)
+                        .set_body_json(json!({"error":{"message":"request captured"}})),
+                )
+                .mount(&server)
+                .await;
+            let provider = Provider::new("test", AnthropicChatDriver::new())
+                .base_url(format!("{}/v1", server.uri()))
+                .auth(StaticHeaderAuth::new("x-api-key", "synthetic-key"));
+            let mut config = contract_config(model, Some(cap));
+            config.reasoning_effort = effort;
+
+            let _ = provider
+                .chat_completion_stream(vec![Message::text(MessageRole::User, "hello")], &config)
+                .await;
+
+            let requests = server.received_requests().await.unwrap();
+            let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+            let case = format!("{model} {effort:?} cap={cap}");
+            assert_eq!(body["max_tokens"], cap, "{case}");
+            assert_eq!(body["thinking"]["type"], "adaptive", "{case}");
+            assert_eq!(body["output_config"], json!({"effort":"low"}), "{case}");
+        }
+    }
+}
+
 #[test]
 fn cache_markers_preserve_system_text_and_target_stable_message_blocks() {
     for (text, enabled, expected) in [
