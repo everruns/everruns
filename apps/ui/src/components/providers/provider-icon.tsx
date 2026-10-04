@@ -189,6 +189,8 @@ function VercelIcon({ size }: { size: number }) {
 
 const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: number }>> = {
   openai: OpenAiIcon,
+  chatgpt: OpenAiIcon,
+  "openai-codex": OpenAiIcon,
   openrouter: OpenRouterIcon,
   azure_openai: AzureOpenAiIcon,
   openai_completions: OpenAiIcon,
@@ -204,6 +206,8 @@ const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: num
 
 const PROVIDER_LABELS: Record<DriverId, string> = {
   openai: "OpenAI (Responses)",
+  chatgpt: "ChatGPT plan",
+  "openai-codex": "Codex",
   openrouter: "OpenRouter",
   azure_openai: "Azure OpenAI",
   openai_completions: "OpenAI (Completions)",
@@ -220,6 +224,8 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
 // Short, accurate one-line taglines shown next to each provider in pickers.
 const PROVIDER_DESCRIPTIONS: Record<DriverId, string> = {
   openai: "GPT and o-series models via the Responses API.",
+  chatgpt: "Use your ChatGPT plan. Personal to you, with no API key.",
+  "openai-codex": "Codex models with ChatGPT authentication.",
   openrouter: "One key for a large multi-vendor model catalog.",
   azure_openai: "OpenAI models deployed in your Azure resource.",
   openai_completions: "OpenAI-compatible Chat Completions endpoints.",

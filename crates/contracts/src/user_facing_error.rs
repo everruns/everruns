@@ -124,7 +124,8 @@ pub fn is_provider_quota_message(message: &str) -> bool {
 /// provider-agnostic so any driver surfacing the same wording is covered.
 pub fn is_usage_limit_message(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
-    lower.contains("usage_limit_reached")
+    lower.contains("subscription_sharing_usage_limit_exceeded")
+        || lower.contains("usage_limit_reached")
         || lower.contains("usage limit reached")
         || lower.contains("usage limit has been reached")
 }

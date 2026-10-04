@@ -41,6 +41,7 @@ pub mod credential_provider;
 pub mod credential_schema;
 #[cfg(feature = "http")]
 pub mod driver_helpers;
+mod driver_oauth;
 pub mod driver_registry;
 pub mod error;
 pub mod execution_phase;

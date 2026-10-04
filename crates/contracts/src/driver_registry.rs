@@ -883,29 +883,7 @@ impl ChatDriver for RequestOptionsDriver {
 /// kind) and re-exported here for source compatibility.
 pub use crate::model_profile_data::ServiceKind;
 
-/// Wire flavor of a driver's interactive OAuth connect flow.
-///
-/// A driver may let an org admin connect a provider by authorizing in the
-/// browser instead of pasting an API key. The flow always yields a long-lived
-/// credential that lands in `providers.credentials_encrypted`, exactly like a
-/// hand-entered key — so runtime resolution is unchanged and non-admin users
-/// are unaffected (see knowledge/foundations/providers.md "OAuth provider connection").
-///
-/// Only OpenRouter's PKCE flavor exists today. Adding OAuth to another driver
-/// means a new variant here (which the server matches on) plus a
-/// [`DriverOAuthConfig`] on that driver's descriptor — never a parallel set of
-/// endpoints.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DriverOAuthFlow {
-    /// OpenRouter one-click PKCE
-    /// (<https://openrouter.ai/docs/guides/overview/auth/oauth>): redirect the
-    /// admin to `authorize_url?callback_url=..&code_challenge=..&code_challenge_method=S256`,
-    /// then POST JSON `{code, code_verifier, code_challenge_method}` to
-    /// `token_url`; the `key` field of the response is the user-controlled API
-    /// key to store. No client registration or secret is required (public PKCE
-    /// client).
-    OpenRouterPkce,
-}
+pub use crate::driver_oauth::DriverOAuthFlow;
 
 /// A driver's declared OAuth connect flow.
 ///

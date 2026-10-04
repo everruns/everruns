@@ -32,6 +32,16 @@ describe("selectChatThreads", () => {
     expect(threads.map((thread) => thread.id)).toEqual(["sess_chat", "sess_legacy"]);
   });
 
+  it("keeps side chats after their tags change and excludes tagged Playground sessions", () => {
+    const threads = selectChatThreads([
+      session({ id: "side", source: "chat", tags: ["incident"] }),
+      session({ id: "playground", source: "playground", tags: ["chat"] }),
+      session({ id: "recording", source: "api", tags: [] }),
+    ]);
+
+    expect(threads.map((thread) => thread.id)).toEqual(["side"]);
+  });
+
   it("orders by last activity, most recent first", () => {
     const threads = selectChatThreads([
       session({ id: "old", updated_at: "2026-08-01T00:00:00Z" }),

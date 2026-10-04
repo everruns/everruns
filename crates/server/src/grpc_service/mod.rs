@@ -16,6 +16,8 @@ mod tests_platform_command_surface;
 #[cfg(test)]
 mod tests_sqldb_sharing;
 #[cfg(test)]
+mod tests_turn_context;
+#[cfg(test)]
 mod tests_worker_file_ctx;
 
 use crate::domains::mcp_servers::McpServerService;

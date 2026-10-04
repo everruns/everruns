@@ -416,6 +416,11 @@ impl Command for SyncProviderModels {
 
     async fn execute(self, ctx: &Ctx) -> Result<SyncModelsResponse, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
+        q::service(ctx)
+            .get(&ctx.caller, provider_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Provider"))?;
         let result = sync_service(ctx)?
             .sync_provider(ctx.org_id(), provider_id)
             .await

@@ -26,6 +26,8 @@ export interface FeatureFlags {
   /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
   webmcp: boolean;
   reports: boolean;
+  /** Personal ChatGPT plan connections. Requires deployment and organization opt-in. */
+  chatgpt_plan?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
 }

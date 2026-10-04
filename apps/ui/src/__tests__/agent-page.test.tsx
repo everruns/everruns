@@ -260,27 +260,19 @@ describe("AgentPage layout", () => {
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Environments\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
-    // Status badge in view mode, Test chat is the primary action.
+    // Status badge in view mode, Test in Playground is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Test chat/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Test in Playground/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
   });
 
-  it("starts a chat thread from Test chat instead of a read-only session recording", async () => {
+  it("opens Playground setup with the Agent preselected without creating a session", async () => {
     await renderPage();
 
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Test chat/ }));
-    });
+    fireEvent.click(screen.getByRole("button", { name: /Test in Playground/ }));
 
-    expect(mockCreateSession).toHaveBeenCalledWith({
-      request: {
-        agent_id: "agent-1",
-        source: "chat",
-        tags: ["chat"],
-      },
-    });
-    expect(push).toHaveBeenCalledWith("/chats/session-chat-1");
+    expect(mockCreateSession).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith("/playground/new?agent=agent-1");
   });
 
   it("toggles the prompt between rendered markdown and source", async () => {
@@ -366,7 +358,7 @@ describe("AgentPage layout", () => {
 });
 
 describe("AgentPage edit mode", () => {
-  it("edits in place: same layout, Save and Discard replace Test chat", async () => {
+  it("edits in place: same layout, Save and Discard replace Test in Playground", async () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
@@ -379,7 +371,7 @@ describe("AgentPage edit mode", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "System prompt" })).toHaveValue("You are helpful");
     expect(screen.getByRole("button", { name: /Discard/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Test chat/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Test in Playground/ })).not.toBeInTheDocument();
     expect(screen.getByTestId("capability-selector")).toBeInTheDocument();
     expect(screen.getAllByRole("tablist")).toHaveLength(1);
   });

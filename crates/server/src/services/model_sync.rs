@@ -77,7 +77,18 @@ impl ModelSyncService {
             .map_err(|e| anyhow::anyhow!("Invalid provider type: {}", e))?;
 
         // Get API key from DB (fail closed — no env fallback in tenant path).
-        let api_key = self.resolve_api_key(&provider_row)?;
+        let api_key = if provider_row.provider_type == "chatgpt" {
+            Some(
+                crate::services::chatgpt::access_token(
+                    self.db.clone(),
+                    self.encryption.clone(),
+                    &provider_row,
+                )
+                .await?,
+            )
+        } else {
+            self.resolve_api_key(&provider_row)?
+        };
         let Some(api_key) = api_key else {
             return Ok(SyncResult::Failed {
                 error: "No API key configured for provider".to_string(),
@@ -208,7 +219,7 @@ impl ModelSyncService {
         let mut seen_model_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
 
-        for model in discovered {
+        for (rank, model) in discovered.iter().enumerate() {
             seen_model_ids.insert(model.model_id.clone());
 
             // Build provider metadata (includes discovered_profile when available)
@@ -217,6 +228,7 @@ impl ModelSyncService {
                 "created_at": model.created_at,
                 "owned_by": model.owned_by,
                 "discovered_profile": model.discovered_profile,
+                "catalog_order": (provider.provider_type == "chatgpt").then_some(rank),
             });
 
             if existing_ids.contains(model.model_id.as_str()) {
@@ -247,7 +259,7 @@ impl ModelSyncService {
                     model_id: model.model_id.clone(),
                     display_name,
                     capabilities: model.capabilities.clone(),
-                    enabled: false,
+                    enabled: provider.provider_type == "chatgpt",
                     is_favorite: false,
                     source: "discovered".to_string(),
                     provider_metadata: Some(metadata),

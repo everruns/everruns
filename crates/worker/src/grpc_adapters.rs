@@ -1,3 +1,6 @@
+mod status_error;
+pub(crate) use status_error::grpc_status_to_error;
+
 // gRPC-backed adapters for core traits
 //
 // Decision: Workers communicate with control plane via gRPC for all operations
@@ -54,48 +57,6 @@ mod connection_resolver;
 mod session_storage;
 
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
-
-/// Map a tonic gRPC status to the appropriate AgentLoopError variant.
-///
-/// Preserves the semantic meaning of gRPC status codes so that callers
-/// (e.g. retry logic in the durable engine) can distinguish transient
-/// transport errors from permanent domain errors.
-pub(crate) fn grpc_status_to_error(status: tonic::Status) -> AgentLoopError {
-    let msg = status.message().to_string();
-    match status.code() {
-        tonic::Code::NotFound => {
-            // Map to specific "not found" variants when possible
-            if msg.contains("Session") {
-                AgentLoopError::store(format!("Session not found: {msg}"))
-            } else if msg.contains("Agent") {
-                AgentLoopError::store(format!("Agent not found: {msg}"))
-            } else if msg.contains("Harness") {
-                AgentLoopError::store(format!("Harness not found: {msg}"))
-            } else {
-                AgentLoopError::store(format!("Not found: {msg}"))
-            }
-        }
-        tonic::Code::InvalidArgument => AgentLoopError::config(format!("Invalid argument: {msg}")),
-        tonic::Code::Unavailable => AgentLoopError::store(format!("Service unavailable: {msg}")),
-        tonic::Code::ResourceExhausted => {
-            let msg_lower = msg.to_ascii_lowercase();
-            if msg_lower.contains("message")
-                || msg_lower.contains("payload")
-                || msg_lower.contains("size")
-                || msg_lower.contains("too large")
-                || msg_lower.contains("context length")
-            {
-                AgentLoopError::request_too_large(msg)
-            } else {
-                AgentLoopError::store(format!("Resource exhausted: {msg}"))
-            }
-        }
-        tonic::Code::Unauthenticated | tonic::Code::PermissionDenied => {
-            AgentLoopError::config(format!("Auth error: {msg}"))
-        }
-        _ => AgentLoopError::store(format!("gRPC error ({}): {msg}", status.code())),
-    }
-}
 
 /// Create a store error for issues in gRPC responses (e.g., missing fields).
 pub(crate) fn grpc_missing_field(field: &str) -> AgentLoopError {
@@ -325,6 +286,7 @@ impl GrpcClient {
             org_id,
             provider_type: provider_type.to_string(),
             provider_id: String::new(),
+            session_id: None,
         };
 
         let mut client = self.inner.lock().await;
@@ -349,10 +311,20 @@ impl GrpcClient {
         org_id: i64,
         provider_id: &str,
     ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        self.get_provider_config_for_session(org_id, provider_id, None)
+            .await
+    }
+    pub async fn get_provider_config_for_session(
+        &self,
+        org_id: i64,
+        provider_id: &str,
+        session_id: Option<SessionId>,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
         let request = proto::GetDefaultProviderCredentialsRequest {
             org_id,
             provider_type: String::new(),
             provider_id: provider_id.to_string(),
+            session_id: session_id.map(|id| uuid_to_proto(id.uuid())),
         };
         let mut client = self.inner.lock().await;
         let response = client
@@ -1753,6 +1725,16 @@ impl ProviderStore for GrpcOrgAdapter {
         }
     }
 
+    async fn get_provider_config_for_session(
+        &self,
+        provider: &everruns_contracts::ProviderKey,
+        session: SessionId,
+    ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
+        self.client
+            .get_provider_config_for_session(self.org_id, provider.as_str(), Some(session))
+            .await
+    }
+
     async fn get_provider_config(
         &self,
         provider: &everruns_contracts::runtime_provider::ProviderKey,
@@ -1946,9 +1928,8 @@ pub struct TurnContext {
     pub mcp_tool_definitions: Vec<everruns_contracts::tool_types::ToolDefinition>,
 }
 
-/// Load turn context in one batched call (optimization)
-///
-/// This is more efficient than making separate calls for agent, session, messages.
+/// Load turn context in one batched call, cheaper than separate agent, session,
+/// and message calls.
 pub async fn load_turn_context(
     client: &GrpcClient,
     org_id: i64,
@@ -1967,7 +1948,8 @@ pub async fn load_turn_context_for_execution(
     let request = proto::GetTurnContextRequest {
         session_id: Some(uuid_to_proto(session_id.uuid())),
         org_id,
-        message_limit: None, // use server default
+        message_limit: None, // use server default; execution assembles its own:
+        omit_messages_and_model: input_message_id.map(|_| true),
         input_message_id: input_message_id.map(uuid_to_proto),
     };
 

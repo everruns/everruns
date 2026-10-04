@@ -9,6 +9,11 @@
 
 ## 2026-10-03
 
+* **Agent testing belongs to Playground.** The Agent masthead opens Playground setup with the
+  Agent preselected; personal Chats remain bound to the managed Platform Chat Agent and its fixed
+  runtime. Playground owns Agent, harness, virtual-user, and Environment selection. See
+  [Agent Page](ui/agent-page.md) and [Execution Environments](harnesses/execution-environments.md).
+
 * **Paid CI coverage follows provider/model changes and a nightly sweep.**
   Ordinary Rust merges retain llmsim workflows without provider credentials.
   Scheduled and manual live coverage still runs only trusted main-branch code.
@@ -23,6 +28,12 @@
   organisation defaults, and tenant versus platform configuration authority.
   Environment overrides select grades; explicit false organisation overrides
   preserve production opt-outs. See [Feature Flags](security/feature-flags.md).
+
+* **Personal ChatGPT plan drivers.** Shared OAuth, Responses transport, and
+  legacy Codex drivers live in `everruns-drivers`; host adapters supply storage
+  and browser navigation. Self-hosted account connections require deployment
+  enablement plus org opt-in and exact personal runtime ownership. See
+  [Providers](foundations/providers.md#personal-chatgpt-plan-connections).
 
 * **Session storage reads require session view.** Listing key/value entries
   or secret names now evaluates `SESSION_VIEW` before the store is read, so a
@@ -40,10 +51,6 @@
   containment is already `danger-full-access`. `git status` asks unless the
   command disables repository fsmonitor and hooks. See
   [Threat Model](security/threat-model.md) TM-BASH-028.
-
-* **Agent page Test chat.** The gold masthead CTA starts an interactive chat
-  thread (`source: chat` → `/chats/{id}`) instead of opening a read-only
-  session recording. See [Agent Page](ui/agent-page.md).
 
 * **A2A outbound SSRF hardening.** External A2A delegation DNS-pins discovery
   and every AgentCard interface URL, disables redirects, keeps the merged

@@ -218,6 +218,8 @@ opt-in.
 | Feature | Adds |
 | --- | --- |
 | `openai` | OpenAI Responses API provider configuration |
+| `chatgpt` | Personal ChatGPT plan driver and open-source OAuth helpers through `everruns::drivers::chatgpt` |
+| `codex` | Legacy Codex driver through `everruns::drivers::codex` |
 | `bedrock` | AWS Bedrock provider configuration: static keys, or the AWS default credential chain for IAM roles |
 | `typesafe` | TypeSafe decisions provider and the `jev` capability |
 | `bashkit` | Sandboxed shell execution |

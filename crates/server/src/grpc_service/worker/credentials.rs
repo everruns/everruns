@@ -29,7 +29,14 @@ impl WorkerServiceImpl {
                 })
         } else {
             self.provider_resolver_service
-                .resolve_runtime_provider_config(req.org_id, &req.provider_id)
+                .resolve_runtime_provider_config_for_session(
+                    req.org_id,
+                    &req.provider_id,
+                    req.session_id
+                        .as_ref()
+                        .map(|id| parse_uuid(Some(id)))
+                        .transpose()?,
+                )
                 .await
                 .map(|value| {
                     value.map(|provider| {

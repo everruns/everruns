@@ -12743,6 +12743,178 @@
         }
       }
     },
+    "/v1/providers/{provider_id}/chatgpt": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Read the owner's personal ChatGPT connection.",
+        "description": "Returns connection state and non-secret installation metadata. Another user's\nprovider is hidden even from organization administrators.",
+        "operationId": "status",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal connection status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Disconnect the owner's ChatGPT account.",
+        "description": "Cancels pending sign-in and revokes a stored grant before clearing credentials.\nA failed revocation retains credentials so the owner can retry.",
+        "operationId": "disconnect",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal connection disconnect",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      }
+    },
+    "/v1/providers/{provider_id}/chatgpt/import": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Import a private login-helper document.",
+        "description": "Verifies installation, signed identity, nonce, issuing client, and account binding\nbefore persisting credentials. Only the provider's owner may import the document.",
+        "operationId": "import",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportedConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Personal connection import",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      }
+    },
+    "/v1/providers/{provider_id}/chatgpt/login": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Start a personal ChatGPT sign-in.",
+        "description": "Creates a bounded loopback callback listener and returns the authorization URL.\nRequires deployment enablement, organization opt-in, encryption, and exact ownership.",
+        "operationId": "login",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal connection login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      }
+    },
     "/v1/providers/{provider_id}/models": {
       "get": {
         "tags": [
@@ -22858,6 +23030,57 @@
           }
         }
       },
+      "ConnectionStatus": {
+        "type": "object",
+        "description": "Personal ChatGPT connection state, without access or refresh credentials.",
+        "required": [
+          "status",
+          "host_id"
+        ],
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verified account email, present after a successful sign-in.",
+            "example": "user@example.com"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Safe connection error or reconnect guidance, when applicable.",
+            "example": "ChatGPT sign-in did not complete. Retry sign-in."
+          },
+          "host_id": {
+            "type": "string",
+            "description": "Installation identifier to pass unchanged to the local login helper.",
+            "example": "urn:uuid:00000000-0000-0000-0000-000000000001"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Everruns user who owns and may manage this personal connection.",
+            "example": "00000000-0000-0000-0000-000000000001"
+          },
+          "registration": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Non-secret host registration, containing the issuing client and verified subject."
+          },
+          "status": {
+            "type": "string",
+            "description": "Connection state: disconnected, connecting, connected, scope_required, or error.",
+            "example": "disconnected"
+          }
+        }
+      },
       "ConsentAction": {
         "type": "string",
         "description": "What the user decided about opening the URL.",
@@ -29529,6 +29752,31 @@
           }
         }
       },
+      "ImportedConnection": {
+        "type": "object",
+        "description": "Private credential handoff emitted by the local login helper for this installation.",
+        "required": [
+          "auth",
+          "nonce",
+          "host_id"
+        ],
+        "properties": {
+          "auth": {
+            "type": "object",
+            "description": "Credential document emitted by the local helper; accepted only after ID-token validation."
+          },
+          "host_id": {
+            "type": "string",
+            "description": "Installation identifier from the setup document downloaded for this provider.",
+            "example": "urn:uuid:00000000-0000-0000-0000-000000000001"
+          },
+          "nonce": {
+            "type": "string",
+            "description": "Nonce from the same helper document, bound to its signed ID token.",
+            "example": "nonce-from-the-local-helper"
+          }
+        }
+      },
       "InitialFile": {
         "type": "object",
         "description": "Starter file copied into a new session from an agent or harness.",
@@ -34516,6 +34764,20 @@
             ],
             "description": "Ref to start from (default: HEAD)",
             "example": "HEAD"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "description": "Browser destination for a newly created, bounded loopback login attempt.",
+        "required": [
+          "authorize_url"
+        ],
+        "properties": {
+          "authorize_url": {
+            "type": "string",
+            "description": "Open this returned URL unchanged; it contains the attempt's PKCE, state, and nonce.",
+            "example": "https://auth.openai.com/oauth/authorize?client_id=app_example"
           }
         }
       },

@@ -1,6 +1,6 @@
 import * as mockReact from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { NewChatForm } from "@/components/chat/new-chat-form";
+import { NewPlaygroundChatForm } from "@/components/chat/new-chat-form";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
 import type { EnvironmentSet } from "@/lib/api/types";
@@ -131,27 +131,31 @@ function setup({
   mockUseCreateSession.mockReturnValue({ mutateAsync, isPending: false });
 }
 
-describe("NewChatForm", () => {
+describe("NewPlaygroundChatForm", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mutateAsync.mockResolvedValue({ id: "sess_new" });
     setup();
   });
 
-  it("creates an agent-bound thread and opens it", async () => {
-    render(<NewChatForm />);
+  it("binds the chosen end user and opens Playground", async () => {
+    render(<NewPlaygroundChatForm endUserId="identity_customer" />);
 
     fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
       target: { value: "agent:agent_1" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { agent_id: "agent_1", source: "chat", tags: ["chat"] },
+        request: {
+          agent_id: "agent_1",
+          source: "playground",
+          playground_user_id: "identity_customer",
+        },
       }),
     );
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/chats/sess_new"));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/playground/sess_new"));
   });
 
   it("shows an agent's environments and pins the selected profile", async () => {
@@ -171,7 +175,7 @@ describe("NewChatForm", () => {
         },
       ],
     });
-    render(<NewChatForm />);
+    render(<NewPlaygroundChatForm endUserId="identity_customer" />);
 
     fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
       target: { value: "agent:agent_1" },
@@ -180,15 +184,49 @@ describe("NewChatForm", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Environment" }), {
       target: { value: "build" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
         request: {
           agent_id: "agent_1",
           environment: { use: "build" },
-          source: "chat",
-          tags: ["chat"],
+          source: "playground",
+          playground_user_id: "identity_customer",
+        },
+      }),
+    );
+  });
+
+  it("shows and pins the default Environment for a preselected Agent", async () => {
+    setup({
+      agents: [
+        {
+          id: "agent_1",
+          name: "scout",
+          display_name: "Scout",
+          environments: {
+            default: "build",
+            profiles: {
+              build: { target: { kind: "managed", provider: "daytona" } },
+            },
+          },
+        },
+      ],
+    });
+
+    render(<NewPlaygroundChatForm initialAgentId="agent_1" endUserId="identity_customer" />);
+
+    expect(screen.getByRole("combobox", { name: "Environment" })).toHaveValue("build");
+    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        request: {
+          agent_id: "agent_1",
+          environment: { use: "build" },
+          source: "playground",
+          playground_user_id: "identity_customer",
         },
       }),
     );
@@ -205,17 +243,21 @@ describe("NewChatForm", () => {
       ],
     });
 
-    render(<NewChatForm />);
+    render(<NewPlaygroundChatForm endUserId="identity_customer" />);
 
     expect(screen.getByRole("option", { name: "Generic" })).toHaveValue("harness:generic");
     fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
       target: { value: "harness:generic" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
-        request: { harness_name: "generic", source: "chat", tags: ["chat"] },
+        request: {
+          harness_name: "generic",
+          source: "playground",
+          playground_user_id: "identity_customer",
+        },
       }),
     );
   });
@@ -223,40 +265,13 @@ describe("NewChatForm", () => {
   it("points at agent creation when there is nothing to talk to", () => {
     setup({ agents: [], harnesses: [] });
 
-    render(<NewChatForm />);
+    render(<NewPlaygroundChatForm endUserId="identity_customer" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Create an agent" }));
     expect(mockPush).toHaveBeenCalledWith("/agents/new");
   });
-});
-
-describe("Playground creation through the shared chat form", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mutateAsync.mockResolvedValue({ id: "session_shared" });
-    setup();
-  });
-
-  it("binds the chosen end user, keeps it out of Chats, and opens Playground", async () => {
-    render(<NewChatForm surface="playground" endUserId="identity_customer" />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
-      target: { value: "agent:agent_1" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
-    await waitFor(() =>
-      expect(mutateAsync).toHaveBeenCalledWith({
-        request: {
-          agent_id: "agent_1",
-          source: "playground",
-          playground_user_id: "identity_customer",
-        },
-      }),
-    );
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/playground/session_shared"));
-  });
-
   it("waits for the default virtual user before creation", () => {
-    render(<NewChatForm surface="playground" />);
+    render(<NewPlaygroundChatForm />);
     fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
       target: { value: "agent:agent_1" },
     });

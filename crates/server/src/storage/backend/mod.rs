@@ -113,6 +113,17 @@ pub enum SlackInstallLock<'a> {
 }
 
 impl StorageBackend {
+    pub async fn clear_provider_credential(
+        &self,
+        org_id: i64,
+        id: uuid::Uuid,
+    ) -> anyhow::Result<()> {
+        match self {
+            Self::Postgres(db) => db.clear_provider_credential(org_id, id).await,
+            Self::InMemory(db) => db.clear_provider_credential(org_id, id).await,
+        }
+    }
+
     pub async fn lock_slack_install(
         &self,
         channel_id: uuid::Uuid,

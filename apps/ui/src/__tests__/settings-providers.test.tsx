@@ -1,8 +1,29 @@
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import ProvidersPage from "@/app/(main)/settings/providers/page";
 import { CredentialFields } from "@/app/(main)/settings/providers/credential-fields";
+import { ServiceDefaultsCard } from "@/app/(main)/settings/providers/service-defaults-card";
+import type { Provider } from "@/lib/api/types";
+
+it("excludes personal connections from shared service defaults", () => {
+  render(
+    <ServiceDefaultsCard
+      providers={[
+        ...mockProviders,
+        {
+          ...mockProviders[0],
+          id: "personal",
+          name: "Personal ChatGPT",
+          provider_type: "chatgpt",
+        },
+      ]}
+    />,
+  );
+  expect(screen.queryByRole("option", { name: "Personal ChatGPT" })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("option", { name: "OpenAI Production" })).toHaveLength(4);
+});
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -22,13 +43,14 @@ jest.mock("next/link", () => ({
 }));
 
 // Mock the LLM providers hooks
-const mockProviders = [
+const mockProviders: Provider[] = [
   {
     id: "provider-1",
     name: "OpenAI Production",
     provider_type: "openai",
     status: "active",
     api_key_set: true,
+    managed: false,
     base_url: "https://api.openai.com/v1",
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
@@ -39,7 +61,7 @@ const mockProviders = [
     provider_type: "anthropic",
     status: "active",
     api_key_set: false,
-    base_url: null,
+    managed: false,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   },

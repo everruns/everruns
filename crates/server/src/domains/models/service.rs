@@ -89,6 +89,8 @@ impl ModelRank {
     }
 }
 
+mod catalog_helpers;
+
 pub struct ModelService {
     db: Arc<StorageBackend>,
     provider_resolver: Option<Arc<ProviderResolverService>>,
@@ -122,7 +124,7 @@ impl ModelService {
         provider_id: Uuid,
         req: CreateModelRequest,
     ) -> Result<Model> {
-        let provider = self.get_provider(caller.org_id, provider_id).await?;
+        let provider = self.get_visible_provider(caller, provider_id).await?;
         Self::require_unmanaged_provider(&provider)?;
 
         // Discovery populates a provider's catalog the moment it gains a
@@ -193,6 +195,10 @@ impl ModelService {
                     "Failed to read llm model"
                 );
             })?;
+        if let Some(ref row) = row {
+            self.get_visible_provider(caller, row.provider_id.uuid())
+                .await?;
+        }
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
@@ -201,6 +207,7 @@ impl ModelService {
         caller: &Caller,
         provider_id: Uuid,
     ) -> Result<Vec<Model>> {
+        self.get_visible_provider(caller, provider_id).await?;
         let rows = self
             .db
             .list_models_for_provider(caller.org_id, provider_id)
@@ -217,7 +224,7 @@ impl ModelService {
     }
 
     pub async fn list_all(&self, caller: &Caller) -> Result<Vec<ModelWithProvider>> {
-        let rows = self
+        let mut rows = self
             .db
             .list_all_models(caller.org_id)
             .await
@@ -228,7 +235,13 @@ impl ModelService {
                     "Failed to list llm models"
                 );
             })?;
-        Ok(rows.iter().map(Self::row_to_model_with_provider).collect())
+        Self::order_personal_catalog(&mut rows);
+        let visible = self.visible_provider_ids(caller).await?;
+        Ok(rows
+            .iter()
+            .filter(|r| visible.contains(&r.provider_id))
+            .map(Self::row_to_model_with_provider)
+            .collect())
     }
 
     /// List all models with optional filters
@@ -240,7 +253,7 @@ impl ModelService {
         favorites_only: bool,
     ) -> Result<Vec<ModelWithProvider>> {
         // EVE-417: same diagnostic logging as `list_all`/`list_for_provider`.
-        let rows = self
+        let mut rows = self
             .db
             .list_all_models(caller.org_id)
             .await
@@ -251,6 +264,7 @@ impl ModelService {
                     "Failed to list llm models for filtering"
                 );
             })?;
+        Self::order_personal_catalog(&mut rows);
 
         // Get provider last_synced_at timestamps for stale detection
         let providers = self
@@ -272,9 +286,17 @@ impl ModelService {
             .map(|p| (p.id.uuid(), p.last_synced_at))
             .collect();
 
+        let visible: std::collections::HashSet<_> = providers
+            .iter()
+            .filter(|p| crate::services::chatgpt::visible(&p.settings, caller))
+            .map(|p| p.id)
+            .collect();
         let models: Vec<ModelWithProvider> = rows
             .iter()
             .filter(|row| {
+                if !visible.contains(&row.provider_id) {
+                    return false;
+                }
                 // Filter by source
                 if let Some(ref filter_source) = source {
                     let row_source: ModelSource = row.source.parse().unwrap_or(ModelSource::Manual);
@@ -328,7 +350,7 @@ impl ModelService {
             None => return Ok(None),
         };
         let existing_provider = self
-            .get_provider(caller.org_id, existing.provider_id.uuid())
+            .get_visible_provider(caller, existing.provider_id.uuid())
             .await?;
 
         // THREAT[TM-AUTHZ]: managed providers own their model catalog. Tenant
@@ -352,7 +374,7 @@ impl ModelService {
             None => None,
         };
         let provider_id = if let Some(provider_id) = provider_id {
-            let provider = self.get_provider(caller.org_id, provider_id).await?;
+            let provider = self.get_visible_provider(caller, provider_id).await?;
             Self::require_unmanaged_provider(&provider)?;
             Some(provider.id)
         } else {
@@ -393,7 +415,7 @@ impl ModelService {
             None => return Ok(false),
         };
         let provider = self
-            .get_provider(caller.org_id, model.provider_id.uuid())
+            .get_visible_provider(caller, model.provider_id.uuid())
             .await?;
         Self::require_unmanaged_provider(&provider)?;
 
@@ -412,11 +434,25 @@ impl ModelService {
     /// Get the default model
     pub async fn get_default(&self, caller: &Caller) -> Result<Option<ModelWithProvider>> {
         let row = self.db.get_default_model(caller.org_id).await?;
+        if let Some(ref row) = row {
+            self.get_visible_provider(caller, row.provider_id.uuid())
+                .await?;
+        }
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
     /// Set the org default model
     pub async fn set_default(&self, org_id: i64, model_id: Uuid) -> Result<()> {
+        let model = self
+            .db
+            .get_model_for_mutation(org_id, model_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
+        let provider = self.get_provider(org_id, model.provider_id.uuid()).await?;
+        anyhow::ensure!(
+            provider.provider_type != "chatgpt",
+            "A personal ChatGPT model cannot be the organization default"
+        );
         self.db
             .upsert_organization_settings(org_id, Some(model_id))
             .await?;
@@ -451,9 +487,9 @@ impl ModelService {
     /// whose only other enabled model was `text-embedding-3-small`.
     async fn elect_new_default(&self, org_id: i64) -> Result<()> {
         let all_models = self.db.list_all_models(org_id).await?;
-        let new_default = all_models
-            .iter()
-            .find(|m| m.enabled && Self::row_is_chat_model(&m.capabilities));
+        let new_default = all_models.iter().find(|m| {
+            m.provider_type != "chatgpt" && m.enabled && Self::row_is_chat_model(&m.capabilities)
+        });
 
         let new_default_id = new_default.map(|m| m.id.uuid());
         self.db
@@ -491,7 +527,10 @@ impl ModelService {
         let mut outcome = IntelligenceBootstrap::default();
 
         // A provider that cannot serve a request bootstraps nothing.
-        if !provider.api_key_set || provider.status != "active" {
+        if provider.provider_type == "chatgpt"
+            || !provider.api_key_set
+            || provider.status != "active"
+        {
             return Ok(outcome);
         }
 
@@ -618,141 +657,6 @@ impl ModelService {
         !capabilities
             .iter()
             .any(|capability| capability.eq_ignore_ascii_case("embeddings"))
-    }
-
-    async fn get_provider(
-        &self,
-        org_id: i64,
-        provider_id: Uuid,
-    ) -> Result<crate::storage::models::ProviderRow> {
-        self.db
-            .get_provider(org_id, provider_id)
-            .await?
-            .ok_or_else(|| ResourceNotFoundError::new("Provider").into())
-    }
-
-    fn require_unmanaged_provider(provider: &crate::storage::models::ProviderRow) -> Result<()> {
-        if provider.managed {
-            return Err(Self::managed_catalog_error());
-        }
-        Ok(())
-    }
-
-    fn managed_catalog_error() -> anyhow::Error {
-        everruns_core::PolicyError::denied(
-            "provider_managed",
-            "This provider's model catalog is managed by the host and cannot be modified.",
-        )
-        .into()
-    }
-
-    fn row_to_model(row: &ModelRow) -> Model {
-        let capabilities: Vec<String> =
-            serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-        Model {
-            id: row.id,
-            provider_id: row.provider_id,
-            model_id: row.model_id.clone(),
-            display_name: row.display_name.clone(),
-            capabilities,
-            enabled: row.enabled,
-            is_favorite: row.is_favorite,
-            source: row.source.parse().unwrap_or(ModelSource::Manual),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        }
-    }
-
-    fn row_to_model_with_provider(row: &ModelWithProviderRow) -> ModelWithProvider {
-        let capabilities: Vec<String> =
-            serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-        let provider_type: DriverId = row.provider_type.parse().unwrap_or(DriverId::OpenAI);
-
-        // Look up hardcoded profile, then try discovered profile from provider_metadata.
-        // Hardcoded profiles take precedence; discovered provider catalog data fills gaps.
-        let hardcoded = get_model_profile(&provider_type, &row.model_id);
-        let profile = if hardcoded.is_some() {
-            // Merge: hardcoded base with discovered limits/capabilities as fallback
-            let discovered = Self::extract_discovered_profile(row);
-            match (hardcoded, discovered) {
-                (Some(h), Some(d)) => Some(Self::merge_profiles(h, d)),
-                (Some(h), None) => Some(h),
-                _ => unreachable!(),
-            }
-        } else {
-            // No hardcoded profile — use discovered if available
-            Self::extract_discovered_profile(row)
-        };
-
-        // A model is healthy when its provider is active and has an API key
-        // configured. This will likely grow to include live reachability
-        // checks; keep the derivation in one place.
-        let healthy = row.provider_status == "active" && row.provider_api_key_set;
-
-        // Vendor/brand tag from the model registry (drives UI branding),
-        // independent of the configured provider type.
-        let model_vendor =
-            everruns_contracts::model_profiles::get_model_vendor(&provider_type, &row.model_id);
-
-        ModelWithProvider {
-            id: row.id,
-            provider_id: row.provider_id,
-            model_id: row.model_id.clone(),
-            display_name: row.display_name.clone(),
-            capabilities,
-            enabled: row.enabled,
-            is_favorite: row.is_favorite,
-            source: row.source.parse().unwrap_or(ModelSource::Manual),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            provider_name: row.provider_name.clone(),
-            provider_type,
-            healthy,
-            profile,
-            model_vendor,
-        }
-    }
-
-    /// Extract the discovered profile from provider_metadata JSON.
-    fn extract_discovered_profile(row: &ModelWithProviderRow) -> Option<ModelProfile> {
-        let metadata = row.provider_metadata.as_ref()?;
-        let profile_val = metadata.get("discovered_profile")?;
-        serde_json::from_value(profile_val.clone()).ok()
-    }
-
-    /// Merge a hardcoded profile with a discovered profile.
-    /// Hardcoded values take precedence; discovered values fill gaps.
-    fn merge_profiles(hardcoded: ModelProfile, discovered: ModelProfile) -> ModelProfile {
-        ModelProfile {
-            // Hardcoded always wins for curated fields
-            name: hardcoded.name,
-            family: hardcoded.family,
-            description: hardcoded.description.or(discovered.description),
-            release_date: hardcoded.release_date.or(discovered.release_date),
-            last_updated: hardcoded.last_updated.or(discovered.last_updated),
-            attachment: hardcoded.attachment,
-            reasoning: hardcoded.reasoning,
-            temperature: hardcoded.temperature,
-            knowledge: hardcoded.knowledge.or(discovered.knowledge),
-            tool_call: hardcoded.tool_call,
-            structured_output: hardcoded.structured_output,
-            open_weights: hardcoded.open_weights,
-            cost: hardcoded.cost.or(discovered.cost),
-            // Limits: hardcoded values are authoritative; use discovered values only as fallback
-            limits: hardcoded.limits.or(discovered.limits),
-            modalities: hardcoded.modalities.or(discovered.modalities),
-            reasoning_effort: hardcoded.reasoning_effort.or(discovered.reasoning_effort),
-            speed: hardcoded.speed.or(discovered.speed),
-            verbosity: hardcoded.verbosity.or(discovered.verbosity),
-            tool_search: hardcoded.tool_search,
-            supported_parameters: if hardcoded.supported_parameters.is_empty() {
-                discovered.supported_parameters
-            } else {
-                hardcoded.supported_parameters
-            },
-            supports_phases: hardcoded.supports_phases,
-            supports_server_compaction: hardcoded.supports_server_compaction,
-        }
     }
 }
 
@@ -1545,5 +1449,6 @@ mod tests {
         assert_eq!(err.to_string(), "Provider not found");
     }
 
+    mod private_provider_tests;
     mod profile_merge_tests;
 }
