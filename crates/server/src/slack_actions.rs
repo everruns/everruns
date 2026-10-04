@@ -24,12 +24,12 @@
 
 use std::sync::Arc;
 
+use crate::records::{AgentChannel, App, ChannelType};
 use async_trait::async_trait;
-use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::slack_action::{
     SlackAction, SlackActionError, SlackActionInvoker, SlackActionOutcome,
 };
-use crate::records::{AgentChannel, App, ChannelType};
+use everruns_contracts::typed_id::SessionId;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
@@ -607,8 +607,8 @@ mod tests {
         CreateAppRow, CreateHarnessRow, CreateLegacyAliasChannelRow, CreateSessionRow,
         UpdateChannelByIdRow,
     };
-    use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use everruns_contracts::slack_action::SlackActionInvoker;
+    use everruns_contracts::typed_id::{AgentId, HarnessId, PrincipalId};
     use uuid::Uuid;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};

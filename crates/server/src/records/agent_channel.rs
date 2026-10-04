@@ -25,8 +25,7 @@ use utoipa::ToSchema;
 /// Liveness is not this value alone; see `channel_liveness` in
 /// `crates/server/src/api/channel_ingress.rs` for the agent-level terms, which are
 /// folded in at resolution time rather than stored here.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[schema(example = "live")]
 #[serde(rename_all = "lowercase")]
 pub enum ChannelStatus {
@@ -68,8 +67,7 @@ impl From<&str> for ChannelStatus {
 }
 
 /// Supported channel types for app distribution.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 #[schema(example = "webhook")]
 #[serde(rename_all = "lowercase")]
 pub enum ChannelType {
@@ -161,8 +159,7 @@ impl ChannelType {
 
 /// An independently published communication channel owned by an Agent.
 /// Each channel has its own type, config, and lifecycle status.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentChannel {
     /// External identifier (appchan_<32-hex>). Shown as "id" in API.
     #[serde(rename = "id")]
@@ -298,9 +295,8 @@ pub(crate) fn default_invocation_binding() -> SessionBinding {
 /// How replies are delivered back to Slack.
 ///
 /// This is the Slack-specific config type that serializes in `SlackChannelConfig`.
-/// Converts to/from the generic `ChannelReplyMode` in `crate::channel`.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[derive(ToSchema)]
+/// Converts to/from the generic `ChannelReplyMode` in `everruns_core::channel`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SlackReplyMode {
     /// Forward completed assistant messages directly to Slack.
@@ -339,8 +335,7 @@ pub const DEFAULT_AG_UI_GENERIC_TOOL_TEXT: &str = DEFAULT_PUBLIC_TOOL_ACTIVITY_T
 ///
 /// Stored on `AgentChannel.auth` so users can protect one endpoint without first
 /// creating org-level identity-provider state.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelAuthMode {
     Anonymous,
@@ -355,8 +350,7 @@ pub enum ChannelAuthMode {
 }
 
 /// OIDC/OAuth/basic/mTLS provider details for one channel.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChannelAuthProviderConfig {
     GoogleOidc {
@@ -406,8 +400,7 @@ pub enum ChannelAuthProviderConfig {
 }
 
 /// Claim and credential requirements common to channel auth providers.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct ChannelAuthRequirements {
     /// JWT `aud` values to require on inbound tokens. Empty list disables audience checking.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -430,8 +423,7 @@ pub struct ChannelAuthRequirements {
 }
 
 /// Authentication config for one channel/channel.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[cfg_attr(
     feature = "openapi",
     schema(example = json!({"mode": "api_key", "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}}))
@@ -447,8 +439,7 @@ pub struct ChannelAuthConfig {
 /// Typed AG-UI channel configuration.
 ///
 /// Parsed from the `channel_config` JSON field on App.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgUiChannelConfig {
     /// Whether anonymous access is allowed for this channel (default on).
     #[serde(default = "default_true")]
@@ -532,8 +523,7 @@ pub const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS: u32 = 120;
 /// Operators that need IdP-backed auth in front of an FCP endpoint should
 /// terminate that at the edge (reverse proxy, IAP, mTLS) rather than asking
 /// the FCP handler to grow another auth mode.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FcpChannelConfig {
     /// Whether anonymous access is allowed for this channel. When `false`
     /// a non-empty `token` must authenticate every `POST`.
@@ -575,8 +565,7 @@ fn default_fcp_response_timeout_seconds() -> u32 {
 ///
 /// `message` is also the template body. `{{path.to.value}}` placeholders are
 /// expanded at invocation time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ScheduleChannelConfig {
     /// Cron expression that drives the durable schedule.
     pub cron_expression: String,
@@ -594,8 +583,7 @@ pub struct ScheduleChannelConfig {
 ///
 /// `message` is also the template body. `{{path.to.value}}` placeholders are
 /// expanded against the incoming webhook payload and metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WebhookChannelConfig {
     /// Shared secret required from the incoming webhook request.
     pub token: String,
@@ -625,8 +613,7 @@ fn default_timezone() -> String {
 /// `message` is the template body. `{{path.to.value}}` placeholders expand
 /// against the incoming A2A request payload and metadata (see
 /// `knowledge/integrations/a2a-channel.md`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct A2aChannelConfig {
     /// SHA-256 hex digest of the API key.
     pub api_key_hash: String,
@@ -677,8 +664,7 @@ pub struct A2aChannelConfig {
 /// only the SHA-256 hex hash and a non-secret display prefix are persisted, and
 /// the plaintext is returned exactly once at create / regenerate time. See
 /// `knowledge/integrations/app-api-keys.md`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiChannelConfig {
     /// SHA-256 hex digest of the API key.
     pub api_key_hash: String,
@@ -702,8 +688,7 @@ pub struct ApiChannelConfig {
 /// Branding shown on a Public Chat surface. All fields optional; the public app
 /// falls back to the App's name and the default design-system theme when unset.
 /// Branding is non-secret and is returned as-is in API responses.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 pub struct PublicChatBranding {
     /// Display name shown in the chat header. Falls back to the App name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -721,8 +706,7 @@ pub struct PublicChatBranding {
 }
 
 /// Bot-mitigation challenge provider for anonymous Public Chat access.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CaptchaProvider {
     /// Cloudflare Turnstile. The only provider supported in the first release.
@@ -738,8 +722,7 @@ pub enum CaptchaProvider {
 /// endpoint server-side and is redacted in API responses (only
 /// `secret_key_configured: bool` is surfaced). The `site_key` is public and
 /// returned so the web app can render the widget.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PublicChatCaptchaConfig {
     /// Challenge provider. Defaults to Cloudflare Turnstile.
     #[serde(default)]
@@ -761,8 +744,7 @@ pub struct PublicChatCaptchaConfig {
 /// AG-UI's streaming semantics and the shared channel auth verifier, and
 /// adds branding and bot-mitigation tailored to a public, link-shareable chat
 /// website. See `knowledge/integrations/public-chat.md`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PublicChatChannelConfig {
     /// Whether anonymous access is allowed. Anonymous-by-default mirrors AG-UI.
     /// When `false`, visitors must authenticate (e.g. via `auth` Google OIDC).

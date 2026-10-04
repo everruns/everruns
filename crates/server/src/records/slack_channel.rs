@@ -15,8 +15,7 @@ use crate::records::agent_channel::{
 use crate::records::exposure::PublicToolVisibility;
 
 /// When a Slack message may start an agent turn, independently of delivery style.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SlackResponsePolicy {
     /// Preserve the existing behavior for endpoints that have not opted in.
@@ -30,8 +29,7 @@ pub enum SlackResponsePolicy {
 
 /// Typed Slack channel configuration.
 /// Parsed from the `channel_config` JSON field on App.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SlackChannelConfig {
     /// Slack signing secret for verifying webhook requests.
     ///

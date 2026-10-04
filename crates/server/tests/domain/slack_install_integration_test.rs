@@ -241,7 +241,10 @@ async fn exercise_install(server: test_harness::TestServer) {
     assert_eq!(config.bot_token, "xoxb-installed");
     assert_eq!(config.team_id.as_deref(), Some("T1"));
     assert!(config.provisioned_app.unwrap().install_state.is_none());
-    assert_eq!(stored.status, everruns_server::records::ChannelStatus::Draft);
+    assert_eq!(
+        stored.status,
+        everruns_server::records::ChannelStatus::Draft
+    );
     server
         .post(
             &format!("/v1/channels/{id}/slack/events"),

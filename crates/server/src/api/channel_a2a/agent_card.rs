@@ -135,8 +135,7 @@ async fn agent_card(
     // Streaming is only supported on session_per_invocation channels.
     // Shared-session channels reject it because events cannot be safely
     // correlated across concurrent callers.
-    let streaming =
-        config.session_mode == crate::records::agent_channel::SessionBinding::Ephemeral;
+    let streaming = config.session_mode == crate::records::agent_channel::SessionBinding::Ephemeral;
     let interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
         .iter()
         .map(|version| {

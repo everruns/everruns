@@ -7,12 +7,14 @@ use crate::domains::agent_channels::queries::{
     channel_row_to_channel, decrypt_channel_config, parse_legacy_channel_auth,
 };
 use crate::domains::common::CommandError;
+use crate::records::{
+    AgentChannel, AgentChannelId, AgentVersionPolicy, App, AppStatus, ChannelStatus, ChannelType,
+};
 use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use everruns_contracts::typed_id::AppId;
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, VirtualUserId};
-use crate::records::{AgentChannel, AgentChannelId, AgentVersionPolicy, App, AppStatus, ChannelStatus, ChannelType};
 use std::sync::Arc;
 use uuid::Uuid;
 

@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::records::{ChannelType, FcpChannelConfig};
 use axum::{
     Extension, Router,
     extract::{ConnectInfo, Path, State},
@@ -40,7 +41,6 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
-use crate::records::{ChannelType, FcpChannelConfig};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;

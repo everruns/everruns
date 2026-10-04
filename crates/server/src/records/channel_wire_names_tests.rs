@@ -2,11 +2,11 @@
 //! component names and serde spellings are a public contract (third-party
 //! clients and the generated UI types key on them), so pin both here.
 
-use crate::{AgentChannel, ChannelType};
+use crate::records::{AgentChannel, ChannelType};
 
 #[test]
 fn renamed_endpoint_types_use_channel_openapi_names() {
-    use crate::{
+    use crate::records::{
         ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig, ChannelAuthRequirements,
     };
     use utoipa::ToSchema;

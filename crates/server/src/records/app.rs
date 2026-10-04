@@ -15,8 +15,7 @@ use uuid::Uuid;
 /// - `published`: App is live, accepting incoming requests
 /// - `archived`: App is hidden from listings and cannot be modified or assigned
 /// - `deleted`: App is a tombstone kept only for historical references
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[schema(example = "published")]
 #[serde(rename_all = "lowercase")]
 pub enum AppStatus {
@@ -51,8 +50,7 @@ impl From<&str> for AppStatus {
 /// App configuration for deploying agents to channels.
 /// An app binds a harness and optional agent to distribution channels with a
 /// publish lifecycle.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct App {
     /// External identifier (app_<32-hex>). Shown as "id" in API.
     #[serde(rename = "id")]

@@ -3,9 +3,11 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::records::{
+    AgentChannel, AgentChannelId, AgentVersionPolicy, ChannelAuthConfig, ChannelStatus, ChannelType,
+};
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
-use crate::records::{AgentChannel, AgentChannelId, AgentVersionPolicy, ChannelAuthConfig, ChannelStatus, ChannelType};
 use std::sync::Arc;
 use uuid::Uuid;
 

@@ -1,9 +1,9 @@
 //! Fixtures shared by the test modules.
 
 use super::*;
+use crate::records::{ConversationStarter, SlackChannelConfig, SlackReplyMode};
 use crate::storage::StorageBackend;
 use everruns_core::channel::SessionBinding;
-use crate::records::{ConversationStarter, SlackChannelConfig, SlackReplyMode};
 use hmac::{KeyInit, Mac};
 use std::ops::{Deref, DerefMut};
 

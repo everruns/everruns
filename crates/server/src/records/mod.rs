@@ -31,16 +31,16 @@ pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
 };
-pub use agent_trigger::{
-    AgentTrigger, AgentTriggerDelivery, AgentTriggerType, GitHubTriggerConfig,
-    McpEventTriggerConfig, ScheduleTriggerConfig, TriggerDeliveryStatus, TriggerEventFilter,
-    TriggerFilterCondition, WebhookTriggerConfig,
-};
 pub use agent_channel::{
     A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentVersionPolicy, ApiChannelConfig,
     CaptchaProvider, ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig,
     ChannelAuthRequirements, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatBranding,
     PublicChatCaptchaConfig, PublicChatChannelConfig, SlackReplyMode,
+};
+pub use agent_trigger::{
+    AgentTrigger, AgentTriggerDelivery, AgentTriggerType, GitHubTriggerConfig,
+    McpEventTriggerConfig, ScheduleTriggerConfig, TriggerDeliveryStatus, TriggerEventFilter,
+    TriggerFilterCondition, WebhookTriggerConfig,
 };
 pub use app::{App, AppStatus};
 pub use audit::{

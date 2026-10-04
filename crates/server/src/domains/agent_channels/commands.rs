@@ -6,10 +6,10 @@ use crate::domains::agents::version_policy::{VersionSelection, resolve_version_s
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
+use crate::records::{AgentChannel, AgentChannelId, ChannelType};
 use crate::storage::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use everruns_contracts::typed_id::AgentId;
 use everruns_durable::UpdateField;
-use crate::records::{AgentChannel, AgentChannelId, ChannelType};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;

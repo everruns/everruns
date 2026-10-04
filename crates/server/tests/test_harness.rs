@@ -177,8 +177,8 @@ impl TestServer {
     ) -> Value {
         use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_server::records::AgentChannelId;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
+        use everruns_server::records::AgentChannelId;
         use everruns_server::storage::models::{
             CreateAppRow, CreateLegacyAliasChannelRow, CreatePrincipalRow,
         };
@@ -318,8 +318,8 @@ impl TestServer {
         channel_config: Value,
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_server::records::AgentChannelId;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
+        use everruns_server::records::AgentChannelId;
         use everruns_server::storage::models::CreateLegacyAliasChannelRow;
 
         let app = self

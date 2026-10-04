@@ -19,8 +19,7 @@ use everruns_core::channel::SessionBinding;
 use utoipa::ToSchema;
 
 /// The kind of event that fires an agent trigger.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentTriggerType {
     /// Cron-driven schedule trigger.
@@ -62,8 +61,7 @@ impl From<&str> for AgentTriggerType {
 ///
 /// `message` is also the template body. `{{path.to.value}}` placeholders are
 /// expanded at invocation time. Mirrors `app::ScheduleChannelConfig`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ScheduleTriggerConfig {
     /// Cron expression that drives the durable schedule.
     pub cron_expression: String,
@@ -78,8 +76,7 @@ pub struct ScheduleTriggerConfig {
 }
 
 /// Typed configuration for a `Webhook` trigger.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WebhookTriggerConfig {
     /// Shared secret accepted through bearer or webhook-token authentication.
     pub token: String,
@@ -114,8 +111,7 @@ pub struct WebhookTriggerConfig {
 /// holds no token of its own. The event context carries `github.*` fields
 /// (`event`, `action`, `repository`, `number`, `title`, `url`, `sender`) and
 /// the raw `payload`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitHubTriggerConfig {
     /// Subscribed events: an event name (`pull_request`) or an event and
     /// action (`pull_request.opened`).
@@ -147,8 +143,7 @@ fn default_github_binding() -> SessionBinding {
 /// events to the trigger's callback. The event context carries `mcp.*` fields
 /// (`server`, `event`, `event_id`, `timestamp`, `subscription_id`) and the
 /// event's `data` as `payload`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct McpEventTriggerConfig {
     /// Name of the agent's MCP server attachment that publishes the event.
     pub server: String,
@@ -182,8 +177,7 @@ fn empty_object() -> serde_json::Value {
 /// template context (`payload.action`, `event.type`, ...) and passes when the
 /// value there equals any of `any_of`. Events that do not match are recorded as
 /// `filtered` deliveries and start no session.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct TriggerEventFilter {
     /// Conditions that must all hold.
     #[serde(default)]
@@ -191,8 +185,7 @@ pub struct TriggerEventFilter {
 }
 
 /// One filter condition: the value at `path` must equal one of `any_of`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 pub struct TriggerFilterCondition {
     /// Dotted path into the event context, e.g. `payload.action`.
     pub path: String,
@@ -203,8 +196,7 @@ pub struct TriggerFilterCondition {
 }
 
 /// What happened to one event delivered to a trigger.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TriggerDeliveryStatus {
     /// Accepted and handed to a session.
@@ -243,8 +235,7 @@ impl std::str::FromStr for TriggerDeliveryStatus {
 }
 
 /// One recorded event delivery for an agent trigger.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentTriggerDelivery {
     /// Delivery identifier.
     #[schema(value_type = String)]
@@ -278,8 +269,7 @@ fn default_timezone() -> String {
 }
 
 /// AgentTrigger is a durable, agent-owned invocation trigger.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentTrigger {
     /// External identifier (trg_<32-hex>). Shown as `id` in API.
     #[serde(rename = "id")]

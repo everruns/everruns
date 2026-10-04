@@ -1,8 +1,8 @@
 use super::*;
+use crate::records::{ChannelStatus, ChannelType};
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use everruns_core::{DefaultPermissionResolver, Permission};
-use crate::records::{ChannelStatus, ChannelType};
 use std::sync::Arc;
 
 struct AgentsOnlyResolver;

@@ -18,6 +18,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::kernel_imports::{Caller, ContentPart, ExternalActor, RuntimeMessageRole};
+use crate::records::exposure::public_tool_activity_text;
+use crate::records::{AgUiChannelConfig, ChannelType};
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Path, Request, State},
@@ -41,8 +43,6 @@ use everruns_contracts::typed_id::ImageId;
 #[cfg(test)]
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
-use crate::records::exposure::public_tool_activity_text;
-use crate::records::{AgUiChannelConfig, ChannelType};
 use futures::{
     StreamExt,
     stream::{self, Stream},
