@@ -115,7 +115,7 @@ prost-types.workspace = true
 serde_urlencoded = "0.7.1"
 url = "2"
 
-everruns-core = { path = "../core", features = ["ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities"], default-features = false }
+everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui-projection", "builtins", "direct-egress", "host", "mcp", "observability", "openai-agents-api", "openapi", "tree-sitter-outlines", "ui-capabilities"], default-features = false }
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
 a2a.workspace = true

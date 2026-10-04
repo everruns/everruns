@@ -30,3 +30,6 @@ mod session_events;
 mod session_history;
 mod session_identity;
 mod session_work;
+
+#[cfg(feature = "agent-package-fs")]
+mod package;

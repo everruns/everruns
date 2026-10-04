@@ -1,0 +1,40 @@
+---
+type: Test Case
+title: "TC001: Import, compare and export agent packages"
+description: "Checks legacy Markdown, complete ZIP assets, destination diffs and invalid input."
+tags:
+  - everruns
+  - test-case
+  - ui
+  - agent-packages
+---
+# TC001: Import, compare and export agent packages
+
+## Description
+
+Checks legacy Markdown, complete ZIP assets, destination diffs and invalid input.
+
+## Preconditions
+
+- Canonical development stack is running with `AUTH_MODE=none`.
+- Skills are enabled when testing the complete triage folder.
+- Use the [package examples](../../../../examples/agent-packages/README.md).
+
+## Steps
+
+1. Open Agents, import the simple Dad Jokes Markdown example and wait for validation.
+2. Confirm create is the default destination; import and inspect the Instructions pane.
+3. Export Markdown and a complete ZIP, and verify both can be imported again.
+4. Change the instructions in a copy, import it, and select the original agent as the destination.
+5. Inspect the semantic diff before applying; confirm changed instructions persist after reload.
+6. Import a malformed definition and confirm a useful diagnostic appears with Import disabled.
+7. Import a ZIP of the triage folder and inspect its initial files, including the skill script.
+8. Compare that exported ZIP with its agent and confirm no semantic changes.
+
+## Expected Result
+
+- Validation and dependency errors keep the dialog open and prevent import.
+- The candidate used for comparison is the candidate applied.
+- Simple Markdown remains supported; ZIP preserves complete skills and binary files.
+- Exports contain stable names and Instructions, with no deployment resource IDs or credentials.
+- Declared channels default to disabled; explicit enablement creates drafts, not public ingress.

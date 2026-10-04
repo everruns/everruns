@@ -2,7 +2,7 @@
 # It curates value-first APIs over neutral core/provider contracts and the
 # canonical in-process host without exposing host construction or platform
 # records.
-# Default features stay offline — the contained session filesystem is included,
+# Default features stay offline — session filesystem and package disk I/O are included,
 # while provider, shell, web, Lua, MCP, SQLx, server, and worker integrations
 # remain opt-in. Advanced hosts depend on `everruns-core` with its `host` feature.
 
@@ -45,11 +45,10 @@ required-features = ["local"]
 
 [features]
 # Default features stay offline: the facade includes the contained session
-# filesystem but activates no provider, shell, web, Lua, MCP, SQLx, server, or
-# worker integrations. The default surfaces beyond the bare re-exports—macros
-# and typed capabilities—pull in no network or I/O edge, only async adaptation
-# and schema generation.
-default = ["macros", "capabilities", "builtins", "filesystem"]
+# filesystem and package disk loading, but activates no provider, shell, web,
+# Lua, MCP, SQLx, server, or worker integrations. Macro and typed capability
+# authoring add only async adaptation and schema generation.
+default = ["macros", "capabilities", "builtins", "filesystem", "agent-package-fs"]
 # Re-export `#[everruns::tool]` (EVE-829) and the hidden `__macro_support`
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
@@ -73,6 +72,8 @@ builtins = ["everruns-core/builtins"]
 # lists compiling without exposing a writable message store.
 jsonl = []
 filesystem = ["dep:everruns-integrations-filesystem"]
+# Agent definition disk I/O; independent of the session filesystem integration.
+agent-package-fs = ["everruns-core/agent-package-fs"]
 # Environment-backed execution integrations. Filesystem is default and stays
 # inside the host-provided session filesystem; the others are explicit opt-ins.
 bashkit = ["filesystem", "everruns-core/direct-egress", "dep:everruns-integrations-bashkit"]
@@ -197,7 +198,7 @@ parking_lot = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tracing.workspace = true
 
-everruns-core = { workspace = true, default-features = false, features = ["host"] }
+everruns-core = { workspace = true, default-features = false, features = ["host", "agent-package"] }
 [dev-dependencies]
 chrono.workspace = true
 # Version-less path dev-dependencies: stripped on publish, so these test-only
@@ -322,3 +323,7 @@ path = "examples/advanced/plugin_from_dir.rs"
 [[example]]
 name = "real_disk_agent_instructions"
 path = "examples/advanced/real_disk_agent_instructions.rs"
+
+[[example]]
+name = "file_agent"
+required-features = ["agent-package-fs"]

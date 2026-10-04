@@ -18,6 +18,7 @@ name = "everruns"
 path = "src/main.rs"
 
 [dependencies]
+everruns-core = { workspace = true, default-features = false, features = ["agent-package-fs"] }
 everruns-cli-contract.workspace = true
 # CLI
 clap.workspace = true

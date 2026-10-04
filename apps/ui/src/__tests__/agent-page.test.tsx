@@ -369,7 +369,7 @@ describe("AgentPage edit mode", () => {
         "Changes apply to new sessions only. Running sessions keep the current definition.",
       ),
     ).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "System prompt" })).toHaveValue("You are helpful");
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toHaveValue("You are helpful");
     expect(screen.getByRole("button", { name: /Discard/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Test in Playground/ })).not.toBeInTheDocument();
     expect(screen.getByTestId("capability-selector")).toBeInTheDocument();
@@ -380,7 +380,7 @@ describe("AgentPage edit mode", () => {
     mockSearchParams = new URLSearchParams("mode=edit");
     await renderPage();
 
-    expect(screen.getByRole("textbox", { name: "System prompt" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toBeInTheDocument();
   });
 
   it("enters edit mode when a config control changes and saves one request", async () => {
@@ -391,7 +391,7 @@ describe("AgentPage edit mode", () => {
     fireEvent.keyDown(tags, { key: "Enter" });
     expect(screen.getByText("Editing")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("textbox", { name: "System prompt" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Instructions" }), {
       target: { value: "Draft prompt" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Select memory" }));
@@ -413,19 +413,19 @@ describe("AgentPage edit mode", () => {
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
 
-    fireEvent.change(screen.getByRole("textbox", { name: "System prompt" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Instructions" }), {
       target: { value: "Draft prompt" },
     });
     expect(screen.getByTestId("checks-prompt")).toHaveTextContent("Draft prompt");
     fireEvent.click(screen.getByRole("button", { name: "Apply check fix" }));
-    expect(screen.getByRole("textbox", { name: "System prompt" })).toHaveValue("Fixed prompt");
+    expect(screen.getByRole("textbox", { name: "Instructions" })).toHaveValue("Fixed prompt");
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
   it("discards the draft and returns to view mode", async () => {
     await renderPage();
     fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "System prompt" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Instructions" }), {
       target: { value: "Throwaway" },
     });
 

@@ -210,6 +210,12 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::from_arg_matches(&matches)?;
 
+    if let Commands::Agents { command } = &cli.command
+        && let Some(result) = commands::agents::run_local(command, output_format)
+    {
+        return result;
+    }
+
     // Commands that don't need authentication
     match &cli.command {
         Commands::Login { token } => {

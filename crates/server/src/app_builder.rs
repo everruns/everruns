@@ -1044,6 +1044,7 @@ impl ServerAppBuilder {
         };
         let agents_state = api::agents::AppState::new(
             db.clone(),
+            encryption.clone(),
             capability_service.clone(),
             auth_state.clone(),
             grade,
@@ -1280,7 +1281,6 @@ impl ServerAppBuilder {
             event_delivery.backend_name().to_string(),
         );
         durable_state.spawn_metrics_sampler();
-
         // Bridge durable MetricsCollector gauges to Prometheus
         if prometheus_handle.is_some() {
             api::prometheus::spawn_gauge_bridge(durable_state.metrics_collector().clone());

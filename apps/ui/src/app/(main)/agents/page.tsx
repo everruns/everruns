@@ -30,6 +30,7 @@ import {
 import { useLocale } from "@/providers/locale-provider";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
 import { cn } from "@/lib/utils";
+import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
 import type { Agent } from "@/lib/api/types";
 
 const EXAMPLE_PREVIEW_LIMIT = 3;
@@ -46,7 +47,7 @@ export default function AgentsPage() {
   const importAgent = useImportAgent();
   const importExample = useImportAgentExample();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importError, setImportError] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [importingName, setImportingName] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
@@ -57,28 +58,11 @@ export default function AgentsPage() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-
-      setImportError(null);
-
-      try {
-        const content = await file.text();
-        const agent = await importAgent.mutateAsync(content);
-        router.push(`/agents/${agent.id}`);
-      } catch (err) {
-        console.error("Failed to import agent:", err);
-        setImportError(err instanceof Error ? err.message : "Failed to import agent");
-      }
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    },
-    [importAgent, router],
-  );
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setImportFile(file);
+    e.target.value = "";
+  }, []);
 
   const handleImport = useCallback(
     async (name: string) => {
@@ -138,7 +122,7 @@ export default function AgentsPage() {
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept=".md,.yaml,.yml,.json"
+              accept=".md,.toml,.yaml,.yml,.json,.zip"
               className="hidden"
               aria-label="Import agent file"
             />
@@ -156,11 +140,12 @@ export default function AgentsPage() {
         }
       />
 
-      {importError && (
-        <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-          {importError}
-        </div>
-      )}
+      <AgentImportDialog
+        file={importFile}
+        agents={agents ?? []}
+        onClose={() => setImportFile(null)}
+        onImported={(agent) => router.push(`/agents/${agent.id}`)}
+      />
 
       <PageControlStrip className="flex flex-wrap items-center gap-3">
         <SearchInput

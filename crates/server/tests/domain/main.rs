@@ -79,3 +79,5 @@ mod virtual_users_api_test;
 mod slack_install_integration_test;
 
 mod health_issues_test;
+
+mod agent_packages_test;

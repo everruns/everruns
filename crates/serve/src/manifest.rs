@@ -58,6 +58,9 @@ pub struct AgentInfo {
     pub sub: bool,
     pub tools: Vec<String>,
     pub source: String,
+    /// Portable file declaration, including channel intent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -150,7 +153,7 @@ impl Manifest {
                     );
                 }
                 AgentInfo {
-                    name: agent.name.into(),
+                    name: agent.name.clone(),
                     model: agent.spec.model.clone(),
                     description: agent
                         .spec
@@ -160,7 +163,12 @@ impl Manifest {
                     default: app.default_agent().is_some_and(|d| d.name == agent.name),
                     sub: agent.sub,
                     tools,
-                    source: agent.source.into(),
+                    source: agent.source.clone(),
+                    package: agent.spec.package.as_ref().map(|p| {
+                        #[expect(clippy::expect_used, reason = "validated package manifests contain only strings, numbers, arrays and string-keyed maps, all JSON-serializable")]
+                        let value = serde_json::to_value(p.manifest()).expect("package is serializable");
+                        value
+                    }),
                 }
             })
             .collect();
@@ -212,11 +220,11 @@ impl Manifest {
                 .agents
                 .iter()
                 .filter(|agent| !agent.sub)
-                .map(|agent| format!("POST {}", crate::ag_ui::route(agent.name))),
+                .map(|agent| format!("POST {}", crate::ag_ui::route(&agent.name))),
         );
         #[cfg(feature = "a2a")]
         for agent in inner.agents.iter().filter(|agent| !agent.sub) {
-            let route = crate::a2a::route(agent.name);
+            let route = crate::a2a::route(&agent.name);
             routes.push(format!("POST {route}"));
             routes.push(format!("GET {route}/.well-known/agent-card.json"));
         }

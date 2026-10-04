@@ -82,7 +82,11 @@ pub mod models;
 #[cfg(any(feature = "otel", feature = "braintrust"))]
 pub mod observability;
 mod observers;
+mod package;
 mod plugin;
+pub use package::{
+    AgentManifest, AgentPackage, PackageChange, PackageDiagnostic, PackageError, PackageFormat,
+};
 mod session;
 mod session_environment;
 /// Stability tiers and the marking convention.

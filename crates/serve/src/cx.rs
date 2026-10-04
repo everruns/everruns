@@ -26,7 +26,7 @@ use crate::host::{Host, NewSession};
 #[derive(Clone)]
 pub struct Cx {
     host: Weak<Host>,
-    agent: Option<&'static str>,
+    agent: Option<String>,
     session: Option<String>,
     call: Option<ToolCallContext>,
 }
@@ -53,7 +53,7 @@ impl Cx {
     }
 
     /// Context for one tool call.
-    pub(crate) fn tool(host: Weak<Host>, agent: &'static str, call: ToolCallContext) -> Self {
+    pub(crate) fn tool(host: Weak<Host>, agent: String, call: ToolCallContext) -> Self {
         Self {
             host,
             agent: Some(agent),
@@ -84,8 +84,8 @@ impl Cx {
     }
 
     /// The agent this context belongs to, inside a tool.
-    pub fn agent(&self) -> Option<&'static str> {
-        self.agent
+    pub fn agent(&self) -> Option<&str> {
+        self.agent.as_deref()
     }
 
     /// How the binary is running.

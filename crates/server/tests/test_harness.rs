@@ -855,6 +855,7 @@ impl TestServer {
         );
         let agents_state = api::agents::AppState::new(
             db.clone(),
+            encryption.clone(),
             capability_service.clone(),
             auth_state.clone(),
             grade,

@@ -1,5 +1,7 @@
 "use client";
 
+import { exportAgentPackage } from "@/lib/api/agents";
+
 // Agent page: one layout for reading and editing an agent.
 //
 // The system prompt is the page (wide left pane); a narrow config column holds
@@ -153,6 +155,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const deleteAgent = useDeleteAgent();
   const destroyAgent = useDestroyAgent();
   const exportAgent = useExportAgent();
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const copyAgent = useCopyAgent();
   const { can } = usePolicies("agents");
   const webmcp = useWebMcp();
@@ -262,23 +266,32 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     scopeKey: agent?.id,
   });
 
-  const handleExport = useCallback(async () => {
-    if (!agent) return;
-    try {
-      const markdown = await exportAgent.mutateAsync(agentId);
-      const blob = new Blob([markdown], { type: "text/markdown" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${agent.name}.md`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Failed to export agent:", error);
-    }
-  }, [agent, agentId, exportAgent]);
+  const handleExport = useCallback(
+    async (format: "zip" | "markdown" = "zip") => {
+      if (!agent || exporting) return;
+      setExporting(true);
+      setExportError(null);
+      try {
+        const blob =
+          format === "zip"
+            ? await exportAgentPackage(agent.name)
+            : new Blob([await exportAgent.mutateAsync(agentId)], { type: "text/markdown" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${agent.name}.${format === "zip" ? "zip" : "md"}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        setExportError(error instanceof Error ? error.message : "Export failed");
+      } finally {
+        setExporting(false);
+      }
+    },
+    [agent, agentId, exportAgent, exporting],
+  );
 
   const handleCopy = useCallback(async () => {
     try {
@@ -398,9 +411,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             <Copy className="size-4" />
             {copyAgent.isPending ? "Copying..." : "Copy"}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleExport} disabled={exportAgent.isPending}>
+          <DropdownMenuItem onClick={() => handleExport("zip")} disabled={exporting}>
             <Download className="size-4" />
-            {exportAgent.isPending ? "Exporting..." : "Export"}
+            {exporting ? "Exporting..." : "Export package (ZIP)"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => handleExport("markdown")} disabled={exporting}>
+            <Download className="size-4" />
+            Export Markdown
           </DropdownMenuItem>
           {observersEnabled && isActive && (
             <DropdownMenuItem
@@ -493,6 +510,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           actions={actions}
         />
 
+        {exportError && (
+          <p role="alert" className="text-destructive">
+            Could not export: {exportError}
+          </p>
+        )}
         {updateAgent.error && (
           <p role="alert" className="-mt-2 text-sm text-destructive">
             Could not save: {updateAgent.error.message}

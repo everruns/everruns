@@ -8495,6 +8495,47 @@
   },
   {
     "category": "agents",
+    "cli": "agents diff",
+    "description": "Compare an agent package with an existing agent by name without applying changes.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "Markdown/TOML/YAML/JSON agent definition, with assets embedded.",
+          "type": "string"
+        },
+        "file": {
+          "description": "Path in the current Platform Chat session workspace (never server disk).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "Existing agent name to update or compare. Omit to create.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "diff_agent_package",
+    "output_shape": "unknown",
+    "path": "/v1/agents/diff",
+    "positional_arg": "file",
+    "read_only": true
+  },
+  {
+    "category": "agents",
     "cli": "agents versions diff",
     "description": "Compare two immutable agent versions.",
     "input_schema": {
@@ -8687,13 +8728,25 @@
   {
     "category": "agents",
     "cli": "agents export",
-    "description": "Export agent as JSON.",
+    "description": "Export a portable agent definition as JSON, without IDs or credentials.",
     "input_schema": {
-      "description": "Get agent data for export.",
       "properties": {
+        "format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "id": {
-          "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+          "description": "Agent name (legacy IDs are also accepted).",
           "type": "string"
+        },
+        "out": {
+          "description": "New artifact path in the current session workspace.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
@@ -8706,7 +8759,7 @@
     "output_shape": "unknown",
     "path": "/v1/agents/{id}/export",
     "positional_arg": "id",
-    "read_only": true
+    "read_only": false
   },
   {
     "category": "evals",
@@ -10675,996 +10728,42 @@
   {
     "category": "agents",
     "cli": "agents import",
-    "description": "Import an agent from a definition.",
+    "description": "Import an agent package; target explicitly updates an existing agent by name.",
     "input_schema": {
-      "$defs": {
-        "AgentCapabilityConfig": {
-          "description": "Per-agent capability configuration\n\nAssociates a capability with an agent, including optional per-agent configuration.\nThe config field allows the same capability to behave differently per-agent.",
-          "properties": {
-            "config": {
-              "description": "Per-agent configuration for this capability (capability-specific)"
-            },
-            "ref": {
-              "description": "Reference to the capability ID",
-              "type": "string"
-            }
-          },
-          "required": [
-            "ref"
-          ],
-          "type": "object"
-        },
-        "BTreeMap": {
-          "additionalProperties": {
-            "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
-            "properties": {
-              "actsAs": {
-                "$ref": "#/$defs/McpServerActsAs",
-                "description": "Identity whose grant this attachment requests."
-              },
-              "args": {
-                "description": "Arguments passed to the stdio `command`.",
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "auth_mode": {
-                "$ref": "#/$defs/McpServerAuthMode",
-                "description": "Authentication mode used when executing tools from this scoped server."
-              },
-              "command": {
-                "description": "Executable to spawn for a stdio transport server.",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "elicitation_policy": {
-                "$ref": "#/$defs/McpElicitationPolicy",
-                "description": "Which elicitation modes this server may use (`url` by default)."
-              },
-              "env": {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "description": "Environment variables set for the stdio `command`.",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              "headers": {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "description": "Additional HTTP headers sent on MCP requests (HTTP transport only).",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              "oauth_provider_id": {
-                "description": "Provider id used to resolve a user-scoped bearer token.",
-                "type": [
-                  "string",
-                  "null"
-                ]
-              },
-              "protocol_mode": {
-                "$ref": "#/$defs/McpProtocolMode",
-                "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
-              },
-              "tool_discovery": {
-                "description": "Whether to discover tool definitions live from this server.",
-                "type": "boolean"
-              },
-              "type": {
-                "$ref": "#/$defs/McpServerTransportType",
-                "description": "MCP transport type. Only remote HTTP is supported today."
-              },
-              "url": {
-                "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio.",
-                "type": "string"
-              },
-              "use": {
-                "oneOf": [
-                  {
-                    "$ref": "#/$defs/McpServerPresetRef",
-                    "description": "Organization catalog preset that supplies transport and authentication policy."
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "type": "object"
-          },
-          "propertyNames": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "BuiltinTool": {
-          "description": "Built-in tool configuration\n\nNote: The `kind` field has been removed. Tools are now identified\nsolely by their `name` field, and execution happens via the ToolRegistry\nwhich looks up tools by name.",
-          "properties": {
-            "category": {
-              "description": "Category for tool_search namespace grouping (from parent capability)",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "deferrable": {
-              "$ref": "#/$defs/DeferrablePolicy",
-              "description": "Whether this tool's schema can be deferred via tool_search"
-            },
-            "description": {
-              "description": "Tool description for LLM",
-              "type": "string"
-            },
-            "display_name": {
-              "description": "Human-readable display name for UI rendering (e.g., \"Get Current Time\" for `get_current_time`)",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "full_parameters": {
-              "description": "Original full parameter schema saved by `DeferSchemaHook` before stripping.\nSerialized only when present so durable reason-to-act scheduling can\npreserve deferred schemas for `tool_search` in the act phase."
-            },
-            "hints": {
-              "$ref": "#/$defs/ToolHints",
-              "description": "Semantic hints describing the tool's behavioral properties"
-            },
-            "name": {
-              "description": "Tool name (used by LLM and for registry lookup)",
-              "type": "string"
-            },
-            "parameters": {
-              "description": "JSON schema for tool parameters"
-            },
-            "policy": {
-              "$ref": "#/$defs/ToolPolicy",
-              "description": "Tool policy (auto or requires_approval)"
-            }
-          },
-          "required": [
-            "name",
-            "description",
-            "parameters"
-          ],
-          "type": "object"
-        },
-        "ClientSideTool": {
-          "description": "Client-side tool - executed by the client, not the server\nThe server pauses execution and waits for the client to submit results.",
-          "properties": {
-            "category": {
-              "description": "Category for tool_search namespace grouping (from parent capability)",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "deferrable": {
-              "$ref": "#/$defs/DeferrablePolicy",
-              "description": "Whether this tool's schema can be deferred via tool_search"
-            },
-            "description": {
-              "description": "Tool description for LLM",
-              "type": "string"
-            },
-            "display_name": {
-              "description": "Human-readable display name for UI rendering",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "full_parameters": {
-              "description": "Original full parameter schema saved by `DeferSchemaHook` before stripping.\nSerialized only when present so durable reason-to-act scheduling can\npreserve deferred schemas for `tool_search` in the act phase."
-            },
-            "hints": {
-              "$ref": "#/$defs/ToolHints",
-              "description": "Semantic hints describing the tool's behavioral properties"
-            },
-            "name": {
-              "description": "Tool name (used by LLM and for correlation)",
-              "type": "string"
-            },
-            "parameters": {
-              "description": "JSON schema for tool parameters"
-            }
-          },
-          "required": [
-            "name",
-            "description",
-            "parameters"
-          ],
-          "type": "object"
-        },
-        "ConversationStarter": {
-          "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
-          "properties": {
-            "icon": {
-              "description": "Optional icon name from the harness icon set.",
-              "example": "zap",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "text": {
-              "description": "Prompt text inserted into the composer when selected.",
-              "example": "Triage the newest P1",
-              "type": "string"
-            }
-          },
-          "required": [
-            "text"
-          ],
-          "type": "object"
-        },
-        "DeferrablePolicy": {
-          "description": "Controls whether a tool's full schema can be deferred (tool_search).\n\nWhen tool_search is active and a model supports it, tools marked as\n`Automatic` or `Always` will have `defer_loading: true` set, meaning\nonly the name+description are sent upfront and full parameter schemas\nare loaded on-demand by the model.",
-          "enum": [
-            "never",
-            "automatic",
-            "always"
-          ],
-          "type": "string"
-        },
-        "EnvironmentBootstrap": {
-          "description": "Reproducible initialization pinned with the profile snapshot.",
-          "properties": {
-            "commands": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentContainmentLevel": {
-          "enum": [
-            "none",
-            "native",
-            "isolated"
-          ],
-          "type": "string"
-        },
-        "EnvironmentContainmentProfile": {
-          "description": "What commands may touch.",
-          "properties": {
-            "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation"
-            },
-            "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy"
-            },
-            "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel"
-            },
-            "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy"
-            }
-          },
-          "required": [
-            "level"
-          ],
-          "type": "object"
-        },
-        "EnvironmentDurability": {
-          "description": "What survives physical compute loss.",
-          "enum": [
-            "checkpointed",
-            "provider_snapshot",
-            "none"
-          ],
-          "type": "string"
-        },
-        "EnvironmentEscalation": {
-          "description": "Who may widen containment after a session starts.",
-          "enum": [
-            "never",
-            "approval",
-            "auto"
-          ],
-          "type": "string"
-        },
-        "EnvironmentFilesystemPolicy": {
-          "description": "Filesystem paths the target permits command execution to mutate.",
-          "properties": {
-            "writable_roots": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentIdleAction": {
-          "enum": [
-            "checkpoint_and_stop",
-            "stop",
-            "keep_running"
-          ],
-          "type": "string"
-        },
-        "EnvironmentLifecycle": {
-          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
-          "properties": {
-            "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction"
-            },
-            "idle_after_seconds": {
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentNetworkPolicy": {
-          "description": "Outbound network policy the target must actually enforce.",
-          "oneOf": [
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "deny"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "allowed_hosts": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "mode": {
-                  "enum": [
-                    "allowlist"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "allowed_hosts",
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "allow"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            }
-          ]
-        },
-        "EnvironmentProfile": {
-          "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
-          "properties": {
-            "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap"
-            },
-            "containment": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "durability": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentDurability"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle"
-            },
-            "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile"
-            }
-          },
-          "required": [
-            "target"
-          ],
-          "type": "object"
-        },
-        "EnvironmentSet": {
-          "description": "Named execution environments offered by an Agent version.",
-          "properties": {
-            "default": {
-              "description": "Profile inherited when session creation does not choose one explicitly.",
-              "type": "string"
-            },
-            "profiles": {
-              "additionalProperties": {
-                "$ref": "#/$defs/EnvironmentProfile"
-              },
-              "description": "Human-authored profiles addressable by name at session creation.",
-              "propertyNames": {
-                "type": "string"
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "default"
-          ],
-          "type": "object"
-        },
-        "EnvironmentTargetKind": {
-          "description": "Provider-neutral target class.",
-          "enum": [
-            "host",
-            "machine",
-            "vfs",
-            "container",
-            "managed"
-          ],
-          "type": "string"
-        },
-        "EnvironmentTargetProfile": {
-          "description": "Where commands execute.",
-          "properties": {
-            "connection_id": {
-              "description": "Credential/transport binding for a registered machine target.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind"
-            },
-            "options": {
-              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
-              "type": "object"
-            },
-            "provider": {
-              "description": "Concrete adapter for target kinds with more than one implementation.",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
-        "InitialFile": {
-          "description": "Starter file copied into a new session from an agent or harness.",
-          "properties": {
-            "content": {
-              "description": "File content: plain text or base64-encoded binary.",
-              "type": "string"
-            },
-            "encoding": {
-              "description": "Content encoding: `text` or `base64`.",
-              "type": "string"
-            },
-            "is_readonly": {
-              "description": "Prevent session-side edits or deletes when true.",
-              "type": "boolean"
-            },
-            "path": {
-              "description": "Absolute path within the session workspace. `/workspace` prefix is accepted.",
-              "type": "string"
-            }
-          },
-          "required": [
-            "path",
-            "content"
-          ],
-          "type": "object"
-        },
-        "McpElicitationPolicy": {
-          "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
-          "enum": [
-            "url",
-            "url_and_form",
-            "none"
-          ],
-          "example": "url",
-          "type": "string"
-        },
-        "McpProtocolMode": {
-          "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
-          "enum": [
-            "auto",
-            "2025-03-26",
-            "2025-06-18",
-            "2026-07-28"
-          ],
-          "example": "auto",
-          "type": "string"
-        },
-        "McpServerActsAs": {
-          "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
-          "enum": [
-            "none",
-            "service",
-            "user"
-          ],
-          "example": "service",
-          "type": "string"
-        },
-        "McpServerAuthMode": {
-          "description": "MCP server authentication mode.",
-          "enum": [
-            "none",
-            "api_key",
-            "oauth"
-          ],
-          "example": "api_key",
-          "type": "string"
-        },
-        "McpServerPresetRef": {
-          "description": "Reference to an organization MCP server catalog entry.",
-          "example": "catalog:linear",
-          "type": "string"
-        },
-        "McpServerTransportType": {
-          "description": "MCP Server transport type.",
-          "enum": [
-            "http",
-            "stdio"
-          ],
-          "example": "http",
-          "type": "string"
-        },
-        "NetworkAccessList": {
-          "description": "Network access list controlling which hosts/URLs an agent session can reach.\n\n- `allowed`: if non-empty, only URLs matching these patterns are permitted.\n- `blocked`: URLs matching these patterns are always denied (takes precedence over allowed).\n\nPattern format:\n- `example.com` — exact domain match (any port, any path)\n- `*.example.com` — domain and all subdomains\n- `https://example.com/api/` — exact URL prefix (scheme + host + path)",
-          "example": {
-            "allowed": [
-              "*.example.com",
-              "https://api.acme.com/"
-            ],
-            "blocked": [
-              "169.254.169.254"
-            ]
-          },
-          "properties": {
-            "allowed": {
-              "description": "Allowed host patterns. If non-empty, only matching URLs are permitted.\nAn empty list means \"no restriction from this layer\" (inherit parent).",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "blocked": {
-              "description": "Blocked host patterns. Always denied, even if matched by `allowed`.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "SideEffectClass": {
-          "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
-          "enum": [
-            "Pure",
-            "Idempotent",
-            "AtMostOnce"
-          ],
-          "type": "string"
-        },
-        "ToolDefinition": {
-          "description": "Tool definition in agent configuration",
-          "oneOf": [
-            {
-              "allOf": [
-                {
-                  "$ref": "#/$defs/BuiltinTool",
-                  "description": "Built-in tool - executed by the worker via ToolRegistry"
-                },
-                {
-                  "properties": {
-                    "type": {
-                      "enum": [
-                        "builtin"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "type"
-                  ],
-                  "type": "object"
-                }
-              ],
-              "description": "Built-in tool - executed by the worker via ToolRegistry"
-            },
-            {
-              "allOf": [
-                {
-                  "$ref": "#/$defs/ClientSideTool",
-                  "description": "Client-side tool - executed by the client, not the server"
-                },
-                {
-                  "properties": {
-                    "type": {
-                      "enum": [
-                        "client_side"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "type"
-                  ],
-                  "type": "object"
-                }
-              ],
-              "description": "Client-side tool - executed by the client, not the server"
-            }
-          ]
-        },
-        "ToolHints": {
-          "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
-          "properties": {
-            "capability_id": {
-              "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "capability_name": {
-              "description": "Human-readable capability name snapshot for reporting.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "concurrency_class": {
-              "description": "Scheduling conflict key. Tool calls within the same act batch that share\na non-empty `concurrency_class` are executed sequentially in arrival\norder; calls in different classes (or with no class) run concurrently.\n\nSet this on tools that mutate shared session state so that, e.g., two\nfile writes or two SQL mutations in one batch do not race. Read-only\ntools should leave this `None` so they always parallelize. See\n`everruns-engine`'s tool scheduler for how the act phase consumes it.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "cpu_bound": {
-              "description": "Tool performs significant CPU-bound or otherwise non-yielding work in\nprocess (e.g. an in-process interpreter). When true, the act scheduler\nruns the call on its own task (`tokio::spawn`) so a long CPU burst does\nnot starve the cooperative polling of I/O-bound tools in the same batch.\n\nDistinct from `long_running`, which describes wall-clock time for\nI/O-bound work (those tools yield at await points and need no offload).",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "destructive": {
-              "description": "Tool may irreversibly destroy or delete data.\nSubset of non-readonly — a tool can be non-readonly (writes) without\nbeing destructive (e.g., create/update operations).",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "idempotent": {
-              "description": "Calling the tool repeatedly with the same arguments produces the same\neffect. Safe to retry on transient failures.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "long_running": {
-              "description": "Tool may take significant time to complete (> ~5s typical).\nUseful for clients to show progress indicators and set timeouts.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "metadata": {
-              "description": "Host-owned annotations that core does not interpret.\n\nThe typed hints above are the vocabulary core itself reasons about. This\nis the escape hatch for everything a *host* wants to carry alongside a\ntool — risk tiers for an approval UI, presentation hints, an embedder's\nrouting keys — without adding a field to core for each one. Core reads\nnothing here and no driver sends it to a provider; it travels with the\ndefinition so a consumer sees it at the point of decision (e.g. a\n`PreToolUseHook` gating on what the tool declared).\n\nThe schema belongs to whoever writes it. Never put credentials or other\nsensitive payload here: like the rest of the definition, it is persisted\nand surfaced to clients."
-            },
-            "narration_noun": {
-              "description": "Entity noun for operation-based narration (e.g. \"agent\", \"harness\").\nWhen set, the narration system reads the `operation` argument and\nproduces verb-based narration like \"Created agent: Neon Cartographer\"\ninstead of the generic \"Ran Manage Agents\".",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "open_world": {
-              "description": "Tool interacts with external entities beyond the local system\n(network calls, third-party APIs, cloud services).",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "persist_output": {
-              "description": "Tool output should be persisted to session VFS before truncation.\nWhen set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes\nstdout to `/outputs/{tool_call_id}.stdout` and stderr to\n`/outputs/{tool_call_id}.stderr`, injecting `full_output`, `total_lines`,\nand `output_files` into the result.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "readonly": {
-              "description": "Tool does not modify any state (read-only queries, lookups).\nWhen true: safe to call speculatively, result can be cached.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "requires_secrets": {
-              "description": "Tool requires API keys, credentials, or other secrets to function.\nUseful for UI to show connection prompts and for LLMs to anticipate\nauthentication failures.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            },
-            "side_effect_class": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/SideEffectClass",
-                  "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "supports_background": {
-              "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later.",
-              "type": [
-                "boolean",
-                "null"
-              ]
-            }
-          },
-          "type": "object"
-        },
-        "ToolPolicy": {
-          "description": "Tool policy determines how tool calls are handled",
-          "enum": [
-            "auto",
-            "requires_approval",
-            "client_side"
-          ],
-          "type": "string"
-        }
-      },
-      "description": "Request to create a new agent",
+      "additionalProperties": false,
       "properties": {
-        "capabilities": {
-          "description": "Capabilities to enable for this agent with per-agent configuration.\nEach capability has a `ref` (capability ID) and optional `config`.",
-          "example": [
-            {
-              "config": {},
-              "ref": "current_time"
-            },
-            {
-              "config": {},
-              "ref": "web_fetch"
-            }
-          ],
-          "items": {
-            "$ref": "#/$defs/AgentCapabilityConfig"
-          },
-          "type": "array"
-        },
-        "default_model_id": {
-          "description": "The ID of the default LLM model to use for this agent.\nIf not specified, the system default model will be used.",
-          "example": "model_01933b5a00007000800000000000001",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "description": {
-          "description": "A human-readable description of what the agent does.",
-          "example": "Handles customer inquiries and support tickets",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "display_name": {
-          "description": "Human-readable display name shown in UI.\nFalls back to `name` when absent.",
-          "example": "Customer Support Agent",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "environments": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/EnvironmentSet",
-              "description": "Named execution environments this Agent offers. One profile must be\nnamed by `default`; Sessions may inherit it or select another profile."
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "harness_id": {
-          "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe organization default is used (Conversation for new organizations).",
-          "example": "harness_01933b5a00007000800000000000001",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "harness_name": {
-          "description": "Addressable harness name. Alternative to `harness_id`.",
-          "example": "conversation",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "id": {
-          "description": "Client-supplied agent ID (format: agent_{32-hex}).\nIf not provided, one is auto-generated.",
-          "example": "agent_01933b5a00007000800000000000001",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "initial_files": {
-          "description": "Starter files copied into each new session for this agent.",
-          "example": [
-            {
-              "content": "Always respond in formal English.\n",
-              "path": "INSTRUCTIONS.md"
-            }
-          ],
-          "items": {
-            "$ref": "#/$defs/InitialFile"
-          },
-          "type": "array"
-        },
-        "intro_markdown": {
-          "description": "Markdown intro shown as an intro box on a fresh Platform Chat thread.\nImages are allowed. Wins over the harness intro. Hidden once the user\ninputs.",
-          "example": "Hey, I'm Ava. Ask me anything about your account.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "max_iterations": {
-          "description": "Maximum number of LLM iterations per turn for this agent.",
-          "example": 20,
-          "minimum": 0,
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "mcpServers": {
-          "$ref": "#/$defs/BTreeMap",
-          "description": "Remote MCP servers scoped to this agent."
-        },
-        "name": {
-          "description": "Name, unique per org. Lowercase alphanumeric and hyphens.\nFormat: lowercase alphanumeric and hyphens (e.g. \"customer-support\").",
-          "example": "customer-support",
+        "content": {
+          "description": "Markdown/TOML/YAML/JSON agent definition, with assets embedded.",
           "type": "string"
         },
-        "network_access": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/NetworkAccessList",
-              "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "parallel_tool_calls": {
-          "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to use the\nprovider default.",
-          "example": true,
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "service_virtual_user_id": {
+        "file": {
+          "description": "Path in the current Platform Chat session workspace (never server disk).",
           "type": [
             "string",
             "null"
           ]
         },
-        "short_description": {
-          "description": "One-line description in simplified Markdown, shown below the chat title\nonce the intro is hidden. Wins over the harness value.",
-          "example": "Answers account questions in seconds.",
+        "format": {
           "type": [
             "string",
             "null"
           ]
         },
-        "starters": {
-          "description": "Conversation starters for a fresh Platform Chat thread. Win over the\nharness starters when non-empty. `icon` reuses the harness icon set.",
-          "items": {
-            "$ref": "#/$defs/ConversationStarter"
-          },
-          "type": "array"
-        },
-        "system_prompt": {
-          "description": "The system prompt that defines the agent's behavior and capabilities.\nThis is sent as the first message in every conversation.",
-          "example": "You are a helpful customer support agent. Be polite and professional.",
-          "type": "string"
-        },
-        "tags": {
-          "description": "Tags for organizing and filtering agents.",
-          "example": [
-            "support",
-            "customer-facing"
-          ],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "tools": {
-          "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server.",
-          "example": [
-            {
-              "description": "Open URL in the user's browser",
-              "name": "open_url",
-              "parameters": {
-                "properties": {
-                  "url": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "url"
-                ],
-                "type": "object"
-              },
-              "type": "client_side"
-            }
-          ],
-          "items": {
-            "$ref": "#/$defs/ToolDefinition"
-          },
-          "type": "array"
+        "target": {
+          "description": "Existing agent name to update or compare. Omit to create.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
-      "required": [
-        "name",
-        "system_prompt"
-      ],
       "type": "object"
     },
     "method": "POST",
     "name": "import_agent",
     "output_shape": "unknown",
     "path": "/v1/agents/import",
-    "positional_arg": null,
+    "positional_arg": "file",
     "read_only": false
   },
   {
@@ -22543,5 +21642,46 @@
     "path": "/v1/agents/check-rules/{rule_id}",
     "positional_arg": null,
     "read_only": false
+  },
+  {
+    "category": "agents",
+    "cli": "agents validate",
+    "description": "Validate an agent package and destination dependencies without changing resources.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "Markdown/TOML/YAML/JSON agent definition, with assets embedded.",
+          "type": "string"
+        },
+        "file": {
+          "description": "Path in the current Platform Chat session workspace (never server disk).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "description": "Existing agent name to update or compare. Omit to create.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "validate_agent_package",
+    "output_shape": "unknown",
+    "path": "/v1/agents/validate",
+    "positional_arg": "file",
+    "read_only": true
   }
 ]

@@ -1200,3 +1200,43 @@ mod ag_ui {
 #[cfg(feature = "a2a")]
 #[path = "a2a_tests.rs"]
 mod a2a;
+
+#[tokio::test]
+async fn a_file_package_serves_a_real_session_and_pins_assets() {
+    let path = format!(
+        "{}/../../examples/agent-packages/triage",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let app = App::builder().agent_package(&path).try_build().unwrap();
+    let manifest = app.manifest();
+    assert_eq!(manifest.agents.len(), 1);
+    assert_eq!(manifest.agents[0].name, "triage");
+    assert!(
+        manifest.agents[0].package.as_ref().unwrap()["initial_files"]
+            .as_array()
+            .unwrap()
+            .len()
+            >= 3
+    );
+    let mut package = everruns::AgentPackage::load(&path)
+        .unwrap()
+        .manifest()
+        .clone();
+    package.instructions.push_str("Changed");
+    let changed = App::builder()
+        .package(everruns::AgentPackage::new(package).unwrap())
+        .try_build()
+        .unwrap();
+    assert_ne!(manifest.build_id, changed.manifest().build_id);
+    let host = Host::new(app, Mode::Eval, None).unwrap();
+    let server = serve(host).await;
+    let session = sdk(&server).sessions().create().await.unwrap();
+    sdk(&server)
+        .messages()
+        .create(&session.id, "Help me triage")
+        .await
+        .unwrap();
+    let events = server.wait_turns(&session.id, 1).await;
+    assert!(kinds(&events).contains(&"turn.completed"), "{events:?}");
+    server._task.abort();
+}

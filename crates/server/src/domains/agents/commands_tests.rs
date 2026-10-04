@@ -552,6 +552,7 @@ async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
     req.system_prompt = "initial upsert prompt".to_string();
 
     let created = UpsertAgent {
+        replace_capabilities: false,
         id: agent_id.to_string(),
         req: req.clone(),
     }
@@ -562,6 +563,7 @@ async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
 
     req.system_prompt = "updated upsert prompt".to_string();
     let updated = UpsertAgent {
+        replace_capabilities: false,
         id: agent_id.to_string(),
         req,
     }
@@ -593,6 +595,7 @@ async fn upsert_agent_skips_auto_snapshot_for_unchanged_config() {
     let req = basic_agent_request("upsert-auto-snapshot-noop-agent");
 
     UpsertAgent {
+        replace_capabilities: false,
         id: agent_id.to_string(),
         req: req.clone(),
     }
@@ -600,6 +603,7 @@ async fn upsert_agent_skips_auto_snapshot_for_unchanged_config() {
     .await
     .expect("agent is created by upsert");
     UpsertAgent {
+        replace_capabilities: false,
         id: agent_id.to_string(),
         req,
     }
@@ -1115,6 +1119,7 @@ async fn built_in_agent_rejects_upsert() {
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     let err = UpsertAgent {
+        replace_capabilities: false,
         id: agent.public_id.to_string(),
         req: basic_agent_request("chat"),
     }

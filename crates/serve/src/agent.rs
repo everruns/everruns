@@ -94,6 +94,7 @@ pub struct Agent {
     pub(crate) tools: Option<Vec<String>>,
     pub(crate) offline: Option<LlmSimConfig>,
     pub(crate) customize: Option<Customize>,
+    pub(crate) package: Option<everruns::AgentPackage>,
 }
 
 impl std::fmt::Debug for Agent {
@@ -107,6 +108,47 @@ impl std::fmt::Debug for Agent {
 }
 
 impl Agent {
+    /// Load a portable agent file, folder or ZIP. A missing model uses the
+    /// serve simulator; production apps should declare a gateway model.
+    pub fn from_package(path: impl AsRef<std::path::Path>) -> crate::Result<Self> {
+        Self::package(everruns::AgentPackage::load(path)?)
+    }
+
+    /// Serve a materialized package, including archives embedded in a binary.
+    pub fn package(package: everruns::AgentPackage) -> crate::Result<Self> {
+        let m = package.manifest();
+        if m.environments.is_some() {
+            anyhow::bail!("package environments require an explicit host binding");
+        }
+        if let Some(harness) = m.harness.as_deref()
+            && !matches!(harness, "base" | "conversation" | "worker-base" | "worker")
+        {
+            anyhow::bail!(
+                "package harness {harness} requires an explicit Framework session binding"
+            );
+        }
+        let model = m
+            .model
+            .as_ref()
+            .map(|m| {
+                if m.provider.as_str() == "llmsim" {
+                    "sim".into()
+                } else {
+                    format!("{}/{}", m.provider, m.model)
+                }
+            })
+            .unwrap_or_else(|| "sim".into());
+        let mut spec = Self::builder()
+            .model(model)
+            .instructions(m.instructions.clone())
+            .build();
+        spec.description = m.description.clone();
+        // A file agent gets only handlers declared in its package.
+        spec.tools = Some(m.tools.iter().map(|t| t.name().into()).collect());
+        spec.package = Some(package);
+        Ok(spec)
+    }
+
     /// Start describing an agent.
     pub fn builder() -> AgentBuilder {
         AgentBuilder {
@@ -117,6 +159,7 @@ impl Agent {
                 tools: None,
                 offline: None,
                 customize: None,
+                package: None,
             },
         }
     }

@@ -12,6 +12,7 @@ pub mod credentials;
 pub(crate) mod environment;
 pub mod health_check;
 mod managed;
+pub mod packages;
 pub mod preview;
 pub mod queries;
 pub mod types;
@@ -19,6 +20,7 @@ pub(crate) mod version_policy;
 
 pub use commands::*;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};
+pub use packages::{DiffAgentPackage, ExportAgent, ImportAgent, ValidateAgentPackage};
 pub use preview::*;
 
 /// Reduce utility-provider failures to the shared actionable error taxonomy.

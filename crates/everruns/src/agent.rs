@@ -9,6 +9,8 @@
 //! A built Agent is an immutable behavior description. An application-owned
 //! [`Engine`](crate::Engine) owns session creation, identity, and resumption.
 
+mod package;
+
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::future::Future;
@@ -334,6 +336,8 @@ pub struct Agent {
     capabilities: Vec<everruns_contracts::CapabilityRef>,
     capability_implementations: Vec<CapabilityImplementation>,
     initial_files: Vec<InitialFile>,
+    network_access: Option<everruns_core::network_access::NetworkAccessList>,
+    package_manifest: Option<everruns_core::agent_package::Manifest>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
@@ -615,6 +619,9 @@ impl Agent {
         if let Some(max_iterations) = self.max_iterations {
             agent = agent.max_iterations(max_iterations);
         }
+        if let Some(access) = &self.network_access {
+            agent = agent.network_access(access.clone());
+        }
         let agent_id = agent.agent_id();
         let agent = agent.build();
 
@@ -628,6 +635,9 @@ impl Agent {
         }
         if let Some(parallel) = self.parallel_tool_calls {
             session = session.parallel_tool_calls(parallel);
+        }
+        if let Some(access) = &self.network_access {
+            session = session.network_access(access.clone());
         }
         for file in &self.initial_files {
             session = session.initial_file(file.clone());
@@ -756,6 +766,8 @@ pub struct AgentBuilder {
     capabilities: Vec<crate::CapabilitySpec>,
     tools: Vec<Tool>,
     initial_files: Vec<InitialFile>,
+    network_access: Option<everruns_core::network_access::NetworkAccessList>,
+    package_manifest: Option<everruns_core::agent_package::Manifest>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
@@ -775,6 +787,15 @@ pub struct AgentBuilder {
 }
 
 impl AgentBuilder {
+    /// Set the network policy applied to this agent and its sessions.
+    pub fn network_access(
+        mut self,
+        access: everruns_core::network_access::NetworkAccessList,
+    ) -> Self {
+        self.network_access = Some(access);
+        self
+    }
+
     /// Set the agent's system instructions. Required.
     pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
         self.instructions = Some(instructions.into());
@@ -1360,6 +1381,8 @@ impl AgentBuilder {
             capabilities,
             capability_implementations,
             initial_files: self.initial_files,
+            network_access: self.network_access,
+            package_manifest: self.package_manifest,
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
             workspace_root: self.workspace_root,

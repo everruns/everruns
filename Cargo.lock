@@ -2458,6 +2458,7 @@ dependencies = [
  "dialoguer",
  "everruns-cli-contract",
  "everruns-contracts",
+ "everruns-core",
  "everruns-sdk",
  "futures",
  "hostname",
@@ -2605,6 +2606,7 @@ dependencies = [
  "uuid",
  "web-time",
  "wiremock",
+ "zip",
 ]
 
 [[package]]

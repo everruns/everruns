@@ -48,6 +48,8 @@ serde_json.workspace = true
 jsonschema = { version = "0.58.1", default-features = false }
 serde_yaml.workspace = true
 toml = "1.1"
+# Portable archive support is selected independently of core defaults.
+zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
 
 # UUID and time
 uuid.workspace = true
@@ -136,6 +138,11 @@ a2a = ["dep:a2a-wire", "dep:a2a-client", "dep:reqwest"]
 otel = ["host", "tokio/time", "everruns-contracts/tls-aws-lc-rs", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:tracing-opentelemetry", "dep:tracing-subscriber"]
 braintrust = ["direct-egress", "tokio/time"]
 observability = ["otel", "braintrust"]
+
+# Authored agent formats, archive/virtual-folder materialization and semantic diffs.
+agent-package = ["dep:zip"]
+# Native filesystem effects are a separate opt-in; codec-only hosts use entries.
+agent-package-fs = ["agent-package"]
 openapi = ["dep:utoipa", "everruns-contracts/openapi"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 
@@ -165,3 +172,10 @@ required-features = ["mcp-stdio"]
 [[test]]
 name = "consolidated"
 path = "tests/consolidated/main.rs"
+
+[[test]]
+name = "agent_package"
+required-features = ["agent-package-fs"]
+
+[package.metadata.docs.rs]
+features = ["agent-package-fs"]

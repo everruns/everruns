@@ -1,0 +1,16 @@
+schema_version = 1
+name = "triage"
+display_name = "Triage assistant"
+description = "Investigate support issues using the bundled runbook."
+capabilities = ["session_file_system", "current_time"]
+max_iterations = 20
+parallel_tool_calls = false
+
+# Defaults: instructions.md, files/ mapped to /, skills/ discovered recursively.
+# The destination binds its default model and harness when these are omitted.
+[channels.chat]
+type = "ag_ui"
+[channels.chat.config]
+tool_visibility = "generic"
+generic_tool_text = "Investigating…"
+rate_limit_per_minute = 30

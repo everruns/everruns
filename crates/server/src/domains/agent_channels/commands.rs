@@ -66,6 +66,50 @@ fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandE
     Ok(config)
 }
 
+// THREAT[TM-AUTHZ-022]: package imports preflight this same live-channel gate
+// before mutating the agent, so a denied ingress update cannot partially apply.
+fn prepare_updated_config(
+    ctx: &Ctx,
+    existing: &IngressChannelRow,
+    channel_type: ChannelType,
+    mut config: Value,
+    enabled: Option<bool>,
+) -> Result<Value, CommandError> {
+    let current = decrypted_config(ctx, existing.clone())?;
+    merge_preserved_secret_fields(channel_type.clone(), &mut config, &current);
+    let config = normalize_and_validate_channel_config(channel_type.clone(), config)?;
+    let changed = super::exposure::config_changed(
+        &config,
+        normalize_and_validate_channel_config(channel_type, current).ok(),
+    );
+    super::exposure::require_live_change_permission(
+        ctx,
+        &existing.channel_status,
+        changed,
+        enabled == Some(false),
+    )?;
+    Ok(config)
+}
+
+pub(crate) async fn preflight_package_channel_config(
+    ctx: &Ctx,
+    agent_id: uuid::Uuid,
+    channel_id: &str,
+    config: Value,
+    enabled: Option<bool>,
+) -> Result<(), CommandError> {
+    let existing = ctx
+        .db
+        .get_agent_channel(ctx.org_id(), agent_id, channel_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
+    let channel_type = ChannelType::from_str_opt(&existing.channel_type)
+        .ok_or_else(|| CommandError::bad_request("Channel has an unsupported channel type"))?;
+    prepare_updated_config(ctx, &existing, channel_type, config, enabled)?;
+    Ok(())
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListAgentChannels {
     pub agent_id: String,
@@ -272,16 +316,10 @@ impl Command for UpdateAgentChannelCmd {
             self.req.agent_version_id,
         )
         .await?;
-        let mut config_changed = false;
         let (channel_config, channel_config_encrypted, auth, auth_encrypted) =
-            if let Some(mut config) = self.req.channel_config {
-                let current = decrypted_config(ctx, existing.clone())?;
-                merge_preserved_secret_fields(channel_type.clone(), &mut config, &current);
-                let config = normalize_and_validate_channel_config(channel_type.clone(), config)?;
-                config_changed = super::exposure::config_changed(
-                    &config,
-                    normalize_and_validate_channel_config(channel_type.clone(), current).ok(),
-                );
+            if let Some(config) = self.req.channel_config {
+                let config =
+                    prepare_updated_config(ctx, &existing, channel_type, config, self.req.enabled)?;
                 let prepared =
                     super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)
                         .map_err(classify_anyhow)?;
@@ -302,7 +340,7 @@ impl Command for UpdateAgentChannelCmd {
         super::exposure::require_live_change_permission(
             ctx,
             &existing.channel_status,
-            config_changed,
+            false,
             self.req.enabled == Some(false),
         )?;
         let status = self.req.enabled.map(|enabled| {

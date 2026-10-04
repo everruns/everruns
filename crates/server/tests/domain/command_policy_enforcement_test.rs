@@ -927,6 +927,8 @@ fn every_mutating_agent_command_is_classified_for_built_in_protection() {
 /// POST-style helpers intentionally available through MCP `query`.
 /// They do not persist state and each still declares a view policy.
 const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
+    "validate_agent_package",
+    "diff_agent_package",
     "export_report_query",
     "export_saved_report",
     "grep_workspace_files",

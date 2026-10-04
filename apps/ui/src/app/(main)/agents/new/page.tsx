@@ -367,7 +367,7 @@ export default function NewAgentPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="system_prompt">System Prompt</Label>
+                  <Label htmlFor="system_prompt">Instructions</Label>
                   <PromptEditor
                     id="system_prompt"
                     placeholder="You are a helpful assistant..."

@@ -16,18 +16,17 @@ use crate::records::BuiltInHarnessRole;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
-    body::Body,
-    extract::{Path, Query, State},
+    body::{Body, Bytes},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{StatusCode, header},
     response::Response,
     routing::{get, post},
 };
-use chrono::Utc;
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
+use everruns_contracts::typed_id::{AgentId, AgentVersionId};
 use everruns_core::host::HostComposition;
 use everruns_core::{
-    Caller, DeploymentGrade, InitialFile, OrgRole, PermissionResolver, ResourceConfigResponse,
-    ScopedMcpServers, evaluate_policies_with,
+    Caller, DeploymentGrade, OrgRole, PermissionResolver, ResourceConfigResponse,
+    evaluate_policies_with,
 };
 
 use super::common::{
@@ -35,9 +34,6 @@ use super::common::{
     WithUrls, impl_auth_state,
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
-use super::validation::{
-    validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
-};
 use crate::domains::agents::environment::selection_update as environment_update;
 use crate::domains::agents::types::{
     AgentAnalysisResponse, CheckAgentNameQuery, CheckAgentNameResponse, CreateAgentRequest,
@@ -47,91 +43,8 @@ use crate::domains::agents::types::{
 };
 use crate::domains::common::Command;
 use crate::domains::harnesses::HARNESS_VIEW;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-enum AgentFileCapability {
-    Simple(String),
-    WithConfig {
-        #[serde(rename = "ref")]
-        capability_ref: String,
-        #[serde(default)]
-        config: serde_json::Value,
-    },
-}
-
-impl AgentFileCapability {
-    fn to_agent_capability_config(&self) -> everruns_contracts::CapabilityRef {
-        match self {
-            AgentFileCapability::Simple(id) => everruns_contracts::CapabilityRef::new(id.clone()),
-            AgentFileCapability::WithConfig {
-                capability_ref,
-                config,
-            } => everruns_contracts::CapabilityRef::with_config(
-                capability_ref.clone(),
-                config.clone(),
-            ),
-        }
-    }
-}
-
-/// Entry in agent file initial_files - supports both string (glob pattern) and
-/// object (fully-specified file) formats. String entries are glob patterns that
-/// must be expanded by the CLI before sending to the server; the server silently
-/// drops them.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-enum AgentFileInitialFile {
-    /// Glob pattern (e.g. ".", ".agents/*") - CLI-only, server ignores
-    GlobPattern(String),
-    /// Fully-specified file with content
-    File(InitialFile),
-}
-
-impl AgentFileInitialFile {
-    fn into_initial_file(self) -> Option<InitialFile> {
-        match self {
-            AgentFileInitialFile::GlobPattern(_) => None,
-            AgentFileInitialFile::File(f) => Some(f),
-        }
-    }
-}
-
-/// Agent file format for import (matches CLI format)
-/// Parsed from YAML front matter in Markdown files.
-/// Supports both legacy (string list) and new (object with ref/config) capability formats.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct AgentFile {
-    /// Optional agent ID (format: agent_{32-hex}). Preserved during import/export.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<AgentId>,
-    /// Name (e.g. "customer-support"). If absent, derived from display_name.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Human-readable display name. Falls back to name if absent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-    pub description: Option<String>,
-    pub system_prompt: Option<String>,
-    pub default_model_id: Option<ModelId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub harness_id: Option<HarnessId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub harness_name: Option<String>,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    /// Capabilities - supports both string IDs and objects with ref/config
-    #[serde(default)]
-    pub capabilities: Vec<AgentFileCapability>,
-    /// Initial files - supports string globs (CLI-only, stripped by server) and
-    /// fully-specified InitialFile objects.
-    #[serde(default)]
-    pub initial_files: Vec<AgentFileInitialFile>,
-    #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
-    pub mcp_servers: ScopedMcpServers,
-}
 
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::services::CapabilityService;
@@ -140,6 +53,7 @@ use crate::services::CapabilityService;
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
+    pub encryption: Option<Arc<crate::storage::EncryptionService>>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
     pub grade: DeploymentGrade,
@@ -153,6 +67,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
+        encryption: Option<Arc<crate::storage::EncryptionService>>,
         capability_service: Arc<CapabilityService>,
         auth: AuthState,
         grade: DeploymentGrade,
@@ -161,6 +76,7 @@ impl AppState {
     ) -> Self {
         Self {
             db,
+            encryption,
             capability_service,
             auth,
             grade,
@@ -190,7 +106,7 @@ impl AppState {
             Caller::from(org),
             self.db.clone(),
             self.capability_service.clone(),
-            None,
+            self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
         .with_feature_flags(org.feature_flags.clone())
@@ -287,7 +203,24 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents", post(create_agent).get(list_agents))
         .route("/v1/agents/check-name", get(check_agent_name))
         .route("/v1/agents/config", get(agent_config))
-        .route("/v1/agents/import", post(import_agent))
+        .route(
+            "/v1/agents/import",
+            post(import_agent).layer(DefaultBodyLimit::max(
+                everruns_core::agent_package::MAX_PACKAGE_BYTES,
+            )),
+        )
+        .route(
+            "/v1/agents/validate",
+            post(validate_agent_package).layer(DefaultBodyLimit::max(
+                everruns_core::agent_package::MAX_PACKAGE_BYTES,
+            )),
+        )
+        .route(
+            "/v1/agents/diff",
+            post(diff_agent_package).layer(DefaultBodyLimit::max(
+                everruns_core::agent_package::MAX_PACKAGE_BYTES,
+            )),
+        )
         .route("/v1/agents/preview", post(preview_agent))
         .route("/v1/agents/analyze", post(analyze_agent))
         .route(
@@ -860,6 +793,7 @@ pub async fn upsert_agent(
     let _caller = Caller::from(&org);
     let (agent, was_created) = if let Ok(agent_id) = agent_id_or_name.parse::<AgentId>() {
         let result = crate::domains::agents::UpsertAgent {
+            replace_capabilities: false,
             id: agent_id.to_string(),
             req,
         }
@@ -938,15 +872,23 @@ pub async fn upsert_agent(
     Ok((status, Json(builder.wrap(agent))))
 }
 
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct ExportAgentQuery {
+    /// markdown (default), json, yaml, toml, or zip.
+    pub format: Option<String>,
+}
+
 /// GET /v1/agents/{agent_id}/export - Export agent in Markdown format with YAML front matter
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/export",
     params(
-        ("agent_id" = String, Path, description = "Agent ID (prefixed, e.g., agt_...)")
+        ("agent_id" = String, Path, description = "Agent name or ID"),
+        ExportAgentQuery
     ),
     responses(
-        (status = 200, description = "Agent exported as Markdown", content_type = "text/markdown"),
+        (status = 200, description = "Portable agent definition (format selects text or ZIP)", body = everruns_core::agent_package::Manifest, content_type = "application/json"),
         (status = 400, description = "Invalid agent ID"),
         (status = 404, description = "Agent not found"),
         (status = 500, description = "Internal server error")
@@ -957,43 +899,61 @@ pub async fn export_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
+    Query(query): Query<ExportAgentQuery>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
-    let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        ErrorResponse::new(format!("Invalid agent ID: {}", e))
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    let agent = crate::domains::agents::GetAgent {
-        id: agent_id.to_string(),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let markdown = agent_to_markdown(&agent);
-    let filename = format!("{}.md", slugify(&agent.name));
-
+    let package = crate::domains::agents::packages::export(&state.ctx(&org), &agent_id).await?;
+    let (bytes, extension, content_type) = if query.format.as_deref() == Some("zip") {
+        (
+            package
+                .to_zip()
+                .map_err(crate::domains::agents::packages::package_error)?,
+            "zip",
+            "application/zip",
+        )
+    } else {
+        let format =
+            crate::domains::agents::packages::format(query.format.as_deref().or(Some("markdown")))?;
+        let content_type = match format {
+            everruns_core::agent_package::Format::Json => "application/json",
+            everruns_core::agent_package::Format::Toml => "application/toml",
+            everruns_core::agent_package::Format::Yaml => "application/yaml",
+            _ => "text/markdown; charset=utf-8",
+        };
+        (
+            package
+                .to_string(format)
+                .map_err(crate::domains::agents::packages::package_error)?
+                .into_bytes(),
+            format.extension(),
+            content_type,
+        )
+    };
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/markdown; charset=utf-8")
+        .header(header::CONTENT_TYPE, content_type)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", filename),
+            format!(
+                "attachment; filename=\"{}.{}\"",
+                package.manifest.name, extension
+            ),
         )
-        .body(Body::from(markdown))
-        .unwrap())
+        .body(Body::from(bytes))
+        .expect("valid export response"))
 }
 
 /// POST /v1/agents/import - Import agent from file or built-in example
 ///
 /// Two modes:
 /// 1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)
-/// 2. **From file** — `POST /v1/agents/import` with a text body in Markdown/YAML/JSON
+/// 2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.
 ///
-/// File mode accepts:
+/// Package mode accepts:
 /// - Markdown with YAML front matter (if starts with ---)
 /// - Pure YAML
 /// - Pure JSON
-/// - Plain text (treated as system prompt, name auto-generated)
+/// - Plain text (treated as instructions; defaults to name agent)
+/// - TOML and ZIP folders, with complete assets and skill directories
 ///
 /// If the file contains an `id` field and an agent with that ID already exists,
 /// the agent is updated (upsert). Returns 201 on create, 200 on update.
@@ -1016,15 +976,29 @@ pub async fn import_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ImportAgentQuery>,
-    body: String,
+    body: Bytes,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     // Branch: import from built-in example
-    if let Some(name) = query.from_example {
-        return import_from_example(org, &state, &name).await;
+    if let Some(name) = &query.from_example {
+        return import_from_example(org, &state, name).await;
     }
 
     // Branch: import from file body
-    import_from_file(org, &state, body).await
+    let ctx = state.ctx(&org);
+    let input = package_body(&body, &query)?;
+    let package = crate::domains::agents::packages::parse_input(&ctx, &input).await?;
+    let target = input.target;
+    let (agent, created) =
+        crate::domains::agents::packages::apply(&ctx, &package, target.as_deref()).await?;
+    let builder = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+        Json(builder.wrap(agent)),
+    ))
 }
 
 /// Import an agent from a built-in example by name.
@@ -1139,266 +1113,79 @@ async fn import_from_example(
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
 }
 
-/// Import an agent from a file body (Markdown/YAML/JSON).
-async fn import_from_file(
+/// Validate an agent package and its destination dependencies without mutation.
+#[utoipa::path(post, path = "/v1/agents/validate", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Validation diagnostics", body = serde_json::Value)), tag = "agents")]
+pub async fn validate_agent_package(
     org: ResolvedOrg,
-    state: &AppState,
-    body: String,
-) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    // Validate import file size (last-resort protection against abuse)
-    validate_import_file_size(body.len())?;
-
-    let agent_file = parse_agent_content(&body).map_err(|e| {
-        ErrorResponse::new(format!("Invalid format: {}", e)).into_response(StatusCode::BAD_REQUEST)
-    })?;
-
-    // Derive display_name and slug name.
-    // Legacy files may only have `name` (the old display name); in that case,
-    // treat it as display_name and derive the slug from it.
-    let display_name = agent_file.display_name.or(agent_file.name.clone());
-    let name_fallback = display_name
-        .clone()
-        .unwrap_or_else(|| format!("agent-{}", Utc::now().format("%Y%m%d-%H%M%S")));
-    let name = agent_file
-        .name
-        .map(|n| {
-            // If it looks like a slug already, use it; otherwise slugify
-            if n.bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
-            {
-                n
-            } else {
-                slugify(&n)
-            }
-        })
-        .unwrap_or_else(|| slugify(&name_fallback));
-    validate_agent_name_format(&name)?;
-
-    // System prompt is required (either from body or front matter)
-    let system_prompt = agent_file.system_prompt.unwrap_or_default();
-    if system_prompt.is_empty() {
-        return Err(ErrorResponse::new(
-            "System prompt is required (provide in front matter or as markdown body)",
-        )
-        .into_response(StatusCode::BAD_REQUEST));
-    }
-
-    // Validate parsed content sizes (last-resort protection against abuse)
-    // Strip glob patterns (CLI-only); keep only fully-specified files
-    let initial_files: Vec<InitialFile> = agent_file
-        .initial_files
-        .into_iter()
-        .filter_map(|f| f.into_initial_file())
-        .collect();
-
-    validate_create_agent_input(
-        &name,
-        display_name.as_deref(),
-        agent_file.description.as_deref(),
-        &system_prompt,
-        agent_file.capabilities.len(),
-        &initial_files,
-    )?;
-
-    let client_id = agent_file.id;
-    let request = CreateAgentRequest {
-        service_virtual_user_id: None,
-
-        id: None, // Already extracted as client_id
-        name,
-        display_name,
-        description: agent_file.description,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt,
-        default_model_id: agent_file.default_model_id,
-        harness_id: agent_file.harness_id,
-        harness_name: agent_file.harness_name,
-        tags: agent_file.tags,
-        capabilities: agent_file
-            .capabilities
-            .iter()
-            .map(|c| c.to_agent_capability_config())
-            .collect(),
-        environments: None,
-        initial_files,
-        tools: vec![],
-        mcp_servers: agent_file.mcp_servers,
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
+    State(state): State<AppState>,
+    Query(query): Query<ImportAgentQuery>,
+    body: Bytes,
+) -> ApiResult<serde_json::Value> {
+    let input = match package_body(&body, &query) {
+        Ok(input) => input,
+        Err(error) => {
+            return Ok(Json(
+                serde_json::json!({"valid":false,"diagnostics":[{"path":"package","message":error.message()}]}),
+            ));
+        }
     };
-
-    // TM-AGENT-005: High-risk capabilities require admin role
-    require_admin_for_high_risk(&org, &request.capabilities, &state.capability_service)?;
-
-    let _caller = Caller::from(&org);
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-
-    // If the file has an ID, upsert (create or update). Otherwise, always create.
-    if let Some(ref id) = client_id {
-        let result = crate::domains::agents::UpsertAgent {
-            id: id.to_string(),
-            req: request,
-        }
-        .run(&state.ctx(&org))
-        .await?;
-
-        let status = if result.was_created {
-            StatusCode::CREATED
-        } else {
-            StatusCode::OK
-        };
-
-        Ok((status, Json(builder.wrap(result.agent))))
-    } else {
-        let agent = crate::domains::agents::CreateAgent(request)
+    Ok(Json(
+        crate::domains::agents::ValidateAgentPackage(input)
             .run(&state.ctx(&org))
-            .await?;
-
-        Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
-    }
+            .await?,
+    ))
 }
 
-/// Convert agent to Markdown format with YAML front matter
-fn agent_to_markdown(agent: &Agent) -> String {
-    // Build YAML front matter (skip empty/default fields)
-    let mut yaml_lines = vec![];
-    yaml_lines.push(format!("id: \"{}\"", agent.public_id));
-    yaml_lines.push(format!("name: \"{}\"", agent.name.replace('"', "\\\"")));
-    if let Some(ref dn) = agent.display_name {
-        yaml_lines.push(format!("display_name: \"{}\"", dn.replace('"', "\\\"")));
-    }
-
-    if let Some(desc) = &agent.description {
-        yaml_lines.push(format!("description: \"{}\"", desc.replace('"', "\\\"")));
-    }
-
-    if let Some(model_id) = agent.default_model_id {
-        yaml_lines.push(format!("default_model_id: \"{}\"", model_id));
-    }
-    yaml_lines.push(format!("harness_id: \"{}\"", agent.harness_id));
-
-    if !agent.tags.is_empty() {
-        yaml_lines.push("tags:".to_string());
-        for tag in &agent.tags {
-            yaml_lines.push(format!("  - \"{}\"", tag.replace('"', "\\\"")));
-        }
-    }
-
-    if !agent.capabilities.is_empty() {
-        yaml_lines.push("capabilities:".to_string());
-        for cap in &agent.capabilities {
-            // Export capabilities with ref and config (inline JSON for config)
-            let config_json =
-                serde_json::to_string(cap.config_value()).unwrap_or_else(|_| "{}".to_string());
-            yaml_lines.push(format!("  - ref: {}", cap.capability_id()));
-            yaml_lines.push(format!("    config: {}", config_json));
-        }
-    }
-
-    if !agent.initial_files.is_empty() {
-        yaml_lines.push("initial_files:".to_string());
-        for file in &agent.initial_files {
-            yaml_lines.push(format!(
-                "  - path: {}",
-                serde_json::to_string(&file.path).unwrap_or_else(|_| "\"/\"".to_string())
-            ));
-            yaml_lines.push(format!("    encoding: {}", file.encoding));
-            yaml_lines.push(format!("    is_readonly: {}", file.is_readonly));
-            yaml_lines.push(format!(
-                "    content: {}",
-                serde_json::to_string(&file.content).unwrap_or_else(|_| "\"\"".to_string())
-            ));
-        }
-    }
-
-    format!(
-        "---\n{}\n---\n{}",
-        yaml_lines.join("\n"),
-        agent.system_prompt
-    )
+/// Generate a semantic diff against an existing agent without mutation.
+#[utoipa::path(post, path = "/v1/agents/diff", params(ImportAgentQuery), request_body = crate::domains::agents::packages::PackageInput, responses((status = 200, description = "Semantic changes", body = serde_json::Value)), tag = "agents")]
+pub async fn diff_agent_package(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<ImportAgentQuery>,
+    body: Bytes,
+) -> ApiResult<serde_json::Value> {
+    let input = package_body(&body, &query)?;
+    Ok(Json(
+        crate::domains::agents::DiffAgentPackage(input)
+            .run(&state.ctx(&org))
+            .await?,
+    ))
 }
 
-/// Parse agent content from multiple formats (matches CLI behavior).
-/// Tries: Markdown with front matter, JSON, YAML, plain text.
-fn parse_agent_content(content: &str) -> Result<AgentFile, String> {
-    let content = content.trim();
-
-    // Try markdown with front matter first (if starts with ---)
-    if content.starts_with("---")
-        && let Ok(agent) = parse_markdown_frontmatter(content)
+fn package_body(
+    body: &[u8],
+    query: &ImportAgentQuery,
+) -> Result<crate::domains::agents::packages::PackageInput, crate::domains::common::CommandError> {
+    use crate::domains::{
+        agents::packages::{PackageInput, package_error},
+        common::CommandError,
+    };
+    if query.format.as_deref() == Some("zip") || body.starts_with(b"PK\x03\x04") {
+        let package =
+            everruns_core::agent_package::AgentPackage::from_zip(body).map_err(package_error)?;
+        return Ok(PackageInput {
+            content: package
+                .to_string(everruns_core::agent_package::Format::Json)
+                .map_err(package_error)?,
+            file: None,
+            format: Some("json".into()),
+            target: query.target.clone(),
+        });
+    }
+    let content = std::str::from_utf8(body)
+        .map_err(|_| CommandError::bad_request("Agent definition must be UTF-8 or ZIP"))?;
+    if let Ok(mut input) = serde_json::from_str::<PackageInput>(content)
+        && (!input.content.is_empty() || input.file.is_some())
     {
-        return Ok(agent);
+        input.target = query.target.clone().or(input.target);
+        return Ok(input);
     }
-
-    // Try JSON (if starts with {)
-    if content.starts_with('{')
-        && let Ok(agent) = serde_json::from_str::<AgentFile>(content)
-    {
-        return Ok(agent);
-    }
-
-    // Try YAML
-    if let Ok(agent) = serde_yaml::from_str::<AgentFile>(content) {
-        // Only accept if it parsed something meaningful (has name or system_prompt)
-        if agent.name.is_some() || agent.system_prompt.is_some() {
-            return Ok(agent);
-        }
-    }
-
-    // Fall back to treating entire content as system prompt
-    Ok(AgentFile {
-        id: None,
-        name: None, // Will be auto-generated
-        display_name: None,
-        description: None,
-        system_prompt: Some(content.to_string()),
-        default_model_id: None,
-        harness_id: None,
-        harness_name: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        mcp_servers: Default::default(),
+    Ok(PackageInput {
+        content: content.into(),
+        file: None,
+        format: query.format.clone(),
+        target: query.target.clone(),
     })
-}
-
-/// Parse markdown with YAML front matter.
-fn parse_markdown_frontmatter(content: &str) -> Result<AgentFile, String> {
-    // Find the closing delimiter
-    let rest = &content[3..];
-    let end_pos = rest
-        .find("\n---")
-        .ok_or("Missing closing front matter delimiter (---)")?;
-
-    let front_matter = rest[..end_pos].trim();
-    let body = rest.get(end_pos + 4..).unwrap_or("").trim();
-
-    // Parse front matter as YAML
-    let mut config: AgentFile =
-        serde_yaml::from_str(front_matter).map_err(|e| format!("Invalid YAML: {}", e))?;
-
-    // Body becomes system_prompt if not empty
-    if !body.is_empty() {
-        config.system_prompt = Some(body.to_string());
-    }
-
-    Ok(config)
-}
-
-/// Convert string to URL-safe slug
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
 }
 
 /// POST /v1/agents/analyze - Run advisory checks against an agent shape

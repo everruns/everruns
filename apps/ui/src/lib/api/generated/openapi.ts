@@ -99,6 +99,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/diff": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Generate a semantic diff against an existing agent without mutation. */
+    post: operations["diff_agent_package"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/import": {
     parameters: {
       query?: never;
@@ -112,13 +129,14 @@ export interface paths {
      * POST /v1/agents/import - Import agent from file or built-in example
      * @description Two modes:
      *     1. **From example** — `POST /v1/agents/import?from-example={name}` (body ignored)
-     *     2. **From file** — `POST /v1/agents/import` with a text body in Markdown/YAML/JSON
+     *     2. **From package** — text (Markdown/TOML/YAML/JSON), ZIP, or a PackageInput envelope.
      *
-     *     File mode accepts:
+     *     Package mode accepts:
      *     - Markdown with YAML front matter (if starts with ---)
      *     - Pure YAML
      *     - Pure JSON
-     *     - Plain text (treated as system prompt, name auto-generated)
+     *     - Plain text (treated as instructions; defaults to name agent)
+     *     - TOML and ZIP folders, with complete assets and skill directories
      *
      *     If the file contains an `id` field and an agent with that ID already exists,
      *     the agent is updated (upsert). Returns 201 on create, 200 on update.
@@ -145,6 +163,23 @@ export interface paths {
      *     This is useful for previewing what the agent will look like before saving.
      */
     post: operations["preview_agent"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/validate": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Validate an agent package and its destination dependencies without mutation. */
+    post: operations["validate_agent_package"];
     delete?: never;
     options?: never;
     head?: never;
@@ -6694,6 +6729,15 @@ export interface components {
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
     /**
+     * @description Portable channel intent. Authentication and installation are host bindings.
+     *     Channels default to disabled; enabled intent still requires host publication.
+     */
+    Channel: {
+      config?: unknown;
+      enabled?: boolean;
+      type: string;
+    };
+    /**
      * @description Authentication config for one channel/channel.
      * @example {
      *       "mode": "api_key",
@@ -9744,6 +9788,8 @@ export interface components {
      * @enum {string}
      */
     FieldType: "password" | "text" | "url";
+    /** @description Embedded files and folder-relative sources share the same manifest field. */
+    File: string | components["schemas"]["FileSource"] | components["schemas"]["InitialFile"];
     /**
      * @description File content part (reference to an uploaded file, e.g. a PDF)
      *
@@ -9787,6 +9833,11 @@ export interface components {
        * @example 1048576
        */
       size_bytes: number;
+    };
+    FileSource: {
+      is_readonly?: boolean;
+      path?: string | null;
+      source: string;
     };
     /** @description File stat information */
     FileStat: {
@@ -13726,6 +13777,34 @@ export interface components {
       /** @description Absolute path of the sandbox workspace root. */
       workspace_path?: string | null;
     };
+    /** @description Authored values only: no organisation, agent, model, harness or channel IDs. */
+    Manifest: {
+      capabilities?: components["schemas"]["PackageCapability"][];
+      channels?: {
+        [key: string]: components["schemas"]["Channel"];
+      };
+      description?: string | null;
+      display_name?: string | null;
+      environments?: unknown;
+      harness?: string | null;
+      initial_files?: components["schemas"]["File"][];
+      instructions?: string;
+      instructions_file?: string | null;
+      intro_markdown?: string | null;
+      max_iterations?: number | null;
+      mcpServers?: components["schemas"]["BTreeMap"];
+      model?: components["schemas"]["PackageModel"] | null;
+      name?: string;
+      network_access?: components["schemas"]["NetworkAccessList"] | null;
+      parallel_tool_calls?: boolean | null;
+      /** Format: int32 */
+      schema_version?: number;
+      short_description?: string | null;
+      skills?: string[];
+      starters?: unknown[];
+      tags?: string[];
+      tools?: components["schemas"]["ToolDefinition"][];
+    };
     /** @description Response body for manual memory source. */
     ManualMemorySourceResponse: Record<string, unknown>;
     /**
@@ -14859,6 +14938,24 @@ export interface components {
        * @example turn_01933b5a00007000800000000000001
        */
       turn_id: string;
+    };
+    PackageCapability: string | components["schemas"]["PackageCapabilityReference"];
+    PackageCapabilityReference: {
+      config?: unknown;
+      ref: string;
+    };
+    PackageInput: {
+      /** @description Markdown/TOML/YAML/JSON agent definition, with assets embedded. */
+      content?: string;
+      /** @description Path in the current Platform Chat session workspace (never server disk). */
+      file?: string | null;
+      format?: string | null;
+      /** @description Existing agent name to update or compare. Omit to create. */
+      target?: string | null;
+    };
+    PackageModel: {
+      model: string;
+      provider: string;
     };
     /**
      * @description Response wrapper for paginated list endpoints.
@@ -22603,6 +22700,40 @@ export interface operations {
       };
     };
   };
+  diff_agent_package: {
+    parameters: {
+      query?: {
+        /**
+         * @description Import from a built-in example by name (e.g. `dad-jokes-agent`).
+         *     When set, the request body is ignored.
+         */
+        "from-example"?: string;
+        /** @description Explicit target agent name for an update. Omit to create a new agent. */
+        target?: string;
+        /** @description Input format: markdown, toml, yaml, json or zip. Omit to detect it. */
+        format?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PackageInput"];
+      };
+    };
+    responses: {
+      /** @description Semantic changes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
   import_agent: {
     parameters: {
       query?: {
@@ -22611,6 +22742,10 @@ export interface operations {
          *     When set, the request body is ignored.
          */
         "from-example"?: string;
+        /** @description Explicit target agent name for an update. Omit to create a new agent. */
+        target?: string;
+        /** @description Input format: markdown, toml, yaml, json or zip. Omit to detect it. */
+        format?: string;
       };
       header?: never;
       path?: never;
@@ -22725,6 +22860,40 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  validate_agent_package: {
+    parameters: {
+      query?: {
+        /**
+         * @description Import from a built-in example by name (e.g. `dad-jokes-agent`).
+         *     When set, the request body is ignored.
+         */
+        "from-example"?: string;
+        /** @description Explicit target agent name for an update. Omit to create a new agent. */
+        target?: string;
+        /** @description Input format: markdown, toml, yaml, json or zip. Omit to detect it. */
+        format?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PackageInput"];
+      };
+    };
+    responses: {
+      /** @description Validation diagnostics */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
         };
       };
     };
@@ -23688,23 +23857,26 @@ export interface operations {
   };
   export_agent: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description markdown (default), json, yaml, toml, or zip. */
+        format?: string;
+      };
       header?: never;
       path: {
-        /** @description Agent ID (prefixed, e.g., agt_...) */
+        /** @description Agent name or ID */
         agent_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Agent exported as Markdown */
+      /** @description Portable agent definition (format selects text or ZIP) */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "text/markdown": unknown;
+          "application/json": components["schemas"]["Manifest"];
         };
       };
       /** @description Invalid agent ID */

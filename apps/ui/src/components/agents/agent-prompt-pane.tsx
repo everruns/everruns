@@ -1,6 +1,6 @@
 "use client";
 
-// The system prompt is the agent page: the wide left pane of the workspace.
+// The instructions is the agent page: the wide left pane of the workspace.
 // Viewing renders the markdown at reading size; editing turns the same pane
 // into a mono textarea in the same place, so moving between the two never
 // changes the layout. One header row, no second row of tabs: "Source" is a
@@ -63,11 +63,11 @@ export function AgentPromptPane({
 
   return (
     <section
-      aria-label="System prompt"
+      aria-label="Instructions"
       className={cn("flex min-w-0 flex-col bg-background", className)}
     >
       <div className="flex flex-wrap items-center gap-3 border-b px-4 py-2.5 sm:px-6">
-        <h2 className="text-sm font-medium">System prompt</h2>
+        <h2 className="text-sm font-medium">Instructions</h2>
         <span className="font-mono text-xs text-muted-foreground">
           {words} {pluralize(words, "word")} · ~{formatTokens(tokens)} {pluralize(tokens, "token")}
         </span>
@@ -97,7 +97,7 @@ export function AgentPromptPane({
           <Textarea
             ref={textareaRef}
             id="system_prompt"
-            aria-label="System prompt"
+            aria-label="Instructions"
             aria-invalid={!!error}
             placeholder="You are a helpful assistant..."
             value={value}
@@ -110,7 +110,7 @@ export function AgentPromptPane({
       ) : (
         <div className="min-h-[240px] flex-1 px-4 py-5 sm:px-6 lg:min-h-[520px]">
           {!value.trim() ? (
-            <p className="text-sm italic text-muted-foreground">No system prompt yet.</p>
+            <p className="text-sm italic text-muted-foreground">No instructions yet.</p>
           ) : showSource ? (
             <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed">
               {value}
