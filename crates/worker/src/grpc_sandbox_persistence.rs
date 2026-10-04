@@ -34,8 +34,7 @@ impl GrpcSandboxPersistenceStore {
         let response = self
             .client
             .inner
-            .lock()
-            .await
+            .client()
             .sandbox_persistence(request)
             .await
             .map_err(|error| RemoteError::storage(error.to_string()))?

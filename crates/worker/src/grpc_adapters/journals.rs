@@ -13,8 +13,7 @@ impl GrpcAdapter {
         let response = self
             .client
             .inner
-            .lock()
-            .await
+            .client()
             .native_async_journal(proto::NativeAsyncJournalRequest {
                 operation: operation as i32,
                 org_id: lease.org_id,
@@ -109,8 +108,7 @@ impl GrpcAdapter {
         let response = self
             .client
             .inner
-            .lock()
-            .await
+            .client()
             .agents_api_journal(proto::AgentsApiJournalRequest {
                 operation: operation as i32,
                 org_id: lease.org_id,
