@@ -3199,6 +3199,54 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/providers/{provider_id}/chatgpt": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["status"];
+    put?: never;
+    post?: never;
+    delete: operations["disconnect"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers/{provider_id}/chatgpt/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["import"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/providers/{provider_id}/chatgpt/login": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post: operations["login"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/providers/{provider_id}/models": {
     parameters: {
       query?: never;
@@ -6795,6 +6843,15 @@ export interface components {
        * @example https://provider.example/authorize?state=opaque
        */
       authorization_url: string;
+    };
+    ConnectionStatus: {
+      email?: string | null;
+      error?: string | null;
+      host_id: string;
+      owner_user_id?: string | null;
+      /** @description Non-secret host registration, containing the issuing client and verified subject. */
+      registration?: Record<string, unknown> | null;
+      status: string;
     };
     /**
      * @description What the user decided about opening the URL.
@@ -10497,6 +10554,12 @@ export interface components {
       /** @description When true, delete previously-imported entries absent from this bundle. */
       prune?: boolean;
     };
+    ImportedConnection: {
+      /** @description Credential document emitted by the local helper; accepted only after ID-token validation. */
+      auth: Record<string, unknown>;
+      host_id: string;
+      nonce: string;
+    };
     /** @description Starter file copied into a new session from an agent or harness. */
     InitialFile: {
       /** @description File content: plain text or base64-encoded binary. */
@@ -13272,6 +13335,9 @@ export interface components {
        * @example HEAD
        */
       ref?: string | null;
+    };
+    LoginResponse: {
+      authorize_url: string;
     };
     /** @description Request body for the `manage_session_sandbox` operation. */
     ManageSessionSandboxRequest: {
@@ -31890,6 +31956,186 @@ export interface operations {
       };
       /** @description Sync failed */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Personal provider ID */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Personal connection status */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ConnectionStatus"];
+        };
+      };
+      /** @description Invalid connection request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider not found or owned by another user */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider exchange or revocation failed */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  disconnect: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Personal provider ID */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Personal connection disconnect */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid connection request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider not found or owned by another user */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider exchange or revocation failed */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  import: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Personal provider ID */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ImportedConnection"];
+      };
+    };
+    responses: {
+      /** @description Personal connection import */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+      /** @description Invalid connection request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider not found or owned by another user */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider exchange or revocation failed */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  login: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Personal provider ID */
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Personal connection login */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LoginResponse"];
+        };
+      };
+      /** @description Invalid connection request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider not found or owned by another user */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Provider exchange or revocation failed */
+      502: {
         headers: {
           [name: string]: unknown;
         };
