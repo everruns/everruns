@@ -4395,6 +4395,90 @@
     ]
   },
   {
+    "wire_name": "check_health_issue",
+    "path": [
+      "health-issues"
+    ],
+    "verb": "check",
+    "description": "Verify an installation's current health without modifying provider data.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/check",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "get_health_issue",
+    "path": [
+      "health-issues"
+    ],
+    "verb": "get",
+    "description": "Get an operational health issue.",
+    "method": "GET",
+    "http_path": "/v1/health-issues/{issue_id}",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
+    "wire_name": "list_health_issues",
+    "path": [
+      "health-issues"
+    ],
+    "verb": "list",
+    "description": "List pending operational health issues.",
+    "method": "GET",
+    "http_path": "/v1/health-issues",
+    "args": [
+      {
+        "field": "channel_id",
+        "long": "channel-id",
+        "kind": "string",
+        "required": false
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false
+      }
+    ]
+  },
+  {
+    "wire_name": "snooze_health_issue",
+    "path": [
+      "health-issues"
+    ],
+    "verb": "snooze",
+    "description": "Snooze health reminders for the current user for one day.",
+    "method": "POST",
+    "http_path": "/v1/health-issues/{issue_id}/snooze",
+    "args": [
+      {
+        "field": "issue_id",
+        "long": "issue-id",
+        "kind": "string",
+        "required": true
+      }
+    ]
+  },
+  {
     "wire_name": "get_image",
     "path": [
       "images"

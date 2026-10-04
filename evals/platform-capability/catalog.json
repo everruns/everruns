@@ -975,6 +975,29 @@
     "read_only": true
   },
   {
+    "category": "health_issues",
+    "cli": null,
+    "description": "Verify an installation's current health without modifying provider data.",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "check_health_issue",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/check",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
     "category": "providers",
     "cli": null,
     "description": "Check a provider API key without storing it.",
@@ -9618,6 +9641,29 @@
     "read_only": true
   },
   {
+    "category": "health_issues",
+    "cli": null,
+    "description": "Get an operational health issue.",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_health_issue",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "images",
     "cli": null,
     "description": "Get image data by ID.",
@@ -12721,6 +12767,42 @@
     "read_only": true
   },
   {
+    "category": "health_issues",
+    "cli": null,
+    "description": "List pending operational health issues.",
+    "input_schema": {
+      "properties": {
+        "channel_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "offset": {
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_health_issues",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
     "category": "images",
     "cli": null,
     "description": "List uploaded images. Supports pagination (limit/offset).",
@@ -15639,6 +15721,29 @@
     "name": "set_default_agent_version",
     "output_shape": "unknown",
     "path": "/v1/agents/{agent_id}/versions/default",
+    "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "health_issues",
+    "cli": null,
+    "description": "Snooze health reminders for the current user for one day.",
+    "input_schema": {
+      "properties": {
+        "issue_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issue_id"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "snooze_health_issue",
+    "output_shape": "unknown",
+    "path": "/v1/health-issues/{issue_id}/snooze",
     "positional_arg": null,
     "read_only": false
   },
