@@ -32,18 +32,14 @@ use everruns_core::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     provider_resolution::ProviderStore, session_services::LeasedResourceStore,
 };
-// EVE-1158: PlatformStore receives only portable execution views projected
-// by the server; session lifecycle uses the neutral SessionExecutionState.
-// EVE-877: the stored Agent record moved to `everruns-platform`; the gRPC wire
-// still carries it between server and worker (proto shape unchanged).
+// Workers project internal wire DTOs into portable execution views. Persisted
+// agent, harness and session records belong to the server; the transport shape
+// stays compatible with workers from the preceding release.
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
     WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
     proto_struct_to_json,
 };
-// EVE-881: the stored Harness record likewise lives in `everruns-platform`;
-// the gRPC wire carries the pre-merged record between server and worker.
-use everruns_platform::{Agent, Harness, HarnessStatus};
 use std::sync::Arc;
 use tonic::transport::Channel;
 use uuid::Uuid;
@@ -52,6 +48,7 @@ use crate::grpc_durable_store::GrpcClientAuth;
 mod connection_resolver;
 mod shared_client;
 pub use shared_client::SharedClient;
+mod definition_reads;
 mod session_storage;
 
 pub(crate) const COMMAND_API_VERSION_V1: &str = "v1";
@@ -1332,7 +1329,7 @@ impl AgentStore for GrpcOrgAdapter {
         // portable execution definition; archived/deleted agents fail here.
         self.fetch_agent_record(agent_id)
             .await?
-            .map(|agent| agent.execution_definition())
+            .map(proto_agent_to_definition)
             .transpose()
     }
 
@@ -1341,7 +1338,11 @@ impl AgentStore for GrpcOrgAdapter {
         agent_id: AgentId,
     ) -> Result<Option<everruns_core::DependencyBlocker>> {
         Ok(match self.fetch_agent_record(agent_id).await? {
-            Some(agent) => agent.dependency_blocker(),
+            Some(agent) => match agent.status.to_lowercase().as_str() {
+                "archived" => Some(everruns_core::DependencyBlocker::AgentArchived),
+                "deleted" => Some(everruns_core::DependencyBlocker::AgentDeleted),
+                _ => None,
+            },
             None => Some(everruns_core::DependencyBlocker::AgentDeleted),
         })
     }
@@ -1350,7 +1351,10 @@ impl AgentStore for GrpcOrgAdapter {
 impl GrpcOrgAdapter {
     /// Fetch the stored agent record off the wire (platform-side transport;
     /// projected to `AgentDefinition` before it reaches host execution).
-    pub(crate) async fn fetch_agent_record(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+    pub(crate) async fn fetch_agent_record(
+        &self,
+        agent_id: AgentId,
+    ) -> Result<Option<proto::Agent>> {
         let mut client = self.client.inner.client();
 
         let request = proto::GetAgentRequest {
@@ -1364,35 +1368,29 @@ impl GrpcOrgAdapter {
             .map_err(grpc_status_to_error)?;
 
         match response.into_inner().agent {
-            Some(proto_agent) => {
-                let agent = proto_agent_to_agent(proto_agent)?;
-                Ok(Some(agent))
-            }
+            Some(proto_agent) => Ok(Some(proto_agent)),
             None => Ok(None),
         }
     }
 }
 
-fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
+fn proto_agent_to_definition(proto_agent: proto::Agent) -> Result<AgentDefinition> {
     let id = proto_uuid_to_uuid(proto_agent.id.as_ref())?;
     let default_model_id = proto_agent
         .default_model_id
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
-    let harness_id = proto_agent
-        .harness_id
-        .as_ref()
-        .map(|u| proto_uuid_to_uuid(Some(u)))
-        .transpose()?
-        .ok_or_else(|| anyhow::anyhow!("proto Agent missing harness_id"))?;
-
-    let status = match proto_agent.status.to_lowercase().as_str() {
-        "active" => everruns_platform::AgentStatus::Active,
-        "archived" => everruns_platform::AgentStatus::Archived,
-        "deleted" => everruns_platform::AgentStatus::Deleted,
-        _ => everruns_platform::AgentStatus::Active,
-    };
+    if matches!(
+        proto_agent.status.to_lowercase().as_str(),
+        "archived" | "deleted"
+    ) {
+        return Err(AgentLoopError::config(format!(
+            "agent {} is {} and cannot execute turns",
+            AgentId::from_uuid(id),
+            proto_agent.status
+        )));
+    }
 
     let capabilities = if proto_agent.capabilities.is_empty() {
         proto_agent
@@ -1414,48 +1412,20 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
             .collect::<std::result::Result<Vec<_>, _>>()?
     };
 
-    Ok(Agent {
-        service_virtual_user_id: proto_agent
-            .service_virtual_user_id
-            .as_ref()
-            .map(|id| proto_uuid_to_uuid(Some(id)))
-            .transpose()?
-            .map(Into::into),
-        public_id: everruns_contracts::typed_id::AgentId::from_uuid(id),
-        internal_id: id,
-        name: proto_agent.name.clone(),
+    Ok(AgentDefinition {
+        id: AgentId::from_uuid(id),
+        name: proto_agent.name,
         display_name: proto_agent.display_name,
         description: non_empty_string(proto_agent.description),
-        // UI-only Platform Chat presentation; not carried on the execution proto.
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
         system_prompt: proto_agent.system_prompt,
-        default_model_id: default_model_id.map(|u| u.into()),
-        harness_id: harness_id.into(),
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec![],
+        default_model_id: default_model_id.map(Into::into),
         capabilities,
-        environments: None,
-        mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: proto_agent.parallel_tool_calls,
         tools: vec![],
-        status,
-        // Execution-side view of an Agent: exposure state is a control-plane
-        // concern and is not carried on the execution proto.
-        exposures_suspended: false,
-        exposed: false,
-        created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
-        updated_at: proto_timestamp_or_now(proto_agent.updated_at.as_ref()),
-        archived_at: None,
-        deleted_at: None,
-        usage: None, // Usage not tracked in worker context
+        mcp_servers: Default::default(),
     })
 }
 
@@ -1474,7 +1444,7 @@ impl HarnessStore for GrpcOrgAdapter {
         // definition, failing archived/deleted records here.
         self.fetch_harness_record(harness_id)
             .await?
-            .map(|harness| harness.execution_definition())
+            .map(proto_harness_to_definition)
             .transpose()
     }
 
@@ -1483,20 +1453,24 @@ impl HarnessStore for GrpcOrgAdapter {
         harness_id: everruns_contracts::typed_id::HarnessId,
     ) -> Result<Option<everruns_core::DependencyBlocker>> {
         Ok(match self.fetch_harness_record(harness_id).await? {
-            Some(harness) => harness.dependency_blocker(),
+            Some(harness) => match harness.status.to_lowercase().as_str() {
+                "archived" => Some(everruns_core::DependencyBlocker::HarnessArchived),
+                "deleted" => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+                _ => None,
+            },
             None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
         })
     }
 }
 
 impl GrpcOrgAdapter {
-    /// Fetch the stored (pre-merged) harness record off the wire
+    /// Fetch the harness transport snapshot off the wire
     /// (platform-side transport; projected to `HarnessDefinition` before it
     /// reaches host execution).
     pub(crate) async fn fetch_harness_record(
         &self,
         harness_id: everruns_contracts::typed_id::HarnessId,
-    ) -> Result<Option<Harness>> {
+    ) -> Result<Option<proto::Harness>> {
         let mut client = self.client.inner.client();
 
         let request = proto::GetHarnessRequest {
@@ -1510,31 +1484,29 @@ impl GrpcOrgAdapter {
             .map_err(grpc_status_to_error)?;
 
         match response.into_inner().harness {
-            Some(proto_harness) => Ok(Some(proto_harness_to_harness(proto_harness)?)),
+            Some(proto_harness) => Ok(Some(proto_harness)),
             None => Ok(None),
         }
     }
 }
 
-fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
+fn proto_harness_to_definition(proto_harness: proto::Harness) -> Result<HarnessDefinition> {
     let id = proto_uuid_to_uuid(proto_harness.id.as_ref())?;
     let default_model_id = proto_harness
         .default_model_id
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
-    let parent_harness_id = proto_harness
-        .parent_harness_id
-        .as_ref()
-        .map(|u| proto_uuid_to_uuid(Some(u)))
-        .transpose()?;
-
-    let status = match proto_harness.status.to_lowercase().as_str() {
-        "active" => HarnessStatus::Active,
-        "archived" => HarnessStatus::Archived,
-        "deleted" => HarnessStatus::Deleted,
-        _ => HarnessStatus::Active,
-    };
+    if matches!(
+        proto_harness.status.to_lowercase().as_str(),
+        "archived" | "deleted"
+    ) {
+        return Err(AgentLoopError::config(format!(
+            "harness {} is {} and cannot execute turns",
+            everruns_contracts::typed_id::HarnessId::from_uuid(id),
+            proto_harness.status
+        )));
+    }
 
     let capabilities = if proto_harness.capabilities.is_empty() {
         proto_harness
@@ -1556,35 +1528,16 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
             .collect::<std::result::Result<Vec<_>, _>>()?
     };
 
-    Ok(Harness {
-        id: id.into(),
+    Ok(HarnessDefinition {
         name: proto_harness.name,
-        display_name: proto_harness.display_name,
-        // UI-only presentation field; not carried on the execution proto.
-        icon: None,
-        description: non_empty_string(proto_harness.description),
-        // UI-only Platform Chat presentation; not carried on the execution proto.
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        // proto carries a plain string; empty/whitespace means no base prompt.
         system_prompt: Some(proto_harness.system_prompt).filter(|s| !s.trim().is_empty()),
-        parent_harness_id: parent_harness_id.map(|u| u.into()),
-        default_model_id: default_model_id.map(|u| u.into()),
-        tags: proto_harness.tags,
+        default_model_id: default_model_id.map(Into::into),
         capabilities,
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
-        // Re-resolved from durable config, not carried on the proto.
         parallel_tool_calls: None,
         embedder_metadata: Default::default(),
-        is_built_in: proto_harness.is_built_in,
-        status,
-        created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),
-        updated_at: proto_timestamp_or_now(proto_harness.updated_at.as_ref()),
-        archived_at: None,
-        deleted_at: None,
     })
 }
 
@@ -1940,7 +1893,7 @@ fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
 
 /// Turn context loaded in one batched gRPC call
 pub struct TurnContext {
-    pub agent: Option<Agent>,
+    pub agent: Option<AgentDefinition>,
     pub session: ExecutionSession,
     pub messages: Vec<RuntimeMessage>,
     pub model: Option<ModelSpec>,
@@ -1980,7 +1933,7 @@ pub async fn load_turn_context_for_execution(
 
     let inner = response.into_inner();
 
-    let agent = inner.agent.map(proto_agent_to_agent).transpose()?;
+    let agent = inner.agent.map(proto_agent_to_definition).transpose()?;
     let proto_session = inner
         .session
         .ok_or_else(|| grpc_missing_field("No session in turn context"))?;
@@ -2188,7 +2141,7 @@ impl FileResolver for GrpcOrgAdapter {
 // ============================================================================
 
 #[async_trait]
-impl everruns_platform::SessionMutator for GrpcOrgAdapter {
+impl everruns_capabilities::SessionMutator for GrpcOrgAdapter {
     async fn update_session_title(
         &self,
         session_id: everruns_contracts::typed_id::SessionId,

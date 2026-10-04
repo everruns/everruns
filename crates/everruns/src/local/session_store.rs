@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use everruns_capabilities::SessionMutator;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{HarnessId, SessionId};
@@ -13,7 +14,6 @@ use everruns_host::{
     EnvironmentBindingError, EnvironmentBindingStore, RuntimeSessionStore, SessionBuilder,
     WorkspaceBinding,
 };
-use everruns_platform::SessionMutator;
 use rusqlite::{OptionalExtension, params};
 
 use super::SqliteDb;

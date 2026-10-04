@@ -862,11 +862,11 @@ fn calculate_next_trigger(cron_expression: &str) -> Result<Option<DateTime<Utc>>
 mod tests {
     use super::*;
     use crate::auth::backend::AuthBackend;
+    use crate::records::OrgMembership;
     use async_trait::async_trait;
     use axum::body::Body;
     use axum::http::Request;
     use everruns_core::OrgRole;
-    use everruns_platform::OrgMembership;
     use tower::ServiceExt;
 
     use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};

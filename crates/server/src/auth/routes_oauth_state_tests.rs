@@ -17,11 +17,11 @@ fn test_oauth_state_length_and_hex() {
 
 use crate::auth::backend::AuthBackend;
 use crate::auth::config::AuthConfig;
+use crate::records::email::{EmailMessage, EmailResult, EmailSender, SentEmail};
 use crate::storage::StorageBackend;
 use crate::storage::models::CreateUserRow;
 use async_trait::async_trait;
 use everruns_host::HostComposition;
-use everruns_platform::email::{EmailMessage, EmailResult, EmailSender, SentEmail};
 use std::sync::Arc;
 use std::sync::Mutex;
 

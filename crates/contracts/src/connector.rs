@@ -2,7 +2,7 @@
 //
 // Decision (EVE-879): the connector catalog is a hosted control-plane surface
 // — the server renders its form schemas and resolves connections; nothing
-// consumes a Connector during a turn — so it lives in `everruns-platform`,
+// consumes a Connector during a turn — so it lives in `everruns-capabilities`,
 // not `everruns-core`.
 // Decision: Parallel to IntegrationPlugin — integration crates publish connector
 // descriptors as const slices and a catalog crate names them, so the kernel

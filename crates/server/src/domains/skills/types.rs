@@ -3,7 +3,7 @@
 // Storage row types are re-exported from `storage::models` so domain code
 // has a single import path.
 
-use everruns_core::SkillStatus;
+use crate::records::SkillStatus;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

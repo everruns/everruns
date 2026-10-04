@@ -40,8 +40,8 @@ not require depending on `everruns-server`.
 
 Hosted control-plane services live on `ServerAppBuilder`, not on
 `HostComposition`: `built_in_harnesses` (EVE-881), `connector_registry`,
-and `email_sender` (EVE-879). The connector trait/registry and the email
-contract live in `everruns-platform`.
+and `email_sender` (EVE-879). The connector trait/registry lives in `everruns-contracts`; the email contract
+and concrete senders live in `crates/server/src/records/email/`.
 
 Platform-wide host services are represented as provider-neutral traits or
 factories. For example, `SessionFileSystemFactory` lets a platform select
@@ -490,7 +490,7 @@ Those may be added later, but they are outside the current embedding contract.
 ## Source Index
 
 - `crates/host/src/composition.rs`
-- `crates/platform/src/connector.rs`
+- `crates/contracts/src/connector.rs`
 - `crates/core/src/error_reporter.rs`
 - `apps/ui/src/providers/error-reporter-provider.tsx`
 - `crates/server/src/auth/cli_auth.rs`

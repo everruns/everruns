@@ -1,7 +1,7 @@
 use crate::api::channel_ingress::row_to_ingress;
+use crate::records::SlackChannelConfig;
 use crate::storage::{EncryptionService, HealthIssueRow, ObserveHealthIssue, StorageBackend};
 use chrono::Utc;
-use everruns_platform::SlackChannelConfig;
 use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 

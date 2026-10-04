@@ -211,7 +211,7 @@ async fn ignored_messages_do_not_create_sessions_or_start_work() {
         let judge = Arc::new(Judge::probability(0.01));
         let (state, app, mut config, event) = fixture(Some(judge)).await;
         config.response_policy = policy;
-        config.reply_mode = everruns_platform::SlackReplyMode::ToolOnly;
+        config.reply_mode = crate::records::SlackReplyMode::ToolOnly;
         super::super::process_slack_message(&state, &app, &app.channels[0], &config, &event, None)
             .await
             .unwrap();
@@ -324,7 +324,7 @@ async fn the_judge_uses_the_endpoints_pinned_purpose() {
         authored_config: json!({"name": "pinned-agent", "description": "Pinned purpose", "system_prompt": "Answer questions about invoices."}),
         resolved_config: json!({}),
     }).await.unwrap();
-    app.agent_version_policy = everruns_platform::AgentVersionPolicy::Pinned;
+    app.agent_version_policy = crate::records::AgentVersionPolicy::Pinned;
     app.agent_version_id = Some(id);
     let context = decision_state(&state, &app, &app.channels[0], &config, &event)
         .await

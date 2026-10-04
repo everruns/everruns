@@ -3,9 +3,9 @@ use super::Database;
 use crate::kernel_imports::{
     contracts::typed_id::SessionId, contracts::typed_id::SessionParticipantId,
 };
+use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};
-use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 
 impl Database {
     pub async fn create_session_participant(

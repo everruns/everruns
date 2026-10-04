@@ -1,5 +1,5 @@
+use crate::records::reporting::{DatasetCatalog, ReportQuery, ReportResult, ReportScope};
 use everruns_core::Policy;
-use everruns_platform::reporting::{DatasetCatalog, ReportQuery, ReportResult, ReportScope};
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;

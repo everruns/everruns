@@ -6,13 +6,13 @@
 //! the OSS preset, filter `everruns_integrations_catalog::CATALOG`, or
 //! construct a `HostComposition` manually.
 
+use crate::records::BuiltInHarnessDefinition;
+use crate::records::email::{EmailSender, SystemEmailConfig};
 use everruns_contracts::connector::ConnectorRegistry;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
-use everruns_platform::BuiltInHarnessDefinition;
-use everruns_platform::email::{EmailSender, SystemEmailConfig};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -68,14 +68,16 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     // Knowledge Index vector store. Opt-in: when `TURBOPUFFER_API_KEY` is set
     // (and non-empty) use the Turbopuffer backend, otherwise keep the in-memory
     // default. The API key is never logged.
-    let vector_store: Arc<dyn everruns_platform::VectorStore> =
+    let vector_store: Arc<dyn everruns_capabilities::VectorStore> =
         if let Some(store) = turbopuffer_vector_store_from_env() {
             store
         } else {
             tracing::info!(vector_store = "in-memory", "vector store backend active");
-            Arc::new(everruns_platform::InMemoryVectorStore::new())
+            Arc::new(everruns_capabilities::InMemoryVectorStore::new())
         };
-    builder = builder.extension(Arc::new(everruns_platform::VectorStoreExt(vector_store)));
+    builder = builder.extension(Arc::new(everruns_capabilities::VectorStoreExt(
+        vector_store,
+    )));
 
     builder.build()
 }

@@ -1,6 +1,6 @@
 use axum::http::StatusCode;
 use everruns_core::DeploymentGrade;
-use everruns_platform::{FeatureFlagGrade, FeatureFlagPolicy};
+use everruns_server::records::{FeatureFlagGrade, FeatureFlagPolicy};
 use serde_json::{Value, json};
 
 use crate::test_harness::TestServer;

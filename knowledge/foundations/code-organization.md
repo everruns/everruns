@@ -133,7 +133,7 @@ focused integration crates own filesystem, Bashkit, web fetch, Lua, and
 OpenRouter workspace behavior, while `everruns-mcp` owns the MCP capability
 adapter and `everruns-host` owns its concrete direct HTTP transport alongside
 the other in-process effects it composes. `everruns-host` composes
-feature-selected integrations for embedders, and `everruns-platform`
+feature-selected integrations for embedders, and `everruns-capabilities`
 composes the complete hosted-product catalog. The
 `scripts/lib/check-environment-capability-isolation.sh` pre-push/CI guard keeps
 the implementation modules and their shell/interpreter/transport dependencies
@@ -146,7 +146,7 @@ durability, events, images, connections, and delegation each have a focused modu
 including `SessionFileSystemFactory`, live in `everruns-host` with the
 composition that consumes them.
 
-Hosted capability implementations live in `everruns-platform` (EVE-885):
+Hosted capability implementations live in `everruns-capabilities` (EVE-885):
 platform depends on the neutral `everruns-host` extension ports and installs
 typed context services, subagent delegation, and turn-dependent hosted tools.
 The reverse `host -> platform` edge is forbidden so the reusable execution
@@ -165,14 +165,14 @@ entities. `everruns-host` owns `SessionMutator` plus the portable
 `session` and `session_storage` capabilities, and platform re-exports that surface. The
 default Framework host can therefore provide them without compiling the
 control plane. `session_sql_database` and `session_sandbox` stay in
-`everruns-platform` because their implementations are hosted resources.
+`everruns-capabilities` because their implementations are hosted resources.
 
-The records those capabilities read follow them (EVE-880). The org-scoped
-`Workspace` row and the managed per-session sandbox, state record, provider
-SPI, inventory plugin and lifecycle helpers, live in `everruns-platform`; a
-turn resolves workspace *paths* through core's roots and policy types, and
-reaches a sandbox only through the capability. Session SQL values and the
-`SessionSqlDbStore` typed extension move together in platform. Session task,
+Control-plane records stay in `crates/server/src/records` (EVE-1159), including
+workspace, agent, harness, session, provider, model, organization, and audit rows.
+`everruns-contracts` owns neutral sandbox, checkpoint, SQL, vector, knowledge, and
+connector interfaces. `everruns-capabilities` owns hosted orchestration and
+consumes runtime views; library hosts never materialize control-plane records.
+Session task,
 schedule and resource records stay while core execution still consumes them;
 their deployment-specific quota policy is resolved by local/server adapters,
 not from environment variables in the kernel.

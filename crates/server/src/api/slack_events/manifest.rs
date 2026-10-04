@@ -1,11 +1,12 @@
 //! Building the Slack app manifest served to the install flow.
 
+use crate::records::ConversationStarter;
+use crate::records::SlackChannelConfig;
 use axum::{
     Json,
     extract::{Path, State},
     http::StatusCode,
 };
-use everruns_platform::{ConversationStarter, SlackChannelConfig};
 
 use super::super::common::ErrorResponse;
 

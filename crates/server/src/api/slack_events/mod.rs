@@ -96,7 +96,7 @@ impl SlackState {
             user_name_cache: new_slack_user_cache(),
             delivery_dispatcher,
             api_base_url,
-            agent_versions_enabled: everruns_platform::FeatureFlags::current().agent_versions,
+            agent_versions_enabled: crate::records::FeatureFlags::current().agent_versions,
             decisions: Arc::new(everruns_core::DisabledDecisionsService),
         }
     }

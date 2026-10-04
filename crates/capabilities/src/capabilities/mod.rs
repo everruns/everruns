@@ -1,0 +1,401 @@
+//! Hosted product capabilities.
+//!
+//! These implementations require product services, persisted state, or hosted
+//! orchestration. Server and worker presets register them explicitly; the
+//! standalone Framework registry does not advertise them.
+
+#[cfg(feature = "a2a")]
+pub mod a2a_delegation;
+#[cfg(feature = "ag-ui")]
+pub mod ag_ui_delegation;
+pub mod agent_handoff;
+pub mod background_execution;
+pub mod citation_retrieval;
+pub mod citation_verification;
+pub mod data_knowledge;
+pub mod delegation_result;
+mod environment_tools;
+pub mod knowledge_base;
+pub mod knowledge_index;
+pub mod memory;
+pub mod monitors;
+pub mod openai_agents_api_runtime;
+pub mod platform;
+mod platform_docs;
+pub mod platform_management;
+pub mod research;
+pub mod session_sandbox;
+pub mod session_schedule;
+pub mod session_sql_database;
+pub mod session_tasks;
+pub mod slack;
+pub mod subagents;
+pub mod user_hooks;
+pub mod util;
+
+pub use everruns_core::capabilities::{
+    A2A_AGENT_DELEGATION_CAPABILITY_ID, AG_UI_DELEGATION_CAPABILITY_ID, AGENT_RUN_KEY_PREFIX,
+    DelegationTargetProvider, SPAWN_AGENT_CONCURRENCY_CLASS,
+};
+pub(crate) use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
+    RiskLevel, SpawnMode, SystemPromptContext,
+};
+
+#[cfg(feature = "a2a")]
+pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
+#[cfg(feature = "ag-ui")]
+pub use ag_ui_delegation::{AgUiAgentTaskExecutor, AgUiDelegationCapability, SpawnAgUiAgentTool};
+pub use agent_handoff::{
+    AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, SpawnAgentHandoffTool,
+};
+pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
+pub use citation_retrieval::{
+    CITATION_RETRIEVAL_CAPABILITY_ID, CitationRetrievalCapability, CitationRetrievalConfig,
+};
+pub use citation_verification::{
+    CITATION_VERIFICATION_CAPABILITY_ID, CitationVerificationCapability,
+    CitationVerificationConfig, VerificationMode,
+};
+pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
+pub use delegation_result::{
+    ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
+    report_task_progress_tool_for_child_session,
+};
+pub use everruns_host::session_services::capabilities::session::{
+    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
+    SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
+    update_session_title_with_event,
+};
+pub use everruns_host::session_services::capabilities::session_storage::{
+    KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
+    is_internal_session_kv_key, is_internal_session_secret_name,
+};
+pub use knowledge_base::{
+    KNOWLEDGE_BASE_CAPABILITY_ID, KnowledgeBaseCapability, KnowledgeBaseConfig,
+    validate_knowledge_base_config,
+};
+pub use knowledge_index::{
+    KNOWLEDGE_INDEX_CAPABILITY_ID, KnowledgeIndexCapability, KnowledgeIndexConfig,
+    validate_knowledge_index_config,
+};
+pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
+pub use platform::{
+    DISCOVER_DESCRIPTION as PLATFORM_DISCOVER_DESCRIPTION,
+    EXECUTE_DESCRIPTION as PLATFORM_EXECUTE_DESCRIPTION, PLATFORM_CAPABILITY_ID,
+    PlatformCapability, QUERY_DESCRIPTION as PLATFORM_QUERY_DESCRIPTION, discover_input_schema,
+    execute_input_schema, query_input_schema,
+};
+pub use platform_management::{PLATFORM_MANAGEMENT_CAPABILITY_ID, PlatformManagementCapability};
+pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
+pub use session_sandbox::{
+    SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
+    SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
+};
+pub use session_schedule::{
+    CancelScheduleTool, CreateScheduleTool, ListSchedulesTool, SESSION_SCHEDULE_CAPABILITY_ID,
+    SessionScheduleCapability,
+};
+pub use session_sql_database::{
+    SESSION_SQL_DATABASE_CAPABILITY_ID, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
+    SqlSchemaTool,
+};
+pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
+pub use slack::{
+    SLACK_CAPABILITY_ID, SlackAddReactionTool, SlackCapability, SlackLookupUserTool,
+    SlackUpdateMessageTool, SlackUploadFileTool,
+};
+pub use subagents::{
+    SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
+};
+pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
+
+/// Register the hosted platform-management capabilities on a registry.
+pub fn register_platform_capabilities(
+    registry: &mut everruns_core::capabilities::CapabilityRegistry,
+) {
+    registry.register(PlatformCapability);
+    registry.register(PlatformManagementCapability);
+}
+
+/// Register environment-backed capabilities compiled into the hosted product.
+#[cfg(feature = "environment-capabilities")]
+pub fn register_environment_capabilities(
+    registry: &mut everruns_core::capabilities::CapabilityRegistry,
+    grade: everruns_core::DeploymentGrade,
+) {
+    registry.register(everruns_integrations_filesystem::FileSystemCapability);
+    registry.register(everruns_integrations_bashkit::BashkitShellCapability);
+    registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
+    registry.register(everruns_integrations_openrouter::OpenRouterServerToolsCapability);
+    registry.register(everruns_builtins::OpenAiServerToolsCapability);
+    registry.register(everruns_integrations_openrouter::ModelScoutCapability);
+    registry.register(everruns_integrations_openrouter::OpenRouterWorkspaceCapability);
+
+    #[cfg(not(feature = "lua"))]
+    let _ = grade;
+    #[cfg(feature = "lua")]
+    if everruns_core::InternalFeatureFlags::for_deployment(grade).lua {
+        registry.register(everruns_integrations_lua::LuaCapability);
+        registry.register(everruns_integrations_lua::LuaCodeModeCapability);
+    }
+}
+
+#[cfg(not(feature = "environment-capabilities"))]
+fn register_environment_capabilities(
+    _registry: &mut everruns_core::capabilities::CapabilityRegistry,
+    _grade: everruns_core::DeploymentGrade,
+) {
+}
+
+/// Register the agent-delegation capabilities compiled into this build:
+/// `agent_handoff`, plus `a2a_agent_delegation` (Cargo feature `a2a`) and
+/// `ag_ui_delegation` (Cargo feature `ag-ui`).
+///
+/// No feature-flag check here. The hosted product gates delegation behind
+/// `FEATURE_AGENT_DELEGATION` in [`register_hosted_capabilities`]; an embedder
+/// whose opt-in is the Cargo feature plus an explicit capability ref on the
+/// agent (the `everruns` framework facade) calls this directly.
+pub fn register_agent_delegation_capabilities(
+    registry: &mut everruns_core::capabilities::CapabilityRegistry,
+) {
+    registry.register(AgentHandoffCapability);
+    #[cfg(feature = "a2a")]
+    registry.register(A2aAgentDelegationCapability);
+    #[cfg(feature = "ag-ui")]
+    registry.register(AgUiDelegationCapability);
+}
+
+/// Register every hosted product capability while preserving stable IDs,
+/// configuration schemas, feature gates, and task-executor registrations.
+pub fn register_hosted_capabilities(
+    registry: &mut everruns_core::capabilities::CapabilityRegistry,
+    grade: everruns_core::DeploymentGrade,
+) {
+    // Session-service capabilities (EVE-886): every one needs a host service —
+    // a session store, session key/value + secret storage, a SQL database, or a
+    // sandbox provider — so they are composed here rather than shipped by the
+    // kernel.
+    registry.register(SessionCapability);
+    registry.register(SessionStorageCapability);
+    registry.register(SessionSqlDatabaseCapability);
+    // The provider-neutral Environment profile selects this capability. Keep
+    // it registered even when no managed provider is configured so authored
+    // profiles get an honest availability error instead of a missing-capability
+    // failure. Concrete providers remain deployment-owned plugins.
+    registry.register(SessionSandboxCapability);
+    registry.register(ResearchCapability);
+    registry.register(MemoryCapability);
+    registry.register(BackgroundExecutionCapability);
+    registry.register(SessionScheduleCapability);
+    registry.register(SubagentCapability);
+    registry.register(SessionTasksCapability);
+    if everruns_core::ExecutionFeatureDecisions::from_env(grade).agent_delegation {
+        register_agent_delegation_capabilities(registry);
+    }
+    // First channel adapter to implement `Capability::tools()` (EVE-1024). It
+    // is inert outside a Slack-originated session: the invoker seam resolves
+    // the session's Slack endpoint and fails closed when there is none, so
+    // registering it unconditionally costs an agent nothing until a Slack
+    // endpoint creates its session.
+    registry.register(SlackCapability);
+    // The hard approval gate (EVE-1140). Opt-in per agent like every guardrail;
+    // decisions live in session storage, so a parked turn resumes on whichever
+    // worker picks it up after a person answers.
+    #[cfg(feature = "portable-builtins")]
+    registry.register(everruns_builtins::ToolApprovalCapability::new(
+        std::sync::Arc::new(everruns_builtins::DurableToolApprover),
+    ));
+    registry.register(UserHooksCapability);
+    registry.register(DataKnowledgeCapability);
+    registry.register(KnowledgeBaseCapability);
+    registry.register(KnowledgeIndexCapability);
+    registry.register(CitationRetrievalCapability);
+    registry.register(CitationVerificationCapability);
+    // Inert unless the org flag lets it through to the worker snapshot.
+    registry.register(openai_agents_api_runtime::OpenAiAgentsApiRuntimeCapability);
+    register_environment_capabilities(registry, grade);
+    register_platform_capabilities(registry);
+    #[cfg(feature = "container-sandbox")]
+    {
+        let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+        registry.register_plugins(
+            crate::container_sandbox::CAPABILITY_PLUGINS.iter(),
+            |plugin| {
+                plugin.feature_flag.map_or_else(
+                    || !plugin.experimental_only || grade.experimental_features_enabled(),
+                    |flag| decisions.is_enabled(flag),
+                )
+            },
+        );
+    }
+}
+
+/// The portable built-in capabilities every hosted registry starts from.
+///
+/// Split out so a composer that also registers integrations can interleave
+/// them in the documented order: builtins, then integrations, then hosted
+/// capabilities, so a hosted capability wins a canonical-id collision.
+pub fn portable_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
+    #[allow(unused_mut)]
+    let mut registry = everruns_core::capabilities::CapabilityRegistry::new();
+    #[cfg(feature = "portable-builtins")]
+    everruns_builtins::register_portable_capabilities(&mut registry)
+        .expect("portable built-in catalog must have unique capability IDs");
+    registry
+}
+
+/// Portable builtins plus the hosted product catalog for a deployment grade.
+///
+/// Integration crates are not included: they depend on `everruns-capabilities`, so
+/// the catalog that names them (`everruns-integrations-catalog`) sits above it.
+/// Binaries that serve integrations compose all three — see
+/// `everruns_integrations_catalog::oss_capability_registry_for_grade`.
+pub fn hosted_capability_registry_for_grade(
+    grade: everruns_core::DeploymentGrade,
+) -> everruns_core::capabilities::CapabilityRegistry {
+    let mut registry = portable_capability_registry();
+    register_hosted_capabilities(&mut registry, grade);
+    registry
+}
+
+/// [`hosted_capability_registry_for_grade`] using the environment grade.
+pub fn hosted_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
+    hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::from_env())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(all(feature = "environment-capabilities", feature = "lua"))]
+    #[test]
+    fn lua_registration_uses_the_requested_deployment_grade() {
+        const CHILD: &str = "EVERRUNS_LUA_REGISTRATION_GRADE_TEST";
+        if std::env::var_os(CHILD).is_some() {
+            for (deployment, expected) in [
+                (everruns_core::DeploymentGrade::Dev, true),
+                (everruns_core::DeploymentGrade::Prod, false),
+            ] {
+                let registry = hosted_capability_registry_for_grade(deployment);
+                assert_eq!(registry.has("lua"), expected);
+                assert_eq!(registry.has("lua_code_mode"), expected);
+            }
+            return;
+        }
+        assert!(
+            std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "capabilities::tests::lua_registration_uses_the_requested_deployment_grade",
+                    "--nocapture"
+                ])
+                .env(CHILD, "1")
+                .env("FEATURE_LUA", "dev")
+                .env("DEPLOYMENT_GRADE", "prod")
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+
+    #[test]
+    fn hosted_registry_always_contains_platform_capabilities() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        assert!(registry.has(PLATFORM_CAPABILITY_ID));
+        assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
+    }
+
+    #[cfg(feature = "portable-builtins")]
+    #[test]
+    fn hosted_registry_has_the_hard_tool_approval_gate() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        let capability = registry
+            .get(everruns_builtins::TOOL_APPROVAL_CAPABILITY_ID)
+            .expect("hosted registry registers tool_approval");
+        assert!(!capability.pre_tool_use_hooks().is_empty());
+    }
+
+    // The `a2a` and `ag-ui` Cargo features are the only things that put outbound
+    // A2A / AG-UI delegation in the registry; without them the build carries no
+    // client for that protocol at all.
+    #[test]
+    fn external_delegation_registration_follows_the_cargo_features() {
+        if std::env::var("FEATURE_AGENT_DELEGATION").is_ok() {
+            // A deployment override decides delegation registration here, not the
+            // Cargo feature under test.
+            return;
+        }
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
+        assert!(
+            registry.has(AGENT_HANDOFF_CAPABILITY_ID),
+            "dev grade should register agent delegation, otherwise this test is vacuous"
+        );
+        assert_eq!(
+            registry.has(everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID),
+            cfg!(feature = "a2a"),
+        );
+        assert_eq!(
+            registry.has(everruns_core::capabilities::AG_UI_DELEGATION_CAPABILITY_ID),
+            cfg!(feature = "ag-ui"),
+        );
+    }
+
+    #[cfg(feature = "portable-builtins")]
+    #[test]
+    fn hosted_registry_contains_full_portable_policy_catalog() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        for capability_id in [
+            "human_intent",
+            "infinity_context",
+            "skills",
+            "current_time",
+            "compaction",
+            "tool_call_repair",
+            "usage_limit_auto_continue",
+            "openui",
+            "a2ui",
+        ] {
+            assert!(
+                registry.has(capability_id),
+                "hosted product registry is missing `{capability_id}`"
+            );
+        }
+    }
+
+    #[cfg(feature = "environment-capabilities")]
+    #[test]
+    fn hosted_registry_composes_product_environment_capabilities() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        for capability_id in [
+            "session_file_system",
+            "bashkit_shell",
+            "web_fetch",
+            "model_scout",
+            "openrouter_workspace",
+            "openrouter_server_tools",
+            "openai_server_tools",
+        ] {
+            assert!(
+                registry.has(capability_id),
+                "hosted product registry is missing `{capability_id}`"
+            );
+        }
+        assert_eq!(registry.canonical_id("virtual_bash"), Some("bashkit_shell"));
+    }
+
+    #[cfg(not(feature = "environment-capabilities"))]
+    #[test]
+    fn platform_default_does_not_link_environment_capabilities() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        for capability_id in [
+            "session_file_system",
+            "bashkit_shell",
+            "web_fetch",
+            "model_scout",
+            "openrouter_workspace",
+        ] {
+            assert!(!registry.has(capability_id));
+        }
+    }
+}

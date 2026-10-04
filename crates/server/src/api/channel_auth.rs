@@ -11,11 +11,11 @@ use std::time::Duration;
 use crate::kernel_imports::{
     contracts::url_validation::is_blocked_ip, contracts::url_validation::validate_safe_url,
 };
-use axum::http::{HeaderMap, header::AUTHORIZATION};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use everruns_platform::{
+use crate::records::{
     ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig, ChannelAuthRequirements,
 };
+use axum::http::{HeaderMap, header::AUTHORIZATION};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use moka::future::Cache;
 use serde::Deserialize;

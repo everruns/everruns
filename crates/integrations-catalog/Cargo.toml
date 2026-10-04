@@ -1,6 +1,6 @@
 # Hosted Integration Catalog
 # Decision: the one place that names every integration crate composed into the
-# hosted product. Sits above everruns-platform because integration crates
+# hosted product. Sits above everruns-capabilities because integration crates
 # depend on platform for the connector and sandbox contracts.
 
 [package]
@@ -21,7 +21,7 @@ readme = "README.md"
 [dependencies]
 everruns-contracts.workspace = true
 everruns-core.workspace = true
-everruns-platform.workspace = true
+everruns-capabilities.workspace = true
 
 everruns-ard.workspace = true
 everruns-integrations-brave-search = { path = "../../integrations/brave-search", version = "0.38.0", features = ["hosted"] }
@@ -37,14 +37,6 @@ everruns-integrations-openai-image = { path = "../../integrations/openai-image",
 everruns-integrations-parallel = { path = "../../integrations/parallel", version = "0.38.0" }
 everruns-integrations-sprites = { path = "../../integrations/sprites", version = "0.38.0" }
 everruns-integrations-typesafe = { path = "../../integrations/typesafe", version = "0.38.0", features = ["hosted"] }
-
-[dev-dependencies]
-# The docs catalog snapshot (src/docs_catalog.rs) must describe the registry
-# the server serves, so the test build enables the same everruns-platform
-# features as crates/server/Cargo.toml. scripts/test-docs-catalogs.sh keeps the
-# two lists equal.
-everruns-platform = { workspace = true, features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "email-resend", "container-sandbox"] }
-serde_json.workspace = true
 
 [lints]
 workspace = true

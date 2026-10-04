@@ -6,6 +6,7 @@
 // See knowledge/security/budgeting.md for full specification.
 
 use crate::kernel_imports::contracts::user_facing_error::UserFacingError;
+use crate::records::{Budget, LedgerEntry};
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use everruns_contracts::model_profiles::estimate_cost_usd;
@@ -17,7 +18,6 @@ use everruns_core::budget::{
     BudgetAction, BudgetCheckResult, BudgetPeriod, BudgetStatus, BudgetSubjectType,
 };
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
-use everruns_platform::{Budget, LedgerEntry};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};

@@ -27,7 +27,7 @@ use everruns_server::storage::models::CreateSessionRow;
 pub fn base_session_row(org_id: i64) -> CreateSessionRow {
     CreateSessionRow {
         playground_user_id: None,
-        source: everruns_platform::SessionSource::Api,
+        source: everruns_server::records::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,

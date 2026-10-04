@@ -1,10 +1,10 @@
 use super::*;
 use crate::domains::agent_channels::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
+use crate::records::{ChannelStatus, ChannelType};
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID};
-use everruns_platform::{ChannelStatus, ChannelType};
 use serde_json::json;
 use std::sync::Arc;
 
@@ -231,7 +231,7 @@ async fn seed_version(
 }
 
 fn webhook_create(
-    policy: Option<everruns_platform::AgentVersionPolicy>,
+    policy: Option<crate::records::AgentVersionPolicy>,
     version: Option<everruns_contracts::typed_id::AgentVersionId>,
 ) -> CreateAgentChannelRequest {
     CreateAgentChannelRequest {
@@ -245,7 +245,7 @@ fn webhook_create(
 
 #[tokio::test]
 async fn endpoint_version_pin_round_trips_and_unpins() {
-    use everruns_platform::AgentVersionPolicy;
+    use crate::records::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
@@ -304,7 +304,7 @@ async fn endpoint_version_pin_round_trips_and_unpins() {
 
 #[tokio::test]
 async fn endpoint_version_pin_rejects_invalid_selections() {
-    use everruns_platform::AgentVersionPolicy;
+    use crate::records::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let other_agent_id = seed_agent(&db).await;
@@ -359,7 +359,7 @@ async fn endpoint_version_pin_rejects_invalid_selections() {
 
 #[tokio::test]
 async fn endpoint_version_pin_requires_agent_versions_feature() {
-    use everruns_platform::AgentVersionPolicy;
+    use crate::records::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
@@ -548,7 +548,7 @@ async fn live_channel_exposure_changes_require_dangerous_permission() {
     assert_eq!(stored.status, ChannelStatus::Live);
     assert_eq!(
         stored.auth.as_ref().map(|auth| auth.mode.clone()),
-        Some(everruns_platform::ChannelAuthMode::SharedSecret)
+        Some(crate::records::ChannelAuthMode::SharedSecret)
     );
 
     // Re-saving a live channel without changing it (secrets omitted or shown
@@ -710,7 +710,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
 async fn slack_response_policies_are_available_without_feature_enrollment() {
     let db = Arc::new(StorageBackend::in_memory());
     let agent_id = seed_agent(&db).await;
-    let ctx = test_ctx(db).with_feature_flags(everruns_platform::FeatureFlags::default());
+    let ctx = test_ctx(db).with_feature_flags(crate::records::FeatureFlags::default());
     let create = |policy: &str| CreateAgentChannel {
         agent_id: agent_id.clone(),
         req: CreateAgentChannelRequest {

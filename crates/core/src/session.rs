@@ -3,7 +3,7 @@
 // Decision: the persisted `Session` database/API aggregate — source/facet
 // classifications, participants and ownership references, UI/list activity
 // projections, timestamps, catalog relationships — lives in
-// `everruns-platform`. Core keeps only this portable, execution-facing view:
+// `crates/server/src/records`. Core keeps only this portable, execution-facing view:
 // the session correlation values and effective per-session configuration a
 // turn consumes, plus the small neutral execution state the host lifecycle
 // drives. The platform loading seam (server repositories, worker adapters,
@@ -79,7 +79,7 @@ impl From<&str> for SubagentStatus {
 /// - `waiting_for_tool_results`: waiting for the client to submit tool results
 /// - `paused`: budget limit reached, waiting for the user to resume
 ///
-/// The persisted product status enum lives in `everruns-platform`
+/// The persisted product status enum lives in `crates/server/src/records`
 /// (`SessionStatus`) and maps to/from this value at the adapter boundary; its
 /// wire strings are the [`SessionExecutionState::as_str`] values below.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -137,7 +137,7 @@ impl From<&str> for SessionExecutionState {
 /// harness → agent → session chain), the neutral execution state, and
 /// cumulative usage accounting. It is not a persistence record — origin
 /// facets, activity projections, participants, ownership summaries,
-/// timestamps, and list/UI metadata stay in `everruns-platform`.
+/// timestamps, and list/UI metadata stay in `crates/server/src/records`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionSession {
     /// Session identity (correlation value).

@@ -3,6 +3,13 @@
 // the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
+use everruns_capabilities::SessionMutator;
+use everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID;
+use everruns_capabilities::{
+    DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
+    PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
+    SandboxStateStoreExt, SessionSqlDbStoreExt,
+};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::Result;
 use everruns_contracts::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
@@ -23,13 +30,6 @@ use everruns_core::{
 use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
-};
-use everruns_platform::SessionMutator;
-use everruns_platform::capabilities::PLATFORM_CAPABILITY_ID;
-use everruns_platform::{
-    DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
-    PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
-    SandboxStateStoreExt, SessionSqlDbStoreExt,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -360,11 +360,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         session_id: SessionId,
         input_message_id: everruns_contracts::typed_id::MessageId,
     ) -> Result<ResolvedTurnInputs> {
-        // The batched control-plane transport still ships stored records (see
-        // `WorkerAdapters::load_turn_context`). They are projected into the
-        // canonical resolved execution snapshot here, at the platform boundary,
-        // so host execution never sees them (EVE-872). The control plane returns
-        // the harness pre-merged, so the effective definition folds identically.
+        // The control plane projects batched records into portable execution
+        // inputs before this worker boundary (EVE-872). The harness arrives
+        // pre-merged, so the effective definition folds identically.
         let context = if input_message_id.uuid().is_nil() {
             self.adapters
                 .load_turn_context(org_id, session_id.uuid())
@@ -375,9 +373,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 .turn_context(&self.adapters, org_id, session_id.uuid(), message_id)
                 .await?
         };
-        // Loading seam (EVE-877/EVE-881): project the stored records into the
-        // portable execution definitions; archived/deleted harnesses and
-        // agents fail here, before the snapshot is built. Later reads reuse these.
+        // Loading seam (EVE-877/EVE-881): seed the already validated, pinned
+        // batch agent and session. Later setup reads reuse these definitions.
         let (reads, agent) = (&self.reads, context.agent.as_ref());
         reads.seed(org_id, &context.session, agent);
         let harness_definition = self
@@ -388,16 +385,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 everruns_contracts::error::AgentLoopError::harness_not_found(
                     context.session.harness_id,
                 )
-            })?
-            .execution_definition()?;
-        let agent_definition = context
-            .agent
-            .as_ref()
-            .map(|agent| agent.execution_definition())
-            .transpose()?;
+            })?;
+        let agent_definition = context.agent.as_ref();
         let snapshot = ResolvedExecutionSnapshot::project(
             &harness_definition,
-            agent_definition.as_ref(),
+            agent_definition,
             &context.session,
         )?;
         if let Some(model_id) = snapshot.default_model_id {
@@ -559,11 +551,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         // org and session; a deployment without a control-plane route provides
         // none and the Slack capability's tools fail closed.
         if let Some(invoker) = self.adapters.slack_action_invoker(org_id, session_id) {
-            everruns_platform::channel_message_sender::install(&mut extensions, invoker);
+            everruns_capabilities::channel_message_sender::install(&mut extensions, invoker);
         }
         if let Some(store) = self.adapters.sandbox_persistence_store() {
-            let checkpoints: Arc<dyn everruns_platform::SandboxCheckpointStore> = store.clone();
-            let state: Arc<dyn everruns_platform::SandboxStateStore> = store;
+            let checkpoints: Arc<dyn everruns_capabilities::SandboxCheckpointStore> = store.clone();
+            let state: Arc<dyn everruns_capabilities::SandboxStateStore> = store;
             extensions.insert(Arc::new(SandboxCheckpointStoreExt(checkpoints)));
             extensions.insert(Arc::new(SandboxStateStoreExt(state)));
             // Checkpoint reconciliation needs both; installing one without the
@@ -779,7 +771,7 @@ impl<A: WorkerAdapters> everruns_contracts::hosted_mcp::HostedMcpResolver for Wo
 }
 
 struct PlatformExecutionScope {
-    store: Arc<dyn everruns_platform::PlatformStore>,
+    store: Arc<dyn everruns_capabilities::PlatformStore>,
     has_catalog: bool,
 }
 impl everruns_core::tool_context::ExecutionServices for PlatformExecutionScope {

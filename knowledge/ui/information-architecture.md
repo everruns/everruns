@@ -114,7 +114,7 @@ Failed work needs attention rather than disappearing as resolved. Work cards lin
 into the panel. Agent, harness, owner, and Playground boundaries remain unchanged.
 
 Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx),
-[rollout catalog](../../crates/platform/src/feature_flags.rs), and
+[rollout catalog](../../crates/server/src/records/feature_flags.rs), and
 [lifecycle grouping](../../apps/ui/src/lib/chat-thread-work.ts).
 
 ### Default Chat

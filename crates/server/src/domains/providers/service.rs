@@ -8,6 +8,7 @@ use crate::kernel_imports::{
     Caller, Permission, Policy, Rule, contracts::provider::DriverId,
     contracts::provider::ProviderStatus,
 };
+use crate::records::provider::Provider;
 use crate::services::ProviderResolverService;
 use crate::storage::{
     EncryptionService, StorageBackend,
@@ -15,7 +16,7 @@ use crate::storage::{
 };
 use anyhow::{Result, anyhow};
 use everruns_contracts::provider::{
-    Provider, ProviderRequestHeader, ProviderRequestOptions, ProviderTraceConfig,
+    ProviderRequestHeader, ProviderRequestOptions, ProviderTraceConfig,
 };
 use everruns_contracts::url_validation::validate_safe_url;
 use reqwest::Url;

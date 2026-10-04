@@ -182,7 +182,7 @@ Nothing above core learns the vendor.
 **One crate, composed from above.** The earlier split — vendor client under
 `crates/drivers/`, capability under `integrations/` — existed because
 `everruns-host` held the service, and a host dependency cannot point at an
-integration crate (integration → `everruns-platform` → `everruns-host` would
+integration crate (integration → `everruns-capabilities` → `everruns-host` would
 close the loop). Moving the service into the integration crate removes the
 constraint instead of working around it: `crates/server` and `crates/worker`
 already depend on integrations, so they compose the service into

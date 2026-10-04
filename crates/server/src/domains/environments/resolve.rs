@@ -8,11 +8,11 @@
 // Every entry is deliberately pessimistic: a capability nobody has taught this
 // table about contributes no compute rather than a plausible-looking guess.
 
-use everruns_contracts::capability::CapabilityRef;
-use everruns_contracts::typed_id::EnvironmentId;
-use everruns_platform::{
+use crate::records::{
     EnvironmentContainmentLevel, EnvironmentDurability, EnvironmentNetworkPolicy,
 };
+use everruns_contracts::capability::CapabilityRef;
+use everruns_contracts::typed_id::EnvironmentId;
 
 use crate::api::environments::{
     EnvironmentCapabilities, EnvironmentContainment, EnvironmentTarget,
@@ -252,7 +252,8 @@ pub fn environment_from_record(
 /// its plugin is actually registered in this binary.
 pub fn environment_targets() -> Vec<EnvironmentTargetDescriptor> {
     let daytona_registered =
-        everruns_platform::session_sandbox::create_session_sandbox_provider("daytona").is_some();
+        everruns_capabilities::session_sandbox::create_session_sandbox_provider("daytona")
+            .is_some();
 
     vec![
         EnvironmentTargetDescriptor {

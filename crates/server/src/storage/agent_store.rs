@@ -15,8 +15,8 @@ use crate::kernel_imports::{
     execution_loading::AgentStore,
 };
 use crate::max_iterations;
+use crate::records::{Agent, AgentStatus};
 use async_trait::async_trait;
-use everruns_platform::{Agent, AgentStatus};
 
 use super::repositories::Database;
 

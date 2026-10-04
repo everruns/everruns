@@ -6,8 +6,8 @@
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
+use crate::records::{AgentStatus, EnvironmentSet};
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
-use everruns_platform::{AgentStatus, EnvironmentSet};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -51,7 +51,7 @@ pub struct CreateAgentRequest {
     /// Conversation starters for a fresh Platform Chat thread. Win over the
     /// harness starters when non-empty. `icon` reuses the harness icon set.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub starters: Vec<everruns_platform::ConversationStarter>,
+    pub starters: Vec<crate::records::ConversationStarter>,
     /// The system prompt that defines the agent's behavior and capabilities.
     /// This is sent as the first message in every conversation.
     #[schema(example = "You are a helpful customer support agent. Be polite and professional.")]
@@ -78,7 +78,7 @@ pub struct CreateAgentRequest {
     /// Each capability has a `ref` (capability ID) and optional `config`.
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Named execution environments this Agent offers. One profile must be
     /// named by `default`; Sessions may inherit it or select another profile.
@@ -152,7 +152,7 @@ pub struct UpdateAgentRequest {
     /// Conversation starters; omit to leave unchanged, send empty to clear.
     /// `icon` reuses the harness icon name set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub starters: Option<Vec<everruns_platform::ConversationStarter>>,
+    pub starters: Option<Vec<crate::records::ConversationStarter>>,
     /// The system prompt that defines the agent's behavior and capabilities.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are an updated helpful assistant.")]
@@ -177,7 +177,7 @@ pub struct UpdateAgentRequest {
     /// Replaces existing capabilities. Each has a `ref` (capability ID) and optional `config`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
-    #[schema(value_type = Option<Vec<everruns_platform::CapabilityRefSchema>>)]
+    #[schema(value_type = Option<Vec<crate::records::CapabilityRefSchema>>)]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     /// Replace or clear the Agent's named execution environments.
     #[serde(
@@ -239,7 +239,7 @@ pub struct CreateAgentVersionRequest {
     /// Reason this version was created. See `AgentVersionChangeKind` for the allowed values.
     /// Defaults to `manual` when omitted.
     #[serde(default)]
-    pub change_kind: Option<everruns_platform::AgentVersionChangeKind>,
+    pub change_kind: Option<crate::records::AgentVersionChangeKind>,
 }
 
 /// Request body for the `rollback_agent_version` operation.
@@ -304,7 +304,7 @@ pub struct PreviewAgentRequest {
     /// Capabilities to apply with per-agent configuration.
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "test_math", "config": {}}]))]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools to include in the preview.
     #[serde(default)]

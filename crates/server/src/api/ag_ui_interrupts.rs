@@ -28,12 +28,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::records::{AgUiChannelConfig, SessionStatus};
 use everruns_ag_ui::{Interrupt, ResumeEntry, ResumeStatus};
 use everruns_builtins::ask_user::{AskUserAnswer, AskUserQuestionKind, AskUserStatus};
 use everruns_contracts::tool_types::ToolApprovalRequired;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::ToolCallRequestedData;
-use everruns_platform::{AgUiChannelConfig, SessionStatus};
 use serde_json::{Value, json};
 
 use crate::api::channel_a2a::ask_user::{ask_user_answer_schema, pending_ask_user_from_request};
@@ -231,7 +231,7 @@ pub(crate) struct ResumeServices<'a> {
 pub(crate) async fn resume(
     services: &ResumeServices<'_>,
     org_id: i64,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
     config: &AgUiChannelConfig,
     entries: &[ResumeEntry],
 ) -> Result<ResumeOutcome, ResumeError> {

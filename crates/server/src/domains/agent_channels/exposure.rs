@@ -47,7 +47,7 @@ fn canonical(mut config: Value) -> Value {
             }
             Some(auth) => {
                 if let Some(typed) =
-                    serde_json::from_value::<everruns_platform::ChannelAuthConfig>(auth.clone())
+                    serde_json::from_value::<crate::records::ChannelAuthConfig>(auth.clone())
                         .ok()
                         .and_then(|auth| serde_json::to_value(auth).ok())
                 {

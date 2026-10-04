@@ -2,7 +2,7 @@ use super::queries as q;
 use super::types::{ListOrganizationsResponse, OrganizationResponse, ResolveOrgResponse};
 use crate::domains::common::*;
 use crate::domains::org_resolver;
-use everruns_platform::validate_org_public_id;
+use crate::records::validate_org_public_id;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -201,8 +201,7 @@ mod tests {
         .await
         .expect("create agent");
 
-        let ctx =
-            Ctx::minimal_for_test(seed_caller(everruns_platform::ANONYMOUS_USER_ID), db, None);
+        let ctx = Ctx::minimal_for_test(seed_caller(crate::records::ANONYMOUS_USER_ID), db, None);
 
         let json =
             crate::domains::common::dispatch("resolve_org", json!({ "id": agent_public_id }), &ctx)
@@ -271,8 +270,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_org_returns_not_found_for_unknown_prefix() {
         let db = Arc::new(StorageBackend::in_memory());
-        let ctx =
-            Ctx::minimal_for_test(seed_caller(everruns_platform::ANONYMOUS_USER_ID), db, None);
+        let ctx = Ctx::minimal_for_test(seed_caller(crate::records::ANONYMOUS_USER_ID), db, None);
 
         let err = crate::domains::common::dispatch(
             "resolve_org",
@@ -308,7 +306,7 @@ mod tests {
             Caller {
                 org_id: DEFAULT_ORG_ID,
                 org_public_id: "org_00000000000000000000000000000001".to_string(),
-                user_id: Some(everruns_platform::ANONYMOUS_USER_ID),
+                user_id: Some(crate::records::ANONYMOUS_USER_ID),
                 role: OrgRole::Owner,
                 is_platform_user: false,
                 is_internal: false,

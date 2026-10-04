@@ -1,0 +1,121 @@
+[package]
+name = "everruns-capabilities"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-capabilities"
+description = "Hosted capabilities and sandbox orchestration for Everruns"
+readme = "README.md"
+keywords = ["agent", "agentic", "multitenancy", "identity", "everruns"]
+categories = ["development-tools", "asynchronous"]
+
+[features]
+# Default build stays free of OpenAPI/SQLx subtrees, matching how provider-only
+# consumers depend on core.
+default = []
+# OpenAPI schema generation (utoipa ToSchema derives). Mirrors the server build,
+# which activates `everruns-core/openapi`.
+openapi = ["dep:utoipa", "everruns-core/openapi"]
+# Embed the workspace `docs/` tree into the platform-management docs tools,
+# mirroring core's former build. Off by default; the build script gates the
+# actual embedding on the docs directory existing (EVE-839).
+embedded-platform-docs = ["dep:include_dir"]
+# EVE-888: the `sqlx` passthrough is gone. The kernel never used sqlx, and the
+# Postgres encode/decode impls for typed IDs live on `everruns-contracts`, which
+# the server now depends on directly. No crate enabled this passthrough.
+portable-builtins = ["dep:everruns-builtins", "everruns-builtins/ui-capabilities"]
+environment-capabilities = [
+    "dep:everruns-integrations-filesystem",
+    "dep:everruns-integrations-bashkit",
+    "dep:everruns-integrations-web-fetch",
+    "dep:everruns-integrations-openrouter",
+    "dep:everruns-builtins",
+]
+lua = ["dep:everruns-integrations-lua"]
+# Outbound A2A delegation is product-owned and optional for lightweight hosts.
+a2a = ["dep:a2a", "dep:a2a-client", "dep:url", "dep:reqwest"]
+# Outbound AG-UI delegation (`ag_ui_delegation`): product-owned and optional,
+# like `a2a`. Pulls in the AG-UI SSE client and an HTTP stack.
+ag-ui = ["dep:everruns-ag-ui", "dep:reqwest", "dep:url", "dep:futures-util"]
+container-sandbox = [
+    "dep:reqwest",
+    "dep:sha2",
+    "dep:hex",
+    "dep:tar",
+    "dep:urlencoding",
+    "dep:base64",
+]
+container-sandbox-live-tests = ["container-sandbox"]
+
+[dependencies]
+# Orchestration consumes neutral contracts and portable core execution views.
+# Persistence/API records remain exclusively in the server.
+everruns-core = { workspace = true }
+everruns-host.workspace = true
+everruns-contracts = { workspace = true, default-features = false, features = ["session-sandbox"] }
+everruns-builtins = { workspace = true, optional = true }
+everruns-integrations-filesystem = { workspace = true, optional = true }
+everruns-integrations-bashkit = { workspace = true, optional = true }
+everruns-integrations-web-fetch = { workspace = true, optional = true }
+everruns-integrations-lua = { workspace = true, optional = true }
+everruns-integrations-openrouter = { workspace = true, optional = true }
+
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+
+# Async runtime service interfaces and capability orchestration support.
+async-trait.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+jsonschema = { version = "0.58.1", default-features = false }
+
+# Outbound A2A delegation (optional).
+a2a = { workspace = true, optional = true }
+a2a-client = { workspace = true, optional = true }
+url = { version = "2", optional = true }
+
+# Outbound AG-UI delegation (optional).
+everruns-ag-ui = { workspace = true, optional = true, features = ["client"] }
+futures-util = { workspace = true, optional = true }
+
+# Connector plugin registration (EVE-879): integration crates submit
+# `ConnectorPlugin` entries the server discovers at startup.
+inventory.workspace = true
+
+# Optional HTTP transport for delegation and container-sandbox capabilities.
+# Each capability retains its runtime egress and deployment-grade checks.
+thiserror.workspace = true
+reqwest = { workspace = true, features = ["json", "rustls"], optional = true }
+sha2 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+tar = { workspace = true, optional = true }
+urlencoding = { version = "2", optional = true }
+base64 = { workspace = true, optional = true }
+
+# OpenAPI schema generation (optional, enabled by everruns-server).
+utoipa = { workspace = true, optional = true }
+
+# Embeds the workspace docs tree for the platform-management docs tools when the
+# `embedded-platform-docs` feature is on (EVE-839; moved with the capability).
+include_dir = { version = "0.7", optional = true }
+
+[[test]]
+name = "container_sandbox_live_api_test"
+required-features = ["container-sandbox-live-tests"]
+
+[dev-dependencies]
+everruns-builtins.workspace = true
+everruns-contracts = { workspace = true, default-features = false, features = ["tls-aws-lc-rs"] }
+a2a-server.workspace = true
+axum.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
+serde_json.workspace = true

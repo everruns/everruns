@@ -3,9 +3,9 @@
 // Storage row types are re-exported from `storage::models` so domain code
 // has a single import path.
 
+use crate::records::McpServerStatus;
 use everruns_core::{
-    McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpServerStatus,
-    McpServerTransportType,
+    McpElicitationPolicy, McpProtocolMode, McpServerAuthMode, McpServerTransportType,
 };
 use serde::Deserialize;
 use std::collections::HashMap;

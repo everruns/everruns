@@ -17,7 +17,7 @@ const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, channel_id, tri
      forked_from_session_id, forked_from_sequence, \
      blueprint_id, blueprint_config, archived_at, event_count, task_count";
 
-/// SQL mirror of `everruns_platform::SessionActivity::derive` — the list filters in
+/// SQL mirror of `crate::records::SessionActivity::derive` — the list filters in
 /// the database while the in-memory backend filters in Rust. Both must change
 /// together; `activity_derivation_truth_table` in `everruns_core::session`
 /// spells out the shared contract.
@@ -1026,7 +1026,7 @@ impl Database {
         &self,
         org_id: i64,
         tags: &[String],
-        activities: &[everruns_platform::SessionActivity],
+        activities: &[crate::records::SessionActivity],
         updated_after: Option<DateTime<Utc>>,
         after: Option<(DateTime<Utc>, Uuid)>,
         limit: u32,

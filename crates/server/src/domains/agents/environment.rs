@@ -1,8 +1,8 @@
 //! Agent Environment profile validation and storage projections.
 
 use crate::domains::common::CommandError;
+use crate::records::EnvironmentSet;
 use everruns_durable::UpdateField;
-use everruns_platform::EnvironmentSet;
 use serde_json::Value;
 
 pub(super) fn validate(value: Option<&EnvironmentSet>) -> Result<(), CommandError> {

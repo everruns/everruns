@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use axum::http::{Method, StatusCode};
 use everruns_contracts::typed_id::{SessionId, TriggerId};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::SessionSource;
+use everruns_server::records::SessionSource;
 use everruns_server::services::standard_webhooks;
 use serde_json::{Value, json};
 

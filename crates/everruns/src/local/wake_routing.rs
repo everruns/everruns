@@ -24,10 +24,10 @@ use std::pin::pin;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::session::ExecutionSession;
-use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage};
 use tokio::sync::Notify;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 

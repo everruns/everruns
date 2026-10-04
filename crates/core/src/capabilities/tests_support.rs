@@ -165,7 +165,7 @@ impl Capability for FileSystemFixture {
 }
 
 /// Stands in for the product `session_storage` capability, which moved to
-/// `everruns-platform` with the other service-backed families (EVE-886).
+/// `everruns-capabilities` with the other service-backed families (EVE-886).
 /// Feature computation is core's mechanism, so it is exercised here against
 /// a fixture rather than a product implementation.
 pub(crate) struct StorageFixture;

@@ -1,6 +1,6 @@
 //! Provider-neutral coding harness.
 
-use everruns_platform::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
+use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(

@@ -46,6 +46,7 @@ use crate::domains::reporting::ReportingService;
 use crate::domains::session_files::WorkspaceFileService;
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::SessionService;
+use crate::records::validate_org_public_id;
 use crate::services::{CapabilityService, EventService};
 use crate::storage::StorageBackend;
 use axum::{
@@ -61,7 +62,6 @@ use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_exec
 use everruns_core::{Caller, OrgRole};
 use everruns_durable::WorkflowEventStore;
 use everruns_host::HostComposition;
-use everruns_platform::validate_org_public_id;
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -355,7 +355,7 @@ impl AppState {
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         host_composition: &HostComposition,
-        built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+        built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -390,14 +390,14 @@ impl AppState {
             org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter::default(),
             encryption,
             workflow_store,
-            fallback_base_harness_name: everruns_platform::harness_for_role(
+            fallback_base_harness_name: crate::records::harness_for_role(
                 built_in_harnesses,
-                everruns_platform::BuiltInHarnessRole::Base,
+                crate::records::BuiltInHarnessRole::Base,
             )
             .map(|h| h.name.clone()),
-            fallback_default_harness_name: everruns_platform::harness_for_role(
+            fallback_default_harness_name: crate::records::harness_for_role(
                 built_in_harnesses,
-                everruns_platform::BuiltInHarnessRole::Default,
+                crate::records::BuiltInHarnessRole::Default,
             )
             .map(|h| h.name.clone()),
             sqldb_store,
@@ -1133,7 +1133,7 @@ async fn resolve_org_by_id(
         &state.auth.feature_flag_policy,
     )
     .await
-    .unwrap_or_else(|_| everruns_platform::FeatureFlags::default());
+    .unwrap_or_else(|_| crate::records::FeatureFlags::default());
 
     Ok(ResolvedOrg {
         org_id: org_row.org_id,
@@ -1578,7 +1578,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
 #[cfg(test)]
 mod org_override_scope_tests {
     use super::*;
-    use everruns_platform::OrgMembership;
+    use crate::records::OrgMembership;
     use uuid::Uuid;
 
     fn test_auth_user(auth_method: AuthMethod) -> AuthUser {
@@ -1606,7 +1606,7 @@ mod org_override_scope_tests {
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Member,
             is_platform_user: false,
-            feature_flags: everruns_platform::FeatureFlags::default(),
+            feature_flags: crate::records::FeatureFlags::default(),
         }
     }
 

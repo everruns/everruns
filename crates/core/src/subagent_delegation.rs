@@ -6,7 +6,7 @@
 //! platform crate implements it by forwarding runtime views from `PlatformStore`, so core owns
 //! only the execution contract while server/worker keep identical behavior.
 //!
-//! The request/message DTOs live here (not in `everruns-platform`) because the
+//! The request/message DTOs live here (not in `everruns-capabilities`) because the
 //! trait signature needs them and core cannot depend on platform.
 
 use crate::agent_definition::AgentDefinition;
@@ -108,7 +108,7 @@ pub mod tests {
     ///
     /// Carries the same simulated harness/agent/session state the former
     /// `MockPlatformStore` provided, restricted to the narrow delegate surface
-    /// (EVE-839). The full hosted mock still lives in `everruns-platform`.
+    /// (EVE-839). The full hosted mock still lives in `everruns-capabilities`.
     pub struct MockSubagentDelegate {
         pub harness: HarnessDefinition,
         pub extra_harnesses:

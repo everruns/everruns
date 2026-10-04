@@ -13,12 +13,12 @@ use test_harness::TestServer;
 
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId, TriggerId, VirtualUserId};
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::{AgentChannelId, SessionSource};
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::budgets::BudgetService;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
+use everruns_server::records::{AgentChannelId, SessionSource};
 use everruns_server::storage::models::{
     CreateAgentTriggerRow, CreateBudgetLedgerRow, CreateBudgetRow, UpdateApp,
 };

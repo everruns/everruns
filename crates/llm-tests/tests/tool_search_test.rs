@@ -31,10 +31,10 @@ use everruns_builtins::{
     OpenAiToolSearchCapability, StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME,
     ToolSearchCapability,
 };
+use everruns_capabilities::capabilities::SessionCapability;
 use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_filesystem::FileSystemCapability;
-use everruns_platform::capabilities::SessionCapability;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, InMemoryModelConfig, TurnResult};
 use rstest::rstest;
 

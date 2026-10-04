@@ -1,51 +1,10 @@
 #!/usr/bin/env bash
-# Architecture guard (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-905): stored
-# platform persistence records — Agent/AgentVersion (lifecycle status,
-# versioning/publication metadata, fork lineage), Harness (lifecycle status,
-# hierarchy identifiers, built-in flags, display metadata, timestamps) plus
-# the built-in harness provisioning templates, Session (product
-# status/source/activity facets, participants, ownership references,
-# previews, timestamps, catalog relationships), and the management/reporting
-# aggregates (persisted eval definitions/runs/results/datasets, observer
-# records with judge configuration and trace-score lifecycle, org/product
-# feature-flag records and catalog) — live in crates/platform
-# (`everruns-platform`), as do the hosted connector catalog (Connector
-# trait/registry/plugin) and the system email contract with its concrete
-# senders (EVE-879). The OAuth 2.1 protocol client (TokenSet, PkcePair,
-# OAuthClient) lives in crates/mcp (`everruns-mcp`), its only consumer. The
-# execution kernel consumes only the portable
-# `everruns_core::AgentDefinition` / `everruns_core::HarnessDefinition` /
-# `everruns_core::ExecutionSession`, the resolved execution snapshot, and the
-# resolved `everruns_core::execution_features` decisions:
-#
-# 1. Kernel crate sources (core, engine, provider, capability) must not
-#    reference `everruns_platform` at all — the platform Agent/Harness/Session
-#    records and management aggregates must never flow back into the kernel.
-# 2. Kernel crates must carry no everruns-platform edge of any kind (normal,
-#    build, or dev), so `cargo tree` stays clean.
-# 3. Provider-only crates must ship no everruns-platform subtree on their
-#    normal (shipped) dependency edges.
-# 4. Kernel crates must not re-declare the moved
-#    stored-record/provisioning/management types (Agent, AgentVersion,
-#    AgentStatus, Harness, HarnessStatus, BuiltInHarnessDefinition,
-#    BuiltInHarnessRole, Session, SessionStatus, SessionSource,
-#    SessionActivity, SessionParticipant and its enums, Eval, EvalCase,
-#    EvalRun, EvalCaseResult, EvalRunDataset, EvalTarget, Scorer, Observer,
-#    ObserverMatch, LlmJudgeConfig, TraceScore, FeatureFlags, FeatureFlagMap,
-#    FeatureFlagDefinition), nor the moved connector/email/OAuth
-#    infrastructure types (ConnectorRegistry, ConnectorPlugin, EmailMessage,
-#    SystemEmailConfig, ResendEmailSender, OAuthClient, TokenSet, ...), nor
-#    the moved session-service records (EVE-880): the org-scoped Workspace
-#    row and the managed per-session sandbox (config, persisted state,
-#    provider instance, exec/file payloads) together with the
-#    `SessionSandboxProvider` SPI and its inventory plugin, nor the session
-#    SQL database store and its value types (EVE-897) — records and trait
-#    travel together because the values are the trait's signature vocabulary,
-#    and the capability resolves the store as a typed context extension.
-# 5. Core turn execution is value-first: store-backed snapshot loading,
-#    topology/lifecycle probing, provider resolution and driver construction,
-#    context inspection, and concrete command completion live in host. Core
-#    retains pure snapshot/context transformations and narrow effect contracts.
+# Architecture guard: persistence/API records are server-only (EVE-1159).
+# Contracts own neutral host-service SPIs. Capabilities own hosted orchestration.
+# Kernel sources and dependency edges must consume only portable definitions,
+# execution views, snapshots, and effect contracts. Provider consumers must stay
+# independent of hosted capabilities; control-plane vocabulary is derived from
+# the server owner by check_control_plane_records.py.
 
 set -euo pipefail
 
@@ -57,6 +16,10 @@ cd "$PROJECT_ROOT"
 # "the guard found a violation". See guard-cargo.sh.
 source "$SCRIPT_DIR/guard-cargo.sh"
 
+# The server owns the full persistence/API aggregate vocabulary.
+python3 scripts/check_control_plane_records.py
+python3 scripts/test-control-plane-record-isolation.py
+
 FAILED=0
 
 # 1. Kernel sources: no platform-crate references (src, tests, and examples —
@@ -66,7 +29,7 @@ KERNEL_TREES=(
   crates/engine
   crates/contracts
 )
-if matches=$(grep -rnE 'everruns_platform(::|;)' "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'everruns_(platform|capabilities|server)(::|;)' "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
   echo "Kernel crates must not reference everruns_platform (EVE-877, EVE-881, EVE-882, EVE-878):"
   echo "$matches"
   FAILED=1
@@ -107,8 +70,8 @@ fi
 # Runtime hosted capabilities and their store also consume portable execution
 # views. Reject qualified record references, including test-only mocks: those
 # otherwise conceal a downstream implementation's dependency on hosted records.
-if matches=$(grep -rnE '(crate|everruns_platform)::((agent|harness|session)::)?(Agent|AgentStatus|Harness|HarnessStatus|Session|SessionStatus|SessionParticipant|SessionParticipantKind|SessionParticipantRole)([^[:alnum:]_]|$)' \
-  crates/platform/src/capabilities crates/platform/src/platform_store.rs crates/everruns/src/local/platform_store.rs --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE '(crate|everruns_platform|everruns_capabilities)::((agent|harness|session)::)?(Agent|AgentStatus|Harness|HarnessStatus|Session|SessionStatus|SessionParticipant|SessionParticipantKind|SessionParticipantRole)([^[:alnum:]_]|$)' \
+  crates/capabilities/src/capabilities crates/capabilities/src/platform_store.rs crates/everruns/src/local/platform_store.rs --include='*.rs' 2>/dev/null); then
   echo "Hosted capabilities and PlatformStore must use portable runtime views:"
   echo "$matches"
   FAILED=1
@@ -122,9 +85,9 @@ KERNEL_CRATES=(
 )
 for crate in "${KERNEL_CRATES[@]}"; do
   tree=$(guard_cargo_tree -p "$crate" --edges normal,build,dev --prefix none)
-  if echo "$tree" | grep -qE '^everruns-platform '; then
+  if echo "$tree" | grep -qE '^everruns-(platform|capabilities|server) '; then
     echo "$crate must not depend on everruns-platform (any edge):"
-    echo "$tree" | grep -E '^everruns-platform '
+    echo "$tree" | grep -E '^everruns-(platform|capabilities|server) '
     FAILED=1
   fi
 done
@@ -132,12 +95,12 @@ done
 # The reusable execution host is below the hosted product layer. Platform may
 # implement host extension ports; host must never import or ship platform.
 host_tree=$(guard_cargo_tree -p everruns-host --edges normal --prefix none)
-if echo "$host_tree" | grep -qE '^everruns-platform '; then
+if echo "$host_tree" | grep -qE '^everruns-(platform|capabilities|server) '; then
   echo "everruns-host must not depend on everruns-platform in its shipped graph:"
-  echo "$host_tree" | grep -E '^everruns-platform '
+  echo "$host_tree" | grep -E '^everruns-(platform|capabilities|server) '
   FAILED=1
 fi
-if matches=$(grep -rnE 'everruns_platform::|use[[:space:]]+everruns_platform' crates/host/src --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'everruns_(platform|capabilities)::|use[[:space:]]+everruns_(platform|capabilities)' crates/host/src --include='*.rs' 2>/dev/null); then
   echo "everruns-host source must use neutral extension ports rather than platform types:"
   echo "$matches"
   FAILED=1
@@ -150,9 +113,9 @@ PROVIDER_CRATES=(
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
   tree=$(guard_cargo_tree -p "$crate" --all-features --edges normal --prefix none)
-  if echo "$tree" | grep -qE '^everruns-platform '; then
+  if echo "$tree" | grep -qE '^everruns-(platform|capabilities|server) '; then
     echo "$crate must not ship everruns-platform in its normal dependency tree:"
-    echo "$tree" | grep -E '^everruns-platform '
+    echo "$tree" | grep -E '^everruns-(platform|capabilities|server) '
     FAILED=1
   fi
 done
@@ -187,8 +150,8 @@ for host_owner in command_host execution_snapshot runtime_context; do
 done
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Agent-record isolation guard failed. Stored records stay in platform and store-backed execution orchestration stays in host (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880, EVE-905)."
+  echo "Agent-record isolation guard failed. Stored records stay in server and store-backed execution orchestration stays in host (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880, EVE-905)."
   exit 1
 fi
 
-echo "Agent-record isolation guard passed: kernel execution is value-first; platform records and store-backed context/provider orchestration stay outside core."
+echo "Agent-record isolation guard passed: kernel execution is value-first; server records and store-backed context/provider orchestration stay outside core."

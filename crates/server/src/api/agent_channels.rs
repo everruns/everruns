@@ -6,13 +6,13 @@ use crate::domains::agent_channels::{
     UpdateAgentChannelCmd,
 };
 use crate::domains::common::Command;
+use crate::records::AgentChannel;
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_platform::AgentChannel;
 use serde_json::Value;
 
 use super::common::{ApiResult, ErrorResponse};

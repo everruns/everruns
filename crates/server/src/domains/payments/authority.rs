@@ -32,7 +32,7 @@ pub struct ServerPaymentAuthority {
     encryption: Option<Arc<EncryptionService>>,
     org_id: i64,
     agent_id: Option<AgentId>,
-    feature_flag_policy: everruns_platform::FeatureFlagPolicy,
+    feature_flag_policy: crate::records::FeatureFlagPolicy,
 }
 
 impl ServerPaymentAuthority {
@@ -47,7 +47,7 @@ impl ServerPaymentAuthority {
             encryption,
             org_id,
             agent_id,
-            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
+            feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         }
     }
 }
@@ -809,7 +809,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let mut authority = ServerPaymentAuthority::new(db.clone(), None, 42, None);
         authority.feature_flag_policy =
-            everruns_platform::FeatureFlagPolicy::from_env(DeploymentGrade::Prod)
+            crate::records::FeatureFlagPolicy::from_env(DeploymentGrade::Prod)
                 .with_grade("machine_payments", FeatureFlagGrade::Prod);
         // An invalid request cannot reach a transport, even when the flag is on.
         let request = MachinePaymentRequest {
