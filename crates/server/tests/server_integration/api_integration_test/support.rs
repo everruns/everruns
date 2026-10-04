@@ -7,8 +7,8 @@ use everruns_contracts::typed_id::{
     AgentId, AppId, HarnessId, PrincipalId, ScheduleId, VirtualUserId,
 };
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_platform::Agent;
-use everruns_platform::Session;
+use everruns_server::records::Agent;
+use everruns_server::records::Session;
 use everruns_server::storage::models::{
     CreateAppRow, CreatePrincipalRow, CreateSessionScheduleRow,
 };

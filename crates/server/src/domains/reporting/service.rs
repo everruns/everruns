@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use crate::records::reporting::{ReportQuery, ReportResult, ReportScope, ReportingQueryBackend};
 use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
-use everruns_platform::reporting::{ReportQuery, ReportResult, ReportScope, ReportingQueryBackend};
 use parking_lot::RwLock;
 use serde_json::Value;
 use sqlx::Row;
@@ -58,14 +58,14 @@ impl ReportingService {
                 columns: query
                     .dimensions
                     .iter()
-                    .map(|name| everruns_platform::reporting::ReportColumn {
+                    .map(|name| crate::records::reporting::ReportColumn {
                         name: name.clone(),
-                        kind: everruns_platform::reporting::ReportColumnKind::Dimension,
+                        kind: crate::records::reporting::ReportColumnKind::Dimension,
                     })
                     .chain(query.measures.iter().map(|name| {
-                        everruns_platform::reporting::ReportColumn {
+                        crate::records::reporting::ReportColumn {
                             name: name.clone(),
-                            kind: everruns_platform::reporting::ReportColumnKind::Measure,
+                            kind: crate::records::reporting::ReportColumnKind::Measure,
                         }
                     }))
                     .collect(),
@@ -740,8 +740,8 @@ async fn dataset_lag(
 
 #[cfg(test)]
 mod tests {
+    use crate::records::reporting::{ReportColumn, ReportColumnKind, ReportResult};
     use chrono::Utc;
-    use everruns_platform::reporting::{ReportColumn, ReportColumnKind, ReportResult};
     use serde_json::json;
 
     use super::{escape_csv_cell, result_to_csv};

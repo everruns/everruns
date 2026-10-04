@@ -7,6 +7,7 @@ use crate::kernel_imports::{
     Caller, EgressService, PermissionResolver, Policy, PolicyError,
     contracts::driver_registry::DriverRegistry,
 };
+use crate::records::FeatureFlags;
 use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
@@ -14,7 +15,6 @@ use everruns_contracts::typed_id::SessionId;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
 use everruns_durable::WorkflowEventStore;
-use everruns_platform::FeatureFlags;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;
@@ -1233,7 +1233,7 @@ pub fn catalog_entries_with_schemas(
 
 /// Validate an addressable name (agent, harness, etc.)
 pub fn validate_name(entity: &str, name: &str) -> Result<(), CommandError> {
-    everruns_platform::validate_addressable_name(name)
+    crate::records::validate_addressable_name(name)
         .map_err(|msg| CommandError::bad_request(format!("{entity} {msg}")))
 }
 

@@ -5,8 +5,8 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
+use crate::records::{SlackChannelConfig, SlackResponsePolicy};
 use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
-use everruns_platform::{SlackChannelConfig, SlackResponsePolicy};
 use serde_json::{Value, json};
 
 use crate::api::channel_ingress::{IngressChannel, IngressContext};

@@ -13,6 +13,7 @@ use axum::{
     http::{Method, StatusCode},
     routing::get,
 };
+use everruns_capabilities::capabilities::A2aAgentDelegationCapability;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::capabilities::Capability;
@@ -21,7 +22,6 @@ use everruns_core::{
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
     tool_context::ToolContext,
 };
-use everruns_platform::capabilities::A2aAgentDelegationCapability;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};

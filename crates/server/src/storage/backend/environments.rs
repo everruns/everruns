@@ -1,9 +1,9 @@
 //! Logical execution-environment storage across hosted and in-memory backends.
 
 use super::*;
+use crate::records::ResolvedEnvironmentProfile;
 use crate::storage::{EnvironmentRecord, PgSandboxCheckpointStore};
 use everruns_contracts::typed_id::SessionId;
-use everruns_platform::ResolvedEnvironmentProfile;
 
 impl StorageBackend {
     /// Pin the resolved profile exactly once for the lifetime of a Session.

@@ -8,6 +8,7 @@ use crate::kernel_imports::{
     session_services::SessionScheduleStore, session_services::SessionStorageStore,
     tool_context::ToolContext,
 };
+use crate::records::{Harness, HarnessStatus};
 use crate::storage::{
     DbSessionScheduleStore, StorageBackend, create_db_session_storage_store,
     create_db_session_storage_store_without_encryption, session_task_store::DbSessionTaskRegistry,
@@ -15,7 +16,6 @@ use crate::storage::{
 use crate::{max_iterations, org_init};
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::session_task::SessionTaskRegistry;
-use everruns_platform::{Harness, HarnessStatus};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -109,8 +109,7 @@ pub async fn tool_context_for_ctx(
     let harness_layers: Vec<Harness> = load_harness_chain(&ctx.db, org_id, harness_id).await?;
 
     // --- Load agent (if any) ---
-    let agent_layer: Option<everruns_platform::Agent> = if let Some(agent_id) = session_row.agent_id
-    {
+    let agent_layer: Option<crate::records::Agent> = if let Some(agent_id) = session_row.agent_id {
         let agent_row = ctx
             .db
             .get_agent(org_id, agent_id)

@@ -8,7 +8,7 @@ pub struct CreateSessionRequest {
     /// server-owned so the sessions facet rail stays trustworthy.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "chat")]
-    pub source: Option<everruns_platform::SessionSource>,
+    pub source: Option<crate::records::SessionSource>,
     /// ID of the harness for this session (format: harness_{32-hex}).
     /// If omitted, the harness is derived from the agent (when one is supplied),
     /// else the org default harness, else the built-in fallback. New orgs default
@@ -67,7 +67,7 @@ pub struct CreateSessionRequest {
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default)]
     #[schema(
-        value_type = Vec<everruns_platform::CapabilityRefSchema>,
+        value_type = Vec<crate::records::CapabilityRefSchema>,
         example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}])
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,

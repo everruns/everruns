@@ -3224,11 +3224,11 @@ mod tests {
         use crate::auth::config::{AuthConfig, AuthMode};
         use crate::auth::middleware::{AuthError, AuthMethod, AuthUser};
         use crate::auth::routes::AuthConfigResponse;
+        use crate::records::OrgMembership;
         use async_trait::async_trait;
         use axum::body::{Body, to_bytes};
         use axum::http::Request;
         use everruns_core::OrgRole;
-        use everruns_platform::OrgMembership;
         use tower::ServiceExt;
 
         /// Mock auth backend returning user with configurable platform access.

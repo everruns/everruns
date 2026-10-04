@@ -4,8 +4,8 @@ use super::support::*;
 use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_core::SessionFile;
-use everruns_platform::Agent;
-use everruns_platform::Session;
+use everruns_server::records::Agent;
+use everruns_server::records::Session;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 

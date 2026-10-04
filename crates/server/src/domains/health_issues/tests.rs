@@ -1,6 +1,7 @@
 use super::*;
 use crate::domains::agent_channels::{CreateAgentChannel, types::CreateAgentChannelRequest};
 use crate::domains::common::*;
+use crate::records::ChannelType;
 use crate::storage::{
     ObserveHealthIssue, StorageBackend,
     models::{CreateAgentRow, CreateHarnessRow},
@@ -8,7 +9,6 @@ use crate::storage::{
 use chrono::Utc;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, Permission, PermissionResolver};
-use everruns_platform::ChannelType;
 use serde_json::json;
 use std::sync::Arc;
 use wiremock::{

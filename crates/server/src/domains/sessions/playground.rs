@@ -63,9 +63,9 @@ pub async fn bind_creation(
     ctx: &Ctx,
     req: &mut crate::api::sessions::CreateSessionRequest,
     harness: &crate::storage::models::HarnessRow,
-    source: everruns_platform::SessionSource,
+    source: crate::records::SessionSource,
 ) -> Result<(), CommandError> {
-    use everruns_platform::SessionSource;
+    use crate::records::SessionSource;
     if !source.is_client_declarable() {
         return Err(CommandError::bad_request(format!(
             "source must be one of chat, playground, api (got {source})"

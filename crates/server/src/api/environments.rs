@@ -86,7 +86,7 @@ pub struct SessionEnvironmentResponse {
     pub source_capability: Option<String>,
     /// Immutable resolved profile pinned when the Session was created.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile: Option<everruns_platform::ResolvedEnvironmentProfile>,
+    pub profile: Option<crate::records::ResolvedEnvironmentProfile>,
     /// Control-plane lifecycle intent and latest observed physical state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desired_state: Option<String>,

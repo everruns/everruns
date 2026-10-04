@@ -1,11 +1,11 @@
 //! Durable managed-Environment persistence for remote workers.
 
 use chrono::{DateTime, Utc};
-use everruns_platform::sandbox_checkpoint::{
+use everruns_capabilities::sandbox_state::{SandboxStateError, SandboxStateStore};
+use everruns_contracts::sandbox_checkpoint::{
     NewSandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointStore, SandboxRef,
 };
-use everruns_platform::sandbox_state::{SandboxStateError, SandboxStateStore};
-use everruns_platform::session_sandbox::SessionSandboxState;
+use everruns_contracts::session_sandbox::SessionSandboxState;
 use serde_json::{Value, json};
 use uuid::Uuid;
 

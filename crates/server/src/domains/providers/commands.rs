@@ -6,7 +6,7 @@ use crate::domains::common::*;
 use crate::kernel_imports::{
     Policy, contracts::provider::DriverId, contracts::provider::ProviderStatus,
 };
-use everruns_contracts::provider::Provider;
+use crate::records::provider::Provider;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

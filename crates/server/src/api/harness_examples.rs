@@ -38,7 +38,7 @@ pub struct HarnessExample {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_name: Option<String>,
     /// Capabilities the example will assign with their per-harness config.
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<everruns_contracts::CapabilityRef>,
     /// Whether this example is only available when experimental features are on.
     pub dev_only: bool,

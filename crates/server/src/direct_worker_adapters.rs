@@ -1,3 +1,4 @@
+mod definition_reads;
 mod message_projection;
 
 // Direct implementation of WorkerAdapters for in-process worker
@@ -18,6 +19,9 @@ use crate::kernel_imports::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
+use crate::records::Harness;
+use crate::records::{Agent, AgentStatus};
+use crate::records::{Session, SessionStatus};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -31,9 +35,6 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_platform::Harness;
-use everruns_platform::{Agent, AgentStatus};
-use everruns_platform::{Session, SessionStatus};
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
@@ -419,10 +420,10 @@ impl DirectWorkerAdapters {
         Ok(Some({
             // Parse capabilities from JSON
             Session {
-                source: everruns_platform::SessionSource::from(r.source.as_str()),
+                source: crate::records::SessionSource::from(r.source.as_str()),
                 run_summary: r.run_summary.clone(),
-                activity: everruns_platform::SessionActivity::derive(
-                    &everruns_platform::SessionStatus::from(r.status.as_str()),
+                activity: crate::records::SessionActivity::derive(
+                    &crate::records::SessionStatus::from(r.status.as_str()),
                     r.last_turn_status.as_deref(),
                 ),
                 id: r.id,
@@ -686,34 +687,87 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Agent Operations
     // =========================================================================
 
-    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
-        // Delegate to the private helper method
-        Self::get_harness_impl(self, org_id, harness_id).await
+    async fn get_harness(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::HarnessDefinition>> {
+        self.get_harness_impl(org_id, id)
+            .await?
+            .map(|h| h.execution_definition())
+            .transpose()
+    }
+    async fn get_agent(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::AgentDefinition>> {
+        self.get_agent_record(org_id, id)
+            .await?
+            .map(|a| a.execution_definition())
+            .transpose()
+    }
+    async fn get_agent_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(match self.get_agent_record(org_id, id).await? {
+            Some(a) => a.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::AgentDeleted),
+        })
+    }
+    async fn get_harness_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(match self.get_harness_impl(org_id, id).await? {
+            Some(h) => h.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+        })
     }
 
-    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
-        // Look up by public_id, then fetch capabilities using internal id from the row.
-        let public_id = AgentId::from_uuid(agent_id).to_string();
-        let row = self
-            .db
-            .get_agent_by_public_id(org_id, &public_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get agent: {}", e);
-                store_error("Failed to get agent")
-            })?;
-        match row {
-            Some(r) => {
-                let capabilities = self
-                    .db
-                    .get_agent_capabilities(r.id.uuid())
-                    .await
-                    .unwrap_or_default();
-                let capabilities = self.hydrate_capability_rows(org_id, capabilities).await?;
-                Ok(Some(Self::row_to_agent(r, capabilities)))
-            }
-            None => Ok(None),
-        }
+    async fn resolve_agent_read(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<(
+        Result<Option<everruns_core::AgentDefinition>>,
+        Option<everruns_core::DependencyBlocker>,
+    )> {
+        // One stored read supplies both lifecycle validation and portable setup.
+        let Some(agent) = self.get_agent_record(org_id, id).await? else {
+            return Ok((
+                Ok(None),
+                Some(everruns_core::DependencyBlocker::AgentDeleted),
+            ));
+        };
+        Ok((
+            agent.execution_definition().map(Some),
+            agent.dependency_blocker(),
+        ))
+    }
+
+    async fn resolve_harness_read(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<(
+        Result<Option<everruns_core::HarnessDefinition>>,
+        Option<everruns_core::DependencyBlocker>,
+    )> {
+        // Resolve inheritance before projecting, exactly as the ordinary loader does.
+        let Some(harness) = self.get_harness_impl(org_id, id).await? else {
+            return Ok((
+                Ok(None),
+                Some(everruns_core::DependencyBlocker::HarnessDeleted),
+            ));
+        };
+        Ok((
+            harness.execution_definition().map(Some),
+            harness.dependency_blocker(),
+        ))
     }
 
     // =========================================================================
@@ -1104,7 +1158,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         {
             runtime_agent_id = session.agent_id;
             let mut agent = match session.agent_id {
-                Some(agent_id) => self.get_agent(org_id, agent_id.uuid()).await?,
+                Some(agent_id) => self.get_agent_record(org_id, agent_id.uuid()).await?,
                 None => None,
             };
             if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
@@ -1352,7 +1406,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         };
 
         Ok(TurnContext {
-            agent,
+            agent: agent.map(|a| a.execution_definition()).transpose()?,
             session: session.execution_session(),
             messages,
             model,
@@ -1385,7 +1439,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         org_id: i64,
         session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
         Some(crate::slack_actions::in_process_invoker(
             &self.db,
             self.encryption.as_ref(),
@@ -1396,10 +1450,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
+    ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
         self.db.pool().map(|pool| {
             Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()))
-                as Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>
+                as Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>
         })
     }
 
@@ -1445,7 +1499,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
     }
 
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         Some(Arc::new(
             crate::knowledge_store::StorageBackendKnowledgeStore::new(self.db.clone()),
         ))
@@ -1697,7 +1751,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_platform::PlatformStore> {
+    ) -> Arc<dyn everruns_capabilities::PlatformStore> {
         Arc::new(DirectPlatformStore::new(
             org_id,
             session_id,
@@ -1830,64 +1884,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
-    /// Get a harness by ID (direct DB access).
-    async fn get_harness_impl(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
-        crate::harness_chain::resolve_effective_harness(&self.db, org_id, harness_id).await
-    }
-
-    /// Convert an AgentRow plus pre-loaded capability rows into an Agent.
-    fn row_to_agent(r: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
-        Agent {
-            service_virtual_user_id: None,
-
-            public_id: r
-                .public_id
-                .parse()
-                .unwrap_or_else(|_| AgentId::from_uuid(r.id.uuid())),
-            internal_id: r.id.uuid(),
-            name: r.name,
-            display_name: r.display_name,
-            description: r.description,
-            intro_markdown: None,
-            short_description: None,
-            starters: Vec::new(),
-            system_prompt: r.system_prompt,
-            default_model_id: r.default_model_id,
-            harness_id: r.harness_id,
-            default_version_id: r.default_version_id,
-            forked_from_agent_id: r.forked_from_agent_id,
-            forked_from_version_id: r.forked_from_version_id,
-            root_agent_id: r.root_agent_id,
-            tags: r.tags,
-            capabilities,
-            environments: r
-                .environments
-                .and_then(|value| serde_json::from_value(value).ok()),
-            initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
-            mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
-            network_access: r
-                .network_access
-                .and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: max_iterations::from_db(r.max_iterations),
-            parallel_tool_calls: r.parallel_tool_calls,
-            tools: serde_json::from_value(r.tools).unwrap_or_default(),
-            status: match r.status.as_str() {
-                "active" => AgentStatus::Active,
-                "archived" => AgentStatus::Archived,
-                "deleted" => AgentStatus::Deleted,
-                _ => AgentStatus::Active,
-            },
-            // Execution-side adapter: exposure state is a control-plane concern.
-            exposures_suspended: false,
-            exposed: false,
-            created_at: r.created_at,
-            updated_at: r.updated_at,
-            archived_at: r.archived_at,
-            deleted_at: r.deleted_at,
-            usage: None,
-        }
-    }
-
     async fn hydrate_capability_rows(
         &self,
         org_id: i64,
@@ -2369,7 +2365,7 @@ impl DirectPlatformStore {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             self.org_id,
-            &everruns_platform::FeatureFlagPolicy::current(),
+            &crate::records::FeatureFlagPolicy::current(),
         )
         .await
         .map_err(|error| {

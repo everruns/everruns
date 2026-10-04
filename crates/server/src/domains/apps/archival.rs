@@ -3,9 +3,9 @@
 use super::queries as q;
 use crate::domains::agent_channels::redact_channel_for_response;
 use crate::domains::common::*;
+use crate::records::App;
 use everruns_contracts::typed_id::AppId;
 use everruns_core::{Permission, Policy, Rule};
-use everruns_platform::App;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

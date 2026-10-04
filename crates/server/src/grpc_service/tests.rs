@@ -584,7 +584,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
         .db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,
@@ -725,9 +725,9 @@ pub(crate) async fn start_grpc_test_server(
 
 #[tokio::test]
 async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
+    use everruns_capabilities::PlatformStore;
     use everruns_core::delegation_services::SessionCreationAuthority;
     use everruns_core::tools::{Tool, ToolExecutionResult};
-    use everruns_platform::PlatformStore;
 
     let service = test_worker_service_with_completing_runner().await;
     let (parent_id, parent_harness_id) = create_grpc_test_session(&service).await;
@@ -797,13 +797,11 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     let platform = adapter.for_execution(parent_id.uuid()).unwrap();
     let mut context = everruns_core::tool_context::ToolContext::new(parent_id);
     context.subagent_delegate = Some(std::sync::Arc::new(
-        everruns_platform::PlatformStoreSubagentDelegate(platform.clone()),
+        everruns_capabilities::PlatformStoreSubagentDelegate(platform.clone()),
     ));
-    context
-        .extensions
-        .insert(std::sync::Arc::new(everruns_platform::PlatformStoreExt(
-            platform.clone(),
-        )));
+    context.extensions.insert(std::sync::Arc::new(
+        everruns_capabilities::PlatformStoreExt(platform.clone()),
+    ));
     context.session_store = Some(adapter.clone());
     context.session_creation_authority = Some(
         everruns_worker::grpc_adapters::GrpcSessionCreationAuthority::new(
@@ -815,7 +813,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .unwrap(),
     );
 
-    let spawn_tool = everruns_platform::capabilities::SpawnSubagentAsAgentTool;
+    let spawn_tool = everruns_capabilities::capabilities::SpawnSubagentAsAgentTool;
     let spawn_result = spawn_tool
         .execute_with_context(
             serde_json::json!({
@@ -916,7 +914,8 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             "required_scopes": ["fake_aws:rds:create"]
         }]
     });
-    let handoff_tool = everruns_platform::capabilities::SpawnAgentHandoffTool::new(&handoff_config);
+    let handoff_tool =
+        everruns_capabilities::capabilities::SpawnAgentHandoffTool::new(&handoff_config);
 
     context.connection_resolver = Some(Arc::new(AllowingConnectionResolver));
     let handoff_result = handoff_tool

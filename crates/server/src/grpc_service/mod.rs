@@ -23,6 +23,7 @@ mod tests_worker_file_ctx;
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::session_files::WorkspaceFileService;
 use crate::domains::sessions::SessionService;
+use crate::records::wire::{schema_agent_to_proto, schema_harness_to_proto};
 use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskBroadcaster;
@@ -236,7 +237,7 @@ use everruns_internal_protocol::proto::{
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,
     datetime_to_proto_timestamp as ip_datetime_to_proto_timestamp, proto_event_request_to_schema,
-    schema_agent_to_proto, schema_event_to_proto, schema_harness_to_proto,
+    schema_event_to_proto,
 };
 use std::pin::Pin;
 use std::sync::Arc;
@@ -751,7 +752,7 @@ impl WorkerServiceImpl {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             org_id,
-            &everruns_platform::FeatureFlagPolicy::current(),
+            &crate::records::FeatureFlagPolicy::current(),
         )
         .await
         .map_err(|error| {
@@ -934,7 +935,7 @@ impl WorkerServiceImpl {
     async fn build_mcp_tool_definitions(
         &self,
         org_id: i64,
-        agent: &everruns_platform::Agent,
+        agent: &crate::records::Agent,
     ) -> Vec<McpToolDef> {
         use everruns_core::mcp_server::mcp_tool_name;
         use everruns_mcp::parse_mcp_capability_id;

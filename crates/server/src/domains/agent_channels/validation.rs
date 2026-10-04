@@ -1,12 +1,13 @@
 use super::invocation::{cron_min_interval_seconds, normalize_cron_expression};
 use crate::domains::common::{CommandError, classify_anyhow};
-use crate::storage::password::hash_password;
-use everruns_platform::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
-use everruns_platform::{
+use crate::records::PublicToolVisibility;
+use crate::records::agent_channel::{ScheduleChannelConfig, WebhookChannelConfig};
+use crate::records::{
     A2aChannelConfig, AgUiChannelConfig, ApiChannelConfig, ChannelAuthConfig, ChannelAuthMode,
     ChannelAuthProviderConfig, ChannelType, FcpChannelConfig, PublicChatChannelConfig,
-    PublicToolVisibility, SlackChannelConfig,
+    SlackChannelConfig,
 };
+use crate::storage::password::hash_password;
 use serde_json::Value;
 use std::str::FromStr;
 
@@ -336,7 +337,7 @@ pub(crate) fn normalize_and_validate_channel_config(
 
 fn validate_session_binding(
     channel_type: &ChannelType,
-    binding: everruns_platform::SessionBinding,
+    binding: everruns_core::channel::SessionBinding,
 ) -> Result<(), CommandError> {
     if channel_type.allows_binding(binding) {
         Ok(())

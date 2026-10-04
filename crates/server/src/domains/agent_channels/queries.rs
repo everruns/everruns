@@ -3,11 +3,11 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use crate::storage::StorageBackend;
-use crate::storage::encryption::EncryptionService;
-use everruns_platform::{
+use crate::records::{
     AgentChannel, AgentChannelId, AgentVersionPolicy, ChannelAuthConfig, ChannelStatus, ChannelType,
 };
+use crate::storage::StorageBackend;
+use crate::storage::encryption::EncryptionService;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -416,7 +416,7 @@ mod tests {
         let channel = channel_row_to_channel(None, row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(everruns_platform::ChannelAuthMode::GoogleOidc)
+            Some(crate::records::ChannelAuthMode::GoogleOidc)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }
@@ -433,7 +433,7 @@ mod tests {
         let channel = channel_row_to_channel(Some(&encryption()), row);
         assert_eq!(
             channel.auth.map(|auth| auth.mode),
-            Some(everruns_platform::ChannelAuthMode::HttpBasic)
+            Some(crate::records::ChannelAuthMode::HttpBasic)
         );
         assert!(channel.channel_config.get("auth").is_none());
     }

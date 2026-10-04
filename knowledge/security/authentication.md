@@ -492,7 +492,7 @@ See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access
 
 #### Anonymous User (seeded at startup)
 
-For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed.rs`. Constants in `crates/platform/src/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
+For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed.rs`. Constants in `crates/server/src/records/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
 
 When the same database later starts in an authenticated mode (`admin` / `full` / `external`), startup seed revokes every personal access token owned by that anonymous identity, and PAT validation rejects the anonymous user id even if a row remains. Local `none` mode still allows minting anonymous PATs for disposable development databases. See TM-AUTH-032 and EVE-1153.
 

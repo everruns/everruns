@@ -12,13 +12,13 @@ use crate::kernel_imports::{
     contracts::url_validation::validate_safe_url, merge_scoped_mcp_servers,
     resolve_runtime_capabilities,
 };
+use crate::records::{Agent, Harness, Session};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_mcp::{CacheHints, CacheScope, McpCapability};
-use everruns_platform::{Agent, Harness, Session};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};

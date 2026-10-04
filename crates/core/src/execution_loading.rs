@@ -11,7 +11,7 @@ use async_trait::async_trait;
 ///
 /// Implementations project their stored agent records into the portable
 /// [`AgentDefinition`] — the authored execution configuration. Stored
-/// `Agent`/`AgentVersion` persistence records live in `everruns-platform` and
+/// `Agent`/`AgentVersion` persistence records live in `crates/server/src/records` and
 /// never cross this boundary.
 ///
 /// Contract: records that exist but cannot execute (archived or deleted) must
@@ -66,7 +66,7 @@ impl<T: AgentStore + ?Sized> AgentStore for std::sync::Arc<T> {
 /// Parent-chain inheritance is resolved *behind* this seam (root-to-leaf, via
 /// the same overlay merge semantics the runtime uses), so callers receive one
 /// effective layer. Stored `Harness` persistence records live in
-/// `everruns-platform` and never cross this boundary.
+/// `crates/server/src/records` and never cross this boundary.
 ///
 /// Contract: records that exist but cannot execute (archived or deleted) must
 /// yield an error from [`HarnessStore::get_harness`], so lifecycle validation
@@ -121,7 +121,7 @@ impl<T: HarnessStore + ?Sized> HarnessStore for std::sync::Arc<T> {
 /// [`ExecutionSession`] — the session correlation values, per-session
 /// configuration layer, and neutral execution state a turn consumes. The
 /// persisted `Session` aggregate (facets, participants, ownership summaries,
-/// timestamps, UI metadata) lives in `everruns-platform` and never crosses
+/// timestamps, UI metadata) lives in `crates/server/src/records` and never crosses
 /// this boundary.
 #[async_trait]
 pub trait SessionStore: Send + Sync {
@@ -136,6 +136,6 @@ impl<T: SessionStore + ?Sized> SessionStore for std::sync::Arc<T> {
     }
 }
 
-// EVE-897: `SessionMutator` moved to `everruns-platform`. Mutating stored
+// EVE-897: `SessionMutator` is a neutral host service in `everruns-host`. Mutating stored
 // session metadata is a hosted control-plane service; the capability that
 // uses it resolves `SessionMutatorExt` from the typed extension bag.

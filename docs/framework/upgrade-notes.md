@@ -9,6 +9,27 @@ upgrades across a release that moved or renamed public Rust APIs. Releases
 that need no code changes are not listed. For every release, see the
 [changelog](https://github.com/everruns/everruns/blob/main/CHANGELOG.md).
 
+## 0.39
+
+### Hosted capabilities and server records
+
+Replace the `everruns-platform` dependency with `everruns-capabilities` and
+keep the hosted capability features your application uses. Change hosted
+registry and runtime-store imports from `everruns_platform::` to
+`everruns_capabilities::`. The platform name receives one deprecated forwarding
+release before removal.
+
+Library hosts use `everruns_core::AgentDefinition`, `HarnessDefinition`, and
+`ExecutionSession` for execution configuration and session views. Persisted
+agent, harness, session, model, provider, skill, and other management records
+are owned by the server and are no longer exposed by a library crate. Store
+adapters resolve authorization, versions, inheritance, and lifecycle before
+returning portable values. Extensions continue to implement the service
+interfaces in `everruns-contracts`.
+
+HTTP API paths and serialized responses are unchanged by this ownership move;
+HTTP clients need no migration.
+
 ## 0.38
 
 ### Runtime store migration

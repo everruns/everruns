@@ -455,6 +455,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-capabilities"
+version = "0.38.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-contracts",
+ "everruns-core",
+ "everruns-host",
+ "inventory",
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-contracts"
 version = "0.38.0"
 dependencies = [
@@ -602,26 +622,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-platform"
-version = "0.38.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "everruns-host",
- "inventory",
- "jsonschema",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "external-builtin-pack"
 version = "0.0.0"
 dependencies = [
@@ -679,9 +679,9 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns",
+ "everruns-capabilities",
  "everruns-contracts",
  "everruns-core",
- "everruns-platform",
  "serde_json",
  "tokio",
 ]

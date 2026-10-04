@@ -23,13 +23,13 @@ Knowledge Bases and Knowledge Indexes, Memories, subagents and agent handoff,
 background/session tasks and schedules, user hooks, model scouting,
 OpenRouter workspace management, citations, and platform-management tools need
 hosted persistence or orchestration. Their implementations and narrow service
-contracts live in `everruns-platform`; the server and worker product presets
+contracts live in `everruns-capabilities`; the server and worker product presets
 register them explicitly.
 
 This boundary prevents the public Framework from promising tools whose stores,
 tenant scope, workers, or authorization services are absent. It does not change
 persisted capability IDs or JSON configuration. A specialized low-level host
-can depend on `everruns-platform`, install the required services, and select the
+can depend on `everruns-capabilities`, install the required services, and select the
 hosted registry deliberately.
 
 Moving an agent to the Platform keeps its capability IDs and configuration;

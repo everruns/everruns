@@ -30,16 +30,13 @@ use everruns_core::{
     session_services::LeasedResourceStore, tool_execution::BudgetChecker,
     tool_execution::PaymentAuthority,
 };
-// EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
-// still transports it between control plane and worker; host/engine only ever
-// see the projected `AgentDefinition` / resolved execution snapshot.
+// The server projects management records into portable definitions and neutral
+// lifecycle blockers before they cross this worker boundary.
+use crate::phase_reads::PhaseReads;
+use crate::write_behind::{WriteBehind, provisional_event};
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::tool_types::ToolDefinition;
-use everruns_platform::{Agent, Harness};
-
-use crate::phase_reads::PhaseReads;
-use crate::write_behind::{WriteBehind, provisional_event};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -62,12 +59,63 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // Agent Operations
     // =========================================================================
 
-    /// Get the stored agent record by ID (platform-side transport; never
-    /// handed to host execution — see `AgentStore for OrgAdapter`).
-    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>>;
+    /// Server-projected execution definition; records stay on the control plane.
+    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<AgentDefinition>>;
+    async fn get_harness(&self, org_id: i64, harness_id: Uuid)
+    -> Result<Option<HarnessDefinition>>;
 
-    /// Get harness by ID
-    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>>;
+    async fn get_agent_blocker(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(self
+            .get_agent(org_id, agent_id)
+            .await?
+            .is_none()
+            .then_some(everruns_core::DependencyBlocker::AgentDeleted))
+    }
+    async fn get_harness_blocker(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(self
+            .get_harness(org_id, harness_id)
+            .await?
+            .is_none()
+            .then_some(everruns_core::DependencyBlocker::HarnessDeleted))
+    }
+
+    /// Resolve one source read into a portable definition and lifecycle probe.
+    /// The outer error is a fetch failure; the inner projection error must stay
+    /// distinct so a lifecycle probe can succeed without executing that record.
+    /// Concrete adapters override this to fetch once; defaults preserve test
+    /// adapters that implement the individual definition and blocker methods.
+    async fn resolve_agent_read(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<(
+        Result<Option<AgentDefinition>>,
+        Option<everruns_core::DependencyBlocker>,
+    )> {
+        let blocker = self.get_agent_blocker(org_id, agent_id).await?;
+        Ok((self.get_agent(org_id, agent_id).await, blocker))
+    }
+
+    /// Harness counterpart of `resolve_agent_read`, after inheritance merging.
+    async fn resolve_harness_read(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+    ) -> Result<(
+        Result<Option<HarnessDefinition>>,
+        Option<everruns_core::DependencyBlocker>,
+    )> {
+        let blocker = self.get_harness_blocker(org_id, harness_id).await?;
+        Ok((self.get_harness(org_id, harness_id).await, blocker))
+    }
 
     // =========================================================================
     // Session Operations
@@ -363,7 +411,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         _org_id: i64,
         _session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
         None
     }
 
@@ -373,7 +421,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// session storage.
     fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
+    ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
         None
     }
 
@@ -433,7 +481,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_platform::PlatformStore>;
+    ) -> Arc<dyn everruns_capabilities::PlatformStore>;
 
     /// Get the user connection resolver for lazy token lookup.
     fn connection_resolver(
@@ -537,7 +585,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     /// Knowledge store backing the `search_knowledge` tool. Default: `None`.
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_capabilities::KnowledgeStore>> {
         None
     }
 
@@ -647,7 +695,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 /// Turn context loaded in one batched call
 #[derive(Debug, Clone)]
 pub struct TurnContext {
-    pub agent: Option<Agent>,
+    pub agent: Option<AgentDefinition>,
     pub session: ExecutionSession,
     pub messages: Vec<RuntimeMessage>,
     pub model: Option<ModelSpec>,
@@ -752,7 +800,7 @@ impl<A: WorkerAdapters> OrgAdapter<A> {
         self
     }
 
-    async fn agent_record(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+    async fn agent_definition(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
         match &self.reads {
             Some(reads) => {
                 reads
@@ -763,7 +811,7 @@ impl<A: WorkerAdapters> OrgAdapter<A> {
         }
     }
 
-    async fn harness_record(&self, harness_id: HarnessId) -> Result<Option<Harness>> {
+    async fn harness_definition(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
         match &self.reads {
             Some(reads) => {
                 reads
@@ -783,47 +831,48 @@ impl<A: WorkerAdapters> OrgAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::execution_loading::AgentStore for OrgAdapter<A> {
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
-        // Loading seam (EVE-877): project the stored record into the portable
-        // execution definition; archived/deleted records fail here, before
-        // host execution.
-        self.agent_record(agent_id)
-            .await?
-            .map(|agent| agent.execution_definition())
-            .transpose()
+    async fn get_agent(&self, id: AgentId) -> Result<Option<AgentDefinition>> {
+        self.agent_definition(id).await
     }
-
     async fn get_agent_blocker(
         &self,
-        agent_id: AgentId,
+        id: AgentId,
     ) -> Result<Option<everruns_core::DependencyBlocker>> {
-        Ok(match self.agent_record(agent_id).await? {
-            Some(agent) => agent.dependency_blocker(),
-            None => Some(everruns_core::DependencyBlocker::AgentDeleted),
-        })
+        match &self.reads {
+            Some(reads) => {
+                reads
+                    .agent_blocker(&self.adapters, self.org_id, id.uuid())
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_agent_blocker(self.org_id, id.uuid())
+                    .await
+            }
+        }
     }
 }
-
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::execution_loading::HarnessStore for OrgAdapter<A> {
-    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
-        // Loading seam (EVE-881): WorkerAdapters transports the pre-merged
-        // stored record; project it into the portable execution definition,
-        // failing archived/deleted records here.
-        self.harness_record(harness_id)
-            .await?
-            .map(|harness| harness.execution_definition())
-            .transpose()
+    async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>> {
+        self.harness_definition(id).await
     }
-
     async fn get_harness_blocker(
         &self,
-        harness_id: HarnessId,
+        id: HarnessId,
     ) -> Result<Option<everruns_core::DependencyBlocker>> {
-        Ok(match self.harness_record(harness_id).await? {
-            Some(harness) => harness.dependency_blocker(),
-            None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
-        })
+        match &self.reads {
+            Some(reads) => {
+                reads
+                    .harness_blocker(&self.adapters, self.org_id, id.uuid())
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_harness_blocker(self.org_id, id.uuid())
+                    .await
+            }
+        }
     }
 }
 
@@ -846,7 +895,7 @@ impl<A: WorkerAdapters> everruns_core::execution_loading::SessionStore for OrgAd
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_platform::SessionMutator for OrgAdapter<A> {
+impl<A: WorkerAdapters> everruns_capabilities::SessionMutator for OrgAdapter<A> {
     async fn update_session_title(
         &self,
         session_id: SessionId,

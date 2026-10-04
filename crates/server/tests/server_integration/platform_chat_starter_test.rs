@@ -60,7 +60,7 @@ async fn platform_chat_starter_is_unique_per_owner_even_after_archive() {
     let starter = CreateSessionRow {
         playground_user_id: None,
 
-        source: everruns_platform::SessionSource::Chat,
+        source: everruns_server::records::SessionSource::Chat,
         workspace_id: None,
         org_id: TEST_ORG_ID,
         app_id: None,

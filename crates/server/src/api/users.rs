@@ -3,6 +3,7 @@
 // Decision: Cookie-based org selection for consistent auth across all requests (including SSE)
 
 use crate::auth::audit;
+use crate::records::{AuditEvent, ManagementAction, validate_org_public_id};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -12,7 +13,6 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
-use everruns_platform::{AuditEvent, ManagementAction, validate_org_public_id};
 
 use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};

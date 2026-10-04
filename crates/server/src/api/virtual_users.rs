@@ -9,6 +9,7 @@ use crate::domains::virtual_users::types::{
 use crate::domains::virtual_users::{
     VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW,
 };
+use crate::records::VirtualUser;
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -17,7 +18,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::{Caller, ResourceConfigResponse, VirtualUser, evaluate_policies_with};
+use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
 use std::sync::Arc;
 
 use super::common::{ErrorResponse, PaginatedResponse, impl_auth_state};

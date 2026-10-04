@@ -3,8 +3,8 @@
 use super::*;
 
 #[async_trait]
-impl everruns_platform::PlatformStore for DirectPlatformStore {
-    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
+impl everruns_capabilities::PlatformStore for DirectPlatformStore {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_capabilities::PlatformStore>> {
         let mut bound = self.clone();
         bound.input_message_id = Some(id);
         Some(Arc::new(bound))
@@ -77,7 +77,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 
     async fn create_session_with_options(
         &self,
-        request: everruns_platform::PlatformCreateSessionRequest,
+        request: everruns_capabilities::PlatformCreateSessionRequest,
     ) -> everruns_contracts::error::Result<everruns_core::ExecutionSession> {
         self.execute_runtime_command(
             "create_session",
@@ -151,7 +151,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         limit: Option<usize>,
-    ) -> everruns_contracts::error::Result<Vec<everruns_platform::PlatformMessage>> {
+    ) -> everruns_contracts::error::Result<Vec<everruns_capabilities::PlatformMessage>> {
         let mut messages: Vec<crate::api::messages::Message> = self
             .execute_domain_command(
                 "list_messages",
@@ -183,7 +183,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
                 if content.is_empty() {
                     return None;
                 }
-                Some(everruns_platform::PlatformMessage {
+                Some(everruns_capabilities::PlatformMessage {
                     role: match message.role {
                         crate::api::messages::MessageRole::User => "user".to_string(),
                         _ => "agent".to_string(),

@@ -5,9 +5,15 @@ use super::types::{
 use super::validation::{limit_validation_error, validation_error};
 use super::{platform_chat_starter as starter, queries as q};
 use crate::domains::common::*;
+use crate::records::ANONYMOUS_USER_ID;
+use crate::records::{
+    Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+    SessionSource,
+};
 use crate::services::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use chrono::{DateTime, Utc};
+use everruns_capabilities::capabilities::session_title_updated_event;
 use everruns_contracts::model_profiles::get_model_profile;
 use everruns_contracts::provider::DriverId;
 use everruns_contracts::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
@@ -16,12 +22,6 @@ use everruns_core::events::{
     TurnCancelledData, deserialize_event_data,
 };
 use everruns_core::{RuntimeMessage, SessionContextReport};
-use everruns_platform::ANONYMOUS_USER_ID;
-use everruns_platform::capabilities::session_title_updated_event;
-use everruns_platform::{
-    Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
-    SessionSource,
-};
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -1401,7 +1401,7 @@ impl Command for CancelSession {
         let session_id = q::parse_session_id(&self.session_id)?;
         let session = q::get_session(ctx, session_id, None).await?;
 
-        if session.status != everruns_platform::SessionStatus::Active {
+        if session.status != crate::records::SessionStatus::Active {
             return Ok(CancelTurnResponse {
                 status: CancelStatus::NoOp,
                 message: "No turn currently running".to_string(),

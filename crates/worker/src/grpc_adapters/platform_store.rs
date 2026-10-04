@@ -3,8 +3,8 @@
 use super::*;
 
 #[async_trait]
-impl everruns_platform::PlatformStore for GrpcOrgAdapter {
-    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
+impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
+    fn for_execution(&self, id: Uuid) -> Option<Arc<dyn everruns_capabilities::PlatformStore>> {
         let mut bound = self.clone();
         bound.input_message_id = Some(id);
         Some(Arc::new(bound))
@@ -65,7 +65,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
 
     async fn create_session_with_options(
         &self,
-        request: everruns_platform::PlatformCreateSessionRequest,
+        request: everruns_capabilities::PlatformCreateSessionRequest,
     ) -> Result<everruns_core::ExecutionSession> {
         self.execute_runtime_command(
             "create_session",
@@ -141,7 +141,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         &self,
         session_id: SessionId,
         limit: Option<usize>,
-    ) -> Result<Vec<everruns_platform::PlatformMessage>> {
+    ) -> Result<Vec<everruns_capabilities::PlatformMessage>> {
         let mut messages: Vec<RuntimeMessage> = self
             .execute_platform_command(
                 "list_messages",
@@ -173,7 +173,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
                 if content.is_empty() {
                     return None;
                 }
-                Some(everruns_platform::PlatformMessage {
+                Some(everruns_capabilities::PlatformMessage {
                     role: match message.role {
                         everruns_core::RuntimeMessageRole::User => "user".to_string(),
                         _ => "agent".to_string(),

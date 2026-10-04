@@ -10,6 +10,6 @@ chrono = "0.4"
 everruns = { path = "../../../../../../crates/everruns", default-features = false }
 everruns-core = { path = "../../../../../../crates/core", default-features = false }
 everruns-contracts = { path = "../../../../../../crates/contracts", default-features = false }
-everruns-platform = { path = "../../../../../../crates/platform", default-features = false }
+everruns-capabilities = { path = "../../../../../../crates/capabilities", default-features = false }
 serde_json = "1"
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

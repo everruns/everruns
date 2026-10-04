@@ -13,6 +13,7 @@ use crate::kernel_imports::{
     AgentDefinition, Caller, CapabilityRegistry, contracts::driver_registry::DriverRegistry,
     contracts::error::AgentLoopError,
 };
+use crate::records::Harness;
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::StorageBackend;
 use anyhow::Result;
@@ -23,8 +24,7 @@ use everruns_core::command::{
 use everruns_core::execution_loading::AgentStore;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
 use everruns_host::StoreCommandHost;
-use everruns_platform::Harness;
-use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
+use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -109,7 +109,7 @@ impl SessionCommandService {
     pub async fn authorize_playground_input(
         &self,
         caller: &Caller,
-        flags: &everruns_platform::FeatureFlags,
+        flags: &crate::records::FeatureFlags,
         resolver: Arc<dyn everruns_core::PermissionResolver>,
         session_id: SessionId,
     ) -> Result<(), crate::domains::common::CommandError> {
@@ -226,7 +226,7 @@ impl SessionCommandService {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Result<(Harness, Option<AgentDefinition>, everruns_platform::Session)> {
+    ) -> Result<(Harness, Option<AgentDefinition>, crate::records::Session)> {
         let adapters = self.adapters();
         let agent_store = OrgAdapter::new(adapters.clone(), org_id);
 
@@ -240,7 +240,7 @@ impl SessionCommandService {
         // status-agnostic platform surfaces, so they read the record rather
         // than the execution-validated definition (EVE-881).
         let harness = adapters
-            .get_harness(org_id, session.harness_id.uuid())
+            .get_harness_impl(org_id, session.harness_id.uuid())
             .await?
             .ok_or(ResourceNotFoundError::new("Harness"))?;
         let agent = match session.agent_id {
@@ -255,7 +255,7 @@ impl SessionCommandService {
 async fn authorize_platform_chat_owner(
     db: &StorageBackend,
     caller: &Caller,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
 ) -> Result<()> {
     if !crate::domains::sessions::platform_chat_owner_matches_session(db, caller, session).await? {
         return Err(

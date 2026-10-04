@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::records::App;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -7,7 +8,6 @@ use axum::{
 };
 use everruns_core::Caller;
 use everruns_durable::WorkflowEventStore;
-use everruns_platform::App;
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::apps::types::ListAppsQuery;

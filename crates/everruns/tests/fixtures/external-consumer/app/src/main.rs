@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let engine = InMemoryEngine::new();
     // EVE-1041: the shared `generic` floor, not a hand-rolled approximation of
     // it. Using it here is what proves the acceptance bar — an application can
-    // adopt the platform's default capability set without `everruns-platform`
+    // adopt the platform's default capability set without `everruns-capabilities`
     // entering the default facade graph, which is the whole point of this
     // fixture.
     let harness = Harness::worker_base();

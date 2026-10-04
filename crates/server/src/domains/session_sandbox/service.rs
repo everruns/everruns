@@ -9,15 +9,15 @@
 
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use async_trait::async_trait;
+use everruns_capabilities::session_sandbox::{
+    SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
+    session_sandbox_config_from_capabilities,
+};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::{
     Event, EventData, EventListener, connection_services::UserConnectionResolver,
     session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
     session_services::SessionStorageStore, tool_context::ToolContext,
-};
-use everruns_platform::session_sandbox::{
-    SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
-    session_sandbox_config_from_capabilities,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -172,10 +172,10 @@ impl SessionSandboxService {
         if let Some(pool) = self.db.pool() {
             let store = Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()));
             context.extensions.insert(Arc::new(
-                everruns_platform::sandbox_state::SandboxStateStoreExt(store.clone()),
+                everruns_capabilities::sandbox_state::SandboxStateStoreExt(store.clone()),
             ));
             context.extensions.insert(Arc::new(
-                everruns_platform::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
+                everruns_capabilities::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
             ));
         }
         context
@@ -222,22 +222,22 @@ impl EventListener for SessionSandboxEventListener {
 mod tests {
     use super::*;
     use crate::storage::{CreateHarnessRow, CreateSessionRow, StorageBackend};
-    use everruns_core::{
-        DEFAULT_ORG_ID, InitialFile, connection_services::UserConnectionResolver,
-        session_services::SessionStorageStore,
-    };
-    use everruns_platform::session_sandbox::{
+    use everruns_capabilities::session_sandbox::{
         SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
         SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
         SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
         load_session_sandbox_state,
+    };
+    use everruns_core::{
+        DEFAULT_ORG_ID, InitialFile, connection_services::UserConnectionResolver,
+        session_services::SessionStorageStore,
     };
     use serde_json::json;
 
     struct TestSessionSandboxProvider;
 
     inventory::submit! {
-        everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
+        everruns_capabilities::session_sandbox::SessionSandboxProviderPlugin {
             factory: || Box::new(TestSessionSandboxProvider),
         }
     }
@@ -356,7 +356,7 @@ mod tests {
     struct ResolverRequiredSessionSandboxProvider;
 
     inventory::submit! {
-        everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
+        everruns_capabilities::session_sandbox::SessionSandboxProviderPlugin {
             factory: || Box::new(ResolverRequiredSessionSandboxProvider),
         }
     }
@@ -552,7 +552,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_platform::SessionSource::Api,
+                source: crate::records::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
@@ -618,7 +618,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_platform::SessionSource::Api,
+                source: crate::records::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
@@ -686,7 +686,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_platform::SessionSource::Api,
+                source: crate::records::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,

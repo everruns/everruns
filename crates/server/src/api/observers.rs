@@ -8,10 +8,10 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use std::sync::Arc;
 
-use everruns_core::Caller;
-use everruns_platform::observer::{
+use crate::records::observer::{
     Observer, ObserverMatch, ObserverScorerConfig, ObserverStatus, TraceScore,
 };
+use everruns_core::Caller;
 
 use crate::api::common::{ApiResult, ErrorResponse, ListResponse};
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};

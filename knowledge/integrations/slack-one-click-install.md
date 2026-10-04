@@ -273,7 +273,7 @@ reverse-engineering.
 ## Files
 
 - `crates/server/src/slack_provisioning.rs` — `configure`, the two early returns above, the provisioner, and the supervised `slack_token_rotation` sweep
-- `crates/platform/src/slack_provisioning.rs` — the `SlackAppProvisioner` trait and its unavailable default
+- `crates/server/src/records/slack_provisioning.rs` — the `SlackAppProvisioner` trait and its unavailable default
 - `crates/server/src/storage/org_slack_connections.rs` — per-workspace connection storage; migrations `145`, `146` and `159`
 - `crates/server/src/api/slack_install.rs` — install and connection routes, and their deliberately different auth
 - `crates/server/src/api/slack_events/manifest.rs` — manifest generation and the endpoint URLs it declares

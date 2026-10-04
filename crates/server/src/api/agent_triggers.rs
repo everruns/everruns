@@ -18,6 +18,7 @@ use crate::domains::agent_triggers::{
 use crate::domains::common::Command;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::records::AgentTrigger;
 use crate::services::CapabilityService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -28,7 +29,6 @@ use axum::{
 };
 use everruns_core::Caller;
 use everruns_durable::WorkflowEventStore;
-use everruns_platform::AgentTrigger;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::IntoParams;
@@ -263,7 +263,7 @@ pub struct DeliveriesQuery {
         DeliveriesQuery
     ),
     responses(
-        (status = 200, description = "Recent deliveries", body = Vec<everruns_platform::AgentTriggerDelivery>),
+        (status = 200, description = "Recent deliveries", body = Vec<crate::records::AgentTriggerDelivery>),
         (status = 404, description = "Trigger not found", body = ErrorResponse)
     ),
     tag = "agent-triggers"
@@ -273,7 +273,7 @@ pub async fn list_agent_trigger_deliveries(
     State(state): State<AppState>,
     Path((agent_id, trigger_id)): Path<(String, String)>,
     Query(query): Query<DeliveriesQuery>,
-) -> ApiResult<Vec<everruns_platform::AgentTriggerDelivery>> {
+) -> ApiResult<Vec<crate::records::AgentTriggerDelivery>> {
     let deliveries = ListAgentTriggerDeliveries {
         agent_id,
         trigger_id,

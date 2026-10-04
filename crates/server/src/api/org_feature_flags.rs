@@ -8,13 +8,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::records::FeatureFlagMap;
+use crate::records::validate_org_public_id;
 use axum::{
     Json, Router,
     extract::{Path, State},
     routing::get,
 };
-use everruns_platform::FeatureFlagMap;
-use everruns_platform::validate_org_public_id;
 
 use crate::auth::middleware::{AuthState, OrgAdmin, PlatformUser};
 use crate::services::org_feature_flags::{
@@ -31,14 +31,14 @@ use super::organizations::is_member_of_public_db;
 pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
-    pub feature_flag_policy: everruns_platform::FeatureFlagPolicy,
+    pub feature_flag_policy: crate::records::FeatureFlagPolicy,
 }
 
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
         auth: AuthState,
-        feature_flag_policy: everruns_platform::FeatureFlagPolicy,
+        feature_flag_policy: crate::records::FeatureFlagPolicy,
     ) -> Self {
         Self {
             db,
