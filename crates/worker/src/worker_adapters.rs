@@ -864,9 +864,11 @@ impl<A: WorkerAdapters> everruns_platform::SessionMutator for OrgAdapter<A> {
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for OrgAdapter<A> {
     async fn get_model_spec(&self, model_id: ModelId) -> Result<Option<ModelSpec>> {
-        self.adapters
-            .get_model_spec(self.org_id, model_id.uuid())
-            .await
+        let (org_id, id) = (self.org_id, model_id.uuid());
+        match &self.reads {
+            Some(reads) => reads.model_spec(&self.adapters, org_id, id).await,
+            None => self.adapters.get_model_spec(org_id, id).await,
+        }
     }
 
     async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>> {
@@ -878,18 +880,38 @@ impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for Or
         provider: &everruns_contracts::ProviderKey,
         session: SessionId,
     ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
-        self.adapters
-            .get_provider_config_for_session(self.org_id, provider, session)
-            .await
+        let org_id = self.org_id;
+        match &self.reads {
+            Some(reads) => {
+                let session = Some(session);
+                reads
+                    .provider_config(&self.adapters, org_id, provider, session)
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_provider_config_for_session(org_id, provider, session)
+                    .await
+            }
+        }
     }
 
     async fn get_provider_config(
         &self,
         provider: &everruns_contracts::runtime_provider::ProviderKey,
     ) -> Result<Option<everruns_contracts::driver_registry::ProviderConfig>> {
-        self.adapters
-            .get_provider_config(self.org_id, provider)
-            .await
+        match &self.reads {
+            Some(reads) => {
+                reads
+                    .provider_config(&self.adapters, self.org_id, provider, None)
+                    .await
+            }
+            None => {
+                self.adapters
+                    .get_provider_config(self.org_id, provider)
+                    .await
+            }
+        }
     }
 }
 
