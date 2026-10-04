@@ -20,8 +20,8 @@
 
 use std::sync::{Arc, Mutex};
 
+use crate::core::{Event, EventData, EventRequest};
 use everruns_contracts::typed_id::EventId;
-use everruns_core::{Event, EventData, EventRequest};
 use std::future::Future;
 use std::pin::Pin;
 use tokio::sync::watch;
@@ -29,11 +29,11 @@ use tokio::sync::watch;
 type Store = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 const QUEUED: &[&str] = &[
-    everruns_core::events::REASON_STARTED,
-    everruns_core::events::CAPABILITY_USAGE,
-    everruns_core::events::OUTPUT_MESSAGE_STARTED,
-    everruns_core::events::ACT_STARTED,
-    everruns_core::events::TOOL_STARTED,
+    crate::core::events::REASON_STARTED,
+    crate::core::events::CAPABILITY_USAGE,
+    crate::core::events::OUTPUT_MESSAGE_STARTED,
+    crate::core::events::ACT_STARTED,
+    crate::core::events::TOOL_STARTED,
 ];
 
 /// Ordered background queue for one phase's lifecycle events.
@@ -153,8 +153,8 @@ mod tests {
 
     #[test]
     fn only_lifecycle_starts_without_reasoning_state_are_queued() {
+        use crate::core::{EventContext, OutputMessageStartedData};
         use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
-        use everruns_core::{EventContext, OutputMessageStartedData};
 
         let started = |reasoning_state| {
             EventRequest::new(
@@ -180,7 +180,7 @@ mod tests {
         assert!(!WriteBehind::queues(&started(Some(state))));
 
         let mut completed = started(None);
-        completed.event_type = everruns_core::events::OUTPUT_MESSAGE_COMPLETED.to_string();
+        completed.event_type = crate::core::events::OUTPUT_MESSAGE_COMPLETED.to_string();
         assert!(!WriteBehind::queues(&completed));
     }
 }
