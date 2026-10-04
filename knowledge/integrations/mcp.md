@@ -25,6 +25,7 @@ Routing is intentionally split:
 - MCP JSON-RPC lives at `/mcp`
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
 - Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource)
+- The MCP server card lives at `/.well-known/mcp/server-card.json`. Its `version` and `serverInfo.version` are the running server's package version, the same value `initialize` and `server/discover` report and the same value a release tags. There is no separately edited version string. See [`MCP_SERVER_VERSION`](../../crates/server/src/api/mcp_endpoint/mod.rs).
 
 Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`knowledge/integrations/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`knowledge/integrations/runtime-mcp.md`](runtime-mcp.md). The client speaks the legacy (`2025-03-26`), current (`2025-06-18`), and 2026 stateless RC (`2026-07-28`) eras, auto-negotiated per server, see [`knowledge/integrations/mcp-servers.md`](mcp-servers.md) ("Multi-era protocol support").
 

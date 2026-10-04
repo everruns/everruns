@@ -239,6 +239,10 @@ async fn server_discover_advertises_mcp_apps() {
         result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"],
         "everruns"
     );
+    assert_eq!(
+        result["_meta"]["io.modelcontextprotocol/serverInfo"]["version"],
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
