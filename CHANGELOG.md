@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-10-04
+
+### What's Changed
+
+- Scope private user memory to the session whose runtime is executing, while preserving owner access ([#4120](https://github.com/everruns/everruns/pull/4120)).
+- Prefetch phase reads and preserve startup-event ordering, with events flushed before the phase completes ([#4143](https://github.com/everruns/everruns/pull/4143)).
+- Show pending Slack installation issues with permission recovery guidance, fresh checks, and personal reminder snoozing ([#4134](https://github.com/everruns/everruns/pull/4134)). Health visibility follows current membership and agent-access policy.
+- Resolve the turn's model and session-specific provider configuration while history loads, sharing concurrent setup reads ([#4145](https://github.com/everruns/everruns/pull/4145)).
+- Add an optional Threads workspace beside permanent Chat, including conversation search, ongoing work, resolve/reopen, and a mobile drawer ([#4146](https://github.com/everruns/everruns/pull/4146)). Organization owners/admins opt in through Settings → Features; disabling it preserves conversations and URLs.
+- Reduce the durable worker phase hand-off from five round trips to three, preserving completion and signal-drain fallbacks ([#4147](https://github.com/everruns/everruns/pull/4147)).
+- Apply pre-tool hooks to client-side tools before they are dispatched, preserving approval and policy checks ([#4148](https://github.com/everruns/everruns/pull/4148)).
+- Remove the misleading Chat share button and simplify permanent Chat navigation ([#4150](https://github.com/everruns/everruns/pull/4150), [#4153](https://github.com/everruns/everruns/pull/4153)).
+- refactor(server): own control-plane records and hosted capabilities ([#4081](https://github.com/everruns/everruns/pull/4081)) by [@chaliy](https://github.com/chaliy)
+
+Hosted capabilities now have a canonical SDK crate, `everruns-capabilities`. Persisted control-plane records and their lifecycle types live in `crates/server/`; library hosts use portable runtime definitions. HTTP API shapes and existing authorization and execution behavior are preserved.
+
+### Upgrade notes
+
+- Deploy the server and worker together. The worker now declares the runtime session through the private protocol's `acting_for_session_id`. A new server paired with an older worker denies that runtime access to private `/memory/user` until the worker is updated; this restriction fails closed and does not change the caller's identity.
+- Run the standard server migration process before serving the new health endpoints. Migration 167 adds health issues and per-user reminders. Health remains available independently of notification delivery.
+- Chat threads remain disabled until an organization opts in through Settings → Features.
+
+### Crate Releases
+
+All 43 published crates ship at the platform version 0.39.0.
+
+`everruns-capabilities` is the canonical owner of hosted execution services and sandbox orchestration. `everruns-platform` ships its first deprecated forwarding release:
+
+- `everruns-platform` → `everruns-capabilities`
+
+Move hosted dependencies and imports to `everruns-capabilities`. Library hosts use portable `AgentDefinition`, `HarnessDefinition` and `ExecutionSession`; persisted management records remain server-owned. HTTP clients keep their existing API shapes. See the [SDK upgrade notes](https://github.com/everruns/everruns/blob/main/docs/framework/upgrade-notes.md).
+
+The platform shim leaves the workspace in 0.40.0 after this release is verified. Its published 0.39.0 version remains available. No capability is removed and no shim version is yanked.
+
 ## [0.38.0] - 2026-10-03
 
 ### Highlights
@@ -15,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Stock subagents for custom hosts** - Library hosts can run the stock subagent and handoff tools through a store of portable runtime definitions, without constructing control-plane records ([#4078](https://github.com/everruns/everruns/pull/4078)).
 
 ### What's Changed
+
+- feat(harness): add progressive foundation presets ([#4133](https://github.com/everruns/everruns/pull/4133)) by [@chaliy](https://github.com/chaliy)
+- perf(worker): stop serializing every control-plane RPC behind one lock ([#4140](https://github.com/everruns/everruns/pull/4140)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): make permanent Chat a clear navigation entry ([#4141](https://github.com/everruns/everruns/pull/4141)) by [@chaliy](https://github.com/chaliy)
+- feat(flags): name internal rollout and preserve SaaS opt-in ([#4137](https://github.com/everruns/everruns/pull/4137)) by [@chaliy](https://github.com/chaliy)
+- test(server): enable wait workflow model ([#4139](https://github.com/everruns/everruns/pull/4139)) by [@chaliy](https://github.com/chaliy)
+- feat(channels): add agent-controlled conversation messages ([#4126](https://github.com/everruns/everruns/pull/4126)) by [@chaliy](https://github.com/chaliy)
 
 - feat(chatgpt): add personal plan connections and shared drivers ([#4136](https://github.com/everruns/everruns/pull/4136)) by [@chaliy](https://github.com/chaliy)
 - perf(worker): skip history and model load in the phase setup turn context ([#4135](https://github.com/everruns/everruns/pull/4135)) by [@chaliy](https://github.com/chaliy)
@@ -31,6 +72,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - perf(worker): memoize session, harness, and agent reads during phase setup ([#4124](https://github.com/everruns/everruns/pull/4124)) by [@chaliy](https://github.com/chaliy)
 - fix(playground): shorten list creation button label ([#4123](https://github.com/everruns/everruns/pull/4123)) by [@chaliy](https://github.com/chaliy)
 - ci: run paid provider tests nightly or on relevant changes ([#4122](https://github.com/everruns/everruns/pull/4122)) by [@chaliy](https://github.com/chaliy)
+
+### Upgrade notes
+
+- Feature values `FEATURE_*=preview` must become `internal`; old feature values fail closed. The separate deployment grade `preview` remains valid. Existing SaaS boolean overrides need the documented adoption/off migration when adopting the grade engine.
+- Agent-controlled channel messages use `channel_post_message`. Stored `report_progress_only` settings normalize to `tool_only`; external hosts using the previous reporting adapter must implement the channel sender contract.
+- Conversation is the new platform harness default. Existing agents inheriting Generic are pinned to their prior harness; Generic remains available. Custom harnesses colliding with new built-in names retain their definitions and move to documented custom slugs.
+
+See the [SDK and platform upgrade notes](https://github.com/everruns/everruns/blob/v0.38.0/docs/framework/upgrade-notes.md).
 
 ### Crate Releases
 
