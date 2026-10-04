@@ -51,12 +51,15 @@ it("preserves a failed answer for retry", async () => {
   expect(screen.getByLabelText("Answer the request")).toHaveValue("chosen");
 });
 
-it("allows cancellation but never offers unsupported subagent messages", () => {
-  render(<ChatThreadWorkDetail task={{ ...task, kind: "subagent" }} />);
-  expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Stop work" }));
-  expect(mockCancel).toHaveBeenCalledWith(task.id);
-});
+it.each(["subagent", "agent_handoff"])(
+  "allows cancellation but never offers unsupported %s messages",
+  (kind) => {
+    render(<ChatThreadWorkDetail task={{ ...task, kind }} />);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stop work" }));
+    expect(mockCancel).toHaveBeenCalledWith(task.id);
+  },
+);
 
 it("does not mutate completed work", () => {
   render(<ChatThreadWorkDetail task={{ ...task, state: "succeeded" }} />);
