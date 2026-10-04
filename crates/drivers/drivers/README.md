@@ -54,7 +54,8 @@ register_drivers(&mut registry);
 ```
 
 `register_drivers` registers every enabled vendor. Each module also has its own
-`register_driver`, `descriptor`, and `from_env`.
+`register_driver` and `descriptor`. API vendors offer `from_env`; personal
+ChatGPT and Codex connections use host-owned authentication instead.
 
 ## What It Provides
 

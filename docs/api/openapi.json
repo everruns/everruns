@@ -11662,6 +11662,170 @@
         }
       }
     },
+    "/v1/providers/{provider_id}/chatgpt": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "operationId": "status",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal connection status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "providers"
+        ],
+        "operationId": "disconnect",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal connection disconnect",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      }
+    },
+    "/v1/providers/{provider_id}/chatgpt/import": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "operationId": "import",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportedConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Personal connection import",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      }
+    },
+    "/v1/providers/{provider_id}/chatgpt/login": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "operationId": "login",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Personal provider ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal connection login",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid connection request"
+          },
+          "404": {
+            "description": "Provider not found or owned by another user"
+          },
+          "502": {
+            "description": "Provider exchange or revocation failed"
+          }
+        }
+      }
+    },
     "/v1/providers/{provider_id}/models": {
       "get": {
         "tags": [
@@ -21443,6 +21607,46 @@
           }
         }
       },
+      "ConnectionStatus": {
+        "type": "object",
+        "required": [
+          "status",
+          "host_id"
+        ],
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registration": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Non-secret host registration, containing the issuing client and verified subject."
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
       "ConsentAction": {
         "type": "string",
         "description": "What the user decided about opening the URL.",
@@ -28075,6 +28279,26 @@
           }
         }
       },
+      "ImportedConnection": {
+        "type": "object",
+        "required": [
+          "auth",
+          "nonce",
+          "host_id"
+        ],
+        "properties": {
+          "auth": {
+            "type": "object",
+            "description": "Credential document emitted by the local helper; accepted only after ID-token validation."
+          },
+          "host_id": {
+            "type": "string"
+          },
+          "nonce": {
+            "type": "string"
+          }
+        }
+      },
       "InitialFile": {
         "type": "object",
         "description": "Starter file copied into a new session from an agent or harness.",
@@ -33062,6 +33286,17 @@
             ],
             "description": "Ref to start from (default: HEAD)",
             "example": "HEAD"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "required": [
+          "authorize_url"
+        ],
+        "properties": {
+          "authorize_url": {
+            "type": "string"
           }
         }
       },

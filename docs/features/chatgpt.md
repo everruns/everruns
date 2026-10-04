@@ -9,6 +9,9 @@ with ChatGPT**. Approve plan use in ChatGPT, then return to Everruns. Available
 models are discovered from your account. Choose one in the chat model picker;
 the composer shows **Using your ChatGPT plan**.
 
+Creating or removing a provider requires organization administrator access.
+Signing in and disconnecting the personal account require that provider's owner.
+
 This uses your ChatGPT plan and its allowance. [Manage usage in
 ChatGPT](https://chatgpt.com/settings/usage). Availability depends on your account,
 model, and OpenAI's open-source Sign in with ChatGPT preview.
