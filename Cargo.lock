@@ -2464,6 +2464,7 @@ dependencies = [
  "ignore",
  "notify",
  "reqwest",
+ "rustix",
  "serde",
  "serde_json",
  "serde_yaml",

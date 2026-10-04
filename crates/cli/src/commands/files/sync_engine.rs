@@ -118,19 +118,134 @@ pub fn scan_local(
         let entry = entry?;
         let path = entry.path();
 
-        if path.is_dir() {
+        // The walker does not follow links, so this is the entry's own type.
+        // Only regular files are uploaded: symlinks (to files or dirs, inside
+        // or outside the workspace), sockets, FIFOs and devices are skipped.
+        let Some(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() {
+            continue;
+        }
+        if !file_type.is_file() {
+            if file_type.is_symlink() {
+                eprintln!("warning: skipping symlink {}", path.display());
+            }
             continue;
         }
 
         let rel = path.strip_prefix(local_dir).context("Strip local prefix")?;
         let normalized = normalize_path(rel);
 
-        let content = std::fs::read(path).with_context(|| format!("Read {}", path.display()))?;
+        // Re-check at open time: the entry may have been swapped since the walk.
+        let Some(content) = read_workspace_file(local_dir, rel)
+            .with_context(|| format!("Read {}", path.display()))?
+        else {
+            eprintln!("warning: skipping non-regular file {}", path.display());
+            continue;
+        };
         let hash = content_hash(&content);
         files.insert(normalized, (content, hash));
     }
 
     Ok(files)
+}
+
+/// Read a regular file at `rel` under `base` without following symlinks in
+/// any component of `rel`. Returns `Ok(None)` when a component is a symlink or
+/// the final entry is not a regular file.
+///
+/// Design Decision (EVE-1191): upload must never send bytes from outside the
+/// workspace. A walk-time file-type check alone is racy (an entry or a parent
+/// directory can be swapped for a symlink before the read), so on Unix each
+/// component is opened relative to its parent's descriptor with `O_NOFOLLOW`,
+/// and the final type check uses `fstat` on the opened handle.
+// THREAT[TM-FS-020]: no-follow reads keep uploads inside the workspace.
+#[cfg(unix)]
+fn read_workspace_file(base: &Path, rel: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    use rustix::fs::{Mode, OFlags, openat};
+    use rustix::io::Errno;
+    use std::io::Read;
+    use std::os::fd::OwnedFd;
+
+    let parts = workspace_components(rel)?;
+    let Some((last, parents)) = parts.split_last() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "empty workspace path",
+        ));
+    };
+    // ELOOP: final symlink under O_NOFOLLOW; EMLINK: same on FreeBSD;
+    // ENOTDIR: a parent component is a symlink (or file) under O_DIRECTORY.
+    let rejected = |e: Errno| matches!(e, Errno::LOOP | Errno::MLINK | Errno::NOTDIR);
+
+    // The workspace root itself was chosen by the user and may be a symlink.
+    let mut dir: OwnedFd = std::fs::File::open(base)?.into();
+    let dir_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    for part in parents {
+        dir = match openat(&dir, *part, dir_flags, Mode::empty()) {
+            Ok(fd) => fd,
+            Err(e) if rejected(e) => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+    }
+    // NONBLOCK so a FIFO swapped in cannot hang the open; NOCTTY for devices.
+    let file_flags =
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK | OFlags::NOCTTY;
+    let fd = match openat(&dir, *last, file_flags, Mode::empty()) {
+        Ok(fd) => fd,
+        Err(e) if rejected(e) => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let mut file = std::fs::File::from(fd);
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() {
+        return Ok(None);
+    }
+    let mut content = Vec::with_capacity(usize::try_from(meta.len()).unwrap_or(0));
+    file.read_to_end(&mut content)?;
+    Ok(Some(content))
+}
+
+/// Non-Unix fallback: reject any symlinked component, then confirm the opened
+/// handle is a regular file. Narrower race window than Unix, not race-free.
+#[cfg(not(unix))]
+fn read_workspace_file(base: &Path, rel: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    use std::io::Read;
+
+    let mut current = base.to_path_buf();
+    for part in workspace_components(rel)? {
+        current.push(part);
+        if std::fs::symlink_metadata(&current)?
+            .file_type()
+            .is_symlink()
+        {
+            return Ok(None);
+        }
+    }
+    let mut file = std::fs::File::open(&current)?;
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() {
+        return Ok(None);
+    }
+    let mut content = Vec::new();
+    file.read_to_end(&mut content)?;
+    Ok(Some(content))
+}
+
+/// Split a walker-relative path into plain components, refusing anything that
+/// could escape the base (`..`, absolute, prefixes).
+fn workspace_components(rel: &Path) -> std::io::Result<Vec<&std::ffi::OsStr>> {
+    rel.components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .map(|c| match c {
+            std::path::Component::Normal(part) => Ok(part),
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("non-workspace path component in {}", rel.display()),
+            )),
+        })
+        .collect()
 }
 
 /// Scan remote files via API.
@@ -734,6 +849,179 @@ mod tests {
     fn test_safe_local_path_rejects_absolute() {
         let dir = tempfile::tempdir().unwrap();
         assert!(safe_local_path(dir.path(), "/etc/passwd").is_err());
+    }
+
+    // EVE-1191: a symlink inside the workspace must never cause bytes from
+    // outside the workspace to be uploaded.
+    #[cfg(unix)]
+    mod symlink_upload {
+        use super::*;
+        use crate::commands::files::test_server::FsApiStub;
+        use std::os::unix::fs::symlink;
+
+        const SECRET: &str = "TOP-SECRET-OUTSIDE-WORKSPACE";
+
+        fn outside_secret() -> (tempfile::TempDir, std::path::PathBuf) {
+            let outside = tempfile::tempdir().unwrap();
+            let secret = outside.path().join("id_rsa");
+            fs::write(&secret, SECRET).unwrap();
+            (outside, secret)
+        }
+
+        fn assert_no_secret(stub: &FsApiStub) {
+            for (path, body) in stub.uploads() {
+                assert!(
+                    !body.contains(SECRET),
+                    "outside bytes uploaded via {path}: {body}"
+                );
+            }
+        }
+
+        #[test]
+        fn scan_local_skips_symlink_to_outside_file() {
+            let dir = tempfile::tempdir().unwrap();
+            let (_outside, secret) = outside_secret();
+            fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+            symlink(&secret, dir.path().join("leak.txt")).unwrap();
+
+            let files = scan_local(dir.path(), false, &[]).unwrap();
+            assert!(files.contains_key("keep.txt"));
+            assert!(!files.contains_key("leak.txt"));
+            assert_eq!(files.len(), 1);
+        }
+
+        #[test]
+        fn scan_local_skips_symlink_to_inside_file() {
+            // Even in-workspace links are rejected: the target can be swapped.
+            let dir = tempfile::tempdir().unwrap();
+            fs::write(dir.path().join("real.txt"), "real").unwrap();
+            symlink(dir.path().join("real.txt"), dir.path().join("alias.txt")).unwrap();
+
+            let files = scan_local(dir.path(), false, &[]).unwrap();
+            assert!(files.contains_key("real.txt"));
+            assert!(!files.contains_key("alias.txt"));
+        }
+
+        #[test]
+        fn scan_local_skips_symlinked_directory() {
+            let dir = tempfile::tempdir().unwrap();
+            let (outside, _secret) = outside_secret();
+            symlink(outside.path(), dir.path().join("linked")).unwrap();
+
+            let files = scan_local(dir.path(), false, &[]).unwrap();
+            assert!(
+                files.is_empty(),
+                "got {:?}",
+                files.keys().collect::<Vec<_>>()
+            );
+        }
+
+        #[test]
+        fn read_rejects_final_symlink_swapped_in_after_scan() {
+            // Simulates a file replaced by a symlink between walk and open.
+            let dir = tempfile::tempdir().unwrap();
+            let (_outside, secret) = outside_secret();
+            symlink(&secret, dir.path().join("a.txt")).unwrap();
+
+            let read = read_workspace_file(dir.path(), Path::new("a.txt")).unwrap();
+            assert!(read.is_none());
+        }
+
+        #[test]
+        fn read_rejects_parent_dir_swapped_for_symlink_after_scan() {
+            // Simulates `sub/` replaced by a symlink to an outside directory
+            // between walk and open: the parent component must not be followed.
+            let dir = tempfile::tempdir().unwrap();
+            let (outside, _secret) = outside_secret();
+            symlink(outside.path(), dir.path().join("sub")).unwrap();
+
+            let read = read_workspace_file(dir.path(), Path::new("sub/id_rsa")).unwrap();
+            assert!(read.is_none());
+        }
+
+        #[test]
+        fn read_returns_regular_file_bytes() {
+            let dir = tempfile::tempdir().unwrap();
+            fs::create_dir_all(dir.path().join("a/b")).unwrap();
+            fs::write(dir.path().join("a/b/c.txt"), "ok").unwrap();
+
+            let read = read_workspace_file(dir.path(), Path::new("a/b/c.txt")).unwrap();
+            assert_eq!(read.as_deref(), Some(&b"ok"[..]));
+        }
+
+        #[tokio::test]
+        async fn push_does_not_upload_symlink_target() {
+            let stub = FsApiStub::start().await;
+            let dir = tempfile::tempdir().unwrap();
+            let (_outside, secret) = outside_secret();
+            fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+            symlink(&secret, dir.path().join("leak.txt")).unwrap();
+
+            crate::commands::files::push::run(
+                &stub.url,
+                "key",
+                None,
+                crate::output::OutputFormat::Json,
+                true,
+                "ses_test".to_string(),
+                dir.path().to_string_lossy().into_owned(),
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+
+            let uploads = stub.uploads();
+            assert!(uploads.iter().any(|(p, _)| p.ends_with("/keep.txt")));
+            assert!(!uploads.iter().any(|(p, _)| p.ends_with("/leak.txt")));
+            assert_no_secret(&stub);
+        }
+
+        #[tokio::test]
+        async fn live_sync_ignores_symlink_added_after_start() {
+            let stub = FsApiStub::start().await;
+            let client = RemoteClient::new(&stub.url, "key", "ses_test");
+            let dir = tempfile::tempdir().unwrap();
+            let (_outside, secret) = outside_secret();
+            fs::write(dir.path().join("keep.txt"), "keep").unwrap();
+            let mut state = SyncState::new("ses_test");
+
+            let first = reconcile(
+                &client,
+                dir.path(),
+                &mut state,
+                Conflict::LastWrite,
+                false,
+                &[],
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+            assert_eq!(first.uploaded, 1);
+
+            // A symlink to an outside secret appears while sync is running.
+            symlink(&secret, dir.path().join("leak.txt")).unwrap();
+            let second = reconcile(
+                &client,
+                dir.path(),
+                &mut state,
+                Conflict::LastWrite,
+                false,
+                &[],
+                false,
+                false,
+                false,
+            )
+            .await
+            .unwrap();
+            // The stub's listing stays empty, so keep.txt re-uploads each cycle.
+            assert_eq!(second.uploaded, 1);
+            assert!(!state.files.contains_key("leak.txt"));
+            assert!(!stub.uploads().iter().any(|(p, _)| p.ends_with("/leak.txt")));
+            assert_no_secret(&stub);
+        }
     }
 
     #[test]

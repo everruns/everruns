@@ -60,6 +60,10 @@ dialoguer.workspace = true
 # Hostname resolution
 hostname = "0.4"
 
+# No-follow, dirfd-relative opens for workspace upload (EVE-1191)
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [dev-dependencies]
 tempfile.workspace = true
 
