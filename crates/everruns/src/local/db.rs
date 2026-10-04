@@ -1,11 +1,12 @@
 // Shared SQLite connection handle for the local stores.
 //
-// Decision: a single `parking_lot::Mutex<rusqlite::Connection>` per database
+// Decision: a single mutex around durable's SQLite connection per database
 // file. The local stores are intended for embedded, single-process hosts where
 // throughput is modest and a serialized connection keeps the code simple and
 // correct. Connections are opened with WAL so a freshly-spawned process can
 // reopen the same file (restart-survivability) without losing committed data.
 
+use everruns_durable::sqlite as rusqlite;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
@@ -30,13 +31,13 @@ impl SqliteDb {
     pub fn open(path: impl AsRef<Path>) -> LocalResult<Self> {
         let path = path.as_ref();
         ensure_private_db_file(path)?;
-        let conn = Connection::open(path)?;
+        let conn = rusqlite::open(path)?;
         Self::from_connection(conn)
     }
 
     /// Open an in-memory database (for tests). Each call is an independent DB.
     pub fn open_in_memory() -> LocalResult<Self> {
-        let conn = Connection::open_in_memory()?;
+        let conn = rusqlite::open_in_memory()?;
         Self::from_connection(conn)
     }
 
@@ -54,7 +55,7 @@ impl SqliteDb {
     /// Run a closure with exclusive access to the connection.
     pub fn with_conn<T>(
         &self,
-        f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+        f: impl FnOnce(&rusqlite::QueryConnection) -> rusqlite::Result<T>,
     ) -> LocalResult<T> {
         let guard = self.conn.lock();
         f(&guard).map_err(LocalError::from)
@@ -62,7 +63,7 @@ impl SqliteDb {
 
     pub(crate) fn with_conn_mut<T>(
         &self,
-        f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
+        f: impl FnOnce(&mut rusqlite::QueryConnection) -> rusqlite::Result<T>,
     ) -> LocalResult<T> {
         let mut guard = self.conn.lock();
         f(&mut guard).map_err(LocalError::from)
@@ -130,6 +131,48 @@ fn current_uid() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn query_callbacks_keep_external_sqlite_type_identity() {
+        use ::rusqlite::{OptionalExtension, params};
+
+        let db = SqliteDb::open_in_memory().unwrap();
+        // Embedded apps add their own tables to this same handle. Explicit
+        // callback types, driver macros, and Row values must keep working.
+        db.with_conn(|conn: &::rusqlite::Connection| -> ::rusqlite::Result<()> {
+            conn.execute_batch("CREATE TABLE host_state (name TEXT PRIMARY KEY, value INTEGER)")?;
+            conn.execute(
+                "INSERT INTO host_state VALUES (?1, ?2)",
+                params!["answer", 42],
+            )?;
+            Ok(())
+        })
+        .unwrap();
+        let shared = db.clone();
+        let answer = shared
+            .with_conn(|conn: &::rusqlite::Connection| {
+                conn.query_row(
+                    "SELECT value FROM host_state WHERE name = ?1",
+                    params!["answer"],
+                    |row: &::rusqlite::Row<'_>| row.get::<_, i64>(0),
+                )
+                .optional()
+            })
+            .unwrap();
+        assert_eq!(answer, Some(42));
+        assert_eq!(
+            db.with_conn(|conn| {
+                conn.query_row(
+                    "SELECT value FROM host_state WHERE name = 'missing'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()
+            })
+            .unwrap(),
+            None
+        );
+    }
 
     #[cfg(unix)]
     #[test]

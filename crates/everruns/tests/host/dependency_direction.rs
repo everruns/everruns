@@ -80,11 +80,11 @@ fn direct_egress_is_host_owned_without_a_standalone_http_crate() {
 
     assert!(
         !crates_dir.join("http/Cargo.toml").exists(),
-        "direct egress belongs to everruns-host, not a generic everruns-http package"
+        "direct egress belongs to core::host, not a generic everruns-http package"
     );
     for manifest in [
         repo.join("Cargo.toml"),
-        crates_dir.join("mcp/Cargo.toml"),
+        crates_dir.join("core/Cargo.toml"),
         crates_dir.join("ard/Cargo.toml"),
     ] {
         let contents = std::fs::read_to_string(&manifest)

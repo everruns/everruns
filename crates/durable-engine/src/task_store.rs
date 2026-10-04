@@ -1,20 +1,19 @@
-// The store the unified worker claims, completes, and schedules tasks
-// through: the durable store directly, or the control plane over gRPC
-// (`crate::grpc_task_store`).
-//
-// Decision: lives beside `unified_worker` rather than inside it, which is on
-// the file-size debt list.
+//! Task queue adapter shared by durable runner backends and the worker loop.
+//!
+//! The trait and its gRPC implementation share this owner so the blanket
+//! workflow-store implementation cannot overlap a future upstream backend.
 
-use async_trait::async_trait;
-use everruns_durable::{
+use crate::durable::{
     ActivityOptions, ClaimedTask, EventLog, HeartbeatResponse, SignalStore, StoreError,
     TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
     WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
     record_activity_failed, record_activity_started, record_workflow_failed,
 };
+use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::task_wakeup::TaskWakeups;
+/// Each item signals that new work may be claimable. Closure means resubscribe.
+pub type TaskWakeups = tokio::sync::mpsc::Receiver<()>;
 
 #[async_trait]
 pub trait TaskStore: Send + Sync + 'static {
@@ -104,18 +103,18 @@ pub trait TaskStore: Send + Sync + 'static {
     async fn consume_pending_signals(
         &self,
         workflow_id: Uuid,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
+    ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError>;
 
     async fn consume_pending_signals_by_type(
         &self,
         workflow_id: Uuid,
         signal_type: &str,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
+    ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError>;
 
     /// Open a push channel that signals new claimable work.
     ///
     /// `Ok(None)` means the store has none and the worker polls only. See
-    /// `crate::task_wakeup` for why the worker wants one.
+    /// the worker wake-up listener for subscription recovery.
     async fn subscribe_task_wakeups(
         &self,
         _worker_id: &str,
@@ -265,7 +264,7 @@ where
         stored_output: Option<serde_json::Value>,
         error: Option<WorkflowError>,
     ) -> Result<(), StoreError> {
-        everruns_durable::record_workflow_completed(self, workflow_id, event_output).await;
+        crate::durable::record_workflow_completed(self, workflow_id, event_output).await;
         EventLog::update_workflow_status(
             self,
             workflow_id,
@@ -279,7 +278,7 @@ where
     async fn consume_pending_signals(
         &self,
         workflow_id: Uuid,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+    ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
         SignalStore::consume_pending_signals(self, workflow_id).await
     }
 
@@ -287,7 +286,7 @@ where
         &self,
         workflow_id: Uuid,
         signal_type: &str,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+    ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
         SignalStore::consume_pending_signals_by_type(self, workflow_id, signal_type).await
     }
 }

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use everruns_durable::{ActivityOptions, InMemoryWorkflowEventStore, TaskDefinition, TaskQueue};
+use crate::durable::{ActivityOptions, InMemoryWorkflowEventStore, TaskDefinition, TaskQueue};
 use uuid::Uuid;
 
 use crate::unified_worker::{TaskWorker, TaskWorkerConfig};

@@ -132,6 +132,9 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and
 [AGENTS.md](./AGENTS.md) for the conventions used by both human and AI
 contributors.
 
+The [crate layout](./knowledge/project/crate-layout.md) describes ownership and
+the guards that keep database connections in the server and durable crates.
+
 ## License
 
 MIT

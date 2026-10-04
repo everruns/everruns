@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Architecture guard (EVE-884, EVE-901): backend-neutral first-party
-# implementations live in the optional everruns-builtins bundle, provider
+# implementations live in the optional core builtins module, provider
 # behavior lives in focused integrations, and core retains only neutral
 # contracts/registry algorithms without selecting a runtime or product preset.
 
@@ -72,17 +72,17 @@ if matches=$(core_kernel_source_files | grep -v '^crates/core/src/builtins/' | x
 fi
 
 if [ -e crates/openui/Cargo.toml ] || [ -e crates/a2ui/Cargo.toml ]; then
-  fail "OpenUI and A2UI catalogs belong to everruns-builtins, not standalone crates"
+  fail "OpenUI and A2UI catalogs belong to core builtins, not standalone crates"
 fi
 
-if matches=$(rg -n 'everruns-(openui|a2ui)' Cargo.toml crates/{core,builtins}/Cargo.toml); then
+if matches=$(rg -n 'everruns-(openui|a2ui)' Cargo.toml crates/core/Cargo.toml); then
   fail "standalone UI catalog dependencies remain in workspace manifests:"
   printf '%s\n' "$matches"
 fi
 
 BUILTINS_EFFECT_PATTERN='(reqwest::|sqlx::|mlua::|everruns_(host|platform|server|worker|mcp|http|integrations_)::|(^|[^[:alnum:]_])bashkit::|fetchkit::|std::(fs|net|process)::|tokio::(fs|net|process)::)'
 if matches=$(rg -n "$BUILTINS_EFFECT_PATTERN" crates/core/src/builtins --glob '*.rs'); then
-  fail "effectful host/platform/transport implementation leaked into everruns-builtins:"
+  fail "effectful host/platform/transport implementation leaked into core builtins:"
   printf '%s\n' "$matches"
 fi
 
@@ -137,12 +137,12 @@ assert_tree_excludes \
   everruns-capabilities reqwest rustls hyper
 
 if [ -e crates/session-services/Cargo.toml ]; then
-  fail "session mutation/storage services belong to everruns-host, not a standalone crate"
+  fail "session mutation/storage services belong to core host, not a standalone crate"
 fi
 
 for module in session_mutator.rs capabilities/session.rs capabilities/session_storage.rs; do
   if [ ! -e "crates/core/src/host/session_services/$module" ]; then
-    fail "everruns-host is missing session service module: $module"
+    fail "core host is missing session service module: $module"
   fi
 done
 

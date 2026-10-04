@@ -46,13 +46,13 @@ fi
 
 for engine_source in input.rs reason.rs act.rs act_hooks.rs tool_scheduler.rs; do
   if [ ! -f "crates/core/src/engine/execution/$engine_source" ]; then
-    fail "everruns-engine is missing execution kernel source: $engine_source"
+    fail "core engine is missing execution kernel source: $engine_source"
   fi
 done
 
 if grep -R -n -E --include='*.rs' 'everruns_core::atoms|crate::atoms' \
   crates integrations examples tests; then
-  fail "Rust consumers must use everruns-engine executors or concern-owned core contracts"
+  fail "Rust consumers must use core engine executors or concern-owned core contracts"
 fi
 
 if ! grep -q -F '#![cfg_attr(not(any(test, feature = "host")), forbid(unsafe_code))]' crates/core/src/lib.rs; then

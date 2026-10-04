@@ -56,6 +56,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+use everruns_durable::sqlite as rusqlite;
 use std::ffi::OsString;
 use std::io::Read;
 use std::net::SocketAddr;
@@ -360,8 +361,7 @@ fn append_dir(
         } else if kind.is_file() {
             if is_sqlite(&entry.path())? {
                 let copy = scratch.join(uuid::Uuid::now_v7().to_string());
-                rusqlite::Connection::open(entry.path())
-                    .and_then(|conn| conn.backup(rusqlite::MAIN_DB, &copy, None))
+                rusqlite::backup(entry.path(), &copy)
                     .with_context(|| format!("back up {}", entry.path().display()))?;
                 builder.append_path_with_name(&copy, &path)?;
                 let _ = std::fs::remove_file(&copy);
@@ -478,7 +478,7 @@ mod tests {
         std::fs::create_dir_all(src.path().join("workspace/notes")).unwrap();
         std::fs::write(src.path().join("workspace/notes/a.md"), "hello").unwrap();
         let db = src.path().join("serve.db");
-        let conn = rusqlite::Connection::open(&db).unwrap();
+        let conn = rusqlite::open(&db).unwrap();
         conn.execute_batch(
             "PRAGMA journal_mode = WAL; CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('kept');",
         )
@@ -498,7 +498,7 @@ mod tests {
             std::fs::read_to_string(dst.path().join("workspace/notes/a.md")).unwrap(),
             "hello"
         );
-        let copy = rusqlite::Connection::open(dst.path().join("serve.db")).unwrap();
+        let copy = rusqlite::open(dst.path().join("serve.db")).unwrap();
         let value: String = copy.query_row("SELECT v FROM t", [], |r| r.get(0)).unwrap();
         assert_eq!(value, "kept");
         drop(conn);

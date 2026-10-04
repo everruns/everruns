@@ -38,7 +38,7 @@ clap.workspace = true
 everruns = { workspace = true, default-features = true, features = ["host-shell"] }
 # Consistent copies of open SQLite databases (the online backup API), on the
 # same bundled SQLite serve and everruns link.
-rusqlite = { version = "0.39", features = ["bundled", "backup"] }
+everruns-durable = { workspace = true, features = ["sqlite"] }
 serde_json.workspace = true
 tar.workspace = true
 tokio = { workspace = true, features = ["full"] }

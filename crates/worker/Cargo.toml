@@ -22,8 +22,8 @@ anyhow.workspace = true
 tracing.workspace = true
 
 everruns-contracts = { workspace = true, default-features = false }
-# Telemetry init is installed explicitly by the worker through the host's
-# observability feature; core carries neutral contracts only.
+# Private turn/workflow entry, including optional backends and telemetry wiring.
+everruns-durable-engine.workspace = true
 # Production-safe deterministic `llmsim` provider (seeded LlmSim models and
 # LLMSIM_DEMO scenarios). Testing/demo helpers stay out of the worker tree.
 everruns-llmsim.workspace = true
@@ -53,12 +53,6 @@ everruns-drivers = { workspace = true, features = [
     "vercel",
 ] }
 everruns-internal-protocol = { path = "../internal-protocol" }
-# `openai-agents-api` compiles the opt-in backend; it runs only for sessions
-# whose resolved capabilities select it (EVE-1123).
-# Note: Workers don't need direct DB access - all DB operations go through gRPC
-# The durable module is used for control-plane direct DB mode (avoids circular gRPC dependency)
-everruns-durable = { path = "../durable" }
-sqlx.workspace = true
 
 chrono.workspace = true
 async-trait.workspace = true
@@ -69,7 +63,6 @@ base64.workspace = true
 tonic.workspace = true
 prost-types.workspace = true
 
-everruns-core = { path = "../core", features = ["engine", "host", "mcp", "observability", "openai-agents-api", "tree-sitter-outlines"], default-features = false }
 everruns = { workspace = true, default-features = false, features = ["bashkit", "utility-llm"] }
 [dev-dependencies]
 # Deterministic network simulator. Used by tests/network_reliability_test.rs to

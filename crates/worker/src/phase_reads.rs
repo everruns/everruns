@@ -34,8 +34,8 @@ use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::core::{AgentDefinition, DependencyBlocker, ExecutionSession, HarnessDefinition};
 use everruns_contracts::error::Result;
-use everruns_core::{AgentDefinition, DependencyBlocker, ExecutionSession, HarnessDefinition};
 use tokio::sync::OnceCell;
 use uuid::Uuid;
 
@@ -123,7 +123,7 @@ pub struct PhaseIds {
 }
 
 impl PhaseIds {
-    pub fn reason(input: &everruns_core::engine::ReasonInput) -> Option<Self> {
+    pub fn reason(input: &crate::core::engine::ReasonInput) -> Option<Self> {
         let message_id = input.context.input_message_id.uuid();
         Some(Self {
             org_id: input.org_id,
@@ -134,7 +134,7 @@ impl PhaseIds {
         })
     }
 
-    pub fn act(input: &everruns_core::engine::ActInput) -> Option<Self> {
+    pub fn act(input: &crate::core::engine::ActInput) -> Option<Self> {
         Some(Self {
             org_id: input.org_id?,
             session_id: input.context.session_id.uuid(),
@@ -381,7 +381,7 @@ impl PhaseReads {
 
     /// Log the phase's setup time when its start event goes out. Once per memo.
     pub fn note_event(&self, event_type: &str) {
-        if event_type != everruns_core::REASON_STARTED && event_type != everruns_core::ACT_STARTED {
+        if event_type != crate::core::REASON_STARTED && event_type != crate::core::ACT_STARTED {
             return;
         }
         let (fetched, saved, first) = self.with_state(|s| {
@@ -675,11 +675,11 @@ mod tests {
         let key = (1, Uuid::now_v7());
         read(&reads, key, &calls).await.unwrap();
         // Events before the start event leave setup running.
-        reads.note_event(everruns_core::INPUT_MESSAGE);
+        reads.note_event(crate::core::INPUT_MESSAGE);
         read(&reads, key, &calls).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 
-        reads.note_event(everruns_core::REASON_STARTED);
+        reads.note_event(crate::core::REASON_STARTED);
         read(&reads, key, &calls).await.unwrap();
         read(&reads, key, &calls).await.unwrap();
         assert_eq!(
@@ -901,7 +901,7 @@ mod tests {
 
     #[tokio::test]
     async fn phase_start_discards_an_in_flight_source_read_and_later_seeds() {
-        for event in [everruns_core::REASON_STARTED, everruns_core::ACT_STARTED] {
+        for event in [crate::core::REASON_STARTED, crate::core::ACT_STARTED] {
             let reads = PhaseReads::new();
             let id = everruns_contracts::typed_id::AgentId::new();
             let definition = AgentDefinition::new(id, "agent", "pinned");
@@ -1034,7 +1034,7 @@ mod tests {
         );
         // Closing the phase also detaches the pinned overlay, so later reads
         // cannot reuse either its definition or its lifecycle probe.
-        reads.note_event(everruns_core::REASON_STARTED);
+        reads.note_event(crate::core::REASON_STARTED);
         assert!(reads.definition(agents, key, must_not_fetch).await.is_err());
     }
 
@@ -1140,7 +1140,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 5);
-        reads.note_event(everruns_core::ACT_STARTED);
+        reads.note_event(crate::core::ACT_STARTED);
         reads
             .read_through(turn_contexts, (2, sid, input), fetch)
             .await
@@ -1222,7 +1222,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_ne!(fresh.api_key, first.api_key);
-        reads.note_event(everruns_core::REASON_STARTED);
+        reads.note_event(crate::core::REASON_STARTED);
         assert!(reads.with_state(|state| state.providers.is_empty()));
         let after = reads
             .read_through(providers, key.clone(), fetch)

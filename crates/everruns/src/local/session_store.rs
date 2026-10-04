@@ -1,5 +1,6 @@
 //! SQLite-backed session identity catalog for local execution hosts.
 
+use everruns_durable::sqlite as rusqlite;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-10-04
+
+### Changed
+
+- Reduce the published crate set to **37**. Remove the five deprecated engine, host, builtins, MCP and AG-UI shim crates after their single 0.40.0 forwarding release. Their implementations remain available through `everruns-core` features and the `everruns` facade. [#4084](https://github.com/everruns/everruns/pull/4084)
+- Keep database connection creation in the server and `everruns-durable`. Embedded SQLite hosts retain their query callbacks and runtime projections while durable owns connection opening, consistent backups and VFS selection.
+- Move durable worker execution into the private `everruns-durable-engine` crate. The worker composes execution and gRPC adapters without exposing control-plane records to library hosts.
+- Enforce database ownership in CI and pre-push checks, including aliased drivers and connection constructors. The contracts crate retains its optional typed-ID PostgreSQL codecs.
+
+### Fixed
+
+- Prepare auth identities and the default runtime owner before serving startup requests. Authenticated modes revoke anonymous tokens before traffic, while catalog seeding stays asynchronous. [#4167](https://github.com/everruns/everruns/pull/4167)
+
+### Migration
+
+- Replace the five retired crate names with their matching `everruns-core` module features. Use `everruns` for driver and integration composition and `everruns-contracts` for portable contracts. See the [upgrade notes](https://docs.everruns.com/framework/upgrade-notes/).
+- No capabilities are removed. Published legacy versions remain available and are not yanked.
+
 ## [0.40.0] - 2026-10-04
 
 ### What's Changed

@@ -236,7 +236,7 @@ holds it to the rules rather than repairing its stream:
 
 The rules are ported from the reference TypeScript client and tested against
 upstream's client conformance corpus, vendored under
-`crates/core/src/ag_ui/spec/1.0/conformance` (`tests/conformance.rs`): every stream the
+`crates/core/src/ag_ui/spec/1.0/conformance` (`crates/core/tests/consolidated/ag_ui/conformance.rs`): every stream the
 corpus accepts is accepted and every one it rejects is rejected for the same
 reason. Its warning, reducer and request assertions describe the TypeScript
 client's own state handling and are not checked.

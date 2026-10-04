@@ -1,7 +1,24 @@
 // Runtime-host adapter bridge for durable/server-backed workers.
 // Decision: everruns-worker exposes first-party adapters from WorkerAdapters to
-// the neutral everruns-host execution contract.
+// the neutral core host execution contract.
 
+use crate::core::tool_context::ToolContextExtensions;
+use crate::core::{
+    CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
+    UtilityLlmService,
+};
+use crate::core::{
+    connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
+    event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, file_services::FileResolver,
+    image_services::ImageArtifactStore, image_services::ImageResolver,
+    provider_resolution::ProviderStore, session_files::SessionFileSystem,
+    tool_execution::PaymentAuthority,
+};
+use crate::host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
+use crate::mcp::{
+    McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
+};
 use async_trait::async_trait;
 use everruns_capabilities::SessionMutator;
 use everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID;
@@ -14,23 +31,6 @@ use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::error::Result;
 use everruns_contracts::tool_types::{ConnectionRequired, ConnectionRequiredSubject};
 use everruns_contracts::typed_id::{AgentId, MessageId, SessionId};
-use everruns_core::host::{ResolvedTurnInputs, RuntimeHostAdapter, ToolContextRequest};
-use everruns_core::mcp::{
-    McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
-};
-use everruns_core::tool_context::ToolContextExtensions;
-use everruns_core::{
-    CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
-    UtilityLlmService,
-};
-use everruns_core::{
-    connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
-    event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, file_services::FileResolver,
-    image_services::ImageArtifactStore, image_services::ImageResolver,
-    provider_resolution::ProviderStore, session_files::SessionFileSystem,
-    tool_execution::PaymentAuthority,
-};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -72,21 +72,21 @@ struct WorkerMcpResolver<A: WorkerAdapters> {
 
 fn pending_oauth_connection(
     provider: &str,
-    acts_as: everruns_core::McpServerActsAs,
+    acts_as: crate::core::McpServerActsAs,
     agent_id: Option<AgentId>,
 ) -> anyhow::Result<ConnectionRequired> {
     match (acts_as, agent_id) {
-        (everruns_core::McpServerActsAs::Service, Some(agent_id)) => {
+        (crate::core::McpServerActsAs::Service, Some(agent_id)) => {
             Ok(ConnectionRequired::with_setup(
                 provider,
                 ConnectionRequiredSubject::Agent,
                 format!("/agents/{agent_id}?tab=mcp"),
             ))
         }
-        (everruns_core::McpServerActsAs::Service, None) => {
+        (crate::core::McpServerActsAs::Service, None) => {
             anyhow::bail!("MCP service attachment requires an agent")
         }
-        (everruns_core::McpServerActsAs::User, _) => Ok(ConnectionRequired::with_setup(
+        (crate::core::McpServerActsAs::User, _) => Ok(ConnectionRequired::with_setup(
             provider,
             ConnectionRequiredSubject::User,
             "/settings/connections",
@@ -131,7 +131,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
         }
 
         let mut pending_oauth_provider = None;
-        if info.auth_mode == everruns_core::McpServerAuthMode::OAuth
+        if info.auth_mode == crate::core::McpServerAuthMode::OAuth
             && !has_authorization(&headers)
             && let Some(provider) = info.oauth_provider_id.as_deref()
         {
@@ -208,8 +208,8 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             }
         }
         .map_err(|e| anyhow::anyhow!(e.to_string()))?;
-        if info.auth_mode != everruns_core::McpServerAuthMode::OAuth
-            || info.acts_as == everruns_core::McpServerActsAs::None
+        if info.auth_mode != crate::core::McpServerAuthMode::OAuth
+            || info.acts_as == crate::core::McpServerActsAs::None
         {
             return Ok(());
         }
@@ -251,13 +251,13 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
     }
 }
 
-/// First-party adapter from worker backends into `everruns-host` execution.
+/// First-party adapter from worker backends into core host execution.
 ///
 /// This is the bridge that lets durable workers execute the shared runtime
 /// host phases without depending on in-process-only stores.
 ///
 /// ```ignore
-/// use everruns_core::host::execute_reason_activity;
+/// use everruns_durable_engine::host::execute_reason_activity;
 /// use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
 ///
 /// let adapters = GrpcWorkerAdapters::connect("127.0.0.1:9001").await?;
@@ -431,23 +431,23 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Arc::new(OrgAdapter::new(self.adapters.clone(), org_id).with_reads(self.reads.clone()))
     }
 
-    fn message_store(&self) -> Arc<dyn everruns_core::MessageRetriever> {
+    fn message_store(&self) -> Arc<dyn crate::core::MessageRetriever> {
         Arc::new(SessionAdapter::new(self.adapters.clone()))
     }
 
     fn native_async_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::native_async_store::NativeAsyncStore>> {
+    ) -> Option<Arc<dyn crate::core::native_async_store::NativeAsyncStore>> {
         self.adapters.native_async_store()
     }
 
-    fn agents_api_store(&self) -> Option<Arc<dyn everruns_core::agents_api_store::AgentsApiStore>> {
+    fn agents_api_store(&self) -> Option<Arc<dyn crate::core::agents_api_store::AgentsApiStore>> {
         self.adapters.agents_api_store()
     }
 
     fn compaction_checkpoint_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+    ) -> Option<Arc<dyn crate::core::CompactionCheckpointStore>> {
         self.adapters.compaction_checkpoint_store()
     }
 
@@ -463,7 +463,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn bash_hook_dispatcher(
         &self,
         org_id: i64,
-    ) -> Arc<dyn everruns_core::hook_executor::BashHookDispatcher> {
+    ) -> Arc<dyn crate::core::hook_executor::BashHookDispatcher> {
         Arc::new(
             everruns_integrations_bashkit::BashkitShellHookDispatcher::new(self.file_store(org_id)),
         )
@@ -496,7 +496,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.utility_llm_service()
     }
 
-    fn decisions(&self) -> Option<Arc<dyn everruns_core::DecisionsService>> {
+    fn decisions(&self) -> Option<Arc<dyn crate::core::DecisionsService>> {
         self.adapters.decisions()
     }
 
@@ -507,13 +507,13 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn storage_store(
         &self,
         org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::session_services::SessionStorageStore>> {
+    ) -> Option<Arc<dyn crate::core::session_services::SessionStorageStore>> {
         Some(self.adapters.storage_store(org_id))
     }
 
     fn connection_resolver(
         &self,
-    ) -> Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>> {
+    ) -> Option<Arc<dyn crate::core::connection_services::UserConnectionResolver>> {
         Some(self.adapters.connection_resolver())
     }
 
@@ -540,7 +540,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 platform_store.clone(),
             )));
         }
-        extensions.insert(Arc::new(everruns_core::tool_context::ExecutionServicesExt(
+        extensions.insert(Arc::new(crate::core::tool_context::ExecutionServicesExt(
             Arc::new(PlatformExecutionScope {
                 store: platform_store.clone(),
                 has_catalog: has_platform_capability,
@@ -580,38 +580,38 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Option<Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>> {
+    ) -> Option<Arc<dyn crate::core::subagent_delegation::SubagentSessionDelegate>> {
         Some(Arc::new(PlatformStoreSubagentDelegate(
             self.adapters.platform_store(org_id, session_id),
         )))
     }
 
-    fn tool_augmentor(&self) -> Option<Arc<dyn everruns_core::host::HostToolAugmentor>> {
+    fn tool_augmentor(&self) -> Option<Arc<dyn crate::host::HostToolAugmentor>> {
         Some(Arc::new(PlatformToolAugmentor))
     }
 
     fn leased_resource_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::session_services::LeasedResourceStore>> {
+    ) -> Option<Arc<dyn crate::core::session_services::LeasedResourceStore>> {
         Some(self.adapters.leased_resource_store())
     }
 
     fn session_resource_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
+    ) -> Option<Arc<dyn crate::core::session_services::SessionResourceRegistry>> {
         self.adapters.session_resource_registry()
     }
 
     fn session_task_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+    ) -> Option<Arc<dyn crate::core::session_task::SessionTaskRegistry>> {
         self.adapters.session_task_registry()
     }
 
     fn schedule_store(
         &self,
         org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::session_services::SessionScheduleStore>> {
+    ) -> Option<Arc<dyn crate::core::session_services::SessionScheduleStore>> {
         Some(self.adapters.schedule_store(org_id))
     }
 
@@ -619,7 +619,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn everruns_core::tool_execution::BudgetChecker>> {
+    ) -> Option<Arc<dyn crate::core::tool_execution::BudgetChecker>> {
         self.adapters.budget_checker(org_id, agent_id)
     }
 
@@ -642,23 +642,23 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn outbound_tool_rate_limiter(
         &self,
         org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>> {
+    ) -> Option<Arc<dyn crate::core::tool_execution::OutboundToolRateLimiter>> {
         self.adapters.outbound_tool_rate_limiter(org_id)
     }
 
     fn durable_tool_result_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
+    ) -> Option<Arc<dyn crate::core::durability::DurableToolResultStore>> {
         self.adapters.durable_tool_result_store()
     }
 
     fn subagent_spawn_store(
         &self,
-    ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
+    ) -> Option<Arc<dyn crate::core::delegation_services::SubagentSpawnStore>> {
         self.adapters.subagent_spawn_store()
     }
 
-    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::durability::StreamHeartbeater>> {
+    fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
         self.adapters.stream_heartbeater()
     }
 
@@ -675,7 +675,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         org_id: i64,
         session_id: SessionId,
         agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
+    ) -> Option<Arc<dyn crate::core::McpToolInvoker>> {
         let egress = self.adapters.egress_service()?;
         // A session has a user who can be shown a URL and asked about it, so
         // this host declares URL mode elicitation. It never opens anything and
@@ -696,10 +696,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         let client = Arc::new(McpClient::with_url_and_form_elicitation(
             egress,
             Arc::new(NoAuthProvider),
-            Arc::new(everruns_core::mcp::ConsentingUrlElicitations::new(
-                answers.clone(),
-            )),
-            Arc::new(everruns_core::mcp::StoredFormAnswers::new(answers)),
+            Arc::new(crate::mcp::ConsentingUrlElicitations::new(answers.clone())),
+            Arc::new(crate::mcp::StoredFormAnswers::new(answers)),
         ));
         let resolver = Arc::new(WorkerMcpResolver {
             input_message_id: None,
@@ -742,7 +740,7 @@ impl<A: WorkerAdapters> everruns_contracts::hosted_mcp::HostedMcpResolver for Wo
         server: &str,
     ) -> Result<everruns_contracts::hosted_mcp::ResolvedHostedMcp> {
         let configuration = everruns_contracts::error::AgentLoopError::Configuration;
-        let prefix = everruns_core::mcp_server::sanitize_mcp_server_name(server);
+        let prefix = crate::core::mcp_server::sanitize_mcp_server_name(server);
         let connection = McpConnectionResolver::resolve(self, &prefix)
             .await
             .map_err(|error| configuration(format!("MCP server {server}: {error}")))?
@@ -783,8 +781,8 @@ struct PlatformExecutionScope {
     store: Arc<dyn everruns_capabilities::PlatformStore>,
     has_catalog: bool,
 }
-impl everruns_core::tool_context::ExecutionServices for PlatformExecutionScope {
-    fn bind(&self, context: &mut everruns_core::tool_context::ToolContext, id: Uuid) {
+impl crate::core::tool_context::ExecutionServices for PlatformExecutionScope {
+    fn bind(&self, context: &mut crate::core::tool_context::ToolContext, id: Uuid) {
         if let Some(store) = self.store.for_execution(id) {
             if self.has_catalog {
                 context.extensions.insert(Arc::new(

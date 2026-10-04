@@ -56,11 +56,16 @@ pub mod engine;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
 pub mod sysstat;
 pub mod task_events;
 pub mod update_field;
 pub mod worker;
 pub mod workflow;
+
+/// PostgreSQL pool passed by an owning host to the durable store API.
+pub type PostgresPool = sqlx::PgPool;
 // pub mod observability; // Phase 5
 // pub mod admin;       // Phase 5
 

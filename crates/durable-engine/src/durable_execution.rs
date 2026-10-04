@@ -1,6 +1,6 @@
 //! Durable implementation of the shared engine execution contract.
 //!
-//! Lives in the worker, not in `everruns-durable`: the durable engine is a
+//! Lives in durable-engine, not in `everruns-durable`: `everruns-durable` is a
 //! generic workflow/task runtime with no agent or turn semantics, so the
 //! adapter that checkpoints engine [`TurnState`] between durable activities
 //! belongs to the host that knows about turns.
@@ -13,7 +13,7 @@ use everruns_core::engine::{
 /// Execution whose common engine state is checkpointed between activities.
 ///
 /// `everruns-durable` owns persistence and retry mechanics; semantic phase and
-/// turn behavior remains in `everruns-engine` through [`TurnExecution`]. The
+/// turn behavior remains in `everruns-core::engine` through [`TurnExecution`]. The
 /// worker persists [`DurableExecution::checkpoint`] in durable activity input.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DurableExecution {

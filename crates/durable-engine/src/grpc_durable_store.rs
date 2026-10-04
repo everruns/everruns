@@ -698,7 +698,7 @@ impl TaskNotificationStream {
             }
             Ok(None) => None,
             Err(e) => {
-                tracing::warn!("Task notification stream error: {}", e);
+                tracing::warn!(error = %e, "Task notification stream error");
                 None
             }
         }

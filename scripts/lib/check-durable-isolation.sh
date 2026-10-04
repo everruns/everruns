@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Architecture guard: `everruns-durable` is a generic durable-execution engine
 # (workflows, activities, tasks, signals, schedules) with no agent or turn
-# semantics. Agent semantics live in the worker and server, which build on it.
+# semantics. Agent semantics live in durable-engine and server, which build on it.
 #
 # 1. The durable manifest declares no `everruns-*` normal or build dependency.
 #    (A dev-dependency is allowed: the database-failure drift test pins the
@@ -45,8 +45,29 @@ if leaked=$(echo "$tree" | grep -E '^everruns-' | grep -vE '^everruns-durable ' 
 fi
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Durable isolation guard failed. everruns-durable is a generic engine; move agent/turn semantics to everruns-worker or everruns-server."
+  echo "Durable isolation guard failed. everruns-durable is a generic engine; move agent/turn semantics to everruns-durable-engine or everruns-server."
   exit 1
 fi
 
-echo "Durable isolation guard passed: everruns-durable has no everruns-* normal or build dependencies."
+# Worker composition enters the engine through the private durable-engine.
+if matches=$(awk '
+  /^\[/ { section = $0 }
+  /^[[:space:]]*(everruns-(core|engine|host|builtins|mcp|ag-ui|durable)|sqlx)[[:space:]]*[.=]/ {
+    if (section != "[dev-dependencies]") print FILENAME ":" NR ": " section " " $0
+  }
+' crates/worker/Cargo.toml); [ -n "$matches" ]; then
+  echo "Worker engine/database dependencies must pass through durable-engine:"
+  echo "$matches"
+  exit 1
+fi
+if matches=$(rg -n 'everruns_(core|engine|host|builtins|mcp|ag_ui|durable)::' crates/worker --glob '*.rs'); then
+  echo "Worker source bypasses durable-engine:"
+  echo "$matches"
+  exit 1
+fi
+if ! grep -q '^publish = false$' crates/durable-engine/Cargo.toml; then
+  echo "everruns-durable-engine is a private process entry point, not a published library"
+  exit 1
+fi
+
+echo "Durable isolation guard passed: durable remains generic; worker uses the private durable-engine entry."

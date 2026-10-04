@@ -6,15 +6,15 @@ fn resolve_agent_record(
     record: Option<proto::Agent>,
 ) -> (
     Result<Option<AgentDefinition>>,
-    Option<everruns_core::DependencyBlocker>,
+    Option<crate::core::DependencyBlocker>,
 ) {
     let blocker = match &record {
         Some(agent) => match agent.status.to_lowercase().as_str() {
-            "archived" => Some(everruns_core::DependencyBlocker::AgentArchived),
-            "deleted" => Some(everruns_core::DependencyBlocker::AgentDeleted),
+            "archived" => Some(crate::core::DependencyBlocker::AgentArchived),
+            "deleted" => Some(crate::core::DependencyBlocker::AgentDeleted),
             _ => None,
         },
-        None => Some(everruns_core::DependencyBlocker::AgentDeleted),
+        None => Some(crate::core::DependencyBlocker::AgentDeleted),
     };
     (record.map(proto_agent_to_definition).transpose(), blocker)
 }
@@ -25,7 +25,7 @@ impl GrpcOrgAdapter {
         agent_id: AgentId,
     ) -> Result<(
         Result<Option<AgentDefinition>>,
-        Option<everruns_core::DependencyBlocker>,
+        Option<crate::core::DependencyBlocker>,
     )> {
         Ok(resolve_agent_record(
             self.fetch_agent_record(agent_id).await?,
@@ -37,15 +37,15 @@ fn resolve_harness_record(
     record: Option<proto::Harness>,
 ) -> (
     Result<Option<HarnessDefinition>>,
-    Option<everruns_core::DependencyBlocker>,
+    Option<crate::core::DependencyBlocker>,
 ) {
     let blocker = match &record {
         Some(harness) => match harness.status.to_lowercase().as_str() {
-            "archived" => Some(everruns_core::DependencyBlocker::HarnessArchived),
-            "deleted" => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+            "archived" => Some(crate::core::DependencyBlocker::HarnessArchived),
+            "deleted" => Some(crate::core::DependencyBlocker::HarnessDeleted),
             _ => None,
         },
-        None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+        None => Some(crate::core::DependencyBlocker::HarnessDeleted),
     };
     (record.map(proto_harness_to_definition).transpose(), blocker)
 }
@@ -56,7 +56,7 @@ impl GrpcOrgAdapter {
         harness_id: everruns_contracts::typed_id::HarnessId,
     ) -> Result<(
         Result<Option<HarnessDefinition>>,
-        Option<everruns_core::DependencyBlocker>,
+        Option<crate::core::DependencyBlocker>,
     )> {
         Ok(resolve_harness_record(
             self.fetch_harness_record(harness_id).await?,
@@ -74,11 +74,11 @@ mod tests {
             ("active", None),
             (
                 "ArChIvEd",
-                Some(everruns_core::DependencyBlocker::AgentArchived),
+                Some(crate::core::DependencyBlocker::AgentArchived),
             ),
             (
                 "deleted",
-                Some(everruns_core::DependencyBlocker::AgentDeleted),
+                Some(crate::core::DependencyBlocker::AgentDeleted),
             ),
         ] {
             let record = proto::Agent {
@@ -89,8 +89,8 @@ mod tests {
             let expected_projection = proto_agent_to_definition(record.clone());
             let (projection, blocker) = resolve_agent_record(Some(record));
             assert_eq!(
-                blocker.map(everruns_core::DependencyBlocker::message),
-                expected.map(everruns_core::DependencyBlocker::message)
+                blocker.map(crate::core::DependencyBlocker::message),
+                expected.map(crate::core::DependencyBlocker::message)
             );
             assert_eq!(
                 projection.as_ref().err().map(ToString::to_string),
@@ -102,7 +102,7 @@ mod tests {
         assert!(projection.unwrap().is_none());
         assert!(matches!(
             blocker,
-            Some(everruns_core::DependencyBlocker::AgentDeleted)
+            Some(crate::core::DependencyBlocker::AgentDeleted)
         ));
         // A successful active lifecycle probe must not swallow wire decoding or
         // capability projection errors, or make the dependency probe fail.
@@ -131,11 +131,11 @@ mod tests {
             ("active", None),
             (
                 "ARCHIVED",
-                Some(everruns_core::DependencyBlocker::HarnessArchived),
+                Some(crate::core::DependencyBlocker::HarnessArchived),
             ),
             (
                 "deleted",
-                Some(everruns_core::DependencyBlocker::HarnessDeleted),
+                Some(crate::core::DependencyBlocker::HarnessDeleted),
             ),
         ] {
             let record = proto::Harness {
@@ -146,8 +146,8 @@ mod tests {
             let original = proto_harness_to_definition(record.clone());
             let (projection, blocker) = resolve_harness_record(Some(record));
             assert_eq!(
-                blocker.map(everruns_core::DependencyBlocker::message),
-                expected.map(everruns_core::DependencyBlocker::message)
+                blocker.map(crate::core::DependencyBlocker::message),
+                expected.map(crate::core::DependencyBlocker::message)
             );
             assert_eq!(
                 projection.as_ref().err().map(ToString::to_string),
@@ -159,7 +159,7 @@ mod tests {
         assert!(projection.unwrap().is_none());
         assert!(matches!(
             blocker,
-            Some(everruns_core::DependencyBlocker::HarnessDeleted)
+            Some(crate::core::DependencyBlocker::HarnessDeleted)
         ));
         for record in [
             proto::Harness {

@@ -12,13 +12,13 @@
 // Atoms handle message loading internally via MessageRetriever trait.
 // Atoms emit events via EventEmitter for observability.
 
-use anyhow::{Context, Result};
-use everruns_core::host::HostComposition;
-use everruns_core::host::{
+use crate::host::HostComposition;
+use crate::host::{
     execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -27,7 +27,7 @@ use crate::grpc_worker_adapters::GrpcWorkerAdapters;
 use crate::runtime_host::WorkerRuntimeHost;
 
 // Re-export atom types for activity callers
-pub use everruns_core::engine::{
+pub use crate::engine::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
 
@@ -100,7 +100,7 @@ pub async fn reason_activity(
     org_id: i64,
     input: ReasonInput,
     host_composition: &HostComposition,
-    stream_heartbeater: Option<Arc<dyn everruns_core::durability::StreamHeartbeater>>,
+    stream_heartbeater: Option<Arc<dyn crate::core::durability::StreamHeartbeater>>,
 ) -> Result<ReasonResult> {
     tracing::info!(
         org_id = org_id,
@@ -193,11 +193,11 @@ mod tests {
     fn durable_activity_io_is_the_engine_contract() {
         assert_eq!(
             std::any::type_name::<ActInput>(),
-            std::any::type_name::<everruns_core::engine::ActInput>(),
+            std::any::type_name::<crate::engine::ActInput>(),
         );
         assert_eq!(
             std::any::type_name::<ReasonResult>(),
-            std::any::type_name::<everruns_core::engine::ReasonResult>(),
+            std::any::type_name::<crate::engine::ReasonResult>(),
         );
     }
 }

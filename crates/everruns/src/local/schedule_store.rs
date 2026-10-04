@@ -21,6 +21,7 @@ use everruns_core::session_schedule::{
     ScheduleLimitError, SessionSchedule, validate_cron_min_interval_with,
 };
 use everruns_core::session_services::SessionScheduleStore;
+use everruns_durable::sqlite as rusqlite;
 use rusqlite::{OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 use std::str::FromStr;

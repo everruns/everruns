@@ -19,8 +19,8 @@ fn test_encryption() -> Arc<EncryptionService> {
     )
 }
 
-// SSE/JSON extraction is now covered by `everruns-mcp` (the shared client);
-// see crates/mcp/src/result.rs tests.
+// SSE/JSON extraction is now covered by `everruns_core::mcp` (the shared client);
+// see crates/core/src/mcp/result.rs tests.
 
 #[tokio::test]
 async fn decrypt_api_key_returns_none_when_no_key_set() {

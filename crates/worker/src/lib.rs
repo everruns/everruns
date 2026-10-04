@@ -1,26 +1,27 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+// The process composes runtime services only through its private entry crate.
+pub use everruns_durable_engine::{core, durable, engine, host, mcp};
 pub mod activities;
 pub mod adapters;
 pub mod app_builder;
 mod catalog_cli;
-pub mod durable_execution;
-pub mod durable_runner;
-pub mod durable_turn;
+pub use everruns_durable_engine::durable_execution;
+pub use everruns_durable_engine::durable_runner;
+pub use everruns_durable_engine::durable_turn;
 pub mod grpc_adapters;
 pub mod grpc_command_transport;
-pub mod grpc_durable_store;
+pub use everruns_durable_engine::grpc_durable_store;
 pub mod grpc_files_adapter;
 mod grpc_sandbox_persistence;
 pub mod grpc_slack_actions;
 pub mod grpc_sqldb_adapter;
-mod grpc_task_store;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;
 pub mod mcp_executor;
 pub mod phase_reads;
 pub mod platform;
-pub mod runner;
+pub use everruns_durable_engine::runner;
 pub mod runtime_host;
 pub mod session_lifecycle;
 pub mod session_task_reaper;
@@ -30,7 +31,7 @@ pub mod task_error;
 mod task_heartbeat;
 #[cfg(test)]
 mod task_heartbeat_tests;
-pub mod task_store;
+pub use everruns_durable_engine::task_store;
 pub mod task_wakeup;
 pub mod unified_worker;
 #[cfg(test)]

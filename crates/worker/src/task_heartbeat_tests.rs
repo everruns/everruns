@@ -5,10 +5,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use everruns_durable::persistence::{
+use crate::durable::persistence::{
     EventLog, InMemoryWorkflowEventStore, TaskDefinition, TaskQueue, WorkerRegistry, WorkflowStatus,
 };
-use everruns_durable::workflow::ActivityOptions;
+use crate::durable::workflow::ActivityOptions;
 use tokio::sync::watch;
 use uuid::Uuid;
 
@@ -39,7 +39,7 @@ async fn cancelled_workflow_fires_both_the_task_and_the_turn_cancel() {
         .await
         .unwrap();
     store
-        .register_worker(everruns_durable::WorkerInfo::new(
+        .register_worker(crate::durable::WorkerInfo::new(
             "worker-1",
             Vec::<String>::new(),
         ))

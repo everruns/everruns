@@ -20,21 +20,21 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _org_id: i64,
         _agent_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::AgentDefinition>> {
+    ) -> CoreResult<Option<crate::core::AgentDefinition>> {
         unimplemented!()
     }
     async fn get_harness(
         &self,
         _org_id: i64,
         _harness_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::HarnessDefinition>> {
+    ) -> CoreResult<Option<crate::core::HarnessDefinition>> {
         unimplemented!()
     }
     async fn get_session(
         &self,
         _org_id: i64,
         _session_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::ExecutionSession>> {
+    ) -> CoreResult<Option<crate::core::ExecutionSession>> {
         unimplemented!()
     }
     async fn set_session_status(
@@ -50,26 +50,26 @@ impl WorkerAdapters for NoopAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _title: String,
-    ) -> CoreResult<everruns_core::ExecutionSession> {
+    ) -> CoreResult<crate::core::ExecutionSession> {
         unimplemented!()
     }
     async fn get_message(
         &self,
         _session_id: Uuid,
         _message_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::RuntimeMessage>> {
+    ) -> CoreResult<Option<crate::core::RuntimeMessage>> {
         unimplemented!()
     }
     async fn load_messages(
         &self,
         _session_id: Uuid,
-    ) -> CoreResult<Vec<everruns_core::RuntimeMessage>> {
+    ) -> CoreResult<Vec<crate::core::RuntimeMessage>> {
         unimplemented!()
     }
     async fn emit_event(
         &self,
-        _request: everruns_core::events::EventRequest,
-    ) -> CoreResult<everruns_core::events::Event> {
+        _request: crate::core::events::EventRequest,
+    ) -> CoreResult<crate::core::events::Event> {
         unimplemented!()
     }
     async fn get_model_spec(
@@ -96,21 +96,21 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _org_id: i64,
         _image_id: Uuid,
-    ) -> CoreResult<Option<everruns_core::image_services::ResolvedImage>> {
+    ) -> CoreResult<Option<crate::core::image_services::ResolvedImage>> {
         unimplemented!()
     }
     async fn resolve_images_batch(
         &self,
         _org_id: i64,
         _image_ids: &[Uuid],
-    ) -> CoreResult<HashMap<Uuid, everruns_core::image_services::ResolvedImage>> {
+    ) -> CoreResult<HashMap<Uuid, crate::core::image_services::ResolvedImage>> {
         unimplemented!()
     }
     async fn resolve_files_batch(
         &self,
         _org_id: i64,
         _file_ids: &[Uuid],
-    ) -> CoreResult<HashMap<Uuid, everruns_core::file_services::ResolvedFile>> {
+    ) -> CoreResult<HashMap<Uuid, crate::core::file_services::ResolvedFile>> {
         unimplemented!()
     }
     async fn read_file(
@@ -118,7 +118,7 @@ impl WorkerAdapters for NoopAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
+    ) -> CoreResult<Option<crate::core::session_file::SessionFile>> {
         unimplemented!()
     }
     async fn write_file(
@@ -128,7 +128,7 @@ impl WorkerAdapters for NoopAdapters {
         _path: &str,
         _content: &str,
         _encoding: &str,
-    ) -> CoreResult<everruns_core::session_file::SessionFile> {
+    ) -> CoreResult<crate::core::session_file::SessionFile> {
         unimplemented!()
     }
     async fn delete_file(
@@ -145,7 +145,7 @@ impl WorkerAdapters for NoopAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
+    ) -> CoreResult<Vec<crate::core::session_file::FileInfo>> {
         unimplemented!()
     }
     async fn stat_file(
@@ -153,7 +153,7 @@ impl WorkerAdapters for NoopAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
+    ) -> CoreResult<Option<crate::core::session_file::FileStat>> {
         unimplemented!()
     }
     async fn grep_files(
@@ -162,7 +162,7 @@ impl WorkerAdapters for NoopAdapters {
         _session_id: Uuid,
         _pattern: &str,
         _path_pattern: Option<&str>,
-    ) -> CoreResult<Vec<everruns_core::session_file::GrepMatch>> {
+    ) -> CoreResult<Vec<crate::core::session_file::GrepMatch>> {
         unimplemented!()
     }
     async fn create_directory(
@@ -170,7 +170,7 @@ impl WorkerAdapters for NoopAdapters {
         _org_id: i64,
         _session_id: Uuid,
         _path: &str,
-    ) -> CoreResult<everruns_core::session_file::FileInfo> {
+    ) -> CoreResult<crate::core::session_file::FileInfo> {
         unimplemented!()
     }
     async fn get_mcp_server_by_prefix(
@@ -208,7 +208,7 @@ impl WorkerAdapters for NoopAdapters {
         &self,
         _limit: u32,
         _stale_after_seconds: u32,
-    ) -> CoreResult<Vec<everruns_core::leased_resource::LeasedResource>> {
+    ) -> CoreResult<Vec<crate::core::leased_resource::LeasedResource>> {
         unimplemented!()
     }
     async fn mark_leased_resource_released(
@@ -242,7 +242,7 @@ impl WorkerAdapters for NoopAdapters {
         unimplemented!()
     }
 
-    fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
+    fn capability_registry(&self) -> crate::core::capabilities::CapabilityRegistry {
         unimplemented!()
     }
     fn driver_registry(&self) -> everruns_contracts::DriverRegistry {
@@ -257,30 +257,30 @@ impl WorkerAdapters for NoopAdapters {
     fn storage_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
         unimplemented!()
     }
     fn storage_store_unscoped(
         &self,
-    ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
+    ) -> Arc<dyn crate::core::session_services::SessionStorageStore> {
         unimplemented!()
     }
     fn image_artifact_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::image_services::ImageArtifactStore> {
+    ) -> Arc<dyn crate::core::image_services::ImageArtifactStore> {
         unimplemented!()
     }
     fn provider_credential_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::connection_services::ProviderCredentialStore> {
+    ) -> Arc<dyn crate::core::connection_services::ProviderCredentialStore> {
         unimplemented!()
     }
-    fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
+    fn utility_llm_service(&self) -> Option<Arc<dyn crate::core::UtilityLlmService>> {
         unimplemented!()
     }
-    fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
+    fn egress_service(&self) -> Option<Arc<dyn crate::core::EgressService>> {
         unimplemented!()
     }
     fn platform_store(
@@ -292,23 +292,21 @@ impl WorkerAdapters for NoopAdapters {
     }
     fn connection_resolver(
         &self,
-    ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
+    ) -> Arc<dyn crate::core::connection_services::UserConnectionResolver> {
         unimplemented!()
     }
-    fn leased_resource_store(
-        &self,
-    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
+    fn leased_resource_store(&self) -> Arc<dyn crate::core::session_services::LeasedResourceStore> {
         unimplemented!()
     }
     fn schedule_store(
         &self,
         _org_id: i64,
-    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
+    ) -> Arc<dyn crate::core::session_services::SessionScheduleStore> {
         unimplemented!()
     }
     fn reaper_session_task_registry(
         &self,
-    ) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+    ) -> Arc<dyn crate::core::session_task::SessionTaskRegistry> {
         unimplemented!()
     }
 }

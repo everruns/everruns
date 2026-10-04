@@ -41,7 +41,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
     async fn get_harness(
         &self,
         id: everruns_contracts::typed_id::HarnessId,
-    ) -> Result<Option<everruns_core::HarnessDefinition>> {
+    ) -> Result<Option<crate::core::HarnessDefinition>> {
         self.execute_runtime_lookup("get_harness", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -50,7 +50,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
     // Agent Operations
     // =========================================================================
 
-    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<everruns_core::AgentDefinition>> {
+    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<crate::core::AgentDefinition>> {
         self.execute_runtime_lookup("get_agent", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -66,7 +66,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
     async fn create_session_with_options(
         &self,
         request: everruns_capabilities::PlatformCreateSessionRequest,
-    ) -> Result<everruns_core::ExecutionSession> {
+    ) -> Result<crate::core::ExecutionSession> {
         self.execute_runtime_command(
             "create_session",
             serde_json::json!({
@@ -94,7 +94,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
     async fn get_session_by_id(
         &self,
         id: SessionId,
-    ) -> Result<Option<everruns_core::ExecutionSession>> {
+    ) -> Result<Option<crate::core::ExecutionSession>> {
         self.execute_runtime_lookup(
             "get_session",
             serde_json::json!({ "session_id": id.to_string() }),
@@ -154,7 +154,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         messages.retain(|message| {
             matches!(
                 message.role,
-                everruns_core::RuntimeMessageRole::User | everruns_core::RuntimeMessageRole::Agent
+                crate::core::RuntimeMessageRole::User | crate::core::RuntimeMessageRole::Agent
             )
         });
 
@@ -165,7 +165,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                     .content
                     .iter()
                     .filter_map(|part| match part {
-                        everruns_core::ContentPart::Text(text) => Some(text.text.as_str()),
+                        crate::core::ContentPart::Text(text) => Some(text.text.as_str()),
                         _ => None,
                     })
                     .collect::<Vec<_>>()
@@ -175,7 +175,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 }
                 Some(everruns_capabilities::PlatformMessage {
                     role: match message.role {
-                        everruns_core::RuntimeMessageRole::User => "user".to_string(),
+                        crate::core::RuntimeMessageRole::User => "user".to_string(),
                         _ => "agent".to_string(),
                     },
                     content,
@@ -205,7 +205,7 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                 .ok_or_else(|| AgentLoopError::store("Session not found"))?;
 
             match session.status {
-                everruns_core::session::SessionExecutionState::Idle => {
+                crate::core::session::SessionExecutionState::Idle => {
                     if let Some(status) = self.latest_terminal_turn_status(session_id).await? {
                         return Ok(status);
                     }
@@ -213,14 +213,14 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
                     // turn-event persistence. Keep polling until the event lands
                     // so callers can distinguish successful and failed idle turns.
                 }
-                everruns_core::session::SessionExecutionState::WaitingForToolResults => {
+                crate::core::session::SessionExecutionState::WaitingForToolResults => {
                     return Ok("waiting_for_tool_results".to_string());
                 }
-                everruns_core::session::SessionExecutionState::Paused => {
+                crate::core::session::SessionExecutionState::Paused => {
                     return Ok("paused".to_string());
                 }
-                everruns_core::session::SessionExecutionState::Started
-                | everruns_core::session::SessionExecutionState::Active => {}
+                crate::core::session::SessionExecutionState::Started
+                | crate::core::session::SessionExecutionState::Active => {}
             }
 
             if start.elapsed() > timeout {
