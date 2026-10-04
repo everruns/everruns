@@ -2921,6 +2921,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Checked before any deferral: a run that saw a job fail (including
+          # `changes` and its workflow-security prechecks) must stay red, never
+          # inherit an older pass on the same head SHA.
           echo "Job results: $RESULTS"
           if echo "$RESULTS" | grep -qE '"failure"|"cancelled"'; then
             echo "One or more CI jobs failed or were cancelled"
@@ -3003,6 +3006,8 @@ jobs:
             done
           fi
 
+          # Only an explicit run_ci=false may defer above. An empty run_ci means
+          # the event gate never ran, so fail closed rather than read it as a skip.
           if [ "$RUN_CI" != "true" ]; then
             echo "run_ci was not produced, so this run cannot attest to the commit"
             exit 1
