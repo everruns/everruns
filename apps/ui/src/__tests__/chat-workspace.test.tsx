@@ -85,6 +85,20 @@ beforeEach(() => {
     error: null,
   });
 });
+it("uses a full-width drawer when the sidebar leaves insufficient room for split panes", () => {
+  const matchMedia = jest.fn(() => ({
+    matches: true,
+    addEventListener: jest.fn(),
+    removeEventListener: jest.fn(),
+  }));
+  Object.defineProperty(window, "matchMedia", { configurable: true, value: matchMedia });
+  mockPath = "/chats/history";
+  render(<ChatWorkspace />);
+  expect(matchMedia).toHaveBeenCalledWith("(max-width: 1279px)");
+  expect(screen.getByRole("dialog")).toHaveClass("w-full", "max-w-none");
+  expect(screen.queryByRole("button", { name: "Expand thread panel" })).not.toBeInTheDocument();
+});
+
 it("starts in permanent Chat and opens creation and history inside Threads", () => {
   render(<ChatWorkspace />);
   expect(screen.getByTestId("conversation-permanent")).toBeInTheDocument();

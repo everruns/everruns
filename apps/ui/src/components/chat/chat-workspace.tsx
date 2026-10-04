@@ -63,7 +63,7 @@ export function ChatWorkspace() {
   const { thread, error } = usePlatformChatThread({ ensure: true });
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [mobile, setMobile] = useState(false);
+  const [compact, setCompact] = useState(false);
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const threadsButton = useRef<HTMLButtonElement>(null);
@@ -91,8 +91,9 @@ export function ChatWorkspace() {
   );
 
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 767px)");
-    const update = () => setMobile(media.matches);
+    // Below this width the persistent sidebar leaves too little room for two composers.
+    const media = window.matchMedia("(max-width: 1279px)");
+    const update = () => setCompact(media.matches);
     update();
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
@@ -124,7 +125,7 @@ export function ChatWorkspace() {
         <LinkButton href="/chats/new" variant="ghost" size="icon" aria-label="New thread">
           <Plus />
         </LinkButton>
-        {!mobile && (
+        {!compact && (
           <Button
             variant="ghost"
             size="icon"
@@ -245,7 +246,9 @@ export function ChatWorkspace() {
       }}
     >
       <div className="flex h-full min-h-0 min-w-0">
-        <div className={cn("min-h-0 min-w-0 flex-1", !mobile && panelOpen && expanded && "hidden")}>
+        <div
+          className={cn("min-h-0 min-w-0 flex-1", !compact && panelOpen && expanded && "hidden")}
+        >
           <ChatThreadView
             threadId={thread.id}
             extraActions={
@@ -262,7 +265,7 @@ export function ChatWorkspace() {
             }
           />
         </div>
-        {mobile ? (
+        {compact ? (
           <Drawer open={panelOpen} onOpenChange={(value) => !value && close()}>
             <DrawerContent
               className="w-full max-w-none gap-0 p-0 sm:max-w-none"
@@ -278,7 +281,7 @@ export function ChatWorkspace() {
             <section
               aria-label="Threads"
               className={cn(
-                "hidden min-h-0 min-w-0 border-l border-border md:block",
+                "hidden min-h-0 min-w-0 border-l border-border xl:block",
                 expanded ? "flex-1" : "w-1/2 min-w-[360px]",
               )}
             >

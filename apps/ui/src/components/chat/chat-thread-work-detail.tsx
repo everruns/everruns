@@ -13,14 +13,16 @@ export function ChatThreadWorkDetail({ task }: { task: SessionTask }) {
   const send = useSendTaskMessage(task.session_id);
   const cancel = useCancelSessionTask(task.session_id);
   const terminal = isTerminalTaskState(task.state);
-  // The task API rejects messages for subagents; their conversation is inspected directly.
-  const canMessage = !terminal && task.kind !== "subagent";
+  // The task API reserves delegated conversation messages for the parent agent's tools.
+  const canMessage = !terminal && !["subagent", "agent_handoff"].includes(task.kind);
   return (
     <div className="space-y-4 p-4">
       <TaskCard
         task={task}
         sessionId={task.session_id}
-        inputReplyHint={canMessage ? "Answer below to continue." : undefined}
+        inputReplyHint={
+          canMessage ? "Answer below to continue." : "Ask Chat to answer this request."
+        }
       />
       {task.links?.child_session_id && (
         <LinkButton href={`/sessions/${task.links.child_session_id}/transcript`} variant="outline">
