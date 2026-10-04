@@ -8,7 +8,7 @@ use crate::storage::{
 use chrono::Utc;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, Permission, PermissionResolver};
-use everruns_platform::ChannelTransport;
+use everruns_platform::ChannelType;
 use serde_json::json;
 use std::sync::Arc;
 use wiremock::{
@@ -78,7 +78,7 @@ async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelR
     let channel = CreateAgentChannel {
         agent_id: agent,
         req: CreateAgentChannelRequest {
-            channel_type: ChannelTransport::Slack,
+            channel_type: ChannelType::Slack,
             channel_config: json!({"bot_token":"xoxb-test","signing_secret":"test","team_id":"T1"}),
             enabled: true,
             agent_version_policy: None,
