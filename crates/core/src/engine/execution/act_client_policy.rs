@@ -139,9 +139,7 @@ where
     {
         tool_context.connection_resolver = Some(bound);
     }
-    if let Some(scope) =
-        tool_context.extension::<crate::tool_context::ExecutionServicesExt>()
-    {
+    if let Some(scope) = tool_context.extension::<crate::tool_context::ExecutionServicesExt>() {
         scope
             .0
             .bind(&mut tool_context, context.input_message_id.uuid());
@@ -163,10 +161,9 @@ where
     if let Some(workspace_id) = context.workspace_id {
         tool_context.workspace_id = workspace_id;
         if let Some(store) = tool_context.file_store.take() {
-            tool_context.file_store = Some(crate::engine::session_files::WorkspaceScopedFileSystem::wrap(
-                store,
-                workspace_id,
-            ));
+            tool_context.file_store = Some(
+                crate::engine::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id),
+            );
         }
     }
     // Resolve model paths through the mount resolver (EVE-660): `/workspace`
@@ -234,7 +231,10 @@ where
         if let Some(images) = &tool_result.images {
             for image in images {
                 content.push(ContentPart::Image(
-                    crate::engine::message::ImageContentPart::from_base64(&image.base64, &image.media_type),
+                    crate::engine::message::ImageContentPart::from_base64(
+                        &image.base64,
+                        &image.media_type,
+                    ),
                 ));
             }
         }
