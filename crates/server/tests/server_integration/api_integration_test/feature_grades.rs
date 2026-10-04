@@ -50,7 +50,10 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
             .assert_status(StatusCode::NOT_FOUND);
 
         let platform_route = format!("{FLAGS}/platform");
-        let status = if grade == FeatureFlagGrade::Internal {
+        let status = if matches!(
+            grade,
+            FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
+        ) {
             StatusCode::OK
         } else {
             StatusCode::BAD_REQUEST
@@ -59,7 +62,10 @@ async fn test_feature_grades_control_http_defaults_mutations_and_payment_access(
             .patch(&platform_route, json!({"flags":{"machine_payments":true}}))
             .await
             .assert_status(status);
-        if grade == FeatureFlagGrade::Internal {
+        if matches!(
+            grade,
+            FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
+        ) {
             let effective: Value = server.get(FLAGS).await.assert_status(StatusCode::OK).json();
             assert_eq!(effective["machine_payments"], true);
             server

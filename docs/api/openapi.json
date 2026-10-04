@@ -11336,7 +11336,7 @@
           "Organizations"
         ],
         "summary": "PATCH /v1/orgs/{org}/feature-flags/platform — enrol an organization in a\nplatform-managed feature.",
-        "description": "Platform users only, and limited to platform-managed flags: an operator\nsetting a tenant's own preferences would be acting as the tenant, which this\nsurface does not do. Omitted flags are unchanged, so enrolling one org in one\nfeature cannot disturb another setting.",
+        "description": "Platform users may enroll internal and adoption features. Tenant admins retain\nadoption authority; production preferences and deployment availability stay\noutside this route. Omitted overrides are unchanged.",
         "operationId": "update_platform_feature_flags",
         "parameters": [
           {
