@@ -84,7 +84,7 @@ and migration live in `crates/server/src/domains/agent_channels/` and
 
 One row per way in. Transport-typed config, exactly as `app_channels` is today — the
 config stays a per-transport typed union (`SlackChannelConfig` and friends in
-`crates/platform/src/app.rs`, moving to `crates/platform/src/channel.rs`), because
+`crates/server/src/records/app.rs`, moving to `crates/capabilities/src/channel.rs`), because
 `agent_surface_enabled` has no meaning for A2A and pretending otherwise produces a
 lowest-common-denominator config that fits nothing.
 

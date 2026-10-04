@@ -27,7 +27,7 @@ pub async fn invoke(
 
 fn discover(
     arguments: &Value,
-    feature_flags: &everruns_platform::FeatureFlags,
+    feature_flags: &crate::records::FeatureFlags,
 ) -> Result<String, String> {
     let show_all = arguments
         .get("all")
@@ -405,8 +405,8 @@ mod tests {
         assert!(!error.contains(PARTIAL_FAILURE_LABEL));
     }
 
-    fn all_flags() -> everruns_platform::FeatureFlags {
-        everruns_platform::FeatureFlags {
+    fn all_flags() -> crate::records::FeatureFlags {
+        crate::records::FeatureFlags {
             docker_capability: true,
             container_sandbox: true,
             lua: true,
@@ -434,7 +434,7 @@ mod tests {
     fn discover_for_test(arguments: &Value) -> Result<String, String> {
         discover(
             arguments,
-            &everruns_platform::FeatureFlags {
+            &crate::records::FeatureFlags {
                 docker_capability: true,
                 container_sandbox: true,
                 lua: true,
@@ -763,7 +763,7 @@ mod tests {
     fn feature_gated_discovery_omits_operations_for_disabled_features() {
         let output = discover(
             &json!({ "query": "list_evals" }),
-            &everruns_platform::FeatureFlags::default(),
+            &crate::records::FeatureFlags::default(),
         )
         .expect("discover disabled eval operation");
         let value: Value = serde_json::from_str(&output).expect("discover JSON");

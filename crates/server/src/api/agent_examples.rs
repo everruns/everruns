@@ -38,7 +38,7 @@ pub struct AgentExample {
     #[schema(example = json!(["humor", "demo"]))]
     pub tags: Vec<String>,
     /// Capability IDs this example uses
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>, example = json!(["current_time"]))]
+    #[schema(value_type = Vec<everruns_capabilities::CapabilityRefSchema>, example = json!(["current_time"]))]
     pub capabilities: Vec<everruns_contracts::CapabilityRef>,
     /// Whether this example requires dev/experimental mode
     #[schema(example = false)]

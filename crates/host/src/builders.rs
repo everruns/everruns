@@ -36,7 +36,7 @@ pub struct SeededHarness {
 ///
 /// EVE-881: the embedded host seeds neutral execution configuration only.
 /// Stored Harness persistence records (lifecycle status, hierarchy, display
-/// metadata, timestamps) live in `everruns-platform` and are a hosted
+/// metadata, timestamps) live in `everruns-capabilities` and are a hosted
 /// control-plane concern.
 #[derive(Debug, Clone)]
 pub struct HarnessBuilder {
@@ -195,7 +195,7 @@ impl HarnessBuilder {
 ///
 /// EVE-877: the embedded host seeds authored execution configuration only.
 /// Stored Agent persistence records (lifecycle status, versioning, timestamps)
-/// live in `everruns-platform` and are a hosted-control-plane concern.
+/// live in `everruns-capabilities` and are a hosted-control-plane concern.
 #[derive(Debug, Clone)]
 pub struct AgentBuilder {
     id: AgentId,
@@ -351,7 +351,7 @@ impl AgentBuilder {
 ///
 /// EVE-882: the embedded host seeds the neutral execution view only. The
 /// stored Session persistence record (source facets, participants, ownership
-/// summaries, timestamps, UI metadata) lives in `everruns-platform` and is a
+/// summaries, timestamps, UI metadata) lives in `everruns-capabilities` and is a
 /// hosted control-plane concern.
 #[derive(Debug, Clone)]
 pub struct SessionBuilder {

@@ -589,7 +589,7 @@ mod tests {
     //
     // Harness lifecycle and inheritance failures (empty chain, chain/leaf
     // mismatch, archived/deleted records, cycles) moved to the platform
-    // loading seam (EVE-881); they are covered by the `everruns-platform`
+    // loading seam (EVE-881); they are covered by the `crates/server/src/records`
     // `resolve_execution_harness` tests and the hosted store adapters.
 
     #[test]

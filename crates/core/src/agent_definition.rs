@@ -2,7 +2,7 @@
 //
 // Decision: the stored `Agent`/`AgentVersion` persistence records — lifecycle
 // status, versioning and publication metadata, fork lineage, timestamps,
-// usage — live in `everruns-platform`. Core keeps only this portable,
+// usage — live in `crates/server/src/records`. Core keeps only this portable,
 // execution-facing projection: the authored configuration the runtime folds
 // into the harness → agent → session overlay chain. The platform loading seam
 // (server repositories, worker adapters, hosted stores) projects stored
@@ -23,7 +23,7 @@ use crate::typed_id::{AgentId, ModelId};
 /// Carries exactly what turn execution consumes: the agent's identity for
 /// correlation plus the authored configuration layer merged between the
 /// harness chain and the session overlay. It is not a persistence record —
-/// stored lifecycle/versioning metadata stays in `everruns-platform`.
+/// stored lifecycle/versioning metadata stays in `crates/server/src/records`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDefinition {
     /// Public agent identifier (`agent_<32-hex>`), used for correlation and

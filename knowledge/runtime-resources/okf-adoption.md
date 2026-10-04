@@ -179,7 +179,7 @@ entries, kinds, raw types, tags, resources, and resolvable links.
 ## `data_knowledge` as OKF Consumer
 
 The `data_knowledge` capability mounts a readonly `/knowledge/{tables,business,
-queries}` scaffold (`crates/platform/src/capabilities/data_knowledge.rs`). It is
+queries}` scaffold (`crates/capabilities/src/capabilities/data_knowledge.rs`). It is
 made an OKF consumer so the mounted tree *is* a conformant OKF bundle and the
 same content is portable:
 
@@ -245,7 +245,7 @@ The agent-facing `search_knowledge` tool lets an agent *read* imported OKF
 knowledge. Implemented as a cross-crate slice:
 
 * Platform trait `KnowledgeStore` + `KnowledgeSearchHit` result type
-  (`crates/platform/src/knowledge_store.rs`), resolved through the typed
+  (`crates/contracts/src/knowledge_store.rs`), resolved through the typed
   `ToolContext` extension boundary owned by `everruns-core`.
 * Server impl over `StorageBackend`
   (`crates/server/src/knowledge_store.rs`), wired via `DirectWorkerAdapters`. It
@@ -253,7 +253,7 @@ knowledge. Implemented as a cross-crate slice:
   skipped, no existence leak) and calls `search_knowledge_entries`. Public
   org-id → internal id uses `org_internal_id_from_public`.
 * The tool on `KnowledgeBaseCapability::tools_with_config`
-  (`crates/platform/src/capabilities/knowledge_base.rs`), reading `bases`/`kinds`
+  (`crates/capabilities/src/capabilities/knowledge_base.rs`), reading `bases`/`kinds`
   from config, unit-tested against a mock `KnowledgeStore`.
 * The embedded `InProcessRuntime` path is not yet wired (returns no store), so
   the tool is currently active on the server/worker execution path.

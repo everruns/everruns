@@ -2,7 +2,7 @@ use super::*;
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use everruns_core::{DefaultPermissionResolver, Permission};
-use everruns_platform::{ChannelStatus, ChannelType};
+use crate::records::{ChannelStatus, ChannelType};
 use std::sync::Arc;
 
 struct AgentsOnlyResolver;
@@ -30,7 +30,7 @@ fn org_with_role(role: OrgRole) -> ResolvedOrg {
         user_id: None,
         role,
         is_platform_user: false,
-        feature_flags: everruns_platform::FeatureFlags::default(),
+        feature_flags: crate::records::FeatureFlags::default(),
     }
 }
 

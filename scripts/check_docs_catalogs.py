@@ -435,7 +435,7 @@ def check_env_summary(root: pathlib.Path, sources: RustSources, report: Report) 
 
 # --- feature parity ---------------------------------------------------------
 
-PLATFORM_FEATURES = re.compile(r'^everruns-platform\s*=\s*\{[^}]*features\s*=\s*\[([^\]]*)\]', re.MULTILINE)
+PLATFORM_FEATURES = re.compile(r'^everruns-capabilities\s*=\s*\{[^}]*features\s*=\s*\[([^\]]*)\]', re.MULTILINE)
 
 
 def platform_features(root: pathlib.Path, manifest: str) -> set[str] | None:
@@ -449,11 +449,11 @@ def check_feature_parity(root: pathlib.Path, report: Report) -> None:
     server = platform_features(root, SERVER_MANIFEST)
     snapshot = platform_features(root, CATALOG_MANIFEST)
     if server is None or snapshot is None:
-        report.error(CATALOG_MANIFEST, "could not read the everruns-platform feature lists")
+        report.error(CATALOG_MANIFEST, "could not read the everruns-capabilities feature lists")
     elif server != snapshot:
         report.error(
             CATALOG_MANIFEST,
-            f"the docs catalog snapshot builds everruns-platform with {sorted(snapshot)}, "
+            f"the docs catalog snapshot builds everruns-capabilities with {sorted(snapshot)}, "
             f"the server with {sorted(server)}; keep them equal",
         )
 

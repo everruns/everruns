@@ -1,6 +1,6 @@
 //! Canonical levels: shared capability data, hosted presentation and live parents.
 use everruns_contracts::capability::BuiltInHarnessPreset;
-use everruns_platform::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+use crate::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 
 pub fn definition(preset: BuiltInHarnessPreset) -> BuiltInHarnessDefinition {
     let (display_name, icon, description) = match preset {

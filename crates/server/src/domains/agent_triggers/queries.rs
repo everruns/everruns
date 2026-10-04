@@ -6,8 +6,8 @@ use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
 use everruns_contracts::typed_id::{AgentId, TriggerId};
-use everruns_platform::AgentChannelId;
-use everruns_platform::{AgentTrigger, AgentTriggerType};
+use crate::records::AgentChannelId;
+use crate::records::{AgentTrigger, AgentTriggerType};
 use std::sync::Arc;
 
 /// Map a storage row into the core [`AgentTrigger`].
@@ -38,7 +38,7 @@ pub fn row_to_trigger(
         agent_version_policy: row
             .agent_version_policy
             .as_deref()
-            .map(everruns_platform::AgentVersionPolicy::from)
+            .map(crate::records::AgentVersionPolicy::from)
             .unwrap_or_default(),
         agent_version_id: row.agent_version_id,
         created_at: row.created_at,

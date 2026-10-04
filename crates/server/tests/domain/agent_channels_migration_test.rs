@@ -29,7 +29,7 @@ use axum::{
 use everruns_durable::InMemoryWorkflowEventStore;
 
 use everruns_contracts::typed_id::PrincipalId;
-use everruns_platform::ChannelType;
+use everruns_server::records::ChannelType;
 use everruns_server::EventDelivery;
 use everruns_server::api;
 use everruns_server::domains::agent_channels::{hash_a2a_api_key, hash_channel_api_key};

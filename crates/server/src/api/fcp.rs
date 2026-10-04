@@ -40,7 +40,7 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::{Caller, ContentPart, ExternalActor};
-use everruns_platform::{ChannelType, FcpChannelConfig};
+use crate::records::{ChannelType, FcpChannelConfig};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
@@ -831,7 +831,7 @@ async fn resolve_session(
             None,
             app.owner_principal_id,
             app.resolved_owner_user_id,
-            everruns_platform::SessionSource::Fcp,
+            crate::records::SessionSource::Fcp,
             CreateSessionRequest {
                 playground_user_id: None,
                 source: None,

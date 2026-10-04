@@ -32,11 +32,11 @@ crates/host/src/observability/braintrust.rs
 crates/host/src/runtime.rs
 crates/host/tests/integration/runtime_host_test.rs
 crates/internal-protocol/src/lib.rs
-crates/platform/src/background_run.rs
-crates/platform/src/capabilities/a2a_delegation/mod.rs
-crates/platform/src/capabilities/agent_handoff.rs
-crates/platform/src/capabilities/subagents.rs
-crates/platform/src/session_sandbox.rs
+crates/capabilities/src/background_run.rs
+crates/capabilities/src/capabilities/a2a_delegation/mod.rs
+crates/capabilities/src/capabilities/agent_handoff.rs
+crates/capabilities/src/capabilities/subagents.rs
+crates/capabilities/src/session_sandbox.rs
 crates/server/src/api/agents.rs
 crates/server/src/api/common.rs
 crates/server/src/api/durable.rs

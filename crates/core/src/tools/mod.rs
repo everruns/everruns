@@ -26,7 +26,7 @@ use crate::{
 use crate::error::{AgentLoopError, Result};
 use crate::tool_execution::ToolExecutor;
 // EVE-888: `spawn_background`, its session-task mirroring, the background
-// event sink and the reattach path moved to `everruns-platform`
+// event sink and the reattach path moved to `everruns-capabilities`
 // (`background_run`). Creating session tasks and schedules is hosted behaviour;
 // the kernel keeps the neutral `BackgroundExecutableTool`/`BackgroundEventSink`
 // contracts in `crate::background` and runs whatever a host supplies.

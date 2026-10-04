@@ -1,11 +1,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
-use everruns_platform::slack_provisioning::{
+use crate::records::slack_provisioning::{
     SlackAppCredentials, SlackAppProvisioner, SlackProvisioningConnectionStatus,
     SlackProvisioningError, SlackProvisioningResult,
 };
+use async_trait::async_trait;
 use serde::Deserialize;
 use uuid::Uuid;
 

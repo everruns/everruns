@@ -141,7 +141,7 @@ pub struct McpEventsService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     egress: Arc<dyn EgressService>,
-    system_flags: everruns_platform::FeatureFlagPolicy,
+    system_flags: crate::records::FeatureFlagPolicy,
     ui_base: Option<String>,
     retry_delays: Vec<Duration>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -152,7 +152,7 @@ impl McpEventsService {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         egress: Arc<dyn EgressService>,
-        system_flags: everruns_platform::FeatureFlagPolicy,
+        system_flags: crate::records::FeatureFlagPolicy,
     ) -> Self {
         Self {
             db,

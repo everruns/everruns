@@ -12,9 +12,7 @@ use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use everruns_contracts::typed_id::AppId;
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, VirtualUserId};
-use everruns_platform::{
-    AgentChannel, AgentChannelId, AgentVersionPolicy, App, AppStatus, ChannelStatus, ChannelType,
-};
+use crate::records::{AgentChannel, AgentChannelId, AgentVersionPolicy, App, AppStatus, ChannelStatus, ChannelType};
 use std::sync::Arc;
 use uuid::Uuid;
 

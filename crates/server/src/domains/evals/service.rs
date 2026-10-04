@@ -13,6 +13,7 @@ use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_to
 use crate::domains::evals::limits::EvalLimits;
 use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
+use crate::records::eval::*;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow,
@@ -24,7 +25,6 @@ use everruns_contracts::typed_id::{
     EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, SessionId,
 };
 use everruns_core::{Caller, Permission, Policy, Rule};
-use everruns_platform::eval::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use url::Url;

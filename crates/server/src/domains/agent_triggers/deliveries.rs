@@ -22,7 +22,7 @@ pub struct ListAgentTriggerDeliveries {
 }
 
 impl Command for ListAgentTriggerDeliveries {
-    type Output = Vec<everruns_platform::AgentTriggerDelivery>;
+    type Output = Vec<crate::records::AgentTriggerDelivery>;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -41,7 +41,7 @@ impl Command for ListAgentTriggerDeliveries {
     async fn execute(
         self,
         ctx: &Ctx,
-    ) -> Result<Vec<everruns_platform::AgentTriggerDelivery>, CommandError> {
+    ) -> Result<Vec<crate::records::AgentTriggerDelivery>, CommandError> {
         let (_, trigger) =
             super::commands::resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id)
                 .await?;
@@ -56,7 +56,7 @@ impl Command for ListAgentTriggerDeliveries {
             .map_err(classify_anyhow)?;
         Ok(rows
             .into_iter()
-            .map(|row| everruns_platform::AgentTriggerDelivery {
+            .map(|row| crate::records::AgentTriggerDelivery {
                 id: row.id,
                 source: row.source,
                 event_id: row.event_id,
@@ -65,7 +65,7 @@ impl Command for ListAgentTriggerDeliveries {
                 status: row
                     .status
                     .parse()
-                    .unwrap_or(everruns_platform::TriggerDeliveryStatus::Failed),
+                    .unwrap_or(crate::records::TriggerDeliveryStatus::Failed),
                 reason: row.reason,
                 session_id: row.session_id.map(SessionId::from_uuid),
                 created_at: row.created_at,

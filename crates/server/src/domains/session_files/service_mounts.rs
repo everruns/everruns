@@ -56,7 +56,7 @@ impl WorkspaceFileService {
                 })
             {
                 use everruns_core::Capability;
-                let capability = everruns_platform::capabilities::platform::PlatformCapability;
+                let capability = everruns_capabilities::capabilities::platform::PlatformCapability;
                 for mount in capability.mounts() {
                     if let MountSource::Virtual { tree } = mount.source
                         && let Some(registry) = &self.virtual_registry

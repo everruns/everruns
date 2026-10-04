@@ -35,11 +35,10 @@ use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
 };
-use everruns_platform::AgentChannelId;
-use everruns_platform::{AgentAction, AuditEvent};
-use everruns_platform::{
-    AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, SessionBinding, WebhookTriggerConfig,
-};
+use crate::records::AgentChannelId;
+use crate::records::{AgentAction, AuditEvent};
+use crate::records::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, WebhookTriggerConfig};
+use everruns_capabilities::{SessionBinding};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::str::FromStr;
@@ -1070,7 +1069,7 @@ pub async fn invoke_agent_trigger(
             message_template: &config.message,
             session_mode: config.session_mode,
             filter: None,
-            session_source: everruns_platform::SessionSource::Schedule,
+            session_source: crate::records::SessionSource::Schedule,
             webhook_compat: None,
         },
         events::TriggerEvent {
@@ -1099,7 +1098,7 @@ pub(super) struct TriggerExecutionContext {
     resolved_owner_user_id: Option<Uuid>,
     virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
     app_id: Option<Uuid>,
-    agent_version_policy: everruns_platform::AgentVersionPolicy,
+    agent_version_policy: crate::records::AgentVersionPolicy,
     agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
 }
 
@@ -1175,7 +1174,7 @@ fn stored_version_selection(trigger: &AgentTriggerRow) -> VersionSelection {
         policy: trigger
             .agent_version_policy
             .as_deref()
-            .map(everruns_platform::AgentVersionPolicy::from)
+            .map(crate::records::AgentVersionPolicy::from)
             .unwrap_or_default(),
         version_id: trigger.agent_version_id,
     }

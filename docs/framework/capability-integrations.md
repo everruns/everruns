@@ -24,7 +24,7 @@ execution or network surface.
 | `mcp-stdio` | No | `everruns-mcp` | Adds local-process MCP servers and implies `mcp` |
 | `host-shell` | No | `everruns-host` | `bash` tool over real host processes, bounded by a kernel policy; implies `host-compute` |
 | `duckduckgo` | No | `everruns-integrations-duckduckgo` | DuckDuckGo web search through the host egress contract |
-| `a2a` | No | `everruns-platform` | Outbound A2A delegation to remote agents; implies `local` |
+| `a2a` | No | `everruns-capabilities` | Outbound A2A delegation to remote agents; implies `local` |
 | `otel` | No | `everruns-host` | OpenTelemetry exporter; see [Observability](/observability/) |
 | `braintrust` | No | `everruns-host` | Braintrust exporter; see [Observability](/observability/) |
 

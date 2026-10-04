@@ -16,8 +16,8 @@ use crate::kernel_imports::{
     contracts::error::Result, contracts::error::StoreResultExt, contracts::error::from_json,
     contracts::typed_id::HarnessId, execution_loading::HarnessStore,
 };
+use crate::records::{Harness, HarnessStatus, resolve_execution_harness};
 use async_trait::async_trait;
-use everruns_platform::{Harness, HarnessStatus, resolve_execution_harness};
 use std::collections::HashSet;
 
 use super::repositories::Database;

@@ -177,7 +177,7 @@ impl TestServer {
     ) -> Value {
         use everruns_contracts::typed_id::{AppId, HarnessId, PrincipalId};
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_platform::AgentChannelId;
+        use everruns_server::records::AgentChannelId;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::storage::models::{
             CreateAppRow, CreateLegacyAliasChannelRow, CreatePrincipalRow,
@@ -318,7 +318,7 @@ impl TestServer {
         channel_config: Value,
     ) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_platform::AgentChannelId;
+        use everruns_server::records::AgentChannelId;
         use everruns_server::domains::agent_channels::queries::prepare_channel_storage;
         use everruns_server::storage::models::CreateLegacyAliasChannelRow;
 
@@ -529,7 +529,7 @@ impl TestServer {
     }
 
     pub async fn in_memory_with_feature_policy(
-        policy: everruns_platform::FeatureFlagPolicy,
+        policy: everruns_server::records::FeatureFlagPolicy,
     ) -> Self {
         Self::build_with_feature_policy(
             TestMode::InMemory,
@@ -550,7 +550,7 @@ impl TestServer {
         encryption_enabled: bool,
         runner_override: Option<Arc<dyn AgentRunner>>,
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
-        policy_override: Option<everruns_platform::FeatureFlagPolicy>,
+        policy_override: Option<everruns_server::records::FeatureFlagPolicy>,
     ) -> Self {
         // Create storage backend based on mode
         let (db, pool, durable_store) = match mode {
@@ -642,7 +642,7 @@ impl TestServer {
         // publish to the same broadcast backend that SSE subscribers listen on.
         let event_delivery = everruns_server::EventDelivery::in_memory();
 
-        let mut feature_flags = everruns_platform::FeatureFlags::from_env(&grade);
+        let mut feature_flags = everruns_server::records::FeatureFlags::from_env(&grade);
         feature_flags.evals = true;
         feature_flags.observers = true;
         // System side of the experimental gates exercised by integration tests.
@@ -681,20 +681,20 @@ impl TestServer {
             .await
             .expect("seed org feature flags for test org");
 
-        let mut feature_flag_policy = everruns_platform::FeatureFlagPolicy::from_env(grade);
+        let mut feature_flag_policy = everruns_server::records::FeatureFlagPolicy::from_env(grade);
         for (name, enabled) in &feature_flags.to_map().0 {
             feature_flag_policy = feature_flag_policy.with_grade(
                 name,
                 if *enabled {
-                    everruns_platform::FeatureFlagGrade::Adoption
+                    everruns_server::records::FeatureFlagGrade::Adoption
                 } else {
-                    everruns_platform::FeatureFlagGrade::Off
+                    everruns_server::records::FeatureFlagGrade::Off
                 },
             );
         }
         feature_flag_policy = feature_flag_policy.with_grade(
             "openai_agents_api",
-            everruns_platform::FeatureFlagGrade::Internal,
+            everruns_server::records::FeatureFlagGrade::Internal,
         );
         let feature_flag_policy = policy_override.unwrap_or(feature_flag_policy);
         let feature_flags = feature_flag_policy.deployment_flags();

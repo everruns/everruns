@@ -21,9 +21,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use everruns_platform::{
-    ChannelAuthMode, ChannelAuthProviderConfig, ChannelType, PublicChatChannelConfig,
-};
+use crate::records::{ChannelAuthMode, ChannelAuthProviderConfig, ChannelType, PublicChatChannelConfig};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

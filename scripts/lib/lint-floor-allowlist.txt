@@ -4,12 +4,12 @@
 #
 # Approximate production sites per crate, for sizing the work that remains:
 #   server 437, provider 188, core 72, everruns 39, durable 39, drivers::anthropic 33 (module allow),
-#   host 32, platform 13, browserless 12, test-support 12.
+#   host 32, capabilities 13, browserless 12, test-support 12.
 crates/core
 crates/durable
 crates/everruns
 crates/host
-crates/platform
+crates/capabilities
 crates/server
 crates/test-support
 integrations/browserless

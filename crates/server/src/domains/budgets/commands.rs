@@ -1,10 +1,10 @@
 use super::types::CreateBudgetRequest;
 use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
 use crate::domains::common::*;
+use crate::records::{Budget, LedgerEntry};
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
 use everruns_core::Policy;
 use everruns_core::budget::BudgetCheckResult;
-use everruns_platform::{Budget, LedgerEntry};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -716,11 +716,10 @@ mod tests {
 
     #[tokio::test]
     async fn create_budget_rejects_retired_app_subjects_when_app_budgets_is_enabled() {
-        let ctx =
-            ctx_for_role(OrgRole::Owner).with_feature_flags(everruns_platform::FeatureFlags {
-                app_budgets: true,
-                ..Default::default()
-            });
+        let ctx = ctx_for_role(OrgRole::Owner).with_feature_flags(crate::records::FeatureFlags {
+            app_budgets: true,
+            ..Default::default()
+        });
         for subject_type in ["app", "app_channel"] {
             let err = CreateBudget(CreateBudgetRequest {
                 subject_type: subject_type.to_string(),

@@ -9,11 +9,11 @@
 
 use std::sync::Arc;
 
+use everruns_capabilities::{PlatformHostBackendsExt, PlatformStore, PlatformStoreFactory};
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{PrincipalId, SessionId};
 use everruns_core::session_services::SessionScheduleStore;
 use everruns_host::{HostBackends, ScheduleStoreFactory};
-use everruns_platform::{PlatformHostBackendsExt, PlatformStore, PlatformStoreFactory};
 
 use super::db::SqliteDb;
 use super::platform_store::{LocalPlatformStore, LocalSessionRunner};

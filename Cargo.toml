@@ -11,6 +11,7 @@ members = [
     "crates/engine",
     "crates/host",
     "crates/test-support",
+    "crates/capabilities",
     "crates/platform",
     "crates/contracts",
     "crates/mcp",
@@ -252,6 +253,7 @@ everruns-host = { path = "crates/host", version = "0.38.0" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.38.0", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.38.0", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.38.0" }
+everruns-capabilities = { path = "crates/capabilities", version = "0.38.0", default-features = false }
 everruns-contracts = { path = "crates/contracts", version = "0.38.0", default-features = false }
 everruns-mcp = { path = "crates/mcp", version = "0.38.0" }
 everruns-ard = { path = "crates/ard", version = "0.38.0" }
@@ -273,7 +275,7 @@ everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version =
 everruns-integrations-lua = { path = "integrations/lua", version = "0.38.0" }
 everruns-integrations-openrouter = { path = "integrations/openrouter", version = "0.38.0" }
 # `hosted` is opt-in (everruns-integrations-catalog turns it on). It registers the
-# connector into the hosted plugin system and so depends on everruns-platform,
+# connector into the hosted plugin system and so depends on everruns-capabilities,
 # which an embedder wanting only the client and framework surface must not carry.
 everruns-integrations-typesafe = { path = "integrations/typesafe", version = "0.38.0", default-features = false }
 

@@ -10,9 +10,9 @@
 
 use std::sync::{Arc, LazyLock};
 
+use crate::records::eval::EvalRun;
 use everruns_builtins::{RuntimeCompactionConfig, build_model_view_messages};
 use everruns_core::message_retriever::MessageRetriever;
-use everruns_platform::eval::EvalRun;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 

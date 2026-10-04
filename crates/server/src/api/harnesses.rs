@@ -9,6 +9,7 @@ use crate::domains::harnesses::types::{
     PreviewHarnessRequest, UpdateHarnessRequest,
 };
 use crate::domains::harnesses::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
+use crate::records::Harness;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -18,7 +19,6 @@ use axum::{
 };
 use everruns_core::{Caller, DeploymentGrade, ResourceConfigResponse, evaluate_policies_with};
 use everruns_host::HostComposition;
-use everruns_platform::Harness;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,

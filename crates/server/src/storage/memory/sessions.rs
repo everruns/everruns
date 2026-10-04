@@ -7,9 +7,9 @@ use crate::kernel_imports::{
     contracts::typed_id::AgentId, contracts::typed_id::EventId, contracts::typed_id::HarnessId,
     contracts::typed_id::PrincipalId, contracts::typed_id::SessionId,
 };
+use crate::records::{SessionActivity, SessionStatus};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_platform::{SessionActivity, SessionStatus};
 
 use uuid::Uuid;
 
@@ -950,7 +950,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         tags: &[String],
-        activities: &[everruns_platform::SessionActivity],
+        activities: &[crate::records::SessionActivity],
         updated_after: Option<DateTime<Utc>>,
         after: Option<(DateTime<Utc>, Uuid)>,
         limit: u32,

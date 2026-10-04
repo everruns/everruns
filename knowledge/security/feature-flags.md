@@ -20,7 +20,7 @@ organisations. Adoption features let organisation owners and admins opt in. Prod
 features start enabled for every organisation, while owners and admins may opt out.
 An off feature is unavailable regardless of existing organisation records or actor.
 
-Feature defaults live in the [catalog](../../crates/platform/src/feature_flags.rs).
+Feature defaults live in the [catalog](../../crates/server/src/records/feature_flags.rs).
 An environment override replaces a feature's rollout grade at process startup. Invalid
 values disable the feature rather than silently promoting it. The shared
 [grade policy](../../crates/core/src/feature_flag_grade.rs) owns parsing, availability,
@@ -75,7 +75,7 @@ recordings remain infrastructure rather than being deleted when a UI feature is 
 
 The runtime receives resolved booleans, not rollout-management records. The
 [core registration decisions](../../crates/core/src/execution_features.rs) and the
-[platform catalog](../../crates/platform/src/feature_flags.rs) share the grade policy;
+[platform catalog](../../crates/server/src/records/feature_flags.rs) share the grade policy;
 only the hosted platform resolves durable organisation overrides.
 
 ## Success bars

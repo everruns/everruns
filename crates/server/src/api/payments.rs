@@ -12,6 +12,7 @@ use crate::domains::payments::{
     GetPaymentAccount, GetPaymentPolicy, ListPaymentAccounts, ListPaymentAttempts,
     ListPaymentPolicies, UpdatePaymentAccountCmd, UpdatePaymentPolicyCmd,
 };
+use crate::records::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -20,7 +21,6 @@ use axum::{
     routing::{any, get, post},
 };
 use everruns_core::Caller;
-use everruns_platform::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use std::sync::Arc;
 
 use super::common::{ErrorResponse, impl_auth_state};
@@ -392,15 +392,15 @@ mod tests {
                 db.clone(),
                 Some(Arc::new(encryption)),
                 AuthState::builtin(AuthConfig::default(), db).with_feature_flag_policy(
-                    everruns_platform::FeatureFlagPolicy::from_env(
+                    crate::records::FeatureFlagPolicy::from_env(
                         everruns_core::DeploymentGrade::Prod,
                     )
                     .with_grade(
                         "machine_payments",
                         if machine_payments_enabled {
-                            everruns_platform::FeatureFlagGrade::Prod
+                            crate::records::FeatureFlagGrade::Prod
                         } else {
-                            everruns_platform::FeatureFlagGrade::Off
+                            crate::records::FeatureFlagGrade::Off
                         },
                     ),
                 ),

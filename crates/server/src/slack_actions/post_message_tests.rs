@@ -8,9 +8,8 @@ use everruns_core::{
     tool_context::ToolContext,
     tools::{Tool, ToolExecutionResult},
 };
-use everruns_platform::{
-    channel_message_sender::SlackChannelMessageSender, slack_action::SlackActionInvoker,
-};
+use everruns_capabilities::{channel_message_sender::SlackChannelMessageSender};
+use everruns_contracts::{slack_action::SlackActionInvoker};
 use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{method, path},
@@ -281,7 +280,7 @@ async fn native_agent_channel_posts_and_edits_without_an_archival_app() {
     use crate::domains::agent_channels::types::CreateAgentChannelRequest;
     use crate::domains::agent_channels::{CreateAgentChannel, PublishAgentChannel};
     use crate::domains::common::{Command, Ctx};
-    use everruns_platform::ChannelType;
+    use crate::records::ChannelType;
     let fixture = Fixture::new();
     let harness = fixture.seed_harness().await;
     let agent = fixture.seed_agent(1, harness).await;

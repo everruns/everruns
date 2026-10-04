@@ -2,8 +2,8 @@ use super::queries as q;
 use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
 use crate::domains::messages::CreateMessageContext;
+use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use everruns_contracts::typed_id::{AgentId, SessionId, SessionParticipantId};
-use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -116,7 +116,7 @@ inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
 
 async fn require_platform_chat_owner(
     ctx: &Ctx,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
 ) -> Result<(), CommandError> {
     if !crate::domains::sessions::platform_chat_owner_matches_session(&ctx.db, &ctx.caller, session)
         .await
@@ -519,7 +519,7 @@ mod tests {
         let session = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_platform::SessionSource::Api,
+                source: crate::records::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 channel_id: None,
@@ -652,7 +652,7 @@ mod tests {
     async fn platform_chat_owner_fixture(
         caller_user_id: Uuid,
         owner_user_id: Uuid,
-    ) -> (Ctx, everruns_platform::Session) {
+    ) -> (Ctx, crate::records::Session) {
         let db = Arc::new(StorageBackend::in_memory());
         let harness = db
             .create_harness(
@@ -681,7 +681,7 @@ mod tests {
         let row = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
-                source: everruns_platform::SessionSource::Api,
+                source: crate::records::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 channel_id: None,

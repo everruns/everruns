@@ -1,7 +1,7 @@
 //! Rollout-grade policy and durable organisation overrides.
 
+use crate::records::{FeatureFlagGrade, FeatureFlagPolicy, FeatureFlags};
 use crate::storage::StorageBackend;
-use everruns_platform::{FeatureFlagGrade, FeatureFlagPolicy, FeatureFlags};
 use std::collections::HashMap;
 
 /// Overrides are authorization inputs: read durable state on every enforcement
@@ -33,7 +33,7 @@ fn build_settings(
     overrides: &HashMap<String, bool>,
     platform: bool,
 ) -> Vec<OrgFeatureFlagSetting> {
-    everruns_platform::API_FEATURE_FLAG_DEFINITIONS
+    crate::records::API_FEATURE_FLAG_DEFINITIONS
         .iter()
         .filter_map(|definition| {
             let grade = policy.grade(definition.name);
@@ -102,7 +102,7 @@ fn validate_updates(
     platform: bool,
 ) -> Result<(), String> {
     for name in updates.keys() {
-        if !everruns_platform::API_FEATURE_FLAG_DEFINITIONS
+        if !crate::records::API_FEATURE_FLAG_DEFINITIONS
             .iter()
             .any(|definition| definition.name == name)
         {

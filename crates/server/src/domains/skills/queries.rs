@@ -2,9 +2,9 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::records::{Skill, SkillSourceType, SkillStatus};
 use crate::storage::{StorageBackend, models::SkillRow};
 use anyhow::Result;
-use everruns_core::{Skill, SkillSourceType, SkillStatus};
 use std::collections::HashMap;
 
 // ============================================================================

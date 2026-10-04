@@ -1,8 +1,8 @@
 use super::{CreateSession, EnsurePlatformChat, SessionService};
 use crate::domains::common::{Command, Ctx};
+use crate::records::SessionSource;
 use crate::storage::{StorageBackend, models::CreateUserRow};
 use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
-use everruns_platform::SessionSource;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;

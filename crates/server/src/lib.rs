@@ -30,6 +30,9 @@ pub mod errors;
 // Domain modules (feature-oriented: commands + queries + types)
 pub mod domains;
 
+// Persistence/API entities belong to the control plane.
+pub mod records;
+
 // Services layer
 pub mod services;
 pub use services::CapabilityService;

@@ -21,7 +21,7 @@ mod generic;
 mod levels;
 
 use everruns_contracts::capability::BuiltInHarnessPreset;
-use everruns_platform::BuiltInHarnessDefinition;
+use crate::records::BuiltInHarnessDefinition;
 
 pub use examples::{
     HarnessExampleDef, LEGACY_BUILT_IN_NAMES, find_harness_example, harness_examples,

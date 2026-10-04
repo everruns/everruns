@@ -751,7 +751,7 @@ impl WorkerServiceImpl {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             org_id,
-            &everruns_platform::FeatureFlagPolicy::current(),
+            &crate::records::FeatureFlagPolicy::current(),
         )
         .await
         .map_err(|error| {
@@ -934,7 +934,7 @@ impl WorkerServiceImpl {
     async fn build_mcp_tool_definitions(
         &self,
         org_id: i64,
-        agent: &everruns_platform::Agent,
+        agent: &crate::records::Agent,
     ) -> Vec<McpToolDef> {
         use everruns_core::mcp_server::mcp_tool_name;
         use everruns_mcp::parse_mcp_capability_id;

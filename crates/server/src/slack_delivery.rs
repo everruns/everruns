@@ -22,8 +22,8 @@ use everruns_core::channel::{
 mod message_receipts;
 mod recovery_endpoint;
 use everruns_core::events;
-use everruns_platform::SlackReplyMode;
-use everruns_platform::exposure::{PublicToolVisibility, public_tool_activity_text};
+use crate::records::SlackReplyMode;
+use crate::records::exposure::{PublicToolVisibility, public_tool_activity_text};
 use message_receipts::channel_message_was_delivered;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1749,7 +1749,7 @@ pub(crate) async fn post_slack_message(
 
 #[cfg(test)]
 mod tests {
-    use everruns_platform::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
+    use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     #[path = "concurrency_tests.rs"]
     mod concurrency_tests;
 
@@ -3304,7 +3304,7 @@ mod tests {
     /// EVE-975: the pane's live status line, driven by turn and tool lifecycle.
     ///
     /// What may be shown is not decided here — `public_tool_activity_text` in
-    /// `everruns_platform::exposure` owns that for every public surface, and AG-UI
+    /// `crate::records::exposure` owns that for every public surface, and AG-UI
     /// reads the same function. These tests pin that the dispatcher asks it and
     /// honours the answer.
     mod agent_surface_tests {

@@ -21,8 +21,8 @@ use crate::kernel_imports::{
     contracts::tool_types::ToolDefinition,
 };
 use crate::max_iterations;
+use crate::records::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId};
-use everruns_platform::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -1982,7 +1982,7 @@ pub struct AnalyzeAgent {
     pub initial_files: Vec<InitialFile>,
     pub system_prompt: Option<String>,
     #[serde(default)]
-    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
@@ -2153,7 +2153,7 @@ impl Command for CheckAgentName {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<NameAvailability, CommandError> {
-        if everruns_platform::validate_addressable_name(&self.name).is_err() {
+        if crate::records::validate_addressable_name(&self.name).is_err() {
             return Ok(NameAvailability { available: false });
         }
 

@@ -18,7 +18,7 @@ Response policies are available on every Slack endpoint without deployment or
 organization enrollment. Existing endpoints retain their all-message default;
 builders choose filtering explicitly. Selecting all messages restores the previous
 behavior. The policy contract lives in
-[`slack_channel.rs`](../../crates/platform/src/slack_channel.rs).
+[`slack_channel.rs`](../../crates/server/src/records/slack_channel.rs).
 
 ## Participation
 

@@ -316,7 +316,7 @@ impl InMemoryAgenticLoopBuilder {
             .collect();
 
         // Create harness (portable execution configuration keyed by id; the
-        // stored persistence record lives in everruns-platform, EVE-881).
+        // stored persistence record lives in everruns-capabilities, EVE-881).
         let harness_id = HarnessId::new();
         let harness =
             everruns_core::HarnessDefinition::new("in-memory", self.system_prompt.clone());

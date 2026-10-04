@@ -7,6 +7,7 @@ everruns
 everruns-ag-ui
 everruns-ard
 everruns-builtins
+everruns-capabilities
 everruns-cli
 everruns-cli-contract
 everruns-contracts

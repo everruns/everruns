@@ -21,7 +21,7 @@ The backend is opt-in at three layers, so the default worker path is unchanged:
 
 1. **Compiled** with the `everruns-host/openai-agents-api` Cargo feature (the worker and server enable it).
 2. **Allowed** per org by the `openai_agents_api` [rollout-grade policy](../security/feature-flags.md), with platform-managed internal enrolment by default. `FEATURE_OPENAI_AGENTS_API` overrides its grade. The flag gates the `openai_agents_api_runtime` capability; the server strips gated capabilities from the worker snapshot and rejects them on agent, harness, and session writes.
-3. **Selected** per agent or session by that capability, a marker with no tools or prompt ([platform capability](../../crates/platform/src/capabilities/openai_agents_api_runtime.rs)).
+3. **Selected** per agent or session by that capability, a marker with no tools or prompt ([platform capability](../../crates/capabilities/src/capabilities/openai_agents_api_runtime.rs)).
 
 The host's Reason activity checks the selection before the native path ([backend wiring](../../crates/host/src/openai_agents_api/backend.rs)). A selected turn falls back to the native loop when its model is not bound to the official OpenAI API (the provider-bound driver exposes its endpoint only for `api.openai.com`) or the host has no durable store. The in-process framework runtime supplies no store, so it always runs natively.
 

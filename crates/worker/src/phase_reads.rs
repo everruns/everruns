@@ -26,8 +26,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use everruns_contracts::error::Result;
-use everruns_core::ExecutionSession;
-use everruns_platform::{Agent, Harness};
+use everruns_core::{AgentDefinition, DependencyBlocker, ExecutionSession, HarnessDefinition};
 use uuid::Uuid;
 
 use crate::worker_adapters::WorkerAdapters;
@@ -43,10 +42,21 @@ struct Entry<T> {
     value: T,
 }
 
+// Cache successful projections (including absence) separately from lifecycle
+// probes. A failed projection is retried, while its successful blocker read can
+// still be reused; AgentLoopError is deliberately never cloned or cached.
+#[derive(Clone)]
+struct DefinitionRead<T> {
+    definition: Option<Option<T>>,
+    blocker: Option<DependencyBlocker>,
+}
+
+type ResolvedRead<T> = (Result<Option<T>>, Option<DependencyBlocker>);
+
 #[derive(Default)]
 struct State {
-    agents: HashMap<Key, Entry<Option<Agent>>>,
-    harnesses: HashMap<Key, Entry<Option<Harness>>>,
+    agents: HashMap<Key, Entry<DefinitionRead<AgentDefinition>>>,
+    harnesses: HashMap<Key, Entry<DefinitionRead<HarnessDefinition>>>,
     sessions: HashMap<Key, Entry<Option<ExecutionSession>>>,
     fetched: u32,
     saved: u32,
@@ -54,11 +64,11 @@ struct State {
     setup_done: bool,
 }
 
-fn agents(s: &mut State) -> &mut HashMap<Key, Entry<Option<Agent>>> {
+fn agents(s: &mut State) -> &mut HashMap<Key, Entry<DefinitionRead<AgentDefinition>>> {
     &mut s.agents
 }
 
-fn harnesses(s: &mut State) -> &mut HashMap<Key, Entry<Option<Harness>>> {
+fn harnesses(s: &mut State) -> &mut HashMap<Key, Entry<DefinitionRead<HarnessDefinition>>> {
     &mut s.harnesses
 }
 
@@ -92,9 +102,23 @@ impl PhaseReads {
         adapters: &A,
         org_id: i64,
         id: Uuid,
-    ) -> Result<Option<Agent>> {
-        self.read_through(agents, (org_id, id), || adapters.get_agent(org_id, id))
-            .await
+    ) -> Result<Option<AgentDefinition>> {
+        self.definition(agents, (org_id, id), || {
+            adapters.resolve_agent_read(org_id, id)
+        })
+        .await
+    }
+
+    pub async fn agent_blocker<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<DependencyBlocker>> {
+        self.blocker(agents, (org_id, id), || {
+            adapters.resolve_agent_read(org_id, id)
+        })
+        .await
     }
 
     pub async fn harness<A: WorkerAdapters>(
@@ -102,9 +126,23 @@ impl PhaseReads {
         adapters: &A,
         org_id: i64,
         id: Uuid,
-    ) -> Result<Option<Harness>> {
-        self.read_through(harnesses, (org_id, id), || adapters.get_harness(org_id, id))
-            .await
+    ) -> Result<Option<HarnessDefinition>> {
+        self.definition(harnesses, (org_id, id), || {
+            adapters.resolve_harness_read(org_id, id)
+        })
+        .await
+    }
+
+    pub async fn harness_blocker<A: WorkerAdapters>(
+        &self,
+        adapters: &A,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<DependencyBlocker>> {
+        self.blocker(harnesses, (org_id, id), || {
+            adapters.resolve_harness_read(org_id, id)
+        })
+        .await
     }
 
     pub async fn session<A: WorkerAdapters>(
@@ -117,14 +155,22 @@ impl PhaseReads {
             .await
     }
 
-    /// Keep records another read already returned (the batched turn context
+    /// Keep execution views another read returned (the batched turn context
     /// carries the session and agent), so later lookups reuse them.
-    pub fn seed(&self, org_id: i64, session: &ExecutionSession, agent: Option<&Agent>) {
+    pub fn seed(&self, org_id: i64, session: &ExecutionSession, agent: Option<&AgentDefinition>) {
         let session_id = session.id.uuid();
         self.store(sessions, (org_id, session_id), Some(session.clone()), false);
         if let Some(agent) = agent {
-            let key = (org_id, agent.public_id.uuid());
-            self.store(agents, key, Some(agent.clone()), false);
+            let key = (org_id, agent.id.uuid());
+            self.store(
+                agents,
+                key,
+                DefinitionRead {
+                    definition: Some(Some(agent.clone())),
+                    blocker: None,
+                },
+                false,
+            );
         }
     }
 
@@ -157,6 +203,49 @@ impl PhaseReads {
         }
     }
 
+    async fn definition<T: Clone, F: Future<Output = Result<ResolvedRead<T>>>>(
+        &self,
+        map: fn(&mut State) -> &mut HashMap<Key, Entry<DefinitionRead<T>>>,
+        key: Key,
+        fetch: impl FnOnce() -> F,
+    ) -> Result<Option<T>> {
+        if let Some(hit) = self.lookup_selected(map, key, |value| value.definition.clone()) {
+            return Ok(hit);
+        }
+        self.resolve(map, key, fetch).await?.0
+    }
+
+    async fn blocker<T: Clone, F: Future<Output = Result<ResolvedRead<T>>>>(
+        &self,
+        map: fn(&mut State) -> &mut HashMap<Key, Entry<DefinitionRead<T>>>,
+        key: Key,
+        fetch: impl FnOnce() -> F,
+    ) -> Result<Option<DependencyBlocker>> {
+        if let Some(hit) = self.lookup_selected(map, key, |value| Some(value.blocker)) {
+            return Ok(hit);
+        }
+        Ok(self.resolve(map, key, fetch).await?.1)
+    }
+
+    async fn resolve<T: Clone, F: Future<Output = Result<ResolvedRead<T>>>>(
+        &self,
+        map: fn(&mut State) -> &mut HashMap<Key, Entry<DefinitionRead<T>>>,
+        key: Key,
+        fetch: impl FnOnce() -> F,
+    ) -> Result<ResolvedRead<T>> {
+        let (definition, blocker) = fetch().await?;
+        self.store(
+            map,
+            key,
+            DefinitionRead {
+                definition: definition.as_ref().ok().cloned(),
+                blocker,
+            },
+            true,
+        );
+        Ok((definition, blocker))
+    }
+
     async fn read_through<T: Clone, F: Future<Output = Result<T>>>(
         &self,
         map: fn(&mut State) -> &mut HashMap<Key, Entry<T>>,
@@ -176,11 +265,20 @@ impl PhaseReads {
         map: fn(&mut State) -> &mut HashMap<Key, Entry<T>>,
         key: Key,
     ) -> Option<T> {
+        self.lookup_selected(map, key, |value| Some(value.clone()))
+    }
+
+    fn lookup_selected<T, R>(
+        &self,
+        map: fn(&mut State) -> &mut HashMap<Key, Entry<T>>,
+        key: Key,
+        select: impl FnOnce(&T) -> Option<R>,
+    ) -> Option<R> {
         self.with_state(|s| {
             let hit = map(s)
                 .get(&key)
                 .filter(|entry| entry.at.elapsed() < FRESH_FOR)
-                .map(|entry| entry.value.clone());
+                .and_then(|entry| select(&entry.value));
             if hit.is_some() {
                 s.saved += 1;
             }
@@ -320,5 +418,238 @@ mod tests {
             .unwrap();
         assert_eq!(got.id, seeded.id);
         assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+    #[tokio::test]
+    async fn lifecycle_and_definition_setup_share_one_source_read() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let id = everruns_contracts::typed_id::AgentId::new();
+        let key = (1, id.uuid());
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok((
+                Ok(Some(AgentDefinition::new(id, "agent", "pinned prompt"))),
+                None,
+            ))
+        };
+        assert!(reads.blocker(agents, key, fetch).await.unwrap().is_none());
+        assert_eq!(
+            reads
+                .definition(agents, key, fetch)
+                .await
+                .unwrap()
+                .unwrap()
+                .system_prompt,
+            "pinned prompt"
+        );
+        assert!(reads.blocker(agents, key, fetch).await.unwrap().is_none());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        reads.definition(agents, (2, key.1), fetch).await.unwrap();
+        PhaseReads::new()
+            .definition(agents, key, fetch)
+            .await
+            .unwrap();
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            3,
+            "org and phase boundaries remain isolated"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_harness_is_a_cached_negative_definition_and_deleted_blocker() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok((Ok(None), Some(DependencyBlocker::HarnessDeleted)))
+        };
+        assert!(
+            reads
+                .definition(harnesses, key, fetch)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(matches!(
+            reads.blocker(harnesses, key, fetch).await.unwrap(),
+            Some(DependencyBlocker::HarnessDeleted)
+        ));
+        assert!(
+            reads
+                .definition(harnesses, key, fetch)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn projection_failures_retry_without_losing_the_successful_lifecycle_probe() {
+        use everruns_contracts::error::AgentLoopError;
+        for blocker in [
+            None,
+            Some(DependencyBlocker::AgentArchived),
+            Some(DependencyBlocker::AgentDeleted),
+        ] {
+            let reads = PhaseReads::new();
+            let calls = AtomicU32::new(0);
+            let key = (1, Uuid::now_v7());
+            let fetch = || async {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok((
+                    Err(AgentLoopError::config("original projection refusal")),
+                    blocker,
+                ))
+            };
+            let got = reads.blocker(agents, key, fetch).await.unwrap();
+            assert_eq!(
+                got.map(DependencyBlocker::message),
+                blocker.map(DependencyBlocker::message)
+            );
+            for _ in 0..2 {
+                let error = reads.definition(agents, key, fetch).await.unwrap_err();
+                assert!(
+                    matches!(error, AgentLoopError::Configuration(message) if message == "original projection refusal")
+                );
+                reads.blocker(agents, key, fetch).await.unwrap();
+            }
+            assert_eq!(calls.load(Ordering::SeqCst), 3);
+            assert_eq!(
+                reads.with_state(|state| state.saved),
+                2,
+                "failed projections are not saved reads"
+            );
+            let recovered = || async {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok((
+                    Ok(Some(AgentDefinition::new(
+                        everruns_contracts::typed_id::AgentId::from_uuid(key.1),
+                        "recovered",
+                        "valid projection",
+                    ))),
+                    None,
+                ))
+            };
+            let got = reads
+                .definition(agents, key, recovered)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(got.system_prompt, "valid projection");
+            assert!(
+                reads
+                    .blocker(agents, key, recovered)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            reads.definition(agents, key, recovered).await.unwrap();
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                4,
+                "recovery becomes a successful memoized projection"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn failed_combined_source_reads_are_never_cached() {
+        let reads = PhaseReads::new();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Err(everruns_contracts::error::AgentLoopError::store(
+                "source unavailable",
+            ))
+        };
+        assert!(reads.blocker(agents, key, fetch).await.is_err());
+        assert!(reads.definition(agents, key, fetch).await.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert!(reads.with_state(|state| state.agents.is_empty()));
+    }
+
+    #[tokio::test]
+    async fn expired_definitions_and_blockers_are_refetched() {
+        let reads = PhaseReads::new();
+        let key = (1, Uuid::now_v7());
+        let calls = AtomicU32::new(0);
+        let fetch = || async {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Ok((Ok(Some(HarnessDefinition::new("harness", "prompt"))), None))
+        };
+        reads.definition(harnesses, key, fetch).await.unwrap();
+        reads.with_state(|state| {
+            state.harnesses.get_mut(&key).unwrap().at = Instant::now() - FRESH_FOR
+        });
+        reads.blocker(harnesses, key, fetch).await.unwrap();
+        reads.definition(harnesses, key, fetch).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn phase_start_discards_an_in_flight_source_read_and_later_seeds() {
+        for event in [everruns_core::REASON_STARTED, everruns_core::ACT_STARTED] {
+            let reads = PhaseReads::new();
+            let id = everruns_contracts::typed_id::AgentId::new();
+            let definition = AgentDefinition::new(id, "agent", "pinned");
+            let key = (1, id.uuid());
+            let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+            let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+            let pending_reads = reads.clone();
+            let pending_definition = definition.clone();
+            let pending = tokio::spawn(async move {
+                pending_reads
+                    .definition(agents, key, || async {
+                        started_tx.send(()).unwrap();
+                        finish_rx.await.unwrap();
+                        Ok((Ok(Some(pending_definition)), None))
+                    })
+                    .await
+            });
+            started_rx.await.unwrap();
+            reads.note_event(event);
+            finish_tx.send(()).unwrap();
+            assert_eq!(pending.await.unwrap().unwrap().unwrap().id, id);
+            reads.seed(1, &session(), Some(&definition));
+            assert!(reads.with_state(|state| state.agents.is_empty() && state.sessions.is_empty()));
+            let calls = AtomicU32::new(0);
+            let fetch = || async {
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok((Ok(Some(definition.clone())), None))
+            };
+            reads.definition(agents, key, fetch).await.unwrap();
+            reads.blocker(agents, key, fetch).await.unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+        }
+    }
+
+    #[tokio::test]
+    async fn seeded_batch_agent_keeps_its_pinned_definition_without_a_fetch() {
+        let reads = PhaseReads::new();
+        let id = everruns_contracts::typed_id::AgentId::new();
+        let pinned = AgentDefinition::new(id, "agent", "pinned batch version");
+        reads.seed(1, &session(), Some(&pinned));
+        let fetch = || async {
+            Err(everruns_contracts::error::AgentLoopError::store(
+                "must not fetch current version",
+            ))
+        };
+        assert!(
+            reads
+                .blocker(agents, (1, id.uuid()), fetch)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let got = reads
+            .definition(agents, (1, id.uuid()), fetch)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got.system_prompt, pinned.system_prompt);
     }
 }

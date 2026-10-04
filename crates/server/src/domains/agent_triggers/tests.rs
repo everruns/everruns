@@ -15,9 +15,9 @@ use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_core::channel::SessionBinding;
 use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_durable::{InMemoryWorkflowEventStore, Schedules};
-use everruns_platform::SessionBinding;
 use everruns_worker::AgentRunner;
 use std::sync::{Arc, Mutex};
 
@@ -341,7 +341,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     assert_eq!(context.app_id, app_id);
     assert_eq!(
         context.agent_version_policy,
-        everruns_platform::AgentVersionPolicy::Pinned
+        crate::records::AgentVersionPolicy::Pinned
     );
     assert_eq!(context.agent_version_id, trigger.agent_version_id);
 }
@@ -385,7 +385,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
     let session = db
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             channel_id: None,
@@ -523,7 +523,7 @@ async fn create_enforces_per_org_enabled_cap() {
 
 #[tokio::test]
 async fn native_trigger_version_pin_is_written_surfaced_and_honoured() {
-    use everruns_platform::AgentVersionPolicy;
+    use crate::records::AgentVersionPolicy;
     let db = Arc::new(StorageBackend::in_memory());
     let store = Arc::new(InMemoryWorkflowEventStore::new());
     let ctx = test_ctx(db.clone(), store);
@@ -1101,8 +1101,8 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
             subject_template: Some(
                 "{{payload.repository.full_name}}#{{payload.number}}".to_string(),
             ),
-            filter: Some(everruns_platform::TriggerEventFilter {
-                conditions: vec![everruns_platform::TriggerFilterCondition {
+            filter: Some(crate::records::TriggerEventFilter {
+                conditions: vec![crate::records::TriggerFilterCondition {
                     path: "payload.action".to_string(),
                     any_of: vec![
                         serde_json::json!("opened"),
@@ -1199,7 +1199,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
             )
         })
         .collect();
-    use everruns_platform::TriggerDeliveryStatus::*;
+    use crate::records::TriggerDeliveryStatus::*;
     assert_eq!(
         summary,
         vec![
@@ -1248,8 +1248,8 @@ async fn filter_conditions_need_a_path_and_values() {
     let error = CreateAgentTrigger {
         agent_id,
         req: CreateAgentTriggerRequest {
-            filter: Some(everruns_platform::TriggerEventFilter {
-                conditions: vec![everruns_platform::TriggerFilterCondition {
+            filter: Some(crate::records::TriggerEventFilter {
+                conditions: vec![crate::records::TriggerFilterCondition {
                     path: "payload.action".to_string(),
                     any_of: vec![],
                 }],

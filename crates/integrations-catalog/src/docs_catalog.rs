@@ -8,7 +8,7 @@
 //! then checks the docs pages against that file without compiling Rust, so a
 //! docs-only edit is checked too.
 //!
-//! The registry is composed with the `everruns-platform` features the server
+//! The registry is composed with the `everruns-capabilities` features the server
 //! enables (see this crate's dev-dependencies); the shell check keeps the two
 //! feature lists equal.
 //!
@@ -84,7 +84,7 @@ fn catalog() -> Value {
         }
     }
     let flagged = capability_plugins()
-        .chain(everruns_platform::container_sandbox::CAPABILITY_PLUGINS.iter())
+        .chain(everruns_capabilities::container_sandbox::CAPABILITY_PLUGINS.iter())
         .filter_map(|plugin| plugin.feature_flag.map(|flag| (plugin, flag)));
     for (plugin, flag) in flagged {
         let capability = (plugin.factory)();

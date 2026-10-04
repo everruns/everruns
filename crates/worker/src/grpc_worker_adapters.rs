@@ -16,6 +16,7 @@ use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
+use everruns_core::{AgentDefinition, HarnessDefinition};
 use everruns_core::{
     EgressService, ExecutionSession, MessageHistory, MessageQuery, RuntimeMessage,
     UtilityLlmService,
@@ -25,7 +26,6 @@ use everruns_core::{
     image_services::ResolvedImage,
 };
 use everruns_host::HostComposition;
-use everruns_platform::{Agent, Harness};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -110,16 +110,77 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // Agent Operations
     // =========================================================================
 
-    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
+    async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<AgentDefinition>> {
         let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
-        store.fetch_agent_record(AgentId::from_uuid(agent_id)).await
+        everruns_core::execution_loading::AgentStore::get_agent(
+            &store,
+            AgentId::from_uuid(agent_id),
+        )
+        .await
     }
 
-    async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
+    async fn get_harness(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+    ) -> Result<Option<HarnessDefinition>> {
         let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
         // The server returns a single pre-merged stored record (EVE-881).
-        store
-            .fetch_harness_record(HarnessId::from_uuid(harness_id))
+        everruns_core::execution_loading::HarnessStore::get_harness(
+            &store,
+            HarnessId::from_uuid(harness_id),
+        )
+        .await
+    }
+
+    async fn get_agent_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
+        everruns_core::execution_loading::AgentStore::get_agent_blocker(
+            &store,
+            AgentId::from_uuid(id),
+        )
+        .await
+    }
+    async fn get_harness_blocker(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
+        everruns_core::execution_loading::HarnessStore::get_harness_blocker(
+            &store,
+            HarnessId::from_uuid(id),
+        )
+        .await
+    }
+
+    async fn resolve_agent_read(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<(
+        Result<Option<AgentDefinition>>,
+        Option<everruns_core::DependencyBlocker>,
+    )> {
+        GrpcOrgAdapter::new(self.client.clone(), org_id)
+            .resolve_agent_read(AgentId::from_uuid(agent_id))
+            .await
+    }
+
+    async fn resolve_harness_read(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+    ) -> Result<(
+        Result<Option<HarnessDefinition>>,
+        Option<everruns_core::DependencyBlocker>,
+    )> {
+        GrpcOrgAdapter::new(self.client.clone(), org_id)
+            .resolve_harness_read(HarnessId::from_uuid(harness_id))
             .await
     }
 
@@ -558,7 +619,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_platform::PlatformStore> {
+    ) -> Arc<dyn everruns_capabilities::PlatformStore> {
         Arc::new(
             crate::grpc_adapters::GrpcOrgAdapter::new_for_platform_session(
                 self.client.clone(),
@@ -621,7 +682,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
         session_id: everruns_contracts::typed_id::SessionId,
-    ) -> Option<Arc<dyn everruns_platform::slack_action::SlackActionInvoker>> {
+    ) -> Option<Arc<dyn everruns_capabilities::slack_action::SlackActionInvoker>> {
         Some(Arc::new(
             crate::grpc_slack_actions::GrpcSlackActionInvoker::new(
                 self.client.clone(),
@@ -633,7 +694,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn sandbox_persistence_store(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_state::SandboxPersistenceStore>> {
+    ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
         Some(Arc::new(
             crate::grpc_sandbox_persistence::GrpcSandboxPersistenceStore::new(self.client.clone()),
         ))

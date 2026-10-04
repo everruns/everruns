@@ -140,7 +140,7 @@ impl WorkerServiceImpl {
     async fn session_has_platform_capability(
         &self,
         org_id: i64,
-        session: &everruns_platform::Session,
+        session: &crate::records::Session,
     ) -> Result<bool, Status> {
         // The same inheritance fold the worker's harness store runs, so an
         // inherited `platform` resolves identically on both sides.
@@ -177,7 +177,7 @@ impl WorkerServiceImpl {
             .iter()
             .any(|capability| {
                 capability.capability_id()
-                    == everruns_platform::capabilities::PLATFORM_CAPABILITY_ID
+                    == everruns_capabilities::capabilities::PLATFORM_CAPABILITY_ID
             }))
     }
 
@@ -285,7 +285,7 @@ impl WorkerServiceImpl {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
-            &everruns_platform::FeatureFlagPolicy::current(),
+            &crate::records::FeatureFlagPolicy::current(),
         )
         .await
         .map_err(|error| {

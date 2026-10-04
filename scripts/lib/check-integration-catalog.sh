@@ -41,7 +41,7 @@ while IFS= read -r manifest; do
   #   test-support          test doubles; tests register them explicitly and
   #                         they must never reach a hosted registry
   case "$crate_dir" in
-    crates/integrations-catalog|crates/platform|crates/test-support) continue ;;
+    crates/integrations-catalog|crates/capabilities|crates/test-support) continue ;;
   esac
   if ! grep -rqE '^\s*pub const (CAPABILITY|CONNECTOR)_PLUGINS' "$crate_dir/src" 2>/dev/null; then
     continue

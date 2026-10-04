@@ -179,9 +179,9 @@ pub fn register_capabilities(registry: &mut CapabilityRegistry, grade: Deploymen
 /// a hosted capability still wins a canonical-id collision, which is the order
 /// the inventory-based composition had.
 pub fn oss_capability_registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let mut registry = everruns_platform::capabilities::portable_capability_registry();
+    let mut registry = everruns_capabilities::capabilities::portable_capability_registry();
     register_capabilities(&mut registry, grade);
-    everruns_platform::capabilities::register_hosted_capabilities(&mut registry, grade);
+    everruns_capabilities::capabilities::register_hosted_capabilities(&mut registry, grade);
     registry
 }
 

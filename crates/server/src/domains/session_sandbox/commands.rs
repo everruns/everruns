@@ -4,7 +4,7 @@ use super::types::{
     SessionSandboxStatusValue,
 };
 use crate::domains::common::*;
-use everruns_platform::session_sandbox::{
+use everruns_capabilities::session_sandbox::{
     create_session_sandbox_provider, delete_session_sandbox, ensure_session_sandbox_running,
     load_session_sandbox_state, pause_session_sandbox,
 };
@@ -15,8 +15,8 @@ fn status_response(
     configured: bool,
     exists: bool,
     provider: Option<String>,
-    state: Option<&everruns_platform::session_sandbox::SessionSandboxState>,
-    status: Option<everruns_platform::session_sandbox::SessionSandboxStatusResponse>,
+    state: Option<&everruns_capabilities::session_sandbox::SessionSandboxState>,
+    status: Option<everruns_capabilities::session_sandbox::SessionSandboxStatusResponse>,
 ) -> GetSessionSandboxResponse {
     let session_status = status
         .as_ref()
@@ -43,7 +43,7 @@ fn status_response(
 
 fn manage_response_from_state(
     action: SessionSandboxAction,
-    state: &everruns_platform::session_sandbox::SessionSandboxState,
+    state: &everruns_capabilities::session_sandbox::SessionSandboxState,
 ) -> ManageSessionSandboxResponse {
     ManageSessionSandboxResponse {
         action,
@@ -225,13 +225,13 @@ mod tests {
     use crate::domains::session_sandbox::SessionSandboxService;
     use crate::domains::sessions::SessionService;
     use crate::storage::{CreateHarnessRow, CreateSessionRow, StorageBackend};
-    use everruns_core::{
-        Caller, DEFAULT_ORG_ID, InitialFile, session_services::SessionStorageStore,
-    };
-    use everruns_platform::session_sandbox::{
+    use everruns_capabilities::session_sandbox::{
         SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxExecResponse,
         SessionSandboxInstance, SessionSandboxProvider, SessionSandboxReadFileResponse,
         SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
+    };
+    use everruns_core::{
+        Caller, DEFAULT_ORG_ID, InitialFile, session_services::SessionStorageStore,
     };
     use serde_json::json;
     use std::sync::Arc;
@@ -239,7 +239,7 @@ mod tests {
     struct TestSessionSandboxProvider;
 
     inventory::submit! {
-        everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
+        everruns_capabilities::session_sandbox::SessionSandboxProviderPlugin {
             factory: || Box::new(TestSessionSandboxProvider),
         }
     }
@@ -342,7 +342,7 @@ mod tests {
             &self,
             _context: &dyn everruns_contracts::session_sandbox::SessionSandboxContext,
             _config: &SessionSandboxConfig,
-            state: &everruns_platform::session_sandbox::SessionSandboxState,
+            state: &everruns_capabilities::session_sandbox::SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxStatusResponse {
                 provider: state.provider.clone(),
@@ -410,7 +410,7 @@ mod tests {
 
         db.create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

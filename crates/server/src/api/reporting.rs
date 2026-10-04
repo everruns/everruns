@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::records::reporting::{DatasetCatalog, ReportQuery, ReportResult};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -7,7 +8,6 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::Caller;
-use everruns_platform::reporting::{DatasetCatalog, ReportQuery, ReportResult};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

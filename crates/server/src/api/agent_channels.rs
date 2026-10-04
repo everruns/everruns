@@ -12,7 +12,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_platform::AgentChannel;
+use crate::records::AgentChannel;
 use serde_json::Value;
 
 use super::common::{ApiResult, ErrorResponse};

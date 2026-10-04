@@ -460,7 +460,7 @@ The refactor has landed; current implementations live at:
 - `crates/server/src/domains/providers/credential_check.rs`, pre-store credential probe + failure decision
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs`, REST API
 - `crates/server/src/api/voice.rs`, realtime credential resolution (routed through `resolve_service`)
-- `crates/platform/src/connector.rs`, connector plugin trait
+- `crates/contracts/src/connector.rs`, connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/`, provider settings UI
 
 ## Personal ChatGPT plan connections
