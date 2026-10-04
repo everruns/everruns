@@ -100,6 +100,9 @@ jobs:
       - name: Check workflow secret handling
         run: bash scripts/test-workflow-secret-handling.sh
 
+      - name: Check vault token scope
+        run: bash scripts/test-workflow-vault-token-scope.sh
+
       - name: Resolve CI event gate
         id: ci_event
         env:
@@ -1208,20 +1211,18 @@ jobs:
     name: Daytona Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.daytona == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.daytona == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 10
-    env:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Doppler CLI
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -1229,17 +1230,19 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "live"
 
       - name: Run Daytona live integration tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
 
   # Live Browserless API tests — only when integrations/browserless/** changes
@@ -1247,20 +1250,18 @@ jobs:
     name: Browserless Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.browserless == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.browserless == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 10
-    env:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Doppler CLI
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -1268,17 +1269,19 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "live"
 
       - name: Run Browserless live integration tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
 
   # Live E2B API tests — only when integrations/e2b/** changes
@@ -1286,20 +1289,18 @@ jobs:
     name: E2B Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.e2b == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.e2b == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 10
-    env:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Doppler CLI
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -1307,17 +1308,19 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "live"
 
       - name: Run E2B live integration tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run -- cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
 
   # The `deno-live-test` job is quarantined: the Deno organization's plan no
@@ -1522,7 +1525,7 @@ jobs:
     name: Slack Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
     timeout-minutes: 20
 
     services:
@@ -1546,14 +1549,14 @@ jobs:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-C link-arg=-fuse-ld=lld"
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Doppler CLI
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -1561,7 +1564,7 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       # Must match the other jobs on the `integration` rust-cache key: RUSTFLAGS
       # is part of cargo's fingerprint, so a job sharing the key without the same
@@ -1576,16 +1579,16 @@ jobs:
           ld.lld --version
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "integration-v2"
           save-if: false
 
       - name: Cache cargo binaries
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/bin/cargo-binstall
@@ -1657,14 +1660,14 @@ jobs:
     timeout-minutes: 40
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Doppler CLI
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -1672,13 +1675,13 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "live"
 
@@ -1982,14 +1985,14 @@ jobs:
       AUTH_MODE: none
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Doppler CLI
         id: doppler_install
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -1997,17 +2000,17 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
 
       # No rust-cache here on purpose: this job compiles nothing. It downloads
       # the server/worker binaries from `build-binaries` and runs them, so
       # restoring a ~1GB target/ only cost wall-clock and crowded the cache.
       - name: Cache cargo binaries
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/bin/cargo-binstall
@@ -2027,13 +2030,13 @@ jobs:
         run: sqlx migrate run --source crates/server/migrations
 
       - name: Download server binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: everruns-server
           path: ./bin
 
       - name: Download worker binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: everruns-worker
           path: ./bin

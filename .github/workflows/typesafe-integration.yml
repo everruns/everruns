@@ -57,19 +57,17 @@ jobs:
   live-test:
     name: TypeSafe Live API Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     timeout-minutes: 10
-    env:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "debug"
 
@@ -78,7 +76,7 @@ jobs:
         # Absorbs one transient installer failure; see
         # scripts/test-doppler-install-retry.sh for why.
         continue-on-error: true
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       - name: Pause before Doppler CLI retry
         if: steps.doppler_install.outcome == 'failure'
@@ -86,7 +84,7 @@ jobs:
 
       - name: Install Doppler CLI (retry)
         if: steps.doppler_install.outcome == 'failure'
-        uses: dopplerhq/cli-action@v4
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4
 
       # `doppler run` injects the secrets into this one command only. Writing
       # them to $GITHUB_ENV instead would print them in the env block of every
@@ -96,6 +94,8 @@ jobs:
       # service reads UTILITY_TYPESAFE_API_KEY. One Doppler secret backs both
       # until a separate UTILITY_TYPESAFE_API_KEY exists there.
       - name: Run integration tests
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: >-
           doppler run --
           bash -lc 'UTILITY_TYPESAFE_API_KEY="${UTILITY_TYPESAFE_API_KEY:-$TYPESAFE_API_KEY}"
