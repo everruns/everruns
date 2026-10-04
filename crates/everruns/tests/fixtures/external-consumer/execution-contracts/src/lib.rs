@@ -1,12 +1,12 @@
 //! External implementations of narrow core and host execution contracts.
 
 use async_trait::async_trait;
+use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
-use everruns_core::host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
-use everruns_contracts::error::{AgentLoopError, Result};
 use std::sync::Arc;
 
 /// Minimal external observer proving event emission is independently implementable.

@@ -7,6 +7,15 @@ mod message_projection;
 // Decision: Used by in-process worker in DEV_MODE
 //
 // Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
+use crate::domains::budgets::BudgetService;
+use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::scoped_mcp::{
+    build_materialized_scoped_mcp_tool_definitions,
+    merge_effective_scoped_mcp_servers_with_capabilities,
+    resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
+};
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
 use crate::kernel_imports::{
     Caller, EgressRequest, EgressRequestKind, EgressService, RuntimeMessage, UtilityLlmService,
     contracts::driver_registry::DriverRegistry, contracts::provider::DriverId,
@@ -19,9 +28,13 @@ use crate::kernel_imports::{
     image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
+use crate::max_iterations;
 use crate::records::Harness;
 use crate::records::{Agent, AgentStatus};
 use crate::records::{Session, SessionStatus};
+use crate::services::{EventService, ProviderResolverService};
+use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
+use crate::storage::{EncryptionService, StorageBackend};
 use async_trait::async_trait;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::{AgentLoopError, Result};
@@ -35,32 +48,16 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
+use everruns_durable::WorkflowEventStore;
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
-
-use crate::domains::budgets::BudgetService;
-use crate::domains::mcp_servers::McpServerService;
-use crate::domains::mcp_servers::scoped_mcp::{
-    build_materialized_scoped_mcp_tool_definitions,
-    merge_effective_scoped_mcp_servers_with_capabilities,
-    resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
-};
-use crate::domains::messages::MessageService;
-use crate::domains::sessions::SessionService;
-use crate::max_iterations;
-use crate::services::{EventService, ProviderResolverService};
-use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
-use crate::storage::{EncryptionService, StorageBackend};
-use everruns_durable::WorkflowEventStore;
-
 // Helper to create store errors
 pub(crate) fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
 }
-
 /// Extract file name from path
 pub(crate) fn name_from_path(path: &str) -> String {
     if path == "/" {

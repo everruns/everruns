@@ -35,8 +35,8 @@ use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::typed_id::{
     AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
 };
-use everruns_durable::UpdateField;
 use everruns_core::host::HostComposition;
+use everruns_durable::UpdateField;
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

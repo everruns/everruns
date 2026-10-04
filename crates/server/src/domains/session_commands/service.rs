@@ -24,7 +24,6 @@ use everruns_core::command::{
 use everruns_core::execution_loading::AgentStore;
 use everruns_core::host::StoreCommandHost;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
-
 use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter};
 use std::collections::HashSet;
 use std::sync::Arc;

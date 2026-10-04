@@ -14,11 +14,11 @@ that need no code changes are not listed. For every release, see the
 ### Consolidated execution modules
 
 The planned release moves the execution, host, built-in, MCP, AG-UI, and A2A
-modules into `everruns-core`. Its default features remain portable; opt into the modules your host
-uses. The five former packages ship one final deprecated shim release before
-removal. Existing behavior and protocol formats are preserved. The earlier
-`everruns-platform` shim has completed that window; hosted capability hosts now
-depend on `everruns-capabilities` and library hosts use portable definitions.
+modules into `everruns-core`. Its default features remain portable; opt into
+the modules your host uses. The five former packages will ship one deprecated
+forwarding release before removal in the next platform release. Existing behavior and protocol formats
+will be preserved. This step is gated on the complete 0.39 publication,
+including its deprecated `everruns-platform` shim, before that shim is removed.
 
 | Deprecated crate prefix | Canonical import | Core feature |
 |---|---|---|
@@ -28,16 +28,15 @@ depend on `everruns-capabilities` and library hosts use portable definitions.
 | `everruns_mcp::` | `everruns_core::mcp::` | `mcp` |
 | `everruns_ag_ui::` | `everruns_core::ag_ui::` | `ag-ui` |
 
-Select concrete integrations on `everruns`, and use
+After upgrading, select concrete integrations on `everruns`, and use
 `everruns::batteries::runtime_capability_registry()` and
 `everruns::batteries::runtime_egress_service()` for the matching composition.
 The core host module accepts explicitly injected services. A custom shell hook
 host supplies a `BashHookDispatcherFactory` through `HostBackends`; the facade
 injects the Bashkit factory when its `bashkit` feature is enabled.
 Utility-model bootstrap configuration will live in `everruns::utility_llm`
-behind `utility-llm`. A2A protocol and outbound client APIs are available from
+behind `utility-llm`. A2A protocol and outbound client APIs will be available from
 `everruns_core::a2a` with the `a2a` feature.
-
 
 ## 0.39
 
@@ -64,8 +63,7 @@ HTTP clients need no migration.
 
 ### Runtime store migration
 
-
-Custom hosts implementing `everruns_capabilities::PlatformStore` now return
+Custom hosts implementing `everruns_platform::PlatformStore` now return
 `everruns_core::AgentDefinition`, an inheritance-resolved
 `everruns_core::HarnessDefinition`, `everruns_core::ExecutionSession`, and
 `everruns_contracts::typed_id::SessionParticipantId`. Resolve authorization,

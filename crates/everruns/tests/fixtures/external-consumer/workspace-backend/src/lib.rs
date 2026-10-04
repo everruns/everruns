@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_core::host::{
-    InMemorySessionFileStore, WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor,
-    WorkspaceDiff, WorkspaceError, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
-    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceId, WorkspaceBackend,
-    WorkspaceBackendId,
+    InMemorySessionFileStore, WorkspaceBackend, WorkspaceBackendId, WorkspaceBinding,
+    WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
+    WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource,
+    WorkspaceHeadStatus, WorkspaceId,
 };
 
 /// Compile-only proof that a downstream crate can implement the SPI without a
@@ -18,10 +18,7 @@ impl WorkspaceBackend for ExternalWorkspaceBackend {
         WorkspaceBackendId::new("example.external-workspace").unwrap()
     }
 
-    async fn open_workspace(
-        &self,
-        locator: &str,
-    ) -> Result<WorkspaceDescriptor, WorkspaceError> {
+    async fn open_workspace(&self, locator: &str) -> Result<WorkspaceDescriptor, WorkspaceError> {
         Ok(WorkspaceDescriptor {
             id: WorkspaceId::from_seed(7),
             name: locator.to_owned(),
@@ -83,10 +80,7 @@ impl WorkspaceBackend for ExternalWorkspaceBackend {
         Err(WorkspaceError::NotFound)
     }
 
-    async fn diff(
-        &self,
-        _binding: &WorkspaceBinding,
-    ) -> Result<WorkspaceDiff, WorkspaceError> {
+    async fn diff(&self, _binding: &WorkspaceBinding) -> Result<WorkspaceDiff, WorkspaceError> {
         Ok(WorkspaceDiff::default())
     }
 

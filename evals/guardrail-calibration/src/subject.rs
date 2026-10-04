@@ -17,16 +17,16 @@
 
 use std::sync::Arc;
 
-use everruns_core::builtins::GuardrailsCapability;
-use everruns_core::capabilities::Capability;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_hooks::PreToolUseDecision;
-use everruns_core::host::SystemUtilityLlmConfig;
-use everruns_integrations_typesafe::TypeSafeAI;
+use everruns::utility_llm::SystemUtilityLlmConfig;
 use everruns_contracts::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
 };
 use everruns_contracts::typed_id::SessionId;
+use everruns_core::builtins::GuardrailsCapability;
+use everruns_core::capabilities::Capability;
+use everruns_core::tool_context::ToolContext;
+use everruns_core::tool_hooks::PreToolUseDecision;
+use everruns_integrations_typesafe::TypeSafeAI;
 use mira::{RunCx, Sample, Subject, Transcript};
 use serde_json::json;
 
@@ -124,8 +124,9 @@ impl Subject for GuardrailCalibrationSubject {
         };
 
         let context = match engine.as_str() {
-            "jev" => ToolContext::new(SessionId::new())
-                .with_decisions(Arc::new(TypeSafeAI::new(key))),
+            "jev" => {
+                ToolContext::new(SessionId::new()).with_decisions(Arc::new(TypeSafeAI::new(key)))
+            }
             // The utility service resolves its own backend, model, and key
             // from the environment; `key` only proved one is configured.
             _ => ToolContext::new(SessionId::new())

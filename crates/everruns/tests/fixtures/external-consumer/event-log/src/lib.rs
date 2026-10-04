@@ -15,8 +15,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use everruns_core::events::{Event, EventRequest};
 use everruns_contracts::typed_id::{EventId, SessionId};
+use everruns_core::events::{Event, EventRequest};
 use everruns_core::host::{
     EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest, EventReader,
 };
