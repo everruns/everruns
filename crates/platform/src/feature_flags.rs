@@ -43,7 +43,7 @@ pub struct FeatureFlags {
     /// Realtime voice endpoints and microphone controls. Experimental.
     pub voice: bool,
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
-    /// `ag_ui_delegation`, `agent_handoff`). Experimental: auto-enabled in dev, off in prod by default.
+    /// `ag_ui_delegation`, `agent_handoff`). Available for org opt-in on every deployment.
     /// Deployment availability controls registration; org policy controls use.
     pub agent_delegation: bool,
     /// Observers (online scoring of production sessions). Experimental.
@@ -67,7 +67,7 @@ pub struct FeatureFlags {
     pub reports: bool,
     /// Machine-payment custody, policy, audit, and paid capability surfaces.
     pub machine_payments: bool,
-    /// OpenAI Agents API runtime backend; preview enrolment is platform-owned.
+    /// OpenAI Agents API runtime backend; internal enrolment is platform-owned.
     #[serde(default)]
     pub openai_agents_api: bool,
     #[serde(default)]
@@ -131,7 +131,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Turns on the in-app notification bell, toasts, and live updates. You get \
              alerted in real time when something you care about happens, instead of refreshing \
              or checking back manually.",
-        grade: FeatureFlagGrade::Dev,
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "evals",
@@ -139,7 +139,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Lets you define and run behavioral evals against your agents. Use it to \
              confirm an agent responds the way you expect and to catch regressions as you change \
              prompts or models.",
-        grade: FeatureFlagGrade::Dev,
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "skills",
@@ -174,7 +174,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Adds spending limits scoped to individual apps and channels, with automatic \
              resets on a schedule. It helps you cap and control costs so a single app or channel \
              can't run away with your usage.",
-        grade: FeatureFlagGrade::Dev,
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "agent_versions",
@@ -182,7 +182,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Captures immutable snapshots of your agents so you can fork, roll back, and \
              pin apps to a specific version. This gives you a safety net to experiment freely \
              and return to a known-good agent at any time.",
-        grade: FeatureFlagGrade::Dev,
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "voice",
@@ -205,7 +205,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Runs automatic online scoring on your production sessions. It continuously \
              evaluates live conversations so you can monitor quality on real traffic without \
              manually reviewing each one.",
-        grade: FeatureFlagGrade::Dev,
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "public_chat",
@@ -218,7 +218,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         label: "WebMCP UI tools",
         description: "Exposes a small browser-native tool surface from the authenticated UI so a \
              browser agent can search, navigate, and perform confirmed actions in Everruns.",
-        grade: FeatureFlagGrade::Dev,
+        grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
         name: "mcp_events",
@@ -244,7 +244,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "openai_agents_api",
         label: "OpenAI Agents API runtime",
         description: "Allows agents with the OpenAI Agents API runtime capability to run their loop through OpenAI's Agents API instead of the native Everruns loop.",
-        grade: FeatureFlagGrade::Preview,
+        grade: FeatureFlagGrade::Internal,
     },
     FeatureFlagDefinition {
         name: "docker_capability",
@@ -535,6 +535,7 @@ mod tests {
         let cases = [
             None,
             Some("dev"),
+            Some("internal"),
             Some("preview"),
             Some("adoption"),
             Some("prod"),
@@ -546,7 +547,7 @@ mod tests {
             let value = cases[index.parse::<usize>().unwrap()];
             let expected = value
                 .map(|value| value.parse().unwrap_or(FeatureFlagGrade::Off))
-                .unwrap_or(FeatureFlagGrade::Dev);
+                .unwrap_or(FeatureFlagGrade::Adoption);
             let policy = FeatureFlagPolicy::from_env(DeploymentGrade::Prod);
             assert_eq!(policy.grade("evals"), expected);
             assert_eq!(
@@ -577,11 +578,78 @@ mod tests {
     }
 
     #[test]
+    fn hosted_catalog_preserves_opt_in_and_platform_authority() {
+        let policy = FeatureFlagPolicy {
+            deployment: DeploymentGrade::Prod,
+            grades: API_FEATURE_FLAG_DEFINITIONS
+                .iter()
+                .map(|def| (def.name.to_string(), def.grade))
+                .collect(),
+        };
+        let adoption_flags = [
+            "notifications",
+            "evals",
+            "app_budgets",
+            "agent_versions",
+            "agent_delegation",
+            "observers",
+            "webmcp",
+        ];
+        let opted_in = adoption_flags
+            .iter()
+            .map(|name| (name.to_string(), true))
+            .collect();
+        for name in adoption_flags {
+            assert_eq!(policy.grade(name), FeatureFlagGrade::Adoption, "{name}");
+            assert!(policy.deployment_flags().is_enabled(name), "{name}");
+            assert!(!policy.for_org(&HashMap::new()).is_enabled(name), "{name}");
+            assert!(policy.for_org(&opted_in).is_enabled(name), "{name}");
+        }
+        assert_eq!(
+            policy.grade("openai_agents_api"),
+            FeatureFlagGrade::Internal
+        );
+        assert!(
+            !policy
+                .grade("openai_agents_api")
+                .org_configurable(DeploymentGrade::Prod)
+        );
+        assert!(!policy.for_org(&HashMap::new()).openai_agents_api);
+        for name in [
+            "skills",
+            "memory",
+            "knowledge",
+            "plugins",
+            "voice",
+            "public_chat",
+            "mcp_events",
+            "reports",
+        ] {
+            assert_eq!(policy.grade(name), FeatureFlagGrade::Dev, "{name}");
+            assert!(!policy.deployment_flags().is_enabled(name), "{name}");
+        }
+        for name in [
+            "machine_payments",
+            "docker_capability",
+            "container_sandbox",
+            "lua",
+        ] {
+            assert_eq!(policy.grade(name), FeatureFlagGrade::Off, "{name}");
+            assert!(
+                !policy
+                    .for_org(&HashMap::from([(name.to_string(), true)]))
+                    .is_enabled(name),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
     fn every_flag_obeys_the_same_grade_policy() {
         for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
             for grade in [
                 FeatureFlagGrade::Dev,
-                FeatureFlagGrade::Preview,
+                FeatureFlagGrade::Internal,
                 FeatureFlagGrade::Adoption,
                 FeatureFlagGrade::Prod,
                 FeatureFlagGrade::Off,
@@ -608,7 +676,7 @@ mod tests {
 
     #[test]
     fn registration_availability_does_not_enroll_an_org() {
-        let policy = policy(DeploymentGrade::Prod, FeatureFlagGrade::Preview);
+        let policy = policy(DeploymentGrade::Prod, FeatureFlagGrade::Internal);
         assert!(policy.deployment_flags().openai_agents_api);
         assert!(!policy.for_org(&HashMap::new()).openai_agents_api);
         assert!(

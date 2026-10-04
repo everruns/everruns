@@ -792,8 +792,8 @@ everruns_core::feature_flag_grade	module
 everruns_core::feature_flag_grade::FeatureFlagGrade	enum
 everruns_core::feature_flag_grade::FeatureFlagGrade::Adoption	variant
 everruns_core::feature_flag_grade::FeatureFlagGrade::Dev	variant
+everruns_core::feature_flag_grade::FeatureFlagGrade::Internal	variant
 everruns_core::feature_flag_grade::FeatureFlagGrade::Off	variant
-everruns_core::feature_flag_grade::FeatureFlagGrade::Preview	variant
 everruns_core::feature_flag_grade::FeatureFlagGrade::Prod	variant
 everruns_core::file_services	module
 everruns_core::file_services::CreateStoredFile	struct

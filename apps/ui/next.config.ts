@@ -10,9 +10,9 @@ export function webMcpPermissionsPolicy(env: {
     deployment === "dev" ||
     deployment === "development" ||
     (env.deploymentGrade === undefined && (env.devMode === "true" || env.devMode === "1"));
-  const grade = env.feature ?? "dev";
+  const grade = env.feature ?? "adoption";
   const available =
-    grade === "preview" || grade === "adoption" || grade === "prod" || (grade === "dev" && local);
+    grade === "internal" || grade === "adoption" || grade === "prod" || (grade === "dev" && local);
   return available ? "tools=(self)" : "tools=()";
 }
 

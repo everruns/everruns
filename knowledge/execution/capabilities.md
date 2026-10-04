@@ -115,10 +115,10 @@ normal Agent resource, not inherited runtime config and not a code-defined
 template. See [agent-handoff.md](../runtime-resources/agent-handoff.md).
 
 `agent_handoff`, `a2a_agent_delegation` and `ag_ui_delegation` are gated behind the
-`agent_delegation` feature flag (experimental, auto-enabled in dev, off in prod).
-When the flag is off, none of them is registered and none appears in the
-capability picker. Enable via `FEATURE_AGENT_DELEGATION=prod` or use a
-`DeploymentGrade::Dev` environment. See `knowledge/security/feature-flags.md` and EVE-506.
+`agent_delegation` feature flag. Its adoption default requires organisation opt-in;
+registration follows deployment availability, while assignment and execution use
+organisation-effective flags. See [Feature Flags](../security/feature-flags.md)
+and the [shared registration policy](../../crates/core/src/execution_features.rs).
 
 ### Guardrail Capabilities
 

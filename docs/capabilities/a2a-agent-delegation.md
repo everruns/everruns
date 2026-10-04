@@ -11,7 +11,7 @@ appliesTo: [framework, platform]
 | **Features** | `agent_runs` |
 | **Dependencies** | `session_tasks` |
 | **Risk** | High |
-| **Availability** | Experimental, dev-only on the platform |
+| **Availability** | Experimental, organisation opt-in on the platform |
 
 A2A Agent Delegation lets an agent hand work to agents that run outside
 Everruns and speak the [A2A protocol](/features/a2a/). The agents it may call
@@ -21,10 +21,11 @@ shared `spawn_agent` tool, the same dispatcher that
 [Sub Agents](/capabilities/sub-agents/) and
 [Agent Handoff](/capabilities/agent-handoff/) extend.
 
-**Experimental.** On the platform the capability is registered when
-`FEATURE_AGENT_DELEGATION` is on. That flag is on by default at the development
-deployment grade and off in production, so it is not available on Everruns
-Cloud. In the [Framework](/framework/), turn on the `a2a` Cargo feature of
+**Experimental.** On the platform, Agent delegation uses the `adoption` rollout
+grade by default. An organisation owner or admin must enable Agent delegation in
+Settings → Features before configuring or using it. `FEATURE_AGENT_DELEGATION`
+can override the rollout grade; `off` disables delegation for every organisation.
+In the [Framework](/framework/), turn on the `a2a` Cargo feature of
 `everruns` (it implies `local`) and add the capability by ID. See
 [A2A](/features/a2a/#a2a-in-the-framework).
 
