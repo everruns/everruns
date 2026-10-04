@@ -1,7 +1,7 @@
 // Service seeding module for server (control plane)
 // Decision: Always seed on startup (no flag needed)
-// Decision: Run in background task (non-blocking)
-// Decision: Failures are non-fatal (log warning, continue)
+// Decision: Prepare auth identities before serving; seed catalogs in background
+// Decision: Auth readiness errors stop startup; catalog errors are non-fatal
 // Decision: Use fixed UUIDs for idempotency
 // Decision: Upsert seed data on conflict, only when values changed (ON CONFLICT DO UPDATE ... WHERE differs)
 // Decision: Modular design allows easy addition of new seeders
@@ -26,7 +26,7 @@ use uuid::Uuid;
 mod anonymous;
 mod mcp_servers;
 mod models;
-use anonymous::seed_anonymous_user_for_auth_mode;
+use anonymous::seed_auth_prerequisites;
 use mcp_servers::seed_mcp_servers;
 use models::SEED_MODELS;
 
@@ -769,7 +769,7 @@ pub struct SeedAuthContext {
     pub admin: Option<AdminConfig>,
 }
 
-/// Complete binding upgrades before serving requests, then seed other resources.
+/// Prepare binding upgrades and auth identities before background catalog seeding.
 pub async fn prepare_seed_task(
     db: Arc<StorageBackend>,
     auth: &AuthConfig,
@@ -783,12 +783,16 @@ pub async fn prepare_seed_task(
     }) {
         org_init::reconcile_built_in_harnesses_with_definitions(&db, &harnesses).await?;
     }
+    let auth_ctx = SeedAuthContext {
+        mode: auth.mode.clone(),
+        admin: auth.admin.clone(),
+    };
+    // Request ownership and auth-mode cleanup must be ready before HTTP traffic;
+    // the delayed catalog task cannot supply these prerequisites safely.
+    seed_auth_prerequisites(&db, &auth_ctx, &harnesses).await?;
     Ok(spawn_seed_task_with_host_composition(
         db,
-        SeedAuthContext {
-            mode: auth.mode.clone(),
-            admin: auth.admin.clone(),
-        },
+        auth_ctx,
         host_composition,
         harnesses,
         encryption,
@@ -1059,42 +1063,7 @@ pub async fn seed_all_with_host_composition(
     host_composition: &HostComposition,
     built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
-    let mut result = SeedResult::default();
-
-    // Seed default organization first (all other resources depend on it)
-    let org_result = seed_default_organization(db).await?;
-    tracing::debug!(
-        created = org_result.created,
-        updated = org_result.updated,
-        unchanged = org_result.unchanged,
-        "Default organization seeded"
-    );
-    result.merge(org_result);
-
-    // Anonymous identity + revoke of none-mode PATs when auth is enabled
-    // (EVE-1153 / TM-AUTH-032). See `seed::anonymous`.
-    let anon_result = seed_anonymous_user_for_auth_mode(db, auth_ctx, built_in_harnesses).await?;
-    tracing::debug!(
-        created = anon_result.created,
-        updated = anon_result.updated,
-        unchanged = anon_result.unchanged,
-        "Anonymous user seeded"
-    );
-    result.merge(anon_result);
-
-    // Seed admin user when in admin mode (depends on default org)
-    if auth_ctx.mode == AuthMode::Admin
-        && let Some(admin_config) = &auth_ctx.admin
-    {
-        let admin_result = seed_admin_user(db, admin_config, built_in_harnesses).await?;
-        tracing::debug!(
-            created = admin_result.created,
-            updated = admin_result.updated,
-            unchanged = admin_result.unchanged,
-            "Admin user seeded"
-        );
-        result.merge(admin_result);
-    }
+    let mut result = seed_auth_prerequisites(db, auth_ctx, built_in_harnesses).await?;
 
     // Seed providers (models depend on them)
     let provider_result = seed_providers_with_host_composition(db, host_composition).await?;

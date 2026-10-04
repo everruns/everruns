@@ -4,7 +4,7 @@
 //! the orchestration module while mode-transition security stays next to the
 //! anonymous identity it protects.
 
-use super::{SeedAuthContext, SeedResult};
+use super::{SeedAuthContext, SeedResult, seed_admin_user, seed_default_organization};
 use crate::auth::config::AuthMode;
 use crate::org_init;
 use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
@@ -92,6 +92,55 @@ pub(super) async fn seed_anonymous_user_for_auth_mode(
     if auth_ctx.mode != AuthMode::None {
         result.merge(revoke_anonymous_personal_access_tokens(db).await?);
     }
+    Ok(result)
+}
+
+/// Initialize request identities and mode-transition cleanup in seed order.
+///
+/// Startup awaits this before serving. Full seeding also calls it so standalone
+/// seed callers retain the same idempotent organization/user prerequisites.
+pub(super) async fn seed_auth_prerequisites(
+    db: &StorageBackend,
+    auth_ctx: &SeedAuthContext,
+    built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],
+) -> anyhow::Result<SeedResult> {
+    let mut result = SeedResult::default();
+
+    // Seed default organization first (all other resources depend on it)
+    let org_result = seed_default_organization(db).await?;
+    tracing::debug!(
+        created = org_result.created,
+        updated = org_result.updated,
+        unchanged = org_result.unchanged,
+        "Default organization seeded"
+    );
+    result.merge(org_result);
+
+    // Anonymous identity + revoke of none-mode PATs when auth is enabled
+    // (EVE-1153 / TM-AUTH-032). See `seed::anonymous`.
+    let anon_result = seed_anonymous_user_for_auth_mode(db, auth_ctx, built_in_harnesses).await?;
+    tracing::debug!(
+        created = anon_result.created,
+        updated = anon_result.updated,
+        unchanged = anon_result.unchanged,
+        "Anonymous user seeded"
+    );
+    result.merge(anon_result);
+
+    // Seed admin user when in admin mode (depends on default org)
+    if auth_ctx.mode == AuthMode::Admin
+        && let Some(admin_config) = &auth_ctx.admin
+    {
+        let admin_result = seed_admin_user(db, admin_config, built_in_harnesses).await?;
+        tracing::debug!(
+            created = admin_result.created,
+            updated = admin_result.updated,
+            unchanged = admin_result.unchanged,
+            "Admin user seeded"
+        );
+        result.merge(admin_result);
+    }
+
     Ok(result)
 }
 
@@ -223,6 +272,96 @@ mod tests {
     #[tokio::test]
     async fn prepare_seed_task_preserves_anonymous_pats_in_none_mode() {
         assert_prepared_pat_policy(AuthMode::None).await;
+    }
+
+    #[tokio::test]
+    async fn prepare_seed_task_preserves_operator_harness_definitions() {
+        use crate::records::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let task = crate::seed::prepare_seed_task(
+            db.clone(),
+            &AuthConfig::default(),
+            crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev),
+            vec![
+                BuiltInHarnessDefinition::new("operator-default", "Custom", "d", "p")
+                    .with_roles([BuiltInHarnessRole::Base, BuiltInHarnessRole::Default]),
+            ],
+            None,
+        )
+        .await
+        .unwrap();
+        task.abort();
+        let _ = task.await;
+
+        let custom = db
+            .get_harness_by_name(DEFAULT_ORG_ID, "operator-default")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            db.get_organization_settings(DEFAULT_ORG_ID)
+                .await
+                .unwrap()
+                .unwrap()
+                .default_harness_id,
+            Some(custom.id)
+        );
+        assert!(
+            db.get_harness_by_name(DEFAULT_ORG_ID, "conversation")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn prepare_seed_task_refuses_untrusted_admin_account() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let user = db
+            .create_user(CreateUserRow {
+                email: "startup-admin@example.com".into(),
+                name: "Existing account".into(),
+                avatar_url: None,
+                roles: vec!["user".into()],
+                password_hash: None,
+                email_verified: false,
+                auth_provider: Some("local".into()),
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap();
+        let auth = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(crate::auth::config::AdminConfig {
+                email: user.email.clone(),
+                password: "development-test-password".into(),
+            }),
+            ..AuthConfig::default()
+        };
+        match crate::seed::prepare_seed_task(
+            db.clone(),
+            &auth,
+            crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev),
+            crate::platform::oss_built_in_harnesses(),
+            None,
+        )
+        .await
+        {
+            Err(error) => assert!(error.to_string().contains("Refusing to seed admin user")),
+            Ok(task) => {
+                task.abort();
+                panic!("untrusted admin identity must stop startup");
+            }
+        }
+        assert!(
+            db.get_organization_member(DEFAULT_ORG_ID, user.id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(db.list_providers(DEFAULT_ORG_ID).await.unwrap().is_empty());
     }
 
     #[tokio::test]
