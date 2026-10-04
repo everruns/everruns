@@ -5,7 +5,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "base",
         "Base",
-        "Empty harness with no capabilities. Provides a blank canvas for custom configurations.",
+        "A blank start. Add only the capabilities this agent should have.",
         "You are a helpful assistant.",
     )
     .with_icon("square-dashed")

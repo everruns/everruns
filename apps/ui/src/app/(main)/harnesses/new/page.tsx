@@ -218,11 +218,15 @@ export default function NewHarnessPage() {
                   <Label htmlFor="description">Description</Label>
                   <Textarea
                     id="description"
-                    placeholder="Describe what this harness does..."
+                    placeholder="When to choose this harness"
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={2}
+                    aria-describedby="description-help"
                   />
+                  <p id="description-help" className="text-xs text-muted-foreground">
+                    Shown in the harness picker. Say when someone should choose this harness.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
