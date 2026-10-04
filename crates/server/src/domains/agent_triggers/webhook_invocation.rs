@@ -10,9 +10,9 @@ use crate::domains::agent_channels::invocation::render_message_template;
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::records::AgentTriggerType;
 use crate::storage::StorageBackend;
 use chrono::Utc;
-use everruns_platform::AgentTriggerType;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -137,7 +137,7 @@ pub async fn invoke_webhook_agent_trigger(
             message_template: &config.message,
             session_mode: config.session_mode,
             filter: config.filter.as_ref(),
-            session_source: everruns_platform::SessionSource::Webhook,
+            session_source: crate::records::SessionSource::Webhook,
             webhook_compat: webhook_context.as_ref(),
         },
         event,

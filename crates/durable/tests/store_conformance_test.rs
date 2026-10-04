@@ -33,9 +33,9 @@ trait Harness {
     async fn expire_claim(&self, task_id: Uuid);
 }
 
-struct Memory(InMemoryWorkflowEventStore);
+struct MemoryHarness(InMemoryWorkflowEventStore);
 
-impl Harness for Memory {
+impl Harness for MemoryHarness {
     type Store = InMemoryWorkflowEventStore;
     fn store(&self) -> &Self::Store {
         &self.0
@@ -84,7 +84,7 @@ macro_rules! conformance {
             $(
                 #[tokio::test]
                 async fn $case() {
-                    super::$case(super::Memory(super::InMemoryWorkflowEventStore::new())).await;
+                    super::$case(super::MemoryHarness(super::InMemoryWorkflowEventStore::new())).await;
                 }
             )*
         }

@@ -942,7 +942,7 @@ async fn create_session_in_org(
     let row = backend
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: everruns_server::records::SessionSource::Api,
             workspace_id: None,
             org_id,
             app_id: None,

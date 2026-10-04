@@ -460,9 +460,9 @@ fn discover_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoin
         protocol_version,
         "discover",
         "Discover Operations",
-        everruns_platform::capabilities::PLATFORM_DISCOVER_DESCRIPTION,
+        everruns_capabilities::capabilities::PLATFORM_DISCOVER_DESCRIPTION,
         with_organization_id(
-            everruns_platform::capabilities::discover_input_schema(),
+            everruns_capabilities::capabilities::discover_input_schema(),
             org_id_description,
         ),
         Some(discover_output_schema()),
@@ -476,9 +476,9 @@ fn query_tool(protocol_version: &str, org_id_description: &str) -> McpEndpointTo
         protocol_version,
         "query",
         "Query Commands",
-        everruns_platform::capabilities::PLATFORM_QUERY_DESCRIPTION,
+        everruns_capabilities::capabilities::PLATFORM_QUERY_DESCRIPTION,
         with_organization_id(
-            everruns_platform::capabilities::query_input_schema(),
+            everruns_capabilities::capabilities::query_input_schema(),
             org_id_description,
         ),
         None,
@@ -492,9 +492,9 @@ fn execute_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoint
         protocol_version,
         "execute",
         "Execute Commands",
-        everruns_platform::capabilities::PLATFORM_EXECUTE_DESCRIPTION,
+        everruns_capabilities::capabilities::PLATFORM_EXECUTE_DESCRIPTION,
         with_organization_id(
-            everruns_platform::capabilities::execute_input_schema(),
+            everruns_capabilities::capabilities::execute_input_schema(),
             org_id_description,
         ),
         None,
@@ -882,18 +882,18 @@ mod tests {
         let cases = [
             (
                 discover_tool("2026-07-28", org_description),
-                everruns_platform::capabilities::PLATFORM_DISCOVER_DESCRIPTION,
-                everruns_platform::capabilities::discover_input_schema(),
+                everruns_capabilities::capabilities::PLATFORM_DISCOVER_DESCRIPTION,
+                everruns_capabilities::capabilities::discover_input_schema(),
             ),
             (
                 query_tool("2026-07-28", org_description),
-                everruns_platform::capabilities::PLATFORM_QUERY_DESCRIPTION,
-                everruns_platform::capabilities::query_input_schema(),
+                everruns_capabilities::capabilities::PLATFORM_QUERY_DESCRIPTION,
+                everruns_capabilities::capabilities::query_input_schema(),
             ),
             (
                 execute_tool("2026-07-28", org_description),
-                everruns_platform::capabilities::PLATFORM_EXECUTE_DESCRIPTION,
-                everruns_platform::capabilities::execute_input_schema(),
+                everruns_capabilities::capabilities::PLATFORM_EXECUTE_DESCRIPTION,
+                everruns_capabilities::capabilities::execute_input_schema(),
             ),
         ];
 

@@ -6,10 +6,10 @@ use crate::domains::agents::version_policy::{VersionSelection, resolve_version_s
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
+use crate::records::{AgentChannel, AgentChannelId, ChannelType};
 use crate::storage::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use everruns_contracts::typed_id::AgentId;
 use everruns_durable::UpdateField;
-use everruns_platform::{AgentChannel, AgentChannelId, ChannelType};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -43,7 +43,7 @@ fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, Com
 
 fn stored_version_selection(row: &IngressChannelRow) -> VersionSelection {
     VersionSelection {
-        policy: everruns_platform::AgentVersionPolicy::from(row.agent_version_policy.as_str()),
+        policy: crate::records::AgentVersionPolicy::from(row.agent_version_policy.as_str()),
         version_id: row
             .agent_version_id
             .map(everruns_contracts::typed_id::AgentVersionId::from_uuid),
@@ -182,7 +182,7 @@ impl Command for CreateAgentChannel {
         )
         .await?
         .unwrap_or(VersionSelection {
-            policy: everruns_platform::AgentVersionPolicy::Default,
+            policy: crate::records::AgentVersionPolicy::Default,
             version_id: None,
         });
         let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent)

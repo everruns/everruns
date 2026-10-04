@@ -24,7 +24,7 @@ async fn seed_foreign_voice_session(server: &TestServer) -> SessionId {
     let org = server
         .db
         .create_organization(CreateOrganizationRow {
-            public_id: everruns_platform::generate_org_public_id(),
+            public_id: everruns_server::records::generate_org_public_id(),
             name: "Foreign voice org".to_string(),
             created_by: None,
         })

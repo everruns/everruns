@@ -14,8 +14,8 @@ mod tests {
     use everruns_core::{
         AgentDefinition, Capability, ExecutionSession, HarnessDefinition, ToolExecutionResult,
     };
-    use everruns_platform::capabilities::SubagentCapability;
-    use everruns_platform::{
+    use everruns_capabilities::capabilities::SubagentCapability;
+    use everruns_capabilities::{
         PlatformCreateSessionRequest, PlatformMessage, PlatformStore, PlatformStoreSubagentDelegate,
     };
     use serde_json::json;

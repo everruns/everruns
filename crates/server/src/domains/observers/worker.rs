@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
+use crate::records::eval::Score;
+use crate::records::observer::{ObserverScorerConfig, ScorerMethod};
 use everruns_contracts::typed_id::SessionId;
-use everruns_platform::eval::Score;
-use everruns_platform::observer::{ObserverScorerConfig, ScorerMethod};
 use tracing::{debug, warn};
 
 use crate::domains::evals::runner::{extract_final_assistant_content, extract_tool_calls};
@@ -266,14 +266,14 @@ fn extract_input_content(turn_events: &[EventRow]) -> String {
 mod tests {
     use super::*;
     use crate::domains::observers::judge::{JudgeResult, TurnEvidence};
+    use crate::records::observer::{
+        LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
+    };
     use crate::storage::models::{
         CreateEventRow, CreateObserverRow, CreateSessionRow, CreateTraceScoreRow,
     };
     use everruns_contracts::typed_id::{
         AgentId, HarnessId, ModelId, ObserverId, PrincipalId, TraceScoreId,
-    };
-    use everruns_platform::observer::{
-        LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
     };
     use uuid::Uuid;
 
@@ -321,7 +321,7 @@ mod tests {
     fn session_row(agent: AgentId, harness: HarnessId, tags: Vec<String>) -> CreateSessionRow {
         CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: ORG,
             app_id: None,
@@ -392,7 +392,7 @@ mod tests {
             public_id: ObserverId::from_uuid(Uuid::now_v7()).to_string(),
             name: "test".to_string(),
             description: None,
-            match_config: serde_json::to_value(everruns_platform::observer::ObserverMatch {
+            match_config: serde_json::to_value(crate::records::observer::ObserverMatch {
                 agent_ids: Some(vec![agent]),
                 ..Default::default()
             })
@@ -409,7 +409,7 @@ mod tests {
                 key: key.to_string(),
                 scope: ObserverScope::Turn,
                 method: ScorerMethod::Rule {
-                    rule: everruns_platform::eval::Scorer::Contains {
+                    rule: crate::records::eval::Scorer::Contains {
                         text: text.to_string(),
                         weight: 1.0,
                     },

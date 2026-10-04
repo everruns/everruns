@@ -2,7 +2,7 @@
 //
 // Decision: the stored `Harness` persistence record — lifecycle status,
 // hierarchy identifiers, built-in flags, organization ownership, timestamps —
-// lives in `everruns-platform`. Core keeps only this portable, execution-facing
+// lives in `crates/server/src/records`. Core keeps only this portable, execution-facing
 // projection: the neutral environment configuration the runtime folds as the
 // base layer of the harness → agent → session overlay chain. The platform
 // loading seam (server repositories, worker adapters, hosted stores) resolves
@@ -25,7 +25,7 @@ use crate::typed_id::ModelId;
 /// Carries exactly what turn execution consumes: the effective
 /// (inheritance-resolved) base environment configuration below the agent and
 /// session overlay layers. It is not a persistence record — identity,
-/// hierarchy, lifecycle, and display bookkeeping stay in `everruns-platform`.
+/// hierarchy, lifecycle, and display bookkeeping stay in `crates/server/src/records`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HarnessDefinition {
     /// Addressable name (e.g. "generic"). Correlation/bookkeeping only; the

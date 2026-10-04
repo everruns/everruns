@@ -417,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -439,7 +439,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -455,8 +455,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-capabilities"
+version = "0.39.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-contracts",
+ "everruns-core",
+ "everruns-host",
+ "inventory",
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-contracts"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -490,7 +510,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -520,7 +540,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -539,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -564,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -580,7 +600,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -594,31 +614,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
-]
-
-[[package]]
-name = "everruns-platform"
-version = "0.38.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "everruns-host",
- "inventory",
- "jsonschema",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -679,9 +679,9 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns",
+ "everruns-capabilities",
  "everruns-contracts",
  "everruns-core",
- "everruns-platform",
  "serde_json",
  "tokio",
 ]

@@ -50,10 +50,8 @@ function NavLink({
         item.prominent
           ? cn(
               // Chat is an always-available destination, not a label for its side conversations.
-              "mx-2.5 mb-1 border px-2.5 py-2 font-semibold text-foreground",
-              isActive
-                ? "border-primary/40 bg-primary/5"
-                : "border-border bg-card hover:border-primary/40 hover:bg-primary/5",
+              "mx-2.5 mb-1 border-l-2 px-2.5 py-2 font-semibold text-foreground",
+              isActive ? "border-l-accent bg-muted" : "border-l-transparent hover:bg-muted",
             )
           : cn(
               "border-l-2 px-3 py-1.5",
@@ -67,7 +65,6 @@ function NavLink({
       {item.name}
       {item.warningTooltip && <WarningBadge tooltip={item.warningTooltip} />}
       {item.experimental && !item.warningTooltip && <ExperimentalBadge />}
-      {item.prominent && <ChevronRight className="ml-auto h-4 w-4 shrink-0" aria-hidden="true" />}
     </Link>
   );
 }

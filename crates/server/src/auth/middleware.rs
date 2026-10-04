@@ -2,6 +2,10 @@
 // Decision: Support both cookie-based (UI) and header-based (API) auth
 // Decision: In "none" mode, create an anonymous user context
 
+use crate::records::{
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, FeatureFlags, OrgMembership,
+    validate_org_public_id,
+};
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{StatusCode, header, request::Parts},
@@ -11,10 +15,6 @@ use axum_extra::extract::CookieJar;
 use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
     PermissionResolver,
-};
-use everruns_platform::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, FeatureFlags, OrgMembership,
-    validate_org_public_id,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -227,7 +227,7 @@ pub struct AuthState {
     pub db: Option<Arc<StorageBackend>>,
     /// Startup rollout policy resolved with durable org overrides when building
     /// [`ResolvedOrg::feature_flags`].
-    pub feature_flag_policy: everruns_platform::FeatureFlagPolicy,
+    pub feature_flag_policy: crate::records::FeatureFlagPolicy,
 }
 
 impl AuthState {
@@ -237,7 +237,7 @@ impl AuthState {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None,
-            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
+            feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         }
     }
 
@@ -252,7 +252,7 @@ impl AuthState {
             backend,
             permission_resolver: resolver,
             db: None,
-            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
+            feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         }
     }
 
@@ -269,7 +269,7 @@ impl AuthState {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: Some(db),
-            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
+            feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         }
     }
 
@@ -279,7 +279,7 @@ impl AuthState {
         self
     }
 
-    pub fn with_feature_flag_policy(mut self, flags: everruns_platform::FeatureFlagPolicy) -> Self {
+    pub fn with_feature_flag_policy(mut self, flags: crate::records::FeatureFlagPolicy) -> Self {
         self.feature_flag_policy = flags;
         self
     }
@@ -1303,7 +1303,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: Some(db.clone()),
-            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
+            feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         };
         (state, db)
     }
@@ -1635,7 +1635,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None, // No DB — forces JWT fallback
-            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
+            feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         };
 
         let (mut parts, _body) = Request::builder()
@@ -1709,7 +1709,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None,
-            feature_flag_policy: everruns_platform::FeatureFlagPolicy::current(),
+            feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         }
     }
 

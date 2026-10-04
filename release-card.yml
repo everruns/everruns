@@ -1,13 +1,13 @@
-version: 0.38.0
-date: 2026-10-03
+version: 0.39.0
+date: 2026-10-04
 headline:
-  - Stock subagents.
-  - Custom hosts.
+  - Hosted SDK.
+  - Server records.
 summary:
-  - Use the stock delegation tools with
-  - portable runtime stores. Complete the
-  - shared-contract import migration.
+  - SDK imports move to everruns-capabilities.
+  - Stored records stay in the server.
+  - HTTP API shapes are unchanged.
 highlights:
-  - title: Subagents for library hosts
-    description: Run stock subagent and handoff tools without constructing control-plane records.
-    source: "#4078"
+  - title: Hosted SDK migration
+    description: Move hosted imports to everruns-capabilities; use portable definitions in library hosts.
+    source: "#4081"

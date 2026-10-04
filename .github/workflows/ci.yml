@@ -178,6 +178,8 @@ jobs:
               # PR that changes only a guard would otherwise skip the very job
               # that runs it and prove nothing.
               - 'scripts/lib/check-agent-record-isolation.sh'
+              - 'scripts/check_control_plane_records.py'
+              - 'scripts/test-control-plane-record-isolation.py'
               - 'scripts/lib/check-core-kernel-dependencies.sh'
               - 'scripts/lib/check-durable-isolation.sh'
               - 'scripts/lib/check-hosted-capability-isolation.sh'
@@ -623,7 +625,7 @@ jobs:
   # Harness persistence records plus the built-in harness provisioning
   # templates live in crates/platform. Kernel crates (core, engine, provider,
   # capability) consume only the portable AgentDefinition/HarnessDefinition and
-  # the resolved execution snapshot, and carry no everruns-platform edge.
+  # the resolved execution snapshot, and carry no everruns-capabilities edge.
   agent-record-isolation:
     name: Agent-Record Isolation Guard
     runs-on: ubuntu-latest
@@ -1020,9 +1022,9 @@ jobs:
           # crate; check-integration-catalog.sh guards completeness, these tests
           # guard the entries themselves.
           cargo test -p everruns-integrations-catalog --all-features
-          # everruns-platform is in CI, but by named target: these four files
+          # everruns-capabilities is in CI, but by named target: these four files
           # were never added to the list and so never ran.
-          cargo test -p everruns-platform --test background_execution_test \
+          cargo test -p everruns-capabilities --test background_execution_test \
             --test citation_pipeline_test --test prompt_budget --test subagent_test
           # A separately resolved downstream host executes the stock subagent
           # tools through a runtime-only PlatformStore and a real child turn.
@@ -1034,7 +1036,7 @@ jobs:
           # (crates/server, crates/worker) enables it, and some hosted
           # capabilities (memory, data_knowledge, platform) declare a hard
           # dependency on the filesystem integration it links.
-          cargo test -p everruns-platform --features environment-capabilities \
+          cargo test -p everruns-capabilities --features environment-capabilities \
             --test capability_boundary
           # Test-support (EVE-875): in-memory loop, test doubles, fixture
           # capabilities, and llmsim-driven suites that moved out of core.

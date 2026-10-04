@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { SidebarChatThreads } from "@/components/layout/sidebar-chat-threads";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { SIDEBAR_THREAD_LIMIT } from "@/lib/chat-threads";
@@ -51,6 +51,18 @@ function setThreads(threads: Session[]) {
 
 describe("SidebarChatThreads", () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it("identifies side chats as a separate group and marks the selected conversation", () => {
+    setThreads([thread("sess_a", "Alpha"), thread("sess_b", "Beta")]);
+
+    render(<SidebarChatThreads pathname="/chats/sess_a" />);
+
+    const sideChats = within(screen.getByRole("group", { name: "Side chats" }));
+    expect(sideChats.getByText("Side chats")).toBeInTheDocument();
+    expect(sideChats.getByRole("link", { name: "Alpha" })).toHaveAttribute("aria-current", "page");
+    expect(sideChats.getByRole("link", { name: "Beta" })).not.toHaveAttribute("aria-current");
+    expect(sideChats.getByRole("link", { name: "New side chat" })).toBeInTheDocument();
+  });
 
   it("caps the list and offers the way out to all chats", () => {
     setThreads(Array.from({ length: 8 }, (_, index) => thread(`sess_${index}`, `Thread ${index}`)));

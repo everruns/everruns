@@ -8,11 +8,11 @@
 
 use std::sync::Arc;
 
+use crate::records::observer::{ObserverMatch, ObserverScope, ObserverScorerConfig};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::TraceScoreId;
 use everruns_core::EventListener;
 use everruns_core::events::{Event, EventData, TURN_COMPLETED};
-use everruns_platform::observer::{ObserverMatch, ObserverScope, ObserverScorerConfig};
 use tracing::{error, instrument};
 use uuid::Uuid;
 

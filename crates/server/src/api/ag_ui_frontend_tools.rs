@@ -20,10 +20,10 @@
 
 use std::collections::HashSet;
 
+use crate::records::SessionStatus;
 use everruns_ag_ui::{Message as AgUiMessage, Tool as AgUiTool, ToolCall as AgUiToolCall};
 use everruns_contracts::tool_types::{ClientSideTool, ToolDefinition};
 use everruns_core::events::ToolCallRequestedData;
-use everruns_platform::SessionStatus;
 use serde_json::Value;
 
 use crate::api::ag_ui_interrupts::{ParkedCalls, ResumeError, ResumeOutcome, ResumeServices};
@@ -130,7 +130,7 @@ pub(crate) fn trailing_results(messages: &[AgUiMessage]) -> Vec<ClientToolResult
 pub(crate) async fn submit_results(
     services: &ResumeServices<'_>,
     org_id: i64,
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
     names: &HashSet<String>,
     results: Vec<ClientToolResult>,
 ) -> Result<ResumeOutcome, ResumeError> {
@@ -228,7 +228,7 @@ pub(crate) async fn submit_results(
 }
 
 fn warn_unrecognised<'a>(
-    session: &everruns_platform::Session,
+    session: &crate::records::Session,
     results: impl Iterator<Item = &'a ClientToolResult>,
 ) {
     for result in results {

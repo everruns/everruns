@@ -121,7 +121,7 @@ fn resolved_org(user_id: Uuid) -> ResolvedOrg {
         user_id: Some(user_id),
         role: OrgRole::Owner,
         is_platform_user: false,
-        feature_flags: everruns_platform::FeatureFlags::current(),
+        feature_flags: everruns_server::records::FeatureFlags::current(),
     }
 }
 
@@ -172,7 +172,7 @@ async fn create_session(
 ) -> SessionId {
     db.create_session(CreateSessionRow {
         playground_user_id: None,
-        source: everruns_platform::SessionSource::Api,
+        source: everruns_server::records::SessionSource::Api,
         workspace_id: None,
         org_id: everruns_core::DEFAULT_ORG_ID,
         app_id: None,

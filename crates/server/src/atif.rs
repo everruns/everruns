@@ -191,8 +191,8 @@ fn assemble_document(
 /// **dataset** export uses [`build_case_record_from_messages`] instead so its
 /// rows reflect the compaction model view (knowledge/evaluation/dataset-export.md).
 pub fn build_case_record(
-    run: &everruns_platform::eval::EvalRun,
-    result: &everruns_platform::eval::EvalCaseResult,
+    run: &crate::records::eval::EvalRun,
+    result: &crate::records::eval::EvalCaseResult,
     events: &[Event],
     options: AtifOptions,
 ) -> Value {
@@ -210,8 +210,8 @@ pub fn build_case_record(
 /// steps have no `metrics` and there is no `extra.turns`; case-level token
 /// totals from the result are surfaced in `final_metrics` instead.
 pub fn build_case_record_from_messages(
-    run: &everruns_platform::eval::EvalRun,
-    result: &everruns_platform::eval::EvalCaseResult,
+    run: &crate::records::eval::EvalRun,
+    result: &crate::records::eval::EvalCaseResult,
     messages: &[RuntimeMessage],
     options: AtifOptions,
 ) -> Value {
@@ -235,8 +235,8 @@ pub fn build_case_record_from_messages(
 /// Reward + case-identity `extra` shared by both dataset record builders, plus
 /// the case session id (as the ATIF root `session_id`).
 fn case_extra(
-    run: &everruns_platform::eval::EvalRun,
-    result: &everruns_platform::eval::EvalCaseResult,
+    run: &crate::records::eval::EvalRun,
+    result: &crate::records::eval::EvalCaseResult,
 ) -> (Map<String, Value>, Option<String>) {
     let mut extra = Map::new();
     extra.insert(
@@ -481,10 +481,7 @@ fn message_tool_result_observation(
 /// Case-level `final_metrics` for the model-view fold. Messages carry no
 /// per-step usage, so token totals come from the case result (the same source
 /// the `trajectory` format's `metadata` uses).
-fn case_final_metrics(
-    result: &everruns_platform::eval::EvalCaseResult,
-    total_steps: usize,
-) -> Value {
+fn case_final_metrics(result: &crate::records::eval::EvalCaseResult, total_steps: usize) -> Value {
     let mut m = Map::new();
     if let Some(t) = result.input_tokens {
         m.insert("total_prompt_tokens".to_string(), json!(t));
@@ -1525,7 +1522,7 @@ pub struct AtifCaseDraft {
     pub name: String,
     pub description: String,
     /// User steps, in order — one input message each.
-    pub conversation: Vec<everruns_platform::eval::EvalInputMessage>,
+    pub conversation: Vec<crate::records::eval::EvalInputMessage>,
 }
 
 /// Parse an import body that is either a JSON array of trajectories, a single
@@ -1600,7 +1597,7 @@ pub fn trajectory_to_case_draft(trajectory: &Value, index: usize) -> Result<Atif
         let text = step_message_text(step);
         match source {
             "user" if !text.trim().is_empty() => {
-                conversation.push(everruns_platform::eval::EvalInputMessage {
+                conversation.push(crate::records::eval::EvalInputMessage {
                     content: truncate_chars(&text, MAX_IMPORT_CONTENT_CHARS),
                 });
             }
@@ -2206,10 +2203,10 @@ mod tests {
 
     #[test]
     fn case_record_carries_reward_and_identity_in_extra() {
-        use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
-        use everruns_platform::eval::{
+        use crate::records::eval::{
             CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
         };
+        use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
 
         let session = SessionId::new();
         let run = EvalRun {
@@ -2278,13 +2275,13 @@ mod tests {
     fn sample_run_and_result(
         session: SessionId,
     ) -> (
-        everruns_platform::eval::EvalRun,
-        everruns_platform::eval::EvalCaseResult,
+        crate::records::eval::EvalRun,
+        crate::records::eval::EvalCaseResult,
     ) {
-        use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
-        use everruns_platform::eval::{
+        use crate::records::eval::{
             CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
         };
+        use everruns_contracts::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
 
         let run = EvalRun {
             public_id: EvalRunId::new(),

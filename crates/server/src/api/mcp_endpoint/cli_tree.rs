@@ -832,7 +832,7 @@ mod usage_tests {
 mod discovery_tests {
     use super::*;
     use crate::domains::common::catalog_entries_with_schemas;
-    use everruns_platform::FeatureFlags;
+    use crate::records::FeatureFlags;
 
     /// A CLI does not advertise itself the way a tool schema does, so
     /// discovery has to carry the spelling. If this regresses, the tree still

@@ -302,7 +302,7 @@ pub(super) async fn pending_questions_for_session(
     let Some(session) = session else {
         return Ok(None);
     };
-    if session.status != everruns_platform::SessionStatus::WaitingForToolResults {
+    if session.status != crate::records::SessionStatus::WaitingForToolResults {
         return Ok(None);
     }
 

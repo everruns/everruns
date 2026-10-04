@@ -5,7 +5,7 @@
 //! client pair; the OAuth install returns the bot token and workspace id; the
 //! channel id was already optional. See
 //! `knowledge/integrations/slack-one-click-install.md` for the live PoC that
-//! established this, and `everruns_platform::slack_provisioning` for why app
+//! established this, and `crate::records::slack_provisioning` for why app
 //! creation is a seam rather than something the OSS server does itself.
 //!
 //! Two routes with deliberately different auth:
@@ -18,6 +18,11 @@
 //!   the operator's browser to it and carries none of our auth. It is
 //!   protected by the single-use `install_state` nonce instead.
 
+use crate::records::slack_provisioning::{
+    ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
+    SlackProvisioningError, UnavailableSlackAppProvisioner,
+};
+use crate::records::{ChannelType, SlackChannelConfig};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -25,11 +30,6 @@ use axum::{
     response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
 };
-use everruns_platform::slack_provisioning::{
-    ProvisionedSlackApp, SlackAppProvisioner, SlackProvisioningConnectionStatus,
-    SlackProvisioningError, UnavailableSlackAppProvisioner,
-};
-use everruns_platform::{ChannelType, SlackChannelConfig};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -902,7 +902,7 @@ mod tests {
             user_id: Some(uuid::Uuid::nil()),
             role,
             is_platform_user: false,
-            feature_flags: everruns_platform::FeatureFlags::default(),
+            feature_flags: crate::records::FeatureFlags::default(),
         }
     }
 

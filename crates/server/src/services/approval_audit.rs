@@ -22,10 +22,10 @@
 
 use std::sync::Arc;
 
+use crate::records::{AgentAction, AuditEvent};
 use async_trait::async_trait;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::{Event, EventData, EventListener, TOOL_COMPLETED};
-use everruns_platform::{AgentAction, AuditEvent};
 use serde_json::Value;
 use tracing::instrument;
 use uuid::Uuid;

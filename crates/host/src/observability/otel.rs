@@ -132,7 +132,7 @@ struct ActiveSpan {
 }
 
 #[derive(Default, Clone)]
-struct VirtualUser {
+struct ObservedAgent {
     id: Option<String>,
     name: Option<String>,
     description: Option<String>,
@@ -143,7 +143,7 @@ struct VirtualUser {
 struct TurnState {
     /// Keys of the turn's descendant spans that are still open.
     children: Vec<String>,
-    agent: VirtualUser,
+    agent: ObservedAgent,
     /// Tool descriptions seen on `llm.generation`, so `execute_tool` spans can
     /// carry `gen_ai.tool.description`.
     tool_descriptions: HashMap<String, String>,
@@ -406,7 +406,7 @@ impl OtelEventListener {
     fn handle_turn_started(&self, event: &Event, data: &TurnStartedData) {
         let ts = event_time(event);
         let turn_key = format!("turn:{}", data.turn_id);
-        let agent = VirtualUser {
+        let agent = ObservedAgent {
             id: data.agent_id.map(|id| id.to_string()),
             name: data.agent_name.clone(),
             description: data.agent_description.clone(),

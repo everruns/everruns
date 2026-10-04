@@ -16,11 +16,11 @@ concept: it describes the running deployment, not a feature's maturity.
 
 Local-development features cannot be activated on hosted deployments by either a tenant
 or a platform operator. Internal enrolment is an explicit platform decision for individual
-organisations. Adoption features let organisation owners and admins opt in. Production
+organisations. Adoption features let organisation owners/admins or platform operators opt in. Production
 features start enabled for every organisation, while owners and admins may opt out.
 An off feature is unavailable regardless of existing organisation records or actor.
 
-Feature defaults live in the [catalog](../../crates/platform/src/feature_flags.rs).
+Feature defaults live in the [catalog](../../crates/server/src/records/feature_flags.rs).
 An environment override replaces a feature's rollout grade at process startup. Invalid
 values disable the feature rather than silently promoting it. The shared
 [grade policy](../../crates/core/src/feature_flag_grade.rs) owns parsing, availability,
@@ -47,10 +47,12 @@ failures deny feature access instead of treating unknown overrides as production
 
 Tenant settings expose only locally available development, adoption, and production
 features. Tenant updates require an organisation owner/admin and reject internal and off
-features in both directions. Platform settings expose every grade, but the platform update
-route may only change internal enrolments. It cannot alter tenant-owned settings or promote
-an off/local-only feature. These routes provide the backend contract for the super-admin
-enrolment screen tracked in EVE-1196; the existing super-admin console does not expose it yet.
+features in both directions. Platform settings expose every grade; the platform
+update route permits internal and adoption enrolments. Adoption has shared
+configuration authority: the latest explicit override wins, regardless of which
+permitted actor wrote it. Operators cannot change production preferences or promote
+an off/local-only feature. Platform permission is independent of tenant membership
+and never follows from ownership of any organisation (EVE-1206).
 
 The [HTTP API](../../crates/server/src/api/org_feature_flags.rs) owns wire shapes and route
 permissions. The public deployment flag map describes whether routes/capabilities can
@@ -75,7 +77,7 @@ recordings remain infrastructure rather than being deleted when a UI feature is 
 
 The runtime receives resolved booleans, not rollout-management records. The
 [core registration decisions](../../crates/core/src/execution_features.rs) and the
-[platform catalog](../../crates/platform/src/feature_flags.rs) share the grade policy;
+[platform catalog](../../crates/server/src/records/feature_flags.rs) share the grade policy;
 only the hosted platform resolves durable organisation overrides.
 
 ## Success bars
@@ -83,7 +85,7 @@ only the hosted platform resolves durable organisation overrides.
 - Every grade obeys its availability/default/authority rules for every deployment grade.
 - Off and non-local dev features ignore stale true overrides.
 - Production defaults can be disabled durably without affecting another organisation.
-- Tenant and platform mutations cannot cross grade ownership boundaries.
+- Tenant and platform mutations obey their grade authority; adoption accepts both actors.
 - Registration and runtime capability filtering agree, including infrastructure flags.
 - UI switches reflect effective values and member controls remain read only.
 

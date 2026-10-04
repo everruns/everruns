@@ -27,9 +27,9 @@ in [Phasing](#phasing).
 ## Motivation
 
 Grounding already exists in everruns, but it dies as opaque tool-result JSON:
-`search_index` returns `KnowledgeIndexCitation` (`crates/platform/src/vector_store.rs`)
+`search_index` returns `KnowledgeIndexCitation` (`crates/contracts/src/vector_store.rs`)
 and `search_knowledge` returns `KnowledgeSearchHit`
-(`crates/platform/src/knowledge_store.rs`),
+(`crates/contracts/src/knowledge_store.rs`),
 each carrying a stable id (`kchk_…` / `kbe_…`), `source_uri`, `location`, and a
 `snippet`. But nothing ties those sources to the *specific sentence* the model
 wrote, nothing renders them as a linkable affordance (there is no citation UI
@@ -163,7 +163,7 @@ keep `snippet` for display but never rely on it for prompt reconstruction.
 Because each feed is a capability with the same output contract, a citation
 eval is two agents identical except for the enabled `citation_*` capability,
 scored on citation faithfulness and coverage. The `Scorer::CitationFaithful`
-rule (`crates/platform/src/eval.rs`, graded in `crates/server/src/domains/evals/`)
+rule (`crates/server/src/records/eval.rs`, graded in `crates/server/src/domains/evals/`)
 reads the `TextAnnotation`s off the final message, they already ride in the
 event log the runner fetches, and scores coverage (min citations) plus
 faithfulness (fraction verified `entailed`), so it composes with

@@ -18,6 +18,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::kernel_imports::{Caller, ContentPart, ExternalActor, RuntimeMessageRole};
+use crate::records::exposure::public_tool_activity_text;
+use crate::records::{AgUiChannelConfig, ChannelType};
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Path, Request, State},
@@ -41,8 +43,6 @@ use everruns_contracts::typed_id::ImageId;
 #[cfg(test)]
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
-use everruns_platform::exposure::public_tool_activity_text;
-use everruns_platform::{AgUiChannelConfig, ChannelType};
 use futures::{
     StreamExt,
     stream::{self, Stream},
@@ -870,7 +870,7 @@ fn forwarded_ag_ui_image_ids(forwarded_props: &Value) -> Result<Vec<ImageId>, Bo
 }
 
 struct SessionResolution {
-    session: everruns_platform::Session,
+    session: crate::records::Session,
     is_new: bool,
 }
 
@@ -981,7 +981,7 @@ async fn find_or_create_session(
                     None, // channel ingress, not a trigger
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
-                    everruns_platform::SessionSource::AgUi,
+                    crate::records::SessionSource::AgUi,
                     CreateSessionRequest {
                         harness_id: Some(app.harness_id),
                         agent_id: app.agent_id,

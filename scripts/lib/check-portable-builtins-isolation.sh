@@ -101,7 +101,7 @@ BUILTINS_TREE=$(cargo tree -p everruns-builtins -e normal --depth 1 --prefix non
 assert_tree_excludes \
   "everruns-builtins direct normal dependency tree" \
   "$BUILTINS_TREE" \
-  everruns-host everruns-platform everruns-server everruns-worker everruns-mcp \
+  everruns-host everruns-capabilities everruns-server everruns-worker everruns-mcp \
   everruns-integrations-filesystem everruns-integrations-bashkit \
   everruns-integrations-web-fetch everruns-integrations-lua \
   reqwest sqlx bashkit fetchkit mlua
@@ -116,7 +116,7 @@ FRAMEWORK_MINIMAL_TREE=$(cargo tree -p everruns --no-default-features -e normal 
 assert_tree_excludes \
   "everruns --no-default-features normal dependency tree" \
   "$FRAMEWORK_MINIMAL_TREE" \
-  everruns-builtins everruns-platform reqwest rustls hyper
+  everruns-builtins everruns-capabilities reqwest rustls hyper
 
 # The typed-judgment integration has two halves: a client + framework surface an
 # embedder can carry on its own, and a `hosted` half that registers the connector
@@ -127,13 +127,13 @@ FRAMEWORK_TYPESAFE_TREE=$(cargo tree -p everruns --no-default-features --feature
 assert_tree_excludes \
   "everruns --no-default-features --features typesafe normal dependency tree" \
   "$FRAMEWORK_TYPESAFE_TREE" \
-  everruns-builtins everruns-platform
+  everruns-builtins everruns-capabilities
 
 HOST_MINIMAL_TREE=$(cargo tree -p everruns-host --no-default-features -e normal --prefix none)
 assert_tree_excludes \
   "everruns-host --no-default-features normal dependency tree" \
   "$HOST_MINIMAL_TREE" \
-  everruns-platform reqwest rustls hyper
+  everruns-capabilities reqwest rustls hyper
 
 if [ -e crates/session-services/Cargo.toml ]; then
   fail "session mutation/storage services belong to everruns-host, not a standalone crate"

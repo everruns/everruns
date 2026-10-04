@@ -1,6 +1,6 @@
 //! Deprecated Generic bundle, retained for existing bindings.
 
-use everruns_platform::BuiltInHarnessDefinition;
+use crate::records::BuiltInHarnessDefinition;
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",

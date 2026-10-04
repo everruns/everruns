@@ -29,7 +29,7 @@ pub async fn require_enabled(db: &StorageBackend, org: i64) -> Result<()> {
     let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         db,
         org,
-        &everruns_platform::FeatureFlagPolicy::current(),
+        &crate::records::FeatureFlagPolicy::current(),
     )
     .await?;
     anyhow::ensure!(

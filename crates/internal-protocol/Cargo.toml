@@ -33,9 +33,6 @@ prost-types.workspace = true
 # Internal dependencies
 everruns-core = { path = "../core" }
 everruns-contracts = { workspace = true, default-features = false }
-# Stored Agent records moved to everruns-platform (EVE-877); the worker wire
-# still carries them between the two platform-side processes (server, worker).
-everruns-platform = { path = "../platform" }
 
 # Serialization (for JSON conversion)
 serde.workspace = true

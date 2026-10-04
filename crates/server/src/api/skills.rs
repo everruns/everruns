@@ -11,6 +11,7 @@ use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::skills::types::{CreateSkillRequest, UpdateSkillRequest};
 use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
+use crate::records::{Skill, SkillUsage};
 use crate::services::CapabilityService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -21,8 +22,8 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use everruns_core::{
-    Caller, ResourceConfigResponse, Skill, SkillContent, SkillUsage, SkillValidationResult,
-    evaluate_policies_with, validate_skill_md,
+    Caller, ResourceConfigResponse, SkillContent, SkillValidationResult, evaluate_policies_with,
+    validate_skill_md,
 };
 use serde::Deserialize;
 use std::collections::HashMap;

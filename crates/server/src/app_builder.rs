@@ -170,7 +170,7 @@ pub struct ServerContext {
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
     pub host_composition: Arc<HostComposition>,
     /// System-wide email sender from the platform profile.
-    pub email_sender: Arc<dyn everruns_platform::email::EmailSender>,
+    pub email_sender: Arc<dyn crate::records::email::EmailSender>,
     /// System-wide outbound egress service from the platform profile.
     pub egress_service: Arc<dyn everruns_core::EgressService>,
     /// System-wide utility LLM service from the platform profile.
@@ -238,11 +238,10 @@ pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
     host_composition: Option<HostComposition>,
-    built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+    built_in_harnesses: Option<Vec<crate::records::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_contracts::connector::ConnectorRegistry>,
-    email_sender: Option<Arc<dyn everruns_platform::email::EmailSender>>,
-    slack_app_provisioner:
-        Option<Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>>,
+    email_sender: Option<Arc<dyn crate::records::email::EmailSender>>,
+    slack_app_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     error_reporter: Option<SharedErrorReporter>,
@@ -307,7 +306,7 @@ impl ServerAppBuilder {
     /// shared `HostComposition` runtime surface.
     pub fn built_in_harnesses(
         mut self,
-        harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
+        harnesses: Vec<crate::records::BuiltInHarnessDefinition>,
     ) -> Self {
         self.built_in_harnesses = Some(harnesses);
         self
@@ -332,7 +331,7 @@ impl ServerAppBuilder {
     /// (`crate::platform::system_email_sender`; disabled when no provider is
     /// configured). Email delivery is hosted product composition, not part of
     /// the shared `HostComposition` runtime surface.
-    pub fn email_sender(mut self, sender: Arc<dyn everruns_platform::email::EmailSender>) -> Self {
+    pub fn email_sender(mut self, sender: Arc<dyn crate::records::email::EmailSender>) -> Self {
         self.email_sender = Some(sender);
         self
     }
@@ -340,7 +339,7 @@ impl ServerAppBuilder {
     /// Supply a deployment-owned Slack app provisioner.
     pub fn slack_app_provisioner(
         mut self,
-        provisioner: Arc<dyn everruns_platform::slack_provisioning::SlackAppProvisioner>,
+        provisioner: Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>,
     ) -> Self {
         self.slack_app_provisioner = Some(provisioner);
         self
@@ -586,7 +585,7 @@ impl ServerAppBuilder {
                 }
             }
         };
-        let feature_flag_policy = everruns_platform::FeatureFlagPolicy::current();
+        let feature_flag_policy = crate::records::FeatureFlagPolicy::current();
         let feature_flags = feature_flag_policy.deployment_flags();
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
             .with_db(db.clone())
@@ -1095,9 +1094,9 @@ impl ServerAppBuilder {
         let utility_llm = host_composition.utility_llm_service();
         let health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>> =
             if utility_llm.is_configured()
-                && let Some(default_harness_name) = everruns_platform::harness_for_role(
+                && let Some(default_harness_name) = crate::records::harness_for_role(
                     &built_in_harnesses,
-                    everruns_platform::BuiltInHarnessRole::Default,
+                    crate::records::BuiltInHarnessRole::Default,
                 )
                 .map(|h| h.name.clone())
             {
@@ -1447,12 +1446,10 @@ impl ServerAppBuilder {
 
         // Agent discovery: MCP server card + auth.md, both derived from the
         // live auth config so a self-hosted deployment describes itself.
-        let agent_discovery_state = api::agent_discovery::AppState::new(
+        let agent_discovery_state = api::agent_discovery::AppState::for_deployment(
             mcp_root_url.clone(),
             auth_config.base_url.clone(),
             auth_config.mode.clone(),
-            api::mcp_endpoint::MCP_SERVER_NAME,
-            api::mcp_endpoint::MCP_SERVER_VERSION,
         );
         let http_signing_keys_state = api::http_signing_keys::AppState::from_env();
 
@@ -2294,7 +2291,7 @@ impl ServerAppBuilder {
                 .with_runner(runner.clone())
                 .with_vector_store(
                     host_composition
-                        .extension::<everruns_platform::VectorStoreExt>()
+                        .extension::<everruns_capabilities::VectorStoreExt>()
                         .expect("OSS platform definition installs a vector store")
                         .0
                         .clone(),
@@ -2438,7 +2435,7 @@ impl ServerAppBuilder {
                 provider_resolver.clone(),
                 driver_registry.clone(),
                 host_composition
-                    .extension::<everruns_platform::VectorStoreExt>()
+                    .extension::<everruns_capabilities::VectorStoreExt>()
                     .expect("OSS platform definition installs a vector store")
                     .0
                     .clone(),

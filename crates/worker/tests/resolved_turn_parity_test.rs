@@ -1,92 +1,42 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-// EVE-872: hosted worker adapters project stored records into the same
+// EVE-872: hosted worker adapters project stored views into the same
 // canonical resolved execution snapshot as the Framework runtime, and the
-// projection is identical whether records arrive in-process (direct adapters)
+// projection is identical whether views arrive in-process (direct adapters)
 // or after a serialization round-trip (the gRPC adapter shape).
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use async_trait::async_trait;
 use everruns_contracts::error::Result as CoreResult;
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::{AgentDefinition as Agent, HarnessDefinition as Harness};
 use everruns_core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
 use everruns_host::{RuntimeHostAdapter, SessionBuilder};
-use everruns_platform::Harness;
-// EVE-877: the hosted adapters transport the stored platform record; the
+// EVE-877: the hosted adapters transport the stored platform view; the
 // loading seam projects it into the portable execution definition.
-use everruns_platform::{Agent, AgentStatus};
 use everruns_worker::{WorkerAdapters, WorkerRuntimeHost, WorkerTurnContext};
 use uuid::Uuid;
 
-fn fixture_records() -> (Harness, Agent, ExecutionSession) {
+fn fixture_views() -> (Harness, Agent, ExecutionSession) {
     let harness_id = HarnessId::from_seed(872);
     let agent_id = AgentId::from_seed(872);
     let session_id = SessionId::from_seed(872);
 
-    // Stored (pre-merged) platform record, as transported by WorkerAdapters
+    // Portable execution view, as transported by WorkerAdapters
     // (EVE-881): the host itself only ever sees the projected definition.
     let harness = Harness {
-        id: harness_id,
         name: "hoster".into(),
-        display_name: None,
-        icon: None,
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
         system_prompt: Some("Harness instructions.".into()),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        parallel_tool_calls: None,
-        mcp_servers: Default::default(),
-        embedder_metadata: Default::default(),
-        is_built_in: false,
-        status: everruns_platform::HarnessStatus::Active,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        archived_at: None,
-        deleted_at: None,
+        ..Harness::default()
     };
     let agent = Agent {
-        service_virtual_user_id: None,
-
-        public_id: agent_id,
-        internal_id: agent_id.uuid(),
+        id: agent_id,
         name: "hosted-agent".into(),
-        display_name: None,
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
         system_prompt: "Agent instructions.".into(),
-        default_model_id: None,
-        harness_id,
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
         max_iterations: Some(9),
-        parallel_tool_calls: None,
-        environments: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: AgentStatus::Active,
-        exposures_suspended: false,
-        exposed: false,
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
+        ..Agent::new(agent_id, "hosted-agent", "Agent instructions.")
     };
     let session = SessionBuilder::new(harness_id)
         .id(session_id)
@@ -96,19 +46,46 @@ fn fixture_records() -> (Harness, Agent, ExecutionSession) {
     (harness, agent, session)
 }
 
-/// Direct-style adapter: hands the stored records to the host in-process.
+/// Direct-style adapter: hands the stored views to the host in-process.
 #[derive(Clone)]
 struct DirectMockAdapters {
     harness: Harness,
     agent: Agent,
     session: ExecutionSession,
+    load_failure: Option<&'static str>,
+    reads: Arc<SourceReads>,
 }
 
-/// gRPC-style adapter: round-trips every record through serialization before
+#[derive(Default)]
+struct SourceReads {
+    agents: AtomicU32,
+    harnesses: AtomicU32,
+    sessions: AtomicU32,
+    events: AtomicU32,
+}
+
+/// gRPC-style adapter: round-trips every view through serialization before
 /// handing it to the host, standing in for the proto wire boundary.
 #[derive(Clone)]
 struct WireMockAdapters {
     inner: DirectMockAdapters,
+}
+
+impl DirectMockAdapters {
+    fn source_reads(&self) -> &SourceReads {
+        &self.reads
+    }
+    fn load_failure(&self) -> Option<&'static str> {
+        self.load_failure
+    }
+}
+impl WireMockAdapters {
+    fn source_reads(&self) -> &SourceReads {
+        &self.inner.reads
+    }
+    fn load_failure(&self) -> Option<&'static str> {
+        self.inner.load_failure
+    }
 }
 
 fn wire_round_trip<T: serde::Serialize + serde::de::DeserializeOwned>(value: &T) -> T {
@@ -120,22 +97,58 @@ macro_rules! mock_worker_adapters {
         #[async_trait]
         impl WorkerAdapters for $ty {
             async fn get_agent(&self, _org_id: i64, agent_id: Uuid) -> CoreResult<Option<Agent>> {
+                self.source_reads().agents.fetch_add(1, Ordering::SeqCst);
                 let agent = ($agent)(self);
-                Ok((agent.public_id.uuid() == agent_id).then_some(agent))
+                if let Some(error) = self.load_failure() {
+                    return Err(everruns_contracts::error::AgentLoopError::config(error));
+                }
+                Ok((agent.id.uuid() == agent_id).then_some(agent))
             }
             async fn get_harness(
                 &self,
                 _org_id: i64,
                 harness_id: Uuid,
             ) -> CoreResult<Option<Harness>> {
+                self.source_reads().harnesses.fetch_add(1, Ordering::SeqCst);
                 let harness = ($harness)(self);
-                Ok((harness.id.uuid() == harness_id).then_some(harness))
+                Ok((HarnessId::from_seed(872).uuid() == harness_id).then_some(harness))
+            }
+            async fn resolve_agent_read(
+                &self,
+                org_id: i64,
+                id: Uuid,
+            ) -> CoreResult<(
+                CoreResult<Option<Agent>>,
+                Option<everruns_core::DependencyBlocker>,
+            )> {
+                let definition = self.get_agent(org_id, id).await;
+                let blocker = match &definition {
+                    Ok(None) => Some(everruns_core::DependencyBlocker::AgentDeleted),
+                    _ => None,
+                };
+                Ok((definition, blocker))
+            }
+            async fn resolve_harness_read(
+                &self,
+                org_id: i64,
+                id: Uuid,
+            ) -> CoreResult<(
+                CoreResult<Option<Harness>>,
+                Option<everruns_core::DependencyBlocker>,
+            )> {
+                let definition = self.get_harness(org_id, id).await;
+                let blocker = match &definition {
+                    Ok(None) => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+                    _ => None,
+                };
+                Ok((definition, blocker))
             }
             async fn get_session(
                 &self,
                 _org_id: i64,
                 session_id: Uuid,
             ) -> CoreResult<Option<ExecutionSession>> {
+                self.source_reads().sessions.fetch_add(1, Ordering::SeqCst);
                 let session = ($session)(self);
                 Ok((session.id.uuid() == session_id).then_some(session))
             }
@@ -145,7 +158,9 @@ macro_rules! mock_worker_adapters {
                 _session_id: Uuid,
                 _status: &str,
             ) -> CoreResult<()> {
-                Ok(())
+                Err(everruns_contracts::error::AgentLoopError::store(
+                    "status write failed",
+                ))
             }
             async fn set_session_title(
                 &self,
@@ -153,7 +168,9 @@ macro_rules! mock_worker_adapters {
                 _session_id: Uuid,
                 _title: String,
             ) -> CoreResult<ExecutionSession> {
-                unimplemented!()
+                Err(everruns_contracts::error::AgentLoopError::store(
+                    "title write failed",
+                ))
             }
             async fn get_message(
                 &self,
@@ -172,7 +189,10 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _request: everruns_core::events::EventRequest,
             ) -> CoreResult<everruns_core::events::Event> {
-                unimplemented!()
+                self.source_reads().events.fetch_add(1, Ordering::SeqCst);
+                Err(everruns_contracts::error::AgentLoopError::store(
+                    "event emission failed",
+                ))
             }
             async fn get_model_spec(
                 &self,
@@ -288,6 +308,9 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _session_id: Uuid,
             ) -> CoreResult<WorkerTurnContext> {
+                if let Some(error) = self.load_failure() {
+                    return Err(everruns_contracts::error::AgentLoopError::config(error));
+                }
                 Ok(WorkerTurnContext {
                     agent: Some(($agent)(self)),
                     session: ($session)(self),
@@ -395,7 +418,7 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _org_id: i64,
                 _session_id: SessionId,
-            ) -> Arc<dyn everruns_platform::PlatformStore> {
+            ) -> Arc<dyn everruns_capabilities::PlatformStore> {
                 unimplemented!()
             }
             fn connection_resolver(
@@ -438,11 +461,13 @@ mock_worker_adapters!(
 
 #[tokio::test]
 async fn direct_and_wire_adapters_project_the_same_snapshot() {
-    let (harness, agent, session) = fixture_records();
+    let (harness, agent, session) = fixture_views();
     let direct = DirectMockAdapters {
         harness: harness.clone(),
         agent: agent.clone(),
         session: session.clone(),
+        load_failure: None,
+        reads: Arc::default(),
     };
     let wire = WireMockAdapters {
         inner: direct.clone(),
@@ -459,14 +484,8 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
 
     // The canonical projection is the reference: hosted adapters built from
     // equivalent configuration produce equivalent snapshots.
-    let reference = ResolvedExecutionSnapshot::project(
-        &harness
-            .execution_definition()
-            .expect("active harness projects"),
-        Some(&agent.execution_definition().expect("active agent projects")),
-        &session,
-    )
-    .expect("reference projection");
+    let reference = ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session)
+        .expect("reference projection");
 
     let direct_json = serde_json::to_value(&direct_inputs.snapshot).unwrap();
     let wire_json = serde_json::to_value(&wire_inputs.snapshot).unwrap();
@@ -480,6 +499,8 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
             harness,
             agent,
             session: session.clone(),
+            load_failure: None,
+            reads: Arc::default(),
         },
     })
     .load_resolved_turn(DEFAULT_ORG_ID, session.id)
@@ -495,43 +516,197 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
 }
 
 #[tokio::test]
-async fn worker_load_fails_for_archived_and_deleted_agents() {
-    // EVE-877: lifecycle validation happens at the worker loading seam, before
-    // the resolved snapshot is built and before host execution.
-    for status in [AgentStatus::Archived, AgentStatus::Deleted] {
-        let (harness, mut agent, session) = fixture_records();
-        agent.status = status.clone();
-        let host = WorkerRuntimeHost::new(DirectMockAdapters {
-            harness,
-            agent,
-            session: session.clone(),
-        });
-        let error = host
-            .load_resolved_turn(DEFAULT_ORG_ID, session.id)
-            .await
-            .expect_err("inactive agent must fail the loading seam");
-        assert!(
-            error.to_string().contains("cannot execute turns"),
-            "unexpected error for {status:?}: {error}"
-        );
-    }
+async fn worker_load_propagates_control_plane_projection_errors() {
+    let (harness, agent, session) = fixture_views();
+    let host = WorkerRuntimeHost::new(DirectMockAdapters {
+        harness,
+        agent,
+        session: session.clone(),
+        load_failure: Some("control-plane projection refused execution"),
+        reads: Arc::default(),
+    });
+    let error = host
+        .load_resolved_turn(DEFAULT_ORG_ID, session.id)
+        .await
+        .expect_err("projection refusal must stop snapshot loading");
+    assert!(
+        error
+            .to_string()
+            .contains("control-plane projection refused execution")
+    );
 }
 
 #[tokio::test]
-async fn worker_projection_fails_on_missing_records() {
-    let (harness, agent, mut session) = fixture_records();
+async fn worker_projection_fails_on_missing_views() {
+    let (harness, agent, mut session) = fixture_views();
     // ExecutionSession referencing a harness outside the adapter's org scope resolves
-    // to no records — the cross-tenant / missing shape.
+    // to no views — the cross-tenant / missing shape.
     session.harness_id = HarnessId::from_seed(999);
     let host = WorkerRuntimeHost::new(DirectMockAdapters {
         harness,
         agent,
         session: session.clone(),
+        load_failure: None,
+        reads: Arc::default(),
     });
     assert!(
         host.load_resolved_turn(DEFAULT_ORG_ID, session.id)
             .await
             .is_err(),
         "projection must fail before host execution when the harness cannot be resolved"
+    );
+}
+
+fn phase_fixture() -> DirectMockAdapters {
+    let (harness, agent, session) = fixture_views();
+    DirectMockAdapters {
+        harness,
+        agent,
+        session,
+        load_failure: None,
+        reads: Arc::default(),
+    }
+}
+
+#[tokio::test]
+async fn worker_host_shares_setup_definition_and_blocker_reads() {
+    let adapters = phase_fixture();
+    let counts = adapters.reads.clone();
+    let agent_id = adapters.agent.id;
+    let harness_id = adapters.session.harness_id;
+    let host = WorkerRuntimeHost::new(adapters.clone());
+    let agents = host.agent_store(DEFAULT_ORG_ID);
+    let harnesses = host.harness_store(DEFAULT_ORG_ID);
+    assert!(agents.get_agent_blocker(agent_id).await.unwrap().is_none());
+    assert_eq!(
+        agents.get_agent(agent_id).await.unwrap().unwrap().id,
+        agent_id
+    );
+    assert!(
+        harnesses
+            .get_harness_blocker(harness_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        harnesses
+            .get_harness(harness_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .name,
+        adapters.harness.name
+    );
+    assert_eq!(counts.agents.load(Ordering::SeqCst), 1);
+    assert_eq!(counts.harnesses.load(Ordering::SeqCst), 1);
+    // Each activity owns its own phase, even when adapters share a backend.
+    let next = WorkerRuntimeHost::new(adapters);
+    next.agent_store(DEFAULT_ORG_ID)
+        .get_agent(agent_id)
+        .await
+        .unwrap();
+    assert_eq!(counts.agents.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn batch_seed_is_pinned_and_failed_session_writes_still_invalidate() {
+    let adapters = phase_fixture();
+    let counts = adapters.reads.clone();
+    let session_id = adapters.session.id;
+    let agent_id = adapters.agent.id;
+    let host = WorkerRuntimeHost::new(adapters.clone());
+    let resolved = host
+        .load_resolved_turn(DEFAULT_ORG_ID, session_id)
+        .await
+        .unwrap();
+    let reference = ResolvedExecutionSnapshot::project(
+        &adapters.harness,
+        Some(&adapters.agent),
+        &adapters.session,
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(resolved.snapshot).unwrap(),
+        serde_json::to_value(reference).unwrap()
+    );
+    host.agent_store(DEFAULT_ORG_ID)
+        .get_agent_blocker(agent_id)
+        .await
+        .unwrap();
+    let agent = host
+        .agent_store(DEFAULT_ORG_ID)
+        .get_agent(agent_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(agent.system_prompt, adapters.agent.system_prompt);
+    assert_eq!(
+        counts.agents.load(Ordering::SeqCst),
+        0,
+        "batch projection is the pinned agent seed"
+    );
+    host.harness_store(DEFAULT_ORG_ID)
+        .get_harness_blocker(adapters.session.harness_id)
+        .await
+        .unwrap();
+    assert_eq!(counts.harnesses.load(Ordering::SeqCst), 1);
+    let sessions = host.session_store(DEFAULT_ORG_ID);
+    sessions.get_session(session_id).await.unwrap();
+    assert_eq!(counts.sessions.load(Ordering::SeqCst), 0);
+    assert!(
+        host.set_session_status(
+            DEFAULT_ORG_ID,
+            session_id,
+            everruns_core::SessionExecutionState::Active
+        )
+        .await
+        .is_err()
+    );
+    sessions.get_session(session_id).await.unwrap();
+    assert_eq!(counts.sessions.load(Ordering::SeqCst), 1);
+    assert!(
+        host.session_mutator(DEFAULT_ORG_ID)
+            .update_session_title(session_id, "new title".into())
+            .await
+            .is_err()
+    );
+    sessions.get_session(session_id).await.unwrap();
+    assert_eq!(counts.sessions.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn a_queued_phase_start_failure_still_ends_setup_memoizing() {
+    let adapters = phase_fixture();
+    let counts = adapters.reads.clone();
+    let id = adapters.agent.id;
+    let request = everruns_core::events::EventRequest::new(
+        adapters.session.id,
+        Default::default(),
+        everruns_core::events::ReasonStartedData {
+            harness_id: adapters.session.harness_id,
+            agent_id: Some(id),
+            metadata: None,
+        },
+    );
+    let host = WorkerRuntimeHost::new(adapters);
+    let store = host.agent_store(DEFAULT_ORG_ID);
+    store.get_agent(id).await.unwrap();
+    // Setup ends when the event is queued, before its background store fails.
+    assert!(host.event_emitter().emit(request).await.is_ok());
+    store.get_agent(id).await.unwrap();
+    store.get_agent(id).await.unwrap();
+    assert_eq!(
+        counts.agents.load(Ordering::SeqCst),
+        3,
+        "queued emission cannot retain a setup cache"
+    );
+    host.flush_events().await;
+    assert_eq!(counts.events.load(Ordering::SeqCst), 1);
+    store.get_agent(id).await.unwrap();
+    assert_eq!(
+        counts.agents.load(Ordering::SeqCst),
+        4,
+        "failed background emission cannot restore a setup cache"
     );
 }

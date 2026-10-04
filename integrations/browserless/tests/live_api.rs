@@ -340,10 +340,10 @@ mod computer_use {
     }
 
     #[derive(Default)]
-    struct Memory(Mutex<HashMap<String, String>>);
+    struct MemoryStore(Mutex<HashMap<String, String>>);
 
     #[async_trait]
-    impl SessionStorageStore for Memory {
+    impl SessionStorageStore for MemoryStore {
         async fn set_value(&self, _: SessionId, key: &str, value: &str) -> Result<()> {
             self.0
                 .lock()
@@ -376,7 +376,7 @@ mod computer_use {
 
     fn context() -> ToolContext {
         ToolContext::new(SessionId::new())
-            .with_storage_store_arc(Arc::new(Memory::default()))
+            .with_storage_store_arc(Arc::new(MemoryStore::default()))
             .with_connection_resolver(Arc::new(Token(api_token())))
     }
 

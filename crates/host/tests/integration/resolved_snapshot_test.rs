@@ -172,8 +172,8 @@ async fn turn_execution_and_events_stay_free_of_secrets_and_platform_metadata() 
     }
 }
 
-/// EVE-877: archived/deleted lifecycle validation lives at the platform
-/// loading seam (`everruns_platform::Agent::execution_definition`), not in the
+/// EVE-877: archived/deleted lifecycle validation lives at the server
+/// record projection seam, not in the
 /// portable definition the embedded host seeds. This adapter stands in for a
 /// hosted store whose stored record is archived: the loading seam errors and
 /// execution never starts.

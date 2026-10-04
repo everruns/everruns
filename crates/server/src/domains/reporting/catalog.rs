@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use everruns_platform::reporting::{
+use crate::records::reporting::{
     DatasetCatalog, DatasetCatalogEntry, ReportFilterOp, ReportOrderBy, ReportQuery,
 };
 
@@ -766,11 +766,11 @@ fn validate_order_by(dataset: &DatasetSpec, order: &ReportOrderBy) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Duration, Utc};
-    use everruns_platform::reporting::{
+    use crate::records::reporting::{
         ReportFilter, ReportFilterOp, ReportOrderBy, ReportOrderDirection, ReportQuery,
         ReportTimeRange,
     };
+    use chrono::{Duration, Utc};
     use serde_json::json;
 
     use super::{MAX_REPORT_LIMIT, catalog, validate_query};

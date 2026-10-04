@@ -150,7 +150,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_contracts::ty
     backend
         .create_session(CreateSessionRow {
             playground_user_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: everruns_server::records::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,

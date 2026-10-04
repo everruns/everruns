@@ -24,7 +24,7 @@ do not introduce a second execution engine.
 
 - [`crates/core/src/capabilities/mod.rs`](../../crates/core/src/capabilities/mod.rs)
   owns the blueprint model, capability contribution hook, and registry lookup.
-- [`crates/platform/src/capabilities/subagents.rs`](../../crates/platform/src/capabilities/subagents.rs)
+- [`crates/capabilities/src/capabilities/subagents.rs`](../../crates/capabilities/src/capabilities/subagents.rs)
   owns discovery, invocation schema, task creation, and governed-depth
   behavior.
 - [`crates/contracts/src/capability/definition.rs`](../../crates/contracts/src/capability/definition.rs)

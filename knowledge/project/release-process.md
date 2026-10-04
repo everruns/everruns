@@ -168,7 +168,7 @@ type: see [`LlmErrorKind`](../../crates/contracts/src/error.rs), the two
 [`CapabilityStatus`](../../crates/core/src/capability_types.rs),
 [`ModelCost`/`CostTier`](../../crates/contracts/src/model_profile_data/types.rs),
 [`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/contracts/src/driver_registry.rs), and
-[`AgentAction`](../../crates/platform/src/audit.rs), which grows a variant whenever an
+[`AgentAction`](../../crates/server/src/records/audit.rs), which grows a variant whenever an
 audited agent action is added, and whose two soft-approval variants were classified breaking
 under the previous scheme for a change no consumer could observe.
 Two consequences are deliberate:
@@ -184,7 +184,7 @@ Two consequences are deliberate:
   against one version of the base crate.
 
 Adding a **required trait method** is breaking for the same reason and is not
-covered by `#[non_exhaustive]` (this is what `everruns-platform` `0.19.0` hit with
+covered by `#[non_exhaustive]` (this is what `everruns-capabilities` `0.19.0` hit with
 `SandboxCheckpointStore::rollback_current_checkpoint`). Ship a new trait method
 with a default body unless breaking implementors is the point.
 

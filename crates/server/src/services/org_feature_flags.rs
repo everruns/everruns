@@ -1,7 +1,7 @@
 //! Rollout-grade policy and durable organisation overrides.
 
+use crate::records::{FeatureFlagGrade, FeatureFlagPolicy, FeatureFlags};
 use crate::storage::StorageBackend;
-use everruns_platform::{FeatureFlagGrade, FeatureFlagPolicy, FeatureFlags};
 use std::collections::HashMap;
 
 /// Overrides are authorization inputs: read durable state on every enforcement
@@ -33,13 +33,13 @@ fn build_settings(
     overrides: &HashMap<String, bool>,
     platform: bool,
 ) -> Vec<OrgFeatureFlagSetting> {
-    everruns_platform::API_FEATURE_FLAG_DEFINITIONS
+    crate::records::API_FEATURE_FLAG_DEFINITIONS
         .iter()
         .filter_map(|definition| {
             let grade = policy.grade(definition.name);
             let org_configurable = grade.org_configurable(policy.deployment);
             // Tenant settings expose only flags the tenant can change. Platform
-            // operators see every grade, but may only enrol internal features.
+            // operators see every grade and may enrol internal/adoption features.
             if !platform && !org_configurable {
                 return None;
             }
@@ -54,7 +54,10 @@ fn build_settings(
                 org_override,
                 effective: grade.effective(policy.deployment, org_override),
                 can_manage: if platform {
-                    grade == FeatureFlagGrade::Internal
+                    matches!(
+                        grade,
+                        FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
+                    )
                 } else {
                     org_configurable
                 },
@@ -102,7 +105,7 @@ fn validate_updates(
     platform: bool,
 ) -> Result<(), String> {
     for name in updates.keys() {
-        if !everruns_platform::API_FEATURE_FLAG_DEFINITIONS
+        if !crate::records::API_FEATURE_FLAG_DEFINITIONS
             .iter()
             .any(|definition| definition.name == name)
         {
@@ -115,7 +118,10 @@ fn validate_updates(
             ));
         }
         if platform {
-            if grade != FeatureFlagGrade::Internal {
+            if !matches!(
+                grade,
+                FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
+            ) {
                 return Err(format!(
                     "Feature flag '{name}' is the organization's own setting"
                 ));
@@ -157,7 +163,10 @@ mod tests {
                     );
                     assert_eq!(
                         validate_platform_feature_flag_updates(&policy, &updates).is_ok(),
-                        grade == FeatureFlagGrade::Internal
+                        matches!(
+                            grade,
+                            FeatureFlagGrade::Internal | FeatureFlagGrade::Adoption
+                        )
                     );
                 }
             }
@@ -243,5 +252,24 @@ mod tests {
                 .unwrap()
                 .skills
         );
+    }
+}
+
+#[cfg(test)]
+mod platform_adoption_tests {
+    use super::*;
+    #[test]
+    fn platform_adoption_authority_matches_catalog_and_preserves_tenant_access() {
+        let policy = FeatureFlagPolicy::from_env(everruns_core::DeploymentGrade::Prod)
+            .with_grade("skills", FeatureFlagGrade::Adoption);
+        for enabled in [true, false] {
+            let updates = HashMap::from([("skills".into(), enabled)]);
+            assert!(validate_platform_feature_flag_updates(&policy, &updates).is_ok());
+            assert!(validate_org_feature_flag_updates(&policy, &updates).is_ok());
+        }
+        let rows = build_all_feature_flag_settings(&policy, &HashMap::new());
+        let row = rows.iter().find(|row| row.name == "skills").unwrap();
+        assert!(row.can_manage);
+        assert!(!row.effective);
     }
 }

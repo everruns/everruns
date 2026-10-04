@@ -100,6 +100,9 @@ async fn get_agent_resolves_by_public_id() {
     assert_eq!(agent.name, "test-agent");
 }
 
+#[path = "phase_read_tests.rs"]
+mod phase_read_tests;
+
 #[tokio::test]
 async fn build_mcp_tool_definitions_with_empty_capabilities() {
     let adapters = test_adapters();
@@ -237,7 +240,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
         .create_session(CreateSessionRow {
             playground_user_id: None,
             trigger_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id,
             app_id: None,
@@ -416,7 +419,7 @@ async fn seed_platform_session(
         .create_session(CreateSessionRow {
             playground_user_id: None,
             trigger_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id,
             app_id: None,
@@ -1282,7 +1285,7 @@ async fn get_session_carries_org_public_id() {
         .create_session(CreateSessionRow {
             playground_user_id: None,
             trigger_id: None,
-            source: everruns_platform::SessionSource::Api,
+            source: crate::records::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,

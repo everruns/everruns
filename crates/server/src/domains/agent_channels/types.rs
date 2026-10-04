@@ -1,5 +1,5 @@
+use crate::records::{AgentVersionPolicy, ChannelType};
 use everruns_contracts::typed_id::AgentVersionId;
-use everruns_platform::{AgentVersionPolicy, ChannelType};
 use serde::Deserialize;
 use serde_json::Value;
 use utoipa::ToSchema;

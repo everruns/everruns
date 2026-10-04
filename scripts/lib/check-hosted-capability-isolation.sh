@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Architecture guard (EVE-885, extended by EVE-886): service-backed product
-# capabilities live in everruns-platform. Core owns only neutral capability/
+# capabilities live in everruns-capabilities. Core owns only neutral capability/
 # tool/task/event/delegation contracts; portable policy implementations live in
 # builtins.
 
@@ -61,8 +61,8 @@ if [ ! -e crates/server/src/session_sqldb/mod.rs ]; then
   FAILED=1
 fi
 
-if [ -e crates/container-sandbox/Cargo.toml ] || [ ! -e crates/platform/src/container_sandbox/mod.rs ]; then
-  echo "The container sandbox must remain an opt-in everruns-platform module"
+if [ -e crates/container-sandbox/Cargo.toml ] || [ ! -e crates/capabilities/src/container_sandbox/mod.rs ]; then
+  echo "The container sandbox must remain an opt-in everruns-capabilities module"
   FAILED=1
 fi
 
@@ -74,8 +74,8 @@ if echo "$CORE_TREE" | grep -qE '^(a2a-lf|a2a-client-lf) '; then
 fi
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Hosted capability isolation guard failed. Product implementations and services belong in crates/platform (EVE-885, EVE-886)."
+  echo "Hosted capability isolation guard failed. Product implementations and services belong in crates/capabilities (EVE-885, EVE-886)."
   exit 1
 fi
 
-echo "Hosted capability isolation guard passed: hosted implementations stay in platform and core carries neutral contracts only."
+echo "Hosted capability isolation guard passed: hosted implementations stay in capabilities and core carries neutral contracts only."

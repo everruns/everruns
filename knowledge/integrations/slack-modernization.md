@@ -57,7 +57,7 @@ status text would leak internals into a user-facing surface. AG-UI already solve
 with a `None` / `Generic` / `Narrated` policy; Slack consumes the same policy rather
 than growing a second one. What a public surface may reveal stays decided in one place.
 Exercised by EVE-975: the policy moved out of `api/ag_ui.rs` into
-`everruns_platform::exposure::public_tool_activity_text`, which both surfaces now
+`everruns_server::records::exposure::public_tool_activity_text`, which both surfaces now
 call. Slack channels grew the same `tool_visibility` / `generic_tool_text` knobs so the
 pane is configured like any other public surface rather than hard-coded.
 
@@ -102,7 +102,7 @@ from a classic Events API bot to a Slack agent app.
 
 EVE-978 settled the last gap: suggested prompts come from the agent's conversation
 starters, falling back to the harness's, resolved by
-`everruns_platform::exposure::resolve_starters` and emitted into the manifest's
+`everruns_server::records::exposure::resolve_starters` and emitted into the manifest's
 `features.agent_view.suggested_prompts`. The field was already there for Platform Chat,
 so the prompts are authored by whoever configures the agent rather than generated, and an
 agent with no starters emits no prompts at all — an empty pane beats prompts nobody wrote.

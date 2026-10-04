@@ -4,8 +4,8 @@
 //   Feature flags are non-sensitive system config needed before auth completes.
 // Decision: Flags computed once at startup and served from memory (no DB query).
 
+use crate::records::{FeatureFlagMap, FeatureFlags};
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_platform::{FeatureFlagMap, FeatureFlags};
 
 #[derive(Clone)]
 pub struct AppState {

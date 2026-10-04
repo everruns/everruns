@@ -1217,10 +1217,10 @@ impl<T: ResourceUrlable + Serialize> ListResponse<T> {
 /// Hypermedia actions for an `Agent`. See `knowledge/execution/api-conventions.md`.
 pub fn agent_allowed_actions(
     id: &str,
-    status: &everruns_platform::AgentStatus,
+    status: &crate::records::AgentStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_platform::AgentStatus;
+    use crate::records::AgentStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1258,7 +1258,7 @@ pub fn agent_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_platform::Agent {
+impl ResourceUrlable for crate::records::Agent {
     fn api_path() -> &'static str {
         "v1/agents"
     }
@@ -1276,10 +1276,10 @@ impl ResourceUrlable for everruns_platform::Agent {
 /// Hypermedia actions for a `Harness`. See `knowledge/execution/api-conventions.md`.
 pub fn harness_allowed_actions(
     id: &str,
-    status: &everruns_platform::HarnessStatus,
+    status: &crate::records::HarnessStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_platform::HarnessStatus;
+    use crate::records::HarnessStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1312,7 +1312,7 @@ pub fn harness_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_platform::Harness {
+impl ResourceUrlable for crate::records::Harness {
     fn api_path() -> &'static str {
         "v1/harnesses"
     }
@@ -1355,7 +1355,7 @@ pub fn archival_app_ui_path(agent_id: Option<&str>) -> String {
     }
 }
 
-impl ResourceUrlable for everruns_platform::App {
+impl ResourceUrlable for crate::records::App {
     fn api_path() -> &'static str {
         "v1/apps"
     }
@@ -1377,7 +1377,7 @@ impl ResourceUrlable for everruns_platform::App {
     }
 }
 
-impl ResourceUrlable for everruns_platform::Budget {
+impl ResourceUrlable for crate::records::Budget {
     fn api_path() -> &'static str {
         "v1/budgets"
     }
@@ -1402,12 +1402,12 @@ impl ResourceUrlable for everruns_platform::Budget {
 /// API exposes them regardless of run state.
 pub fn session_allowed_actions(
     id: &str,
-    status: &everruns_platform::SessionStatus,
+    status: &crate::records::SessionStatus,
     is_pinned: bool,
     is_archived: bool,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_platform::SessionStatus;
+    use crate::records::SessionStatus;
     let mut actions = Vec::new();
     actions.push(
         AllowedAction::new("self")
@@ -1491,7 +1491,7 @@ pub fn session_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_platform::Session {
+impl ResourceUrlable for crate::records::Session {
     fn api_path() -> &'static str {
         "v1/sessions"
     }
@@ -1519,7 +1519,7 @@ impl ResourceUrlable for everruns_platform::Session {
     }
 }
 
-impl ResourceUrlable for everruns_core::VirtualUser {
+impl ResourceUrlable for crate::records::VirtualUser {
     fn api_path() -> &'static str {
         "v1/virtual-users"
     }
@@ -1531,7 +1531,7 @@ impl ResourceUrlable for everruns_core::VirtualUser {
     }
 }
 
-impl ResourceUrlable for everruns_platform::eval::Eval {
+impl ResourceUrlable for crate::records::eval::Eval {
     fn api_path() -> &'static str {
         "v1/evals"
     }
@@ -1543,7 +1543,7 @@ impl ResourceUrlable for everruns_platform::eval::Eval {
     }
 }
 
-impl ResourceUrlable for everruns_core::McpServer {
+impl ResourceUrlable for crate::records::McpServer {
     fn api_path() -> &'static str {
         "v1/mcp-servers"
     }
@@ -1561,10 +1561,10 @@ impl ResourceUrlable for everruns_core::McpServer {
 /// Hypermedia actions for a `Skill`. See `knowledge/execution/api-conventions.md`.
 pub fn skill_allowed_actions(
     id: &str,
-    status: &everruns_core::SkillStatus,
+    status: &crate::records::SkillStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_core::SkillStatus;
+    use crate::records::SkillStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1595,7 +1595,7 @@ pub fn skill_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_core::Skill {
+impl ResourceUrlable for crate::records::Skill {
     fn api_path() -> &'static str {
         "v1/skills"
     }
@@ -1613,7 +1613,7 @@ impl ResourceUrlable for everruns_core::Skill {
     }
 }
 
-impl ResourceUrlable for everruns_contracts::provider::Provider {
+impl ResourceUrlable for crate::records::provider::Provider {
     fn api_path() -> &'static str {
         "v1/providers"
     }
@@ -1628,7 +1628,7 @@ impl ResourceUrlable for everruns_contracts::provider::Provider {
     }
 }
 
-impl ResourceUrlable for everruns_contracts::model::Model {
+impl ResourceUrlable for crate::records::Model {
     fn api_path() -> &'static str {
         "v1/models"
     }
@@ -1643,7 +1643,7 @@ impl ResourceUrlable for everruns_contracts::model::Model {
     }
 }
 
-impl ResourceUrlable for everruns_contracts::model::ModelWithProvider {
+impl ResourceUrlable for crate::records::ModelWithProvider {
     fn api_path() -> &'static str {
         "v1/models"
     }
@@ -2245,7 +2245,7 @@ mod tests {
 
     #[test]
     fn session_actions_include_cancel_when_turn_is_active() {
-        use everruns_platform::SessionStatus;
+        use crate::records::SessionStatus;
         let actions = session_allowed_actions(
             "session_01",
             &SessionStatus::Active,
@@ -2269,7 +2269,7 @@ mod tests {
 
     #[test]
     fn session_actions_omit_cancel_in_idle_or_paused_states() {
-        use everruns_platform::SessionStatus;
+        use crate::records::SessionStatus;
         for status in [
             SessionStatus::Started,
             SessionStatus::Idle,
@@ -2287,7 +2287,7 @@ mod tests {
 
     #[test]
     fn session_actions_flip_pin_rel_on_is_pinned() {
-        use everruns_platform::SessionStatus;
+        use crate::records::SessionStatus;
         let unpinned = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
@@ -2320,7 +2320,7 @@ mod tests {
 
     #[test]
     fn session_actions_flip_archive_rel_on_is_archived() {
-        use everruns_platform::SessionStatus;
+        use crate::records::SessionStatus;
         let active = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
@@ -2353,7 +2353,7 @@ mod tests {
 
     #[test]
     fn session_actions_always_include_self_events_stream_update_delete() {
-        use everruns_platform::SessionStatus;
+        use crate::records::SessionStatus;
         let actions = session_allowed_actions(
             "session_xyz",
             &SessionStatus::Idle,
@@ -2417,7 +2417,7 @@ mod tests {
 
     #[test]
     fn agent_actions_offer_copy_only_when_active() {
-        use everruns_platform::AgentStatus;
+        use crate::records::AgentStatus;
         let active = agent_allowed_actions("agent_01", &AgentStatus::Active, "https://api.example");
         let archived =
             agent_allowed_actions("agent_01", &AgentStatus::Archived, "https://api.example");
@@ -2445,7 +2445,7 @@ mod tests {
 
     #[test]
     fn harness_actions_offer_copy_only_when_active() {
-        use everruns_platform::HarnessStatus;
+        use crate::records::HarnessStatus;
         let active =
             harness_allowed_actions("harness_01", &HarnessStatus::Active, "https://api.example");
         let archived = harness_allowed_actions(
@@ -2497,7 +2497,7 @@ mod tests {
 
     #[test]
     fn skill_actions_omit_delete_for_terminal_states() {
-        use everruns_core::SkillStatus;
+        use crate::records::SkillStatus;
         for status in [SkillStatus::Active, SkillStatus::Disabled] {
             let actions = skill_allowed_actions("skill_01", &status, "https://api.example");
             assert!(
