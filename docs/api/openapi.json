@@ -7526,6 +7526,7 @@
         "tags": [
           "environments"
         ],
+        "description": "List active reusable Environments available to the organization.",
         "operationId": "list_environments",
         "responses": {
           "200": {
@@ -7546,6 +7547,7 @@
         "tags": [
           "environments"
         ],
+        "description": "Create a reusable Environment and its first immutable revision.",
         "operationId": "create_environment",
         "requestBody": {
           "content": {
@@ -7575,6 +7577,7 @@
         "tags": [
           "environments"
         ],
+        "description": "Get one reusable Environment and its current immutable revision.",
         "operationId": "get_environment_definition",
         "parameters": [
           {
@@ -7602,6 +7605,7 @@
         "tags": [
           "environments"
         ],
+        "description": "Create the next immutable revision of a reusable Environment.",
         "operationId": "revise_environment",
         "parameters": [
           {
@@ -7639,6 +7643,7 @@
         "tags": [
           "environments"
         ],
+        "description": "Archive a user-managed reusable Environment without changing pinned Sessions.",
         "operationId": "archive_environment",
         "parameters": [
           {
@@ -25409,16 +25414,20 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional explanation of the Environment's intended workload."
           },
           "display_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name shown in management surfaces."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable addressable name used by Agent environment references."
           },
           "profile": {
-            "$ref": "#/components/schemas/EnvironmentProfile"
+            "$ref": "#/components/schemas/EnvironmentProfile",
+            "description": "Initial immutable execution profile revision."
           }
         }
       },
@@ -27494,35 +27503,44 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Creation timestamp."
           },
           "current_revision": {
-            "$ref": "#/components/schemas/EnvironmentRevision"
+            "$ref": "#/components/schemas/EnvironmentRevision",
+            "description": "Latest immutable revision used for new references."
           },
           "description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional explanation of the Environment's intended workload."
           },
           "display_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name shown in management surfaces."
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable public Environment identifier."
           },
           "is_managed": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the definition is owned and sealed by the platform."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Addressable name used in configuration."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Lifecycle state such as `active` or `archived`."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the most recent definition or revision change."
           }
         }
       },
@@ -27534,7 +27552,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Ordered commands replayed when creating or recovering physical compute."
           }
         }
       },
@@ -27551,22 +27570,28 @@
         ],
         "properties": {
           "native_processes": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether commands can spawn operating-system processes."
           },
           "network_enforced": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the target enforces the declared outbound network policy."
           },
           "packages": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the runtime can install operating-system packages."
           },
           "portable_checkpoint": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether filesystem state has a portable checkpoint representation."
           },
           "ports": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether workloads can bind and expose network ports."
           },
           "pty": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether interactive pseudo-terminals are supported."
           }
         }
       },
@@ -27604,16 +27629,20 @@
         ],
         "properties": {
           "escalation": {
-            "$ref": "#/components/schemas/EnvironmentEscalation"
+            "$ref": "#/components/schemas/EnvironmentEscalation",
+            "description": "Whether the runtime may widen containment after Session creation."
           },
           "filesystem": {
-            "$ref": "#/components/schemas/EnvironmentFilesystemPolicy"
+            "$ref": "#/components/schemas/EnvironmentFilesystemPolicy",
+            "description": "Filesystem mutation boundary for command execution."
           },
           "level": {
-            "$ref": "#/components/schemas/EnvironmentContainmentLevel"
+            "$ref": "#/components/schemas/EnvironmentContainmentLevel",
+            "description": "Isolation mechanism the provider must supply."
           },
           "network": {
-            "$ref": "#/components/schemas/EnvironmentNetworkPolicy"
+            "$ref": "#/components/schemas/EnvironmentNetworkPolicy",
+            "description": "Outbound network access the provider must enforce."
           }
         }
       },
@@ -27643,7 +27672,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Absolute roots the runtime may mutate; empty means provider default."
           }
         }
       },
@@ -27660,11 +27690,13 @@
         "description": "Control-plane lifecycle intent. Providers do not own these timers.",
         "properties": {
           "idle_action": {
-            "$ref": "#/components/schemas/EnvironmentIdleAction"
+            "$ref": "#/components/schemas/EnvironmentIdleAction",
+            "description": "Action Everruns requests after the idle interval."
           },
           "idle_after_seconds": {
             "type": "integer",
             "format": "int64",
+            "description": "Inactivity interval before applying `idle_action`.",
             "minimum": 0
           }
         }
@@ -27785,12 +27817,14 @@
         ],
         "properties": {
           "bootstrap": {
-            "$ref": "#/components/schemas/EnvironmentBootstrap"
+            "$ref": "#/components/schemas/EnvironmentBootstrap",
+            "description": "Reproducible commands run when physical compute is initialized."
           },
           "containment": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/EnvironmentContainmentProfile"
+                "$ref": "#/components/schemas/EnvironmentContainmentProfile",
+                "description": "Requested isolation policy; resolution supplies an honest target default."
               },
               {
                 "type": "null"
@@ -27800,7 +27834,8 @@
           "durability": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/EnvironmentDurability"
+                "$ref": "#/components/schemas/EnvironmentDurability",
+                "description": "Requested recovery guarantee; resolution supplies a target default."
               },
               {
                 "type": "null"
@@ -27808,7 +27843,8 @@
             ]
           },
           "lifecycle": {
-            "$ref": "#/components/schemas/EnvironmentLifecycle"
+            "$ref": "#/components/schemas/EnvironmentLifecycle",
+            "description": "Idle lifecycle policy controlled by Everruns."
           },
           "source_revision_id": {
             "type": [
@@ -27818,7 +27854,8 @@
             "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version."
           },
           "target": {
-            "$ref": "#/components/schemas/EnvironmentTargetProfile"
+            "$ref": "#/components/schemas/EnvironmentTargetProfile",
+            "description": "Provider-neutral target plus its concrete adapter binding."
           }
         }
       },
@@ -27835,20 +27872,25 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Revision creation timestamp."
           },
           "environment_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Parent reusable Environment identifier."
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable public revision identifier pinned into Agent and Session snapshots."
           },
           "profile": {
-            "$ref": "#/components/schemas/EnvironmentProfile"
+            "$ref": "#/components/schemas/EnvironmentProfile",
+            "description": "Complete immutable authored profile."
           },
           "revision": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Monotonically increasing revision number within the Environment."
           }
         }
       },
@@ -27948,7 +27990,8 @@
             "description": "Whether this deployment can actually run it right now."
           },
           "capabilities": {
-            "$ref": "#/components/schemas/EnvironmentCapabilities"
+            "$ref": "#/components/schemas/EnvironmentCapabilities",
+            "description": "Capabilities the deployment can honestly provide for this target."
           },
           "containment_levels": {
             "type": "array",
@@ -27958,16 +28001,19 @@
             "description": "Containment levels this target supports, weakest first."
           },
           "durability": {
-            "type": "string"
+            "type": "string",
+            "description": "Recovery guarantee offered by this target."
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-neutral target class."
           },
           "provider": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Concrete provider adapter, when the target class requires one."
           },
           "reason": {
             "type": [
@@ -28004,7 +28050,8 @@
             "description": "Credential/transport binding for a registered machine target."
           },
           "kind": {
-            "$ref": "#/components/schemas/EnvironmentTargetKind"
+            "$ref": "#/components/schemas/EnvironmentTargetKind",
+            "description": "Provider-neutral target class."
           },
           "options": {
             "type": "object",
@@ -28030,7 +28077,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/EnvironmentTargetDescriptor"
-            }
+            },
+            "description": "Target descriptors known to this deployment."
           }
         }
       },
@@ -41746,25 +41794,31 @@
         ],
         "properties": {
           "bootstrap": {
-            "$ref": "#/components/schemas/EnvironmentBootstrap"
+            "$ref": "#/components/schemas/EnvironmentBootstrap",
+            "description": "Pinned initialization commands."
           },
           "containment": {
-            "$ref": "#/components/schemas/EnvironmentContainmentProfile"
+            "$ref": "#/components/schemas/EnvironmentContainmentProfile",
+            "description": "Fully resolved containment contract."
           },
           "durability": {
-            "$ref": "#/components/schemas/EnvironmentDurability"
+            "$ref": "#/components/schemas/EnvironmentDurability",
+            "description": "Fully resolved recovery guarantee."
           },
           "lifecycle": {
-            "$ref": "#/components/schemas/EnvironmentLifecycle"
+            "$ref": "#/components/schemas/EnvironmentLifecycle",
+            "description": "Pinned lifecycle policy."
           },
           "source_revision_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Reusable revision from which this complete snapshot was copied."
           },
           "target": {
-            "$ref": "#/components/schemas/EnvironmentTargetProfile"
+            "$ref": "#/components/schemas/EnvironmentTargetProfile",
+            "description": "Exact target pinned for the Session."
           }
         }
       },
@@ -41975,10 +42029,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Replacement display name; omit to preserve the current value."
           },
           "profile": {
-            "$ref": "#/components/schemas/EnvironmentProfile"
+            "$ref": "#/components/schemas/EnvironmentProfile",
+            "description": "Complete profile stored as the next immutable revision."
           }
         }
       },
@@ -43180,7 +43236,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Most recent checkpoint used to recover this logical Sandbox."
           },
           "desired_state": {
             "type": [
@@ -43220,7 +43277,8 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Last recorded runtime activity used by lifecycle policy."
           },
           "name": {
             "type": [
@@ -43233,7 +43291,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Latest lifecycle state observed from the physical provider resource."
           },
           "profile": {
             "oneOf": [

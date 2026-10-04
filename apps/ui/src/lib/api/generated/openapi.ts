@@ -2033,8 +2033,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List active reusable Environments available to the organization. */
     get: operations["list_environments"];
     put?: never;
+    /** @description Create a reusable Environment and its first immutable revision. */
     post: operations["create_environment"];
     delete?: never;
     options?: never;
@@ -2049,9 +2051,12 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description Get one reusable Environment and its current immutable revision. */
     get: operations["get_environment_definition"];
+    /** @description Create the next immutable revision of a reusable Environment. */
     put: operations["revise_environment"];
     post?: never;
+    /** @description Archive a user-managed reusable Environment without changing pinned Sessions. */
     delete: operations["archive_environment"];
     options?: never;
     head?: never;
@@ -8042,9 +8047,13 @@ export interface components {
       definition: Record<string, unknown>;
     };
     CreateEnvironmentRequest: {
+      /** @description Optional explanation of the Environment's intended workload. */
       description?: string | null;
+      /** @description Human-readable name shown in management surfaces. */
       display_name: string;
+      /** @description Stable addressable name used by Agent environment references. */
       name: string;
+      /** @description Initial immutable execution profile revision. */
       profile: components["schemas"]["EnvironmentProfile"];
     };
     /** @description Request to create a file */
@@ -9253,20 +9262,34 @@ export interface components {
     };
     /** @description Organization-scoped reusable execution Environment. */
     Environment: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
       created_at: string;
+      /** @description Latest immutable revision used for new references. */
       current_revision: components["schemas"]["EnvironmentRevision"];
+      /** @description Optional explanation of the Environment's intended workload. */
       description?: string | null;
+      /** @description Human-readable name shown in management surfaces. */
       display_name: string;
+      /** @description Stable public Environment identifier. */
       id: string;
+      /** @description Whether the definition is owned and sealed by the platform. */
       is_managed: boolean;
+      /** @description Addressable name used in configuration. */
       name: string;
+      /** @description Lifecycle state such as `active` or `archived`. */
       status: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Timestamp of the most recent definition or revision change.
+       */
       updated_at: string;
     };
     /** @description Reproducible initialization pinned with the profile snapshot. */
     EnvironmentBootstrap: {
+      /** @description Ordered commands replayed when creating or recovering physical compute. */
       commands?: string[];
     };
     /**
@@ -9277,11 +9300,17 @@ export interface components {
      *     available before the first turn rather than after a confusing tool error.
      */
     EnvironmentCapabilities: {
+      /** @description Whether commands can spawn operating-system processes. */
       native_processes: boolean;
+      /** @description Whether the target enforces the declared outbound network policy. */
       network_enforced: boolean;
+      /** @description Whether the runtime can install operating-system packages. */
       packages: boolean;
+      /** @description Whether filesystem state has a portable checkpoint representation. */
       portable_checkpoint: boolean;
+      /** @description Whether workloads can bind and expose network ports. */
       ports: boolean;
+      /** @description Whether interactive pseudo-terminals are supported. */
       pty: boolean;
     };
     /** @description What commands may touch, and who enforces it. */
@@ -9295,9 +9324,13 @@ export interface components {
     EnvironmentContainmentLevel: "none" | "native" | "isolated";
     /** @description What commands may touch. */
     EnvironmentContainmentProfile: {
+      /** @description Whether the runtime may widen containment after Session creation. */
       escalation?: components["schemas"]["EnvironmentEscalation"];
+      /** @description Filesystem mutation boundary for command execution. */
       filesystem?: components["schemas"]["EnvironmentFilesystemPolicy"];
+      /** @description Isolation mechanism the provider must supply. */
       level: components["schemas"]["EnvironmentContainmentLevel"];
+      /** @description Outbound network access the provider must enforce. */
       network?: components["schemas"]["EnvironmentNetworkPolicy"];
     };
     /**
@@ -9312,14 +9345,19 @@ export interface components {
     EnvironmentEscalation: "never" | "approval" | "auto";
     /** @description Filesystem paths the target permits command execution to mutate. */
     EnvironmentFilesystemPolicy: {
+      /** @description Absolute roots the runtime may mutate; empty means provider default. */
       writable_roots?: string[];
     };
     /** @enum {string} */
     EnvironmentIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
     /** @description Control-plane lifecycle intent. Providers do not own these timers. */
     EnvironmentLifecycle: {
+      /** @description Action Everruns requests after the idle interval. */
       idle_action?: components["schemas"]["EnvironmentIdleAction"];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Inactivity interval before applying `idle_action`.
+       */
       idle_after_seconds?: number;
     };
     /** @description Non-secret lifecycle details for a managed Environment incarnation. */
@@ -9368,9 +9406,11 @@ export interface components {
      *     to a Session.
      */
     EnvironmentProfile: {
+      /** @description Reproducible commands run when physical compute is initialized. */
       bootstrap?: components["schemas"]["EnvironmentBootstrap"];
       containment?: components["schemas"]["EnvironmentContainmentProfile"] | null;
       durability?: components["schemas"]["EnvironmentDurability"] | null;
+      /** @description Idle lifecycle policy controlled by Everruns. */
       lifecycle?: components["schemas"]["EnvironmentLifecycle"];
       /**
        * @description Immutable reusable Environment revision this profile was copied from.
@@ -9378,16 +9418,26 @@ export interface components {
        *     and later Environment revisions cannot change an existing version.
        */
       source_revision_id?: string | null;
+      /** @description Provider-neutral target plus its concrete adapter binding. */
       target: components["schemas"]["EnvironmentTargetProfile"];
     };
     /** @description Immutable revision of an Environment template. */
     EnvironmentRevision: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Revision creation timestamp.
+       */
       created_at: string;
+      /** @description Parent reusable Environment identifier. */
       environment_id: string;
+      /** @description Stable public revision identifier pinned into Agent and Session snapshots. */
       id: string;
+      /** @description Complete immutable authored profile. */
       profile: components["schemas"]["EnvironmentProfile"];
-      /** Format: int32 */
+      /**
+       * Format: int32
+       * @description Monotonically increasing revision number within the Environment.
+       */
       revision: number;
     };
     /** @description Session-level selection: use an Agent profile, or provide an inline one. */
@@ -9419,11 +9469,15 @@ export interface components {
     EnvironmentTargetDescriptor: {
       /** @description Whether this deployment can actually run it right now. */
       available: boolean;
+      /** @description Capabilities the deployment can honestly provide for this target. */
       capabilities: components["schemas"]["EnvironmentCapabilities"];
       /** @description Containment levels this target supports, weakest first. */
       containment_levels: string[];
+      /** @description Recovery guarantee offered by this target. */
       durability: string;
+      /** @description Provider-neutral target class. */
       kind: string;
+      /** @description Concrete provider adapter, when the target class requires one. */
       provider?: string | null;
       /** @description Why it is unavailable. Present only when `available` is false. */
       reason?: string | null;
@@ -9437,6 +9491,7 @@ export interface components {
     EnvironmentTargetProfile: {
       /** @description Credential/transport binding for a registered machine target. */
       connection_id?: string | null;
+      /** @description Provider-neutral target class. */
       kind: components["schemas"]["EnvironmentTargetKind"];
       /**
        * @description Provider-owned, non-secret configuration. Credentials are references,
@@ -9448,6 +9503,7 @@ export interface components {
     };
     /** @description Response body for the `list_environment_targets` operation. */
     EnvironmentTargetsResponse: {
+      /** @description Target descriptors known to this deployment. */
       items: components["schemas"]["EnvironmentTargetDescriptor"][];
     };
     /**
@@ -17205,11 +17261,17 @@ export interface components {
      *     been made explicit.
      */
     ResolvedEnvironmentProfile: {
+      /** @description Pinned initialization commands. */
       bootstrap: components["schemas"]["EnvironmentBootstrap"];
+      /** @description Fully resolved containment contract. */
       containment: components["schemas"]["EnvironmentContainmentProfile"];
+      /** @description Fully resolved recovery guarantee. */
       durability: components["schemas"]["EnvironmentDurability"];
+      /** @description Pinned lifecycle policy. */
       lifecycle: components["schemas"]["EnvironmentLifecycle"];
+      /** @description Reusable revision from which this complete snapshot was copied. */
       source_revision_id?: string | null;
+      /** @description Exact target pinned for the Session. */
       target: components["schemas"]["EnvironmentTargetProfile"];
     };
     /**
@@ -17346,7 +17408,9 @@ export interface components {
     ReviseEnvironmentRequest: {
       /** @description Omit to preserve; send null to clear. */
       description?: string | null;
+      /** @description Replacement display name; omit to preserve the current value. */
       display_name?: string | null;
+      /** @description Complete profile stored as the next immutable revision. */
       profile: components["schemas"]["EnvironmentProfile"];
     };
     /**
@@ -18113,6 +18177,7 @@ export interface components {
     SessionEnvironmentResponse: {
       capabilities: components["schemas"]["EnvironmentCapabilities"];
       containment: components["schemas"]["EnvironmentContainment"];
+      /** @description Most recent checkpoint used to recover this logical Sandbox. */
       current_checkpoint_id?: string | null;
       /** @description Control-plane lifecycle intent and latest observed physical state. */
       desired_state?: string | null;
@@ -18130,10 +18195,14 @@ export interface components {
       generation?: number | null;
       /** @description Deprecated alias for `sandbox_id` during the Environment-to-Sandbox migration. */
       id?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Last recorded runtime activity used by lifecycle policy.
+       */
       last_activity_at?: string | null;
       /** @description Agent profile name selected for this Session (`inline` for one-offs). */
       name?: string | null;
+      /** @description Latest lifecycle state observed from the physical provider resource. */
       observed_state?: string | null;
       profile?: components["schemas"]["ResolvedEnvironmentProfile"] | null;
       /**

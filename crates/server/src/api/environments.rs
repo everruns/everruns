@@ -27,20 +27,26 @@ const MAX_ENVIRONMENT_DESCRIPTION_BYTES: usize = 10 * 1024;
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateEnvironmentRequest {
+    /// Stable addressable name used by Agent environment references.
     pub name: String,
+    /// Human-readable name shown in management surfaces.
     pub display_name: String,
+    /// Optional explanation of the Environment's intended workload.
     #[serde(default)]
     pub description: Option<String>,
+    /// Initial immutable execution profile revision.
     pub profile: crate::records::EnvironmentProfile,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ReviseEnvironmentRequest {
+    /// Replacement display name; omit to preserve the current value.
     #[serde(default)]
     pub display_name: Option<String>,
     /// Omit to preserve; send null to clear.
     #[serde(default, deserialize_with = "double_option")]
     pub description: Option<Option<String>>,
+    /// Complete profile stored as the next immutable revision.
     pub profile: crate::records::EnvironmentProfile,
 }
 
@@ -81,11 +87,17 @@ pub struct EnvironmentContainment {
 /// available before the first turn rather than after a confusing tool error.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentCapabilities {
+    /// Whether commands can spawn operating-system processes.
     pub native_processes: bool,
+    /// Whether the runtime can install operating-system packages.
     pub packages: bool,
+    /// Whether interactive pseudo-terminals are supported.
     pub pty: bool,
+    /// Whether workloads can bind and expose network ports.
     pub ports: bool,
+    /// Whether filesystem state has a portable checkpoint representation.
     pub portable_checkpoint: bool,
+    /// Whether the target enforces the declared outbound network policy.
     pub network_enforced: bool,
 }
 
@@ -129,13 +141,16 @@ pub struct SessionEnvironmentResponse {
     /// Control-plane lifecycle intent and latest observed physical state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desired_state: Option<String>,
+    /// Latest lifecycle state observed from the physical provider resource.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub observed_state: Option<String>,
     /// Physical incarnation fence. Increments whenever compute is replaced.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub generation: Option<i64>,
+    /// Most recent checkpoint used to recover this logical Sandbox.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub current_checkpoint_id: Option<String>,
+    /// Last recorded runtime activity used by lifecycle policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_activity_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -143,7 +158,9 @@ pub struct SessionEnvironmentResponse {
 /// One target this deployment can offer, and what it can do.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentTargetDescriptor {
+    /// Provider-neutral target class.
     pub kind: String,
+    /// Concrete provider adapter, when the target class requires one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
     /// Whether this deployment can actually run it right now.
@@ -151,15 +168,18 @@ pub struct EnvironmentTargetDescriptor {
     /// Why it is unavailable. Present only when `available` is false.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Capabilities the deployment can honestly provide for this target.
     pub capabilities: EnvironmentCapabilities,
     /// Containment levels this target supports, weakest first.
     pub containment_levels: Vec<String>,
+    /// Recovery guarantee offered by this target.
     pub durability: String,
 }
 
 /// Response body for the `list_environment_targets` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentTargetsResponse {
+    /// Target descriptors known to this deployment.
     pub items: Vec<EnvironmentTargetDescriptor>,
 }
 
@@ -229,7 +249,7 @@ fn authorize(
         .map_err(|error| ErrorResponse::new(error.to_string()).into_response(StatusCode::FORBIDDEN))
 }
 
-#[utoipa::path(get, path = "/v1/environments", responses((status = 200, body = Vec<crate::records::EnvironmentDefinition>)), tag = "environments")]
+#[utoipa::path(description = "List active reusable Environments available to the organization.", get, path = "/v1/environments", responses((status = 200, body = Vec<crate::records::EnvironmentDefinition>)), tag = "environments")]
 pub async fn list_environments(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -244,7 +264,7 @@ pub async fn list_environments(
     ))
 }
 
-#[utoipa::path(post, path = "/v1/environments", request_body = CreateEnvironmentRequest, responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
+#[utoipa::path(description = "Create a reusable Environment and its first immutable revision.", post, path = "/v1/environments", request_body = CreateEnvironmentRequest, responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
 pub async fn create_environment(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -307,7 +327,7 @@ pub async fn create_environment(
     Ok(Json(environment))
 }
 
-#[utoipa::path(get, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
+#[utoipa::path(description = "Get one reusable Environment and its current immutable revision.", get, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
 pub async fn get_environment_definition(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -324,7 +344,7 @@ pub async fn get_environment_definition(
     ))
 }
 
-#[utoipa::path(put, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), request_body = ReviseEnvironmentRequest, responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
+#[utoipa::path(description = "Create the next immutable revision of a reusable Environment.", put, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), request_body = ReviseEnvironmentRequest, responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
 pub async fn revise_environment(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -393,7 +413,7 @@ pub async fn revise_environment(
     ))
 }
 
-#[utoipa::path(delete, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), responses((status = 200, body = serde_json::Value)), tag = "environments")]
+#[utoipa::path(description = "Archive a user-managed reusable Environment without changing pinned Sessions.", delete, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), responses((status = 200, body = serde_json::Value)), tag = "environments")]
 pub async fn archive_environment(
     org: ResolvedOrg,
     State(state): State<AppState>,
