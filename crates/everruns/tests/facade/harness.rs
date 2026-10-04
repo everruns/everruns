@@ -238,11 +238,24 @@ async fn conversation_preset_runs_a_minimal_framework_session() {
 #[tokio::test]
 async fn worker_base_preset_executes_bash_in_the_framework() {
     use everruns::{LlmSimConfig, ToolCall};
-    let agent = Agent::builder().instructions("Write and read a working note.").model(Model::simulated_with_config(
-        LlmSimConfig::fixed("Note saved.").with_tool_call_sequence(vec![vec![ToolCall {
-            id: "call_note".into(), name: "bash".into(), arguments: json!({"commands": "echo remembered > /workspace/note.txt; cat /workspace/note.txt"}),
-        }], vec![]])
-    )).build().unwrap();
+    let model = Model::simulated_with_config(
+        LlmSimConfig::fixed("Note saved.").with_tool_call_sequence(vec![
+            vec![ToolCall {
+                id: "call_note".into(),
+                name: "bash".into(),
+                arguments: json!({
+                    "commands": "mkdir -p /workspace; echo remembered > /workspace/note.txt; cat /workspace/note.txt"
+                }),
+            }],
+            vec![],
+        ]),
+    );
+    let agent = Agent::builder()
+        .instructions("Write and read a working note.")
+        .workspace_policy(everruns::WorkspacePolicy::read_write())
+        .model(model)
+        .build()
+        .unwrap();
     let session = InMemoryEngine::new()
         .create(agent)
         .harness(Harness::worker_base())
@@ -271,12 +284,8 @@ async fn worker_base_preset_executes_bash_in_the_framework() {
         })
         .expect("persisted bash result");
     assert!(result.error.is_none(), "{:?}", result.error);
-    assert!(
-        result
-            .result
-            .as_ref()
-            .unwrap()
-            .to_string()
-            .contains("remembered")
-    );
+    let output = result.result.as_ref().expect("bash output");
+    assert_eq!(output["exit_code"], 0, "{output}");
+    assert_eq!(output["stderr"], "", "{output}");
+    assert_eq!(output["stdout"], "remembered\n", "{output}");
 }

@@ -184,6 +184,8 @@ capabilities](https://docs.everruns.com/framework/advanced-capabilities/).
 context management; Worker Base adds files and bash; Worker adds skills,
 long-context support, budgeting and delegation. Enable optional host integrations
 for the tools your application uses.
+Presets retain the read-only workspace default; file writes require an explicit
+`Agent::builder().workspace_policy(WorkspacePolicy::read_write())`.
 
 Bind and start one with
 `engine.create(agent).harness(Harness::conversation()).start().await?`.

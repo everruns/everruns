@@ -56,6 +56,10 @@ in-memory host does not supply them. `Harness::generic()` is deprecated and
 preserves its legacy capabilities. Sessions without a bound harness retain their
 existing empty foundation.
 
+Presets preserve the framework's read-only workspace default. For an agent that
+writes files, explicitly select
+`Agent::builder().workspace_policy(WorkspacePolicy::read_write())`.
+
 ## Files and workspaces
 
 - `file(path, content)` seeds an editable file.
