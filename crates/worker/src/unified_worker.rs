@@ -8,17 +8,13 @@
 // It unifies the two worker implementations into one, eliminating code duplication
 // while preserving the different deployment models (in-process vs external).
 
-use crate::core::ExecutionContext;
 use crate::durable::{ClaimedTask, TaskFailureOutcome, WorkerInfo, WorkflowStatus};
 use crate::engine::{ActInput, ActPlan, TurnPlan};
 use crate::host::{
     RuntimeSessionLifecycle, advance_host_execution,
     execute_act_activity as runtime_execute_act_activity,
-    execute_input_activity as runtime_execute_input_activity,
-    execute_reason_activity as runtime_execute_reason_activity,
 };
 use anyhow::Result;
-use everruns_contracts::typed_id::{ExecId, TurnId};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -30,12 +26,12 @@ use uuid::Uuid;
 use crate::durable_runner::DurableTurnInput;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
-use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
+use crate::task_heartbeat::spawn_task_heartbeat;
 use crate::task_wakeup::spawn_wakeup_listener;
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledChannelInput,
-    activities::activity_types, phase_reads::PhaseIds,
+    activities::activity_types, phase_reads::PhaseIds, turn_start,
 };
 
 // Re-export atom types
@@ -576,20 +572,24 @@ where
     // Execute based on activity type. Keep fallible parsing inside this result so
     // cleanup below runs before malformed tasks are failed.
     let execution = async {
-        let (result, turn_input_opt) = match task.activity_type.as_str() {
+        // A `process_input` task runs the turn's first reason too, and is then
+        // completed and scheduled as that `reason` (see `turn_start`).
+        let mut activity = task.activity_type.as_str();
+        let (result, turn_input_opt) = match activity {
             "process_input" | "reason" => {
                 let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
-
-                let res = match task.activity_type.as_str() {
-                    "process_input" => execute_input_activity(adapters, &turn_input).await,
-                    "reason" => {
-                        execute_reason_activity(adapters, &turn_input, task_cancellation.clone())
-                            .await
-                    }
-                    _ => unreachable!(),
-                };
-                (res, Some(turn_input))
+                let cancel = task_cancellation.clone();
+                if activity == "process_input" {
+                    activity = "reason";
+                    let (res, checkpoint) =
+                        turn_start::execute_turn_start(adapters, &turn_input, task.id, cancel)
+                            .await;
+                    (res, Some(checkpoint))
+                } else {
+                    let res = turn_start::execute_reason_activity(adapters, &turn_input, cancel);
+                    (res.await, Some(turn_input))
+                }
             }
             "act" => {
                 let act_input: ActInput = serde_json::from_value(task.input.clone())
@@ -667,14 +667,14 @@ where
                 None,
             ),
         };
-        Ok::<_, anyhow::Error>((result, turn_input_opt))
+        Ok::<_, anyhow::Error>((result, turn_input_opt, activity))
     }
     .await;
 
     let _ = heartbeat_cancel_tx.send(());
     let _ = heartbeat_handle.await;
 
-    let (result, turn_input_opt) = match execution {
+    let (result, turn_input_opt, activity) = match execution {
         Ok(execution) => execution,
         Err(e) => {
             fail_activity_task(store, adapters, task, None, &e).await?;
@@ -688,8 +688,8 @@ where
             // Complete the task (verifying ownership), draining wake signals
             // in the same call when this boundary is a drain point.
             let schedules = turn_input_opt.is_some() && task.workflow_id.is_some();
-            let final_answer = reason_final_answer(&task.activity_type, &output).unwrap_or(false);
-            let drain = (schedules && drains_wake_signals_after(&task.activity_type, final_answer))
+            let final_answer = reason_final_answer(activity, &output).unwrap_or(false);
+            let drain = (schedules && drains_wake_signals_after(activity, final_answer))
                 .then_some(crate::durable_turn::USER_MESSAGE);
             let complete_result = store
                 .complete_task_and_drain(task, worker_id, output.clone(), drain)
@@ -709,7 +709,7 @@ where
                             store,
                             adapters,
                             wf_id,
-                            &task.activity_type,
+                            activity,
                             &turn_input,
                             &output,
                             drained,
@@ -818,106 +818,6 @@ fn parse_resume_state(input: &serde_json::Value) -> Result<Option<DurableTurnInp
 // =============================================================================
 // Activity Implementations
 // =============================================================================
-
-/// Execute input processing activity
-async fn execute_input_activity<A: WorkerAdapters>(
-    adapters: &A,
-    input: &DurableTurnInput,
-) -> Result<serde_json::Value> {
-    debug!(
-        session_id = %input.session_id,
-        "Executing input activity"
-    );
-
-    // Create ExecutionContext
-    let context = ExecutionContext {
-        // Input/Reason atoms do not key file I/O by ExecutionContext; the act
-        // path receives its workspace-set context from the orchestration.
-        workspace_id: None,
-        session_id: input.session_id,
-        turn_id: TurnId::new(),
-        input_message_id: input.input_message_id,
-        exec_id: ExecId::new(),
-    };
-
-    let atom_input = InputAtomInput {
-        context: context.clone(),
-    };
-    let result = runtime_execute_input_activity(
-        &WorkerRuntimeHost::new(adapters.clone()),
-        input.org_id,
-        atom_input,
-    )
-    .await?;
-
-    // Include turn_id in output for propagation
-    let mut output = serde_json::to_value(&result)?;
-    if let serde_json::Value::Object(ref mut map) = output {
-        map.insert(
-            "turn_id".to_string(),
-            serde_json::json!(context.turn_id.to_string()),
-        );
-    }
-    Ok(output)
-}
-
-/// Execute reasoning activity (LLM call)
-async fn execute_reason_activity<A: WorkerAdapters>(
-    adapters: &A,
-    input: &DurableTurnInput,
-    (cancellation, cancel_requested): CancelSignals,
-) -> Result<serde_json::Value> {
-    debug!(
-        session_id = %input.session_id,
-        turn_id = ?input.turn_id,
-        "Executing reason activity"
-    );
-
-    // Create ExecutionContext - use turn_id from input if available
-    let turn_id = input.turn_id.unwrap_or_default();
-    let context = ExecutionContext {
-        // Input/Reason atoms do not key file I/O by ExecutionContext; the act
-        // path receives its workspace-set context from the orchestration.
-        workspace_id: None,
-        session_id: input.session_id,
-        turn_id,
-        input_message_id: input.input_message_id,
-        exec_id: ExecId::new(),
-    };
-
-    let reason_input = ReasonInput {
-        context: context.clone(),
-        harness_id: input.harness_id,
-        agent_id: input.agent_id,
-        org_id: input.org_id,
-        mcp_tool_definitions: vec![],
-        previous_response_id: input.previous_response_id.clone(),
-        iteration: input.iteration,
-    };
-
-    let event_metadata = input.agent_id.map(|agent_id| {
-        let mut metadata = serde_json::Map::new();
-        metadata.insert(
-            "agent_id".to_string(),
-            serde_json::Value::String(agent_id.to_string()),
-        );
-        metadata
-    });
-    let host = WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata)
-        .with_turn_cancellation(cancellation, cancel_requested)
-        .prefetching(PhaseIds::reason(&reason_input));
-    let result = runtime_execute_reason_activity(&host, input.org_id, reason_input).await;
-    host.flush_events().await;
-    let result = result?;
-
-    // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
-    // emitted here. They are deferred to the workflow scheduler which checks for
-    // pending steering signals before deciding whether the turn is truly done.
-    // This ensures turn.completed is emitted exactly once and prevents the
-    // idle→active flicker when steering continues the turn.
-
-    Ok(serde_json::to_value(&result)?)
-}
 
 /// Execute act activity (tool execution)
 async fn execute_act_activity<A: WorkerAdapters>(
@@ -1129,6 +1029,7 @@ mod tests {
         ActivityOptions, DurableAdmin, EventLog, HeartbeatResponse, StoreError, TaskDefinition,
         TaskQueue, WorkerRegistry, WorkflowError,
     };
+    use everruns_contracts::typed_id::TurnId;
     use std::sync::atomic::AtomicBool;
 
     // ---- EVE-681: mid-turn task wake drain ----
