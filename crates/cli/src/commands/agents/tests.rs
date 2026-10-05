@@ -1,39 +1,69 @@
 use super::*;
 
+fn harness_params(harness: Option<&str>) -> serde_json::Value {
+    agent_params(
+        None,
+        "a".into(),
+        "p".into(),
+        None,
+        None,
+        harness.map(ToOwned::to_owned),
+        Vec::new(),
+    )
+}
+
 #[test]
 fn test_apply_harness_detects_strict_id() {
     let id = "harness_00000000000000000000000000000001";
-    let req = apply_harness(CreateAgentRequest::new("a", "p"), Some(id.to_string()));
-    assert_eq!(req.harness_id.as_deref(), Some(id));
-    assert!(req.harness_name.is_none());
+    let params = harness_params(Some(id));
+    assert_eq!(params["harness_id"], id);
+    assert!(params.get("harness_name").is_none());
 }
 
 #[test]
 fn test_apply_harness_treats_bare_name_as_name() {
-    let req = apply_harness(
-        CreateAgentRequest::new("a", "p"),
-        Some("generic".to_string()),
-    );
-    assert_eq!(req.harness_name.as_deref(), Some("generic"));
-    assert!(req.harness_id.is_none());
+    let params = harness_params(Some("generic"));
+    assert_eq!(params["harness_name"], "generic");
+    assert!(params.get("harness_id").is_none());
 }
 
 #[test]
 fn test_apply_harness_keeps_prefix_names_as_name() {
     // "harness_generic" is not a strict harness id (not 32 hex), so it is a name.
-    let req = apply_harness(
-        CreateAgentRequest::new("a", "p"),
-        Some("harness_generic".to_string()),
-    );
-    assert_eq!(req.harness_name.as_deref(), Some("harness_generic"));
-    assert!(req.harness_id.is_none());
+    let params = harness_params(Some("harness_generic"));
+    assert_eq!(params["harness_name"], "harness_generic");
+    assert!(params.get("harness_id").is_none());
 }
 
 #[test]
 fn test_apply_harness_none_sets_nothing() {
-    let req = apply_harness(CreateAgentRequest::new("a", "p"), None);
-    assert!(req.harness_id.is_none());
-    assert!(req.harness_name.is_none());
+    let params = harness_params(None);
+    assert!(params.get("harness_id").is_none());
+    assert!(params.get("harness_name").is_none());
+}
+
+#[test]
+fn an_update_from_flags_is_an_upsert_by_id() {
+    let params = agent_params(
+        Some("agent_1"),
+        "a".into(),
+        "p".into(),
+        Some("d".into()),
+        Some("m".into()),
+        None,
+        vec!["t".into()],
+    );
+    assert_eq!(
+        params,
+        serde_json::json!({
+            "id": "agent_1",
+            "name": "a",
+            "system_prompt": "p",
+            "description": "d",
+            "default_model_id": "m",
+            "tags": ["t"],
+        })
+    );
 }
 
 #[test]

@@ -1,18 +1,14 @@
 // Connection management commands
 //
-// `remove` uses the SDK's `client.connections().remove()`.
-// `set` and `list` still use raw reqwest because the SDK's `Connection`
-// model lacks `connection_type`, `provider_username`, `scopes`, and uses
-// `created_at`/`updated_at` instead of the server's `connected_at`.
-// The SDK's `list()` also expects `ListResponse<Connection>` but the
-// server returns a plain `Vec<ConnectionResponse>`.
-// TODO(everruns/sdk#66): Fix SDK Connection model to match server, then migrate set/list
+// Decision: plain HTTP against `/v1/user/connections`. These are the caller's
+// own provider keys, not platform commands, so there is no contract command
+// to route them through, and the key is read from a prompt or stdin so it
+// never reaches argv.
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use dialoguer::Password;
-use everruns_sdk::Everruns;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
@@ -53,7 +49,6 @@ struct CreateApiKeyRequest {
 
 pub async fn run(
     command: ConnectionsCommand,
-    client: &Everruns,
     api_url: &str,
     api_key: &str,
     output: OutputFormat,
@@ -76,7 +71,9 @@ pub async fn run(
             .await
         }
         ConnectionsCommand::List => list(api_url, api_key, output).await,
-        ConnectionsCommand::Remove { provider } => remove(client, output, quiet, &provider).await,
+        ConnectionsCommand::Remove { provider } => {
+            remove(api_url, api_key, output, quiet, &provider).await
+        }
     }
 }
 
@@ -224,21 +221,33 @@ async fn list(api_url: &str, api_key: &str, output: OutputFormat) -> Result<()> 
 }
 
 async fn remove(
-    client: &Everruns,
+    api_url: &str,
+    api_key: &str,
     output: OutputFormat,
     quiet: bool,
     provider: &str,
 ) -> Result<()> {
-    if let Err(e) = client.connections().remove(provider).await {
-        match &e {
-            everruns_sdk::Error::Api { status: 404, .. } => {
-                anyhow::bail!("Connection not found: {}", provider);
-            }
-            _ => {
-                return Err(e)
-                    .with_context(|| format!("Failed to remove connection for {}", provider));
-            }
-        }
+    let resp = http_client()
+        .delete(connection_url(
+            api_url,
+            &format!("/v1/user/connections/{}", urlencoding::encode(provider)),
+        ))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .send()
+        .await
+        .context("Failed to connect to server")?;
+    let status = resp.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        anyhow::bail!("Connection not found: {}", provider);
+    }
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!(
+            "Failed to remove connection for {}: {} {}",
+            provider,
+            status,
+            body
+        );
     }
 
     if output.is_text() {

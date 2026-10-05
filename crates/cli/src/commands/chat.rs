@@ -7,15 +7,17 @@
 //   3. Stream events via SSE with since_id = snapshotted ID
 //   4. Exit on turn.completed / turn.failed / timeout
 
+use crate::commands::api::ApiClient;
+use crate::contract;
+use crate::events::{DELTA_EVENTS, EventStream};
 use crate::output::OutputFormat;
 use anyhow::Result;
-use everruns_sdk::Everruns;
-use futures::StreamExt;
+use serde_json::json;
 use std::time::{Duration, Instant};
 
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
-    client: &Everruns,
+    client: ApiClient<'_>,
     output: OutputFormat,
     quiet: bool,
     message: String,
@@ -29,19 +31,25 @@ pub async fn run(
     let snapshot_id: Option<String> = if no_stream {
         None
     } else {
-        let opts = everruns_sdk::client::ListEventsOptions {
-            limit: Some(1),
-            ..Default::default()
-        };
-        let existing = client
-            .events()
-            .list_with_options(&session_id, &opts)
-            .await?;
-        existing.data.last().map(|e| e.id.clone())
+        let latest = contract::execute(
+            &client,
+            "list_events",
+            json!({ "session_id": session_id, "limit": 1, "order_desc": true }),
+        )
+        .await?;
+        latest["data"][0]["id"].as_str().map(ToOwned::to_owned)
     };
 
     // Create the message (may start a new turn or continue an existing one)
-    client.messages().create(&session_id, &message).await?;
+    contract::execute(
+        &client,
+        "create_message",
+        json!({
+            "session_id": session_id,
+            "message": { "role": "user", "content": [{ "type": "text", "text": message }] },
+        }),
+    )
+    .await?;
 
     if !quiet && output.is_text() {
         println!("You: {}\n", message);
@@ -52,15 +60,9 @@ pub async fn run(
     }
 
     // Stream events via SSE with since_id for server-side filtering.
-    // This replaces the old polling loop that fetched all events every 500ms.
-    let mut stream_opts = everruns_sdk::sse::StreamOptions::exclude_deltas().with_max_retries(10);
-    if let Some(id) = snapshot_id {
-        stream_opts = stream_opts.with_since_id(id);
-    }
-
-    let mut stream = client
-        .events()
-        .stream_with_options(&session_id, stream_opts);
+    let mut stream = EventStream::new(client, &session_id, snapshot_id)
+        .excluding(DELTA_EVENTS)
+        .with_max_retries(10);
 
     let start = Instant::now();
     let timeout = timeout_secs.map(Duration::from_secs);
@@ -71,7 +73,6 @@ pub async fn run(
         if let Some(timeout) = timeout
             && start.elapsed() > timeout
         {
-            stream.stop();
             if output.is_text() {
                 eprintln!("\nTimeout waiting for response");
             }
@@ -96,7 +97,6 @@ pub async fn run(
             }
             Err(_) => {
                 // Timeout
-                stream.stop();
                 if output.is_text() {
                     eprintln!("\nTimeout waiting for response");
                 }
@@ -107,10 +107,9 @@ pub async fn run(
         let event = match item {
             Ok(event) => event,
             Err(e) => {
-                // SSE reconnection errors are handled internally by EventStream.
-                // If we get an error here, reconnection was exhausted.
-                eprintln!("Stream error: {e}");
-                continue;
+                // Reconnection is handled inside EventStream; an error here
+                // means its retries are spent.
+                anyhow::bail!("Event stream failed: {e}");
             }
         };
 
@@ -188,14 +187,7 @@ pub async fn run(
             }
         } else {
             // JSON/YAML output: print each event
-            let event_json = serde_json::json!({
-                "id": event.id,
-                "type": event.event_type,
-                "ts": event.ts,
-                "session_id": event.session_id,
-                "data": event.data,
-            });
-            output.print_value(&event_json);
+            output.print_value(&event.to_json());
 
             if event.event_type == "turn.completed" {
                 return Ok(());

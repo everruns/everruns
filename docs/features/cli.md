@@ -6,7 +6,7 @@ sidebar:
 appliesTo: [platform, cloud]
 ---
 
-The `everruns` CLI is a command-line client for the Everruns API. It covers the same surface as the SDK (agents, sessions, messages, capabilities) and is designed to compose well with shell pipelines.
+The `everruns` CLI is a command-line client for the Everruns API. It speaks the same commands agents use through MCP and their shell, so every platform command is available with the same spelling, and it is designed to compose well with shell pipelines.
 
 This page covers installation, configuration, and the command surface. For scripting patterns and `jq` examples, see [Automate with the CLI](/how-to/automate-with-the-cli/).
 

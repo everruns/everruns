@@ -25,7 +25,6 @@ use crate::output::{OutputFormat, print_field};
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use everruns_core::agent_package::{ALLOWED_DOT_ENTRIES, DENIED_DOT_ENTRIES};
-use everruns_sdk::{CreateAgentRequest, Everruns};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -164,7 +163,6 @@ struct ImportedAgent {
 
 pub async fn run(
     command: AgentsCommand,
-    client: &Everruns,
     api_url: &str,
     api_key: &str,
     org_id: Option<&str>,
@@ -221,8 +219,10 @@ pub async fn run(
                 if initial_files_dir.is_some() {
                     anyhow::bail!("--initial-files-dir requires --file");
                 }
-                create_from_flags(
-                    client,
+                let client = super::api::ApiClient::new(api_url, api_key, org_id);
+                save_from_flags(
+                    &client,
+                    None,
                     output,
                     quiet,
                     name,
@@ -283,11 +283,12 @@ pub async fn run(
                 }
                 // Update without file requires agent_id
                 let id = agent_id.context("Agent ID is required for update without --file")?;
-                update_from_flags(
-                    client,
+                let client = super::api::ApiClient::new(api_url, api_key, org_id);
+                save_from_flags(
+                    &client,
+                    Some(&id),
                     output,
                     quiet,
-                    &id,
                     name,
                     system_prompt,
                     description,
@@ -1006,21 +1007,12 @@ fn parse_agent_file_as_json(path: &Path, content: &str) -> Result<serde_json::Va
     Ok(val)
 }
 
-/// Apply a `--harness` value to the request, detecting a strict harness id
-/// (`harness_<32-hex>`) vs. an addressable name (e.g. `generic`). Mirrors the
-/// `sessions create --harness` detection so the two commands behave the same.
-fn apply_harness(req: CreateAgentRequest, harness: Option<String>) -> CreateAgentRequest {
-    match harness {
-        Some(h) if is_prefixed_id(&h, "harness") => req.harness_id(h),
-        Some(h) => req.harness_name(h),
-        None => req,
-    }
-}
-
-/// Create agent from CLI flags using SDK
+/// Create an agent from CLI flags (`create_agent`), or apply them to
+/// `agent_id` (`upsert_agent`, which replaces the definition by id).
 #[allow(clippy::too_many_arguments)]
-async fn create_from_flags(
-    client: &Everruns,
+async fn save_from_flags(
+    client: &super::api::ApiClient<'_>,
+    agent_id: Option<&str>,
     output: OutputFormat,
     quiet: bool,
     name: Option<String>,
@@ -1030,81 +1022,82 @@ async fn create_from_flags(
     harness: Option<String>,
     tags: Vec<String>,
 ) -> Result<()> {
-    let name = name.context("--name is required")?;
-    let system_prompt = system_prompt.context("--system-prompt is required")?;
-
-    let mut req = CreateAgentRequest::new(&name, &system_prompt);
-    if let Some(desc) = description {
-        req = req.description(desc);
-    }
-    if let Some(model_id) = model {
-        req = req.default_model_id(model_id);
-    }
-    req = apply_harness(req, harness);
-    if !tags.is_empty() {
-        req = req.tags(tags);
-    }
-
-    let agent = client.agents().create_with_options(req).await?;
-
-    if output.is_text() {
-        if quiet {
-            println!("{}", agent.id);
-        } else {
-            println!("Created agent: {}", agent.id);
-            print_field("Name", &agent.name);
-        }
+    let without_file = if agent_id.is_some() {
+        " for update without --file"
     } else {
-        output.print_value(&agent);
-    }
-
-    Ok(())
-}
-
-/// Update agent from CLI flags using SDK
-#[allow(clippy::too_many_arguments)]
-async fn update_from_flags(
-    client: &Everruns,
-    output: OutputFormat,
-    quiet: bool,
-    agent_id: &str,
-    name: Option<String>,
-    system_prompt: Option<String>,
-    description: Option<String>,
-    model: Option<String>,
-    harness: Option<String>,
-    tags: Vec<String>,
-) -> Result<()> {
-    let name = name.context("--name is required for update without --file")?;
+        ""
+    };
+    let name = name.with_context(|| format!("--name is required{without_file}"))?;
     let system_prompt =
-        system_prompt.context("--system-prompt is required for update without --file")?;
+        system_prompt.with_context(|| format!("--system-prompt is required{without_file}"))?;
 
-    let mut req = CreateAgentRequest::new(&name, &system_prompt);
-    if let Some(desc) = description {
-        req = req.description(desc);
-    }
-    if let Some(model_id) = model {
-        req = req.default_model_id(model_id);
-    }
-    req = apply_harness(req, harness);
-    if !tags.is_empty() {
-        req = req.tags(tags);
-    }
-
-    let agent = client.agents().apply_with_options(agent_id, req).await?;
+    let params = agent_params(
+        agent_id,
+        name,
+        system_prompt,
+        description,
+        model,
+        harness,
+        tags,
+    );
+    let command = if agent_id.is_some() {
+        "upsert_agent"
+    } else {
+        "create_agent"
+    };
+    let agent = crate::contract::execute(client, command, params).await?;
 
     if output.is_text() {
+        let id = agent["id"].as_str().unwrap_or_default();
         if quiet {
-            println!("{}", agent.id);
+            println!("{id}");
         } else {
-            println!("Applied agent: {}", agent.id);
-            print_field("Name", &agent.name);
+            let verb = if agent_id.is_some() {
+                "Applied"
+            } else {
+                "Created"
+            };
+            println!("{verb} agent: {id}");
+            print_field("Name", agent["name"].as_str().unwrap_or_default());
         }
     } else {
         output.print_value(&agent);
     }
 
     Ok(())
+}
+
+/// `create_agent` params from CLI flags. `--harness` takes a strict harness id
+/// (`harness_<32-hex>`) or an addressable name (e.g. `generic`), detected the
+/// same way as `sessions create --harness`.
+fn agent_params(
+    agent_id: Option<&str>,
+    name: String,
+    system_prompt: String,
+    description: Option<String>,
+    model: Option<String>,
+    harness: Option<String>,
+    tags: Vec<String>,
+) -> serde_json::Value {
+    let mut params = serde_json::json!({ "name": name, "system_prompt": system_prompt });
+    if let Some(id) = agent_id {
+        params["id"] = id.into();
+    }
+    if let Some(description) = description {
+        params["description"] = description.into();
+    }
+    if let Some(model) = model {
+        params["default_model_id"] = model.into();
+    }
+    match harness {
+        Some(h) if is_prefixed_id(&h, "harness") => params["harness_id"] = h.into(),
+        Some(h) => params["harness_name"] = h.into(),
+        None => {}
+    }
+    if !tags.is_empty() {
+        params["tags"] = tags.into();
+    }
+    params
 }
 
 #[cfg(test)]
