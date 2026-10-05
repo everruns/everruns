@@ -184,6 +184,8 @@ Why it matters: every turn phase (`process_input`, `reason`, `act`) is its own q
 
 Once a phase is claimed, its own setup is the next cost: before a reason phase calls the model, host setup reads the session, harness, and agent several times over (dependency check, capability loading, snapshot projection, tool augmentation), and each read from a gRPC worker is a control-plane round trip plus database queries. With the production database a few milliseconds away, that setup took about 600 ms of each ~700 ms hand-off, against about 130 ms locally. The worker memoizes those reads for the length of the setup (`crates/worker/src/phase_reads.rs`) and logs `phase setup` with `setup_ms` and the reads fetched and saved, once per phase.
 
+The first hand-off of a turn is gone: the `process_input` task runs the input step and then the turn's first reason in the same task, and is completed and scheduled as that `reason` (`crates/worker/src/turn_start.rs`). The reason's setup reads start before the input runs, so they overlap. Locally this moved the first model call from 138-175 ms after `turn.started` to 32-46 ms; in production the saved hop was about 230 ms. The turn id comes from the task id, so a retried task reopens the same turn.
+
 Operational contract:
 
 - NATS is the preferred backend when configured

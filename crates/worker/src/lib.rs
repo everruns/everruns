@@ -33,6 +33,7 @@ mod task_heartbeat;
 mod task_heartbeat_tests;
 pub use everruns_durable_engine::task_store;
 pub mod task_wakeup;
+mod turn_start;
 pub mod unified_worker;
 #[cfg(test)]
 mod unified_worker_test_adapters;

@@ -88,8 +88,8 @@ The durable engine uses these tables (created by migration 002_durable_execution
 
 1. **Message Created**: User sends message via API
 2. **Workflow Started**: `DurableRunner` creates workflow and enqueues `process_input` task
-3. **Input Processing**: Worker claims task, processes input, enqueues `reason` task
-4. **LLM Reasoning**: Worker executes LLM call, may enqueue `act` tasks for tools
+3. **Input Processing**: Worker claims task, processes input, and runs the first LLM call in the same task
+4. **LLM Reasoning**: Each reasoning step may enqueue an `act` task for tools, and each `act` enqueues the next `reason`
 5. **Completion**: Workflow marked as `completed` after final response
 
 ## Monitoring
