@@ -9,13 +9,34 @@ use std::sync::LazyLock;
     reason = "constant URL regex is validated by unit tests"
 )]
 static URL: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r#"(?i)(?:https?:)?//[^\s<>)\]\"']+"#).unwrap());
+    LazyLock::new(|| regex::Regex::new(r#"(?i)(?:https?:)?//[^\s]+"#).unwrap());
 
 /// A bounded, single-line display value. URLs never echo credentials or query strings.
 pub fn narration_detail(value: &str) -> String {
     // THREAT[TM-OBS-014]: Selected labels can contain credential-bearing URLs.
     let redacted = URL.replace_all(value, |captures: &regex::Captures<'_>| {
-        url_display(&captures[0])
+        // URL userinfo and queries may contain quotes and parentheses. Consume
+        // the whole URL before parsing, or a delimiter can leave a secret tail.
+        let Some(capture) = captures.get(0) else {
+            return String::new();
+        };
+        let opening = value
+            .get(..capture.start())
+            .and_then(|prefix| prefix.chars().next_back());
+        let closing = match opening {
+            Some('(') => Some(')'),
+            Some('[') => Some(']'),
+            Some('<') => Some('>'),
+            Some('"') => Some('"'),
+            Some('\'') => Some('\''),
+            _ => None,
+        };
+        // Restore only the enclosing syntax, never an arbitrary delimiter tail
+        // that could itself be a query value.
+        match closing.and_then(|ch| capture.as_str().strip_suffix(ch).map(|url| (url, ch))) {
+            Some((url, ch)) => format!("{}{ch}", url_display(url)),
+            None => url_display(capture.as_str()),
+        }
     });
     let words = redacted
         .split_whitespace()
@@ -93,6 +114,30 @@ mod tests {
         assert_eq!(
             resource_detail("https://user:PRIVATE@example.com/report?token=PRIVATE"),
             "example.com/report"
+        );
+    }
+
+    #[test]
+    fn punctuation_inside_url_credentials_and_queries_does_not_leak() {
+        for credential in ["pass'PRIVATE", "pass)PRIVATE"] {
+            let url = format!("https://user:{credential}@example.com/report?token=PRIVATE");
+            assert!(url::Url::parse(&url).is_ok());
+            assert_eq!(
+                narration_detail(&format!("Visit {url}")),
+                "Visit example.com/report"
+            );
+        }
+        for token in ["pass'PRIVATE", "pass)PRIVATE", "')))"] {
+            assert_eq!(
+                narration_detail(&format!("Visit https://example.com/report?token={token}")),
+                "Visit example.com/report"
+            );
+        }
+        assert_eq!(
+            narration_detail(
+                "[Report](https://user:pass'PRIVATE@example.com/report?token=PRIVATE)))"
+            ),
+            "[Report](example.com/report)"
         );
     }
 
