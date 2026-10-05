@@ -1,0 +1,34 @@
+# Throwaway PostgreSQL for DEV_MODE and tests.
+#
+# Decision: dev runs and tests use a real PostgreSQL started on demand rather
+# than a second, in-memory implementation of every repository. Binaries come
+# from Zonky's builds on Maven Central (checksum verified by
+# postgresql_archive) and are cached per version; each process gets its own
+# temporary cluster that is deleted with it. Not published.
+
+[package]
+name = "everruns-pg-embedded"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+description = "Per-process temporary PostgreSQL for everruns dev mode and tests"
+
+[dependencies]
+anyhow.workspace = true
+libc = "0.2"
+postgresql_archive = { version = "0.21", default-features = false, features = ["zonky", "tls-rustls-aws-lc-rs"] }
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

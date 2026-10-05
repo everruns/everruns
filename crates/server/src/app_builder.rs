@@ -2247,7 +2247,9 @@ impl ServerAppBuilder {
                     host_composition.egress_service(),
                 )
                 .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
-                adapters = adapters.with_connection_resolver(connection_resolver);
+                adapters = adapters
+                    .with_connection_resolver(connection_resolver)
+                    .with_in_memory_compaction_checkpoints();
 
                 let worker_config = TaskWorkerConfig::dev_mode();
                 supervisor.spawn(

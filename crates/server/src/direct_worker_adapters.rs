@@ -269,8 +269,10 @@ pub struct DirectWorkerAdapters {
     vector_store: Option<Arc<dyn everruns_contracts::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
+    /// Fallback when there is no encryption key to seal checkpoints with
+    /// (dev mode only); `None` disables checkpoints instead.
     in_memory_compaction_checkpoint_store:
-        Arc<everruns_core::host::InMemoryCompactionCheckpointStore>,
+        Option<Arc<everruns_core::host::InMemoryCompactionCheckpointStore>>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -310,9 +312,7 @@ impl DirectWorkerAdapters {
             vector_store: None,
             runner: None,
             encryption: None,
-            in_memory_compaction_checkpoint_store: Arc::new(
-                everruns_core::host::InMemoryCompactionCheckpointStore::default(),
-            ),
+            in_memory_compaction_checkpoint_store: None,
             proactive_compaction_attempts: Arc::new(
                 everruns_core::ProactiveCompactionAttemptTracker::default(),
             ),
@@ -544,6 +544,13 @@ impl DirectWorkerAdapters {
         registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.virtual_registry = Some(registry);
+        self
+    }
+
+    /// Keep compaction checkpoints in memory when there is no encryption key.
+    /// Dev mode only: the checkpoints die with the process.
+    pub fn with_in_memory_compaction_checkpoints(mut self) -> Self {
+        self.in_memory_compaction_checkpoint_store = Some(Arc::default());
         self
     }
 
@@ -1460,10 +1467,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 ),
             ));
         }
-        self.db.is_dev_mode().then(|| {
-            self.in_memory_compaction_checkpoint_store.clone()
-                as Arc<dyn everruns_core::CompactionCheckpointStore>
-        })
+        self.in_memory_compaction_checkpoint_store
+            .clone()
+            .map(|store| store as Arc<dyn everruns_core::CompactionCheckpointStore>)
     }
 
     fn storage_store(
