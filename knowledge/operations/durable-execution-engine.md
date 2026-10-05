@@ -15,13 +15,16 @@ Custom PostgreSQL-backed durable execution engine for workflow orchestration wit
 `everruns-durable` is a generic engine: workflows, activities, tasks, signals,
 and schedules, with no `everruns-*` dependency (enforced by
 `scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
-use `everruns-durable-engine`'s `DurableExecution`, the checkpointed driver for
+use `everruns-durable-engine`: its `TurnTaskDriver` runs each claimed turn step
+over `DurableExecution`, the checkpointed driver for
 `everruns_core::engine::Execution`; its `durable_turn` module owns the
 turn-level conventions (the `user_message` signal, idempotent waiting-turn
 resolution tasks via `ActivityOptions::dedupe_by_activity_id`); and the server
 turns a sealed task into `turn.sealed`. The durable crate owns persistence,
-retries, and activity scheduling. The worker reaches these through the unpublished
-durable-engine entry. It owns no database driver; database connection construction
+retries, and activity scheduling. The worker reaches these through
+`everruns-durable-engine`, which is also published as the facade's experimental
+durable turn backend ([Execution Backends](../framework/execution-backends.md)).
+The worker owns no database driver; database connection construction
 belongs only to server and durable, enforced by
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh).
 
@@ -132,7 +135,11 @@ owners that must stay identical:
   `everruns-durable` create the tables without the server. It is one idempotent
   script (CREATE ... IF NOT EXISTS, CREATE OR REPLACE for trigger functions and
   triggers, counter seeding with ON CONFLICT DO NOTHING) run in a single
-  transaction under an advisory lock, uses only built-in PostgreSQL 14+
+  transaction under an advisory lock, and stamps a hash of the schema on a
+  table comment so a database that already took this exact schema is only
+  read, not locked or re-applied. `PostgresWorkflowEventStore::connect` wraps
+  pool creation plus `migrate` for callers with no pool of their own (the
+  facade's PostgreSQL durable backend). The script uses only built-in PostgreSQL 14+
   functions (its `uuidv7()` fallback avoids pgcrypto), and creates objects in
   the first `search_path` schema. Against a server-migrated database it changes
   nothing. Schema changes append idempotent statements rather than versioned

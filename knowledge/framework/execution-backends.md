@@ -18,7 +18,8 @@ and `DurableBackend` beside it runs facade sessions behind the `everruns`
 `durable` feature, over an in-memory or a PostgreSQL store, for every
 framework input: new messages, steering, cancellation, parked client-side
 tool calls and interrupted turns. The cross-backend conformance suite passes
-on all three.
+on all three. The public [Framework Architecture](../../docs/framework/architecture.md)
+page diagrams these components for users.
 
 ## Problem
 

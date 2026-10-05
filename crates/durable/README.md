@@ -38,11 +38,14 @@ agents, sessions or turns.
 
 ## How Everruns uses it
 
-Agent turns run on the task queue directly. The Everruns worker claims `reason`
-and `act` tasks, advances the turn through its own checkpointed driver for the
-shared `everruns-engine::Execution` contract, and enqueues the next task. This
-crate owns persistence, retries and scheduling; turn semantics, signal payloads
-and what a sealed task means to a session live in the worker and server.
+Agent turns run on the task queue directly. Each turn step (`process_input`,
+`reason`, `act`) is a task; the turn driver in
+[`everruns-durable-engine`](https://crates.io/crates/everruns-durable-engine)
+runs a claimed step, checkpoints the turn's state, and enqueues the next task.
+The Everruns worker and the `everruns` framework's experimental `durable`
+feature both run turns that way. This crate owns persistence, retries and
+scheduling; turn semantics, signal payloads and what a sealed task means to a
+session live in `everruns-durable-engine` and the Everruns server.
 
 The general-purpose workflow engine (`WorkflowExecutor` over the
 `Workflow` trait) is the other half of the crate: deterministic state
@@ -228,9 +231,11 @@ The rest of the toolkit:
 
 The crate ships its own schema: the `durable_*` tables, their indexes, and the
 trigger functions behind worker wake-ups and health counters. Apply it with
-`PostgresWorkflowEventStore::migrate` before building the store. It is
-idempotent, runs in one transaction, and serializes concurrent callers on an
-advisory lock, so calling it on every start-up is safe. It needs PostgreSQL 14
+`PostgresWorkflowEventStore::migrate` before building the store, or connect
+and migrate in one call with `PostgresWorkflowEventStore::connect(url)`. It is
+idempotent, runs in one transaction, serializes concurrent callers on an
+advisory lock, and only reads a database that already took this exact schema,
+so calling it on every start-up is safe. It needs PostgreSQL 14
 or newer and no extensions. Objects are created in the first schema of the
 connection's `search_path`.
 

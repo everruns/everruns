@@ -30,7 +30,7 @@ Everruns runs every step as a **durable task**. Each task:
 
 ![Durable Execution Pipeline](../images/concepts/durable-execution-pipeline.svg)
 
-A turn is a small state machine over those tasks. The state lives in `durable_workflow_events`, an append-only event log just for the workflow engine. To replay a workflow, you load its events and feed them back into the state machine, same input, same decisions, same output.
+A turn is a small state machine over those tasks. Each step (`process_input`, `reason`, `act`) is one task on the queue. When a step completes, the turn's state is checkpointed and handed to the next step's task, and the workflow's history (`durable_workflow_events`, an append-only log just for the workflow engine) records what was scheduled and how it ended. A step that is retried starts from the checkpoint of the step before it, so recovery never replays the whole turn or the whole conversation.
 
 When a worker crashes mid-turn, the control plane sees the missed heartbeats, marks the in-flight task as failed, and re-queues it. Another worker picks it up. The application sees a momentary stall in the SSE stream, then it continues.
 
@@ -38,13 +38,13 @@ When a worker crashes mid-turn, the control plane sees the missed heartbeats, ma
 
 ## Why a custom engine
 
-The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable engine, `everruns-durable`, instead. The reasoning:
+The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable engine, `everruns-durable`, instead. It is a generic, published Rust crate (task queue, event log, signals, timers, schedules, retries, dead letter queue, circuit breakers) with no agent concepts; the agent turn driver on top of it lives in `everruns-durable-engine`. The reasoning:
 
 1. **Single dependency.** PostgreSQL is the only required stateful infrastructure (Valkey and NATS are optional). Operators don't need to run a second cluster with its own ops story.
 2. **Co-located with the rest of the platform.** Workflow events and session events live in the same database, in the same transaction when needed. There's no eventual consistency between "what happened" and "what was reported."
 3. **Tight scope.** Everruns runs agentic workflows specifically, limited fan-out, short-to-medium duration, well-understood failure modes. We don't need the full Temporal feature set, and the operational surface area of a tightly-scoped engine is much smaller.
 
-The trade-off: no multi-region replication beyond what PostgreSQL itself offers, no language-agnostic SDK (the engine is Rust-only inside the platform), no visual workflow designer. For agent execution these are not missed.
+The trade-off: no multi-region replication beyond what PostgreSQL itself offers, no language-agnostic SDK (the engine is a Rust library), no visual workflow designer. For agent execution these are not missed.
 
 ## Guarantees
 
@@ -52,12 +52,24 @@ What durable execution gives you:
 
 - **No work lost on crash.** If a worker dies, another worker resumes from the last persisted step. Tokens already paid for are not paid for again.
 - **Persisted tool results.** Tool calls are persisted by their result, not their attempt, so a tool whose result was recorded is not re-run. Execution is at-least-once: see the caveat below for a tool that completes but crashes before its result is persisted.
-- **Deterministic replay.** Reloading a session reproduces the same message sequence, which makes traces and exports authoritative.
+- **Authoritative history.** Reloading a session reads back the same persisted message sequence, which makes traces and exports authoritative.
 
 What it doesn't give you:
 
 - **Idempotence of side effects.** If your tool POSTs to an external API, the external API will see one call per *successful* execution but a retried-task scenario can still cause duplicates if a tool completes externally and crashes before persisting. Tools that have external side effects must include their own idempotency keys.
 - **Real-time latency guarantees.** Persisting every step adds tens of milliseconds per task. For agent workloads (already dominated by LLM latency) this is invisible; for hot-loop workloads it would be costly.
+
+## Durable turns in the Framework
+
+The same durable turn driver is available to Rust applications that embed the
+[Framework](/framework/), as an experimental opt-in. With the `everruns`
+crate's `durable` feature, `Engine::builder().backend(...)` replaces the
+default in-process backend with one that queues and checkpoints every step, on
+workers inside the application's own process. The queue lives in memory or in
+a PostgreSQL database that several processes may share. Without the feature,
+turns run in process and no durable engine is compiled. See [Durable turns
+(experimental)](/framework/sessions/#durable-turns-experimental) and
+[Framework Architecture](/framework/architecture/).
 
 ## When the database becomes the bottleneck
 
