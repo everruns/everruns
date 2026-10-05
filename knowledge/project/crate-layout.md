@@ -115,7 +115,7 @@ through the engine's transport-neutral `DurableRunner::from_store`;
 `tonic` or the internal protocol in durable-engine's normal and build edges. Worker-only
 core features (MCP, telemetry, OpenAI Agents API, tree-sitter outlines) are selected
 by the worker's own `everruns-core` edge, which the guard allows for feature selection
-only. The worker next runs the shared turn driver over its gRPC store. Why queue plus per-step checkpoint rather than
+only. The worker runs the shared turn driver (`TurnTaskDriver`) over its gRPC store. Why queue plus per-step checkpoint rather than
 `Workflow` replay is recorded in [Execution Backends](../framework/execution-backends.md).
 
 ### Core stays wasm-safe by default

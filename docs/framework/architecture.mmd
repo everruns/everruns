@@ -1,20 +1,41 @@
 flowchart TB
-    F["Everruns Framework<br/>Agent • Engine • Session"]
-    P["Everruns Platform<br/>Server • Worker"]
-    H["core::host<br/>InProcessExecution"]
-    D["everruns-durable<br/>DurableExecution"]
-    K["core::engine<br/>Execution • TurnExecution • Input / Reason / Act"]
+    F["Framework app<br/>everruns::Engine • Session<br/>durable feature: opt-in"]
+    S["Platform server<br/>schedules turns<br/>AgentRunner → DurableRunner"]
+    W["Platform worker<br/>claims steps over gRPC<br/>WorkerRuntimeHost"]
 
-    F -->|"create / resume / run"| H
-    P -->|"schedule / checkpoint / retry"| D
-    H -->|"implements Execution"| K
-    D -->|"implements Execution"| K
+    B["everruns-core host<br/>TurnBackend<br/>start_turn • cancel • is_running"]
+
+    I["InProcessBackend<br/>default, runs on the caller's task"]
+
+    subgraph DE["everruns-durable-engine (experimental)"]
+        DB["DurableBackend<br/>facade sessions, memory or PostgreSQL"]
+        DR["DurableRunner<br/>server-persisted input, implements TurnBackend"]
+        TD["TurnTaskDriver<br/>process_input • reason • act, checkpoint each step"]
+    end
+
+    K["core::engine<br/>Execution • TurnExecution<br/>Input / Reason / Act"]
+
+    D["everruns-durable<br/>task queue • event log • signals • timers • child workflows<br/>worker registry • DLQ • circuit breakers • schedules • Workflow executor<br/>generic engine, no everruns-* dependencies"]
+
+    M["In-memory store<br/>InMemoryWorkflowEventStore"]
+    P["PostgreSQL store<br/>PostgresWorkflowEventStore"]
+
+    F -->|"create / resume / send"| B
+    S -->|"start_turn"| B
+    B -->|"default"| I
+    B -->|"durable backend"| DE
+    W -->|"claims steps, gRPC TaskStore"| TD
+    I -->|"drives each step"| K
+    DE -.->|"same kernel"| K
+    DE -->|"TaskStore / WorkflowEventStore"| D
+    D --> M
+    D --> P
 
     classDef application fill:#F5F5F5,stroke:#0A0A0A,color:#0A0A0A
     classDef immediate fill:#F5F5F5,stroke:#1B7F4B,color:#0A0A0A
     classDef durable fill:#F5F5F5,stroke:#B45309,color:#0A0A0A
     classDef kernel fill:#F5F5F5,stroke:#0A1636,color:#0A0A0A
-    class F,P application
-    class H immediate
-    class D durable
-    class K kernel
+    class F,S,W application
+    class I immediate
+    class DB,DR,TD durable
+    class B,K kernel

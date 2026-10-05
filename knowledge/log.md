@@ -9,6 +9,15 @@
   integrations behind per-vendor features like `everruns-drivers`.
   Experimental (dev grade only). See [Modal Sandboxes](integrations/modal.md).
 
+* **Durability concepts point at the durable-engine crate.** Turn-driver
+  ownership (`DurableExecution`, `TurnTaskDriver`, turn conventions) is
+  recorded in `everruns-durable-engine` rather than the worker, the crate is
+  recorded as published, the durable schema's hash-marker skip and `connect`
+  are noted, and the crate dependency graph shows durable-engine between the
+  worker or facade and the generic engine. See
+  [Durable Execution Engine](operations/durable-execution-engine.md) and
+  [Execution Backends](framework/execution-backends.md).
+
 * **Proposed: one entity actions menu.** Every entity page gets one header
   overflow menu with fixed groups (entity actions, Record, Lifecycle) for
   secondary functions such as History and Manager notes. See
