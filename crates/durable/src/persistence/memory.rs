@@ -16,12 +16,15 @@ use crate::workflow::{WorkflowError, WorkflowEvent, WorkflowSignal};
 mod admin;
 mod circuit_breakers;
 mod dlq;
+mod end_watchers;
 mod event_log;
+mod inspect;
 mod schedules;
 mod signals;
 mod task_queue;
 mod task_table;
 mod workers;
+pub use end_watchers::WorkflowEndSubscription;
 use task_table::{TaskState, TaskTable};
 
 /// Internal workflow state
@@ -88,6 +91,7 @@ pub struct InMemoryWorkflowEventStore {
     schedules: RwLock<HashMap<Uuid, ScheduleMemState>>,
     schedule_executions: RwLock<HashMap<Uuid, ScheduleExecutionMemState>>,
     scheduler_instances: RwLock<HashMap<String, SchedulerInstanceInfo>>,
+    end_watchers: end_watchers::EndWatchers,
     #[cfg(test)]
     load_events_calls: AtomicUsize,
     #[cfg(test)]
@@ -108,6 +112,7 @@ impl InMemoryWorkflowEventStore {
             schedules: RwLock::new(HashMap::new()),
             schedule_executions: RwLock::new(HashMap::new()),
             scheduler_instances: RwLock::new(HashMap::new()),
+            end_watchers: Default::default(),
             #[cfg(test)]
             load_events_calls: AtomicUsize::new(0),
             #[cfg(test)]
@@ -122,49 +127,6 @@ impl InMemoryWorkflowEventStore {
         let mut store = Self::new();
         store.max_pending_tasks_per_workflow = limit;
         store
-    }
-
-    #[cfg(test)]
-    pub fn load_events_call_count(&self) -> usize {
-        self.load_events_calls.load(Ordering::Relaxed)
-    }
-
-    #[cfg(test)]
-    pub fn count_events_call_count(&self) -> usize {
-        self.count_events_calls.load(Ordering::Relaxed)
-    }
-
-    /// Get the number of workflows
-    pub fn workflow_count(&self) -> usize {
-        self.workflows.read().len()
-    }
-
-    /// Get the number of pending tasks
-    pub fn pending_task_count(&self) -> usize {
-        self.tasks.read().pending_total()
-    }
-
-    /// Make a claimed task look abandoned, so the next
-    /// [`reclaim_stale_tasks`](super::TaskQueue::reclaim_stale_tasks) returns
-    /// it whatever the threshold. Stands in for a worker that stopped
-    /// heartbeating.
-    pub fn expire_claim(&self, task_id: Uuid) {
-        self.tasks.write().update(task_id, |task| {
-            task.heartbeat_at = Some(chrono::DateTime::<Utc>::MIN_UTC);
-        });
-    }
-
-    /// Get the number of DLQ entries
-    pub fn dlq_count(&self) -> usize {
-        self.dlq.read().len()
-    }
-
-    /// Clear all data (for testing)
-    pub fn clear(&self) {
-        self.workflows.write().clear();
-        self.tasks.write().clear();
-        self.workers.write().clear();
-        self.dlq.write().clear();
     }
 }
 

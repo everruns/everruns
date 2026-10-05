@@ -109,8 +109,9 @@ pub use persistence::{
     ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
     SealedTaskInfo, SignalStore, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome,
     TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter,
-    WorkerInfo, WorkerRegistry, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter,
-    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus, no_progress_seal_threshold_from_env,
+    WorkerInfo, WorkerRegistry, WorkflowEndSubscription, WorkflowEventInfo, WorkflowEventStore,
+    WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    no_progress_seal_threshold_from_env,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,

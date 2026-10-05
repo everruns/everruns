@@ -2,6 +2,14 @@
 
 ## 2026-10-05
 
+* **Durable turn tickets wake on completion.** A `DurableRunner` ticket over
+  the memory store waits on a workflow-end signal the store fires at every
+  terminal status write, with a 1 s poll as the fallback, instead of a 50 ms
+  poll: a facade durable turn's single-session p50 drops from ~52 ms to
+  2.3 ms text and 5.7 ms tool (in process: 2.0 and 5.0). PostgreSQL tickets
+  still poll. See
+  [Execution Backends](framework/execution-backends.md#benchmark).
+
 * **Turn backend benchmark.** `crates/everruns/benches/turn_backends.rs`
   measures per-turn latency and throughput of the in-process and the durable
   memory backend with llmsim at zero model latency; the facade CI job runs its

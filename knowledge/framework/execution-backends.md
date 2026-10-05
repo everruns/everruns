@@ -117,10 +117,17 @@ runner; a facade session's messages go through the facade option below, which
 persists them itself.
 
 The workflow starts before `start_turn` returns, so a dropped ticket changes
-nothing. The ticket polls the workflow status until it ends (polling first; a
-notifier once several processes wait on tickets) and maps the end to a turn
+nothing. The ticket waits until the workflow ends and maps the end to a turn
 result: a parked turn reads as a completed one, as in process, and a cancelled
-workflow resolves as cancelled.
+workflow resolves as cancelled. It waits on the store's workflow-end signal
+when the store has one, re-reading the status on a long fallback poll in case
+a wakeup is lost. The memory store has one at its status writes, the single
+point every path that ends a workflow (driver completion, failed or dead task,
+cancel) passes through, so the facade's durable turns report back as soon as
+they end. PostgreSQL has none, because another process can end the workflow,
+so its tickets keep the short poll; nothing awaits the server's tickets today
+(the `AgentRunner` shim drops them), and a cross-process wakeup can come with
+the first caller that does.
 
 ### The facade option
 
@@ -192,29 +199,25 @@ durable rows at 4 workers, 16 workers within noise except where shown):
 
 | Scenario | Backend | c1 p50 ms | c1 turns/s | c16 turns/s | c64 turns/s | c64 p99 ms |
 |---|---|---:|---:|---:|---:|---:|
-| text | in process | 2.0 | 496 | 1113 | 1101 | 74 |
-| text | durable memory | 51.6 | 19 | 302 | 780 (970 at w16) | 113 |
-| tool | in process | 4.8 | 200 | 319 | 316 | 290 |
-| tool | durable memory | 51.5 | 19 | 263 | 294 | 310 |
+| text | in process | 2.0 | 498 | 1238 | 1268 | 66 |
+| text | durable memory | 2.3 | 436 | 864 (1019 at w16) | 894 (952 at w16) | 81 |
+| tool | in process | 5.0 | 198 | 338 | 351 | 258 |
+| tool | durable memory | 5.7 | 172 | 280 (300 at w16) | 282 (255 at w16) | 302 |
 
-- **The ticket poll is the durable backend's latency.** A durable turn waits
-  for the next 50 ms `TICKET_POLL_INTERVAL` tick after its workflow ends, so
-  one session gets at most ~19 turns/s. With the interval at 1 ms (measured,
-  not shipped) c1 is 3.7 ms text and 7.0 ms tool p50 (268 and 141 turns/s): the
-  queue, checkpoints and wakeups cost ~1.7 ms per text turn and ~2.3 ms per
-  tool turn over in process. A notifier on the workflow's terminal transition,
-  with the poll kept as the fallback, would recover that; it needs a hook on
-  every path that ends a workflow (driver, runner, cancel, dead task), so it is
-  follow-up work rather than a constant change.
-- **Under load both backends are CPU-bound** and close: at c64 throughput is
-  within ~10-30% and the poll no longer dominates.
+- **A durable turn costs ~0.4 ms (text) to ~0.8 ms (tool) over in process
+  for one session**: the queue, checkpoints and wakeups. Before tickets woke
+  on the workflow's end they polled every 50 ms, and that poll was almost all
+  of the durable latency: c1 p50 was 51.6 ms text and 51.5 ms tool (19
+  turns/s), and c16 throughput 302 and 263 turns/s.
+- **Under load both backends are CPU-bound** and close: at c16 and c64
+  durable throughput is ~70-90% of in process.
 - **Turn cost grows with session history on both backends**, which is why
   the bench keeps sessions to five turns: over a 100-turn session an
   in-process tool turn went from ~5 ms to ~85 ms p50.
 
 Run it with
 `cargo bench -p everruns --features durable --bench turn_backends`
-(about a minute; `-- --summary <file>` appends JSONL in the shape of
+(under half a minute; `-- --summary <file>` appends JSONL in the shape of
 `crates/durable/benches/baseline.jsonl`, which
 `scripts/lib/durable-bench-compare.sh <file> crates/everruns/benches/turn_backends_baseline.jsonl`
 compares). `-- --smoke` runs it in seconds. The bench target sets
