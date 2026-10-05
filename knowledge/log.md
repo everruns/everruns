@@ -2,6 +2,14 @@
 
 ## 2026-10-05
 
+* **Turn backend benchmark.** `crates/everruns/benches/turn_backends.rs`
+  measures per-turn latency and throughput of the in-process and the durable
+  memory backend with llmsim at zero model latency; the facade CI job runs its
+  smoke. The 50 ms ticket poll is the durable backend's single-session
+  latency (~52 ms p50 against ~2 ms in process; ~1.7 ms of real overhead with
+  the poll at 1 ms). See
+  [Execution Backends](framework/execution-backends.md#benchmark).
+
 * **Lua code-mode calls pass the target tool's policy.** `tools.<name>(...)`
   runs the act phase's pre-tool chain and the target's schema as the nested
   tool before running it, and the post-tool hooks on its result, and refuses
