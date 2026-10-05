@@ -915,14 +915,8 @@ impl TestServer {
             everruns_server::platform::system_email_sender(),
             auth_config.frontend_url.clone(),
         );
-        let session_schedules_state = api::session_schedules::AppState::new(
-            Arc::new(
-                everruns_server::domains::session_schedules::SessionScheduleService::new(
-                    db.clone(),
-                ),
-            ),
-            auth_state.clone(),
-        );
+        let session_schedules_state =
+            api::session_schedules::AppState::new(db.clone(), auth_state.clone());
         let notifications_state = if feature_flags.notifications {
             Some(api::notifications::AppState {
                 db: db.clone(),
