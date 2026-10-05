@@ -28,11 +28,14 @@ const MAX_ENVIRONMENT_DESCRIPTION_BYTES: usize = 10 * 1024;
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateEnvironmentRequest {
     /// Stable addressable name used by Agent environment references.
+    #[schema(example = "coding-daytona")]
     pub name: String,
     /// Human-readable name shown in management surfaces.
+    #[schema(example = "Coding - Daytona")]
     pub display_name: String,
     /// Optional explanation of the Environment's intended workload.
     #[serde(default)]
+    #[schema(example = "Recoverable coding workspace managed by Daytona")]
     pub description: Option<String>,
     /// Initial immutable execution profile revision.
     pub profile: crate::records::EnvironmentProfile,
@@ -42,9 +45,11 @@ pub struct CreateEnvironmentRequest {
 pub struct ReviseEnvironmentRequest {
     /// Replacement display name; omit to preserve the current value.
     #[serde(default)]
+    #[schema(example = "Coding - Daytona (large)")]
     pub display_name: Option<String>,
     /// Omit to preserve; send null to clear.
     #[serde(default, deserialize_with = "double_option")]
+    #[schema(example = "Larger recoverable workspace for repository builds")]
     pub description: Option<Option<String>>,
     /// Complete profile stored as the next immutable revision.
     pub profile: crate::records::EnvironmentProfile,
@@ -62,12 +67,15 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentTarget {
     /// Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`.
+    #[schema(example = "managed")]
     pub kind: String,
     /// Concrete provider, when the kind has one (`bashkit`, `daytona`, ...).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "daytona")]
     pub provider: Option<String>,
     /// Registered connection used by a machine target.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "conn_01933b5a000070008000000000000001")]
     pub connection_id: Option<String>,
 }
 
@@ -75,8 +83,10 @@ pub struct EnvironmentTarget {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentContainment {
     /// `none`, `native`, or `isolated`.
+    #[schema(example = "isolated")]
     pub level: String,
     /// Outbound network policy: `deny`, `allowlist`, or `allow`.
+    #[schema(example = "allow")]
     pub network: String,
 }
 

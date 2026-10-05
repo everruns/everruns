@@ -21,6 +21,7 @@ pub struct EnvironmentSet {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub policy: Option<EnvironmentPolicyMode>,
     /// Profile inherited when session creation does not choose one explicitly.
+    #[schema(example = "primary")]
     pub default: String,
     /// Human-authored profiles addressable by name at session creation.
     #[serde(default)]
@@ -106,9 +107,11 @@ pub struct EnvironmentTargetProfile {
     pub kind: EnvironmentTargetKind,
     /// Concrete adapter for target kinds with more than one implementation.
     #[serde(default, alias = "vendor", skip_serializing_if = "Option::is_none")]
+    #[schema(example = "daytona")]
     pub provider: Option<String>,
     /// Credential/transport binding for a registered machine target.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "conn_01933b5a000070008000000000000001")]
     pub connection_id: Option<String>,
     /// Provider-owned, non-secret configuration. Credentials are references,
     /// never values in this object.
@@ -257,6 +260,7 @@ pub enum EnvironmentDurability {
 pub struct EnvironmentLifecycle {
     /// Inactivity interval before applying `idle_action`.
     #[serde(default = "default_idle_after_seconds")]
+    #[schema(example = 300)]
     pub idle_after_seconds: u64,
     /// Action Everruns requests after the idle interval.
     #[serde(default)]
@@ -306,15 +310,19 @@ pub struct EnvironmentDefinition {
     #[schema(value_type = String)]
     pub public_id: EnvironmentId,
     /// Addressable name used in configuration.
+    #[schema(example = "coding-daytona")]
     pub name: String,
     /// Human-readable name shown in management surfaces.
+    #[schema(example = "Coding - Daytona")]
     pub display_name: String,
     /// Optional explanation of the Environment's intended workload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Recoverable coding workspace managed by Daytona")]
     pub description: Option<String>,
     /// Whether the definition is owned and sealed by the platform.
     pub is_managed: bool,
     /// Lifecycle state such as `active` or `archived`.
+    #[schema(example = "active")]
     pub status: String,
     /// Latest immutable revision used for new references.
     pub current_revision: EnvironmentRevision,
@@ -335,6 +343,7 @@ pub struct EnvironmentRevision {
     #[schema(value_type = String)]
     pub environment_id: EnvironmentId,
     /// Monotonically increasing revision number within the Environment.
+    #[schema(example = 3)]
     pub revision: i32,
     /// Complete immutable authored profile.
     pub profile: EnvironmentProfile,
