@@ -276,8 +276,7 @@ fn main() {
             vec![Load::new(1, 1, 3), Load::new(4, 1, 2)],
         )
     } else {
-        // Sized so a full run takes about a minute: the durable c1 rows wait
-        // out the ticket poll on every turn.
+        // Enough turns per row for a stable p99, in under half a minute.
         (
             vec![
                 Backend::InProcess,

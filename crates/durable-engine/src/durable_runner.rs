@@ -10,6 +10,8 @@ use everruns_durable::{
     DurableAdmin, EventLog, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, SignalStore,
     TaskQueue, WorkflowEvent, WorkflowSignal, WorkflowStatus,
 };
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -19,6 +21,10 @@ use uuid::Uuid;
 pub trait DurableTaskNotifier: Send + Sync {
     async fn notify_task_available(&self, activity_type: &str);
 }
+
+/// Resolves when a workflow next reaches a terminal status; see
+/// [`DurableStoreBackend::workflow_end_signal`].
+pub type WorkflowEndSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// Output metadata for durable turns.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -97,6 +103,21 @@ pub trait DurableStoreBackend: Send + Sync {
     ) -> Result<Option<serde_json::Value>> {
         let _ = workflow_id;
         Ok(None)
+    }
+
+    /// A signal that resolves when `workflow_id` next reaches a terminal
+    /// status, subscribed when this returns.
+    ///
+    /// A [`DurableRunner`] turn ticket takes it before each status read and
+    /// waits on it instead of the short poll, so a turn reports back as soon
+    /// as its workflow ends. The default returns `None`, for a store whose
+    /// workflows other processes may end (PostgreSQL); the ticket then polls
+    /// (see [`crate::turn_backend`]). A store that returns a signal must fire
+    /// it on every terminal transition this process makes; the ticket still
+    /// re-reads the status on a long fallback interval.
+    fn workflow_end_signal(&self, workflow_id: Uuid) -> Option<WorkflowEndSignal> {
+        let _ = workflow_id;
+        None
     }
 }
 
@@ -440,6 +461,14 @@ impl DurableStoreBackend for InMemoryDurableStore {
         workflow_id: Uuid,
     ) -> Result<Option<serde_json::Value>> {
         crate::turn_backend::latest_completion_output(&*self.store, workflow_id).await
+    }
+
+    /// The memory store ends workflows only in this process, so its end
+    /// subscription sees every terminal transition.
+    fn workflow_end_signal(&self, workflow_id: Uuid) -> Option<WorkflowEndSignal> {
+        Some(Box::pin(
+            self.store.subscribe_workflow_end(workflow_id).ended(),
+        ))
     }
 }
 

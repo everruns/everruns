@@ -18,9 +18,16 @@
 //! - `start_turn` creates or claims the workflow and enqueues its first task
 //!   before it returns. The ticket only observes, so a caller that drops it
 //!   (the `AgentRunner` shim always does) changes nothing.
-//! - The ticket polls the workflow status every [`TICKET_POLL_INTERVAL`]. A
-//!   push notification can replace the poll once more than one process waits
-//!   on tickets.
+//! - The ticket wakes on the store's workflow-end signal
+//!   ([`DurableStoreBackend::workflow_end_signal`]) when the store has one,
+//!   re-reading the status every [`TICKET_FALLBACK_POLL_INTERVAL`] in case a
+//!   wakeup is missed. The memory store has one: every path that ends a
+//!   workflow (driver completion, task failure, cancel, dead task) writes the
+//!   status through it, so its status writes are the one hook, and a
+//!   [`DurableBackend`](crate::DurableBackend) turn reports back as soon as
+//!   it ends. The PostgreSQL store has none, since another process may end
+//!   the workflow, so its tickets poll every [`TICKET_POLL_INTERVAL`]; the
+//!   server drops those tickets anyway (the `AgentRunner` shim).
 //! - The request's steering handle is closed at start: durable turns take
 //!   mid-turn input only as persisted messages plus wake signals.
 //!
@@ -57,12 +64,18 @@ use crate::durable_runner::{
 };
 use crate::host::TurnResult;
 
-/// How often a [`DurableRunner`] turn ticket re-reads its workflow status.
+/// How often a [`DurableRunner`] turn ticket re-reads its workflow status
+/// on a store without a workflow-end signal.
 ///
 /// Short enough that an awaited turn reports back promptly next to the
 /// LLM latency it waits on; long enough that a waiting ticket costs one
 /// status read per interval, not a busy loop on the store.
 pub const TICKET_POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+/// How often a ticket re-reads its workflow status while it waits on the
+/// store's workflow-end signal: only the fallback for a wakeup that never
+/// comes, so long enough to cost nothing while a turn runs.
+pub const TICKET_FALLBACK_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
 /// How many trailing workflow events to search for the latest
 /// `WorkflowCompleted`. It is the last event a turn appends, so a short tail
@@ -309,8 +322,8 @@ impl DurableRunner {
 
 #[async_trait]
 impl TurnBackend for DurableRunner {
-    /// Start the turn on the durable queue and return a ticket that polls
-    /// for its end. Serves only [`TurnInput::Persisted`]; see the module
+    /// Start the turn on the durable queue and return a ticket that
+    /// resolves when it ends. Serves only [`TurnInput::Persisted`]; see the module
     /// notes for the steering and mapping rules.
     async fn start_turn(&self, request: TurnRequest) -> Result<TurnTicket> {
         let TurnRequest {
@@ -465,7 +478,7 @@ struct EndedWorkflow {
     completion: Option<serde_json::Value>,
 }
 
-/// Poll `workflow_id` until it ends, then map the end to a turn result.
+/// Wait until `workflow_id` ends, then map the end to a turn result.
 async fn await_workflow(
     store: Arc<Mutex<dyn DurableStoreBackend>>,
     workflow_id: Uuid,
@@ -473,8 +486,11 @@ async fn await_workflow(
     baseline: TurnBaseline,
 ) -> Result<TurnResult> {
     loop {
-        let ended = {
+        let (ended, end_signal) = {
             let mut store = store.lock().await;
+            // Subscribe before reading the status, so an end that lands
+            // between the read and the wait still wakes this ticket.
+            let end_signal = store.workflow_end_signal(workflow_id);
             let (status, checkpoint, error) = store
                 .get_workflow_status(workflow_id)
                 .await
@@ -491,20 +507,27 @@ async fn await_workflow(
                 } else {
                     None
                 };
-                Some(EndedWorkflow {
+                let ended = EndedWorkflow {
                     status,
                     checkpoint,
                     error,
                     completion,
-                })
+                };
+                (Some(ended), None)
             } else {
-                None
+                (None, end_signal)
             }
         };
         if let Some(ended) = ended {
             return turn_result(ended, turn_id, baseline);
         }
-        tokio::time::sleep(TICKET_POLL_INTERVAL).await;
+        match end_signal {
+            // Woken or timed out, the next status read decides.
+            Some(end_signal) => {
+                let _ = tokio::time::timeout(TICKET_FALLBACK_POLL_INTERVAL, end_signal).await;
+            }
+            None => tokio::time::sleep(TICKET_POLL_INTERVAL).await,
+        }
     }
 }
 

@@ -131,7 +131,7 @@ pub use durable_backend::{DurableBackend, DurableSessionBackend};
 pub use durable_execution::DurableExecution;
 pub use durable_runner::{
     DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTaskNotifier, DurableTurnInput,
-    DurableTurnOutput, InMemoryDurableStore,
+    DurableTurnOutput, InMemoryDurableStore, WorkflowEndSignal,
 };
 pub use runner::{AgentRunner, RunnerBackend, create_runner_with_backend};
 pub use turn_driver::{TurnTaskDriver, TurnTaskHost};

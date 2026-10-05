@@ -41,6 +41,8 @@ uuid.workspace = true
 # Deterministic provider for the driver's end-to-end test over the in-process
 # runtime host (`turn_driver_tests`).
 everruns-llmsim = { workspace = true, features = ["host"] }
+# Paused clock for the ticket wakeup tests (`turn_backend_tests`).
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

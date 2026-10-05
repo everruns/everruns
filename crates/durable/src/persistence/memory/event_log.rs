@@ -202,36 +202,41 @@ impl EventLog for InMemoryWorkflowEventStore {
         result: Option<serde_json::Value>,
         error: Option<WorkflowError>,
     ) -> Result<(), StoreError> {
-        let mut workflows = self.workflows.write();
-        let workflow = workflows
-            .get_mut(&workflow_id)
-            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+        {
+            let mut workflows = self.workflows.write();
+            let workflow = workflows
+                .get_mut(&workflow_id)
+                .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
 
-        workflow.status = status;
-        if matches!(status, WorkflowStatus::Pending) {
-            workflow.result = result;
-            workflow.error = None;
-            workflow.started_at = None;
-            workflow.completed_at = None;
-        } else {
-            workflow.result = result;
-            workflow.error = error;
-            match status {
-                WorkflowStatus::Running => {
-                    if workflow.started_at.is_none() {
-                        workflow.started_at = Some(Utc::now());
+            workflow.status = status;
+            if matches!(status, WorkflowStatus::Pending) {
+                workflow.result = result;
+                workflow.error = None;
+                workflow.started_at = None;
+                workflow.completed_at = None;
+            } else {
+                workflow.result = result;
+                workflow.error = error;
+                match status {
+                    WorkflowStatus::Running => {
+                        if workflow.started_at.is_none() {
+                            workflow.started_at = Some(Utc::now());
+                        }
                     }
-                }
-                WorkflowStatus::Completed
-                | WorkflowStatus::Failed
-                | WorkflowStatus::Cancelled
-                | WorkflowStatus::ContinuedAsNew => {
-                    if workflow.completed_at.is_none() {
-                        workflow.completed_at = Some(Utc::now());
+                    WorkflowStatus::Completed
+                    | WorkflowStatus::Failed
+                    | WorkflowStatus::Cancelled
+                    | WorkflowStatus::ContinuedAsNew => {
+                        if workflow.completed_at.is_none() {
+                            workflow.completed_at = Some(Utc::now());
+                        }
                     }
+                    WorkflowStatus::Pending => {} // handled above
                 }
-                WorkflowStatus::Pending => {} // handled above
             }
+        }
+        if status.is_terminal() {
+            self.notify_workflow_ended(workflow_id);
         }
         Ok(())
     }
@@ -241,17 +246,20 @@ impl EventLog for InMemoryWorkflowEventStore {
         workflow_id: Uuid,
         error: WorkflowError,
     ) -> Result<bool, StoreError> {
-        let mut workflows = self.workflows.write();
-        let workflow = workflows
-            .get_mut(&workflow_id)
-            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
-        if workflow.status != WorkflowStatus::Running {
-            return Ok(false);
-        }
+        {
+            let mut workflows = self.workflows.write();
+            let workflow = workflows
+                .get_mut(&workflow_id)
+                .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+            if workflow.status != WorkflowStatus::Running {
+                return Ok(false);
+            }
 
-        workflow.status = WorkflowStatus::Failed;
-        workflow.error = Some(error);
-        workflow.completed_at = Some(Utc::now());
+            workflow.status = WorkflowStatus::Failed;
+            workflow.error = Some(error);
+            workflow.completed_at = Some(Utc::now());
+        }
+        self.notify_workflow_ended(workflow_id);
         Ok(true)
     }
 
@@ -305,6 +313,7 @@ impl EventLog for InMemoryWorkflowEventStore {
 
         // Save snapshot on the new workflow at sequence 0 (before the start event)
         drop(workflows);
+        self.notify_workflow_ended(old_workflow_id);
         let mut snapshots = self.snapshots.write();
         // Delete old workflow snapshots
         snapshots.remove(&old_workflow_id);
@@ -367,6 +376,7 @@ impl EventLog for InMemoryWorkflowEventStore {
             workflow.status = WorkflowStatus::Cancelled;
             workflow.completed_at = Some(Utc::now());
         }
+        self.notify_workflow_ended(workflow_id);
         self.cancel_pending_tasks_for_workflow(workflow_id).await?;
         Ok(())
     }

@@ -14,7 +14,7 @@ mod store;
 
 pub(crate) use db_failure::log_database_failure;
 
-pub use memory::InMemoryWorkflowEventStore;
+pub use memory::{InMemoryWorkflowEventStore, WorkflowEndSubscription};
 pub use postgres::PostgresWorkflowEventStore;
 pub use store::{
     CapacitySnapshot, CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow,
