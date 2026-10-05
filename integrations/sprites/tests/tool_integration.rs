@@ -6,12 +6,16 @@
 
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
+use everruns_contracts::runtime::leased_resource::{
+    LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
+};
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::runtime::{
     connection_services::UserConnectionResolver, session_services::KeyInfo,
-    session_services::SecretInfo, session_services::SessionStorageStore, tool_context::ToolContext,
+    session_services::LeasedResourceStore, session_services::SecretInfo,
+    session_services::SessionStorageStore, tool_context::ToolContext,
 };
-use everruns_contracts::typed_id::SessionId;
+use everruns_contracts::typed_id::{LeasedResourceId, SessionId};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,7 +27,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 use everruns_integrations_sprites as _;
 
 use everruns_integrations_sprites::client::SpritesClient;
-use everruns_integrations_sprites::state::SpriteState;
+use everruns_integrations_sprites::state::{
+    SpriteState, get_sprite_state, save_sprite_state, touch_sprite_lease,
+};
 
 // ============================================================================
 // Mock SessionStorageStore
@@ -84,6 +90,85 @@ impl SessionStorageStore for MockStorageStore {
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             })
+            .collect())
+    }
+}
+
+// ============================================================================
+// Mock LeasedResourceStore
+// ============================================================================
+
+struct MockLeasedResourceStore {
+    resources: Mutex<Vec<LeasedResource>>,
+}
+
+impl MockLeasedResourceStore {
+    fn new() -> Self {
+        Self {
+            resources: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl LeasedResourceStore for MockLeasedResourceStore {
+    async fn upsert_resource(&self, input: UpsertLeasedResource) -> Result<LeasedResource> {
+        let now = chrono::Utc::now();
+        let resource = LeasedResource {
+            id: LeasedResourceId::new(),
+            session_id: Some(input.session_id),
+            provider: input.provider,
+            resource_type: input.resource_type,
+            external_id: input.external_id,
+            display_name: input.display_name,
+            status: LeasedResourceStatus::Active,
+            owner_user_id: input.owner_user_id,
+            lease_duration_seconds: input.lease_duration_seconds,
+            last_touched_at: now,
+            lease_expires_at: now
+                + chrono::TimeDelta::seconds(i64::from(input.lease_duration_seconds)),
+            cleanup_started_at: None,
+            cleanup_completed_at: None,
+            cleanup_attempts: 0,
+            last_cleanup_error: None,
+            metadata: input.metadata,
+            created_at: now,
+            updated_at: now,
+        };
+        self.resources.lock().await.push(resource.clone());
+        Ok(resource)
+    }
+
+    async fn release_resource(
+        &self,
+        session_id: SessionId,
+        provider: &str,
+        resource_type: &str,
+        external_id: &str,
+    ) -> Result<Option<LeasedResource>> {
+        let mut resources = self.resources.lock().await;
+        let resource = resources.iter_mut().find(|resource| {
+            resource.session_id == Some(session_id)
+                && resource.provider == provider
+                && resource.resource_type == resource_type
+                && resource.external_id == external_id
+        });
+        if let Some(resource) = resource {
+            resource.status = LeasedResourceStatus::Released;
+            resource.updated_at = chrono::Utc::now();
+            return Ok(Some(resource.clone()));
+        }
+        Ok(None)
+    }
+
+    async fn list_resources(&self, session_id: SessionId) -> Result<Vec<LeasedResource>> {
+        Ok(self
+            .resources
+            .lock()
+            .await
+            .iter()
+            .filter(|resource| resource.session_id == Some(session_id))
+            .cloned()
             .collect())
     }
 }
@@ -541,4 +626,77 @@ async fn test_exec_with_nonzero_exit() {
     let result = client.exec("err-sprite", "foobar", None).await.unwrap();
     assert_eq!(result.exit_code, 127);
     assert!(result.stderr.contains("command not found"));
+}
+
+// ============================================================================
+// Session ownership (EVE-1170)
+// ============================================================================
+
+/// A `sprites_sprite:` secret naming a sprite this session never leased must be
+/// rejected, while the session's own sprite (registered via the create path's
+/// save + lease helpers) stays usable.
+#[tokio::test]
+async fn test_forged_sprite_state_rejected_own_sprite_usable() {
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let leased_resources = Arc::new(MockLeasedResourceStore::new());
+    let context = ToolContext::with_storage_store(session_id, store.clone())
+        .with_connection_resolver(sprites_resolver())
+        .with_leased_resource_store(leased_resources);
+
+    // Own sprite: same helpers sprites_create_sprite uses.
+    let own = SpriteState {
+        sprite_name: "own-sprite".to_string(),
+        workspace_path: "/home/sprite".to_string(),
+        started_at: "2026-03-23T10:00:00Z".to_string(),
+        service_url: None,
+    };
+    save_sprite_state(&context, &own).await.unwrap();
+    touch_sprite_lease(&context, &own, Some("own-sprite".to_string()))
+        .await
+        .unwrap();
+
+    // Forged state for a sprite owned elsewhere, with no lease in this session.
+    setup_context_with_sprite(session_id, &store, "foreign-sprite").await;
+
+    let state = get_sprite_state(&context, "own-sprite").await.unwrap();
+    assert_eq!(state.sprite_name, "own-sprite");
+
+    match get_sprite_state(&context, "foreign-sprite").await {
+        Err(ToolExecutionResult::ToolError(msg)) => {
+            assert!(
+                msg.contains("was not created by this session"),
+                "Got: {msg}"
+            );
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+
+    // Tools that act on a sprite name reject the forged entry before any API call.
+    let exec = get_tool("sprites_exec");
+    let result = exec
+        .execute_with_context(
+            json!({"sprite_name": "foreign-sprite", "command": "ls"}),
+            &context,
+        )
+        .await;
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(
+                msg.contains("was not created by this session"),
+                "Got: {msg}"
+            );
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+
+    // Listing skips the forged entry.
+    let list = get_tool("sprites_list_sprites");
+    match list.execute_with_context(json!({}), &context).await {
+        ToolExecutionResult::Success(output) => {
+            assert_eq!(output["count"], 1, "Got: {output}");
+            assert_eq!(output["sprites"][0]["sprite_name"], "own-sprite");
+        }
+        other => panic!("Expected Success, got: {other:?}"),
+    }
 }
