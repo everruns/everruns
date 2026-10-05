@@ -8,6 +8,11 @@ tags:
 ---
 # Agent Versions
 
+> Proposed retirement: [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)
+> replaces versions with entity history and restore to any point, and drops
+> publishing, semver and pinning. This concept describes the current model
+> until that phase lands.
+
 ## Abstract
 
 Agent versions are immutable snapshots of an Agent configuration. They support audit history, rollback, forks, and per-exposure deployment policies without changing the editable Agent draft model.

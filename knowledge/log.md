@@ -2,6 +2,16 @@
 
 ## 2026-10-05
 
+* **Proposed: one entity actions menu.** Every entity page gets one header
+  overflow menu with fixed groups (entity actions, Record, Lifecycle) for
+  secondary functions such as History and Manager notes. See
+  [Entity Actions Menu](ui/entity-actions-menu.md).
+
+* **Proposed: entity history replaces agent versions.** Every change stores a
+  secret-free snapshot (secrets as keyed fingerprints), any point can be
+  restored, and public versions, semver and pinning are retired. See
+  [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
+
 * **The durable framework backend runs on PostgreSQL.**
   `durable::Backend::postgres(store)` runs facade turns on a shared
   `everruns-durable` PostgreSQL store. Each backend instance claims only the

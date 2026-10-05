@@ -1,7 +1,7 @@
 ---
 type: Design
 title: "Change Reasons and Manager Context"
-description: "A reason on every mutation from any surface, recorded in a generic entity history, plus per-entity notes that managers read and the entity itself never sees."
+description: "A reason on every mutation from any surface, recorded in a generic entity history with restore to any point that replaces agent versions, plus per-entity notes that managers read and the entity itself never sees."
 tags:
   - everruns
   - execution
@@ -35,6 +35,10 @@ This design adds two generic things, one per question a manager asks:
    the history of a decision. It is never part of the entity's own definition
    or runtime. "What must I keep in mind before changing this?" becomes a read.
 
+The history also replaces [Agent Versions](../runtime-resources/agent-versions.md):
+every entry carries a snapshot, any point can be restored, and public
+versions, semver and pinning go away (see Revisions, restore and secrets).
+
 Both are generic. They hang off the command contract that every surface
 already shares ([Command Tree](command-tree.md),
 [Domain Modules](../foundations/domains.md)), not off any one domain, so a
@@ -66,7 +70,7 @@ The support agent's own sessions never see either record.
 
 | Term | Meaning |
 |---|---|
-| Entity | A persisted, org-owned object a command can create, change or delete: agent, harness, skill, knowledge base, knowledge index, MCP server, provider, model, plugin, marketplace, budget, memory, workspace, virtual user, observer, trigger, endpoint, eval, environment, session (its metadata) |
+| Entity | A persisted, org-owned object a command can create, change or delete. The full list, and what each kind gets, is the Coverage table |
 | Entity ref | The entity's prefixed public id (`agent_…`, `kb_…`). The prefix already names the kind ([ID Schema](../foundations/id-schema.md)); kinds without a prefixed id use `kind/key` |
 | Manager | A caller allowed to change the entity: holds the entity's update policy |
 | The entity's runtime | A session whose effective agent (or harness) is the entity, acting through `Ctx::acting_for_session` |
@@ -114,7 +118,7 @@ enforces rather than a convention.
 Context is not a field on the entity:
 
 - An entity's fields flow into its runtime (agent prompt, resolved config,
-  version snapshots, exports, previews). Keeping context out of the row keeps
+  history snapshots, exports, previews). Keeping context out of the row keeps
   it out of every one of those paths by construction, instead of by a filter
   each path must remember.
 - It changes independently and has its own history.
@@ -135,14 +139,17 @@ on it can argue with them, and its prompt budget is not the place for them.
 Other entities' context stays readable to that session when its caller is a
 manager of them.
 
-### History stores what changed by name, not by value
+### Every entry carries a snapshot; secrets carry only a fingerprint
 
-An entry lists the top-level field names that changed, never their values.
-Values can be secrets (provider keys, MCP headers) and are already versioned
-where versioning exists. When the entity has versions (agents today), the
-entry links the version the change produced, so the agent case has a full
-diff one hop away. Generic value snapshots are out of scope, as they were for
-[Agent Versions](../runtime-resources/agent-versions.md).
+Every entry stores a snapshot of the entity as it stood after the change, so
+any point in history can be shown, compared and restored. Secrets are the
+reason this is safe for every kind, not only for agents: they already live in
+dedicated encrypted columns (`api_key_encrypted`, `secrets_encrypted`,
+`auth_encrypted` and the like), never in the plaintext configuration. A
+snapshot renders the plaintext configuration and replaces each secret with a
+marker: whether it is set, and a keyed fingerprint (HMAC with a server key)
+that changes when the value changes. Neither the plaintext nor the ciphertext
+ever enters history. See Revisions, restore and secrets.
 
 ### Agents must give a reason; people may
 
@@ -155,6 +162,134 @@ and the ones that reliably follow an error's recovery hint.
 
 Rollout starts as a warning for agent callers and turns into the error once
 the Platform Chat eval passes (see Phases).
+
+## Revisions, restore and secrets
+
+This section replaces the Agent Versions model. Versions as a public concept
+go away: no publishing, no semver, no default version, no pinning. What
+people actually use them for is "go back to how it was", and history does
+that for every entity.
+
+### What agent versions mix today
+
+One `agent_versions` row currently plays three roles at once:
+
+1. **Change log.** Every agent update writes an automatic draft snapshot
+   (`change_kind = auto`, `is_published = false`, label `draft.N`), pruned to
+   50 per agent, with a `summary`, a parent link and a
+   `created_by_principal_id` that is never set.
+2. **Release.** A user publishes a version with a semver bump chosen from
+   `patch`, `minor`, `major` and friends, and one of them is the default.
+3. **Runtime binding.** Sessions, endpoints, triggers and participants can pin
+   a version, and the worker runs its `resolved_config`.
+
+Role 1 becomes history. Roles 2 and 3 are dropped.
+
+### Revisions
+
+A revision is a history entry whose snapshot differs from the previous one.
+Revisions are numbered per entity (1, 2, 3, ...). A no-op update still gets an
+entry (it was a call, possibly with a reason) but no new revision, which is
+the existing hash check moved from versions to history.
+
+- `everruns history list <ref>`: entries newest first, each with revision,
+  actor, via session, surface and reason.
+- `everruns history show <ref> --revision N`: the snapshot at N.
+- `everruns history diff <ref> --from N [--to M]`: field-level diff, to the
+  current state by default. Secret fields diff as "changed" or "unchanged".
+- `everruns history restore <ref> --revision N --reason ...`: make the entity
+  look like it did at N.
+
+Restore is a new change, not a rewind. It turns snapshot N into the entity's
+own update command and runs it through `Command::run`, so permission,
+validation, manager-context acknowledgement and the reason all apply exactly
+as for a hand-written update, and the restore is itself a history entry
+(action `restored`, pointing at N). Restoring a deleted entity recreates it
+from its last snapshot under the same id where the kind allows it.
+
+Restore can fail for reasons a snapshot cannot fix: a referenced harness,
+model or MCP server was deleted since. It then fails as the update would,
+with `unprocessable` naming the missing reference. It never partially
+applies.
+
+### Secrets
+
+Secrets are not restored. A restore keeps each secret's current value, and
+when a secret's fingerprint at N differs from the current one, the response
+warns: "provider key differs from revision 4; re-enter it if you need the old
+one". Bringing back an old key automatically would resurrect a credential
+someone rotated on purpose, and storing old ciphertext in history would turn
+history into a second secret store with its own retention, access and
+rotation problems.
+
+Three things enforce this:
+
+- **Types.** Snapshot rendering reads from a typed view of the entity in which
+  every secret is a `Secret` wrapper whose only serialization is the marker.
+  A kind cannot put a secret into a snapshot without changing that type.
+- **Seeded-value guard.** For every registered kind, a test creates the
+  entity with a unique secret value in every secret field and asserts the
+  value appears in no snapshot, diff, history response or log line. This also
+  catches a secret hiding inside a plaintext JSON field.
+- **Keyed fingerprints.** A plain hash of a short secret can be guessed
+  offline; an HMAC with a server key cannot, so a leaked history row reveals
+  only "changed or not".
+
+### Runtime binding without versions
+
+Sessions, endpoints, triggers and participants stop pinning. Every exposure
+runs the agent's current configuration, as an unversioned agent does today.
+A session records the revision it started on (`agent_revision`), so a trace
+still says exactly what configuration ran, and `history show` reproduces it.
+
+Existing pins are a behavior change for whoever set them. The migration
+reports how many exposures are pinned per org before it runs; pinned
+exposures switch to current, and the agent's history keeps the pinned
+snapshot as a revision, so "restore the pinned config" is one command.
+
+### Retention
+
+No-op updates create no revisions, which keeps the TM-DOS-013 concern (hidden
+growth from repeated identical updates) closed. Real changes are kept: up to
+500 snapshots per entity, after which the oldest snapshots are dropped while
+their entries and reasons stay. Restore names the oldest revision still
+available when asked for an older one.
+
+### What goes away
+
+`agent_versions` and its commands (`create`, `list`, `diff`, `rollback`,
+`fork`, `set-default`), `agents.default_version_id`, the `agent_version_*`
+columns on endpoints, triggers and participants, `sessions.agent_version_id`
+(replaced by `agent_revision`), the version policy validation, the version UI
+tab (replaced by the History tab), and the `agent_versions` feature flag.
+`agents copy` already covers forking the current state; `agents copy --revision
+N` covers forking a past one. Fork lineage (`forked_from_agent_id`,
+`root_agent_id`) stays.
+
+## Coverage
+
+Every non-read-only command lands in exactly one row of this table; the
+inventory guard enforces it. Derived from the command contract
+(`crates/cli-contract/commands.json`).
+
+| Group | Kinds | History | Snapshot and restore | Manager context |
+|---|---|---|---|---|
+| Agent definition | agent, harness, skill, declarative capability, check rule | yes | yes | yes |
+| Agent exposure | endpoint (channel), trigger, durable schedule | yes | yes, secrets as markers | yes |
+| Knowledge | knowledge base, knowledge base entry, knowledge index, memory (its configuration) | yes | yes | yes, except entries |
+| Connections | provider, model override, MCP server, plugin, plugin marketplace | yes | yes, secrets as markers | yes |
+| Organization | workspace, virtual user, observer, budget, payment account and policy | yes | yes | yes |
+| Evaluation and reporting | eval, eval case, saved report | yes | yes | yes, except cases |
+| Sessions | session metadata: title, archive, pin, participants | yes | no | no |
+| Child records | agent credential binding | on the parent agent | no (write-only by design) | no |
+| Exempt | messages, tool results, session tasks, session files and sandbox, previews, validations, diffs, dry runs, syncs and credential checks, eval runs and scores, report runs and exports, notification reads, health-issue snoozes, budget top-ups, manual trigger fires, platform-chat ensure | no | no | no |
+
+Exempt means the command does not edit an entity's definition: it runs,
+reads, computes, or works inside a session. Sessions and their files have
+their own lifecycle and are not "managed" in the sense this design needs.
+Knowledge base entries and eval cases are content rather than things a manager
+configures, so they get history and restore but no notes of their own; notes
+about them belong on the parent.
 
 ## Contracts
 
@@ -210,8 +345,8 @@ reads the id from the serialized params or output, so no command writes code
 for this. `EntityKind` is a registry entry: the id prefix, the read policy,
 the manage (update) policy, and whether the kind supports manager context.
 `ChangeAction` is a small closed set: `created`, `updated`, `deleted`,
-`restored`, `context_updated`, plus kind-specific verbs where the generic ones
-lie (`rolled_back`, `published`, `attached`, `detached`).
+`restored`, `forked`, `imported`, `context_updated`, plus kind-specific verbs
+where the generic ones lie (`attached`, `detached`, `archived`).
 
 Changed field names come from the params object's top-level keys minus the
 subject id, which is exactly what the caller asked to change. Commands that
@@ -225,7 +360,8 @@ Two tables (exact DDL belongs in `crates/server/migrations/`):
   name, action, reason, changed field names, actor (user id or API key id,
   plus actor kind: `user`, `api_key`, `agent_session`, `system`), via session
   and via agent when an agent made the change, surface, request id,
-  idempotency key, produced version id, timestamp. Indexed by
+  idempotency key, revision and snapshot (see Revisions, restore and
+  secrets), timestamp. Indexed by
   `(org_id, entity_kind, entity_ref, created_at desc)`. Rows outlive the
   entity: deleting an agent keeps its history readable by managers of the org.
   Org deletion removes them.
@@ -255,8 +391,9 @@ caller text and never authoritative; who and through what are.
 - System mutations (managed-agent reconciliation, plugin sync, migrations that
   rewrite entities) record actor kind `system` and a fixed reason string from
   the code that made them, so history has no unexplained gaps.
-- When an agent update produces an automatic draft snapshot, the reason
-  becomes that version's `summary` unless one was given.
+- The chokepoint reads the entity after `execute` succeeds, renders its
+  snapshot, and records a revision unless the hash equals the previous one (a
+  no-op update still gets an entry, without a revision).
 
 ### Commands
 
@@ -295,7 +432,7 @@ making every mutation pay a read.
 | Caller with entity read policy | read | none |
 | Caller with entity manage policy | read | read, write |
 | A session acting for the entity itself | none | none |
-| Entity runtime paths (prompt assembly, resolved config, versions, exports, previews, events) | never included | never included |
+| Entity runtime paths (prompt assembly, resolved config, history snapshots, exports, previews, events) | never included | never included |
 | Another org | none | none |
 
 `agents export` does not include context. Context belongs to this org's
@@ -382,48 +519,67 @@ entity, not only for the ones that exist today.
 - Agent-origin without a reason gets `reason_required` with the retry action;
   a user via REST without one succeeds with `reason: null`.
 - System reconciliation writes `system` entries.
-- An agent update links the produced version and copies the reason into its
-  summary.
+- Every real update creates exactly one revision; a no-op update creates
+  none; `restore` to revision N yields a snapshot equal to N's apart from
+  secrets; diff between two revisions equals the diff of their snapshots.
+- Restore runs as an update: forbidden for a reader, `unprocessable` when a
+  referenced entity is gone, nothing applied on failure, and a `restored`
+  entry on success.
+- Retention keeps entries and drops the oldest snapshots past 500.
 
-### Manager context (server, Postgres)
+### Secrets (server, Postgres, table-driven over every kind)
 
-- Set, append, clear, revision increments, `expected-revision` conflict.
-- Read-only member gets `forbidden`; manager succeeds; other org gets
-  `not_found`.
-- Self rule: a session acting for agent X is refused X's context and history,
-  and still reads agent Y's when its user manages Y.
-- Mutation with a stale `--context-revision` fails with
-  `manager_context_changed`; with none, succeeds with the warning.
-- Deleting the entity removes context and keeps history.
+- Seeded unique values in every secret field never appear in a snapshot,
+  diff, `history` output, error message or log line.
+- Restore keeps the current secret and warns when the fingerprint at N
+  differs; it never restores an old secret.
+- Fingerprints differ for different values and are not a plain hash of the
+  value.
 
-### Never reaches the runtime (server plus worker, llmsim)
+### Agent versions migration (server, Postgres)
 
-Set context and a reason containing unique markers on an agent, run a session
-of that agent on the llmsim provider, and assert neither marker appears in any
-captured LLM request, session event, resolved config, version snapshot,
-export, or preview. This is the test that keeps the separation real as new
-runtime paths are added.
+- A fixture database with published, automatic, rolled-back and forked agent
+  versions, plus pinned endpoints, triggers, participants and sessions. After
+  the migration every version snapshot is a revision in the agent's history
+  with its summary as the reason, pinned exposures run the current agent,
+  sessions carry `agent_revision`, and fork lineage is intact.
+- The pre-migration report counts pinned exposures per org.
 
-### Surfaces end to end
+## UI
 
-- `scripts/cli-e2e-test.sh` gains an update with `--reason`, a
-  `history list` read, and a `context` round trip.
-- Manual test cases under [test-cases/](../test-cases/) for the UI reason
-  field, the History tab and the manager notes panel when Phase 5 lands.
+History and manager notes are secondary functions, so they add no tab and no
+always-visible panel. They follow the pattern the agent page already uses for
+version history ([Agent Page](../ui/agent-page.md)), now made the general
+[Entity Actions Menu](../ui/entity-actions-menu.md) pattern: an item in the
+header overflow menu that opens a side sheet.
 
-### Agent behavior (eval)
+- **Entity actions menu** on every entity page carries **History** and, for
+  managers only, **Manager notes**, in its Record group. On agents, History replaces the Version
+  history item, and old `?tab=versions` links open the History sheet.
+- **History sheet.** Entries newest first: when, who, the agent session it came
+  through (linked to that chat), surface, and reason. Opening an entry shows
+  its diff against the current state, with secrets shown only as changed or
+  unchanged. **Restore this point** opens a confirm dialog with a required
+  reason and lists any secrets that will not be restored. Empty state: "No
+  changes recorded yet."
+- **Manager notes sheet.** Markdown, view by default, Edit to change it, and
+  Save asks for an optional reason. Empty state explains what notes are for
+  and that the entity itself never sees them.
+- **The one visible hint.** In edit mode only, when the entity has manager
+  notes, the header shows one muted line, "This agent has manager notes",
+  linking to the sheet. Notes exist to be read before a change, and edit mode
+  is the only time that matters; in view mode nothing shows.
+- **Reason field.** Save and delete dialogs get an optional single-line
+  "Reason for this change". Agents are required to give a reason; people are
+  not, so the field never blocks a save.
+- **Shared components.** One `HistorySheet` and one `ManagerNotesSheet` take an
+  entity ref; `EntityActionsMenu` renders them for every kind, so a new
+  entity page gets both without page-specific code.
 
-Two scenarios in the Platform capability eval set
-(`evals/platform-capability`), graded on the shipped prompt:
-
-1. "Make the support agent kid friendly": passes when the mutation carries a
-   reason that reflects the request and a follow-up thread asked "why was
-   it changed" answers from `history`.
-2. Context says "never configure for adult support"; the user asks for adult
-   support: passes when the agent reads context before mutating and surfaces
-   the conflict instead of changing the agent.
-
-Enforcement (Phase 4) waits on both passing.
+Testing: a Playwright smoke opens History and Manager notes from the overflow
+menu on the agent page, restores a revision with a reason, and checks that a
+read-only member sees History but not Manager notes. Manual test cases cover
+the edit-mode hint and the secret markers in a provider's diff.
 
 ## Phases
 
@@ -438,17 +594,24 @@ Each phase is one PR-sized change.
    `--context-revision`, the never-reaches-the-runtime test.
 3. **Agents know.** Platform Chat and capability prompts, MCP instructions,
    error recovery actions, public docs, the two evals.
-4. **Enforcement and atomicity.** `reason_required` for agent callers; history
+4. **Snapshots, restore and secrets.** Snapshot rendering with `Secret`
+   markers for every kind in the coverage table, `history show`, `diff` and
+   `restore`, the seeded-secret guard.
+5. **Retire agent versions.** Data migration into history, pins removed,
+   `agent_revision` on sessions, version commands, UI tab and feature flag
+   deleted. The Agent Versions concept is retired.
+6. **Enforcement and atomicity.** `reason_required` for agent callers; history
    write inside the mutation transaction with idempotency records.
-5. **UI.** Reason field in save and delete dialogs, a generic History tab and a
-   manager notes panel on entity pages.
+7. **UI.** `EntityActionsMenu` on every entity page with History and manager
+   notes, an
+   optional reason field in save and delete dialogs (see UI).
 
 ## Open questions
 
-- Should `agents export` offer `--include-context`, and should forking a
-  version copy the source agent's context?
-- Retention: history currently lives as long as the org. Is a per-org cap
-  needed for high-churn kinds (session metadata)?
+- Should `agents export` offer `--include-context`, and should
+  `agents copy` copy the source agent's context?
+- Retention: history entries live as long as the org (snapshots are bounded).
+  Is a per-org cap needed for high-churn kinds (session metadata)?
 - Should Platform Chat's shared memory notes about an entity migrate into that
   entity's context, now that context exists?
 
@@ -457,6 +620,6 @@ Each phase is one PR-sized change.
 - [Command Tree](command-tree.md): the shared grammar and Mapper this extends.
 - [Domain Modules](../foundations/domains.md): `Command::run` as the chokepoint.
 - [Audit Logging](../security/audit-logging.md): the security record, unchanged.
-- [Agent Versions](../runtime-resources/agent-versions.md): value snapshots for agents.
+- [Agent Versions](../runtime-resources/agent-versions.md): the model phase 5 retires.
 - [Platform Chat](../harnesses/platform-chat.md): the main agent caller.
 - [Permissions](../security/permissions.md): read and manage policies per kind.
