@@ -260,6 +260,42 @@ impl TaskStore for BackendTaskStore {
             .await
     }
 
+    async fn enqueue_claimed_task_and_record(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+        worker_id: &str,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
+        let Some(routing) = &self.routing else {
+            return self
+                .inner
+                .enqueue_claimed_task_and_record(
+                    workflow_id,
+                    activity_id,
+                    activity_type,
+                    input,
+                    worker_id,
+                )
+                .await;
+        };
+        let mut claimed = self
+            .inner
+            .enqueue_claimed_task_and_record(
+                workflow_id,
+                activity_id,
+                routing.route(&activity_type),
+                input,
+                worker_id,
+            )
+            .await?;
+        if let Some(task) = &mut claimed {
+            task.activity_type = unroute(&task.activity_type).to_string();
+        }
+        Ok(claimed)
+    }
+
     async fn update_workflow_status(
         &self,
         workflow_id: Uuid,

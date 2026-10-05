@@ -95,6 +95,10 @@ pub struct TaskWorkerConfig {
     pub grpc_address: String,
     /// Timeout for initial connection to control-plane gRPC.
     pub connect_timeout: Duration,
+    /// Run a turn's next step on this worker right away, enqueued already
+    /// claimed, instead of through the queue (`WORKER_CHAIN_STEPS`, on by
+    /// default). See the turn driver's module notes.
+    pub chain_steps: bool,
 }
 
 impl Default for TaskWorkerConfig {
@@ -118,6 +122,7 @@ impl Default for TaskWorkerConfig {
             worker_group: None,
             grpc_address: "127.0.0.1:9001".to_string(),
             connect_timeout: Duration::from_secs(30),
+            chain_steps: true,
         }
     }
 }
@@ -183,6 +188,7 @@ impl TaskWorkerConfig {
                 "WORKER_GRPC_CONNECT_TIMEOUT",
                 defaults.connect_timeout,
             ),
+            chain_steps: env_or("WORKER_CHAIN_STEPS", defaults.chain_steps),
             ..defaults
         }
     }
@@ -231,6 +237,7 @@ where
             poll_interval_ms = config.poll_interval.as_millis(),
             poll_backoff_max_ms = config.poll_backoff_max.as_millis(),
             heartbeat_interval_ms = config.heartbeat_interval.as_millis(),
+            chain_steps = config.chain_steps,
             "Initialized unified worker"
         );
 
@@ -239,7 +246,8 @@ where
             WorkerTurnHost(adapters),
             config.worker_id.clone(),
             config.heartbeat_interval,
-        );
+        )
+        .chain_steps(config.chain_steps);
 
         Self {
             config,

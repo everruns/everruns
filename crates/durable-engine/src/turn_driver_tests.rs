@@ -44,7 +44,35 @@ const TURN_ACTIVITIES: [&str; 3] = ["process_input", "reason", "act"];
 #[tokio::test]
 async fn driver_runs_a_tool_turn_to_completion_on_the_memory_store() {
     // First reason calls a tool, the act step answers it, the second reason
-    // gives the final answer: process_input -> act -> reason.
+    // gives the final answer: process_input -> act -> reason, each claimed
+    // from the queue.
+    let (claimed, store) = run_tool_turn(false).await;
+    assert_eq!(claimed, ["process_input", "act", "reason"]);
+    assert_eq!(completed_steps(&store).await, 3);
+}
+
+#[tokio::test]
+async fn a_chaining_driver_runs_every_step_from_one_claim() {
+    // The first claim runs the whole turn: each next step is enqueued claimed
+    // by the same worker, and nothing is left in the queue.
+    let (claimed, store) = run_tool_turn(true).await;
+    assert_eq!(claimed, ["process_input"]);
+    assert_eq!(completed_steps(&store).await, 3);
+}
+
+/// Completed task rows: every step keeps its own row when chained.
+async fn completed_steps(store: &InMemoryWorkflowEventStore) -> usize {
+    TaskQueue::list_tasks(store, Default::default(), Default::default())
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|task| task.status == crate::durable::TaskStatus::Completed)
+        .count()
+}
+
+/// Run the tool turn, claiming from the queue until it is empty. Returns the
+/// activity types claimed from the queue, and the store.
+async fn run_tool_turn(chain: bool) -> (Vec<String>, Arc<InMemoryWorkflowEventStore>) {
     let runtime = InProcessRuntime::builder()
         .llm_sim_as_default(
             LlmSimConfig::sequence(vec!["checking".into(), "durable done".into()])
@@ -123,7 +151,8 @@ async fn driver_runs_a_tool_turn_to_completion_on_the_memory_store() {
         RuntimeHosts(runtime.clone()),
         "worker",
         Duration::from_secs(30),
-    );
+    )
+    .chain_steps(chain);
     let activity_types = TURN_ACTIVITIES.map(String::from);
     let mut ran = Vec::new();
     for _ in 0..10 {
@@ -137,7 +166,6 @@ async fn driver_runs_a_tool_turn_to_completion_on_the_memory_store() {
         ran.push(task.activity_type);
     }
 
-    assert_eq!(ran, ["process_input", "act", "reason"]);
     assert_eq!(
         EventLog::get_workflow_status(&*store, workflow_id)
             .await
@@ -150,4 +178,5 @@ async fn driver_runs_a_tool_turn_to_completion_on_the_memory_store() {
         last.content_to_llm_string().contains("durable done"),
         "final answer persisted: {last:?}"
     );
+    (ran, store)
 }

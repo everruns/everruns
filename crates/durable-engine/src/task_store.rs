@@ -6,7 +6,7 @@
 //! because that type does not implement `WorkflowEventStore`.
 
 use crate::durable::{
-    ActivityOptions, ClaimedTask, EventLog, HeartbeatResponse, SignalStore, StoreError,
+    ActivityOptions, ClaimedTask, Enqueued, EventLog, HeartbeatResponse, SignalStore, StoreError,
     TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
     WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event, record_activity_completed,
     record_activity_failed, record_activity_started, record_workflow_failed,
@@ -85,6 +85,24 @@ pub trait TaskStore: Send + Sync + 'static {
         activity_type: String,
         input: serde_json::Value,
     ) -> Result<Uuid, StoreError>;
+
+    /// Enqueue and record a workflow's next step already claimed by
+    /// `worker_id`, which then runs it without a wakeup and a claim (see
+    /// [`TaskQueue::enqueue_claimed_task`]). Returns `None` when the task
+    /// went to the queue instead; the default always does that.
+    async fn enqueue_claimed_task_and_record(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+        worker_id: &str,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
+        let _ = worker_id;
+        self.enqueue_task_and_record(workflow_id, activity_id, activity_type, input)
+            .await?;
+        Ok(None)
+    }
 
     async fn update_workflow_status(
         &self,
@@ -247,6 +265,33 @@ where
             },
         )
         .await
+    }
+
+    async fn enqueue_claimed_task_and_record(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+        worker_id: &str,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
+        let event = WorkflowEvent::ActivityScheduled {
+            activity_id: activity_id.clone(),
+            activity_type: activity_type.clone(),
+            input: input.clone(),
+            options: ActivityOptions::default(),
+        };
+        append_event(self, workflow_id, event).await?;
+        let task = TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id,
+            activity_type,
+            input,
+            options: ActivityOptions::default(),
+        };
+        TaskQueue::enqueue_claimed_task(self, task, worker_id)
+            .await
+            .map(Enqueued::into_claimed)
     }
 
     async fn update_workflow_status(

@@ -109,8 +109,10 @@ impl DurableStoreBackend for GrpcDurableStore {
             activity_id,
             activity_type,
             input,
+            None,
         )
         .await
+        .map(|(task_id, _)| task_id)
     }
 
     async fn start_turn(

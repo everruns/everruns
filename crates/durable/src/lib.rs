@@ -103,7 +103,7 @@ pub use engine::{
 };
 pub use persistence::{
     CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
-    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, EventLog, HeartbeatResponse,
+    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HeartbeatResponse,
     InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ReclaimResult, RunStart,
     ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter,
     ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
