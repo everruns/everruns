@@ -4,7 +4,8 @@
 // policy is only a floor (any org member); the kind's view policy is checked in
 // `execute`, because which policy applies depends on the ref. Session history
 // additionally requires that the caller can open the session, since session
-// visibility is per participant rather than per role.
+// visibility is per participant rather than per role. A session acting for an
+// entity cannot read that entity's history (the self rule, see `context`).
 
 use chrono::{DateTime, Utc};
 use everruns_core::Policy;
@@ -94,7 +95,7 @@ fn limit(requested: Option<i64>) -> i64 {
     requested.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)
 }
 
-fn parse_kind(kind: &str) -> Result<EntityKind, CommandError> {
+pub(super) fn parse_kind(kind: &str) -> Result<EntityKind, CommandError> {
     EntityKind::parse(kind).ok_or_else(|| {
         let known: Vec<&str> = EntityKind::ALL.iter().map(|kind| kind.as_str()).collect();
         CommandError::bad_request(format!(
@@ -188,6 +189,7 @@ impl Command for ListEntityHistory {
         kind.view_policy()
             .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
             .map_err(|e| CommandError::forbidden(e.message))?;
+        super::context::deny_self(ctx, &entity_ref).await?;
         if kind == EntityKind::Session {
             // Session visibility is per participant, which no role policy
             // states: the caller must be able to open the session itself.

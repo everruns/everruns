@@ -150,6 +150,7 @@ mod health_issues;
 mod identity;
 mod knowledge;
 mod late_generation_usage;
+mod manager_context;
 mod mcp_event_subscriptions;
 mod models_files;
 mod observers_billing;

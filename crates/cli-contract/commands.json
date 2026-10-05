@@ -2735,6 +2735,166 @@
     ]
   },
   {
+    "wire_name": "append_manager_context",
+    "path": [
+      "context"
+    ],
+    "verb": "append",
+    "description": "Add a paragraph to the end of an entity's manager context, such as a requirement a user stated. Needs no prior read.",
+    "method": "POST",
+    "http_path": "/v1/context/{entity_ref}/append",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind, needed only for ids without a prefix."
+      },
+      {
+        "field": "text",
+        "long": "text",
+        "kind": "string",
+        "required": true,
+        "help": "The paragraph to add, markdown."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Record a requirement a user stated about an agent",
+        "command": "everruns context append agent_01h9 --text 'Answers must stay suitable for children.' --reason 'User asked in Platform Chat'"
+      }
+    ]
+  },
+  {
+    "wire_name": "clear_manager_context",
+    "path": [
+      "context"
+    ],
+    "verb": "clear",
+    "description": "Empty the manager context of an entity. The cleared text stays in no history; record why with --reason.",
+    "method": "DELETE",
+    "http_path": "/v1/context/{entity_ref}",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id."
+      },
+      {
+        "field": "expected_revision",
+        "long": "expected-revision",
+        "kind": "integer",
+        "required": false,
+        "help": "The revision being cleared; refused when the stored one differs."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind, needed only for ids without a prefix."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Drop notes that no longer apply",
+        "command": "everruns context clear agent_01h9 --expected-revision 4 --reason 'Requirements moved to the harness'"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_manager_context",
+    "path": [
+      "context"
+    ],
+    "verb": "get",
+    "description": "Read the manager context of an entity: notes its managers keep about it (requirements, rationale, ownership). Read it before changing the entity and pass its revision as --context-revision.",
+    "method": "GET",
+    "http_path": "/v1/context/{entity_ref}",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id, e.g."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind, needed only for ids without a prefix (`schedule`, `saved_report`, `check_rule`)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Read what an agent's managers require before changing it",
+        "command": "everruns context get agent_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "set_manager_context",
+    "path": [
+      "context"
+    ],
+    "verb": "set",
+    "description": "Replace the manager context of an entity with a new markdown document. Pass --expected-revision to refuse the write if someone changed it since you read it.",
+    "method": "PUT",
+    "http_path": "/v1/context/{entity_ref}",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id."
+      },
+      {
+        "field": "content",
+        "long": "content",
+        "kind": "string",
+        "required": true,
+        "help": "The whole document, markdown, at most 16 KiB."
+      },
+      {
+        "field": "expected_revision",
+        "long": "expected-revision",
+        "kind": "integer",
+        "required": false,
+        "help": "The revision this edit was based on; refused when the stored one differs."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind, needed only for ids without a prefix."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Record an agent's requirements from a file",
+        "command": "everruns context set agent_01h9 --content @notes.md --expected-revision 3 --reason 'Product review decisions'"
+      }
+    ]
+  },
+  {
     "wire_name": "get_execution",
     "path": [
       "durable",

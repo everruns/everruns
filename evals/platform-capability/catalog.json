@@ -619,6 +619,42 @@
     "read_only": false
   },
   {
+    "category": "context",
+    "cli": "context append",
+    "description": "Add a paragraph to the end of an entity's manager context, such as a requirement a user stated. Needs no prior read.",
+    "input_schema": {
+      "description": "Add a paragraph to the end of an entity's manager context.",
+      "properties": {
+        "entity_ref": {
+          "description": "The entity's public id.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Entity kind, needed only for ids without a prefix.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "description": "The paragraph to add, markdown.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_ref",
+        "text"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "append_manager_context",
+    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "path": "/v1/context/{entity_ref}/append",
+    "positional_arg": "entity_ref",
+    "read_only": false
+  },
+  {
     "category": "sessions",
     "cli": "sessions archive",
     "description": "Archive a session so it drops out of default lists.",
@@ -1063,6 +1099,45 @@
     "path": "/v1/sessions/{session_id}/budget-check",
     "positional_arg": "session_id",
     "read_only": true
+  },
+  {
+    "category": "context",
+    "cli": "context clear",
+    "description": "Empty the manager context of an entity. The cleared text stays in no history; record why with --reason.",
+    "input_schema": {
+      "description": "Empty an entity's manager context. Its revision keeps growing.",
+      "properties": {
+        "entity_ref": {
+          "description": "The entity's public id.",
+          "type": "string"
+        },
+        "expected_revision": {
+          "description": "The revision being cleared; refused when the stored one differs.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "Entity kind, needed only for ids without a prefix.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "entity_ref"
+      ],
+      "type": "object"
+    },
+    "method": "DELETE",
+    "name": "clear_manager_context",
+    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "path": "/v1/context/{entity_ref}",
+    "positional_arg": "entity_ref",
+    "read_only": false
   },
   {
     "category": "agents",
@@ -9961,6 +10036,37 @@
     "read_only": true
   },
   {
+    "category": "context",
+    "cli": "context get",
+    "description": "Read the manager context of an entity: notes its managers keep about it (requirements, rationale, ownership). Read it before changing the entity and pass its revision as --context-revision.",
+    "input_schema": {
+      "description": "Read an entity's manager context.",
+      "properties": {
+        "entity_ref": {
+          "description": "The entity's public id, e.g. `agent_01933b5a...`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Entity kind, needed only for ids without a prefix (`schedule`,\n`saved_report`, `check_rule`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "entity_ref"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "get_manager_context",
+    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "path": "/v1/context/{entity_ref}",
+    "positional_arg": "entity_ref",
+    "read_only": true
+  },
+  {
     "category": "plugins",
     "cli": null,
     "description": "List plugin catalog entries for a marketplace (with installed flag per entry).",
@@ -15347,6 +15453,50 @@
     "output_shape": "unknown",
     "path": "/v1/models/decision-default",
     "positional_arg": null,
+    "read_only": false
+  },
+  {
+    "category": "context",
+    "cli": "context set",
+    "description": "Replace the manager context of an entity with a new markdown document. Pass --expected-revision to refuse the write if someone changed it since you read it.",
+    "input_schema": {
+      "description": "Replace an entity's manager context.",
+      "properties": {
+        "content": {
+          "description": "The whole document, markdown, at most 16 KiB.",
+          "type": "string"
+        },
+        "entity_ref": {
+          "description": "The entity's public id.",
+          "type": "string"
+        },
+        "expected_revision": {
+          "description": "The revision this edit was based on; refused when the stored one\ndiffers. 0 when the entity has none yet.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "Entity kind, needed only for ids without a prefix.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "entity_ref",
+        "content"
+      ],
+      "type": "object"
+    },
+    "method": "PUT",
+    "name": "set_manager_context",
+    "output_shape": "{entity_kind, entity_ref, content, revision, updated_by_user_id, updated_at}",
+    "path": "/v1/context/{entity_ref}",
+    "positional_arg": "entity_ref",
     "read_only": false
   },
   {

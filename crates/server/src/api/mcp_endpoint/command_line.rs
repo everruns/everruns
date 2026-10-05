@@ -26,9 +26,14 @@ pub(crate) struct EverrunsBuiltin {
 }
 
 impl EverrunsBuiltin {
-    async fn run(&self, args: &[String]) -> Result<String, String> {
+    async fn run(&self, args: &[String]) -> Result<catalog::ShellOutput, String> {
         let (wire_name, params) = match self.mapper.resolve(args) {
-            Resolution::Output(text) => return Ok(text),
+            Resolution::Output(stdout) => {
+                return Ok(catalog::ShellOutput {
+                    stdout,
+                    notices: Vec::new(),
+                });
+            }
             Resolution::Error(text) => return Err(text),
             Resolution::Run { wire_name, params } => (wire_name, params),
         };
@@ -57,12 +62,25 @@ impl EverrunsBuiltin {
 impl bashkit::Builtin for EverrunsBuiltin {
     async fn execute(&self, ctx: BuiltinContext<'_>) -> bashkit::Result<ExecResult> {
         Ok(match self.run(ctx.args).await {
-            Ok(output) => ExecResult::ok(with_newline(output)),
+            Ok(output) => {
+                let mut result = ExecResult::ok(with_newline(output.stdout));
+                if !output.notices.is_empty() {
+                    result.stderr = notices_text(&output.notices).into();
+                }
+                result
+            }
             // Non-zero so help printed for an unknown verb never reads as
             // success to `set -e` or `&&`.
             Err(error) => ExecResult::err(with_newline(error), 1),
         })
     }
+}
+
+fn notices_text(notices: &[String]) -> String {
+    notices
+        .iter()
+        .map(|notice| format!("notice: {notice}\n"))
+        .collect()
 }
 
 fn with_newline(mut text: String) -> String {

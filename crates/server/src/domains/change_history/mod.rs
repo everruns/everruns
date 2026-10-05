@@ -6,12 +6,21 @@
 // and session, and the caller's reason (`intent`). `history list` reads it
 // back (`commands`).
 //
+// Each entity of a managed kind also has manager context (`context`): one
+// markdown document its managers keep about it. A change may say which
+// revision of it the caller read; a stale one is refused before the command
+// runs, and an unacknowledged one leaves a notice.
+//
 // Design: knowledge/execution/change-reasons-and-manager-context.md.
 
 #[cfg(test)]
 #[path = "tests.rs"]
 mod command_tests;
 pub mod commands;
+pub mod context;
+#[cfg(test)]
+#[path = "context_tests.rs"]
+mod context_tests;
 pub mod intent;
 pub mod registry;
 
@@ -19,6 +28,7 @@ use serde_json::Value;
 
 use crate::domains::common::{CommandError, CommandMeta, Ctx};
 use crate::storage::entity_changes::NewEntityChange;
+use crate::storage::manager_context::ManagerContextKey;
 pub use intent::{ChangeIntent, ChangeSurface, http_change_intent_layer};
 pub use registry::{Change, ChangeAction, EntityKind, SubjectId};
 
@@ -109,17 +119,91 @@ pub struct PendingChange {
 
 impl PendingChange {
     /// Prepare to record what `command` changes, before it runs: its params
-    /// are captured before `execute` consumes it.
-    pub fn of<C: crate::domains::common::Command>(
+    /// are captured before `execute` consumes it, and the manager context
+    /// revision the caller acknowledged is checked. The params are read before
+    /// the returned future, so a command need not be `Sync`.
+    pub fn of<'a, C: crate::domains::common::Command>(
         command: &C,
-        ctx: &Ctx,
-    ) -> Result<Option<Self>, CommandError> {
+        ctx: &'a Ctx,
+    ) -> impl std::future::Future<Output = Result<Option<Self>, CommandError>> + Send + 'a {
         let change = C::change();
-        if !matches!(change, Change::Subject { .. }) {
-            return Ok(None);
+        let params = matches!(change, Change::Subject { .. })
+            .then(|| serde_json::to_value(command).unwrap_or(Value::Null));
+        async move {
+            let Some(params) = params else {
+                return Ok(None);
+            };
+            let Some(pending) = Self::prepare(change, params, ctx)? else {
+                return Ok(None);
+            };
+            pending.check_context(ctx).await?;
+            Ok(Some(pending))
         }
-        let params = serde_json::to_value(command).unwrap_or(Value::Null);
-        Self::prepare(change, params, ctx)
+    }
+
+    /// The entity an existing-entity change names, when its kind has manager
+    /// context. Creates have no context yet.
+    fn context_key(&self, ctx: &Ctx) -> Option<ManagerContextKey> {
+        if !self.kind.has_manager_context() || self.action == ChangeAction::Created {
+            return None;
+        }
+        let entity_ref = match self.id {
+            SubjectId::Param(field) => subject_ref(&self.params, field)?,
+            // Declared by the output's id (most updates echo the entity), so
+            // before the run, find the param holding a ref of this kind.
+            SubjectId::Output(_) => self.params.as_object()?.values().find_map(|value| {
+                let text = value.as_str()?;
+                (EntityKind::from_ref(text) == Some(self.kind)).then(|| text.to_string())
+            })?,
+        };
+        Some(ManagerContextKey {
+            org_id: ctx.org_id(),
+            entity_kind: self.kind.as_str().to_string(),
+            entity_ref,
+        })
+    }
+
+    /// Hold the change to the manager context revision the caller said it
+    /// read: a newer one fails with `manager_context_changed`; context the
+    /// caller did not acknowledge leaves a notice naming its revision.
+    async fn check_context(&self, ctx: &Ctx) -> Result<(), CommandError> {
+        let Some(key) = self.context_key(ctx) else {
+            return Ok(());
+        };
+        let current = match ctx.db.get_manager_context(&key).await {
+            Ok(row) => row,
+            Err(error) => {
+                // Context is guidance, not a lock: failing to read it must not
+                // block the change, unless the caller asked to be held to it.
+                tracing::warn!(error = %error, "manager context read failed");
+                if self.intent.context_revision.is_some() {
+                    return Err(CommandError::internal(error));
+                }
+                return Ok(());
+            }
+        };
+        let revision = current.as_ref().map_or(0, |row| row.revision);
+        let entity_ref = &key.entity_ref;
+        match self.intent.context_revision {
+            Some(read) if read != revision => Err(CommandError::conflict(format!(
+                "The manager context of {entity_ref} changed since you read it (revision {read}, \
+                 now {revision}). Read it again, check the change still fits, and retry with \
+                 --context-revision {revision}"
+            ))
+            .with_code(context::MANAGER_CONTEXT_CHANGED)
+            .with_action(context::reread_action(entity_ref))),
+            Some(_) => Ok(()),
+            None => {
+                if current.is_some_and(|row| !row.content.trim().is_empty()) {
+                    self.intent.notices.push(format!(
+                        "{entity_ref} has manager context (revision {revision}) this change did \
+                         not acknowledge: read it with `everruns context get {entity_ref}` and \
+                         pass --context-revision {revision}"
+                    ));
+                }
+                Ok(())
+            }
+        }
     }
 
     /// Prepare to record `change` for a command about to run with `params`.
@@ -158,6 +242,11 @@ impl PendingChange {
         output: &T,
     ) -> impl std::future::Future<Output = ()> + Send + 'a {
         let command = meta.name;
+        // A deleted entity takes its manager context with it.
+        let orphaned_context = pending
+            .as_ref()
+            .filter(|pending| pending.action == ChangeAction::Deleted)
+            .and_then(|pending| pending.context_key(ctx));
         let row = pending.map(|pending| {
             let output = serde_json::to_value(output).unwrap_or(Value::Null);
             pending.row(meta, ctx, &output)
@@ -180,6 +269,11 @@ impl PendingChange {
                 tracing::error!(command, error = %error, "entity history write failed");
                 metrics::counter!(crate::api::prometheus::names::ENTITY_HISTORY_WRITE_FAILURES)
                     .increment(1);
+            }
+            if let Some(key) = orphaned_context
+                && let Err(error) = ctx.db.delete_manager_context(&key).await
+            {
+                tracing::warn!(command, error = %error, "manager context cleanup failed");
             }
         }
     }

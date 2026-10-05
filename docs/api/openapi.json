@@ -5663,6 +5663,356 @@
         }
       }
     },
+    "/v1/context/{entity_ref}": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "GET /v1/context/{entity_ref} - Read an entity's manager context",
+        "operationId": "get_manager_context",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id, e.g. agent_01933b5a...",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Entity kind, needed only for ids without a prefix (`schedule`,\n`saved_report`, `check_rule`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "description": "For DELETE: the revision being cleared; refused when stale.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manager context; empty content and revision 0 when none was written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerContext"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown kind, or a kind without manager context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller does not manage this kind, or is the entity's own session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "history"
+        ],
+        "summary": "PUT /v1/context/{entity_ref} - Replace an entity's manager context",
+        "operationId": "set_manager_context",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Entity kind, needed only for ids without a prefix (`schedule`,\n`saved_report`, `check_rule`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "description": "For DELETE: the revision being cleared; refused when stale.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetManagerContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The new manager context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerContext"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale expected_revision (manager_context_changed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Larger than 16 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "history"
+        ],
+        "summary": "DELETE /v1/context/{entity_ref} - Empty an entity's manager context",
+        "operationId": "clear_manager_context",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Entity kind, needed only for ids without a prefix (`schedule`,\n`saved_report`, `check_rule`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "description": "For DELETE: the revision being cleared; refused when stale.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The emptied manager context, with its new revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerContext"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale expected_revision (manager_context_changed)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/context/{entity_ref}/append": {
+      "post": {
+        "tags": [
+          "history"
+        ],
+        "summary": "POST /v1/context/{entity_ref}/append - Add a paragraph to an entity's manager context",
+        "operationId": "append_manager_context",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Entity kind, needed only for ids without a prefix (`schedule`,\n`saved_report`, `check_rule`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "expected_revision",
+            "in": "query",
+            "description": "For DELETE: the revision being cleared; refused when stale.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppendManagerContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "The new manager context",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagerContext"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entity not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Larger than 16 KiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/durable/circuit-breakers": {
       "get": {
         "tags": [
@@ -23456,6 +23806,19 @@
         ],
         "example": "published"
       },
+      "AppendManagerContextRequest": {
+        "type": "object",
+        "description": "Add a paragraph to an entity's manager context.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The paragraph to add, markdown."
+          }
+        }
+      },
       "AvatarPreset": {
         "type": "object",
         "description": "Presentation and search metadata for one curated agent avatar.",
@@ -24894,6 +25257,14 @@
             ],
             "description": "Contract version the client was built for. Defaults to the current one.",
             "example": "v1"
+          },
+          "context_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The changed entity's manager context revision the caller read\n(`get_manager_context`). A newer one refuses the change with\n`manager_context_changed`; omitting it while the entity has context\nadds a warning."
           },
           "metadata": {
             "type": "object",
@@ -36926,6 +37297,50 @@
           }
         }
       },
+      "ManagerContext": {
+        "type": "object",
+        "description": "An entity's manager context.",
+        "required": [
+          "entity_kind",
+          "entity_ref",
+          "content",
+          "revision"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Markdown, at most 16 KiB. Empty when none was written or it was cleared."
+          },
+          "entity_kind": {
+            "type": "string",
+            "example": "agent"
+          },
+          "entity_ref": {
+            "type": "string",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Grows by one per write; 0 when none was ever written. Pass it as\n`--expected-revision` to a context write or `--context-revision` to a\nchange of the entity."
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updated_by_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The user the last write was made as."
+          }
+        }
+      },
       "Manifest": {
         "type": "object",
         "description": "Authored values only: no organisation, agent, model, harness or channel IDs.",
@@ -46062,6 +46477,27 @@
           }
         }
       },
+      "SetManagerContextRequest": {
+        "type": "object",
+        "description": "Replace an entity's manager context.",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "The whole document, markdown, at most 16 KiB."
+          },
+          "expected_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The revision this edit was based on (0 when none exists yet); refused\nwith `manager_context_changed` when the stored one differs."
+          }
+        }
+      },
       "SetPreferenceRequest": {
         "type": "object",
         "description": "Request body for setting a preference value.",
@@ -53825,7 +54261,7 @@
     },
     {
       "name": "history",
-      "description": "Recorded changes to entities: who changed what, through which surface, and why"
+      "description": "Recorded changes to entities (who changed what, through which surface, and why) and the manager context their managers keep about them"
     },
     {
       "name": "task-webhooks",

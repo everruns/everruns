@@ -59,6 +59,11 @@ use serde::{Deserialize, Serialize};
 /// command's change intent). No command may declare a param of this name.
 pub const REASON_FIELD: &str = "reason";
 
+/// Field under which [`params_from`] reports the global `--context-revision`
+/// flag: the revision of the changed entity's manager context the caller read
+/// before changing it. Invocation metadata, like [`REASON_FIELD`].
+pub const CONTEXT_REVISION_FIELD: &str = "context_revision";
+
 /// What one argument accepts.
 ///
 /// A reduction of JSON Schema to the shapes a command line has: everything
@@ -217,6 +222,23 @@ impl ContractCommand {
                     .action(ArgAction::Set),
             );
         }
+        if !self
+            .args
+            .iter()
+            .any(|arg| arg.field == CONTEXT_REVISION_FIELD)
+        {
+            command = command.arg(
+                Arg::new(CONTEXT_REVISION_FIELD)
+                    .long("context-revision")
+                    .value_name("N")
+                    .value_parser(clap::value_parser!(i64))
+                    .help(
+                        "The entity's manager context revision you read (`everruns context get`); \
+                         the change is refused if the notes changed since",
+                    )
+                    .action(ArgAction::Set),
+            );
+        }
         command
     }
 }
@@ -317,6 +339,9 @@ pub fn params_from(command: &ContractCommand, matches: &clap::ArgMatches) -> ser
     }
     if let Some(reason) = read(matches, REASON_FIELD, ArgKind::String) {
         object.insert(REASON_FIELD.to_string(), reason);
+    }
+    if let Some(revision) = read(matches, CONTEXT_REVISION_FIELD, ArgKind::Integer) {
+        object.insert(CONTEXT_REVISION_FIELD.to_string(), revision);
     }
 
     serde_json::Value::Object(object)

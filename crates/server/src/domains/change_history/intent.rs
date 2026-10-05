@@ -29,10 +29,14 @@ use crate::domains::common::CommandError;
 /// percent-encoded.
 pub const CHANGE_REASON_HEADER: &str = "everruns-change-reason";
 
+/// Request header carrying the manager context revision the caller read before
+/// a change, on REST routes.
+pub const CONTEXT_REVISION_HEADER: &str = "everruns-context-revision";
+
 /// Param names the command shells treat as invocation metadata rather than as
 /// command params (`update_agent --id a --reason "..."`). No command may
 /// declare a param with one of these names.
-pub const RESERVED_PARAMS: &[&str] = &["reason"];
+pub const RESERVED_PARAMS: &[&str] = &["reason", "context_revision"];
 
 /// Longest accepted reason, in characters.
 pub const MAX_REASON_CHARS: usize = 1000;
@@ -95,6 +99,27 @@ pub struct ChangeIntent {
     pub via_session_id: Option<uuid::Uuid>,
     /// The agent of that session, as its public id.
     pub via_agent_id: Option<String>,
+    /// The manager context revision of the changed entity the caller read
+    /// before changing it (`--context-revision`).
+    pub context_revision: Option<i64>,
+    /// Where `Command::run` leaves non-fatal notices for the adapter to show.
+    pub notices: Notices,
+}
+
+/// Non-fatal notices a command run leaves for its adapter, such as "this
+/// entity has manager context you did not acknowledge". Shared by every clone
+/// of an intent, so the adapter that created it reads what the run wrote.
+#[derive(Debug, Clone, Default)]
+pub struct Notices(std::sync::Arc<parking_lot::Mutex<Vec<String>>>);
+
+impl Notices {
+    pub fn push(&self, notice: impl Into<String>) {
+        self.0.lock().push(notice.into());
+    }
+
+    pub fn take(&self) -> Vec<String> {
+        std::mem::take(&mut *self.0.lock())
+    }
 }
 
 impl ChangeIntent {
@@ -136,6 +161,9 @@ impl ChangeIntent {
         }
         if self.via_agent_id.is_none() {
             self.via_agent_id = outer.via_agent_id.clone();
+        }
+        if self.context_revision.is_none() {
+            self.context_revision = outer.context_revision;
         }
         self
     }
@@ -200,8 +228,8 @@ pub async fn scope_http_intent<F: std::future::Future>(
     HTTP_INTENT.scope(intent, future).await
 }
 
-/// HTTP layer that captures the change reason header and the request id for
-/// every command a request runs.
+/// HTTP layer that captures the change reason and context revision headers
+/// and the request id for every command a request runs.
 ///
 /// An undecodable header is kept as its lossy text so `Command::run` rejects it
 /// with the same error every surface gets, rather than this layer inventing a
@@ -211,6 +239,11 @@ pub async fn http_change_intent_layer(req: Request, next: Next) -> Response {
         .headers()
         .get(CHANGE_REASON_HEADER)
         .map(|value| decode_header_reason(value.as_bytes()));
+    let context_revision = req
+        .headers()
+        .get(CONTEXT_REVISION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse().ok());
     let request_id = req
         .extensions()
         .get::<crate::middleware::RequestId>()
@@ -219,6 +252,7 @@ pub async fn http_change_intent_layer(req: Request, next: Next) -> Response {
         reason,
         surface: Some(ChangeSurface::Api),
         request_id,
+        context_revision,
         ..ChangeIntent::default()
     };
     HTTP_INTENT.scope(intent, next.run(req)).await

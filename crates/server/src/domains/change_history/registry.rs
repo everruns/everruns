@@ -196,6 +196,80 @@ impl EntityKind {
             Self::Session => &sessions::service::SESSION_VIEW,
         }
     }
+
+    /// Policy of the people who manage this kind: who may read and write its
+    /// manager context. The kind's own manage policy, so notes addressed to
+    /// managers reach exactly the people who can act on them.
+    pub fn manage_policy(self) -> &'static Policy {
+        use crate::domains::*;
+        match self {
+            Self::Agent | Self::AgentChannel | Self::AgentTrigger => &agents::AGENT_MANAGE,
+            Self::CheckRule => &agents::check_rules::AGENT_CHECKS_MANAGE,
+            Self::Harness => &harnesses::HARNESS_MANAGE,
+            Self::Skill => &skills::SKILL_MANAGE,
+            Self::Capability => &capabilities::CAPABILITY_MANAGE,
+            Self::Schedule => &schedules::SCHEDULE_MANAGE,
+            Self::KnowledgeBase | Self::KnowledgeEntry => &knowledge_bases::KNOWLEDGE_BASE_MANAGE,
+            Self::KnowledgeIndex => &knowledge_indexes::KNOWLEDGE_INDEX_MANAGE,
+            Self::Memory => &memory::MEMORY_MANAGE,
+            Self::Provider => &providers::LLM_PROVIDER_MANAGE,
+            Self::Model => &models::LLM_MODEL_MANAGE,
+            Self::McpServer => &mcp_servers::MCP_SERVER_MANAGE,
+            Self::Plugin | Self::PluginMarketplace => &plugins::PLUGIN_MANAGE,
+            Self::Workspace => &workspaces::WORKSPACE_MANAGE,
+            Self::VirtualUser => &virtual_users::VIRTUAL_USER_MANAGE,
+            Self::Observer => &observers::service::OBSERVER_MANAGE,
+            Self::Budget => &budgets::BUDGET_MANAGE,
+            Self::PaymentAccount | Self::PaymentPolicy => &payments::PAYMENT_MANAGE,
+            Self::Eval | Self::EvalCase => &evals::service::EVAL_MANAGE,
+            Self::SavedReport => &reporting::REPORT_MANAGE,
+            Self::Session => &sessions::service::SESSION_MANAGE,
+        }
+    }
+
+    /// Whether this kind carries manager context. Knowledge base entries and
+    /// eval cases are content, not things a manager configures: notes about
+    /// them belong on the parent. Sessions have their own lifecycle and are not
+    /// managed in this sense.
+    pub fn has_manager_context(self) -> bool {
+        !matches!(self, Self::KnowledgeEntry | Self::EvalCase | Self::Session)
+    }
+
+    /// The read command that fetches one entity of this kind by its ref alone,
+    /// and that command's id param. Used to confirm an entity exists, and is
+    /// visible to the caller, before anything is written about it. Kinds whose
+    /// read needs a parent id (channels, triggers, check rules) have none.
+    pub fn lookup(self) -> Option<(&'static str, &'static str)> {
+        Some(match self {
+            Self::Agent => ("get_agent", "id"),
+            Self::Harness => ("get_harness", "id"),
+            Self::Skill => ("get_skill", "id"),
+            Self::Capability => ("get_declarative_capability", "id"),
+            Self::Schedule => ("get_schedule", "schedule_id"),
+            Self::KnowledgeBase => ("get_knowledge_base", "kb_id"),
+            Self::KnowledgeIndex => ("get_knowledge_index", "index_id"),
+            Self::Memory => ("get_memory", "memory_id"),
+            Self::Provider => ("get_provider", "id"),
+            Self::Model => ("get_model", "id"),
+            Self::McpServer => ("get_mcp_server", "id"),
+            Self::Plugin => ("get_plugin", "id"),
+            Self::PluginMarketplace => ("get_plugin_marketplace", "id"),
+            Self::Workspace => ("get_workspace", "workspace_id"),
+            Self::VirtualUser => ("get_virtual_user", "id"),
+            Self::Observer => ("get_observer", "observer_id"),
+            Self::Budget => ("get_budget", "budget_id"),
+            Self::PaymentAccount => ("get_payment_account", "payment_account_id"),
+            Self::PaymentPolicy => ("get_payment_policy", "payment_policy_id"),
+            Self::Eval => ("get_eval", "eval_id"),
+            Self::SavedReport => ("get_saved_report", "report_id"),
+            Self::Session => ("get_session", "session_id"),
+            Self::CheckRule
+            | Self::AgentChannel
+            | Self::AgentTrigger
+            | Self::KnowledgeEntry
+            | Self::EvalCase => return None,
+        })
+    }
 }
 
 /// What a recorded change did.

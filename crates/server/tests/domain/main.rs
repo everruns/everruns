@@ -28,6 +28,7 @@ mod agent_trigger_invocation_integration_test;
 mod app_budget_retirement_test;
 mod app_invocation_channels_integration_test;
 mod auth_integration_test;
+mod change_history_test;
 mod channel_a2a_ask_user_test;
 mod channel_a2a_integration_test;
 mod channel_a2a_protocol_test;
