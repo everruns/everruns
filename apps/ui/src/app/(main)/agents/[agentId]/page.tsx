@@ -20,7 +20,6 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
-  Boxes,
   Check,
   Copy,
   Download,
@@ -79,6 +78,7 @@ import {
   PageMasthead,
   SectionTabs,
 } from "@/components/layout";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
 import { AgentServiceAccount } from "@/components/agents/agent-service-account";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
@@ -353,6 +353,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     : undefined;
   const network = normalizeNetworkAccess(draft.networkAccess);
   const brandingParts = [
+    ...(agent.avatar ? ["Avatar"] : []),
     draft.fields.description.trim() ? "Description" : "No description",
     ...(draft.starters.length > 0 ? [count(draft.starters.length, "starter")] : []),
   ];
@@ -498,7 +499,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: displayName }]} />
 
         <PageMasthead
-          icon={<Boxes />}
+          icon={<AgentAvatar avatar={agent.avatar} size={38} />}
           entityId={agent.id}
           title={<span className={getEntityNameClassName(agent.status)}>{displayName}</span>}
           badges={

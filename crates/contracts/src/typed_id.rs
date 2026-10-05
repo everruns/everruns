@@ -441,6 +441,12 @@ pub struct ImageIdMarker;
 impl IdMarker for ImageIdMarker {
     const PREFIX: &'static str = "img";
 }
+/// Marker for Agent avatar IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AvatarIdMarker;
+impl IdMarker for AvatarIdMarker {
+    const PREFIX: &'static str = "avatar";
+}
 /// Marker for File (e.g. PDF attachment) IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct FileIdMarker;
@@ -714,6 +720,8 @@ pub type ProviderId = TypedId<ProviderIdMarker>;
 pub type ModelId = TypedId<ModelIdMarker>;
 /// Image ID
 pub type ImageId = TypedId<ImageIdMarker>;
+/// Agent avatar ID
+pub type AvatarId = TypedId<AvatarIdMarker>;
 /// File (e.g. PDF attachment) ID
 pub type FileId = TypedId<FileIdMarker>;
 /// MCP Server ID

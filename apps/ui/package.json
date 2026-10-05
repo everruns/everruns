@@ -47,6 +47,7 @@
     "next": "^16.3.6",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "react-easy-crop": "^6.2.3",
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
     "remark-github-blockquote-alert": "^2.1.0",

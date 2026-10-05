@@ -515,9 +515,8 @@ impl ServerAppBuilder {
             self.slack_app_provisioner.clone(),
         )?;
 
-        // Seed must run after encryption is resolved: single-tenant/dev seeding
-        // materializes DEFAULT_*_API_KEY env vars into the default org's
-        // provider rows (encrypted), which requires the encryption service.
+        // Seed must run after encryption is resolved: single-tenant/dev seeding materializes
+        // DEFAULT_*_API_KEY env vars into the default org's (encrypted) provider rows.
         supervisor.track(
             "seed",
             seed::prepare_seed_task(
@@ -1046,7 +1045,8 @@ impl ServerAppBuilder {
             host_composition.clone(),
             built_in_harnesses.clone(),
         )
-        .with_org_rate_limiter(org_rate_limiter.clone());
+        .with_org_rate_limiter(org_rate_limiter.clone())
+        .with_slack_provisioner(slack_provisioning.provisioner.clone());
         let agent_credentials_state = api::agent_credentials::AppState::new(
             db.clone(),
             encryption.clone(),

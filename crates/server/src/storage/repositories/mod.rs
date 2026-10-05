@@ -18,6 +18,7 @@ pub use advisory_locks::ADVISORY_LOCK_WAIT;
 pub use budgets::BudgetSubjectLookup;
 mod a2a_push_configs;
 mod advisory_locks;
+mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
 mod declarative_capabilities;
 mod evals;

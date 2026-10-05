@@ -12,6 +12,7 @@
 #[path = "../test_harness.rs"]
 mod test_harness;
 
+mod agent_avatar_storage_test;
 mod agents_api_lifecycle_test;
 mod api_integration_test;
 mod harness_levels_test;

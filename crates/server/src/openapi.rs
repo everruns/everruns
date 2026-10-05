@@ -145,6 +145,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::agents::list_agents,
         api::agents::get_agent,
         api::agents::get_agent_stats,
+        api::agent_avatars::upload_agent_avatar,
+        api::agent_avatars::delete_agent_avatar,
+        api::agent_avatars::get_avatar_variant,
         api::agent_mcp_attachments::list_agent_mcp_attachments,
         api::agent_mcp_attachments::revoke_agent_mcp_connection,
         api::agents::update_agent,
@@ -545,7 +548,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::command_dispatch::CommandEntry,
             api::command_dispatch::CommandRequest,
             api::command_dispatch::CommandResponse,
-            Agent, AgentStatus, crate::records::AgentVersion, crate::records::AgentVersionChangeKind,
+            Agent, crate::records::AgentAvatar, AgentStatus, crate::records::AgentVersion, crate::records::AgentVersionChangeKind,
             Session, SessionStatus, Event, EventContext, EventData,
             everruns_contracts::typed_id::EventId,
             // Event data types

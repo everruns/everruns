@@ -73,6 +73,7 @@ The prefix in the table below is the token that appears before the `_` separator
 | MCP server | `mcp` |
 | Schedule | `sched` |
 | Image | `img` |
+| Agent avatar | `avatar` |
 | User | `user` |
 | Organization | `org` |
 

@@ -8,6 +8,7 @@
 // Split into per-entity modules for maintainability (EVE-99).
 
 mod a2a_push_configs;
+mod agent_avatars;
 mod agent_channels;
 mod agent_check_rules;
 mod agent_health_checks;
@@ -246,6 +247,8 @@ pub struct InMemoryDatabase {
     org_slack_connections: RwLock<HashMap<uuid::Uuid, OrgSlackConnectionRow>>,
     mcp_event_subscriptions: RwLock<HashMap<String, McpEventSubscriptionRow>>,
     a2a_push_configs: RwLock<Vec<A2aPushConfigRow>>,
+    /// avatar id -> (org, agent, variant -> row)
+    agent_avatars: RwLock<HashMap<Uuid, agent_avatars::StoredAvatar>>,
     // Generations billed before their usage arrived (EVE-1145).
     usage_generations: RwLock<HashMap<Uuid, late_generation_usage::MemoryUsageGeneration>>,
     agent_trigger_mcp_subscriptions: RwLock<
@@ -425,6 +428,7 @@ impl Default for InMemoryDatabase {
             org_slack_connections: RwLock::new(HashMap::new()),
             mcp_event_subscriptions: RwLock::new(HashMap::new()),
             a2a_push_configs: RwLock::new(Vec::new()),
+            agent_avatars: RwLock::new(HashMap::new()),
             usage_generations: RwLock::new(HashMap::new()),
             agent_trigger_mcp_subscriptions: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),

@@ -473,9 +473,7 @@ pub struct CreateOAuthRefreshTokenRow {
     pub expires_at: DateTime<Utc>,
 }
 
-// ============================================
-// Agent models (configuration for agentic loop)
-// ============================================
+// ==================== Agent models (configuration for agentic loop) ====================
 
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentRow {
@@ -553,6 +551,9 @@ pub struct AgentRow {
     pub parallel_tool_calls: Option<bool>,
     #[sqlx(default)]
     pub environments: Option<serde_json::Value>,
+    /// Current avatar (`agent_avatars.id`), `None` when the agent has none.
+    #[sqlx(default)]
+    pub avatar_id: Option<Uuid>,
     /// Cumulative input tokens across all sessions
     #[sqlx(default)]
     pub total_input_tokens: i64,
@@ -571,8 +572,7 @@ pub struct AgentRow {
     /// Cumulative price-table estimated cost in USD across all sessions
     #[sqlx(default)]
     pub total_estimated_cost_usd: f64,
-    /// Cumulative best-effort cost in USD across all sessions (actual where
-    /// present, else estimated)
+    /// Cumulative best-effort cost in USD across all sessions (actual if present, else estimated)
     #[sqlx(default)]
     pub total_cost_usd: f64,
 }

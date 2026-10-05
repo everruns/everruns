@@ -81,7 +81,7 @@ pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> Cre
     }
 }
 
-fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow {
+pub(crate) fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow {
     CreateAgentRow {
         public_id: AgentId::new().to_string(),
         name,

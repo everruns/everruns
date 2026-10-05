@@ -62,6 +62,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         short_description: row.short_description,
         starters: serde_json::from_value::<Vec<crate::records::ConversationStarter>>(row.starters)
             .unwrap_or_default(),
+        avatar: row.avatar_id.map(crate::records::AgentAvatar::from_uuid),
         system_prompt: row.system_prompt,
         default_model_id: row.default_model_id,
         harness_id: row.harness_id,

@@ -43,6 +43,7 @@ impl DirectWorkerAdapters {
     /// Convert an AgentRow plus pre-loaded capability rows into an Agent.
     pub(super) fn row_to_agent(r: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         Agent {
+            avatar: None,
             service_virtual_user_id: None,
 
             public_id: r

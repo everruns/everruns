@@ -10,6 +10,7 @@ export type OpenApiActStartedData = Schemas["ActStartedData"];
 export type OpenApiAddSessionParticipantRequest = Schemas["AddSessionParticipantRequest"];
 export type OpenApiAgent = Schemas["Agent"];
 export type OpenApiAgentAnalysisResponse = Schemas["AgentAnalysisResponse"];
+export type OpenApiAgentAvatar = Schemas["AgentAvatar"];
 export type OpenApiAgentCapabilityConfig = Schemas["AgentCapabilityConfig"];
 export type OpenApiAgentChannel = Schemas["AgentChannel"];
 export type OpenApiAgentChannelSummary = Schemas["AgentChannelSummary"];

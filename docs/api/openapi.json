@@ -822,6 +822,118 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/avatar": {
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "PUT /v1/agents/{agent_id}/avatar - Upload the agent's avatar",
+        "description": "Upload an avatar for an agent as multipart field `file` (PNG, JPEG, GIF or WebP, at least 64x64, at most 10 MB). The image is center-cropped to a square and pre-rendered as square and circular PNG presets. Replaces any previous avatar, whose URLs stop resolving. Also sets the icon of the agent's one-click Slack apps.",
+        "operationId": "upload_agent_avatar",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Multipart form with a `file` field",
+          "content": {
+            "multipart/form-data": {}
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Avatar stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAvatar"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid image",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not allowed to manage this agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "DELETE /v1/agents/{agent_id}/avatar - Remove the agent's avatar",
+        "operationId": "delete_agent_avatar",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Avatar removed (or there was none)"
+          },
+          "403": {
+            "description": "Not allowed to manage this agent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/channels": {
       "get": {
         "tags": [
@@ -4049,6 +4161,50 @@
             }
           }
         }
+      }
+    },
+    "/v1/avatars/{avatar_id}/{variant}": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/avatars/{avatar_id}/{variant} - Avatar image",
+        "description": "Public, immutable avatar image. `variant` is `square-{size}.png` or `circle-{size}.png` for a size in the avatar's `sizes`, or `source.png` for the uploaded square crop.",
+        "operationId": "get_avatar_variant",
+        "parameters": [
+          {
+            "name": "avatar_id",
+            "in": "path",
+            "description": "Avatar ID (avatar_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "path",
+            "description": "e.g. square-128.png, circle-64.png, source.png",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG image",
+            "content": {
+              "image/png": {}
+            }
+          },
+          "404": {
+            "description": "Unknown avatar or variant"
+          }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/v1/capabilities": {
@@ -20609,6 +20765,17 @@
             "description": "Timestamp when the agent was archived.",
             "example": "2026-05-26T00:00:00Z"
           },
+          "avatar": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AgentAvatar",
+                "description": "Avatar shown wherever the agent appears: the UI, the A2A Agent Card and\nits Slack app. Set with `PUT /v1/agents/{agent_id}/avatar`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "capabilities": {
             "type": "array",
             "items": {
@@ -20849,6 +21016,49 @@
               "$ref": "#/components/schemas/Finding"
             },
             "description": "Advisory findings, built-in and LLM-sourced (knowledge/evaluation/agent-checks.md)"
+          }
+        }
+      },
+      "AgentAvatar": {
+        "type": "object",
+        "description": "An agent's avatar, pre-rendered as square and circular PNG presets.\n\nURLs are relative to the API base URL, public, and immutable: a new upload\ngets a new `id`, so they can be cached forever. Any size in `sizes` can be\nsubstituted into a URL, e.g. `/v1/avatars/{id}/circle-64.png`; the uploaded\nsquare crop is at `/v1/avatars/{id}/source.png`.",
+        "required": [
+          "id",
+          "url",
+          "circle_url",
+          "sizes"
+        ],
+        "properties": {
+          "circle_url": {
+            "type": "string",
+            "description": "Circular avatar (transparent corners), 256 px.",
+            "example": "/v1/avatars/avatar_01933b5a000070008000000000000001/circle-256.png"
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "avatar_01933b5a000070008000000000000001"
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            },
+            "description": "Edge lengths, in pixels, available for both shapes.",
+            "example": [
+              32,
+              64,
+              128,
+              256,
+              512
+            ]
+          },
+          "url": {
+            "type": "string",
+            "description": "Square avatar, 256 px.",
+            "example": "/v1/avatars/avatar_01933b5a000070008000000000000001/square-256.png"
           }
         }
       },
@@ -32221,6 +32431,17 @@
                   "format": "date-time",
                   "description": "Timestamp when the agent was archived.",
                   "example": "2026-05-26T00:00:00Z"
+                },
+                "avatar": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentAvatar",
+                      "description": "Avatar shown wherever the agent appears: the UI, the A2A Agent Card and\nits Slack app. Set with `PUT /v1/agents/{agent_id}/avatar`."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "capabilities": {
                   "type": "array",
@@ -49192,6 +49413,17 @@
                 "format": "date-time",
                 "description": "Timestamp when the agent was archived.",
                 "example": "2026-05-26T00:00:00Z"
+              },
+              "avatar": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AgentAvatar",
+                    "description": "Avatar shown wherever the agent appears: the UI, the A2A Agent Card and\nits Slack app. Set with `PUT /v1/agents/{agent_id}/avatar`."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "capabilities": {
                 "type": "array",

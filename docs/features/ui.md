@@ -89,6 +89,20 @@ a narrow column on the right holds the settings:
 Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
 **Sessions**.
 
+#### Avatar
+
+**Branding** starts with the agent's avatar. Drop a PNG, JPEG, GIF, or WebP image (at most 10 MB)
+on the avatar, or choose one, then position and zoom the square crop. **Save avatar** uploads it
+right away, without **Save changes**. The server renders the square once as square and circular
+PNG presets of 32, 64, 128, 256, and 512 px.
+The avatar shows on agent cards and the agent page, in the A2A Agent Card (`iconUrl`), on the MCP
+agent card, and as the icon of Slack apps created with one-click setup.
+
+Through the API, `PUT /v1/agents/{agent_id}/avatar` takes the image as the multipart field
+`file`, and `DELETE` removes it. The agent's `avatar` field lists the URLs. Preset URLs look like
+`/v1/avatars/{avatar_id}/circle-64.png`; they are public and cached as immutable, and a new upload
+gets a new `avatar_id`.
+
 Header actions:
 - **Edit**: switch the page into edit mode. The prompt becomes an editor and the settings take
   input; **Save changes** sends everything at once and **Discard** drops the draft. Changes apply

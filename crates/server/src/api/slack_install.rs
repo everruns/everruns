@@ -482,6 +482,24 @@ async fn begin_install(
                 .create_app(org.org_id, team_id.as_deref(), &manifest)
                 .await
                 .map_err(provisioning_error_response)?;
+            // A manifest cannot carry an icon; the avatar follows separately.
+            let (db, provisioner) = (state.slack.db.clone(), state.provisioner.clone());
+            let (agent_id, icon_team, icon_app) = (
+                app.agent_internal_id,
+                team_id.clone(),
+                created.app_id.clone(),
+            );
+            tokio::spawn(async move {
+                crate::domains::agents::avatar_slack::push_agent_avatar_to_slack_app(
+                    &db,
+                    provisioner.as_ref(),
+                    org.org_id,
+                    agent_id,
+                    icon_team.as_deref(),
+                    &icon_app,
+                )
+                .await;
+            });
             config.signing_secret = created.signing_secret;
             ProvisionedSlackApp {
                 app_id: created.app_id,
