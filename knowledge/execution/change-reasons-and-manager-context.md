@@ -549,11 +549,12 @@ entity, not only for the ones that exist today.
 
 History and manager notes are secondary functions, so they add no tab and no
 always-visible panel. They follow the pattern the agent page already uses for
-version history ([Agent Page](../ui/agent-page.md)): an item in the header
-overflow menu that opens a side sheet.
+version history ([Agent Page](../ui/agent-page.md)), now made the general
+[Entity Actions Menu](../ui/entity-actions-menu.md) pattern: an item in the
+header overflow menu that opens a side sheet.
 
-- **Header overflow menu** on every entity page gains **History** and, for
-  managers only, **Manager notes**. On agents, History replaces the Version
+- **Entity actions menu** on every entity page carries **History** and, for
+  managers only, **Manager notes**, in its Record group. On agents, History replaces the Version
   history item, and old `?tab=versions` links open the History sheet.
 - **History sheet.** Entries newest first: when, who, the agent session it came
   through (linked to that chat), surface, and reason. Opening an entry shows
@@ -572,8 +573,8 @@ overflow menu that opens a side sheet.
   "Reason for this change". Agents are required to give a reason; people are
   not, so the field never blocks a save.
 - **Shared components.** One `HistorySheet` and one `ManagerNotesSheet` take an
-  entity ref and serve every entity page, so a new kind gets both by adding
-  two menu items.
+  entity ref; `EntityActionsMenu` renders them for every kind, so a new
+  entity page gets both without page-specific code.
 
 Testing: a Playwright smoke opens History and Manager notes from the overflow
 menu on the agent page, restores a revision with a reason, and checks that a
@@ -601,7 +602,8 @@ Each phase is one PR-sized change.
    deleted. The Agent Versions concept is retired.
 6. **Enforcement and atomicity.** `reason_required` for agent callers; history
    write inside the mutation transaction with idempotency records.
-7. **UI.** History and manager notes behind the header overflow menu, an
+7. **UI.** `EntityActionsMenu` on every entity page with History and manager
+   notes, an
    optional reason field in save and delete dialogs (see UI).
 
 ## Open questions

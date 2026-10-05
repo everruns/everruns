@@ -6,6 +6,7 @@
 * [A2UI, Google Generative UI Integration](a2ui.md) - A2UI generative-UI capability.
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
 * [Agent Page](agent-page.md) - Why the agent page reads and edits in one layout, with the system prompt as the page.
+* [Entity Actions Menu](entity-actions-menu.md) - One header overflow menu per entity page for secondary record functions and lifecycle actions, in a fixed order.
 * [Agent Avatars](agent-avatars.md) - Why avatars are rendered once into square and circular presets behind immutable URLs, and how they reach Agent Cards and Slack.
 * [MCP Apps: Everruns in ChatGPT, Codex and Claude](mcp-apps.md) - Interactive session, question, approval and home views on /mcp.
 * [Navigation Information Architecture](information-architecture.md) - How navigation is grouped by what you do with a thing, and the dismissed alternatives.
