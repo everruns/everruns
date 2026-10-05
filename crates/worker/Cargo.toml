@@ -24,6 +24,10 @@ tracing.workspace = true
 everruns-contracts = { workspace = true, default-features = false }
 # Private turn/workflow entry, including optional backends and telemetry wiring.
 everruns-durable-engine.workspace = true
+# Feature selection only: worker-only core surface (MCP, OpenAI Agents API,
+# telemetry exporters, tree-sitter outlines). Source still reaches core through
+# durable-engine's `core` re-export; see scripts/lib/check-durable-isolation.sh.
+everruns-core = { workspace = true, default-features = false, features = ["mcp", "observability", "openai-agents-api", "tree-sitter-outlines"] }
 # Production-safe deterministic `llmsim` provider (seeded LlmSim models and
 # LLMSIM_DEMO scenarios). Testing/demo helpers stay out of the worker tree.
 everruns-llmsim.workspace = true

@@ -108,8 +108,14 @@ actor runs every turn through it, on the in-process default today.
 `everruns-durable-engine` is the durable implementation: published so an
 application can choose it from the facade, it must therefore carry nothing
 private to the platform. The gRPC stores and runner constructors, `tonic`, and
-`everruns-internal-protocol` move to the worker, which then runs the shared turn
-driver over its gRPC store. Why queue plus per-step checkpoint rather than
+`everruns-internal-protocol` therefore live in the worker, which implements
+durable-engine's store traits for its own gRPC client and builds `DurableRunner`
+through the engine's transport-neutral `DurableRunner::from_store`;
+[`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) rejects
+`tonic` or the internal protocol in durable-engine's normal and build edges. Worker-only
+core features (MCP, telemetry, OpenAI Agents API, tree-sitter outlines) are selected
+by the worker's own `everruns-core` edge, which the guard allows for feature selection
+only. The worker next runs the shared turn driver over its gRPC store. Why queue plus per-step checkpoint rather than
 `Workflow` replay is recorded in [Execution Backends](../framework/execution-backends.md).
 
 ### Core stays wasm-safe by default

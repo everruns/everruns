@@ -1,7 +1,8 @@
 // Agent runner for workflow execution
 // Decision: Use trait-based abstraction for workflow execution
 // Decision: Use PostgreSQL-backed durable execution engine
-// Decision: Workers communicate with control-plane via gRPC (no direct DB access)
+// Decision: Workers communicate with control-plane via gRPC (no direct DB access);
+// that transport and its runner constructors live in the worker crate.
 //
 // Architecture:
 // - API calls `start_run` which queues a workflow
@@ -85,35 +86,17 @@ pub enum RunnerBackend {
     InMemory,
     /// Use shared in-memory storage (dev mode with in-process worker)
     SharedInMemory(Arc<InMemoryWorkflowEventStore>),
-    /// Use gRPC to connect to control-plane (for workers)
-    Grpc,
+    // The gRPC control-plane backend is worker-owned: see
+    // `everruns_worker::grpc_durable_runner`. This crate carries no transport.
 }
 
 // =============================================================================
 // Factory Functions
 // =============================================================================
 
-/// Create an agent runner
-///
-/// This is used by the control-plane API to start workflows.
-/// Pass a database pool for direct access (control-plane) or None for gRPC (workers).
-pub async fn create_runner(
-    db_pool: Option<everruns_durable::PostgresPool>,
-) -> Result<Arc<dyn AgentRunner>> {
-    if let Some(pool) = db_pool {
-        tracing::info!("Creating Durable execution engine runner (direct DB mode)");
-        let runner = DurableRunner::new_with_pool(pool);
-        Ok(Arc::new(runner))
-    } else {
-        tracing::info!("Creating Durable execution engine runner (gRPC mode)");
-        let runner = DurableRunner::from_env().await?;
-        Ok(Arc::new(runner))
-    }
-}
-
 /// Create an agent runner with explicit backend configuration
 ///
-/// This allows choosing between PostgreSQL, in-memory, or gRPC backends.
+/// This allows choosing between PostgreSQL and in-memory backends.
 pub async fn create_runner_with_backend(backend: RunnerBackend) -> Result<Arc<dyn AgentRunner>> {
     match backend {
         RunnerBackend::Postgres(pool) => {
@@ -139,11 +122,6 @@ pub async fn create_runner_with_backend(backend: RunnerBackend) -> Result<Arc<dy
         RunnerBackend::SharedInMemory(store) => {
             tracing::info!("Creating Durable execution engine runner (shared in-memory dev mode)");
             let runner = DurableRunner::new_with_shared_store(store);
-            Ok(Arc::new(runner))
-        }
-        RunnerBackend::Grpc => {
-            tracing::info!("Creating Durable execution engine runner (gRPC mode)");
-            let runner = DurableRunner::from_env().await?;
             Ok(Arc::new(runner))
         }
     }

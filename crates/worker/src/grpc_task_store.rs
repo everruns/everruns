@@ -1,7 +1,8 @@
 // gRPC-backed TaskStore for standalone workers.
 //
-// The private durable entry owns both adapters; the worker loop consumes
-// the shared TaskStore interface.
+// durable-engine owns the TaskStore trait (with a blanket impl for every
+// WorkflowEventStore); the worker implements it for its own gRPC client type,
+// so the transport stays out of the engine and coherence holds.
 
 use crate::durable::{
     ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome, WorkerInfo, WorkflowError,
@@ -254,7 +255,7 @@ fn store_error(error: anyhow::Error) -> StoreError {
     StoreError::Database(error.to_string())
 }
 
-fn grpc_status_to_workflow_status(
+pub(crate) fn grpc_status_to_workflow_status(
     status: crate::grpc_durable_store::WorkflowStatus,
 ) -> WorkflowStatus {
     match status {
@@ -267,7 +268,7 @@ fn grpc_status_to_workflow_status(
     }
 }
 
-fn workflow_status_to_grpc_status(
+pub(crate) fn workflow_status_to_grpc_status(
     status: WorkflowStatus,
 ) -> crate::grpc_durable_store::WorkflowStatus {
     match status {
