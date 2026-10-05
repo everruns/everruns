@@ -61,7 +61,6 @@ crates/server/tests/server_integration/repository_integration_test.rs
 crates/test-support/src/capabilities/fake_aws.rs
 crates/test-support/tests/integration/reason_atom_test.rs
 crates/worker/src/grpc_adapters.rs
-crates/worker/src/unified_worker.rs
 integrations/bashkit/src/lib.rs
 integrations/daytona/src/client.rs
 integrations/daytona/src/tools.rs

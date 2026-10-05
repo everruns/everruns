@@ -2677,6 +2677,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "everruns-durable",
+ "everruns-llmsim",
  "serde",
  "serde_json",
  "tokio",
