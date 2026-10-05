@@ -11,6 +11,14 @@
 //! `reason`, `act`) is a queued task; after it completes, the engine plans
 //! the next step from the `DurableTurnInput` checkpoint and the driver enqueues
 //! it, or completes the workflow. See knowledge/framework/execution-backends.md.
+//!
+//! Decision: with [`TurnTaskDriver::chain_steps`], the driver enqueues the
+//! next step already claimed by its own worker and runs it at once, so a
+//! turn's steps run back to back on one warm worker instead of each waiting
+//! for a wakeup and a claim (a reason→act→reason hand-off cost a queue hop
+//! per step). Each step is still its own task row, so heartbeats, retries,
+//! stale reclaim, cancellation and history are unchanged; a store that
+//! cannot claim on enqueue (or a draining worker) leaves the step queued.
 
 use crate::durable::{ClaimedTask, TaskFailureOutcome, WorkflowStatus};
 use crate::durable_runner::DurableTurnInput;
@@ -125,6 +133,7 @@ pub struct TurnTaskDriver<S: TaskStore, H: TurnTaskHost> {
     hosts: H,
     worker_id: String,
     heartbeat_interval: Duration,
+    chain_steps: bool,
 }
 
 impl<S: TaskStore, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
@@ -134,6 +143,7 @@ impl<S: TaskStore, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
             hosts: self.hosts.clone(),
             worker_id: self.worker_id.clone(),
             heartbeat_interval: self.heartbeat_interval,
+            chain_steps: self.chain_steps,
         }
     }
 }
@@ -152,21 +162,54 @@ impl<S: TaskStore, H: TurnTaskHost> TurnTaskDriver<S, H> {
             hosts,
             worker_id: worker_id.into(),
             heartbeat_interval,
+            chain_steps: false,
         }
     }
 
-    /// Execute one claimed task to completion or failure.
+    /// Run each turn step's next step on this driver right away, claimed on
+    /// enqueue, instead of handing it to the queue (see the module notes).
+    /// Off by default.
+    #[must_use]
+    pub fn chain_steps(mut self, chain: bool) -> Self {
+        self.chain_steps = chain;
+        self
+    }
+
+    /// Execute one claimed task to completion or failure, then, with
+    /// [`chain_steps`](Self::chain_steps), every step of its turn this
+    /// driver got claimed after it.
     ///
     /// # Errors
     ///
-    /// Returns the task's error after recording the failure in the store.
+    /// Returns the failing task's error after recording the failure in the
+    /// store.
     pub async fn execute_task(&self, task: &ClaimedTask) -> Result<()> {
+        let claim_for = self.chain_steps.then_some(self.worker_id.as_str());
+        let mut next = self.execute_one(task, claim_for).await?;
+        while let Some(task) = next {
+            debug!(
+                task_id = %task.id,
+                workflow_id = ?task.workflow_id,
+                activity_type = %task.activity_type,
+                "Running chained turn step"
+            );
+            next = self.execute_one(&task, claim_for).await?;
+        }
+        Ok(())
+    }
+
+    async fn execute_one(
+        &self,
+        task: &ClaimedTask,
+        claim_for: Option<&str>,
+    ) -> Result<Option<ClaimedTask>> {
         execute_task(
             &self.store,
             &self.hosts,
             &self.worker_id,
             self.heartbeat_interval,
             task,
+            claim_for,
         )
         .await
     }
@@ -179,7 +222,8 @@ async fn execute_task<S, H>(
     worker_id: &str,
     heartbeat_interval: Duration,
     task: &ClaimedTask,
-) -> Result<()>
+    claim_for: Option<&str>,
+) -> Result<Option<ClaimedTask>>
 where
     S: TaskStore,
     H: TurnTaskHost,
@@ -192,9 +236,13 @@ where
         "Executing task"
     );
 
-    // Check if workflow is cancelled (only for workflow-bound tasks)
+    // Check if workflow is cancelled (only for workflow-bound tasks). The
+    // claim usually reports the status; ask the store only when it did not.
     if let Some(wf_id) = task.workflow_id {
-        let workflow_status = store.get_workflow_status(wf_id).await;
+        let workflow_status = match task.workflow_status {
+            Some(status) => Ok(status),
+            None => store.get_workflow_status(wf_id).await,
+        };
         if let Ok(status) = workflow_status
             && status == WorkflowStatus::Cancelled
         {
@@ -206,7 +254,7 @@ where
             let _ = store
                 .fail_task_and_record(task, "Workflow cancelled", false)
                 .await;
-            return Ok(());
+            return Ok(None);
         }
     }
 
@@ -314,7 +362,7 @@ where
 
                     // Schedule next activity if needed (only for workflow-bound tasks)
                     if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id) {
-                        schedule_next_activity(
+                        return schedule_next_activity(
                             store,
                             hosts,
                             wf_id,
@@ -322,8 +370,9 @@ where
                             &turn_input,
                             &output,
                             drained,
+                            claim_for,
                         )
-                        .await?;
+                        .await;
                     }
                 }
                 Err(e) => {
@@ -342,7 +391,7 @@ where
         }
     }
 
-    Ok(())
+    Ok(None)
 }
 
 async fn fail_activity_task<S: TaskStore, H: TurnTaskHost>(
@@ -447,7 +496,10 @@ async fn execute_act_activity<H: TurnTaskHost>(
 // Activity Scheduling
 // =============================================================================
 
-/// Schedule the next activity based on current activity completion
+/// Schedule the next activity based on current activity completion.
+///
+/// Returns the next step when it was enqueued claimed for `claim_for`.
+#[allow(clippy::too_many_arguments)]
 async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
     store: &Arc<S>,
     hosts: &H,
@@ -456,7 +508,8 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
     input: &DurableTurnInput,
     output: &serde_json::Value,
     drained: Option<usize>,
-) -> Result<()> {
+    claim_for: Option<&str>,
+) -> Result<Option<ClaimedTask>> {
     let reason_final_answer = reason_final_answer(completed_activity, output)?;
 
     // Drain queued USER_MESSAGE steering signals (task wakes) at the boundaries
@@ -499,10 +552,10 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
     hosts.turn_planned(&checkpoint, &plan, output).await?;
     match plan {
         TurnPlan::ScheduleReason(_) => {
-            enqueue_reason_task(store, workflow_id, &checkpoint).await?;
+            return enqueue_reason_task(store, workflow_id, &checkpoint, claim_for).await;
         }
         TurnPlan::ScheduleAct(plan) => {
-            enqueue_act_task(store, workflow_id, &plan, &checkpoint).await?;
+            return enqueue_act_task(store, workflow_id, &plan, &checkpoint, claim_for).await;
         }
         TurnPlan::Complete { stop_reason, error } => {
             let turn_output = turn_output_with_stop_reason(output.clone(), stop_reason);
@@ -529,7 +582,7 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
         }
     }
 
-    Ok(())
+    Ok(None)
 }
 
 /// Whether a completed `reason` produced a final answer (no tool calls, no
@@ -601,14 +654,49 @@ async fn enqueue_reason_task<S: TaskStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     input: &DurableTurnInput,
-) -> Result<()> {
+    claim_for: Option<&str>,
+) -> Result<Option<ClaimedTask>> {
     let activity_id = format!("reason_{}", Uuid::now_v7());
     let input_json = serde_json::to_value(input)?;
-    store
-        .enqueue_task_and_record(workflow_id, activity_id, "reason".to_string(), input_json)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
-    Ok(())
+    enqueue_step(
+        store,
+        workflow_id,
+        activity_id,
+        "reason",
+        input_json,
+        claim_for,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))
+}
+
+/// Enqueue a turn step, claimed for `claim_for` when set.
+async fn enqueue_step<S: TaskStore>(
+    store: &Arc<S>,
+    workflow_id: Uuid,
+    activity_id: String,
+    activity_type: &str,
+    input: serde_json::Value,
+    claim_for: Option<&str>,
+) -> Result<Option<ClaimedTask>, crate::durable::StoreError> {
+    let activity_type = activity_type.to_string();
+    match claim_for {
+        Some(worker_id) => {
+            store
+                .enqueue_claimed_task_and_record(
+                    workflow_id,
+                    activity_id,
+                    activity_type,
+                    input,
+                    worker_id,
+                )
+                .await
+        }
+        None => store
+            .enqueue_task_and_record(workflow_id, activity_id, activity_type, input)
+            .await
+            .map(|_| None),
+    }
 }
 
 async fn enqueue_act_task<S: TaskStore>(
@@ -616,15 +704,21 @@ async fn enqueue_act_task<S: TaskStore>(
     workflow_id: Uuid,
     plan: &ActPlan,
     checkpoint: &DurableTurnInput,
-) -> Result<()> {
+    claim_for: Option<&str>,
+) -> Result<Option<ClaimedTask>> {
     let act_input_json = act_task_input(plan, checkpoint)?;
 
     let activity_id = format!("act_{}", Uuid::now_v7());
-    store
-        .enqueue_task_and_record(workflow_id, activity_id, "act".to_string(), act_input_json)
-        .await
-        .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
-    Ok(())
+    enqueue_step(
+        store,
+        workflow_id,
+        activity_id,
+        "act",
+        act_input_json,
+        claim_for,
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))
 }
 
 pub(crate) fn act_task_input(

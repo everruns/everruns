@@ -205,6 +205,33 @@ pub struct ClaimedTask {
     pub workflow_status: Option<WorkflowStatus>,
 }
 
+/// How [`TaskQueue::enqueue_claimed_task`] enqueued a task.
+#[derive(Debug, Clone)]
+pub enum Enqueued {
+    /// Enqueued claimed by the requesting worker, which runs it now.
+    Claimed(Box<ClaimedTask>),
+    /// Enqueued pending, with this id, for whichever worker claims it.
+    Queued(Uuid),
+}
+
+impl Enqueued {
+    /// The task's id.
+    pub fn task_id(&self) -> Uuid {
+        match self {
+            Self::Claimed(task) => task.id,
+            Self::Queued(task_id) => *task_id,
+        }
+    }
+
+    /// The claimed task, when it was enqueued claimed.
+    pub fn into_claimed(self) -> Option<ClaimedTask> {
+        match self {
+            Self::Claimed(task) => Some(*task),
+            Self::Queued(_) => None,
+        }
+    }
+}
+
 /// Response from heartbeat operation
 #[derive(Debug, Clone)]
 pub struct HeartbeatResponse {
@@ -760,6 +787,28 @@ pub trait EventLog: Send + Sync + 'static {
 pub trait TaskQueue: Send + Sync + 'static {
     /// Enqueue an activity task
     async fn enqueue_task(&self, task: TaskDefinition) -> Result<Uuid, StoreError>;
+
+    /// Enqueue a task already claimed by `worker_id`: the same as
+    /// [`enqueue_task`](Self::enqueue_task) followed by a claim of that task
+    /// by `worker_id`, without the queue in between.
+    ///
+    /// A worker that just finished one step of a workflow runs the next step
+    /// itself this way, without waiting for a wakeup and a claim. The task is
+    /// an ordinary claimed row: it heartbeats, retries and is reclaimed when
+    /// stale like any other.
+    ///
+    /// Returns [`Enqueued::Queued`] when the task was enqueued as pending
+    /// instead, for any worker to claim: the worker is not registered or is
+    /// draining, or the task is delayed or deduplicated. The default always
+    /// does that.
+    async fn enqueue_claimed_task(
+        &self,
+        task: TaskDefinition,
+        worker_id: &str,
+    ) -> Result<Enqueued, StoreError> {
+        let _ = worker_id;
+        self.enqueue_task(task).await.map(Enqueued::Queued)
+    }
 
     /// Claim tasks for execution
     ///

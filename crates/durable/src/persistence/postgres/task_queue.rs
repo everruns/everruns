@@ -1,6 +1,7 @@
 //! TaskQueue implementation (see `store.rs` for the trait contract).
 
 use super::*;
+use crate::persistence::store::Enqueued;
 
 #[async_trait]
 impl TaskQueue for PostgresWorkflowEventStore {
@@ -141,6 +142,138 @@ impl TaskQueue for PostgresWorkflowEventStore {
 
         debug!(%task_id, activity_type = %task.activity_type, "enqueued task");
         Ok(task_id)
+    }
+
+    #[instrument(skip(self, task))]
+    async fn enqueue_claimed_task(
+        &self,
+        task: TaskDefinition,
+        worker_id: &str,
+    ) -> Result<Enqueued, StoreError> {
+        if task.options.start_delay.is_some() || task.options.dedupe_by_activity_id {
+            return self.enqueue_task(task).await.map(Enqueued::Queued);
+        }
+
+        // One transaction, as a claim: lock the workflow row first, so the
+        // ActivityStarted sequence read in the next statement sees every
+        // committed event (see `claim_task` on READ COMMITTED snapshots), then
+        // insert the task claimed and the event together. A claimed row is not
+        // pending, so the pending-task limit does not apply.
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| StoreError::Database(e.to_string()))?;
+
+        let workflow_status = match task.workflow_id {
+            Some(workflow_id) => {
+                let status: Option<String> = sqlx::query_scalar(
+                    "SELECT status FROM durable_workflow_instances WHERE id = $1 FOR UPDATE",
+                )
+                .bind(workflow_id)
+                .fetch_optional(&mut *tx)
+                .await
+                .map_err(|e| {
+                    store_failure(
+                        "durable.tasks.enqueue_claimed",
+                        "Failed to lock workflow",
+                        e,
+                    )
+                })?;
+                status.as_deref().map(parse_workflow_status).transpose()?
+            }
+            None => None,
+        };
+
+        let task_id = Uuid::now_v7();
+        let task_input = sanitize_json_null_bytes(task.input.clone());
+        let options_json = serde_json::to_value(&task.options)
+            .map(sanitize_json_null_bytes)
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+        let started = serde_json::to_value(WorkflowEvent::ActivityStarted {
+            activity_id: task.activity_id.clone(),
+            attempt: 1,
+            worker_id: worker_id.to_string(),
+        })
+        .map(sanitize_json_null_bytes)
+        .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+        let inserted: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            WITH task AS (
+                INSERT INTO durable_task_queue (
+                    id, workflow_id, activity_id, activity_type, input, options,
+                    max_attempts, priority, visible_at,
+                    schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
+                    status, claimed_by, claimed_at, heartbeat_at, attempt
+                )
+                SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11,
+                       'claimed', $12, NOW(), NOW(), 1
+                WHERE EXISTS (
+                    SELECT 1 FROM durable_workers WHERE id = $12 AND status != 'draining'
+                )
+                RETURNING id, workflow_id
+            ),
+            started AS (
+                INSERT INTO durable_workflow_events (workflow_id, sequence_num, event_type, event_data)
+                SELECT task.workflow_id,
+                       COALESCE((
+                           SELECT MAX(sequence_num) + 1 FROM durable_workflow_events
+                           WHERE workflow_id = task.workflow_id
+                       ), 0),
+                       'activity_started', $13
+                FROM task
+                WHERE task.workflow_id IS NOT NULL
+            )
+            SELECT id FROM task
+            "#,
+        )
+        .bind(task_id)
+        .bind(task.workflow_id)
+        .bind(&task.activity_id)
+        .bind(&task.activity_type)
+        .bind(&task_input)
+        .bind(&options_json)
+        .bind(task.options.retry_policy.max_attempts as i32)
+        .bind(task.options.priority)
+        .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
+        .bind(task.options.start_to_close_timeout.as_millis() as i64)
+        .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
+        .bind(worker_id)
+        .bind(&started)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| {
+            store_failure(
+                "durable.tasks.enqueue_claimed",
+                "Failed to enqueue claimed task",
+                e,
+            )
+        })?;
+
+        tx.commit().await.map_err(|e| {
+            error!(error = %e, "Failed to commit claimed enqueue");
+            StoreError::Database(e.to_string())
+        })?;
+
+        if inserted.is_none() {
+            // Not a registered worker, or draining: the queue hands the task
+            // to whoever claims it next.
+            return self.enqueue_task(task).await.map(Enqueued::Queued);
+        }
+
+        debug!(%task_id, activity_type = %task.activity_type, worker_id, "enqueued claimed task");
+        Ok(Enqueued::Claimed(Box::new(ClaimedTask {
+            id: task_id,
+            workflow_id: task.workflow_id,
+            max_attempts: task.options.retry_policy.max_attempts,
+            activity_id: task.activity_id,
+            activity_type: task.activity_type,
+            input: task_input,
+            options: task.options,
+            attempt: 1,
+            workflow_status,
+        })))
     }
 
     #[instrument(skip(self, activity_types))]

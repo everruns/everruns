@@ -838,10 +838,19 @@ message UpdateDurableWorkflowStatusResponse {
 
 message EnqueueDurableTaskRequest {
     DurableTaskDefinition task = 1;
+    // Enqueue the task already claimed by this worker, so the worker that
+    // finished a turn's step runs the next one without a wakeup and a claim.
+    // The control plane falls back to the queue when the worker is not
+    // registered or is draining; `claimed` is then unset.
+    optional string claim_for_worker_id = 2;
 }
 
 message EnqueueDurableTaskResponse {
     Uuid task_id = 1;
+    // Set when the task was enqueued claimed by `claim_for_worker_id`. A
+    // control plane that predates the field leaves it unset, and the task
+    // waits in the queue as before.
+    optional DurableClaimedTask claimed = 2;
 }
 
 // === Claim tasks ===

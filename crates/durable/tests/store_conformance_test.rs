@@ -131,6 +131,8 @@ conformance!(
     start_run_restarts_a_finished_workflow,
     concurrent_run_starts_elect_one_winner,
     claims_carry_the_workflow_status,
+    claimed_enqueue_hands_the_task_to_its_worker,
+    claimed_enqueue_falls_back_to_the_queue,
 );
 
 // --- helpers ---------------------------------------------------------------
@@ -869,4 +871,98 @@ async fn claims_carry_the_workflow_status<H: Harness>(h: H) {
     assert_eq!(status_of("p"), Some(WorkflowStatus::Pending));
     assert_eq!(status_of("r"), Some(WorkflowStatus::Running));
     assert_eq!(status_of("standalone"), None);
+}
+
+// --- claimed enqueue -----------------------------------------------------------
+
+async fn claimed_enqueue_hands_the_task_to_its_worker<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    let other = worker(&h, &ty).await;
+    let wf = workflow(&h).await;
+    h.store()
+        .update_workflow_status(wf, WorkflowStatus::Running, None, None)
+        .await
+        .unwrap();
+
+    let claimed = h
+        .store()
+        .enqueue_claimed_task(task(Some(wf), &ty, "next"), &w)
+        .await
+        .unwrap()
+        .into_claimed()
+        .expect("an active worker gets the task claimed");
+    assert_eq!(claimed.attempt, 1);
+    assert_eq!(claimed.activity_type, ty);
+    assert_eq!(claimed.input, json!({ "activity": "next" }));
+    assert_eq!(claimed.workflow_status, Some(WorkflowStatus::Running));
+    assert_eq!(status(&h, claimed.id).await, TaskStatus::Claimed);
+
+    // Nobody else can claim it, its worker owns it, and it started once.
+    assert!(claim(&h, &other, &ty, 1).await.is_empty());
+    assert!(
+        h.store()
+            .heartbeat_task(claimed.id, &w, None)
+            .await
+            .unwrap()
+            .accepted
+    );
+    let started = h
+        .store()
+        .load_events(wf)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|(_, e)| matches!(e, WorkflowEvent::ActivityStarted { activity_id, worker_id, attempt: 1 } if activity_id == "next" && *worker_id == w))
+        .count();
+    assert_eq!(started, 1);
+
+    // An abandoned claimed enqueue is reclaimed like any claim.
+    h.expire_claim(claimed.id).await;
+    h.store()
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+    assert_eq!(claim(&h, &other, &ty, 1).await, vec![claimed.id]);
+}
+
+async fn claimed_enqueue_falls_back_to_the_queue<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    let wf = workflow(&h).await;
+
+    // A worker that is not registered, or is draining, gets nothing claimed.
+    let unknown = format!("conformance-unknown-{}", Uuid::now_v7().simple());
+    let queued = h
+        .store()
+        .enqueue_claimed_task(task(Some(wf), &ty, "a"), &unknown)
+        .await
+        .unwrap();
+    assert!(queued.into_claimed().is_none());
+    h.store().drain_worker(&w).await.unwrap();
+    let queued = h
+        .store()
+        .enqueue_claimed_task(task(Some(wf), &ty, "b"), &w)
+        .await
+        .unwrap();
+    assert!(queued.into_claimed().is_none());
+    h.store().resume_worker(&w).await.unwrap();
+    assert_eq!(
+        claim(&h, &w, &ty, 10).await.len(),
+        2,
+        "both went to the queue"
+    );
+
+    // A delayed task waits in the queue.
+    let delayed = ActivityOptions {
+        start_delay: Some(Duration::from_secs(3600)),
+        ..ActivityOptions::default()
+    };
+    let queued = h
+        .store()
+        .enqueue_claimed_task(with_options(task(Some(wf), &ty, "c"), delayed), &w)
+        .await
+        .unwrap();
+    assert!(queued.into_claimed().is_none());
+    assert!(claim(&h, &w, &ty, 1).await.is_empty());
 }

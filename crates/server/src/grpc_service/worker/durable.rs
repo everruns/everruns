@@ -175,7 +175,17 @@ impl WorkerServiceImpl {
             options,
         };
 
-        let task_id = store.enqueue_task(task).await.map_err(|e| {
+        let enqueued = match req.claim_for_worker_id.as_deref() {
+            Some(worker_id) => store
+                .enqueue_claimed_task(task, worker_id)
+                .await
+                .map(|enqueued| (enqueued.task_id(), enqueued.into_claimed())),
+            None => store
+                .enqueue_task(task)
+                .await
+                .map(|task_id| (task_id, None)),
+        };
+        let (task_id, claimed) = enqueued.map_err(|e| {
             if matches!(
                 e,
                 everruns_durable::StoreError::TaskQueueLimitExceeded { .. }
@@ -188,8 +198,11 @@ impl WorkerServiceImpl {
             }
         })?;
 
-        // Notify NATS subscribers (no-op for PG backend — PG uses DB triggers)
-        if let Some(broadcaster) = &self.task_broadcaster {
+        // Notify NATS subscribers (no-op for PG backend — PG uses DB triggers).
+        // A task enqueued claimed has its worker already.
+        if claimed.is_none()
+            && let Some(broadcaster) = &self.task_broadcaster
+        {
             broadcaster
                 .notify_task_available(&task_def.activity_type)
                 .await;
@@ -198,6 +211,7 @@ impl WorkerServiceImpl {
         use everruns_internal_protocol::uuid_to_proto_uuid;
         Ok(Response::new(EnqueueDurableTaskResponse {
             task_id: Some(uuid_to_proto_uuid(task_id)),
+            claimed: claimed.map(claimed_task_to_proto),
         }))
     }
 
@@ -205,8 +219,6 @@ impl WorkerServiceImpl {
         &self,
         request: Request<ClaimDurableTasksRequest>,
     ) -> Result<Response<ClaimDurableTasksResponse>, Status> {
-        use everruns_internal_protocol::uuid_to_proto_uuid;
-
         let req = request.into_inner();
         let store = self.durable_store()?;
 
@@ -218,24 +230,8 @@ impl WorkerServiceImpl {
                 Status::internal("Failed to claim tasks")
             })?;
 
-        let mut proto_tasks = Vec::with_capacity(tasks.len());
-        for t in tasks {
-            // The claim reads the workflow status in the same statement.
-            let workflow_status = t.workflow_status;
-            proto_tasks.push(proto::DurableClaimedTask {
-                id: Some(uuid_to_proto_uuid(t.id)),
-                workflow_id: t.workflow_id.map(uuid_to_proto_uuid),
-                activity_id: t.activity_id,
-                activity_type: t.activity_type,
-                input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),
-                attempt: t.attempt as i32,
-                max_attempts: t.max_attempts as i32,
-                workflow_status: workflow_status.map(|s| workflow_status_to_proto(s).into()),
-            });
-        }
-
         Ok(Response::new(ClaimDurableTasksResponse {
-            tasks: proto_tasks,
+            tasks: tasks.into_iter().map(claimed_task_to_proto).collect(),
         }))
     }
 
@@ -597,5 +593,23 @@ impl WorkerServiceImpl {
             deregistered: true,
             tasks_reclaimed: tasks_reclaimed as i32,
         }))
+    }
+}
+
+/// A claimed task on the wire. The claim reads the workflow status in the
+/// same statement, so the worker's pre-execution check needs no extra read.
+fn claimed_task_to_proto(t: everruns_durable::ClaimedTask) -> proto::DurableClaimedTask {
+    use everruns_internal_protocol::uuid_to_proto_uuid;
+    proto::DurableClaimedTask {
+        id: Some(uuid_to_proto_uuid(t.id)),
+        workflow_id: t.workflow_id.map(uuid_to_proto_uuid),
+        activity_id: t.activity_id,
+        activity_type: t.activity_type,
+        input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),
+        attempt: t.attempt as i32,
+        max_attempts: t.max_attempts as i32,
+        workflow_status: t
+            .workflow_status
+            .map(|s| workflow_status_to_proto(s).into()),
     }
 }

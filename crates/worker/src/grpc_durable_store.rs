@@ -3,8 +3,6 @@
 // Decision: No direct database access from workers - all operations go through gRPC
 // Decision: Supports push-based task notifications with polling fallback
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -108,9 +106,6 @@ pub fn grpc_client_tls_from_env() -> Option<tonic::transport::ClientTlsConfig> {
 #[derive(Clone)]
 pub struct GrpcDurableStore {
     client: WorkerServiceClient<InterceptedService<Channel, GrpcClientAuth>>,
-    /// Workflow status the claim reported, read once by the worker's
-    /// pre-execution check instead of asking again (see `claim_tasks`).
-    claimed_status: Arc<Mutex<HashMap<Uuid, WorkflowStatus>>>,
 }
 
 impl GrpcDurableStore {
@@ -165,10 +160,7 @@ impl GrpcDurableStore {
                             "Connected to control-plane gRPC"
                         );
                     }
-                    return Ok(Self {
-                        client,
-                        claimed_status: Arc::default(),
-                    });
+                    return Ok(Self { client });
                 }
                 Err(e) => {
                     let elapsed = start.elapsed();
@@ -259,14 +251,16 @@ impl GrpcDurableStore {
         Ok(())
     }
 
-    /// Enqueue a task
+    /// Enqueue a task, claimed for `claim_for` when set. Returns the task's id
+    /// and, when the control plane enqueued it claimed, the claimed task.
     pub async fn enqueue_task(
         &mut self,
         workflow_id: Uuid,
         activity_id: String,
         activity_type: String,
         input: serde_json::Value,
-    ) -> Result<Uuid> {
+        claim_for: Option<&str>,
+    ) -> Result<(Uuid, Option<crate::durable::ClaimedTask>)> {
         let task = DurableTaskDefinition {
             workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
             activity_id,
@@ -275,15 +269,22 @@ impl GrpcDurableStore {
             options: Some(DurableActivityOptions::default()),
         };
 
-        let request = EnqueueDurableTaskRequest { task: Some(task) };
+        let request = EnqueueDurableTaskRequest {
+            task: Some(task),
+            claim_for_worker_id: claim_for.map(str::to_string),
+        };
 
-        let response = self.client.enqueue_durable_task(request).await?;
+        let response = self
+            .client
+            .enqueue_durable_task(request)
+            .await?
+            .into_inner();
         let task_id = response
-            .into_inner()
             .task_id
             .ok_or_else(|| anyhow::anyhow!("Missing task_id in response"))?;
+        let claimed = response.claimed.map(claimed_task_from_proto).transpose()?;
 
-        parse_proto_uuid(&task_id)
+        Ok((parse_proto_uuid(&task_id)?, claimed))
     }
 
     /// Claim tasks for execution
@@ -300,61 +301,12 @@ impl GrpcDurableStore {
         };
 
         let response = self.client.claim_durable_tasks(request).await?;
-        let tasks = response
+        response
             .into_inner()
             .tasks
             .into_iter()
-            .map(|t| {
-                let status = t
-                    .workflow_status
-                    .map(|_| proto_status_to_workflow(t.workflow_status()));
-                let id =
-                    t.id.as_ref()
-                        .map(parse_proto_uuid)
-                        .transpose()?
-                        .unwrap_or_else(Uuid::nil);
-                let workflow_id = t.workflow_id.as_ref().map(parse_proto_uuid).transpose()?;
-                if let (Some(workflow_id), Some(status)) = (workflow_id, status) {
-                    self.remember_claimed_status(workflow_id, status);
-                }
-                let input = t
-                    .input
-                    .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
-                    .unwrap_or_else(|| serde_json::json!({}));
-
-                Ok(crate::durable::ClaimedTask {
-                    id,
-                    workflow_id,
-                    activity_id: t.activity_id,
-                    activity_type: t.activity_type,
-                    input,
-                    options: crate::durable::ActivityOptions::default(),
-                    attempt: t.attempt as u32,
-                    max_attempts: t.max_attempts as u32,
-                    workflow_status: status
-                        .map(crate::grpc_task_store::grpc_status_to_workflow_status),
-                })
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(tasks)
-    }
-
-    fn remember_claimed_status(&self, workflow_id: Uuid, status: WorkflowStatus) {
-        let mut statuses = self
-            .claimed_status
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        statuses.insert(workflow_id, status);
-    }
-
-    /// The workflow status the latest claim reported, once. Later reads go to
-    /// the control plane.
-    pub fn take_claimed_status(&self, workflow_id: Uuid) -> Option<WorkflowStatus> {
-        self.claimed_status
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(&workflow_id)
+            .map(claimed_task_from_proto)
+            .collect()
     }
 
     /// Complete a task
@@ -785,6 +737,36 @@ fn parse_proto_uuid(proto_uuid: &proto::Uuid) -> Result<Uuid> {
     Uuid::parse_str(&proto_uuid.value).map_err(|e| anyhow::anyhow!("Invalid UUID: {}", e))
 }
 
+/// A claimed task from the wire. The claim reports the workflow status, so
+/// the driver's pre-execution check reads it from the task.
+fn claimed_task_from_proto(t: proto::DurableClaimedTask) -> Result<crate::durable::ClaimedTask> {
+    let status = t
+        .workflow_status
+        .map(|_| proto_status_to_workflow(t.workflow_status()));
+    let id =
+        t.id.as_ref()
+            .map(parse_proto_uuid)
+            .transpose()?
+            .unwrap_or_else(Uuid::nil);
+    let workflow_id = t.workflow_id.as_ref().map(parse_proto_uuid).transpose()?;
+    let input = t
+        .input
+        .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    Ok(crate::durable::ClaimedTask {
+        id,
+        workflow_id,
+        activity_id: t.activity_id,
+        activity_type: t.activity_type,
+        input,
+        options: crate::durable::ActivityOptions::default(),
+        attempt: t.attempt as u32,
+        max_attempts: t.max_attempts as u32,
+        workflow_status: status.map(crate::grpc_task_store::grpc_status_to_workflow_status),
+    })
+}
+
 fn workflow_status_to_proto(status: WorkflowStatus) -> proto::DurableWorkflowStatus {
     match status {
         WorkflowStatus::Pending => proto::DurableWorkflowStatus::Pending,
@@ -825,22 +807,26 @@ mod tests {
 
     static TLS_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
-    #[tokio::test]
-    async fn a_claimed_status_is_read_once() {
-        let channel = Channel::from_static("http://127.0.0.1:1").connect_lazy();
-        let store = GrpcDurableStore {
-            client: WorkerServiceClient::with_interceptor(channel, GrpcClientAuth::from_env()),
-            claimed_status: Arc::default(),
-        };
+    #[test]
+    fn a_claimed_task_carries_its_workflow_status() {
         let workflow_id = Uuid::now_v7();
-        store.remember_claimed_status(workflow_id, WorkflowStatus::Cancelled);
-        // Clones share what the claim reported, as the worker's store does.
-        let reader = store.clone();
+        let task = claimed_task_from_proto(proto::DurableClaimedTask {
+            id: Some(uuid_to_proto_uuid(Uuid::now_v7())),
+            workflow_id: Some(uuid_to_proto_uuid(workflow_id)),
+            activity_id: "reason_1".into(),
+            activity_type: "reason".into(),
+            input: None,
+            attempt: 1,
+            max_attempts: 3,
+            workflow_status: Some(proto::DurableWorkflowStatus::Cancelled.into()),
+        })
+        .unwrap();
+        assert_eq!(task.workflow_id, Some(workflow_id));
         assert_eq!(
-            reader.take_claimed_status(workflow_id),
-            Some(WorkflowStatus::Cancelled)
+            task.workflow_status,
+            Some(crate::durable::WorkflowStatus::Cancelled)
         );
-        assert_eq!(store.take_claimed_status(workflow_id), None);
+        assert_eq!(task.input, serde_json::json!({}));
     }
 
     struct TlsEnvGuard {

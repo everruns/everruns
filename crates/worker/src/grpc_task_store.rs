@@ -83,9 +83,6 @@ impl TaskStore for GrpcDurableStore {
     }
 
     async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
-        if let Some(status) = self.take_claimed_status(workflow_id) {
-            return Ok(grpc_status_to_workflow_status(status));
-        }
         let mut store = self.clone();
         let (status, _, _) = GrpcDurableStore::get_workflow_status(&mut store, workflow_id)
             .await
@@ -149,9 +146,39 @@ impl TaskStore for GrpcDurableStore {
         input: serde_json::Value,
     ) -> Result<Uuid, StoreError> {
         let mut store = self.clone();
-        GrpcDurableStore::enqueue_task(&mut store, workflow_id, activity_id, activity_type, input)
-            .await
-            .map_err(store_error)
+        GrpcDurableStore::enqueue_task(
+            &mut store,
+            workflow_id,
+            activity_id,
+            activity_type,
+            input,
+            None,
+        )
+        .await
+        .map(|(task_id, _)| task_id)
+        .map_err(store_error)
+    }
+
+    async fn enqueue_claimed_task_and_record(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+        worker_id: &str,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::enqueue_task(
+            &mut store,
+            workflow_id,
+            activity_id,
+            activity_type,
+            input,
+            Some(worker_id),
+        )
+        .await
+        .map(|(_, claimed)| claimed)
+        .map_err(store_error)
     }
 
     async fn update_workflow_status(

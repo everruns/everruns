@@ -38,6 +38,58 @@ impl TaskQueue for InMemoryWorkflowEventStore {
         Ok(task_id)
     }
 
+    async fn enqueue_claimed_task(
+        &self,
+        task: TaskDefinition,
+        worker_id: &str,
+    ) -> Result<Enqueued, StoreError> {
+        let may_claim = self
+            .workers
+            .read()
+            .get(worker_id)
+            .is_some_and(|w| w.status != "draining");
+        if !may_claim || task.options.start_delay.is_some() || task.options.dedupe_by_activity_id {
+            return self.enqueue_task(task).await.map(Enqueued::Queued);
+        }
+
+        let now = Utc::now();
+        let task_id = Uuid::now_v7();
+        let mut claimed = ClaimedTask {
+            id: task_id,
+            workflow_id: task.workflow_id,
+            activity_id: task.activity_id.clone(),
+            activity_type: task.activity_type.clone(),
+            input: task.input.clone(),
+            options: task.options.clone(),
+            attempt: 1,
+            max_attempts: task.options.retry_policy.max_attempts,
+            workflow_status: None,
+        };
+        let mut state = TaskState::pending(task);
+        state.status = TaskStatus::Claimed;
+        state.claimed_by = Some(worker_id.to_string());
+        state.claimed_at = Some(now);
+        state.heartbeat_at = Some(now);
+        state.attempt = 1;
+        self.tasks.write().insert(task_id, state);
+
+        // As a claim does: the workflow status rides along, and the first
+        // attempt records ActivityStarted.
+        if let Some(wf) = claimed.workflow_id.and_then(|id| {
+            self.workflows.write().get_mut(&id).map(|wf| {
+                wf.events.push(WorkflowEvent::ActivityStarted {
+                    activity_id: claimed.activity_id.clone(),
+                    attempt: 1,
+                    worker_id: worker_id.to_string(),
+                });
+                wf.status
+            })
+        }) {
+            claimed.workflow_status = Some(wf);
+        }
+        Ok(Enqueued::Claimed(Box::new(claimed)))
+    }
+
     async fn claim_task(
         &self,
         worker_id: &str,
