@@ -29,6 +29,9 @@ import {
   revokeAgentMcpConnection,
   uploadAgentAvatar,
   deleteAgentAvatar,
+  selectAgentAvatarPreset,
+  listAvatarPresets,
+  getAvatarPresetSelection,
 } from "@/lib/api/agents";
 import type {
   CreateAgentRequest,
@@ -375,5 +378,25 @@ export function useAgentAvatar(agentId: string) {
     mutationFn: () => deleteAgentAvatar(agentId),
     onSuccess: refresh,
   });
-  return { upload, remove };
+  const selectPreset = useMutation({
+    mutationFn: (presetId: string) => selectAgentAvatarPreset(agentId, presetId),
+    onSuccess: refresh,
+  });
+  return { upload, remove, selectPreset };
+}
+
+export function useAvatarPresets(agentId: string, enabled: boolean) {
+  const { currentOrg } = useOrg();
+  const catalog = useQuery({
+    queryKey: ["avatar-presets"],
+    queryFn: listAvatarPresets,
+    enabled,
+    staleTime: Infinity,
+  });
+  const current = useQuery({
+    queryKey: [...queryKeys.agents.detail(agentId), currentOrg?.public_id, "avatar-preset"],
+    queryFn: () => getAvatarPresetSelection(agentId),
+    enabled,
+  });
+  return { catalog, current };
 }

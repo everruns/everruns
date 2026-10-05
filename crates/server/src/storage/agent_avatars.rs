@@ -20,8 +20,7 @@ pub struct AgentAvatarVariantInput {
 pub struct SetAgentAvatar {
     pub org_id: i64,
     pub agent_id: Uuid,
-    /// Where the image came from. Only `upload` today; a curated predefined
-    /// set will add a value here.
+    /// `upload` or `preset:<stable catalog ID>`.
     pub source: String,
     pub variants: Vec<AgentAvatarVariantInput>,
 }

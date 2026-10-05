@@ -10,6 +10,8 @@ use crate::storage::{AgentAvatarVariantRow, SetAgentAvatar};
 #[derive(Clone, Debug)]
 pub(super) struct StoredAvatar {
     agent_id: Uuid,
+    org_id: i64,
+    source: String,
     variants: HashMap<String, AgentAvatarVariantRow>,
 }
 
@@ -42,12 +44,27 @@ impl InMemoryDatabase {
             avatar_id,
             StoredAvatar {
                 agent_id: input.agent_id,
+                org_id: input.org_id,
+                source: input.source,
                 variants,
             },
         );
         agent.avatar_id = Some(avatar_id);
         agent.updated_at = Self::now();
         Ok(Some(avatar_id))
+    }
+
+    pub async fn get_agent_avatar_source(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Option<String>> {
+        Ok(self
+            .agent_avatars
+            .read()
+            .values()
+            .find(|a| a.org_id == org_id && a.agent_id == agent_id)
+            .map(|a| a.source.clone()))
     }
 
     pub async fn clear_agent_avatar(&self, org_id: i64, agent_id: Uuid) -> Result<bool> {

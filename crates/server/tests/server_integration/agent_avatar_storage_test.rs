@@ -47,11 +47,28 @@ async fn run(backend: &StorageBackend, label: &str, harness_id: HarnessId) {
         None
     );
 
+    let mut selected = avatar(agent_uuid, DEFAULT_ORG_ID, 1);
+    selected.source = "preset:watchers-bracket".to_string();
     let first = backend
-        .set_agent_avatar(avatar(agent_uuid, DEFAULT_ORG_ID, 1))
+        .set_agent_avatar(selected)
         .await
         .unwrap()
         .expect("first avatar");
+    assert_eq!(
+        backend
+            .get_agent_avatar_source(DEFAULT_ORG_ID, agent_uuid)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("preset:watchers-bracket")
+    );
+    assert!(
+        backend
+            .get_agent_avatar_source(DEFAULT_ORG_ID + 999, agent_uuid)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let row = backend
         .get_agent(DEFAULT_ORG_ID, agent.id)
         .await

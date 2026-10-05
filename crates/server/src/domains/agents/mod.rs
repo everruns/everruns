@@ -6,6 +6,7 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod analysis;
 pub mod avatar;
+pub mod avatar_presets;
 pub mod avatar_slack;
 pub mod check_rules;
 pub mod checks;

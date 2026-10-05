@@ -11,8 +11,9 @@
 
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import Cropper, { type Area } from "react-easy-crop";
-import { ImageIcon, Loader2, Minus, Plus, Trash2, Upload } from "lucide-react";
+import { Grid2X2, ImageIcon, Loader2, Minus, Plus, Trash2, Upload } from "lucide-react";
 import { useAgentAvatar } from "@/hooks";
+import { AvatarPresetDialog } from "@/components/agents/avatar-preset-dialog";
 import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -59,23 +60,25 @@ async function cropToPng(src: string, area: Area): Promise<File> {
 
 export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const { upload, remove } = useAgentAvatar(agent.id);
+  const { upload, remove, selectPreset } = useAgentAvatar(agent.id);
+  const [presetsOpen, setPresetsOpen] = useState(false);
   const [source, setSource] = useState<string | null>(null);
   const [pickError, setPickError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const busy = upload.isPending || remove.isPending;
+  const busy = upload.isPending || remove.isPending || selectPreset.isPending;
   const disabled = readOnly || busy;
-  const error = pickError ?? (upload.error ?? remove.error)?.message ?? null;
+  const error = pickError ?? (upload.error ?? remove.error ?? selectPreset.error)?.message ?? null;
 
   // Object URLs hold the whole file in memory until revoked.
   useEffect(() => () => void (source && URL.revokeObjectURL(source)), [source]);
 
   const pick = (file: File | undefined) => {
-    if (!file) return;
+    if (!file || disabled) return;
     const problem = avatarFileError(file);
     setPickError(problem);
     if (problem) return;
     upload.reset();
+    selectPreset.reset();
     setSource(URL.createObjectURL(file));
   };
 
@@ -123,6 +126,7 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
               type="file"
               accept={AVATAR_ACCEPT.join(",")}
               className="hidden"
+              disabled={disabled}
               aria-label="Avatar image"
               onChange={(event) => {
                 pick(event.target.files?.[0]);
@@ -139,6 +143,21 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
               <Upload />
               {agent.avatar ? "Replace" : "Upload"}
             </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled}
+              onClick={() => {
+                setPickError(null);
+                upload.reset();
+                selectPreset.reset();
+                setPresetsOpen(true);
+              }}
+            >
+              <Grid2X2 />
+              Choose preset
+            </Button>
             {agent.avatar && (
               <Button
                 type="button"
@@ -154,11 +173,28 @@ export function AgentAvatarField({ agent, readOnly }: { agent: Agent; readOnly: 
           </div>
         </div>
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         PNG, JPEG, GIF or WebP, at least 64×64. Shown in the UI, the A2A Agent Card, and as the icon
         of Slack apps created in one click.
       </p>
+      <AvatarPresetDialog
+        agent={agent}
+        open={presetsOpen}
+        disabled={disabled}
+        saving={selectPreset.isPending}
+        error={selectPreset.error?.message ?? null}
+        onClose={() => setPresetsOpen(false)}
+        onSave={async (id) => {
+          if (disabled) return;
+          await selectPreset.mutateAsync(id);
+          setPresetsOpen(false);
+        }}
+      />
       {/* Keyed by image so each one starts centered and unzoomed. */}
       <AvatarCropDialog
         key={source ?? "none"}

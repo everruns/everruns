@@ -236,6 +236,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/avatar/preset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_avatar_preset_selection"];
+    put: operations["select_avatar_preset"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/channels": {
     parameters: {
       query?: never;
@@ -1013,6 +1029,39 @@ export interface paths {
     put?: never;
     /** @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message. */
     post: operations["invoke_webhook_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/avatar-presets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The public catalog contains presentation metadata only, never agent configuration. */
+    get: operations["list_avatar_presets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/avatar-presets/{preset_id}/{variant}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["get_avatar_preset_variant"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -6501,6 +6550,17 @@ export interface components {
      * @enum {string}
      */
     AppStatus: "draft" | "published" | "archived" | "deleted";
+    AvatarPreset: {
+      description: string;
+      family: string;
+      id: string;
+      keywords: string[];
+      name: string;
+      role: string;
+    };
+    AvatarPresetSelection: {
+      preset_id?: string | null;
+    };
     BTreeMap: {
       [key: string]: {
         /** @description Identity whose grant this attachment requests. */
@@ -18043,6 +18103,9 @@ export interface components {
       /** @description When the secret was last updated */
       updated_at: string;
     };
+    SelectAvatarPreset: {
+      preset_id: string;
+    };
     /** @description Request to send a signal to a workflow */
     SendSignalRequest: {
       /**
@@ -23774,6 +23837,92 @@ export interface operations {
       };
     };
   };
+  get_avatar_preset_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AvatarPresetSelection"];
+        };
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  select_avatar_preset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SelectAvatarPreset"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentAvatar"];
+        };
+      };
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_agent_channels: {
     parameters: {
       query?: never;
@@ -26107,6 +26256,53 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_avatar_presets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AvatarPreset"][];
+        };
+      };
+    };
+  };
+  get_avatar_preset_variant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        preset_id: string;
+        variant: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": unknown;
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

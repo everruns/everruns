@@ -934,6 +934,117 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/avatar/preset": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "get_avatar_preset_selection",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarPresetSelection"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "select_avatar_preset",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectAvatarPreset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAvatar"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/channels": {
       "get": {
         "tags": [
@@ -4161,6 +4272,69 @@
             }
           }
         }
+      }
+    },
+    "/v1/avatar-presets": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "The public catalog contains presentation metadata only, never agent configuration.",
+        "operationId": "list_avatar_presets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AvatarPreset"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/v1/avatar-presets/{preset_id}/{variant}": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "get_avatar_preset_variant",
+        "parameters": [
+          {
+            "name": "preset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "variant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {}
+            }
+          },
+          "404": {}
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/v1/avatars/{avatar_id}/{variant}": {
@@ -22696,6 +22870,51 @@
           "deleted"
         ],
         "example": "published"
+      },
+      "AvatarPreset": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "family",
+          "role",
+          "description",
+          "keywords"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          }
+        }
+      },
+      "AvatarPresetSelection": {
+        "type": "object",
+        "properties": {
+          "preset_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "BTreeMap": {
         "type": "object",
@@ -43167,6 +43386,18 @@
             "description": "When the secret was last updated"
           }
         }
+      },
+      "SelectAvatarPreset": {
+        "type": "object",
+        "required": [
+          "preset_id"
+        ],
+        "properties": {
+          "preset_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "SendSignalRequest": {
         "type": "object",
