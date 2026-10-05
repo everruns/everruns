@@ -94,4 +94,21 @@ Screenshots are billed as image tokens. A smaller display, or turning off
 - **Budget.** `max_actions_per_session` stops runaway loops.
 
 Each screenshot shows as a thumbnail on the tool call in the session view;
-click it for the full frame. Desktop displays on sandboxes are planned.
+click it for the full frame.
+
+## Desktop display (experimental)
+
+The `computer_use_desktop` capability gives the same `computer` tool a full
+Linux desktop instead of a browser page, so the agent can work in any desktop
+app. The desktop runs in an [E2B](/capabilities/e2b/) sandbox built from E2B's
+`desktop` template, which the session creates on first use, keeps between
+calls, and deletes when the session's lease ends. Connect E2B first. It takes
+the same configuration as `computer_use`.
+
+- There is no `navigate` action: the agent opens a browser on the desktop and
+  types the address.
+- The desktop has the E2B sandbox's network access, the same as
+  `e2b_create_sandbox`. The session's network access list does not apply
+  inside it.
+- Enable either `computer_use` or `computer_use_desktop` on an agent, not both:
+  they share the `computer` tool.

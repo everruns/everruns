@@ -131,3 +131,140 @@ async fn smoke_live_sandbox_exec_and_files() {
     );
     assert!(result.stdout.contains("world"), "stdout: {}", result.stdout);
 }
+
+/// Desktop computer use (EVE-1133): bring up Xvfb in the `desktop` template,
+/// move the pointer, type hostile text into a terminal with no shell in the
+/// path, and read a frame back at the display size.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn smoke_live_desktop_computer_use() {
+    use everruns_contracts::runtime::computer_use::{ComputerAction, ComputerSession, DisplaySize};
+    use everruns_integrations_e2b::computer::{
+        DESKTOP_DISPLAY, E2B_DESKTOP_TEMPLATE, E2BDesktopSession, png_dimensions,
+    };
+    use everruns_integrations_e2b::state::build_state;
+
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+    let api_key = require_api_key!();
+    let client = E2BClient::new(api_key.clone());
+    let created = client
+        .create_sandbox(
+            E2B_DESKTOP_TEMPLATE,
+            600,
+            json!({"everruns": "true", "test": "smoke_live_desktop_computer_use"}),
+            json!({}),
+        )
+        .await
+        .expect("create desktop sandbox");
+    let _guard = SandboxGuard {
+        api_key: api_key.clone(),
+        sandbox_id: created.sandbox_id.clone(),
+    };
+    let mut detail = client
+        .get_sandbox(&created.sandbox_id)
+        .await
+        .expect("get sandbox detail");
+    detail.domain = detail.domain.or(created.domain.clone());
+    detail.envd_access_token = detail
+        .envd_access_token
+        .or(created.envd_access_token.clone());
+    let state = build_state(&detail, 600);
+
+    let display = DisplaySize {
+        width: 1024,
+        height: 768,
+    };
+    let mut session = E2BDesktopSession::start(E2BClient::new(api_key), state.clone(), display)
+        .await
+        .expect("start the desktop display");
+
+    let shot = session.screenshot().await.expect("screenshot");
+    assert_eq!(shot.media_type, "image/png");
+
+    session
+        .perform(&ComputerAction::MouseMove {
+            coordinate: [123, 456],
+        })
+        .await
+        .expect("mouse_move");
+    let location = client
+        .exec_argv(
+            &state,
+            "xdotool",
+            &["getmouselocation".to_string()],
+            &[("DISPLAY", DESKTOP_DISPLAY)],
+            None,
+            Some(30_000),
+        )
+        .await
+        .expect("getmouselocation");
+    assert!(
+        location.stdout.contains("x:123 y:456"),
+        "pointer: {}",
+        location.stdout
+    );
+
+    // A terminal that writes one line of whatever is typed into it to a file.
+    // Nothing in the path is a shell that could expand the typed text.
+    let launched = client
+        .exec(
+            &state,
+            &format!(
+                "export DISPLAY={DESKTOP_DISPLAY}; \
+                 if command -v xterm >/dev/null; then \
+                   setsid xterm -geometry 80x24+0+0 -e sh -c 'head -n 1 > /tmp/typed.txt' \
+                     >/dev/null 2>&1 </dev/null & \
+                 elif command -v xfce4-terminal >/dev/null; then \
+                   setsid xfce4-terminal --disable-server --geometry 80x24+0+0 \
+                     -x sh -c 'head -n 1 > /tmp/typed.txt' >/dev/null 2>&1 </dev/null & \
+                 else exit 3; fi; sleep 4"
+            ),
+            None,
+            Some(30_000),
+        )
+        .await
+        .expect("launch xterm");
+    assert_ne!(
+        launched.exit_code, 3,
+        "the desktop template has no terminal to type into"
+    );
+    session
+        .perform(&ComputerAction::LeftClick {
+            coordinate: Some([100, 100]),
+            text: None,
+        })
+        .await
+        .expect("focus the terminal");
+    let hostile = "-x $(touch /tmp/pwned) `id` ; echo \"q\" | tee 'a' && $HOME";
+    session
+        .perform(&ComputerAction::Type {
+            text: hostile.to_string(),
+        })
+        .await
+        .expect("type");
+    session
+        .perform(&ComputerAction::Key {
+            text: "Return".to_string(),
+            repeat: None,
+        })
+        .await
+        .expect("key");
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let typed = client
+        .read_file(&state, "/tmp/typed.txt")
+        .await
+        .expect("read typed text");
+    assert_eq!(typed.trim_end_matches('\n'), hostile);
+    let pwned = client
+        .exec(&state, "test -e /tmp/pwned", None, Some(30_000))
+        .await
+        .expect("check for injection");
+    assert_ne!(pwned.exit_code, 0, "typed text was run by a shell");
+
+    let frame = client
+        .read_file_bytes(&state, "/tmp/everruns-computer/screen.png")
+        .await
+        .expect("read frame");
+    assert_eq!(png_dimensions(&frame).unwrap(), (1024, 768));
+    Box::new(session).release().await;
+}

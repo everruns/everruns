@@ -335,6 +335,26 @@
       ]
     },
     {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": "computer-use",
+      "feature_flag": null,
+      "features": [
+        "leased_resources"
+      ],
+      "grades": [
+        "dev"
+      ],
+      "id": "computer_use_desktop",
+      "name": "Desktop Computer Use",
+      "status": "available",
+      "tools": [
+        "computer"
+      ]
+    },
+    {
       "category": "Execution",
       "dependencies": [
         "session_storage"

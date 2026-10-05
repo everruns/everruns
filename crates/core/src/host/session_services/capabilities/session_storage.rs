@@ -40,6 +40,8 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     // Computer-use action counter (EVE-1141). THREAT[TM-TOOL-050]: resetting or
     // deleting it would lift the per-session action cap.
     crate::computer_use::COMPUTER_USE_ACTION_COUNT_KEY,
+    // Which sandbox hosts a session's computer-use desktop (EVE-1133).
+    crate::computer_use::COMPUTER_USE_DISPLAY_KV_PREFIX,
 ];
 // Capability-owned secret namespaces. Literals are repeated from the owning
 // crates (platform / integrations) because host must not import those crates
@@ -709,6 +711,7 @@ mod tests {
             "mcp/elicitation-consent/billing/charge",
             "mcp/elicitation-form/deploys/release",
             crate::computer_use::COMPUTER_USE_ACTION_COUNT_KEY,
+            "computer_use.display.e2b",
         ];
 
         for key in gate_keys {

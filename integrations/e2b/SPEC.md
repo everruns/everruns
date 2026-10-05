@@ -100,6 +100,23 @@ Lifecycle management.
   - `timeout_seconds` (optional; used for `resume`)
 - **Returns**: `{ sandbox_id, action, success, timeout_seconds? }`
 
+## Desktop computer use (experimental)
+
+The crate also contributes `computer_use_desktop`, an experimental capability
+that backs the provider-neutral `computer` tool with a full desktop in a
+session-owned sandbox from the E2B `desktop` template. See
+`src/computer.rs` and `knowledge/execution/computer-use.md`.
+
+- **Display**: Xvfb on `:99` at the configured size, the template's xfce
+  session, PNG frames checked against the display size.
+- **Actions**: `xdotool` argv through envd's process API with no shell; typed
+  text is one argument after `--`.
+- **Ownership**: the sandbox id is kept under the reserved session storage key
+  `computer_use.display.e2b` and re-checked through the session-scoped state
+  lookup on every call; the sandbox is leased and resumed when paused.
+- **Egress**: the same E2B network policy as `e2b_create_sandbox`; the session
+  network access list does not apply inside the desktop.
+
 ## Metadata
 
 All created sandboxes include Everruns ownership metadata:
@@ -146,6 +163,6 @@ Covers capability metadata, plugin registration, state serialization, and HTTP r
 E2B_API_KEY=<key> cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test
 ```
 
-Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. The live test reads `E2B_API_KEY` directly from the environment (bypassing the connection provider), so you set the env var when running tests locally. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `knowledge/integrations/integrations.md`).
+Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. A second test brings up the desktop template's display, moves the pointer, types shell metacharacters into a terminal (checking nothing ran), and reads a frame back. The live test reads `E2B_API_KEY` directly from the environment (bypassing the connection provider), so you set the env var when running tests locally. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `knowledge/integrations/integrations.md`).
 
 CI keeps E2B live coverage off `pull_request`: `.github/workflows/ci.yml` runs the live test only on pushes to `main` when `integrations/e2b/**` changes. `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand to catch shared regressions that path filters miss.
