@@ -4,104 +4,11 @@ import Link from "next/link";
 import { notFound, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { IconTile } from "@/components/layout/page-layout";
-import {
-  Server,
-  Activity,
-  Key,
-  Users,
-  Building2,
-  User,
-  WalletCards,
-  FlaskConical,
-  Settings as SettingsIcon,
-} from "lucide-react";
+import { Settings as SettingsIcon } from "lucide-react";
 import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
-import { SlackIcon } from "@/components/icons/slack-icon";
-
-interface NavItem {
-  name: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  description: string;
-}
-
-interface NavSection {
-  label: string;
-  items: NavItem[];
-}
-
-const settingsSections: NavSection[] = [
-  {
-    label: "Organization",
-    items: [
-      {
-        name: "Organization",
-        href: "/settings/organization",
-        icon: Building2,
-        description: "Manage organization defaults and memberships",
-      },
-      {
-        name: "LLM Providers",
-        href: "/settings/providers",
-        icon: Server,
-        description: "Manage LLM providers",
-      },
-      {
-        name: "Team members",
-        href: "/settings/members",
-        icon: Users,
-        description: "View and manage team members",
-      },
-      {
-        name: "Slack workspaces",
-        href: "/settings/slack",
-        icon: SlackIcon,
-        description: "Connect Slack workspaces your agents can join",
-      },
-      {
-        name: "Health",
-        href: "/settings/health",
-        icon: Activity,
-        description: "Review pending integration issues and recovery actions",
-      },
-      {
-        name: "Features",
-        href: "/settings/features",
-        icon: FlaskConical,
-        description: "Enable optional and experimental capabilities",
-      },
-      {
-        name: "Payments",
-        href: "/settings/payments",
-        icon: WalletCards,
-        description: "Manage payment wallets and spend policies",
-      },
-    ],
-  },
-  {
-    label: "Personal",
-    items: [
-      {
-        name: "Account",
-        href: "/settings/profile",
-        icon: User,
-        description: "Manage your Everruns account",
-      },
-      {
-        name: "My agent experience",
-        href: "/settings/agent-experience",
-        icon: User,
-        description: "Your virtual user and connections in this organization",
-      },
-      {
-        name: "Personal access tokens",
-        href: "/settings/personal-access-tokens",
-        icon: Key,
-        description: "Manage personal access tokens for programmatic access",
-      },
-    ],
-  },
-];
+import { settingsNavigationSections } from "@/lib/settings-navigation";
+import { visibleNavigationSections } from "@/lib/navigation";
+import { useOrg } from "@/providers/org-provider";
 
 interface SettingsLayoutProps {
   children: React.ReactNode;
@@ -110,6 +17,13 @@ interface SettingsLayoutProps {
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const pathname = usePathname();
   const { flags, isLoading: featureFlagsLoading } = useFeatureFlagsState();
+  const { hasRole } = useOrg();
+  const settingsSections = visibleNavigationSections(
+    settingsNavigationSections,
+    flags,
+    hasRole,
+    process.env.NODE_ENV === "development",
+  );
   const machinePaymentsEnabled = flags.machine_payments;
 
   if (
@@ -141,29 +55,27 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                   {section.label}
                 </div>
                 <div className="grid gap-1 sm:grid-cols-2 lg:block lg:space-y-1">
-                  {section.items
-                    .filter((item) => item.href !== "/settings/payments" || machinePaymentsEnabled)
-                    .map((item) => {
-                      const isActive = pathname === item.href;
-                      return (
-                        <Link
-                          key={item.name}
-                          href={item.href}
-                          prefetch={false}
-                          className={cn(
-                            "flex items-center gap-3 px-3 py-2 text-sm transition-colors border-l-2",
-                            isActive
-                              ? "bg-accent/10 text-accent-foreground border-accent"
-                              : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
-                          )}
-                        >
-                          <item.icon className="h-4 w-4" />
-                          <div>
-                            <div className="font-medium">{item.name}</div>
-                          </div>
-                        </Link>
-                      );
-                    })}
+                  {section.items.map((item) => {
+                    const isActive = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        prefetch={false}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 text-sm transition-colors border-l-2",
+                          isActive
+                            ? "bg-accent/10 text-accent-foreground border-accent"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <div>
+                          <div className="font-medium">{item.name}</div>
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               </div>
             ))}

@@ -14,21 +14,13 @@ import type { FeatureFlags } from "@/lib/api/types";
 import { ExperimentalBadge } from "@/components/ui/experimental-badge";
 import { WarningBadge } from "@/components/ui/warning-badge";
 import type { NavigationItem, NavigationSection } from "./sidebar";
+import { visibleNavigationSections } from "@/lib/navigation";
 import { useOrg } from "@/providers/org-provider";
 
 const isDev = process.env.NODE_ENV === "development";
 
-function NavLink({
-  item,
-  pathname,
-  featureFlags,
-}: {
-  item: NavigationItem;
-  pathname: string;
-  featureFlags: FeatureFlags;
-}) {
+function NavLink({ item, pathname }: { item: NavigationItem; pathname: string }) {
   const router = useRouter();
-  if (item.flag && !featureFlags[item.flag]) return null;
 
   const activePath = item.activePrefix ?? item.href;
   const isActive = item.exact
@@ -72,25 +64,17 @@ function NavLink({
 function NavSection({
   section,
   pathname,
-  featureFlags,
-  hasRole,
   isFirst,
   renderExtra,
 }: {
   section: NavigationSection;
   pathname: string;
-  featureFlags: FeatureFlags;
-  hasRole: (role: "admin" | "owner") => boolean;
   isFirst: boolean;
   renderExtra?: (section: NavigationSection) => ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(section.defaultCollapsed ?? false);
-  if (section.devOnly && !isDev) return null;
 
   const isCollapsible = section.defaultCollapsed !== undefined && section.label;
-  const visibleItems = section.items.filter(
-    (item) => !item.minimumRole || hasRole(item.minimumRole),
-  );
 
   return (
     <>
@@ -115,9 +99,7 @@ function NavSection({
           </p>
         ))}
       {!collapsed &&
-        visibleItems.map((item) => (
-          <NavLink key={item.name} item={item} pathname={pathname} featureFlags={featureFlags} />
-        ))}
+        section.items.map((item) => <NavLink key={item.name} item={item} pathname={pathname} />)}
       {!collapsed && renderExtra?.(section)}
     </>
   );
@@ -138,15 +120,7 @@ export function SidebarNavigation({
 }) {
   const orgContext = useOrg();
   const hasRole = orgContext.hasRole ?? (() => true);
-  const visibleSections = sections.filter(
-    (section) =>
-      (!section.devOnly || isDev) &&
-      section.items.some(
-        (item) =>
-          (!item.flag || featureFlags[item.flag]) &&
-          (!item.minimumRole || hasRole(item.minimumRole)),
-      ),
-  );
+  const visibleSections = visibleNavigationSections(sections, featureFlags, hasRole, isDev);
 
   return (
     <nav className="flex-1 min-h-0 overflow-y-auto space-y-0.5 bg-background py-2.5">
@@ -155,8 +129,6 @@ export function SidebarNavigation({
           key={section.label ?? `section-${index}`}
           section={section}
           pathname={pathname}
-          featureFlags={featureFlags}
-          hasRole={hasRole}
           isFirst={index === 0}
           renderExtra={renderSectionExtra}
         />

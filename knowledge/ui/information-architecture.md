@@ -15,11 +15,25 @@ tags:
 The shell groups navigation by **what you do with a thing**, not by what the thing is.
 Five groups carry every destination: Chats, Operational, Building, Registries, Quality,
 with Settings pinned below them. The data lives in
-[`apps/ui/src/components/layout/sidebar.tsx`](../../apps/ui/src/components/layout/sidebar.tsx)
+[`navigation.ts`](../../apps/ui/src/lib/navigation.ts)
 and renders through the generic section renderer in
 [`sidebar-navigation.tsx`](../../apps/ui/src/components/layout/sidebar-navigation.tsx).
 
 This concept exists so that a new entity is placed by a rule instead of by argument.
+
+## Command search stays aligned
+
+Command-K is another view of the current navigation, including side-chat shortcuts and
+Settings. Page labels, icons, groups, aliases, and availability come from the shared
+[navigation model](../../apps/ui/src/lib/navigation.ts) and
+[Settings model](../../apps/ui/src/lib/settings-navigation.ts); feature work extends the
+owning model instead of maintaining a separate palette list. Collapsed destinations remain
+searchable, while development-only, disabled, and unavailable destinations stay hidden.
+Opening the palette shows available destinations in layout order without fetching entity
+lists. Typing searches page names, group context, aliases, and existing entity sources.
+Static pages are not truncated by the per-entity result cap: a broad Settings or group query
+must still expose every matching destination. [Regression tests](../../apps/ui/src/__tests__/use-global-search.test.tsx)
+compare search against the live models so newly registered destinations inherit coverage.
 
 ## The organising principle
 

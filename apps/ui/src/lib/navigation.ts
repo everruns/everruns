@@ -1,6 +1,6 @@
 // Navigation model — the single source of which group owns which route.
 //
-// The sidebar renders these sections, and `PageBreadcrumb` derives a page's
+// The sidebar and command palette render these sections; `PageBreadcrumb` derives a page's
 // group from the same table (EVE-869). Keeping the definitions here rather than
 // in `sidebar.tsx` lets the breadcrumb read them without pulling the whole
 // sidebar component tree into every page.
@@ -15,6 +15,9 @@ import {
   Brain,
   Calendar,
   ChartColumn,
+  CircuitBoard,
+  ArrowRight,
+  Plus,
   ClipboardCheck,
   Cog,
   FlaskConical,
@@ -33,13 +36,15 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
-import { registryNavigationItems } from "@/lib/registry-navigation";
+import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
 
 export type NavigationItem = {
   name: string;
   href: string;
   icon: IconComponent;
+  keywords?: string[];
+  description?: string;
   activePrefix?: string;
   /** Set false to disable the shared hover/focus prefetch in addition to automatic prefetch. */
   prefetch?: boolean;
@@ -63,11 +68,34 @@ export type NavigationSection = {
 };
 
 export const defaultChatsNavigation: NavigationItem[] = [
-  { name: "Chat", href: "/chats", icon: MessageCircle, exact: true, prominent: true },
+  {
+    name: "Chat",
+    href: "/chats",
+    icon: MessageCircle,
+    exact: true,
+    prominent: true,
+    keywords: ["chats", "global chat", "conversation"],
+  },
+];
+
+// These links are rendered beneath Chat rather than as peer sidebar destinations.
+export const sideChatNavigation: NavigationItem[] = [
+  { name: "New side chat", href: "/chats/new", icon: Plus, keywords: ["thread", "conversation"] },
+  {
+    name: "View all chats",
+    href: "/chats/history",
+    icon: ArrowRight,
+    keywords: ["history", "archived", "threads"],
+  },
 ];
 
 export const defaultOperationalNavigation: NavigationItem[] = [
-  { name: "Sessions", href: "/sessions", icon: MessageSquare },
+  {
+    name: "Sessions",
+    href: "/sessions",
+    icon: MessageSquare,
+    keywords: ["recordings", "conversation", "transcript"],
+  },
   { name: "Approvals", href: "/approvals", icon: ShieldCheck, minimumRole: "admin" },
   // "What in this org is reachable from outside right now" is a question
   // security and ops ask, and no agent page can answer it — it shows one agent
@@ -80,6 +108,7 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     icon: ChartColumn,
     flag: "reports",
     experimental: true,
+    keywords: ["analytics", "saved report"],
   },
 ];
 
@@ -89,33 +118,54 @@ export const defaultBuildingNavigation: NavigationItem[] = [
     href: "/playground",
     icon: FlaskConical,
   },
-  { name: "Agents", href: "/agents", icon: Boxes },
-  { name: "Harnesses", href: "/harnesses", icon: Shield },
+  { name: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
+  { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
   { name: "Environments", href: "/environments", icon: Container },
-  { name: "Virtual Users", href: "/virtual-users", icon: UserRound },
+  {
+    name: "Virtual Users",
+    href: "/virtual-users",
+    icon: UserRound,
+    keywords: ["persona", "principal", "identity"],
+  },
   {
     name: "Knowledge indexes",
     href: "/knowledge-indexes",
     icon: Library,
     flag: "knowledge",
     experimental: true,
+    keywords: ["knowledge", "index", "search", "retrieval"],
   },
-  { name: "Memory", href: "/memory", icon: Brain, flag: "memory", experimental: true },
+  {
+    name: "Memory",
+    href: "/memory",
+    icon: Brain,
+    keywords: ["workspace", "files", "storage"],
+    flag: "memory",
+    experimental: true,
+  },
 ];
 
 export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(
-  ({ name, href, icon }) => {
+  ({ name, href, icon, keywords }: RegistryNavigationItem) => {
     const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-    return { name, href, icon, flag, experimental: Boolean(flag) };
+    return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
   },
 );
 
 export const defaultQualityNavigation: NavigationItem[] = [
-  { name: "Evals", href: "/evals", icon: ClipboardCheck, flag: "evals", experimental: true },
+  {
+    name: "Evals",
+    href: "/evals",
+    icon: ClipboardCheck,
+    keywords: ["evaluation", "test", "benchmark", "score"],
+    flag: "evals",
+    experimental: true,
+  },
   {
     name: "Observers",
     href: "/observers",
     icon: Telescope,
+    keywords: ["monitor", "score", "production eval"],
     flag: "observers",
     experimental: true,
   },
@@ -128,6 +178,7 @@ export const defaultBottomNavigation: NavigationItem[] = [
     icon: Settings,
     activePrefix: "/settings",
     prefetch: false,
+    keywords: ["preferences", "config"],
   },
 ];
 
@@ -137,6 +188,12 @@ export const defaultDurableNavigation: NavigationItem[] = [
   { name: "Workflows", href: "/durable/workflows", icon: Workflow },
   { name: "Queues", href: "/durable/queues", icon: ListTodo },
   { name: "Schedules", href: "/durable/schedules", icon: Calendar },
+  {
+    name: "Circuit Breakers",
+    href: "/durable/circuit-breakers",
+    icon: CircuitBoard,
+    keywords: ["failure", "resilience"],
+  },
 ];
 
 export const defaultDevNavigation: NavigationItem[] = [
@@ -186,4 +243,30 @@ export function navigationGroupForPath(
     }
   }
   return best?.label;
+}
+
+/** Visibility is shared by the sidebar and command search, including collapsed sections. */
+export function visibleNavigationSections(
+  sections: NavigationSection[],
+  featureFlags: FeatureFlags,
+  hasRole: (role: "admin" | "owner") => boolean,
+  isDev: boolean,
+): NavigationSection[] {
+  return sections
+    .filter((section) => !section.devOnly || isDev)
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) =>
+          (!item.flag || featureFlags[item.flag]) &&
+          (!item.minimumRole || hasRole(item.minimumRole)),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+export function isDurableNavigationSection(section: NavigationSection): boolean {
+  return section.items.some(
+    (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
+  );
 }

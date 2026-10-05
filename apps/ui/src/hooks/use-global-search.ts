@@ -26,28 +26,15 @@ import {
   Shield,
   Boxes,
   UserRound,
-  Settings,
-  Cog,
-  Workflow,
-  ListTodo,
-  Calendar,
-  MessageCircle,
   FlaskConical,
-  Server,
   HardDrive,
   Building2,
   ChartColumn,
   Library,
   Telescope,
-  WalletCards,
-  CircuitBoard,
 } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
-import {
-  registryDomainIcons,
-  registryNavigationByHref,
-  type RegistryNavigationItem,
-} from "@/lib/registry-navigation";
+import { registryDomainIcons } from "@/lib/registry-navigation";
 import { useAgents } from "@/hooks/use-agents";
 import { useSessions } from "@/hooks/use-sessions";
 import { useHarnesses } from "@/hooks/use-harnesses";
@@ -67,6 +54,14 @@ import { useLocale } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import type { FeatureFlags } from "@/lib/api/types";
+import { usePolicies } from "@/hooks/use-policies";
+import {
+  defaultNavigationSections,
+  sideChatNavigation,
+  visibleNavigationSections,
+  isDurableNavigationSection,
+} from "@/lib/navigation";
+import { settingsNavigationSections } from "@/lib/settings-navigation";
 
 export type SearchResultCategory =
   | "navigation"
@@ -95,178 +90,8 @@ export interface SearchResult {
   subtitle?: string;
   href: string;
   onSelect?: () => void;
+  navigationGroup?: string;
 }
-
-interface NavigationPage {
-  title: string;
-  href: string;
-  icon: IconComponent;
-  keywords?: string[];
-  flag?: keyof FeatureFlags;
-}
-
-function registryPage(item: RegistryNavigationItem, flag?: keyof FeatureFlags): NavigationPage {
-  return {
-    title: item.name,
-    href: item.href,
-    icon: item.icon,
-    keywords: item.keywords,
-    flag,
-  };
-}
-
-const NAVIGATION_PAGES: NavigationPage[] = [
-  {
-    title: "Sessions",
-    href: "/sessions",
-    icon: MessageSquare,
-    keywords: ["chat", "conversation"],
-  },
-  {
-    title: "Reports",
-    href: "/reports",
-    icon: ChartColumn,
-    keywords: ["analytics", "saved report"],
-    flag: "reports",
-  },
-  {
-    title: "Chats",
-    href: "/chats",
-    icon: MessageCircle,
-    keywords: ["global chat", "thread"],
-  },
-  {
-    title: "Agents",
-    href: "/agents",
-    icon: Boxes,
-    keywords: ["bot", "assistant"],
-  },
-  {
-    title: "Virtual Users",
-    href: "/virtual-users",
-    icon: UserRound,
-    keywords: ["persona", "principal", "identity"],
-  },
-  {
-    title: "Harnesses",
-    href: "/harnesses",
-    icon: Shield,
-    keywords: ["template", "config"],
-  },
-  registryPage(registryNavigationByHref["/skills"], "skills"),
-  {
-    title: "Memory",
-    href: "/memory",
-    icon: HardDrive,
-    keywords: ["workspace", "files", "storage"],
-    flag: "memory",
-  },
-  {
-    title: "Knowledge Indexes",
-    href: "/knowledge-indexes",
-    icon: Library,
-    keywords: ["knowledge", "index", "search", "retrieval"],
-    flag: "knowledge",
-  },
-  registryPage(registryNavigationByHref["/models"]),
-  registryPage(registryNavigationByHref["/capabilities"]),
-  registryPage(registryNavigationByHref["/plugins"], "plugins"),
-  {
-    title: "Evals",
-    href: "/evals",
-    icon: FlaskConical,
-    keywords: ["evaluation", "test", "benchmark", "score"],
-    flag: "evals",
-  },
-  {
-    title: "Observers",
-    href: "/observers",
-    icon: Telescope,
-    keywords: ["monitor", "score", "production eval"],
-    flag: "observers",
-  },
-  registryPage(registryNavigationByHref["/mcp-servers"]),
-  {
-    title: "Settings",
-    href: "/settings",
-    icon: Settings,
-    keywords: ["preferences", "config"],
-  },
-  {
-    title: "Settings > Profile",
-    href: "/settings/profile",
-    icon: Settings,
-    keywords: ["account", "profile"],
-  },
-  {
-    title: "Settings > Personal access tokens",
-    href: "/settings/personal-access-tokens",
-    icon: Settings,
-    keywords: ["token", "key", "api key", "pat", "personal access token"],
-  },
-  {
-    title: "Settings > My agent experience",
-    href: "/settings/agent-experience",
-    icon: Settings,
-    keywords: ["connections", "github", "gitlab", "virtual user", "locale", "timezone"],
-  },
-  {
-    title: "Settings > LLM Providers",
-    href: "/settings/providers",
-    icon: Settings,
-    keywords: ["openai", "anthropic", "credentials"],
-  },
-  {
-    title: "Settings > Organization",
-    href: "/settings/organization",
-    icon: Settings,
-    keywords: [
-      "org",
-      "organization",
-      "organizations",
-      "organisation",
-      "organisations",
-      "team",
-      "switch",
-    ],
-  },
-  {
-    title: "Settings > Members",
-    href: "/settings/members",
-    icon: Settings,
-    keywords: ["team", "invite"],
-  },
-  {
-    title: "Settings > Features",
-    href: "/settings/features",
-    icon: Settings,
-    keywords: ["feature", "flags", "experimental", "opt-in", "beta"],
-  },
-  {
-    title: "Settings > Payments",
-    href: "/settings/payments",
-    icon: WalletCards,
-    keywords: ["wallet", "spend", "billing"],
-    flag: "machine_payments",
-  },
-  {
-    title: "Durable Execution",
-    href: "/durable",
-    icon: Cog,
-    keywords: ["workflow", "worker", "queue"],
-  },
-  { title: "Durable > Workers", href: "/durable/workers", icon: Server },
-  { title: "Durable > Workflows", href: "/durable/workflows", icon: Workflow },
-  { title: "Durable > Queues", href: "/durable/queues", icon: ListTodo },
-  { title: "Durable > Schedules", href: "/durable/schedules", icon: Calendar },
-  {
-    title: "Durable > Circuit Breakers",
-    href: "/durable/circuit-breakers",
-    icon: CircuitBoard,
-    keywords: ["failure", "resilience"],
-  },
-  { title: "Dev Tools", href: "/dev", icon: FlaskConical },
-];
 
 /** Known ID prefixes and where they resolve. */
 const ID_PREFIX_MAP: Record<
@@ -341,7 +166,7 @@ const EMPTY_ARRAY: never[] = [];
 
 export function useGlobalSearch(query: string) {
   const { locale } = useLocale();
-  const { currentOrg, organizations, setCurrentOrg } = useOrg();
+  const { currentOrg, organizations, setCurrentOrg, hasRole } = useOrg();
   const featureFlags = useFeatureFlags();
   const entitySearchEnabled = query.trim().length > 0;
   const skillsEnabled = featureFlags.skills;
@@ -351,10 +176,54 @@ export function useGlobalSearch(query: string) {
   const pluginsEnabled = featureFlags.plugins;
   const observersEnabled = featureFlags.observers;
   const reportsEnabled = featureFlags.reports;
-  const navigationPages = useMemo(
-    () => NAVIGATION_PAGES.filter((page) => !page.flag || featureFlags[page.flag]),
-    [featureFlags],
-  );
+  const { can } = usePolicies("durable");
+  const durableAllowed = can("durable.view");
+  const navigationPages = useMemo(() => {
+    const sections = visibleNavigationSections(
+      defaultNavigationSections.filter(
+        (section) => !isDurableNavigationSection(section) || durableAllowed,
+      ),
+      featureFlags,
+      hasRole,
+      process.env.NODE_ENV === "development",
+    );
+    const settings = visibleNavigationSections(
+      settingsNavigationSections,
+      featureFlags,
+      hasRole,
+      process.env.NODE_ENV === "development",
+    );
+    return sections.flatMap((section) => {
+      const group = section.label ?? (section.id === "chats" ? "Chat" : "Pages");
+      const items =
+        section.id === "chats" ? [...section.items, ...sideChatNavigation] : section.items;
+      return items.flatMap((item) => {
+        const page = { ...item, title: item.name, navigationGroup: group };
+        if (item.activePrefix !== "/settings") return [page];
+        return [
+          {
+            ...page,
+            navigationGroup: "Settings",
+            keywords: [
+              ...(page.keywords ?? []),
+              ...(settingsNavigationSections
+                .flatMap((section) => section.items)
+                .find((setting) => setting.href === item.href)?.keywords ?? []),
+            ],
+          },
+          ...settings
+            .flatMap((settingsSection) =>
+              settingsSection.items.map((setting) => ({
+                ...setting,
+                title: setting.name,
+                navigationGroup: `Settings · ${settingsSection.label}`,
+              })),
+            )
+            .filter((setting) => setting.href !== item.href),
+        ];
+      });
+    });
+  }, [featureFlags, hasRole, durableAllowed]);
   const { data: agentsData } = useAgents({ enabled: entitySearchEnabled });
   const { data: sessionsData } = useSessions(
     undefined,
@@ -400,13 +269,15 @@ export function useGlobalSearch(query: string) {
   return useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) {
-      // Show top navigation pages when empty
-      return navigationPages.slice(0, 6).map((page): SearchResult => ({
+      // Show all available pages in layout order without fetching entities
+      return navigationPages.map((page): SearchResult => ({
         id: `nav:${page.href}`,
         category: "navigation",
         icon: page.icon,
         title: page.title,
         href: page.href,
+        subtitle: page.navigationGroup,
+        navigationGroup: page.navigationGroup,
       }));
     }
 
@@ -465,18 +336,25 @@ export function useGlobalSearch(query: string) {
     }
 
     // 2. Navigation pages
-    let navCount = 0;
     for (const page of navigationPages) {
-      if (navCount >= MAX_PER_CATEGORY) break;
-      if (matchesTokens(tokens, page.title, ...(page.keywords ?? []))) {
+      if (
+        matchesTokens(
+          tokens,
+          page.title,
+          page.navigationGroup,
+          page.description,
+          ...(page.keywords ?? []),
+        )
+      ) {
         results.push({
           id: `nav:${page.href}`,
           category: "navigation",
           icon: page.icon,
           title: page.title,
+          subtitle: page.navigationGroup,
+          navigationGroup: page.navigationGroup,
           href: page.href,
         });
-        navCount++;
       }
     }
 

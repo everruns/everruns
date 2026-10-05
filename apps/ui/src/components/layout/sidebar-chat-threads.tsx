@@ -17,12 +17,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Pin, Plus } from "lucide-react";
+import { Pin } from "lucide-react";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
+import { sideChatNavigation } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+
+const [newSideChat, chatHistory] = sideChatNavigation;
 
 const rowClass =
   "flex items-center gap-2 py-1 px-2 text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
@@ -64,13 +67,13 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
         <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
           <p className="text-[10px] font-medium uppercase tracking-[0.08em]">Side chats</p>
           <Link
-            href="/chats/new"
+            href={newSideChat.href}
             prefetch={false}
-            aria-label="New side chat"
-            title="New side chat"
+            aria-label={newSideChat.name}
+            title={newSideChat.name}
             className="flex size-7 shrink-0 items-center justify-center hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            <Plus className="size-3.5" aria-hidden="true" />
+            <newSideChat.icon className="size-3.5" aria-hidden="true" />
           </Link>
         </div>
         {visible.map((thread) => {
@@ -100,15 +103,15 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
 
       {stableThreads.length > SIDEBAR_THREAD_LIMIT && (
         <Link
-          href="/chats/history"
+          href={chatHistory.href}
           prefetch={false}
           className={cn(
             rowClass,
             "mt-1 font-medium text-foreground underline-offset-4 hover:bg-muted hover:underline focus-visible:underline",
           )}
         >
-          View all chats
-          <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
+          {chatHistory.name}
+          <chatHistory.icon className="size-3.5 shrink-0" aria-hidden="true" />
         </Link>
       )}
     </div>

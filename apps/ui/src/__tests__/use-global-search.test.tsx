@@ -1,6 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { Blocks, BookOpen, Plug } from "lucide-react";
 import { useGlobalSearch } from "@/hooks/use-global-search";
+import { settingsNavigationSections } from "@/lib/settings-navigation";
+import { defaultNavigationSections } from "@/lib/navigation";
 import type { OrganizationMembership } from "@/lib/api/types";
 
 const mockUseAgents = jest.fn((_options?: { enabled?: boolean }) => ({ data: [] }));
@@ -108,6 +110,11 @@ jest.mock("@/providers/feature-flags-provider", () => ({
 }));
 
 const mockSetCurrentOrg = jest.fn();
+const mockHasRole = jest.fn(() => true);
+const mockDurableAllowed = { value: true };
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({ can: () => mockDurableAllowed.value }),
+}));
 
 const mockCurrentOrg: OrganizationMembership = {
   public_id: "org_current",
@@ -126,12 +133,15 @@ jest.mock("@/providers/org-provider", () => ({
     currentOrg: mockCurrentOrg,
     organizations: [mockCurrentOrg, mockSecondOrg],
     setCurrentOrg: mockSetCurrentOrg,
+    hasRole: mockHasRole,
   }),
 }));
 
 describe("useGlobalSearch", () => {
   beforeEach(() => {
     mockSetCurrentOrg.mockClear();
+    mockHasRole.mockReturnValue(true);
+    mockDurableAllowed.value = true;
     mockUseAgents.mockClear();
     mockUseSessions.mockReset();
     mockUseSessions.mockReturnValue({ data: { data: [] } });
@@ -214,7 +224,11 @@ describe("useGlobalSearch", () => {
   it("keeps the previous British spelling as a search alias", () => {
     const { result } = renderHook(() => useGlobalSearch("organisation"));
 
-    expect(result.current.some((item) => item.href === "/settings/organization")).toBe(true);
+    expect(
+      result.current.some(
+        (item) => item.category === "navigation" && item.href === "/settings/organization",
+      ),
+    ).toBe(true);
     expect(result.current.some((item) => item.id === "organization:org_second")).toBe(true);
   });
 
@@ -256,6 +270,14 @@ describe("useGlobalSearch", () => {
 
   it.each([
     ["chats", "/chats"],
+    ["playground", "/playground"],
+    ["approvals", "/approvals"],
+    ["exposures", "/exposures"],
+    ["environments", "/environments"],
+    ["slack", "/settings/slack"],
+    ["health", "/settings/health"],
+    ["new side chat", "/chats/new"],
+    ["all chats", "/chats/history"],
     ["reports", "/reports"],
     ["knowledge indexes", "/knowledge-indexes"],
     ["plugins", "/plugins"],
@@ -267,6 +289,55 @@ describe("useGlobalSearch", () => {
 
     expect(result.current).toContainEqual(
       expect.objectContaining({ category: "navigation", href }),
+    );
+  });
+
+  it("offers every available sidebar destination before typing", () => {
+    const { result } = renderHook(() => useGlobalSearch(""));
+    for (const section of defaultNavigationSections.filter((section) => !section.devOnly)) {
+      for (const item of section.items) {
+        if (item.flag && !mockFeatureFlags[item.flag as keyof typeof mockFeatureFlags]) continue;
+        expect(result.current).toContainEqual(
+          expect.objectContaining({
+            category: "navigation",
+            href: item.href,
+            title: item.name,
+            icon: item.icon,
+          }),
+        );
+      }
+    }
+  });
+
+  it("offers every available Settings destination with its current name and icon", () => {
+    const { result } = renderHook(() => useGlobalSearch("settings"));
+    for (const section of settingsNavigationSections) {
+      for (const item of section.items) {
+        if (item.flag && !mockFeatureFlags[item.flag as keyof typeof mockFeatureFlags]) continue;
+        // The organization page also serves as the shell's Settings landing destination.
+        const expected =
+          item.href === "/settings/organization"
+            ? { category: "navigation", href: item.href, title: "Settings" }
+            : { category: "navigation", href: item.href, title: item.name, icon: item.icon };
+        expect(result.current).toContainEqual(expect.objectContaining(expected));
+      }
+    }
+  });
+
+  it("hides admin-only, denied durable, and development navigation", () => {
+    mockHasRole.mockReturnValue(false);
+    mockDurableAllowed.value = false;
+    const { result } = renderHook(() => useGlobalSearch(""));
+    expect(result.current.some((item) => item.href === "/approvals")).toBe(false);
+    expect(result.current.some((item) => item.href.startsWith("/durable"))).toBe(false);
+    expect(result.current.some((item) => item.href === "/dev")).toBe(false);
+  });
+
+  it("keeps all settings destinations discoverable for a broad query", () => {
+    const { result } = renderHook(() => useGlobalSearch("settings"));
+    expect(result.current).toContainEqual(expect.objectContaining({ href: "/settings/health" }));
+    expect(result.current).toContainEqual(
+      expect.objectContaining({ href: "/settings/personal-access-tokens" }),
     );
   });
 
