@@ -3,6 +3,7 @@
 use std::future::Future;
 use std::time::Duration;
 
+use everruns::durable::PostgresWorkflowEventStore;
 use everruns::{Agent, Engine, Session, Turn, TurnStopReason, durable};
 
 /// A backend the suite runs every scenario on.
@@ -10,18 +11,48 @@ use everruns::{Agent, Engine, Session, Turn, TurnStopReason, durable};
 pub enum BackendKind {
     InProcess,
     DurableMemory,
+    /// Only with `DATABASE_URL` set; see [`backends`].
+    DurablePostgres,
 }
 
-pub const BACKENDS: [BackendKind; 2] = [BackendKind::InProcess, BackendKind::DurableMemory];
+/// The backends to run on: in process first, the reference every other
+/// backend is compared with. The durable PostgreSQL backend joins when
+/// `DATABASE_URL` names a database; without it the suite runs the other two
+/// and says so. A set URL that does not connect fails the suite.
+pub fn backends() -> Vec<BackendKind> {
+    let mut kinds = vec![BackendKind::InProcess, BackendKind::DurableMemory];
+    if database_url().is_some() {
+        kinds.push(BackendKind::DurablePostgres);
+    } else {
+        eprintln!("DATABASE_URL is unset; skipping the durable PostgreSQL backend");
+    }
+    kinds
+}
+
+fn database_url() -> Option<String> {
+    std::env::var("DATABASE_URL").ok()
+}
+
+/// The durable store in the test database. Each engine routes its own
+/// sessions' steps, so concurrent scenarios share the database untouched.
+pub async fn postgres_store() -> PostgresWorkflowEventStore {
+    let url = database_url().expect("DATABASE_URL is set for the PostgreSQL backend");
+    PostgresWorkflowEventStore::connect(&url)
+        .await
+        .expect("DATABASE_URL connects and takes the durable schema")
+}
 
 /// How long one scenario may take on one backend.
 const SCENARIO_TIMEOUT: Duration = Duration::from_secs(20);
 
-pub fn engine(kind: BackendKind) -> Engine {
+pub async fn engine(kind: BackendKind) -> Engine {
     match kind {
         BackendKind::InProcess => Engine::new(),
         BackendKind::DurableMemory => Engine::builder()
             .backend(durable::Backend::memory().workers(2))
+            .build(),
+        BackendKind::DurablePostgres => Engine::builder()
+            .backend(durable::Backend::postgres(postgres_store().await).workers(2))
             .build(),
     }
 }
@@ -89,8 +120,8 @@ where
     Fut: Future<Output = Observed>,
 {
     let mut outcomes = Vec::new();
-    for kind in BACKENDS {
-        let engine = engine(kind);
+    for kind in backends() {
+        let engine = engine(kind).await;
         let (agent, probe) = setup();
         let session = engine.create(agent);
         let session_id = session.session_id();

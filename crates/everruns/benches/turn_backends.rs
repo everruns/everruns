@@ -15,8 +15,9 @@
 //!   already depends on the durable engine. A dev-dependency back onto the
 //!   facade would build a second copy of the durable engine whose types do
 //!   not meet the facade's.
-//! - The durable PostgreSQL backend is not a framework backend yet (see
-//!   `knowledge/framework/execution-backends.md`), so it is not measured.
+//! - The durable PostgreSQL backend (`durable::Backend::postgres`) is measured
+//!   only in a full run with `DATABASE_URL` set (the durable schema is applied
+//!   to it); the smoke never needs a database, so CI does not either.
 //! - `cargo test` runs this binary as a smoke (it sets `test = true`); only
 //!   `cargo bench` (which passes `--bench`) runs the full scale, so the facade
 //!   CI job checks the bench still works without an extra cargo invocation.
@@ -28,6 +29,7 @@
 //!   cargo bench -p everruns --features durable --bench turn_backends
 //!   cargo bench -p everruns --features durable --bench turn_backends -- --summary out.jsonl
 //!   cargo bench -p everruns --features durable --bench turn_backends -- --smoke
+//!   DATABASE_URL=postgres://... cargo bench -p everruns --features durable --bench turn_backends
 //!
 //! `--summary <file>` appends one JSON line per scenario in the shape of
 //! `crates/durable/benches/baseline.jsonl` (`tasks` are turns, `e2e_*` the
@@ -39,6 +41,7 @@ use std::io::Write as _;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use everruns::durable::PostgresWorkflowEventStore;
 use everruns::{Agent, Engine, FunctionTool, LlmSimConfig, Model, ToolCall, durable};
 use serde_json::json;
 
@@ -49,6 +52,7 @@ const TURN_TIMEOUT: Duration = Duration::from_secs(30);
 enum Backend {
     InProcess,
     DurableMemory { workers: usize },
+    DurablePostgres { workers: usize },
 }
 
 impl Backend {
@@ -56,14 +60,25 @@ impl Backend {
         match self {
             Self::InProcess => "in_process".into(),
             Self::DurableMemory { workers } => format!("durable_memory_w{workers}"),
+            Self::DurablePostgres { workers } => format!("durable_postgres_w{workers}"),
         }
     }
 
-    fn engine(self) -> Engine {
+    fn engine(self, postgres: Option<&PostgresWorkflowEventStore>) -> Engine {
         match self {
             Self::InProcess => Engine::new(),
             Self::DurableMemory { workers } => Engine::builder()
                 .backend(durable::Backend::memory().workers(workers))
+                .build(),
+            Self::DurablePostgres { workers } => Engine::builder()
+                .backend(
+                    durable::Backend::postgres(
+                        postgres
+                            .expect("the PostgreSQL rows run with a store")
+                            .clone(),
+                    )
+                    .workers(workers),
+                )
                 .build(),
         }
     }
@@ -208,8 +223,13 @@ impl Measured {
 }
 
 /// Run `load` on a fresh engine and time every `send_and_wait`.
-async fn run(backend: Backend, scenario: Scenario, load: Load) -> Measured {
-    let engine = backend.engine();
+async fn run(
+    backend: Backend,
+    postgres: Option<&PostgresWorkflowEventStore>,
+    scenario: Scenario,
+    load: Load,
+) -> Measured {
+    let engine = backend.engine(postgres);
     // Sessions exist before the clock starts; creating one is not a turn.
     let slots: Vec<Vec<_>> = (0..load.concurrency)
         .map(|_| {
@@ -270,7 +290,7 @@ fn main() {
         .build()
         .expect("tokio runtime");
 
-    let (backends, loads) = if opts.smoke {
+    let (mut backends, loads) = if opts.smoke {
         (
             vec![Backend::InProcess, Backend::DurableMemory { workers: 4 }],
             vec![Load::new(1, 1, 3), Load::new(4, 1, 2)],
@@ -291,6 +311,22 @@ fn main() {
         )
     };
 
+    // A shared database's rows join a full run only; see the module notes.
+    let postgres = std::env::var("DATABASE_URL")
+        .ok()
+        .filter(|_| !opts.smoke)
+        .map(|url| {
+            runtime
+                .block_on(PostgresWorkflowEventStore::connect(&url))
+                .expect("DATABASE_URL connects and takes the durable schema")
+        });
+    if postgres.is_some() {
+        backends.extend([
+            Backend::DurablePostgres { workers: 4 },
+            Backend::DurablePostgres { workers: 16 },
+        ]);
+    }
+
     println!(
         "turn_backends ({}): llmsim, zero model latency",
         if opts.smoke { "smoke" } else { "full" }
@@ -303,10 +339,15 @@ fn main() {
     for scenario in [Scenario::Text, Scenario::Tool] {
         for &backend in &backends {
             // Warm the backend's code paths and allocator once per pairing.
-            runtime.block_on(run(backend, scenario, Load::new(1, 1, 2)));
+            runtime.block_on(run(
+                backend,
+                postgres.as_ref(),
+                scenario,
+                Load::new(1, 1, 2),
+            ));
             for &load in &loads {
                 let concurrency = load.concurrency;
-                let measured = runtime.block_on(run(backend, scenario, load));
+                let measured = runtime.block_on(run(backend, postgres.as_ref(), scenario, load));
                 let (p50, p99) = (measured.percentile_ms(0.50), measured.percentile_ms(0.99));
                 println!(
                     "{:<8} {:<20} {:>5} {:>6} {:>10.1} {:>10.2} {:>10.2}",
