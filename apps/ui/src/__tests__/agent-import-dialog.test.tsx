@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PackageChangeReview } from "@/components/agents/agent-package-review";
 import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
 import { inspectAgentPackage } from "@/lib/api/agents";
-import type { Agent } from "@/lib/api/types";
+import type { Agent, Capability } from "@/lib/api/types";
 
 jest.mock("@/components/chat/streamdown-message", () => ({
   StreamdownMessage: ({ children }: { children: string }) => <div>{children}</div>,
@@ -81,9 +81,21 @@ test("new imports preview instructions, destination defaults, root files, skills
       channels: { chat: { type: "ag_ui", enabled: false, config: {} } },
     },
   });
-  render(<AgentImportDialog file={file} agents={[]} onClose={jest.fn()} onImported={jest.fn()} />);
+  render(
+    <AgentImportDialog
+      file={file}
+      agents={[]}
+      capabilities={[
+        { id: "session_file_system", name: "File System", is_guardrail: true } as Capability,
+      ]}
+      onClose={jest.fn()}
+      onImported={jest.fn()}
+    />,
+  );
   expect(await screen.findByRole("region", { name: "Agent preview" })).toBeInTheDocument();
   expect(screen.getByText("Read the runbook.")).toBeInTheDocument();
+  expect(screen.getByText("File System")).toBeInTheDocument();
+  expect(screen.getByText("Guardrail")).toBeInTheDocument();
   expect(screen.getByText("Destination default model")).toBeInTheDocument();
   expect(screen.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-selected", "true");
   expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();

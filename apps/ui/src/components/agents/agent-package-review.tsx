@@ -5,6 +5,8 @@ import { Boxes, FileText, GitCompareArrows, Plug, Settings2 } from "lucide-react
 import type { AgentPackagePreview } from "@/lib/api/agents";
 import { Badge } from "@/components/ui/badge";
 import { PageMasthead, SectionTabs } from "@/components/layout";
+import type { Capability } from "@/lib/api/types";
+import { AgentCapabilityList } from "./agent-capability-list";
 import { AgentPromptPane } from "./agent-prompt-pane";
 
 function fileSize(bytes: number): string {
@@ -17,8 +19,10 @@ type PackageChange = { path: string; before: unknown; after: unknown };
 export function AgentPackageReview({
   preview,
   changes,
+  capabilities = [],
 }: {
   preview: AgentPackagePreview;
+  capabilities?: Capability[];
   changes?: PackageChange[] | null;
 }) {
   const [tab, setTab] = useState("agent");
@@ -109,15 +113,11 @@ export function AgentPackageReview({
               <h4 className="text-xs font-medium text-muted-foreground">
                 Capabilities ({Object.keys(preview.capabilities).length})
               </h4>
-              <div className="mt-2 grid gap-1">
-                {Object.keys(preview.capabilities).map((name) => (
-                  <div key={name} className="border bg-background p-2 text-[13px]">
-                    {name}
-                  </div>
-                ))}
-                {!Object.keys(preview.capabilities).length && (
-                  <span className="text-muted-foreground">None declared</span>
-                )}
+              <div className="mt-2">
+                <AgentCapabilityList
+                  references={Object.keys(preview.capabilities)}
+                  capabilities={capabilities}
+                />
               </div>
               {Object.entries(preview.capabilities)
                 .filter(([, config]) => config && Object.keys(config as object).length > 0)

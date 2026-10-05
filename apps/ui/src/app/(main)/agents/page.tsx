@@ -144,6 +144,7 @@ export default function AgentsPage() {
         <AgentImportDialog
           file={importFile}
           agents={agents ?? []}
+          capabilities={allCapabilities ?? []}
           onClose={() => setImportFile(null)}
           onImported={(agent) => router.push(`/agents/${agent.id}`)}
         />
