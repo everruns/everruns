@@ -7,6 +7,7 @@ use everruns_core::{Permission, Policy, Rule};
 pub mod analysis;
 pub mod check_rules;
 pub mod checks;
+mod command_validation;
 pub mod commands;
 pub mod credentials;
 pub(crate) mod environment;

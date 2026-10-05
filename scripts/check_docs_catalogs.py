@@ -312,7 +312,7 @@ def agent_source_ids(text: str) -> list[str]:
     if begin < 0:
         return []
     finish = text.find("];", begin)
-    return re.findall(r'\("([a-z_]+)"\.into\(\),', text[begin:finish])
+    return re.findall(r'\(\s*"([a-z_]+)"\.into\(\),', text[begin:finish])
 
 
 def check_harness(

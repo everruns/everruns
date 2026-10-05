@@ -1,4 +1,4 @@
-//! The managed operator Agent. Generic supplies its execution environment.
+//! The managed operator Agent. Bashkit Worker supplies its sealed runtime.
 use crate::storage::{StorageBackend, models::CreateAgentRow};
 use anyhow::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId};
@@ -26,9 +26,16 @@ pub fn definition(harness_id: HarnessId, id: AgentId) -> CreateAgentRow {
 
 pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
     db.consolidate_platform_chat(org_id).await?;
-    let generic = crate::org_init::generic_harness_id(db, org_id).await?;
-    let id = db.ensure_platform_chat_agent_id(org_id, generic).await?;
-    db.create_agent_with_id(org_id, id, definition(generic, id))
+    let bashkit_worker = db
+        .get_harness_by_name(org_id, "bashkit-worker")
+        .await?
+        .filter(|h| h.is_built_in)
+        .map(|h| h.id)
+        .ok_or_else(|| anyhow::anyhow!("Bashkit Worker not provisioned for org {org_id}"))?;
+    let id = db
+        .ensure_platform_chat_agent_id(org_id, bashkit_worker)
+        .await?;
+    db.create_agent_with_id(org_id, id, definition(bashkit_worker, id))
         .await?;
     let capabilities = vec![
         ("platform".into(), 0, serde_json::json!({"surface":"shell"})),
@@ -36,6 +43,24 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
         ("stateless_todo_list".into(), 2, serde_json::json!({})),
         ("prompt_caching".into(), 3, serde_json::json!({})),
         ("tool_call_repair".into(), 4, serde_json::json!({})),
+        ("human_intent".into(), 5, serde_json::json!({})),
+        (
+            "web_fetch".into(),
+            6,
+            serde_json::json!({"enable_file_download":true}),
+        ),
+        ("session_storage".into(), 7, serde_json::json!({})),
+        ("session_schedule".into(), 8, serde_json::json!({})),
+        ("btw".into(), 9, serde_json::json!({})),
+        ("message_metadata".into(), 10, serde_json::json!({})),
+        ("citation_retrieval".into(), 11, serde_json::json!({})),
+        ("citation_verification".into(), 12, serde_json::json!({})),
+        ("ask_user".into(), 13, serde_json::json!({})),
+        (
+            "error_disclosure".into(),
+            14,
+            serde_json::json!({"mode":"detailed"}),
+        ),
     ];
     let existing = db.get_agent_capabilities(id.uuid()).await?;
     if existing.len() != capabilities.len()
@@ -46,7 +71,8 @@ pub async fn initialize(db: &StorageBackend, org_id: i64) -> Result<()> {
     {
         db.set_agent_capabilities(id.uuid(), capabilities).await?;
     }
-    db.migrate_platform_chat_agent(org_id, id, generic).await?;
+    db.migrate_platform_chat_agent(org_id, id, bashkit_worker)
+        .await?;
     Ok(())
 }
 

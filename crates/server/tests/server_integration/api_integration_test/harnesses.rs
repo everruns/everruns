@@ -563,7 +563,7 @@ async fn test_session_features_generic_harness() {
 }
 
 #[tokio::test]
-async fn test_chat_is_a_managed_agent_on_generic() {
+async fn test_chat_is_a_managed_agent_on_bashkit_worker() {
     let server = TestServer::new().await;
     let agent: Value = server
         .get("/v1/agents/platform-chat")
@@ -571,7 +571,7 @@ async fn test_chat_is_a_managed_agent_on_generic() {
         .assert_success()
         .json();
     assert_eq!(agent["name"], "platform-chat");
-    assert_eq!(agent["harness_id"], server.seed_generic_harness_id);
+    assert_eq!(agent["harness_id"], server.seed_chat_harness_id);
     assert!(
         agent["capabilities"]
             .as_array()
@@ -580,10 +580,11 @@ async fn test_chat_is_a_managed_agent_on_generic() {
             .any(|c| c["ref"] == "platform" && c["config"]["surface"] == "shell")
     );
     let harness: Harness = server
-        .get(&format!("/v1/harnesses/{}", server.seed_generic_harness_id))
+        .get(&format!("/v1/harnesses/{}", server.seed_chat_harness_id))
         .await
         .assert_success()
         .json();
+    assert_eq!(harness.name, "bashkit-worker");
     assert!(harness.intro_markdown.is_none());
     assert!(harness.starters.is_empty());
 }

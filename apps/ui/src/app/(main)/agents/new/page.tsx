@@ -2,7 +2,13 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateAgent, useCapabilities, useAgentNameAvailability, usePageTitle } from "@/hooks";
+import {
+  useCreateAgent,
+  useCapabilities,
+  useAgentNameAvailability,
+  useHarnesses,
+  usePageTitle,
+} from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -42,6 +48,7 @@ import type {
   NetworkAccessList,
 } from "@/lib/api/types";
 import type { ConversationStarter } from "@/lib/api/legacy-api-types";
+import { harnessInheritsFromName } from "@/lib/harness-inheritance";
 import { StartersEditor } from "@/components/starters-editor";
 
 /** Convert a display name to a slug: lowercase, non-alphanumeric → hyphens, deduplicate, trim. */
@@ -58,6 +65,7 @@ export default function NewAgentPage() {
   const router = useRouter();
   const createAgent = useCreateAgent();
   const { data: allCapabilities = [] } = useCapabilities();
+  const { data: harnesses = [] } = useHarnesses();
 
   const [formData, setFormData] = useState({
     display_name: "",
@@ -82,6 +90,11 @@ export default function NewAgentPage() {
   const [networkAccess, setNetworkAccess] = useState<NetworkAccessList>({});
   const [environments, setEnvironments] = useState<EnvironmentSet | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const fixedBashkitHarness = harnessInheritsFromName(
+    formData.harness_id,
+    harnesses,
+    "bashkit-worker",
+  );
 
   const handleCapabilitiesChange = useCallback((capabilities: AgentCapabilityConfig[]) => {
     setSelectedCapabilities(capabilities);
@@ -340,6 +353,9 @@ export default function NewAgentPage() {
                       value={formData.harness_id}
                       onValueChange={(value) => {
                         setFormData((prev) => ({ ...prev, harness_id: value }));
+                        if (harnessInheritsFromName(value, harnesses, "bashkit-worker")) {
+                          setEnvironments(null);
+                        }
                         setFieldErrors((prev) => ({ ...prev, harness_id: undefined }));
                       }}
                       placeholder="Select a harness"
@@ -392,15 +408,24 @@ export default function NewAgentPage() {
               <CardHeader>
                 <CardTitle>Environments</CardTitle>
                 <CardDescription>
-                  Named filesystem and compute profiles users can select when starting a chat.
+                  Choose no Sandbox, a fixed Environment, or advanced Session selection.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <EnvironmentProfilesEditor
-                  value={environments}
-                  onChange={setEnvironments}
-                  disabled={createAgent.isPending}
-                />
+                {fixedBashkitHarness ? (
+                  <div className="border bg-muted/40 p-4 text-sm">
+                    <p className="font-medium">Bashkit Virtual Workspace</p>
+                    <p className="text-muted-foreground">
+                      Locked by Bashkit Worker. Agent and Session overrides are disabled.
+                    </p>
+                  </div>
+                ) : (
+                  <EnvironmentProfilesEditor
+                    value={environments}
+                    onChange={setEnvironments}
+                    disabled={createAgent.isPending}
+                  />
+                )}
               </CardContent>
             </Card>
 

@@ -2,8 +2,9 @@
 
 use crate::records::{
     EnvironmentContainmentLevel, EnvironmentContainmentProfile, EnvironmentDurability,
-    EnvironmentEscalation, EnvironmentIdleAction, EnvironmentNetworkPolicy, EnvironmentProfile,
-    EnvironmentSelection, EnvironmentSet, EnvironmentTargetKind, ResolvedEnvironmentProfile,
+    EnvironmentEscalation, EnvironmentIdleAction, EnvironmentNetworkPolicy, EnvironmentPolicyMode,
+    EnvironmentProfile, EnvironmentSelection, EnvironmentSet, EnvironmentTargetKind,
+    ResolvedEnvironmentProfile,
 };
 use everruns_contracts::capability::CapabilityRef;
 use serde_json::{Map, Value, json};
@@ -44,6 +45,9 @@ pub fn validate_environment_set(set: &EnvironmentSet) -> Result<(), String> {
             set.default
         ));
     }
+    if set.effective_policy() == EnvironmentPolicyMode::Fixed && set.profiles.len() != 1 {
+        return Err("a fixed Environment policy must declare exactly one profile".to_string());
+    }
 
     for (name, profile) in &set.profiles {
         crate::records::validate_addressable_name(name)
@@ -58,6 +62,24 @@ pub fn resolve_environment_selection(
     environments: Option<&EnvironmentSet>,
     selection: Option<&EnvironmentSelection>,
 ) -> Result<Option<ResolvedEnvironmentSelection>, String> {
+    if let Some(set) = environments {
+        validate_environment_set(set)?;
+        match (set.effective_policy(), selection) {
+            (EnvironmentPolicyMode::Fixed, Some(_)) => {
+                return Err(
+                    "this Agent has a fixed Environment; Session overrides are not allowed"
+                        .to_string(),
+                );
+            }
+            (EnvironmentPolicyMode::Selectable, Some(EnvironmentSelection::Inline(_))) => {
+                return Err("this Agent only allows selecting a declared Environment".to_string());
+            }
+            _ => {}
+        }
+    } else if selection.is_some() {
+        return Err("this Agent does not allow Session Environment configuration".to_string());
+    }
+
     let (name, profile) = match selection {
         Some(EnvironmentSelection::Named { r#use }) => {
             let set = environments.ok_or_else(|| {
@@ -86,6 +108,38 @@ pub fn resolve_environment_selection(
     let profile = resolve_profile(profile)?;
     validate_target_available(&profile)?;
     Ok(Some(ResolvedEnvironmentSelection { name, profile }))
+}
+
+/// Managed Bashkit VFS used when an execution-capable Harness has no Agent
+/// override. It is a real pinned Environment, not an implicit shell capability.
+pub fn managed_bashkit_profile() -> EnvironmentProfile {
+    EnvironmentProfile {
+        source_revision_id: None,
+        target: crate::records::EnvironmentTargetProfile::vfs("bashkit"),
+        containment: Some(EnvironmentContainmentProfile::isolated()),
+        durability: Some(EnvironmentDurability::Checkpointed),
+        lifecycle: Default::default(),
+        bootstrap: Default::default(),
+    }
+}
+
+pub fn managed_bashkit_selection() -> ResolvedEnvironmentSelection {
+    ResolvedEnvironmentSelection {
+        name: "bashkit-virtual-workspace".to_string(),
+        profile: resolve_profile(&managed_bashkit_profile())
+            .expect("managed Bashkit Environment must remain valid"),
+    }
+}
+
+pub fn selection_from_environment(
+    environment: &crate::records::EnvironmentDefinition,
+) -> Result<ResolvedEnvironmentSelection, String> {
+    let mut authored = environment.current_revision.profile.clone();
+    authored.source_revision_id = Some(environment.current_revision.public_id);
+    Ok(ResolvedEnvironmentSelection {
+        name: environment.name.clone(),
+        profile: resolve_profile(&authored)?,
+    })
 }
 
 pub fn resolve_profile(
@@ -125,6 +179,7 @@ pub fn resolve_profile(
     }
 
     Ok(ResolvedEnvironmentProfile {
+        source_revision_id: authored.source_revision_id,
         target: authored.target.clone(),
         containment,
         durability,
@@ -555,6 +610,7 @@ mod tests {
 
     fn profile(target: crate::records::EnvironmentTargetProfile) -> EnvironmentProfile {
         EnvironmentProfile {
+            source_revision_id: None,
             target,
             containment: None,
             durability: None,
@@ -566,6 +622,7 @@ mod tests {
     #[test]
     fn named_profile_resolves_and_replaces_legacy_compute_capabilities() {
         let set = EnvironmentSet {
+            policy: None,
             default: "scratch".to_string(),
             profiles: BTreeMap::from([(
                 "scratch".to_string(),
@@ -589,6 +646,61 @@ mod tests {
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "bashkit_shell"]
+        );
+    }
+
+    #[test]
+    fn fixed_policy_rejects_even_the_default_session_override() {
+        let set = EnvironmentSet {
+            policy: Some(EnvironmentPolicyMode::Fixed),
+            default: "scratch".to_string(),
+            profiles: BTreeMap::from([(
+                "scratch".to_string(),
+                profile(EnvironmentTargetProfile::vfs("bashkit")),
+            )]),
+        };
+        let error = resolve_environment_selection(
+            Some(&set),
+            Some(&EnvironmentSelection::Named {
+                r#use: "scratch".into(),
+            }),
+        )
+        .unwrap_err();
+        assert!(error.contains("fixed Environment"));
+    }
+
+    #[test]
+    fn selectable_policy_rejects_inline_profiles() {
+        let selected = profile(EnvironmentTargetProfile::vfs("bashkit"));
+        let set = EnvironmentSet {
+            policy: Some(EnvironmentPolicyMode::Selectable),
+            default: "scratch".to_string(),
+            profiles: BTreeMap::from([("scratch".to_string(), selected.clone())]),
+        };
+        let error = resolve_environment_selection(
+            Some(&set),
+            Some(&EnvironmentSelection::Inline(selected)),
+        )
+        .unwrap_err();
+        assert!(error.contains("declared Environment"));
+    }
+
+    #[test]
+    fn fixed_policy_requires_exactly_one_profile() {
+        let selected = profile(EnvironmentTargetProfile::vfs("bashkit"));
+        let set = EnvironmentSet {
+            policy: Some(EnvironmentPolicyMode::Fixed),
+            default: "one".to_string(),
+            profiles: BTreeMap::from([
+                ("one".to_string(), selected.clone()),
+                ("two".to_string(), selected),
+            ]),
+        };
+
+        assert!(
+            validate_environment_set(&set)
+                .unwrap_err()
+                .contains("exactly one")
         );
     }
 
@@ -653,6 +765,7 @@ mod tests {
     #[test]
     fn default_must_name_a_profile() {
         let set = EnvironmentSet {
+            policy: None,
             default: "missing".to_string(),
             profiles: BTreeMap::from([(
                 "scratch".to_string(),

@@ -41,6 +41,7 @@ import {
   useDeleteAgent,
   useDestroyAgent,
   useExportAgent,
+  useHarnesses,
   useLatestHealthCheckRun,
   useModels,
   usePageTitle,
@@ -108,6 +109,7 @@ import {
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
 import { formatTokens, pluralize } from "@/lib/formatting";
+import { harnessInheritsFromName } from "@/lib/harness-inheritance";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcp } from "@/providers/webmcp-context";
 
@@ -144,6 +146,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const agentVersionsEnabled = useFeatureFlag("agent_versions");
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  const { data: harnesses = [] } = useHarnesses();
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   const { data: allCapabilities } = useCapabilities({ includeRetired: true });
   const { data: models } = useModels();
@@ -341,6 +344,13 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const isActive = agent.status === "active";
   const sessionCount = agent.session_count;
   const displayName = getDisplayName(agent);
+  const fixedEnvironment = harnessInheritsFromName(
+    draft.fields.harness_id || agent.harness_id,
+    harnesses,
+    "bashkit-worker",
+  )
+    ? "Bashkit Virtual Workspace"
+    : undefined;
   const network = normalizeNetworkAccess(draft.networkAccess);
   const brandingParts = [
     draft.fields.description.trim() ? "Description" : "No description",
@@ -377,9 +387,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     {
       id: "environments",
       label: "Environments",
-      summary: draft.environments
-        ? `${Object.keys(draft.environments.profiles ?? {}).length} · default ${draft.environments.default}`
-        : "None",
+      summary:
+        fixedEnvironment ??
+        (draft.environments
+          ? `${Object.keys(draft.environments.profiles ?? {}).length} · default ${draft.environments.default}`
+          : "None"),
     },
     {
       id: "usage",
@@ -620,6 +632,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         agent={agent}
         draft={draft}
         readOnly={readOnly}
+        fixedEnvironment={fixedEnvironment}
         onDraftChange={onDraftChange}
       />
 

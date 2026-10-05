@@ -18,10 +18,11 @@ target for new sessions.
 | [Conversation](/built-ins/harnesses/conversation/) | Default for dialogue | Context management |
 | [Worker Base](/built-ins/harnesses/worker-base/) | Files, bash, project instructions | Specialized workers |
 | [Worker](/built-ins/harnesses/worker/) | Skills, long context and delegation | Task coordination |
+| [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker with a sealed Bashkit primary Sandbox | Support and virtual-workspace agents |
 | [Generic (deprecated)](/built-ins/harnesses/generic/) | Deprecated legacy bundle | 25 configured |
 | [Data Analyst](/built-ins/harnesses/data-analyst/) | SQL databases, charts, persistent memory | Worker Base + data capabilities; available as a built-in example |
 
-[Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent with an explicit legacy Generic binding.
+[Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent bound to Bashkit Worker.
 
 See the [Harnesses feature guide](/features/harnesses/) for harness selection, API management, and the prompt stack model.
 

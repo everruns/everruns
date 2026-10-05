@@ -266,6 +266,34 @@ describe("AgentPage layout", () => {
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
   });
 
+  it("shows the fixed Bashkit environment inherited from the Harness", async () => {
+    mockUseAgent.mockReturnValue({
+      data: { ...mockAgent, harness_id: "harness_bashkit" },
+      isLoading: false,
+    });
+    mockUseHarnesses.mockReturnValue({
+      data: [
+        {
+          id: "harness_bashkit",
+          name: "bashkit-worker",
+          display_name: "Bashkit Worker",
+        },
+      ],
+      isLoading: false,
+    });
+    await renderPage();
+
+    expect(
+      screen.getByRole("button", {
+        name: /Environments\s*Bashkit Virtual Workspace/,
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Environments/ }));
+    expect(
+      screen.getByText("Locked by the selected Harness.", { exact: false }),
+    ).toBeInTheDocument();
+  });
+
   it("opens Playground setup with the Agent preselected without creating a session", async () => {
     await renderPage();
 

@@ -13,6 +13,7 @@
 //! `oss_built_in_harnesses()` in platform.rs.
 
 mod base;
+mod bashkit_worker;
 mod coding;
 mod coding_prompt;
 mod data_analyst;
@@ -37,6 +38,7 @@ pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
         levels::definition(BuiltInHarnessPreset::Conversation),
         levels::definition(BuiltInHarnessPreset::WorkerBase),
         levels::definition(BuiltInHarnessPreset::Worker),
+        bashkit_worker::definition(),
         generic::definition(),
     ]
 }
@@ -143,7 +145,14 @@ mod tests {
         // harnesses. Specialized coding/data harnesses moved to examples.
         assert_eq!(
             names,
-            vec!["base", "conversation", "worker-base", "worker", "generic",]
+            vec![
+                "base",
+                "conversation",
+                "worker-base",
+                "worker",
+                "bashkit-worker",
+                "generic",
+            ]
         );
         for legacy in LEGACY_BUILT_IN_NAMES {
             assert!(

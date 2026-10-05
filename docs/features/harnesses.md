@@ -53,6 +53,7 @@ For the design rationale (why three configuration layers exist), see [Concepts](
 | [Conversation](/built-ins/harnesses/conversation/) | Dialogue and context management | Simple assistants, Dad Jokes |
 | [Worker Base](/built-ins/harnesses/worker-base/) | Conversation plus files, bash and project instructions | Specialized workers |
 | [Worker](/built-ins/harnesses/worker/) | Worker Base plus skills, long context and delegation | General-purpose task execution |
+| [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) | Worker plus a sealed managed Bashkit primary Sandbox | Support and virtual-workspace agents |
 | [Generic (deprecated)](/built-ins/harnesses/generic/) | Preserved legacy bundle | Existing bindings |
 | [Data Analyst](/built-ins/harnesses/data-analyst/) | Worker Base plus SQL, charts, memory | Data workflows |
 
@@ -61,7 +62,7 @@ Conversation is the default. Generic remains active for existing bindings and ex
 For existing organizations, the [harness upgrade notes](/framework/upgrade-notes/#harness-levels)
 describe preservation of Generic bindings and handling of custom name collisions.
 
-[Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent with an explicit legacy Generic binding. Introductions and conversation starters belong to Agents; harnesses describe reusable execution behavior.
+[Platform Chat](/built-ins/harnesses/platform-chat/) is a managed Agent bound to Bashkit Worker. Introductions and conversation starters belong to Agents; harnesses describe reusable execution behavior.
 
 ## Naming
 

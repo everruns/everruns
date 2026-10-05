@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Box, Check, Cpu, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
-import { useEnvironmentTargets } from "@/hooks";
+import { useEnvironments, useEnvironmentTargets } from "@/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -414,12 +414,16 @@ export function EnvironmentProfilesEditor({
   value,
   onChange,
   disabled = false,
+  definitionMode = false,
 }: {
   value: EnvironmentSet | null;
   onChange: (value: EnvironmentSet | null) => void;
   disabled?: boolean;
+  /** Edit one reusable Environment definition, not an Agent binding policy. */
+  definitionMode?: boolean;
 }) {
   const { data, isLoading, error } = useEnvironmentTargets();
+  const { data: reusableEnvironments = [] } = useEnvironments();
   const targets = useMemo(() => data?.items ?? [], [data?.items]);
   const profiles = value?.profiles ?? {};
   const entries = Object.entries(profiles);
@@ -427,13 +431,39 @@ export function EnvironmentProfilesEditor({
   const add = (target: EnvironmentTargetDescriptor) => {
     const name = nextEnvironmentName(target, profiles);
     onChange({
+      policy: value?.policy ?? "fixed",
       default: value?.default || name,
       profiles: { ...profiles, [name]: createEnvironmentProfile(target) },
     });
   };
 
+  const addReusable = (environment: (typeof reusableEnvironments)[number]) => {
+    const base = environment.name;
+    const name = profiles[base]
+      ? nextEnvironmentName(
+          environment.current_revision.profile.target as EnvironmentTargetDescriptor,
+          profiles,
+        )
+      : base;
+    onChange({
+      policy: value?.policy ?? "fixed",
+      default: value?.default || name,
+      profiles: {
+        ...profiles,
+        [name]: {
+          ...environment.current_revision.profile,
+          source_revision_id: environment.current_revision.id,
+        },
+      },
+    });
+  };
+
   const update = (name: string, profile: EnvironmentProfile) => {
-    onChange({ default: value?.default || name, profiles: { ...profiles, [name]: profile } });
+    onChange({
+      policy: value?.policy ?? "fixed",
+      default: value?.default || name,
+      profiles: { ...profiles, [name]: profile },
+    });
   };
 
   const rename = (from: string, to: string) => {
@@ -441,7 +471,11 @@ export function EnvironmentProfilesEditor({
     for (const [name, profile] of Object.entries(profiles)) {
       renamed[name === from ? to : name] = profile;
     }
-    onChange({ default: value?.default === from ? to : value?.default || to, profiles: renamed });
+    onChange({
+      policy: value?.policy ?? "fixed",
+      default: value?.default === from ? to : value?.default || to,
+      profiles: renamed,
+    });
   };
 
   const remove = (name: string) => {
@@ -454,6 +488,7 @@ export function EnvironmentProfilesEditor({
       return;
     }
     onChange({
+      policy: value?.policy ?? "fixed",
       default: value?.default === name ? names[0] : value?.default || names[0],
       profiles: remaining,
     });
@@ -469,13 +504,43 @@ export function EnvironmentProfilesEditor({
           <div className="space-y-1">
             <p className="text-sm font-medium">Filesystem plus replaceable compute</p>
             <p className="text-xs text-muted-foreground">
-              New chats pin one named profile. Checkpointed profiles restore the workspace into
-              replacement compute if the physical sandbox disappears; running processes do not
-              survive replacement.
+              New Playground sessions pin one named profile. Checkpointed profiles restore the
+              workspace into replacement compute if the physical sandbox disappears; running
+              processes do not survive replacement.
             </p>
           </div>
         </div>
       </div>
+
+      {!definitionMode ? (
+        <div className="space-y-2">
+          <Label htmlFor="sandbox-policy">Session choice</Label>
+          <Select
+            value={value?.policy ?? "fixed"}
+            onValueChange={(policy) =>
+              onChange(value ? { ...value, policy: policy as EnvironmentSet["policy"] } : value)
+            }
+            disabled={disabled || !value}
+          >
+            <SelectTrigger id="sandbox-policy">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="fixed" disabled={entries.length > 1}>
+                Fixed — sessions cannot override
+              </SelectItem>
+              <SelectItem value="selectable">Selectable — declared environments only</SelectItem>
+              <SelectItem value="configurable">
+                Configurable — allow constrained one-offs
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Fixed is the safe default. Playground only shows a picker for selectable or configurable
+            Agents.
+          </p>
+        </div>
+      ) : null}
 
       {entries.map(([name, profile]) => (
         <ProfileEditor
@@ -486,9 +551,9 @@ export function EnvironmentProfilesEditor({
           isDefault={value?.default === name}
           targets={targets}
           disabled={disabled}
-          onChange={(next) => update(name, next)}
+          onChange={(next) => update(name, { ...next, source_revision_id: undefined })}
           onRename={(next) => rename(name, next)}
-          onDefault={() => onChange({ default: name, profiles })}
+          onDefault={() => onChange({ policy: value?.policy ?? "fixed", default: name, profiles })}
           onRemove={() => remove(name)}
         />
       ))}
@@ -502,6 +567,32 @@ export function EnvironmentProfilesEditor({
 
       {!disabled && entries.length < MAX_PROFILES ? (
         <div className="space-y-2">
+          {!definitionMode && reusableEnvironments.length > 0 ? (
+            <>
+              <p className="text-xs font-medium text-muted-foreground">
+                Use a reusable environment
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {reusableEnvironments.map((environment) => (
+                  <Button
+                    key={environment.id}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => addReusable(environment)}
+                    disabled={(value?.policy ?? "fixed") === "fixed" && entries.length > 0}
+                  >
+                    <Box className="size-4" />
+                    <Plus className="size-3" />
+                    {environment.display_name}
+                  </Button>
+                ))}
+              </div>
+              <Link href="/environments" className="text-xs text-muted-foreground underline">
+                Manage reusable environments
+              </Link>
+            </>
+          ) : null}
           <p className="text-xs font-medium text-muted-foreground">Add an environment</p>
           <div className="flex flex-wrap gap-2">
             {isLoading ? (
@@ -514,6 +605,7 @@ export function EnvironmentProfilesEditor({
                 variant="outline"
                 size="sm"
                 onClick={() => add(target)}
+                disabled={(value?.policy ?? "fixed") === "fixed" && entries.length > 0}
               >
                 {target.kind === "vfs" ? <Box className="size-4" /> : <Cpu className="size-4" />}
                 <Plus className="size-3" />

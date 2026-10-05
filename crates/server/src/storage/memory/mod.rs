@@ -159,6 +159,18 @@ pub struct InMemoryDatabase {
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     pub(super) sessions: RwLock<HashMap<SessionId, SessionRow>>,
     pub(super) environments: RwLock<HashMap<SessionId, super::EnvironmentRecord>>,
+    pub(super) environment_definitions: RwLock<
+        HashMap<
+            everruns_contracts::typed_id::EnvironmentId,
+            (i64, crate::records::EnvironmentDefinition),
+        >,
+    >,
+    pub(super) environment_revisions: RwLock<
+        HashMap<
+            everruns_contracts::typed_id::EnvironmentRevisionId,
+            (i64, crate::records::EnvironmentRevision),
+        >,
+    >,
     waiting_turn_resolutions: RwLock<HashMap<SessionId, WaitingTurnResolutionState>>,
     pub(super) session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
@@ -357,6 +369,8 @@ impl Default for InMemoryDatabase {
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
             environments: RwLock::new(HashMap::new()),
+            environment_definitions: RwLock::new(HashMap::new()),
+            environment_revisions: RwLock::new(HashMap::new()),
             waiting_turn_resolutions: RwLock::new(HashMap::new()),
             session_participants: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),

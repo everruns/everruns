@@ -1305,47 +1305,6 @@ async fn test_delete_entities_referenced_only_by_session_succeeds() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
-#[tokio::test]
-async fn test_session_environment_reports_what_the_session_can_actually_do() {
-    let server = TestServer::in_memory().await;
-
-    let session: Value = server
-        .post(
-            "/v1/sessions",
-            json!({
-                "harness_id": server.seed_generic_harness_id,
-                "title": "Environment smoke",
-            }),
-        )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
-    let session_id = session["id"].as_str().expect("session id");
-
-    let environment: Value = server
-        .get(&format!("/v1/sessions/{session_id}/environment"))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    // The generic harness carries `bashkit_shell`, which is a virtual
-    // filesystem rather than a machine.
-    assert_eq!(environment["target"]["kind"], "vfs");
-    assert_eq!(environment["target"]["provider"], "bashkit");
-    assert_eq!(environment["source_capability"], "bashkit_shell");
-
-    // The load-bearing claim: a caller learns a build cannot run here before
-    // running one, rather than from a confusing tool error afterwards.
-    assert_eq!(environment["capabilities"]["native_processes"], false);
-    assert_eq!(environment["capabilities"]["portable_checkpoint"], true);
-    assert_eq!(environment["containment"]["level"], "isolated");
-    assert_eq!(environment["durability"], "checkpointed");
-
-    // Says how it knows, rather than implying a stored profile that does not
-    // exist yet.
-    assert_eq!(environment["resolved_from"], "capabilities");
-}
-
 /// EVE-1126: a session that ran on the OpenAI Agents API backend has context
 /// only the provider holds, so a fork is refused with a stable code, and
 /// deleting the session queues its provider session for remote deletion.

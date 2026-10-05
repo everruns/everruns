@@ -4,20 +4,36 @@ description: Configure where an Agent runs commands, select that Environment for
 appliesTo: [platform, cloud]
 ---
 
-An **Environment** is the filesystem and compute target used by a session's command tools. It is
-separate from the Harness: the Harness defines behavior and capabilities, while the Environment
-selects Bashkit, Daytona, or another execution target without changing the tool names the model
-uses.
+An **Environment** is reusable, versioned configuration for filesystem and compute. A session pins
+one immutable Environment revision into its **primary Sandbox**. The Sandbox is the durable logical
+resource; its physical Daytona instance or other provider compute may be replaced without changing
+the session or Sandbox identity.
+
+Environment and Harness are separate. A Harness defines behavior and can either fix an Environment
+or let an Agent choose one. Environment revisions select Bashkit, Daytona, or another execution
+target without changing the ordinary shell and file tools the model uses.
+
+## Create an Environment
+
+1. Open **Environments** and select **New environment**.
+2. Give it a stable name and display name.
+3. Select Bashkit Virtual Workspace or an available managed provider such as Daytona.
+4. Configure durability, lifecycle, and bootstrap options, then save.
+
+Editing an Environment creates a new revision. Existing Agents and sessions keep the revision they
+already reference; new bindings can use the new current revision. Managed Environments such as the
+Bashkit Virtual Workspace are provisioned by Everruns and cannot be edited or archived.
 
 ## Configure an Agent
 
 1. Open **Agents**, then open the Agent.
 2. Under **More**, select **Environments**.
-3. Select **Add Bashkit** or **Add Daytona**.
-4. Give the profile a stable name such as `scratch` or `build`, and choose which profile is the
-   default.
-5. For Daytona, optionally select compute size, snapshot, workspace path, provider auto-stop, idle
-   behavior, and bootstrap commands.
+3. Select an existing Environment. The Agent stores its exact revision, not a moving pointer.
+4. Choose the Agent policy:
+   - **Fixed**: the session always gets the single configured Environment and cannot override it.
+   - **Selectable**: Playground can choose from the Agent's declared Environments.
+   - **Configurable**: Playground may also provide an inline Environment profile.
+5. Choose the default Environment when the policy permits multiple choices.
 6. Select **Done**, then **Save changes** on the Agent page.
 
 Bashkit is available without a provider connection. Daytona appears as unavailable when its
@@ -28,22 +44,28 @@ connection error when that user has not connected it.
 Do not put API keys or other credentials in target options or bootstrap commands. Bind provider
 credentials through the deployment's connection management instead.
 
-## Start a chat in an Environment
+The built-in [Bashkit Worker](/built-ins/harnesses/bashkit-worker/) is sealed to Everruns' managed
+Bashkit Environment. Agents based on it cannot configure Environment profiles, and session creation
+cannot override the primary Sandbox. Use provider-neutral Worker or Worker Base when the Agent must
+select Daytona or another Environment.
 
-1. Open **Chats** and select **New chat**.
+## Start a Playground session in an Environment
+
+1. Open **Playground** and start a new session.
 2. Select the Agent.
-3. Select one of the Agent's named **Environment** profiles. The Agent default is preselected.
+3. For a selectable or configurable Agent, select an allowed **Environment**. Fixed Agents show the
+   resolved Environment as read-only.
 4. Select **Start chat**.
 
 The new session pins a resolved snapshot of that profile. Editing the Agent later affects new
 sessions only; an existing chat does not silently move to a different target or policy.
 
-Open the session's **Workspace** tab to inspect the resolved target, containment, capabilities,
-recovery class, and latest lifecycle state.
+Open the session's **Workspace** tab to inspect the primary Sandbox id, pinned Environment revision,
+resolved target, containment, capabilities, recovery class, generation, and latest lifecycle state.
 
 ## Recovery after compute loss
 
-A `checkpointed` profile separates durable workspace state from replaceable physical compute.
+A `checkpointed` Environment separates durable workspace state from replaceable physical compute.
 Everruns checkpoints successful mutations. If a Daytona sandbox physically disappears, the next
 environment operation detects the loss, creates replacement compute, restores the workspace, and
 continues the same session.
@@ -54,17 +76,34 @@ so operators can distinguish restored files from restored processes.
 
 ## API
 
-Create or update an Agent with named profiles:
+Create a reusable Environment:
+
+```json
+POST /v1/environments
+{
+  "name": "daytona-build",
+  "display_name": "Daytona Build",
+  "profile": {
+    "target": { "kind": "managed", "provider": "daytona" },
+    "durability": "checkpointed"
+  }
+}
+```
+
+Then bind exact Environment revisions to an Agent:
 
 ```json
 {
   "environments": {
+    "policy": "selectable",
     "default": "scratch",
     "profiles": {
       "scratch": {
+        "source_revision_id": "envrev_...",
         "target": { "kind": "vfs", "provider": "bashkit" }
       },
       "build": {
+        "source_revision_id": "envrev_...",
         "target": { "kind": "managed", "provider": "daytona" },
         "durability": "checkpointed"
       }
@@ -73,7 +112,8 @@ Create or update an Agent with named profiles:
 }
 ```
 
-Select a named profile when creating a session:
+Select a declared Environment only in Playground and only when the policy is `selectable` or
+`configurable`:
 
 ```json
 {
@@ -84,4 +124,13 @@ Select a named profile when creating a session:
 
 Use `GET /v1/environment-targets` to discover what the deployment can actually run, and
 `GET /v1/sessions/{session_id}/environment` to inspect the immutable resolved profile and current
-lifecycle state.
+lifecycle state. Use `GET /v1/environments` to list reusable definitions.
+
+## Resource Sandbox fleets
+
+The primary Sandbox is implicit: ordinary shell and file tools always address it. An Agent with the
+`sandbox_fleet` capability can additionally create explicitly addressed resource Sandboxes through
+`sandbox_create`, then use `sandbox_exec`, `sandbox_read_file`, `sandbox_write_file`,
+`sandbox_inspect`, `sandbox_checkpoint`, and `sandbox_manage`. Resource Sandbox IDs are logical,
+session-scoped handles; provider IDs and credentials remain inside the trusted control plane. Fleet
+operations never change where ordinary shell or file tools run.

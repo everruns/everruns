@@ -33,7 +33,7 @@ pub(crate) fn mark_platform_chat_starter(
     is_platform_chat_agent: bool,
 ) -> Result<(), CommandError> {
     let is_starter = is_platform_chat_agent
-        && harness_name == "generic"
+        && harness_name == "bashkit-worker"
         && matches!(req.title.as_deref(), Some("Platform Chat" | "Chat"))
         && req.tags.iter().any(|tag| tag == "chat")
         && req.parent_session_id.is_none()
@@ -61,14 +61,14 @@ mod tests {
             "source": "chat", "title": "Platform Chat", "tags": ["chat"]
         }))
         .unwrap();
-        mark_platform_chat_starter(&mut req, "generic", true).unwrap();
+        mark_platform_chat_starter(&mut req, "bashkit-worker", true).unwrap();
         assert_eq!(req.tags, ["chat", PLATFORM_CHAT_STARTER_TAG]);
 
         let mut older_req: CreateSessionRequest = serde_json::from_value(json!({
             "title": "Platform Chat", "tags": ["chat"]
         }))
         .unwrap();
-        mark_platform_chat_starter(&mut older_req, "generic", true).unwrap();
+        mark_platform_chat_starter(&mut older_req, "bashkit-worker", true).unwrap();
         assert!(
             older_req
                 .tags
@@ -79,11 +79,11 @@ mod tests {
             "source": "chat", "tags": ["chat"]
         }))
         .unwrap();
-        mark_platform_chat_starter(&mut ordinary, "generic", true).unwrap();
+        mark_platform_chat_starter(&mut ordinary, "bashkit-worker", true).unwrap();
         assert_eq!(ordinary.tags, ["chat"]);
 
         ordinary.tags.push(PLATFORM_CHAT_STARTER_TAG.to_string());
-        assert!(mark_platform_chat_starter(&mut ordinary, "generic", false).is_err());
+        assert!(mark_platform_chat_starter(&mut ordinary, "bashkit-worker", false).is_err());
     }
 
     /// Runs `f` under a subscriber that records WARN+ output on this thread.

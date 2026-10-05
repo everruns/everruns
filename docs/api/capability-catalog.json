@@ -1054,6 +1054,34 @@
       ]
     },
     {
+      "category": "Sandboxes",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": "sandbox-fleet",
+      "feature_flag": null,
+      "features": [
+        "leased_resources"
+      ],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "sandbox_fleet",
+      "name": "Sandbox Fleet",
+      "status": "available",
+      "tools": [
+        "sandbox_checkpoint",
+        "sandbox_create",
+        "sandbox_exec",
+        "sandbox_inspect",
+        "sandbox_list",
+        "sandbox_manage",
+        "sandbox_read_file",
+        "sandbox_write_file"
+      ]
+    },
+    {
       "category": "System",
       "dependencies": [],
       "docs_slug": "self-budget",

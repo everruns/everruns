@@ -76,7 +76,7 @@ async fn permanent_chat_is_durable_and_cannot_be_removed_or_reassigned() {
 }
 
 #[tokio::test]
-async fn side_chat_starts_empty_on_the_same_agent_and_generic() {
+async fn side_chat_starts_empty_on_the_same_agent_and_bashkit_worker() {
     let ctx = fixture().await;
     let main = EnsurePlatformChat {}.run(&ctx).await.unwrap();
     let side = CreateSession(

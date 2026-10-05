@@ -399,6 +399,7 @@ export default defineConfig({
                       label: "Sandboxes",
                       collapsed: true,
                       items: [
+                        { label: "Sandbox Fleet", slug: "capabilities/sandbox-fleet" },
                         { label: "Daytona", slug: "capabilities/daytona" },
                         { label: "E2B", slug: "capabilities/e2b" },
                         { label: "Container Sandbox", slug: "capabilities/container-sandbox" },

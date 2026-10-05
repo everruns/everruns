@@ -94,7 +94,7 @@ pub struct TestServer {
     pub seed_base_harness_id: String,
     /// Public ID of the built-in `generic` harness for the default org.
     pub seed_generic_harness_id: String,
-    /// Generic execution environment for platform conversations.
+    /// Public ID of the built-in `bashkit-worker` Harness used by Platform Chat.
     pub seed_chat_harness_id: String,
     /// Public ID of the managed Platform Chat Agent.
     pub seed_chat_agent_id: String,
@@ -1228,7 +1228,7 @@ impl TestServer {
 
         let seed_base_harness_id = lookup_built_in_harness(&db, "base").await;
         let seed_generic_harness_id = lookup_built_in_harness(&db, "generic").await;
-        let seed_chat_harness_id = lookup_built_in_harness(&db, "generic").await;
+        let seed_chat_harness_id = lookup_built_in_harness(&db, "bashkit-worker").await;
         let seed_chat_agent_id = db
             .get_agent_by_name(1, "platform-chat")
             .await

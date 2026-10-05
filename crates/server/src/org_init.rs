@@ -247,6 +247,11 @@ pub async fn initialize_org_harnesses_with_definitions(
 ) -> Result<InitResult> {
     let mut result = InitResult::default();
 
+    // Environment resources precede Harness bindings. The managed Bashkit
+    // revision is immutable and shared as configuration; every Session still
+    // receives its own logical Sandbox and Workspace.
+    db.ensure_managed_bashkit_environment(org_id).await?;
+
     // Release legacy built-ins that were demoted to example harnesses.
     // We keep the rows (so existing sessions/agents that reference them keep
     // working) but flip `is_built_in` to false so they become editable, regular
@@ -360,7 +365,7 @@ pub async fn initialize_org_harnesses_with_definitions(
         }
     }
 
-    if harnesses.iter().any(|h| h.name == "generic") {
+    if harnesses.iter().any(|h| h.name == "bashkit-worker") {
         crate::platform_chat_agent::initialize(db, org_id).await?;
     }
 
@@ -650,7 +655,7 @@ mod tests {
         assert!(chat.is_built_in);
         assert_eq!(
             chat.harness_id,
-            db.get_harness_by_name(DEFAULT_ORG_ID, "generic")
+            db.get_harness_by_name(DEFAULT_ORG_ID, "bashkit-worker")
                 .await
                 .unwrap()
                 .unwrap()

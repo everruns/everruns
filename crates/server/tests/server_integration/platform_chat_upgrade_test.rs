@@ -283,12 +283,12 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
         .await
         .unwrap()
         .unwrap();
-    let generic = db
-        .get_harness_by_name(org_id, "generic")
+    let bashkit_worker = db
+        .get_harness_by_name(org_id, "bashkit-worker")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(managed.harness_id, generic.id);
+    assert_eq!(managed.harness_id, bashkit_worker.id);
     assert!(
         managed
             .system_prompt
@@ -320,7 +320,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             .unwrap()
             .unwrap()
             .harness_id,
-        Some(generic.id)
+        Some(bashkit_worker.id)
     );
     assert_eq!(
         db.get_session(org_id, preview_session.id)
@@ -328,7 +328,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             .unwrap()
             .unwrap()
             .harness_id,
-        Some(generic.id)
+        Some(bashkit_worker.id)
     );
     assert_eq!(
         db.get_agent(org_id, agent.id)

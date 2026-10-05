@@ -2026,6 +2026,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/environments": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List active reusable Environments available to the organization. */
+    get: operations["list_environments"];
+    put?: never;
+    /** @description Create a reusable Environment and its first immutable revision. */
+    post: operations["create_environment"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/environments/{environment_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get one reusable Environment and its current immutable revision. */
+    get: operations["get_environment_definition"];
+    /** @description Create the next immutable revision of a reusable Environment. */
+    put: operations["revise_environment"];
+    post?: never;
+    /** @description Archive a user-managed reusable Environment without changing pinned Sessions. */
+    delete: operations["archive_environment"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/files": {
     parameters: {
       query?: never;
@@ -8009,6 +8046,25 @@ export interface components {
       /** @description Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref. */
       definition: Record<string, unknown>;
     };
+    CreateEnvironmentRequest: {
+      /**
+       * @description Optional explanation of the Environment's intended workload.
+       * @example Recoverable coding workspace managed by Daytona
+       */
+      description?: string | null;
+      /**
+       * @description Human-readable name shown in management surfaces.
+       * @example Coding - Daytona
+       */
+      display_name: string;
+      /**
+       * @description Stable addressable name used by Agent environment references.
+       * @example coding-daytona
+       */
+      name: string;
+      /** @description Initial immutable execution profile revision. */
+      profile: components["schemas"]["EnvironmentProfile"];
+    };
     /** @description Request to create a file */
     CreateFileRequest: {
       /**
@@ -9213,8 +9269,48 @@ export interface components {
        */
       task_id: string;
     };
+    /** @description Organization-scoped reusable execution Environment. */
+    Environment: {
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
+      created_at: string;
+      /** @description Latest immutable revision used for new references. */
+      current_revision: components["schemas"]["EnvironmentRevision"];
+      /**
+       * @description Optional explanation of the Environment's intended workload.
+       * @example Recoverable coding workspace managed by Daytona
+       */
+      description?: string | null;
+      /**
+       * @description Human-readable name shown in management surfaces.
+       * @example Coding - Daytona
+       */
+      display_name: string;
+      /** @description Stable public Environment identifier. */
+      id: string;
+      /** @description Whether the definition is owned and sealed by the platform. */
+      is_managed: boolean;
+      /**
+       * @description Addressable name used in configuration.
+       * @example coding-daytona
+       */
+      name: string;
+      /**
+       * @description Lifecycle state such as `active` or `archived`.
+       * @example active
+       */
+      status: string;
+      /**
+       * Format: date-time
+       * @description Timestamp of the most recent definition or revision change.
+       */
+      updated_at: string;
+    };
     /** @description Reproducible initialization pinned with the profile snapshot. */
     EnvironmentBootstrap: {
+      /** @description Ordered commands replayed when creating or recovering physical compute. */
       commands?: string[];
     };
     /**
@@ -9225,27 +9321,43 @@ export interface components {
      *     available before the first turn rather than after a confusing tool error.
      */
     EnvironmentCapabilities: {
+      /** @description Whether commands can spawn operating-system processes. */
       native_processes: boolean;
+      /** @description Whether the target enforces the declared outbound network policy. */
       network_enforced: boolean;
+      /** @description Whether the runtime can install operating-system packages. */
       packages: boolean;
+      /** @description Whether filesystem state has a portable checkpoint representation. */
       portable_checkpoint: boolean;
+      /** @description Whether workloads can bind and expose network ports. */
       ports: boolean;
+      /** @description Whether interactive pseudo-terminals are supported. */
       pty: boolean;
     };
     /** @description What commands may touch, and who enforces it. */
     EnvironmentContainment: {
-      /** @description `none`, `native`, or `isolated`. */
+      /**
+       * @description `none`, `native`, or `isolated`.
+       * @example isolated
+       */
       level: string;
-      /** @description Outbound network policy: `deny`, `allowlist`, or `allow`. */
+      /**
+       * @description Outbound network policy: `deny`, `allowlist`, or `allow`.
+       * @example allow
+       */
       network: string;
     };
     /** @enum {string} */
     EnvironmentContainmentLevel: "none" | "native" | "isolated";
     /** @description What commands may touch. */
     EnvironmentContainmentProfile: {
+      /** @description Whether the runtime may widen containment after Session creation. */
       escalation?: components["schemas"]["EnvironmentEscalation"];
+      /** @description Filesystem mutation boundary for command execution. */
       filesystem?: components["schemas"]["EnvironmentFilesystemPolicy"];
+      /** @description Isolation mechanism the provider must supply. */
       level: components["schemas"]["EnvironmentContainmentLevel"];
+      /** @description Outbound network access the provider must enforce. */
       network?: components["schemas"]["EnvironmentNetworkPolicy"];
     };
     /**
@@ -9260,14 +9372,20 @@ export interface components {
     EnvironmentEscalation: "never" | "approval" | "auto";
     /** @description Filesystem paths the target permits command execution to mutate. */
     EnvironmentFilesystemPolicy: {
+      /** @description Absolute roots the runtime may mutate; empty means provider default. */
       writable_roots?: string[];
     };
     /** @enum {string} */
     EnvironmentIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
     /** @description Control-plane lifecycle intent. Providers do not own these timers. */
     EnvironmentLifecycle: {
+      /** @description Action Everruns requests after the idle interval. */
       idle_action?: components["schemas"]["EnvironmentIdleAction"];
-      /** Format: int64 */
+      /**
+       * Format: int64
+       * @description Inactivity interval before applying `idle_action`.
+       * @example 300
+       */
       idle_after_seconds?: number;
     };
     /** @description Non-secret lifecycle details for a managed Environment incarnation. */
@@ -9304,6 +9422,11 @@ export interface components {
           mode: "allow";
         };
     /**
+     * @description Agent policy for choosing the Session's one immutable primary Sandbox.
+     * @enum {string}
+     */
+    EnvironmentPolicyMode: "fixed" | "selectable" | "configurable";
+    /**
      * @description Desired environment configuration authored by a human or application.
      *
      *     Containment and durability may be omitted when the target has exactly one
@@ -9311,11 +9434,40 @@ export interface components {
      *     to a Session.
      */
     EnvironmentProfile: {
+      /** @description Reproducible commands run when physical compute is initialized. */
       bootstrap?: components["schemas"]["EnvironmentBootstrap"];
       containment?: components["schemas"]["EnvironmentContainmentProfile"] | null;
       durability?: components["schemas"]["EnvironmentDurability"] | null;
+      /** @description Idle lifecycle policy controlled by Everruns. */
       lifecycle?: components["schemas"]["EnvironmentLifecycle"];
+      /**
+       * @description Immutable reusable Environment revision this profile was copied from.
+       *     The profile remains a complete snapshot so Agent versions are portable
+       *     and later Environment revisions cannot change an existing version.
+       */
+      source_revision_id?: string | null;
+      /** @description Provider-neutral target plus its concrete adapter binding. */
       target: components["schemas"]["EnvironmentTargetProfile"];
+    };
+    /** @description Immutable revision of an Environment template. */
+    EnvironmentRevision: {
+      /**
+       * Format: date-time
+       * @description Revision creation timestamp.
+       */
+      created_at: string;
+      /** @description Parent reusable Environment identifier. */
+      environment_id: string;
+      /** @description Stable public revision identifier pinned into Agent and Session snapshots. */
+      id: string;
+      /** @description Complete immutable authored profile. */
+      profile: components["schemas"]["EnvironmentProfile"];
+      /**
+       * Format: int32
+       * @description Monotonically increasing revision number within the Environment.
+       * @example 3
+       */
+      revision: number;
     };
     /** @description Session-level selection: use an Agent profile, or provide an inline one. */
     EnvironmentSelection:
@@ -9325,8 +9477,12 @@ export interface components {
       | components["schemas"]["EnvironmentProfile"];
     /** @description Named execution environments offered by an Agent version. */
     EnvironmentSet: {
-      /** @description Profile inherited when session creation does not choose one explicitly. */
+      /**
+       * @description Profile inherited when session creation does not choose one explicitly.
+       * @example primary
+       */
       default: string;
+      policy?: components["schemas"]["EnvironmentPolicyMode"] | null;
       /** @description Human-authored profiles addressable by name at session creation. */
       profiles?: {
         [key: string]: components["schemas"]["EnvironmentProfile"];
@@ -9334,22 +9490,35 @@ export interface components {
     };
     /** @description Where a session's commands run. */
     EnvironmentTarget: {
-      /** @description Registered connection used by a machine target. */
+      /**
+       * @description Registered connection used by a machine target.
+       * @example conn_01933b5a000070008000000000000001
+       */
       connection_id?: string | null;
-      /** @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`. */
+      /**
+       * @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`.
+       * @example managed
+       */
       kind: string;
-      /** @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...). */
+      /**
+       * @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...).
+       * @example daytona
+       */
       provider?: string | null;
     };
     /** @description One target this deployment can offer, and what it can do. */
     EnvironmentTargetDescriptor: {
       /** @description Whether this deployment can actually run it right now. */
       available: boolean;
+      /** @description Capabilities the deployment can honestly provide for this target. */
       capabilities: components["schemas"]["EnvironmentCapabilities"];
       /** @description Containment levels this target supports, weakest first. */
       containment_levels: string[];
+      /** @description Recovery guarantee offered by this target. */
       durability: string;
+      /** @description Provider-neutral target class. */
       kind: string;
+      /** @description Concrete provider adapter, when the target class requires one. */
       provider?: string | null;
       /** @description Why it is unavailable. Present only when `available` is false. */
       reason?: string | null;
@@ -9361,19 +9530,27 @@ export interface components {
     EnvironmentTargetKind: "host" | "machine" | "vfs" | "container" | "managed";
     /** @description Where commands execute. */
     EnvironmentTargetProfile: {
-      /** @description Credential/transport binding for a registered machine target. */
+      /**
+       * @description Credential/transport binding for a registered machine target.
+       * @example conn_01933b5a000070008000000000000001
+       */
       connection_id?: string | null;
+      /** @description Provider-neutral target class. */
       kind: components["schemas"]["EnvironmentTargetKind"];
       /**
        * @description Provider-owned, non-secret configuration. Credentials are references,
        *     never values in this object.
        */
       options?: Record<string, unknown>;
-      /** @description Concrete adapter for target kinds with more than one implementation. */
+      /**
+       * @description Concrete adapter for target kinds with more than one implementation.
+       * @example daytona
+       */
       provider?: string | null;
     };
     /** @description Response body for the `list_environment_targets` operation. */
     EnvironmentTargetsResponse: {
+      /** @description Target descriptors known to this deployment. */
       items: components["schemas"]["EnvironmentTargetDescriptor"][];
     };
     /**
@@ -17131,10 +17308,17 @@ export interface components {
      *     been made explicit.
      */
     ResolvedEnvironmentProfile: {
+      /** @description Pinned initialization commands. */
       bootstrap: components["schemas"]["EnvironmentBootstrap"];
+      /** @description Fully resolved containment contract. */
       containment: components["schemas"]["EnvironmentContainmentProfile"];
+      /** @description Fully resolved recovery guarantee. */
       durability: components["schemas"]["EnvironmentDurability"];
+      /** @description Pinned lifecycle policy. */
       lifecycle: components["schemas"]["EnvironmentLifecycle"];
+      /** @description Reusable revision from which this complete snapshot was copied. */
+      source_revision_id?: string | null;
+      /** @description Exact target pinned for the Session. */
       target: components["schemas"]["EnvironmentTargetProfile"];
     };
     /**
@@ -17267,6 +17451,20 @@ export interface components {
     ResumeSessionResponse: {
       resumed_budgets: number;
       session_id: string;
+    };
+    ReviseEnvironmentRequest: {
+      /**
+       * @description Omit to preserve; send null to clear.
+       * @example Larger recoverable workspace for repository builds
+       */
+      description?: string | null;
+      /**
+       * @description Replacement display name; omit to preserve the current value.
+       * @example Coding - Daytona (large)
+       */
+      display_name?: string | null;
+      /** @description Complete profile stored as the next immutable revision. */
+      profile: components["schemas"]["EnvironmentProfile"];
     };
     /**
      * @description Risk classification for capabilities (TM-AGENT-005).
@@ -18032,6 +18230,7 @@ export interface components {
     SessionEnvironmentResponse: {
       capabilities: components["schemas"]["EnvironmentCapabilities"];
       containment: components["schemas"]["EnvironmentContainment"];
+      /** @description Most recent checkpoint used to recover this logical Sandbox. */
       current_checkpoint_id?: string | null;
       /** @description Control-plane lifecycle intent and latest observed physical state. */
       desired_state?: string | null;
@@ -18040,17 +18239,23 @@ export interface components {
        *     session on somebody else's machine is never reported as recoverable.
        */
       durability: string;
+      /** @description Reusable Environment revision pinned into this Sandbox. */
+      environment_revision_id?: string | null;
       /**
        * Format: int64
        * @description Physical incarnation fence. Increments whenever compute is replaced.
        */
       generation?: number | null;
-      /** @description Durable logical Environment id. Absent for legacy capability-derived sessions. */
+      /** @description Deprecated alias for `sandbox_id` during the Environment-to-Sandbox migration. */
       id?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Last recorded runtime activity used by lifecycle policy.
+       */
       last_activity_at?: string | null;
       /** @description Agent profile name selected for this Session (`inline` for one-offs). */
       name?: string | null;
+      /** @description Latest lifecycle state observed from the physical provider resource. */
       observed_state?: string | null;
       profile?: components["schemas"]["ResolvedEnvironmentProfile"] | null;
       /**
@@ -18059,6 +18264,10 @@ export interface components {
        *     environment profile.
        */
       resolved_from: string;
+      /** @description `primary` for the implicit shell/files binding. */
+      role?: string | null;
+      /** @description Durable logical primary Sandbox id. Absent for legacy capability-derived sessions. */
+      sandbox_id?: string | null;
       /** @description Capability that supplied the compute, for operators tracing a surprise. */
       source_capability?: string | null;
       target?: components["schemas"]["EnvironmentTarget"] | null;
@@ -28381,6 +28590,115 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["EnvironmentTargetsResponse"];
+        };
+      };
+    };
+  };
+  list_environments: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"][];
+        };
+      };
+    };
+  };
+  create_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateEnvironmentRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"];
+        };
+      };
+    };
+  };
+  get_environment_definition: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        environment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"];
+        };
+      };
+    };
+  };
+  revise_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        environment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviseEnvironmentRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"];
+        };
+      };
+    };
+  };
+  archive_environment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        environment_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
         };
       };
     };

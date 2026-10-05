@@ -81,7 +81,7 @@ export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
   if (isLoading) {
     return (
       <div className="border-t p-4">
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Environment</h2>
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">Primary Sandbox</h2>
         <Skeleton className="h-24 w-full" />
       </div>
     );
@@ -101,7 +101,7 @@ export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="border-t p-4">
-      <h2 className="mb-3 text-sm font-medium text-muted-foreground">Environment</h2>
+      <h2 className="mb-3 text-sm font-medium text-muted-foreground">Primary Sandbox</h2>
 
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
@@ -161,6 +161,13 @@ export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
         )}
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          {data.name ? <span>Environment: {data.name}</span> : null}
+          {data.environment_revision_id ? (
+            <span className="font-mono">{data.environment_revision_id}</span>
+          ) : null}
+          {data.sandbox_id ? <span className="font-mono">{data.sandbox_id}</span> : null}
+          {data.generation ? <span>Generation {data.generation}</span> : null}
+          {data.observed_state ? <span>Status: {data.observed_state}</span> : null}
           <span>Recovery: {DURABILITY_LABELS[data.durability] ?? data.durability}</span>
           {data.source_capability ? (
             <span className="font-mono">from {data.source_capability}</span>

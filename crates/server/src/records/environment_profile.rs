@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 
+use chrono::{DateTime, Utc};
+use everruns_contracts::typed_id::{EnvironmentId, EnvironmentRevisionId};
 use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
@@ -14,11 +16,39 @@ use utoipa::ToSchema;
 /// Named execution environments offered by an Agent version.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentSet {
+    /// Who may choose the primary Sandbox for a Session. Older rows omit this
+    /// field; one profile then means `fixed`, while several mean `selectable`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub policy: Option<EnvironmentPolicyMode>,
     /// Profile inherited when session creation does not choose one explicitly.
+    #[schema(example = "primary")]
     pub default: String,
     /// Human-authored profiles addressable by name at session creation.
     #[serde(default)]
     pub profiles: BTreeMap<String, EnvironmentProfile>,
+}
+
+impl EnvironmentSet {
+    /// Effective policy, including the deterministic legacy migration rule.
+    pub fn effective_policy(&self) -> EnvironmentPolicyMode {
+        self.policy.unwrap_or(if self.profiles.len() <= 1 {
+            EnvironmentPolicyMode::Fixed
+        } else {
+            EnvironmentPolicyMode::Selectable
+        })
+    }
+}
+
+/// Agent policy for choosing the Session's one immutable primary Sandbox.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum EnvironmentPolicyMode {
+    /// Always use the default Environment; Session overrides are rejected.
+    Fixed,
+    /// A Session may select only one of the declared named Environments.
+    Selectable,
+    /// A Session may select a named Environment or submit a constrained one-off profile.
+    Configurable,
 }
 
 /// Desired environment configuration authored by a human or application.
@@ -28,13 +58,24 @@ pub struct EnvironmentSet {
 /// to a Session.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentProfile {
+    /// Immutable reusable Environment revision this profile was copied from.
+    /// The profile remains a complete snapshot so Agent versions are portable
+    /// and later Environment revisions cannot change an existing version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub source_revision_id: Option<EnvironmentRevisionId>,
+    /// Provider-neutral target plus its concrete adapter binding.
     pub target: EnvironmentTargetProfile,
+    /// Requested isolation policy; resolution supplies an honest target default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub containment: Option<EnvironmentContainmentProfile>,
+    /// Requested recovery guarantee; resolution supplies a target default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub durability: Option<EnvironmentDurability>,
+    /// Idle lifecycle policy controlled by Everruns.
     #[serde(default)]
     pub lifecycle: EnvironmentLifecycle,
+    /// Reproducible commands run when physical compute is initialized.
     #[serde(default)]
     pub bootstrap: EnvironmentBootstrap,
 }
@@ -43,22 +84,34 @@ pub struct EnvironmentProfile {
 /// been made explicit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct ResolvedEnvironmentProfile {
+    /// Reusable revision from which this complete snapshot was copied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    pub source_revision_id: Option<EnvironmentRevisionId>,
+    /// Exact target pinned for the Session.
     pub target: EnvironmentTargetProfile,
+    /// Fully resolved containment contract.
     pub containment: EnvironmentContainmentProfile,
+    /// Fully resolved recovery guarantee.
     pub durability: EnvironmentDurability,
+    /// Pinned lifecycle policy.
     pub lifecycle: EnvironmentLifecycle,
+    /// Pinned initialization commands.
     pub bootstrap: EnvironmentBootstrap,
 }
 
 /// Where commands execute.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentTargetProfile {
+    /// Provider-neutral target class.
     pub kind: EnvironmentTargetKind,
     /// Concrete adapter for target kinds with more than one implementation.
     #[serde(default, alias = "vendor", skip_serializing_if = "Option::is_none")]
+    #[schema(example = "daytona")]
     pub provider: Option<String>,
     /// Credential/transport binding for a registered machine target.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "conn_01933b5a000070008000000000000001")]
     pub connection_id: Option<String>,
     /// Provider-owned, non-secret configuration. Credentials are references,
     /// never values in this object.
@@ -122,11 +175,15 @@ impl EnvironmentTargetKind {
 /// What commands may touch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentContainmentProfile {
+    /// Isolation mechanism the provider must supply.
     pub level: EnvironmentContainmentLevel,
+    /// Outbound network access the provider must enforce.
     #[serde(default)]
     pub network: EnvironmentNetworkPolicy,
+    /// Filesystem mutation boundary for command execution.
     #[serde(default)]
     pub filesystem: EnvironmentFilesystemPolicy,
+    /// Whether the runtime may widen containment after Session creation.
     #[serde(default)]
     pub escalation: EnvironmentEscalation,
 }
@@ -154,6 +211,7 @@ impl EnvironmentContainmentProfile {
 /// Filesystem paths the target permits command execution to mutate.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentFilesystemPolicy {
+    /// Absolute roots the runtime may mutate; empty means provider default.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub writable_roots: Vec<String>,
 }
@@ -200,8 +258,11 @@ pub enum EnvironmentDurability {
 /// Control-plane lifecycle intent. Providers do not own these timers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentLifecycle {
+    /// Inactivity interval before applying `idle_action`.
     #[serde(default = "default_idle_after_seconds")]
+    #[schema(example = 300)]
     pub idle_after_seconds: u64,
+    /// Action Everruns requests after the idle interval.
     #[serde(default)]
     pub idle_action: EnvironmentIdleAction,
 }
@@ -227,6 +288,7 @@ pub enum EnvironmentIdleAction {
 /// Reproducible initialization pinned with the profile snapshot.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 pub struct EnvironmentBootstrap {
+    /// Ordered commands replayed when creating or recovering physical compute.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<String>,
 }
@@ -237,6 +299,56 @@ pub struct EnvironmentBootstrap {
 pub enum EnvironmentSelection {
     Named { r#use: String },
     Inline(EnvironmentProfile),
+}
+
+/// Organization-scoped reusable execution Environment.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+#[schema(as = Environment)]
+pub struct EnvironmentDefinition {
+    /// Stable public Environment identifier.
+    #[serde(rename = "id")]
+    #[schema(value_type = String)]
+    pub public_id: EnvironmentId,
+    /// Addressable name used in configuration.
+    #[schema(example = "coding-daytona")]
+    pub name: String,
+    /// Human-readable name shown in management surfaces.
+    #[schema(example = "Coding - Daytona")]
+    pub display_name: String,
+    /// Optional explanation of the Environment's intended workload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Recoverable coding workspace managed by Daytona")]
+    pub description: Option<String>,
+    /// Whether the definition is owned and sealed by the platform.
+    pub is_managed: bool,
+    /// Lifecycle state such as `active` or `archived`.
+    #[schema(example = "active")]
+    pub status: String,
+    /// Latest immutable revision used for new references.
+    pub current_revision: EnvironmentRevision,
+    /// Creation timestamp.
+    pub created_at: DateTime<Utc>,
+    /// Timestamp of the most recent definition or revision change.
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Immutable revision of an Environment template.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
+pub struct EnvironmentRevision {
+    /// Stable public revision identifier pinned into Agent and Session snapshots.
+    #[serde(rename = "id")]
+    #[schema(value_type = String)]
+    pub public_id: EnvironmentRevisionId,
+    /// Parent reusable Environment identifier.
+    #[schema(value_type = String)]
+    pub environment_id: EnvironmentId,
+    /// Monotonically increasing revision number within the Environment.
+    #[schema(example = 3)]
+    pub revision: i32,
+    /// Complete immutable authored profile.
+    pub profile: EnvironmentProfile,
+    /// Revision creation timestamp.
+    pub created_at: DateTime<Utc>,
 }
 
 fn default_idle_after_seconds() -> u64 {
@@ -271,6 +383,30 @@ mod tests {
         }))
         .unwrap();
         assert!(matches!(inline, EnvironmentSelection::Inline(_)));
+    }
+
+    #[test]
+    fn legacy_environment_sets_get_a_deterministic_policy() {
+        let profile: EnvironmentProfile = serde_json::from_value(json!({
+            "target": {"kind": "vfs", "provider": "bashkit"}
+        }))
+        .unwrap();
+        let fixed = EnvironmentSet {
+            policy: None,
+            default: "default".into(),
+            profiles: BTreeMap::from([("default".into(), profile.clone())]),
+        };
+        assert_eq!(fixed.effective_policy(), EnvironmentPolicyMode::Fixed);
+
+        let selectable = EnvironmentSet {
+            policy: None,
+            default: "one".into(),
+            profiles: BTreeMap::from([("one".into(), profile.clone()), ("two".into(), profile)]),
+        };
+        assert_eq!(
+            selectable.effective_policy(),
+            EnvironmentPolicyMode::Selectable
+        );
     }
 
     #[test]

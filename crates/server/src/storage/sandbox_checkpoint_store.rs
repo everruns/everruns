@@ -44,6 +44,7 @@ pub struct EnvironmentRecord {
     pub provider: String,
     pub profile_name: String,
     pub profile: crate::records::ResolvedEnvironmentProfile,
+    pub environment_revision_id: Option<everruns_contracts::typed_id::EnvironmentRevisionId>,
     pub desired_state: String,
     pub observed_state: String,
     pub generation: i64,
@@ -73,14 +74,15 @@ impl PgSandboxCheckpointStore {
         let inserted: Option<Uuid> = sqlx::query_scalar(
             r#"
             INSERT INTO sandboxes
-                (org_id, session_id, provider, profile_name, profile_snapshot)
-            SELECT s.org_id, s.id, $2, $3, $4
+                (org_id, session_id, provider, profile_name, profile_snapshot, environment_revision_id, role)
+            SELECT s.org_id, s.id, $2, $3, $4, $5, 'primary'
             FROM sessions s
             WHERE s.id = $1
             ON CONFLICT (session_id) WHERE profile_snapshot IS NOT NULL DO UPDATE SET
                 provider = EXCLUDED.provider,
                 profile_name = EXCLUDED.profile_name,
                 profile_snapshot = EXCLUDED.profile_snapshot,
+                environment_revision_id = EXCLUDED.environment_revision_id,
                 updated_at = NOW()
             WHERE sandboxes.profile_snapshot IS NULL
                OR (sandboxes.profile_name = EXCLUDED.profile_name
@@ -93,6 +95,7 @@ impl PgSandboxCheckpointStore {
         .bind(&provider)
         .bind(profile_name)
         .bind(&snapshot)
+        .bind(profile.source_revision_id.map(|id| id.uuid()))
         .fetch_optional(&self.pool)
         .await
         .map_err(state_storage_error)?;
@@ -123,6 +126,7 @@ impl PgSandboxCheckpointStore {
             generation: i64,
             current_checkpoint_id: Option<Uuid>,
             last_activity_at: Option<DateTime<Utc>>,
+            environment_revision_id: Option<everruns_contracts::typed_id::EnvironmentRevisionId>,
         }
 
         let row: Option<Row> = sqlx::query_as(
@@ -130,6 +134,7 @@ impl PgSandboxCheckpointStore {
             SELECT id, session_id, provider, profile_name, profile_snapshot,
                    desired_state, observed_state, generation,
                    current_checkpoint_id, last_activity_at
+                   , environment_revision_id
             FROM sandboxes
             WHERE session_id = $1
               AND profile_snapshot IS NOT NULL
@@ -153,6 +158,7 @@ impl PgSandboxCheckpointStore {
                 provider: row.provider,
                 profile_name: row.profile_name.unwrap_or_else(|| "legacy".to_string()),
                 profile,
+                environment_revision_id: row.environment_revision_id,
                 desired_state: row.desired_state,
                 observed_state: row.observed_state,
                 generation: row.generation,

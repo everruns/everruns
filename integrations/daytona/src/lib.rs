@@ -35,7 +35,7 @@ mod naming;
 pub mod openapi_spec;
 mod session_sandbox_provider;
 pub mod state;
-mod tools;
+pub mod tools;
 
 use everruns_contracts::connector::ConnectorPlugin;
 use everruns_core::LEASED_RESOURCES_FEATURE;
@@ -62,11 +62,18 @@ use tools::{
 // ============================================================================
 
 /// Capability plugins this crate contributes to a hosted catalog.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
-    feature_flag: None,
-    factory: || Box::new(DaytonaCapability),
-}];
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
+    IntegrationPlugin {
+        experimental_only: false,
+        feature_flag: None,
+        factory: || Box::new(DaytonaCapability),
+    },
+    IntegrationPlugin {
+        experimental_only: false,
+        feature_flag: None,
+        factory: || Box::new(SandboxFleetCapability),
+    },
+];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
@@ -134,6 +141,374 @@ fn is_api_calling_enabled(config: &serde_json::Value) -> bool {
 }
 
 pub struct DaytonaCapability;
+
+/// Provider-neutral resource Sandbox fleet backed by Daytona today. Logical
+/// IDs are registered per Session and translated inside the trusted control
+/// plane; provider IDs and credentials never become model-facing handles.
+pub struct SandboxFleetCapability;
+
+#[derive(Clone, Copy)]
+enum FleetOperation {
+    Create,
+    Exec,
+    Read,
+    Write,
+    List,
+    Inspect,
+    Checkpoint,
+    Manage,
+}
+
+struct SandboxFleetTool {
+    name: &'static str,
+    operation: FleetOperation,
+    inner: Option<Box<dyn Tool>>,
+}
+
+impl SandboxFleetTool {
+    fn delegated(name: &'static str, operation: FleetOperation, inner: Box<dyn Tool>) -> Self {
+        Self {
+            name,
+            operation,
+            inner: Some(inner),
+        }
+    }
+
+    fn list() -> Self {
+        Self {
+            name: "sandbox_list",
+            operation: FleetOperation::List,
+            inner: None,
+        }
+    }
+
+    fn inspect() -> Self {
+        Self {
+            name: "sandbox_inspect",
+            operation: FleetOperation::Inspect,
+            inner: None,
+        }
+    }
+
+    async fn translate_id(
+        &self,
+        arguments: &mut serde_json::Value,
+        context: &everruns_core::tool_context::ToolContext,
+    ) -> Result<(), everruns_core::tools::ToolExecutionResult> {
+        let Some(logical_id) = arguments.get("sandbox_id").and_then(|value| value.as_str()) else {
+            return Err(everruns_core::tools::ToolExecutionResult::tool_error(
+                "sandbox_id is required",
+            ));
+        };
+        let Some(registry) = &context.session_resource_registry else {
+            return Err(
+                everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                    "Session resource registry is unavailable",
+                ),
+            );
+        };
+        // THREAT[TM-TOOL-054]: Never accept a provider id or a Sandbox owned
+        // by another Session from model arguments. Resolve only the current
+        // Session's logical resource handle inside the trusted control plane.
+        let entry = registry
+            .get(context.session_id, logical_id)
+            .await
+            .map_err(everruns_core::tools::ToolExecutionResult::internal_error)?
+            .filter(|entry| {
+                entry.kind == "sandbox"
+                    && entry.metadata.get("role").and_then(|v| v.as_str()) == Some("resource")
+                    && entry.metadata.get("provider").and_then(|v| v.as_str()) == Some("daytona")
+            })
+            .ok_or_else(|| {
+                everruns_core::tools::ToolExecutionResult::tool_error(
+                    "Sandbox was not created by this Session",
+                )
+            })?;
+        let external_id = entry
+            .metadata
+            .get("provider_external_id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| {
+                everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                    "Sandbox provider binding is missing",
+                )
+            })?;
+        arguments["sandbox_id"] = serde_json::json!(external_id);
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl Tool for SandboxFleetTool {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn description(&self) -> &str {
+        match self.operation {
+            FleetOperation::Create => {
+                "Create a resource Sandbox. Returns a stable logical sandbox_id scoped to this Session."
+            }
+            FleetOperation::Exec => "Execute a command in the explicitly named resource Sandbox.",
+            FleetOperation::Read => "Read a file from the explicitly named resource Sandbox.",
+            FleetOperation::Write => "Write a file in the explicitly named resource Sandbox.",
+            FleetOperation::List => "List resource Sandboxes owned by this Session.",
+            FleetOperation::Inspect => "Inspect one resource Sandbox owned by this Session.",
+            FleetOperation::Checkpoint => {
+                "Copy a resource Sandbox workspace into durable Session file storage."
+            }
+            FleetOperation::Manage => "Stop or delete the explicitly named resource Sandbox.",
+        }
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        self.inner.as_ref().map(|tool| tool.parameters_schema()).unwrap_or_else(|| match self.operation {
+            FleetOperation::Inspect => serde_json::json!({
+                "type":"object",
+                "properties":{"sandbox_id":{"type":"string","description":"Logical resource Sandbox ID"}},
+                "required":["sandbox_id"],
+                "additionalProperties":false
+            }),
+            _ => serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+        })
+    }
+
+    fn hints(&self) -> everruns_contracts::tool_types::ToolHints {
+        if matches!(self.operation, FleetOperation::Checkpoint) {
+            return everruns_contracts::tool_types::ToolHints::default()
+                .with_open_world(true)
+                .with_requires_secrets(true)
+                .with_long_running(true);
+        }
+        self.inner
+            .as_ref()
+            .map(|tool| tool.hints())
+            .unwrap_or_default()
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    fn required_context_services(
+        &self,
+    ) -> &'static [everruns_core::tool_context::ToolContextService] {
+        &[everruns_core::tool_context::ToolContextService::SessionResourceRegistry]
+    }
+
+    async fn execute(
+        &self,
+        _arguments: serde_json::Value,
+    ) -> everruns_core::tools::ToolExecutionResult {
+        everruns_core::tools::ToolExecutionResult::tool_error(
+            "sandbox_fleet tools require Session context",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        mut arguments: serde_json::Value,
+        context: &everruns_core::tool_context::ToolContext,
+    ) -> everruns_core::tools::ToolExecutionResult {
+        if matches!(self.operation, FleetOperation::List) {
+            let Some(registry) = &context.session_resource_registry else {
+                return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                    "Session resource registry is unavailable",
+                );
+            };
+            return match registry.list(context.session_id, None).await {
+                Ok(entries) => {
+                    everruns_core::tools::ToolExecutionResult::success(serde_json::json!({
+                        "sandboxes": entries.into_iter().filter(|entry| entry.kind == "sandbox" && entry.metadata.get("role").and_then(|v| v.as_str()) == Some("resource")).map(|entry| serde_json::json!({
+                            "sandbox_id": entry.resource_id,
+                            "name": entry.display_name,
+                            "status": entry.status.to_string(),
+                            "provider": entry.metadata.get("provider").cloned().unwrap_or(serde_json::Value::Null),
+                        })).collect::<Vec<_>>()
+                    }))
+                }
+                Err(error) => everruns_core::tools::ToolExecutionResult::internal_error(error),
+            };
+        }
+
+        if matches!(self.operation, FleetOperation::Inspect) {
+            let Some(logical_id) = arguments.get("sandbox_id").and_then(|value| value.as_str())
+            else {
+                return everruns_core::tools::ToolExecutionResult::tool_error(
+                    "sandbox_id is required",
+                );
+            };
+            let Some(registry) = &context.session_resource_registry else {
+                return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                    "Session resource registry is unavailable",
+                );
+            };
+            return match registry.get(context.session_id, logical_id).await {
+                Ok(Some(entry))
+                    if entry.kind == "sandbox"
+                        && entry.metadata.get("role").and_then(|value| value.as_str())
+                            == Some("resource") =>
+                {
+                    everruns_core::tools::ToolExecutionResult::success(serde_json::json!({
+                        "sandbox_id": entry.resource_id,
+                        "name": entry.display_name,
+                        "status": entry.status.to_string(),
+                        "provider": entry.metadata.get("provider").cloned().unwrap_or(serde_json::Value::Null),
+                    }))
+                }
+                Ok(_) => everruns_core::tools::ToolExecutionResult::tool_error(
+                    "Sandbox was not created by this Session",
+                ),
+                Err(error) => everruns_core::tools::ToolExecutionResult::internal_error(error),
+            };
+        }
+
+        let logical_id = arguments
+            .get("sandbox_id")
+            .and_then(|value| value.as_str())
+            .map(str::to_string);
+        if !matches!(self.operation, FleetOperation::Create)
+            && let Err(error) = self.translate_id(&mut arguments, context).await
+        {
+            return error;
+        }
+        let Some(inner) = &self.inner else {
+            unreachable!()
+        };
+        let result = inner.execute_with_context(arguments, context).await;
+        if !matches!(self.operation, FleetOperation::Create) {
+            if let everruns_core::tools::ToolExecutionResult::Success(mut value) = result {
+                if let Some(logical_id) = logical_id {
+                    if value.get("sandbox_id").is_some() {
+                        value["sandbox_id"] = serde_json::json!(logical_id.clone());
+                    }
+                    if matches!(self.operation, FleetOperation::Manage)
+                        && value.get("action").and_then(|action| action.as_str()) == Some("delete")
+                        && let Some(registry) = &context.session_resource_registry
+                    {
+                        let _ = registry
+                            .update_status(
+                                context.session_id,
+                                &logical_id,
+                                everruns_core::session_resource::SessionResourceStatus::Released,
+                            )
+                            .await;
+                    }
+                }
+                return everruns_core::tools::ToolExecutionResult::Success(value);
+            }
+            return result;
+        }
+        let everruns_core::tools::ToolExecutionResult::Success(mut value) = result else {
+            return result;
+        };
+        let Some(external_id) = value
+            .get("sandbox_id")
+            .and_then(|id| id.as_str())
+            .map(str::to_string)
+        else {
+            return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                "Sandbox provider returned no id",
+            );
+        };
+        let logical_id = everruns_contracts::typed_id::SandboxId::new().to_string();
+        let display_name = value
+            .get("name")
+            .and_then(|name| name.as_str())
+            .unwrap_or("Resource Sandbox")
+            .to_string();
+        let Some(registry) = &context.session_resource_registry else {
+            unreachable!()
+        };
+        if let Err(error) = registry.register(everruns_core::session_resource::RegisterSessionResource {
+            session_id: context.session_id,
+            resource_id: logical_id.clone(),
+            kind: "sandbox".into(),
+            display_name,
+            status: everruns_core::session_resource::SessionResourceStatus::Active,
+            metadata: serde_json::json!({"role":"resource","provider":"daytona","provider_external_id":external_id}),
+        }).await {
+            return everruns_core::tools::ToolExecutionResult::internal_error(error);
+        }
+        value["sandbox_id"] = serde_json::json!(logical_id);
+        if let Some(object) = value.as_object_mut() {
+            object.remove("requested_name");
+        }
+        everruns_core::tools::ToolExecutionResult::Success(value)
+    }
+}
+
+#[async_trait::async_trait]
+impl Capability for SandboxFleetCapability {
+    fn id(&self) -> &str {
+        "sandbox_fleet"
+    }
+    fn name(&self) -> &str {
+        "Sandbox Fleet"
+    }
+    fn description(&self) -> &str {
+        "Create and operate multiple explicitly addressed resource Sandboxes without changing the Session primary Sandbox."
+    }
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
+    }
+    fn icon(&self) -> Option<&str> {
+        Some("boxes")
+    }
+    fn category(&self) -> Option<&str> {
+        Some("Sandboxes")
+    }
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some(
+            "Resource Sandboxes are explicitly addressed by sandbox_id. They never change where ordinary bash or file tools run. Delete them when finished.",
+        )
+    }
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![
+            Box::new(SandboxFleetTool::delegated(
+                "sandbox_create",
+                FleetOperation::Create,
+                Box::new(DaytonaCreateSandboxTool),
+            )),
+            Box::new(SandboxFleetTool::delegated(
+                "sandbox_exec",
+                FleetOperation::Exec,
+                Box::new(DaytonaExecTool),
+            )),
+            Box::new(SandboxFleetTool::delegated(
+                "sandbox_read_file",
+                FleetOperation::Read,
+                Box::new(DaytonaReadFileTool),
+            )),
+            Box::new(SandboxFleetTool::delegated(
+                "sandbox_write_file",
+                FleetOperation::Write,
+                Box::new(DaytonaWriteFileTool),
+            )),
+            Box::new(SandboxFleetTool::list()),
+            Box::new(SandboxFleetTool::inspect()),
+            Box::new(SandboxFleetTool::delegated(
+                "sandbox_checkpoint",
+                FleetOperation::Checkpoint,
+                Box::new(DaytonaDownloadWorkspaceTool),
+            )),
+            Box::new(SandboxFleetTool::delegated(
+                "sandbox_manage",
+                FleetOperation::Manage,
+                Box::new(DaytonaManageSandboxTool),
+            )),
+        ]
+    }
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec!["session_storage"]
+    }
+    fn features(&self) -> Vec<&'static str> {
+        vec![LEASED_RESOURCES_FEATURE]
+    }
+}
 
 #[async_trait::async_trait]
 impl Capability for DaytonaCapability {
@@ -318,8 +693,88 @@ impl Capability for DaytonaCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use everruns_contracts::error::Result as AgentResult;
+    use everruns_contracts::typed_id::SessionId;
     use everruns_core::capabilities::CapabilityStatus;
+    use everruns_core::session_resource::{
+        RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
+    };
+    use everruns_core::session_services::SessionResourceRegistry;
     use serde_json::json;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct TestResourceRegistry(Mutex<Vec<SessionResourceEntry>>);
+
+    #[async_trait]
+    impl SessionResourceRegistry for TestResourceRegistry {
+        async fn register(
+            &self,
+            entry: RegisterSessionResource,
+        ) -> AgentResult<SessionResourceEntry> {
+            let now = Utc::now();
+            let entry = SessionResourceEntry {
+                resource_id: entry.resource_id,
+                session_id: entry.session_id,
+                kind: entry.kind,
+                display_name: entry.display_name,
+                status: entry.status,
+                metadata: entry.metadata,
+                created_at: now,
+                updated_at: now,
+            };
+            self.0.lock().unwrap().push(entry.clone());
+            Ok(entry)
+        }
+
+        async fn update_status(
+            &self,
+            _session_id: SessionId,
+            _resource_id: &str,
+            _status: SessionResourceStatus,
+        ) -> AgentResult<Option<SessionResourceEntry>> {
+            Ok(None)
+        }
+
+        async fn get(
+            &self,
+            session_id: SessionId,
+            resource_id: &str,
+        ) -> AgentResult<Option<SessionResourceEntry>> {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|entry| entry.session_id == session_id && entry.resource_id == resource_id)
+                .cloned())
+        }
+
+        async fn list(
+            &self,
+            session_id: SessionId,
+            _filter: Option<&SessionResourceFilter>,
+        ) -> AgentResult<Vec<SessionResourceEntry>> {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|entry| entry.session_id == session_id)
+                .cloned()
+                .collect())
+        }
+
+        async fn deregister(
+            &self,
+            _session_id: SessionId,
+            _resource_id: &str,
+        ) -> AgentResult<bool> {
+            Ok(false)
+        }
+    }
 
     // Host reserves this prefix from secret_store but cannot import the
     // constant (crate layering). Pin them so a rename cannot reopen forgery.
@@ -357,6 +812,60 @@ mod tests {
         assert!(names.contains(&"daytona_manage_sandbox"));
         assert!(names.contains(&"daytona_git_clone"));
         assert!(names.contains(&"daytona_git_credentials"));
+    }
+
+    #[test]
+    fn sandbox_fleet_exposes_provider_neutral_tools() {
+        let names = SandboxFleetCapability
+            .tools()
+            .into_iter()
+            .map(|tool| tool.name().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "sandbox_create",
+                "sandbox_exec",
+                "sandbox_read_file",
+                "sandbox_write_file",
+                "sandbox_list",
+                "sandbox_inspect",
+                "sandbox_checkpoint",
+                "sandbox_manage",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn sandbox_fleet_rejects_a_logical_id_owned_by_another_session() {
+        let owner = SessionId::new();
+        let caller = SessionId::new();
+        let registry = Arc::new(TestResourceRegistry::default());
+        registry
+            .register(RegisterSessionResource {
+                session_id: owner,
+                resource_id: "sandbox_owned".into(),
+                kind: "sandbox".into(),
+                display_name: "Owned".into(),
+                status: SessionResourceStatus::Active,
+                metadata: json!({
+                    "role": "resource",
+                    "provider": "daytona",
+                    "provider_external_id": "provider-secret-id"
+                }),
+            })
+            .await
+            .unwrap();
+        let context = everruns_core::tool_context::ToolContext::new(caller)
+            .with_session_resource_registry(registry);
+
+        let result = SandboxFleetTool::inspect()
+            .execute_with_context(json!({"sandbox_id": "sandbox_owned"}), &context)
+            .await;
+
+        assert!(
+            matches!(result, everruns_core::tools::ToolExecutionResult::ToolError(message) if message.contains("not created by this Session"))
+        );
     }
 
     #[test]

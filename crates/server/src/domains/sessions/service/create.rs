@@ -308,12 +308,64 @@ impl SessionService {
                     .and_then(|agent| agent.environments.clone())
                     .and_then(|value| serde_json::from_value(value).ok())
             };
-        let resolved_environment =
+        let harness_fixes_bashkit = crate::domains::harnesses::queries::inherits_from_name(
+            &self.db,
+            org_id,
+            harness.id,
+            "bashkit-worker",
+        )
+        .await?;
+        let harness_requires_execution = effective_harness.capabilities.iter().any(|capability| {
+            matches!(
+                capability.capability_id(),
+                "bashkit_shell" | "session_sandbox" | "container_sandbox"
+            )
+        });
+        let managed_bashkit = if harness_fixes_bashkit
+            || (agent_environments.is_none()
+                && req.environment.is_none()
+                && harness_requires_execution)
+        {
+            Some(self.db.ensure_managed_bashkit_environment(org_id).await?)
+        } else {
+            None
+        };
+        let resolved_environment = if harness_fixes_bashkit {
+            if agent_environments.is_some() || req.environment.is_some() {
+                return Err(BadRequestError::new(
+                    "Bashkit Worker fixes the Environment to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
+                )
+                .into());
+            }
+            Some(
+                crate::domains::environments::profiles::selection_from_environment(
+                    managed_bashkit
+                        .as_ref()
+                        .expect("managed Environment loaded"),
+                )
+                .map_err(BadRequestError::new)?,
+            )
+        } else if agent_environments.is_none()
+            && req.environment.is_none()
+            && harness_requires_execution
+        {
+            // Preserve today's Worker behavior while making the primary
+            // Sandbox explicit and recoverable in Session state.
+            Some(
+                crate::domains::environments::profiles::selection_from_environment(
+                    managed_bashkit
+                        .as_ref()
+                        .expect("managed Environment loaded"),
+                )
+                .map_err(BadRequestError::new)?,
+            )
+        } else {
             crate::domains::environments::profiles::resolve_environment_selection(
                 agent_environments.as_ref(),
                 req.environment.as_ref(),
             )
-            .map_err(BadRequestError::new)?;
+            .map_err(BadRequestError::new)?
+        };
 
         let virtual_user_id = if let Some(identity_id) = req.virtual_user_id {
             let identity = self
@@ -341,6 +393,7 @@ impl SessionService {
                     .or(effective_harness.default_model_id)
             });
 
+        let has_caller_supplied_session_capabilities = !req.capabilities.is_empty();
         let session_capabilities =
             crate::domains::environments::profiles::apply_environment_to_capabilities(
                 &sanitize_session_capabilities(req.capabilities),
@@ -358,6 +411,7 @@ impl SessionService {
             harness_id.uuid(),
             agent_id.map(|id| id.uuid()),
             &session_capabilities,
+            has_caller_supplied_session_capabilities,
         )
         .await?;
 

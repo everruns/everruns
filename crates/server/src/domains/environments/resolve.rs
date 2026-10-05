@@ -12,7 +12,7 @@ use crate::records::{
     EnvironmentContainmentLevel, EnvironmentDurability, EnvironmentNetworkPolicy,
 };
 use everruns_contracts::capability::CapabilityRef;
-use everruns_contracts::typed_id::EnvironmentId;
+use everruns_contracts::typed_id::SandboxId;
 
 use crate::api::environments::{
     EnvironmentCapabilities, EnvironmentContainment, EnvironmentTarget,
@@ -106,6 +106,9 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         // boundary around something that never runs.
         return SessionEnvironmentResponse {
             id: None,
+            sandbox_id: None,
+            environment_revision_id: None,
+            role: None,
             name: None,
             target: None,
             containment: EnvironmentContainment {
@@ -190,6 +193,9 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         resolved_from: "capabilities".to_string(),
         source_capability: Some(capability.id().to_string()),
         id: None,
+        sandbox_id: None,
+        environment_revision_id: None,
+        role: None,
         name: None,
         profile: None,
         desired_state: None,
@@ -209,7 +215,11 @@ pub fn environment_from_record(
 ) -> SessionEnvironmentResponse {
     let mut response = environment_from_capabilities(capabilities);
     let profile = &record.profile;
-    response.id = Some(EnvironmentId::from_uuid(record.id).to_string());
+    let sandbox_id = SandboxId::from_uuid(record.id).to_string();
+    response.id = Some(sandbox_id.clone());
+    response.sandbox_id = Some(sandbox_id);
+    response.environment_revision_id = record.environment_revision_id.map(|id| id.to_string());
+    response.role = Some("primary".to_string());
     response.name = Some(record.profile_name.clone());
     response.target = Some(EnvironmentTarget {
         kind: profile.target.kind.as_str().to_string(),
