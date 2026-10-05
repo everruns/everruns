@@ -56,6 +56,33 @@ pub struct E2BCreateSandboxTool;
 
 #[async_trait]
 impl Tool for E2BCreateSandboxTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Creating E2B sandbox",
+                    "Created E2B sandbox",
+                    "Could not create E2B sandbox",
+                ),
+                (
+                    "Створюю пісочницю E2B",
+                    "Створив пісочницю E2B",
+                    "Не вдалося створити пісочницю E2B",
+                ),
+                &["title", "template"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "e2b_create_sandbox"
     }
@@ -368,6 +395,33 @@ pub struct E2BReadFileTool;
 
 #[async_trait]
 impl Tool for E2BReadFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading E2B file",
+                    "Read E2B file",
+                    "Could not read E2B file",
+                ),
+                (
+                    "Читаю файл E2B",
+                    "Прочитав файл E2B",
+                    "Не вдалося прочитати файл E2B",
+                ),
+                &["path"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "e2b_read_file"
     }
@@ -465,6 +519,33 @@ pub struct E2BWriteFileTool;
 
 #[async_trait]
 impl Tool for E2BWriteFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Writing E2B file",
+                    "Wrote E2B file",
+                    "Could not write E2B file",
+                ),
+                (
+                    "Записую файл E2B",
+                    "Записав файл E2B",
+                    "Не вдалося записати файл E2B",
+                ),
+                &["path"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "e2b_write_file"
     }
@@ -543,6 +624,33 @@ pub struct E2BListSandboxesTool;
 
 #[async_trait]
 impl Tool for E2BListSandboxesTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Listing E2B sandboxes",
+                    "Listed E2B sandboxes",
+                    "Could not list E2B sandboxes",
+                ),
+                (
+                    "Перелічую пісочниці E2B",
+                    "Перелічив пісочниці E2B",
+                    "Не вдалося перелічити пісочниці E2B",
+                ),
+                &[],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "e2b_list_sandboxes"
     }
@@ -602,6 +710,75 @@ pub struct E2BManageSandboxTool;
 
 #[async_trait]
 impl Tool for E2BManageSandboxTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let (english, ukrainian) = match call.arguments.get("action").and_then(Value::as_str) {
+            Some("pause") => (
+                (
+                    "Pausing E2B sandbox",
+                    "Paused E2B sandbox",
+                    "Could not pause E2B sandbox",
+                ),
+                (
+                    "Призупиняю пісочницю E2B",
+                    "Призупинив пісочницю E2B",
+                    "Не вдалося призупинити пісочницю E2B",
+                ),
+            ),
+            Some("resume") => (
+                (
+                    "Resuming E2B sandbox",
+                    "Resumed E2B sandbox",
+                    "Could not resume E2B sandbox",
+                ),
+                (
+                    "Відновлюю пісочницю E2B",
+                    "Відновив пісочницю E2B",
+                    "Не вдалося відновити пісочницю E2B",
+                ),
+            ),
+            Some("delete") => (
+                (
+                    "Deleting E2B sandbox",
+                    "Deleted E2B sandbox",
+                    "Could not delete E2B sandbox",
+                ),
+                (
+                    "Видаляю пісочницю E2B",
+                    "Видалив пісочницю E2B",
+                    "Не вдалося видалити пісочницю E2B",
+                ),
+            ),
+            _ => (
+                (
+                    "Managing E2B sandbox",
+                    "Managed E2B sandbox",
+                    "Could not manage E2B sandbox",
+                ),
+                (
+                    "Керую пісочницею E2B",
+                    "Керував пісочницею E2B",
+                    "Не вдалося керувати пісочницею E2B",
+                ),
+            ),
+        };
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                english,
+                ukrainian,
+                &["sandbox_id"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "e2b_manage_sandbox"
     }

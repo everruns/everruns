@@ -209,32 +209,6 @@ const CHANNEL_SCHEMA_DESCRIPTION: &str = "Slack channel ID the message is in (e.
 const TIMESTAMP_SCHEMA_DESCRIPTION: &str =
     "The Slack message's `ts` value (e.g. \"1728394857.123456\"). Not a date.";
 
-/// Backend-authored narration shared by this capability's tools.
-///
-/// `crates/contracts/src/runtime/tool_narration.rs` is on the file-size allowlist
-/// (`scripts/lib/file-size-allowlist.txt`) and may not grow, so these four
-/// simple, English-only phrases live here rather than joining its
-/// `narrate_*` helpers (see `crates/capabilities/tests/capability_boundary.rs`,
-/// which requires every non-generic hosted tool to carry backend narration).
-fn narrate_action(
-    verb_started: &str,
-    verb_completed: &str,
-    verb_failed: &str,
-    target: Option<String>,
-    phase: everruns_core::tool_narration::ToolNarrationPhase,
-) -> String {
-    use everruns_core::tool_narration::ToolNarrationPhase;
-    let verb = match phase {
-        ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => verb_started,
-        ToolNarrationPhase::Completed => verb_completed,
-        ToolNarrationPhase::Failed => verb_failed,
-    };
-    match target {
-        Some(target) if !target.is_empty() => format!("{verb}: {target}"),
-        _ => verb.to_string(),
-    }
-}
-
 // ============================================================================
 // slack_add_reaction
 // ============================================================================
@@ -245,18 +219,26 @@ pub struct SlackAddReactionTool;
 impl Tool for SlackAddReactionTool {
     fn narrate(
         &self,
-        tool_call: &everruns_contracts::tool_types::ToolCall,
+        call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
-        _locale: Option<&str>,
+        locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let name = optional_str(&tool_call.arguments, "name");
-        Some(narrate_action(
-            "Adding reaction",
-            "Added reaction",
-            "Failed to add reaction",
-            name,
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
             phase,
+            locale,
+            (
+                "Adding Slack reaction",
+                "Added Slack reaction",
+                "Could not add Slack reaction",
+            ),
+            (
+                "Додаю реакцію Slack",
+                "Додав реакцію Slack",
+                "Не вдалося додати реакцію Slack",
+            ),
+            &["name"],
         ))
     }
 
@@ -349,17 +331,26 @@ pub struct SlackUpdateMessageTool;
 impl Tool for SlackUpdateMessageTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_contracts::tool_types::ToolCall,
+        call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
-        _locale: Option<&str>,
+        locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(narrate_action(
-            "Updating Slack message",
-            "Updated Slack message",
-            "Failed to update Slack message",
-            None,
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
             phase,
+            locale,
+            (
+                "Updating Slack message",
+                "Updated Slack message",
+                "Could not update Slack message",
+            ),
+            (
+                "Оновлюю повідомлення Slack",
+                "Оновив повідомлення Slack",
+                "Не вдалося оновити повідомлення Slack",
+            ),
+            &["text"],
         ))
     }
 
@@ -450,18 +441,26 @@ pub struct SlackLookupUserTool;
 impl Tool for SlackLookupUserTool {
     fn narrate(
         &self,
-        tool_call: &everruns_contracts::tool_types::ToolCall,
+        call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
-        _locale: Option<&str>,
+        locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let user_id = optional_str(&tool_call.arguments, "user_id");
-        Some(narrate_action(
-            "Looking up Slack user",
-            "Looked up Slack user",
-            "Failed to look up Slack user",
-            user_id,
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
             phase,
+            locale,
+            (
+                "Looking up Slack user",
+                "Looked up Slack user",
+                "Could not look up Slack user",
+            ),
+            (
+                "Шукаю користувача Slack",
+                "Знайшов користувача Slack",
+                "Не вдалося знайти користувача Slack",
+            ),
+            &["user_id"],
         ))
     }
 
@@ -537,18 +536,26 @@ pub struct SlackUploadFileTool;
 impl Tool for SlackUploadFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_contracts::tool_types::ToolCall,
+        call: &everruns_contracts::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
-        _locale: Option<&str>,
+        locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let filename = optional_str(&tool_call.arguments, "filename");
-        Some(narrate_action(
-            "Uploading file to Slack",
-            "Uploaded file to Slack",
-            "Failed to upload file to Slack",
-            filename,
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
             phase,
+            locale,
+            (
+                "Uploading file to Slack",
+                "Uploaded file to Slack",
+                "Could not upload file to Slack",
+            ),
+            (
+                "Надсилаю файл у Slack",
+                "Надіслав файл у Slack",
+                "Не вдалося надіслати файл у Slack",
+            ),
+            &["filename"],
         ))
     }
 

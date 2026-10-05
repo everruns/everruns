@@ -856,6 +856,16 @@ fn tool_schema(navigation: bool) -> Value {
 
 #[async_trait]
 impl Tool for ComputerTool {
+    fn narrate(
+        &self,
+        call: &crate::tool_types::ToolCall,
+        phase: crate::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narration::render(&call.arguments, phase, locale))
+    }
+
     fn name(&self) -> &str {
         COMPUTER_TOOL_NAME
     }
@@ -990,3 +1000,5 @@ impl Tool for ComputerTool {
 #[cfg(test)]
 #[path = "computer_use_tests.rs"]
 mod tests;
+
+mod narration;

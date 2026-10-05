@@ -298,3 +298,52 @@ where
         determinism_fatal: None,
     }
 }
+
+/// Client pauses use the same ownership hooks as tools executed by Act.
+pub(super) fn request_data<T, E>(
+    atom: &ActAtom<T, E>,
+    context: &ExecutionContext,
+    calls: &[ToolCall],
+    definitions: &[ToolDefinition],
+    locale: Option<&str>,
+) -> crate::engine::events::ToolCallRequestedData
+where
+    T: ToolExecutor + Send + Sync + 'static,
+    E: EventEmitter + Send + Sync + 'static,
+{
+    use crate::engine::events::ToolCallRequestedData;
+    let mut data = ToolCallRequestedData::with_definitions_and_locale(calls, definitions, locale);
+    let tool_map = definitions.iter().map(|def| (def.name(), def)).collect();
+    for (summary, call) in data.tool_summaries.iter_mut().zip(calls) {
+        let definition = definitions.iter().find(|def| def.name() == call.name);
+        summary.narration = Some(atom.render_tool_narration(
+            context,
+            definition,
+            call,
+            ToolNarrationPhase::Waiting,
+            locale,
+        ));
+        summary.completed_narration = Some(atom.render_tool_narration(
+            context,
+            definition,
+            call,
+            ToolNarrationPhase::Completed,
+            locale,
+        ));
+    }
+    data.headline = atom.render_group_headline(
+        context,
+        calls,
+        &tool_map,
+        ToolNarrationPhase::Waiting,
+        locale,
+    );
+    data.completed_headline = atom.render_group_headline(
+        context,
+        calls,
+        &tool_map,
+        ToolNarrationPhase::Completed,
+        locale,
+    );
+    data
+}

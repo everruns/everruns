@@ -124,6 +124,33 @@ pub struct CreateGitHubPullRequestTool;
 
 #[async_trait]
 impl Tool for CreateGitHubPullRequestTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Creating GitHub pull request",
+                    "Created GitHub pull request",
+                    "Could not create GitHub pull request",
+                ),
+                (
+                    "Створюю запит на злиття GitHub",
+                    "Створив запит на злиття GitHub",
+                    "Не вдалося створити запит на злиття GitHub",
+                ),
+                &["title", "repo"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "create_github_pull_request"
     }

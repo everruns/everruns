@@ -26,7 +26,7 @@ use crate::engine::events::{
     OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
     OutputMessageStartedData, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
     ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolCompletedData, ToolDefinitionSummary,
+    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
 };
 use crate::engine::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
@@ -2563,7 +2563,6 @@ impl ReasonAtom {
                 completion_metadata.as_ref(),
             )
             .await;
-
         if let Some(coordinator) = &self.native_async {
             coordinator
                 .lock()
@@ -2582,12 +2581,13 @@ impl ReasonAtom {
                 .emit(EventRequest::new(
                     session_id,
                     EventContext::from_execution_context(context),
-                    ToolCompletedData::failure(
-                        call.id.clone(),
-                        call.name.clone(),
-                        "error".to_string(),
+                    finalized_calls::rejected_call_data(
+                        &self.capability_registry,
+                        &resolved_capability_configs,
+                        &runtime_agent.tools,
+                        call,
                         rejection.error,
-                        None,
+                        result.locale.as_deref(),
                     ),
                 ))
                 .await?;

@@ -24,13 +24,23 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         calls: Vec<(String, serde_json::Value)>,
     ) -> everruns_contracts::error::Result<()> {
+        let locale = self
+            .adapter
+            .session_store(self.org_id)
+            .get_session(self.session_id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|session| session.locale);
+        let registry = self.adapter.capability_registry();
         for (tool_call_id, arguments) in calls {
             let result = everruns_contracts::unattended_ask_user_result(&arguments);
-            let data = crate::events::ToolCompletedData::success(
+            let data = unattended_completion(
+                &registry,
                 tool_call_id.clone(),
-                everruns_contracts::ASK_USER_TOOL_NAME.to_string(),
-                vec![crate::message::ContentPart::tool_result_text(&result)],
-                None,
+                &arguments,
+                &result,
+                locale.as_deref(),
             );
             let context = match turn_id {
                 Some(turn_id) => EventContext::turn(turn_id, input_message_id),
@@ -47,5 +57,66 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 .await?;
         }
         Ok(())
+    }
+}
+
+fn unattended_completion(
+    registry: &crate::capabilities::CapabilityRegistry,
+    tool_call_id: String,
+    arguments: &serde_json::Value,
+    result: &serde_json::Value,
+    locale: Option<&str>,
+) -> crate::events::ToolCompletedData {
+    use crate::tool_narration::{
+        ToolNarrationContext, ToolNarrationPhase, render_tool_narration_with_locale,
+    };
+    let call = everruns_contracts::tool_types::ToolCall {
+        id: tool_call_id.clone(),
+        name: everruns_contracts::ASK_USER_TOOL_NAME.into(),
+        arguments: arguments.clone(),
+    };
+    // Host builds can omit built-ins. Reuse the registered owner when present.
+    let narration = registry
+        .get("ask_user")
+        .and_then(|capability| {
+            capability.narrate(
+                None,
+                &call,
+                ToolNarrationPhase::Completed,
+                locale,
+                ToolNarrationContext::default(),
+            )
+        })
+        .unwrap_or_else(|| {
+            render_tool_narration_with_locale(None, &call, ToolNarrationPhase::Completed, locale)
+        });
+    crate::events::ToolCompletedData::success(
+        tool_call_id,
+        everruns_contracts::ASK_USER_TOOL_NAME.into(),
+        vec![crate::message::ContentPart::tool_result_text(result)],
+        None,
+    )
+    .with_narration(Some(narration))
+}
+
+#[cfg(all(test, feature = "builtins"))]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn unattended_completion_preserves_owned_narration() {
+        let mut registry = crate::capabilities::CapabilityRegistry::new();
+        registry.register(crate::builtins::AskUserCapability::client_side());
+        let arguments = json!({"questions":[{"header":"Release scope","question":"PRIVATE_BODY"}]});
+        let result = json!({"answers":[{"other_text":"PRIVATE_ANSWER"}]});
+        for (locale, expected) in [
+            (None, "Asked user: Release scope"),
+            (Some("uk-UA"), "Запитав користувача: Release scope"),
+        ] {
+            let data = unattended_completion(&registry, "call".into(), &arguments, &result, locale);
+            assert_eq!(data.narration.as_deref(), Some(expected));
+            assert!(data.success);
+        }
     }
 }

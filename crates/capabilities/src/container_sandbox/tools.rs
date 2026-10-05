@@ -62,6 +62,31 @@ pub struct SandboxCreateTool;
 
 #[async_trait]
 impl Tool for SandboxCreateTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Creating sandbox",
+                "Created sandbox",
+                "Could not create sandbox",
+            ),
+            (
+                "Створюю пісочницю",
+                "Створив пісочницю",
+                "Не вдалося створити пісочницю",
+            ),
+            &["image"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_create"
     }
@@ -216,6 +241,21 @@ pub struct SandboxExecTool;
 
 #[async_trait]
 impl Tool for SandboxExecTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_shell_exec(
+            &call.arguments,
+            "sandbox command",
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_exec"
     }
@@ -337,6 +377,31 @@ pub struct SandboxReadFileTool;
 
 #[async_trait]
 impl Tool for SandboxReadFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Reading sandbox file",
+                "Read sandbox file",
+                "Could not read sandbox file",
+            ),
+            (
+                "Читаю файл пісочниці",
+                "Прочитав файл пісочниці",
+                "Не вдалося прочитати файл пісочниці",
+            ),
+            &["path"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_read_file"
     }
@@ -423,6 +488,31 @@ pub struct SandboxWriteFileTool;
 
 #[async_trait]
 impl Tool for SandboxWriteFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Writing sandbox file",
+                "Wrote sandbox file",
+                "Could not write sandbox file",
+            ),
+            (
+                "Записую файл пісочниці",
+                "Записав файл пісочниці",
+                "Не вдалося записати файл пісочниці",
+            ),
+            &["path"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_write_file"
     }
@@ -511,6 +601,31 @@ pub struct SandboxListTool;
 
 #[async_trait]
 impl Tool for SandboxListTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Listing sandboxes",
+                "Listed sandboxes",
+                "Could not list sandboxes",
+            ),
+            (
+                "Перелічую пісочниці",
+                "Перелічив пісочниці",
+                "Не вдалося перелічити пісочниці",
+            ),
+            &[],
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_list"
     }
@@ -579,6 +694,73 @@ pub struct SandboxManageTool;
 
 #[async_trait]
 impl Tool for SandboxManageTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let (english, ukrainian) = match call.arguments.get("action").and_then(Value::as_str) {
+            Some("stop") => (
+                (
+                    "Stopping sandbox",
+                    "Stopped sandbox",
+                    "Could not stop sandbox",
+                ),
+                (
+                    "Зупиняю пісочницю",
+                    "Зупинив пісочницю",
+                    "Не вдалося зупинити пісочницю",
+                ),
+            ),
+            Some("start") => (
+                (
+                    "Starting sandbox",
+                    "Started sandbox",
+                    "Could not start sandbox",
+                ),
+                (
+                    "Запускаю пісочницю",
+                    "Запустив пісочницю",
+                    "Не вдалося запустити пісочницю",
+                ),
+            ),
+            Some("remove") => (
+                (
+                    "Removing sandbox",
+                    "Removed sandbox",
+                    "Could not remove sandbox",
+                ),
+                (
+                    "Видаляю пісочницю",
+                    "Видалив пісочницю",
+                    "Не вдалося видалити пісочницю",
+                ),
+            ),
+            _ => (
+                (
+                    "Managing sandbox",
+                    "Managed sandbox",
+                    "Could not manage sandbox",
+                ),
+                (
+                    "Керую пісочницею",
+                    "Керував пісочницею",
+                    "Не вдалося керувати пісочницею",
+                ),
+            ),
+        };
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            english,
+            ukrainian,
+            &[],
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_manage"
     }
@@ -674,6 +856,31 @@ pub struct SandboxUploadTool;
 
 #[async_trait]
 impl Tool for SandboxUploadTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Uploading file to sandbox",
+                "Uploaded file to sandbox",
+                "Could not upload file to sandbox",
+            ),
+            (
+                "Надсилаю файл у пісочницю",
+                "Надіслав файл у пісочницю",
+                "Не вдалося надіслати файл у пісочницю",
+            ),
+            &["session_path"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_upload"
     }
@@ -803,6 +1010,31 @@ pub struct SandboxDownloadTool;
 
 #[async_trait]
 impl Tool for SandboxDownloadTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Downloading sandbox file",
+                "Downloaded sandbox file",
+                "Could not download sandbox file",
+            ),
+            (
+                "Завантажую файл із пісочниці",
+                "Завантажив файл із пісочниці",
+                "Не вдалося завантажити файл із пісочниці",
+            ),
+            &["container_path"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_download"
     }

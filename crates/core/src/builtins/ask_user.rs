@@ -556,6 +556,17 @@ impl Default for AskUserCapability {
 }
 
 impl Capability for AskUserCapability {
+    fn narrate(
+        &self,
+        _def: Option<&ToolDefinition>,
+        call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        (call.name == ASK_USER_TOOL_NAME).then(|| narrate_question(&call.arguments, phase, locale))
+    }
+
     fn id(&self) -> &str {
         ASK_USER_CAPABILITY_ID
     }
@@ -647,6 +658,16 @@ struct AskUserTool {
 
 #[async_trait]
 impl Tool for AskUserTool {
+    fn narrate(
+        &self,
+        call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_question(&call.arguments, phase, locale))
+    }
+
     fn name(&self) -> &str {
         ASK_USER_TOOL_NAME
     }
@@ -769,6 +790,31 @@ fn normalize_ask_user_calls(calls: &mut [ToolCall]) -> Vec<FinalizedToolCallReje
     }
     rejections
 }
+fn narrate_question(
+    arguments: &Value,
+    phase: crate::tool_narration::ToolNarrationPhase,
+    locale: Option<&str>,
+) -> String {
+    // Shared by in-process and client-side questions. Completion may include a timeout.
+    let label = arguments
+        .get("questions")
+        .and_then(Value::as_array)
+        .and_then(|questions| questions.first())
+        .unwrap_or(&Value::Null);
+    crate::tool_narration::narrate_labeled_action(
+        label,
+        phase,
+        locale,
+        ("Asking user", "Asked user", "Could not ask user"),
+        (
+            "Запитую користувача",
+            "Запитав користувача",
+            "Не вдалося запитати користувача",
+        ),
+        &["header"],
+    )
+}
+
 fn ask_user_parameters_schema() -> Value {
     json!({
         "type": "object",

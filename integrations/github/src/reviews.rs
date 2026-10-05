@@ -309,6 +309,33 @@ pub struct SubmitGitHubReviewTool;
 
 #[async_trait]
 impl Tool for SubmitGitHubReviewTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Submitting GitHub review",
+                    "Submitted GitHub review",
+                    "Could not submit GitHub review",
+                ),
+                (
+                    "Надсилаю рецензію GitHub",
+                    "Надіслав рецензію GitHub",
+                    "Не вдалося надіслати рецензію GitHub",
+                ),
+                &["repo"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "submit_github_pull_request_review"
     }

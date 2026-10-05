@@ -87,6 +87,33 @@ pub struct GetGitHubPullRequestTool;
 
 #[async_trait]
 impl Tool for GetGitHubPullRequestTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading GitHub pull request",
+                    "Read GitHub pull request",
+                    "Could not read GitHub pull request",
+                ),
+                (
+                    "Читаю запит на злиття GitHub",
+                    "Прочитав запит на злиття GitHub",
+                    "Не вдалося прочитати запит на злиття GitHub",
+                ),
+                &["repo"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "get_github_pull_request"
     }
@@ -170,6 +197,33 @@ pub struct GetGitHubPullRequestDiffTool;
 
 #[async_trait]
 impl Tool for GetGitHubPullRequestDiffTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading GitHub diff",
+                    "Read GitHub diff",
+                    "Could not read GitHub diff",
+                ),
+                (
+                    "Читаю зміни GitHub",
+                    "Прочитав зміни GitHub",
+                    "Не вдалося прочитати зміни GitHub",
+                ),
+                &["repo"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "get_github_pull_request_diff"
     }
@@ -240,6 +294,33 @@ pub struct UpsertGitHubCommentTool;
 
 #[async_trait]
 impl Tool for UpsertGitHubCommentTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Saving GitHub comment",
+                    "Saved GitHub comment",
+                    "Could not save GitHub comment",
+                ),
+                (
+                    "Зберігаю коментар GitHub",
+                    "Зберіг коментар GitHub",
+                    "Не вдалося зберегти коментар GitHub",
+                ),
+                &["repo"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "upsert_github_comment"
     }

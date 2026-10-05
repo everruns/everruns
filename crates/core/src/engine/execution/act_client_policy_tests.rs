@@ -297,3 +297,33 @@ impl act_hooks::PreToolUseHook for DeferClientHook {
         }
     }
 }
+
+#[cfg(feature = "builtins")]
+#[test]
+fn client_pause_preserves_capability_owned_narration() {
+    use crate::builtins::ask_user::AskUserCapability;
+    use crate::engine::capabilities::{Capability, CapabilityNarrationHook};
+    let capability = Arc::new(AskUserCapability::client_side());
+    let definitions = capability.tool_definitions();
+    let atom = ActAtom::new(
+        ToolRegistry::new(),
+        crate::engine::test_fixtures::NoopEventEmitter,
+    )
+    .with_tool_call_hooks(vec![Arc::new(CapabilityNarrationHook(capability))]);
+    let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+    let call = ToolCall {
+        id: "question".into(),
+        name: "ask_user".into(),
+        arguments: json!({"questions":[{"header":"Release scope"}]}),
+    };
+    let data = client_policy::request_data(&atom, &context, &[call], &definitions, None);
+    assert_eq!(data.headline.as_deref(), Some("Asking user: Release scope"));
+    assert_eq!(
+        data.completed_headline.as_deref(),
+        Some("Asked user: Release scope")
+    );
+    assert_eq!(
+        data.tool_summaries[0].completed_narration,
+        data.completed_headline
+    );
+}

@@ -207,3 +207,47 @@ fn communication_instructions_are_idempotent_and_preserve_agent_settings() {
         crate::tool_types::SideEffectClass::AtMostOnce
     );
 }
+
+#[test]
+fn narration_previews_the_message_in_each_phase_and_locale() {
+    use crate::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    let call = everruns_contracts::tool_types::ToolCall {
+        id: "post".into(),
+        name: CHANNEL_POST_MESSAGE_TOOL_NAME.into(),
+        arguments: json!({"text":"Here is a new joke.\n\nEnjoy!"}),
+    };
+    for (phase, locale, expected) in [
+        (
+            ToolNarrationPhase::Started,
+            None,
+            "Sending message: Here is a new joke. Enjoy!",
+        ),
+        (
+            ToolNarrationPhase::Waiting,
+            None,
+            "Sending message: Here is a new joke. Enjoy!",
+        ),
+        (
+            ToolNarrationPhase::Completed,
+            None,
+            "Sent message: Here is a new joke. Enjoy!",
+        ),
+        (
+            ToolNarrationPhase::Failed,
+            None,
+            "Could not send message: Here is a new joke. Enjoy!",
+        ),
+        (
+            ToolNarrationPhase::Completed,
+            Some("uk-UA"),
+            "Надіслав повідомлення: Here is a new joke. Enjoy!",
+        ),
+    ] {
+        assert_eq!(
+            ChannelPostMessageTool
+                .narrate(&call, phase, locale, ToolNarrationContext::default())
+                .as_deref(),
+            Some(expected)
+        );
+    }
+}

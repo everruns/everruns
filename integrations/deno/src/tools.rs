@@ -62,6 +62,33 @@ pub struct DenoCreateSandboxTool;
 
 #[async_trait]
 impl Tool for DenoCreateSandboxTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Creating Deno sandbox",
+                    "Created Deno sandbox",
+                    "Could not create Deno sandbox",
+                ),
+                (
+                    "Створюю пісочницю Deno",
+                    "Створив пісочницю Deno",
+                    "Не вдалося створити пісочницю Deno",
+                ),
+                &["title", "template"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "deno_create_sandbox"
     }
@@ -347,6 +374,33 @@ pub struct DenoReadFileTool;
 
 #[async_trait]
 impl Tool for DenoReadFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading Deno file",
+                    "Read Deno file",
+                    "Could not read Deno file",
+                ),
+                (
+                    "Читаю файл Deno",
+                    "Прочитав файл Deno",
+                    "Не вдалося прочитати файл Deno",
+                ),
+                &["path"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "deno_read_file"
     }
@@ -443,6 +497,33 @@ pub struct DenoWriteFileTool;
 
 #[async_trait]
 impl Tool for DenoWriteFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Writing Deno file",
+                    "Wrote Deno file",
+                    "Could not write Deno file",
+                ),
+                (
+                    "Записую файл Deno",
+                    "Записав файл Deno",
+                    "Не вдалося записати файл Deno",
+                ),
+                &["path"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "deno_write_file"
     }
@@ -530,6 +611,33 @@ pub struct DenoListSandboxesTool;
 
 #[async_trait]
 impl Tool for DenoListSandboxesTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Listing Deno sandboxes",
+                    "Listed Deno sandboxes",
+                    "Could not list Deno sandboxes",
+                ),
+                (
+                    "Перелічую пісочниці Deno",
+                    "Перелічив пісочниці Deno",
+                    "Не вдалося перелічити пісочниці Deno",
+                ),
+                &[],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "deno_list_sandboxes"
     }
@@ -588,6 +696,51 @@ pub struct DenoManageSandboxTool;
 
 #[async_trait]
 impl Tool for DenoManageSandboxTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let (english, ukrainian) = match call.arguments.get("action").and_then(Value::as_str) {
+            Some("delete") => (
+                (
+                    "Deleting Deno sandbox",
+                    "Deleted Deno sandbox",
+                    "Could not delete Deno sandbox",
+                ),
+                (
+                    "Видаляю пісочницю Deno",
+                    "Видалив пісочницю Deno",
+                    "Не вдалося видалити пісочницю Deno",
+                ),
+            ),
+            _ => (
+                (
+                    "Managing Deno sandbox",
+                    "Managed Deno sandbox",
+                    "Could not manage Deno sandbox",
+                ),
+                (
+                    "Керую пісочницею Deno",
+                    "Керував пісочницею Deno",
+                    "Не вдалося керувати пісочницею Deno",
+                ),
+            ),
+        };
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                english,
+                ukrainian,
+                &["sandbox_id"],
+            ),
+        )
+    }
+
     fn name(&self) -> &str {
         "deno_manage_sandbox"
     }

@@ -481,6 +481,9 @@ pub fn merge_scoped_mcp_servers(
 pub struct McpToolDefinition {
     /// Unique name of the tool within the MCP server.
     pub name: String,
+    /// Human-readable tool name supplied by the MCP server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     /// Human-readable description of what the tool does.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,

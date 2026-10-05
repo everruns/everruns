@@ -99,6 +99,7 @@ fn user_cache_evicts_by_entry_count_and_payload_bytes() {
         CachedScopedTools {
             tools: vec![everruns_core::McpToolDefinition {
                 name: name.to_string(),
+                title: None,
                 description: None,
                 input_schema: serde_json::json!({"type": "object"}),
                 annotations: None,
@@ -786,6 +787,7 @@ async fn cache_past_maximum_age_is_omitted_without_blocking() {
         CachedScopedTools {
             tools: vec![everruns_core::McpToolDefinition {
                 name: "expired".to_string(),
+                title: None,
                 description: None,
                 input_schema: serde_json::json!({"type": "object"}),
                 annotations: None,

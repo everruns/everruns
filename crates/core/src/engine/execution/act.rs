@@ -644,7 +644,9 @@ where
                 &mut result,
                 &tool_definitions,
                 &self.event_emitter,
-                locale.as_deref(),
+                |calls, defs| {
+                    client_policy::request_data(self, &context, calls, defs, locale.as_deref())
+                },
             )
             .await;
             return Ok(result);
@@ -661,13 +663,7 @@ where
             "ActAtom: executing tools in parallel"
         );
 
-        // Generate OTel-style span IDs for hierarchical tracing
-        // trace_id: groups all events in this turn
-        // span_id: unique identifier for this act span (shared by started/completed)
-        // parent_span_id: links to turn as parent
-        //
-        // NOTE: TurnId::to_string() returns prefixed format (e.g., "turn_abc123")
-        // matching the format used by turn.started/completed events in Braintrust.
+        // Span IDs link this act to the prefixed turn ID used by lifecycle events.
         let trace_id = context.turn_id.to_string();
         let act_span_id = Uuid::now_v7().to_string();
         let parent_span_id = trace_id.clone(); // Parent is the turn
@@ -880,7 +876,9 @@ where
             &mut act_result,
             &tool_definitions,
             &self.event_emitter,
-            locale.as_deref(),
+            |calls, defs| {
+                client_policy::request_data(self, &context, calls, defs, locale.as_deref())
+            },
         )
         .await;
 
