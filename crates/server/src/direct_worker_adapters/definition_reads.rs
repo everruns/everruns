@@ -66,7 +66,7 @@ impl DirectWorkerAdapters {
             root_agent_id: r.root_agent_id,
             tags: r.tags,
             capabilities,
-            environments: r
+            sandbox_policy: r
                 .environments
                 .and_then(|value| serde_json::from_value(value).ok()),
             initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),

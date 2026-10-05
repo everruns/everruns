@@ -940,7 +940,7 @@ impl TestServer {
         );
         // Environments are gated on the deployment flag, which this harness
         // turns on above, so integration tests can exercise the routes.
-        let environments_state = api::environments::AppState::new(
+        let environments_state = api::sandbox_templates::AppState::new(
             db.clone(),
             sessions_state.session_service.clone(),
             auth_state.clone(),
@@ -1148,7 +1148,7 @@ impl TestServer {
                 api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone()),
                 feature_flags.machine_payments,
             ))
-            .merge(api::environments::routes(environments_state))
+            .merge(api::sandbox_templates::routes(environments_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::ag_ui::routes(ag_ui_state))

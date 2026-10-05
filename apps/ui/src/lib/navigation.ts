@@ -120,7 +120,12 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
   { name: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
   { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
-  { name: "Environments", href: "/environments", icon: Container },
+  {
+    name: "Sandbox Templates",
+    href: "/sandbox-templates",
+    icon: Container,
+    keywords: ["environment", "compute", "workspace"],
+  },
   {
     name: "Virtual Users",
     href: "/virtual-users",

@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Container, Plus } from "lucide-react";
-import { useEnvironments, usePageTitle } from "@/hooks";
+import { usePageTitle, useSandboxTemplates } from "@/hooks";
 import { LinkButton } from "@/components/ui/button";
 import { EntityCard, EntityCardDescription, EntityCardFooter } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
@@ -14,19 +14,19 @@ import {
   PageMasthead,
 } from "@/components/layout";
 
-export default function EnvironmentsPage() {
-  usePageTitle("Environments");
-  const { data, isLoading, error } = useEnvironments();
+export default function SandboxTemplatesPage() {
+  usePageTitle("Sandbox Templates");
+  const { data, isLoading, error } = useSandboxTemplates();
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Environments" }]} />
+      <PageBreadcrumb items={[{ label: "Sandbox Templates" }]} />
       <PageMasthead
         icon={<Container />}
-        title="Environments"
+        title="Sandbox Templates"
         description="Reusable, versioned configuration for the primary Sandbox each Session receives."
         actions={
-          <LinkButton variant="accent" href="/environments/new">
-            <Plus className="size-4" /> New Environment
+          <LinkButton variant="accent" href="/sandbox-templates/new">
+            <Plus className="size-4" /> New Sandbox Template
           </LinkButton>
         }
       />
@@ -35,42 +35,44 @@ export default function EnvironmentsPage() {
           data={data}
           isLoading={isLoading}
           error={error}
-          errorMessagePrefix="Failed to load environments"
+          errorMessagePrefix="Failed to load Sandbox Templates"
           emptyState={
             <EmptyState
               icon={<Container />}
-              title="No environments"
-              action={<LinkButton href="/environments/new">Create an Environment</LinkButton>}
+              title="No Sandbox Templates"
+              action={
+                <LinkButton href="/sandbox-templates/new">Create a Sandbox Template</LinkButton>
+              }
             />
           }
         >
           {(items) => (
             <div className="grid gap-4 xl:grid-cols-2">
-              {items.map((environment) => {
-                const target = environment.current_revision.profile.target;
+              {items.map((template) => {
+                const target = template.current_revision.spec.target;
                 return (
                   <EntityCard
-                    key={environment.id}
-                    href={`/environments/${environment.id}`}
+                    key={template.id}
+                    href={`/sandbox-templates/${template.id}`}
                     icon={<Box className="size-5 text-muted-foreground" />}
-                    title={environment.display_name}
-                    subtitle={environment.name}
+                    title={template.display_name}
+                    subtitle={template.name}
                     headerActions={
                       <div className="flex gap-2">
-                        {environment.is_managed ? <Badge>Managed</Badge> : null}
+                        {template.is_managed ? <Badge>Managed</Badge> : null}
                         <Badge variant="outline">
-                          Revision {environment.current_revision.revision}
+                          Revision {template.current_revision.revision}
                         </Badge>
                       </div>
                     }
                     footer={
                       <EntityCardFooter
-                        meta={`${target.provider || target.kind} · ${environment.current_revision.profile.durability}`}
+                        meta={`${target.provider || target.kind} · ${template.current_revision.spec.durability}`}
                       />
                     }
                   >
                     <EntityCardDescription>
-                      {environment.description || "Reusable Sandbox configuration"}
+                      {template.description || "Reusable Sandbox configuration"}
                     </EntityCardDescription>
                   </EntityCard>
                 );

@@ -300,11 +300,12 @@ impl SessionService {
         // Resolve once from the immutable Agent version selected for this
         // Session. Falling back to the editable Agent head is only for agents
         // without versioning; later edits never move an existing Session.
-        let agent_environments: Option<EnvironmentSet> =
+        let agent_sandbox_policy: Option<SandboxPolicy> =
             if let Some(version) = &resolved_agent_version {
                 version
                     .authored_config
-                    .get("environments")
+                    .get("sandbox_policy")
+                    .or_else(|| version.authored_config.get("environments"))
                     .cloned()
                     .and_then(|value| serde_json::from_value(value).ok())
             } else {
@@ -327,47 +328,51 @@ impl SessionService {
             )
         });
         let managed_bashkit = if harness_fixes_bashkit
-            || (agent_environments.is_none()
-                && req.environment.is_none()
+            || (agent_sandbox_policy.is_none()
+                && req.sandbox.is_none()
                 && harness_requires_execution)
         {
-            Some(self.db.ensure_managed_bashkit_environment(org_id).await?)
+            Some(
+                self.db
+                    .ensure_managed_bashkit_sandbox_template(org_id)
+                    .await?,
+            )
         } else {
             None
         };
-        let resolved_environment = if harness_fixes_bashkit {
-            if agent_environments.is_some() || req.environment.is_some() {
+        let resolved_sandbox = if harness_fixes_bashkit {
+            if agent_sandbox_policy.is_some() || req.sandbox.is_some() {
                 return Err(BadRequestError::new(
-                    "Bashkit Worker fixes the Environment to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
+                    "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; Agent and Session overrides are not allowed",
                 )
                 .into());
             }
             Some(
-                crate::domains::environments::profiles::selection_from_environment(
+                crate::domains::sandbox_templates::resolution::selection_from_sandbox_template(
                     managed_bashkit
                         .as_ref()
-                        .expect("managed Environment loaded"),
+                        .expect("managed Sandbox Template loaded"),
                 )
                 .map_err(BadRequestError::new)?,
             )
-        } else if agent_environments.is_none()
-            && req.environment.is_none()
+        } else if agent_sandbox_policy.is_none()
+            && req.sandbox.is_none()
             && harness_requires_execution
         {
             // Preserve today's Worker behavior while making the primary
             // Sandbox explicit and recoverable in Session state.
             Some(
-                crate::domains::environments::profiles::selection_from_environment(
+                crate::domains::sandbox_templates::resolution::selection_from_sandbox_template(
                     managed_bashkit
                         .as_ref()
-                        .expect("managed Environment loaded"),
+                        .expect("managed Sandbox Template loaded"),
                 )
                 .map_err(BadRequestError::new)?,
             )
         } else {
-            crate::domains::environments::profiles::resolve_environment_selection(
-                agent_environments.as_ref(),
-                req.environment.as_ref(),
+            crate::domains::sandbox_templates::resolution::resolve_sandbox_selection(
+                agent_sandbox_policy.as_ref(),
+                req.sandbox.as_ref(),
             )
             .map_err(BadRequestError::new)?
         };
@@ -400,11 +405,9 @@ impl SessionService {
 
         let has_caller_supplied_session_capabilities = !req.capabilities.is_empty();
         let session_capabilities =
-            crate::domains::environments::profiles::apply_environment_to_capabilities(
+            crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
                 &sanitize_session_capabilities(req.capabilities),
-                resolved_environment
-                    .as_ref()
-                    .map(|environment| &environment.profile),
+                resolved_sandbox.as_ref().map(|sandbox| &sandbox.spec),
             );
 
         // EVE-AARDVARK: authorize high-risk session capability assignment
@@ -432,7 +435,7 @@ impl SessionService {
         // capability that is not available in this deployment (e.g. a feature-gated
         // `container_sandbox` when `FEATURE_CONTAINER_SANDBOX` is off). Without this
         // gate the missing capability's tools are silently dropped and the session
-        // degrades into a different execution environment (e.g. bash), so the user
+        // degrades into a different execution target (e.g. Bashkit), so the user
         // believes isolated work ran when it did not. Fail clearly instead.
         self.require_available_capabilities(
             org_id,
@@ -567,9 +570,9 @@ impl SessionService {
             workspace_id,
         };
         let row = self.db.create_session(input).await?;
-        if let Some(environment) = &resolved_environment {
+        if let Some(sandbox) = &resolved_sandbox {
             self.db
-                .pin_environment(row.id, &environment.name, &environment.profile)
+                .pin_primary_sandbox(row.id, &sandbox.name, &sandbox.spec)
                 .await?;
         }
         let row = if requested_goal.is_some() {

@@ -252,11 +252,14 @@ pub struct Manifest {
     /// Suggested opening messages in the platform's starter format.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub starters: Vec<Value>,
-    /// Platform-specific environment requirements; other hosts must bind or reject them.
-    // Platform-specific environment descriptions remain data; other hosts
-    // must explicitly bind them or reject them rather than discard them.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub environments: Option<Value>,
+    /// Platform-specific Sandbox policy. Other hosts must explicitly bind or
+    /// reject it rather than silently discarding execution requirements.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "environments"
+    )]
+    pub sandbox_policy: Option<Value>,
 }
 
 fn strict_object(value: &Value, fields: &[&str], path: &str) -> std::result::Result<(), String> {
@@ -1066,4 +1069,25 @@ struct PackageCapabilityReference {
     /// Configuration validated against the destination capability schema.
     #[serde(default)]
     config: Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Manifest;
+    use serde_json::json;
+
+    #[test]
+    fn legacy_environments_input_serializes_as_sandbox_policy() {
+        let manifest: Manifest = serde_json::from_value(json!({
+            "name": "worker",
+            "instructions": "Work carefully.",
+            "environments": {"mode": "fixed"}
+        }))
+        .unwrap();
+
+        assert_eq!(manifest.sandbox_policy, Some(json!({"mode": "fixed"})));
+        let value = serde_json::to_value(manifest).unwrap();
+        assert_eq!(value["sandbox_policy"], json!({"mode": "fixed"}));
+        assert!(value.get("environments").is_none());
+    }
 }

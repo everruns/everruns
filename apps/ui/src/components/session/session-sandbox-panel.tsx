@@ -1,6 +1,6 @@
 "use client";
 
-// Environment — where this session's commands run, and what they may touch.
+// Sandbox — where this session's commands run, and what they may touch.
 //
 // It sits on the Workspace tab because the files above it and the compute here
 // are two halves of one thing: the same working filesystem, addressed by the
@@ -15,7 +15,7 @@ import { Box, Check, Cpu, Minus, ShieldCheck, ShieldOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
-import type { SessionEnvironment } from "@/lib/api/environments";
+import type { SessionSandbox } from "@/lib/api/sandbox-templates";
 
 const TARGET_LABELS: Record<string, string> = {
   host: "This machine",
@@ -37,7 +37,7 @@ const DURABILITY_LABELS: Record<string, string> = {
   none: "Not recoverable",
 };
 
-const CAPABILITY_ROWS: Array<{ key: keyof SessionEnvironment["capabilities"]; label: string }> = [
+const CAPABILITY_ROWS: Array<{ key: keyof SessionSandbox["capabilities"]; label: string }> = [
   { key: "native_processes", label: "Native processes" },
   { key: "packages", label: "Package installs" },
   { key: "pty", label: "Interactive terminal" },
@@ -46,11 +46,11 @@ const CAPABILITY_ROWS: Array<{ key: keyof SessionEnvironment["capabilities"]; la
   { key: "network_enforced", label: "Network policy enforced" },
 ];
 
-function useSessionEnvironment(sessionId: string) {
+function useSessionSandbox(sessionId: string) {
   return useQuery({
-    queryKey: ["session-environment", sessionId],
+    queryKey: ["session-sandbox", sessionId],
     queryFn: async () => {
-      const response = await api.get<SessionEnvironment>(`/v1/sessions/${sessionId}/environment`);
+      const response = await api.get<SessionSandbox>(`/v1/sessions/${sessionId}/sandbox`);
       return response.data;
     },
   });
@@ -75,8 +75,8 @@ function CapabilityRow({ label, enabled }: { label: string; enabled: boolean }) 
   );
 }
 
-export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
-  const { data, isLoading } = useSessionEnvironment(sessionId);
+export function SessionSandboxPanel({ sessionId }: { sessionId: string }) {
+  const { data, isLoading } = useSessionSandbox(sessionId);
 
   if (isLoading) {
     return (
@@ -87,7 +87,7 @@ export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
     );
   }
 
-  // Keep the last good answer when a refetch fails: a stale environment is
+  // Keep the last good answer when a refetch fails: a stale sandbox is
   // more useful than a panel that vanishes. Nothing to show only when nothing
   // was ever read.
   if (!data) {
@@ -161,9 +161,9 @@ export function SessionEnvironmentPanel({ sessionId }: { sessionId: string }) {
         )}
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-          {data.name ? <span>Environment: {data.name}</span> : null}
-          {data.environment_revision_id ? (
-            <span className="font-mono">{data.environment_revision_id}</span>
+          {data.name ? <span>Sandbox: {data.name}</span> : null}
+          {data.sandbox_template_revision_id ? (
+            <span className="font-mono">{data.sandbox_template_revision_id}</span>
           ) : null}
           {data.sandbox_id ? <span className="font-mono">{data.sandbox_id}</span> : null}
           {data.generation ? <span>Generation {data.generation}</span> : null}

@@ -632,7 +632,7 @@ pub(crate) async fn process_slack_message(
                 virtual_user_id: app.virtual_user_id,
                 model_id: None,
                 capabilities: vec![],
-                environment: None,
+                sandbox: None,
                 tools: vec![],
                 mcp_servers: Default::default(),
                 system_prompt: None,

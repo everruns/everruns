@@ -1,6 +1,6 @@
-// Capabilities -> environment view.
+// Capabilities -> primary Sandbox view.
 //
-// New sessions pin a resolved Environment profile. Older sessions have no
+// New Sessions pin a resolved Sandbox specification. Older Sessions have no
 // snapshot, so their compatibility view is derived from the capability that
 // supplies compute. The mapping lives here so the stored and legacy views do
 // not drift into different opinions about what Bashkit can do.
@@ -8,22 +8,20 @@
 // Every entry is deliberately pessimistic: a capability nobody has taught this
 // table about contributes no compute rather than a plausible-looking guess.
 
-use crate::records::{
-    EnvironmentContainmentLevel, EnvironmentDurability, EnvironmentNetworkPolicy,
-};
+use crate::records::{SandboxContainmentLevel, SandboxDurability, SandboxNetworkPolicy};
 use everruns_contracts::capability::CapabilityRef;
 use everruns_contracts::typed_id::SandboxId;
 
-use crate::api::environments::{
-    EnvironmentCapabilities, EnvironmentContainment, EnvironmentTarget,
-    EnvironmentTargetDescriptor, SessionEnvironmentResponse,
+use crate::api::sandbox_templates::{
+    SandboxCapabilities, SandboxContainment, SandboxTarget, SandboxTargetDescriptor,
+    SessionSandboxResponse,
 };
 
 /// Capability ids that supply compute, in precedence order.
 ///
 /// Precedence matters: a harness carrying both a managed sandbox and the
 /// in-process shell runs its real work in the sandbox, so that is the
-/// environment to report.
+/// Sandbox to report.
 const COMPUTE_CAPABILITIES: &[&str] = &[
     "session_sandbox",
     "container_sandbox",
@@ -33,8 +31,8 @@ const COMPUTE_CAPABILITIES: &[&str] = &[
     "bashkit_shell",
 ];
 
-fn full_machine() -> EnvironmentCapabilities {
-    EnvironmentCapabilities {
+fn full_machine() -> SandboxCapabilities {
+    SandboxCapabilities {
         native_processes: true,
         packages: true,
         pty: true,
@@ -47,8 +45,8 @@ fn full_machine() -> EnvironmentCapabilities {
 /// Bashkit interprets a bash subset against the session filesystem. It runs no
 /// native binaries at all, which is the single most important thing a caller
 /// can know about it, and its filesystem is the durable Everruns VFS.
-fn bashkit_capabilities() -> EnvironmentCapabilities {
-    EnvironmentCapabilities {
+fn bashkit_capabilities() -> SandboxCapabilities {
+    SandboxCapabilities {
         native_processes: false,
         packages: false,
         pty: false,
@@ -58,8 +56,8 @@ fn bashkit_capabilities() -> EnvironmentCapabilities {
     }
 }
 
-fn managed_capabilities(portable_checkpoint: bool) -> EnvironmentCapabilities {
-    EnvironmentCapabilities {
+fn managed_capabilities(portable_checkpoint: bool) -> SandboxCapabilities {
+    SandboxCapabilities {
         portable_checkpoint,
         ..full_machine()
     }
@@ -92,8 +90,8 @@ fn bashkit_http_enabled(config: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
-/// Derive the environment a session runs in from its effective capabilities.
-pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionEnvironmentResponse {
+/// Derive the primary Sandbox a Session runs in from its effective capabilities.
+pub fn sandbox_from_capabilities(capabilities: &[CapabilityRef]) -> SessionSandboxResponse {
     let compute = COMPUTE_CAPABILITIES.iter().find_map(|wanted| {
         capabilities
             .iter()
@@ -104,22 +102,21 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         // No compute is a real configuration: an agent that only reads and
         // writes files needs none, and saying "isolated" here would invent a
         // boundary around something that never runs.
-        return SessionEnvironmentResponse {
-            id: None,
+        return SessionSandboxResponse {
             sandbox_id: None,
-            environment_revision_id: None,
+            sandbox_template_revision_id: None,
             role: None,
             name: None,
             target: None,
-            containment: EnvironmentContainment {
+            containment: SandboxContainment {
                 level: "none".to_string(),
                 network: "deny".to_string(),
             },
             durability: "checkpointed".to_string(),
-            capabilities: EnvironmentCapabilities::default(),
+            capabilities: SandboxCapabilities::default(),
             resolved_from: "capabilities".to_string(),
             source_capability: None,
-            profile: None,
+            spec: None,
             desired_state: None,
             observed_state: None,
             generation: None,
@@ -129,7 +126,7 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
     };
 
     let config = capability.config_value();
-    let (kind, provider, caps, durability): (&str, Option<String>, EnvironmentCapabilities, &str) =
+    let (kind, provider, caps, durability): (&str, Option<String>, SandboxCapabilities, &str) =
         match capability.id() {
             "bashkit_shell" => (
                 "vfs",
@@ -170,7 +167,7 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
             ),
             // Unreachable while this list and COMPUTE_CAPABILITIES agree, and
             // harmless if they ever stop agreeing.
-            _ => ("managed", None, EnvironmentCapabilities::default(), "none"),
+            _ => ("managed", None, SandboxCapabilities::default(), "none"),
         };
 
     let network = match capability.id() {
@@ -178,13 +175,13 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         _ => "allow",
     };
 
-    SessionEnvironmentResponse {
-        target: Some(EnvironmentTarget {
+    SessionSandboxResponse {
+        target: Some(SandboxTarget {
             kind: kind.to_string(),
             provider,
             connection_id: None,
         }),
-        containment: EnvironmentContainment {
+        containment: SandboxContainment {
             level: "isolated".to_string(),
             network: network.to_string(),
         },
@@ -192,12 +189,11 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
         capabilities: caps,
         resolved_from: "capabilities".to_string(),
         source_capability: Some(capability.id().to_string()),
-        id: None,
         sandbox_id: None,
-        environment_revision_id: None,
+        sandbox_template_revision_id: None,
         role: None,
         name: None,
-        profile: None,
+        spec: None,
         desired_state: None,
         observed_state: None,
         generation: None,
@@ -206,48 +202,48 @@ pub fn environment_from_capabilities(capabilities: &[CapabilityRef]) -> SessionE
     }
 }
 
-/// Render a stored logical Environment. Capability-derived feature flags stay
+/// Render a stored logical Sandbox. Capability-derived feature flags stay
 /// grounded in the actual adapter, while policy and lifecycle come from the
-/// immutable profile snapshot rather than being guessed from tool names.
-pub fn environment_from_record(
-    record: &crate::storage::EnvironmentRecord,
+/// immutable specification rather than being guessed from tool names.
+pub fn sandbox_from_record(
+    record: &crate::storage::PrimarySandboxRecord,
     capabilities: &[CapabilityRef],
-) -> SessionEnvironmentResponse {
-    let mut response = environment_from_capabilities(capabilities);
-    let profile = &record.profile;
+) -> SessionSandboxResponse {
+    let mut response = sandbox_from_capabilities(capabilities);
+    let spec = &record.spec;
     let sandbox_id = SandboxId::from_uuid(record.id).to_string();
-    response.id = Some(sandbox_id.clone());
     response.sandbox_id = Some(sandbox_id);
-    response.environment_revision_id = record.environment_revision_id.map(|id| id.to_string());
+    response.sandbox_template_revision_id =
+        record.sandbox_template_revision_id.map(|id| id.to_string());
     response.role = Some("primary".to_string());
-    response.name = Some(record.profile_name.clone());
-    response.target = Some(EnvironmentTarget {
-        kind: profile.target.kind.as_str().to_string(),
-        provider: profile.target.provider.clone(),
-        connection_id: profile.target.connection_id.clone(),
+    response.name = Some(record.binding_name.clone());
+    response.target = Some(SandboxTarget {
+        kind: spec.target.kind.as_str().to_string(),
+        provider: spec.target.provider.clone(),
+        connection_id: spec.target.connection_id.clone(),
     });
-    response.containment = EnvironmentContainment {
-        level: match profile.containment.level {
-            EnvironmentContainmentLevel::None => "none",
-            EnvironmentContainmentLevel::Native => "native",
-            EnvironmentContainmentLevel::Isolated => "isolated",
+    response.containment = SandboxContainment {
+        level: match spec.containment.level {
+            SandboxContainmentLevel::None => "none",
+            SandboxContainmentLevel::Native => "native",
+            SandboxContainmentLevel::Isolated => "isolated",
         }
         .to_string(),
-        network: match profile.containment.network {
-            EnvironmentNetworkPolicy::Deny => "deny",
-            EnvironmentNetworkPolicy::Allowlist { .. } => "allowlist",
-            EnvironmentNetworkPolicy::Allow => "allow",
+        network: match spec.containment.network {
+            SandboxNetworkPolicy::Deny => "deny",
+            SandboxNetworkPolicy::Allowlist { .. } => "allowlist",
+            SandboxNetworkPolicy::Allow => "allow",
         }
         .to_string(),
     };
-    response.durability = match profile.durability {
-        EnvironmentDurability::Checkpointed => "checkpointed",
-        EnvironmentDurability::ProviderSnapshot => "provider_snapshot",
-        EnvironmentDurability::None => "none",
+    response.durability = match spec.durability {
+        SandboxDurability::Checkpointed => "checkpointed",
+        SandboxDurability::ProviderSnapshot => "provider_snapshot",
+        SandboxDurability::None => "none",
     }
     .to_string();
-    response.resolved_from = "profile".to_string();
-    response.profile = Some(profile.clone());
+    response.resolved_from = "spec".to_string();
+    response.spec = Some(spec.clone());
     response.desired_state = Some(record.desired_state.clone());
     response.observed_state = Some(record.observed_state.clone());
     response.generation = Some(record.generation);
@@ -260,13 +256,13 @@ pub fn environment_from_record(
 ///
 /// Availability is asked, never assumed: a managed provider counts only when
 /// its plugin is actually registered in this binary.
-pub fn environment_targets() -> Vec<EnvironmentTargetDescriptor> {
+pub fn sandbox_targets() -> Vec<SandboxTargetDescriptor> {
     let daytona_registered =
         everruns_capabilities::session_sandbox::create_session_sandbox_provider("daytona")
             .is_some();
 
     vec![
-        EnvironmentTargetDescriptor {
+        SandboxTargetDescriptor {
             kind: "vfs".to_string(),
             provider: Some("bashkit".to_string()),
             available: true,
@@ -275,7 +271,7 @@ pub fn environment_targets() -> Vec<EnvironmentTargetDescriptor> {
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
         },
-        EnvironmentTargetDescriptor {
+        SandboxTargetDescriptor {
             kind: "managed".to_string(),
             provider: Some("daytona".to_string()),
             available: daytona_registered,
@@ -285,7 +281,7 @@ pub fn environment_targets() -> Vec<EnvironmentTargetDescriptor> {
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
         },
-        EnvironmentTargetDescriptor {
+        SandboxTargetDescriptor {
             kind: "host".to_string(),
             provider: None,
             available: false,
@@ -297,7 +293,7 @@ pub fn environment_targets() -> Vec<EnvironmentTargetDescriptor> {
             containment_levels: vec!["none".to_string()],
             durability: "none".to_string(),
         },
-        EnvironmentTargetDescriptor {
+        SandboxTargetDescriptor {
             kind: "machine".to_string(),
             provider: None,
             available: false,
@@ -320,7 +316,7 @@ mod tests {
 
     #[test]
     fn a_session_with_no_compute_reports_no_target() {
-        let view = environment_from_capabilities(&[capability("session_file_system")]);
+        let view = sandbox_from_capabilities(&[capability("session_file_system")]);
 
         assert!(view.target.is_none());
         assert!(!view.capabilities.native_processes);
@@ -329,7 +325,7 @@ mod tests {
 
     #[test]
     fn bashkit_never_claims_native_processes() {
-        let view = environment_from_capabilities(&[
+        let view = sandbox_from_capabilities(&[
             capability("session_file_system"),
             capability("bashkit_shell"),
         ]);
@@ -347,7 +343,7 @@ mod tests {
 
     #[test]
     fn bashkit_reports_network_access_when_http_is_enabled() {
-        let view = environment_from_capabilities(&[CapabilityRef::with_config(
+        let view = sandbox_from_capabilities(&[CapabilityRef::with_config(
             "bashkit_shell",
             json!({ "enable_http": true }),
         )]);
@@ -364,7 +360,7 @@ mod tests {
             capability("container_sandbox"),
             capability("docker_container"),
         ] {
-            let view = environment_from_capabilities(&[capability]);
+            let view = sandbox_from_capabilities(&[capability]);
 
             assert_eq!(view.containment.network, "allow");
             assert!(!view.capabilities.network_enforced);
@@ -373,7 +369,7 @@ mod tests {
 
     #[test]
     fn a_managed_sandbox_outranks_the_in_process_shell() {
-        let view = environment_from_capabilities(&[
+        let view = sandbox_from_capabilities(&[
             capability("bashkit_shell"),
             CapabilityRef::with_config("session_sandbox", json!({ "provider": "daytona" })),
         ]);
@@ -387,14 +383,14 @@ mod tests {
 
     #[test]
     fn recovery_is_what_separates_a_checkpoint_from_a_snapshot() {
-        let without = environment_from_capabilities(&[CapabilityRef::with_config(
+        let without = sandbox_from_capabilities(&[CapabilityRef::with_config(
             "session_sandbox",
             json!({ "provider": "daytona" }),
         )]);
         assert_eq!(without.durability, "provider_snapshot");
         assert!(!without.capabilities.portable_checkpoint);
 
-        let with = environment_from_capabilities(&[CapabilityRef::with_config(
+        let with = sandbox_from_capabilities(&[CapabilityRef::with_config(
             "session_sandbox",
             json!({
                 "provider": "daytona",
@@ -407,7 +403,7 @@ mod tests {
 
     #[test]
     fn an_unavailable_target_says_why() {
-        let targets = environment_targets();
+        let targets = sandbox_targets();
         let host = targets
             .iter()
             .find(|target| target.kind == "host")

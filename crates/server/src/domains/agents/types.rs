@@ -6,7 +6,7 @@
 use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, ScopedMcpServers, contracts::tool_types::ToolDefinition,
 };
-use crate::records::{AgentStatus, EnvironmentSet};
+use crate::records::{AgentStatus, SandboxPolicy};
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -81,10 +81,13 @@ pub struct CreateAgentRequest {
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
-    /// Named execution environments this Agent offers. One profile must be
-    /// named by `default`; Sessions may inherit it or select another profile.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub environments: Option<EnvironmentSet>,
+    /// Policy for selecting the primary Sandbox Template for new Sessions.
+    #[serde(
+        default,
+        alias = "environments",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub sandbox_policy: Option<SandboxPolicy>,
     /// Starter files copied into each new session for this agent.
     #[serde(default)]
     #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Always respond in formal English.\n"}]))]
@@ -181,13 +184,14 @@ pub struct UpdateAgentRequest {
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     #[schema(value_type = Option<Vec<crate::records::CapabilityRefSchema>>)]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
-    /// Replace or clear the Agent's named execution environments.
+    /// Replace or clear the Agent's Sandbox policy.
     #[serde(
         default,
+        alias = "environments",
         deserialize_with = "crate::api::common::deserialize_nullable_update_field"
     )]
-    #[schema(value_type = Option<EnvironmentSet>)]
-    pub environments: everruns_durable::UpdateField<EnvironmentSet>,
+    #[schema(value_type = Option<SandboxPolicy>)]
+    pub sandbox_policy: everruns_durable::UpdateField<SandboxPolicy>,
     /// Starter files copied into each new session for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Always respond in formal English.\n"}]))]

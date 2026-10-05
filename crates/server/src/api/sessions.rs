@@ -20,8 +20,7 @@ use crate::kernel_imports::{
 };
 use crate::records::BuiltInHarnessRole;
 use crate::records::{
-    EnvironmentSelection, Session, SessionParticipant, SessionParticipantKind,
-    SessionParticipantRole,
+    SandboxSelection, Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
 };
 use crate::services::EventService;
 use crate::storage::StorageBackend;

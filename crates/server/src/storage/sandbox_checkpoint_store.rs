@@ -35,16 +35,17 @@ pub struct PgSandboxCheckpointStore {
     pool: PgPool,
 }
 
-/// Durable logical Environment projection. Physical provider state remains in
+/// Durable logical primary Sandbox. Physical provider state remains in
 /// `sandbox_instances`; this record survives instance loss and replacement.
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnvironmentRecord {
+pub struct PrimarySandboxRecord {
     pub id: Uuid,
     pub session_id: SessionId,
     pub provider: String,
-    pub profile_name: String,
-    pub profile: crate::records::ResolvedEnvironmentProfile,
-    pub environment_revision_id: Option<everruns_contracts::typed_id::EnvironmentRevisionId>,
+    pub binding_name: String,
+    pub spec: crate::records::ResolvedSandboxSpec,
+    pub sandbox_template_revision_id:
+        Option<everruns_contracts::typed_id::SandboxTemplateRevisionId>,
     pub desired_state: String,
     pub observed_state: String,
     pub generation: i64,
@@ -57,20 +58,20 @@ impl PgSandboxCheckpointStore {
         Self { pool }
     }
 
-    /// Pin the fully resolved Agent/session profile to its logical Environment.
+    /// Pin the fully resolved Agent/session specification to its logical Sandbox.
     /// Idempotent only for the same snapshot; a Session can never switch target.
-    pub async fn pin_environment(
+    pub async fn pin_primary_sandbox(
         &self,
         session_id: SessionId,
-        profile_name: &str,
-        profile: &crate::records::ResolvedEnvironmentProfile,
-    ) -> Result<EnvironmentRecord, SandboxStateError> {
-        let provider = profile
+        binding_name: &str,
+        spec: &crate::records::ResolvedSandboxSpec,
+    ) -> Result<PrimarySandboxRecord, SandboxStateError> {
+        let provider = spec
             .target
             .provider
             .clone()
-            .unwrap_or_else(|| profile.target.kind.as_str().to_string());
-        let snapshot = serde_json::to_value(profile).map_err(state_storage_error)?;
+            .unwrap_or_else(|| spec.target.kind.as_str().to_string());
+        let snapshot = serde_json::to_value(spec).map_err(state_storage_error)?;
         let inserted: Option<Uuid> = sqlx::query_scalar(
             r#"
             INSERT INTO sandboxes
@@ -93,27 +94,27 @@ impl PgSandboxCheckpointStore {
         )
         .bind(session_id)
         .bind(&provider)
-        .bind(profile_name)
+        .bind(binding_name)
         .bind(&snapshot)
-        .bind(profile.source_revision_id.map(|id| id.uuid()))
+        .bind(spec.template_revision_id.map(|id| id.uuid()))
         .fetch_optional(&self.pool)
         .await
         .map_err(state_storage_error)?;
 
         if inserted.is_none() {
             return Err(SandboxStateError::Storage(
-                "session environment is already pinned to a different profile".to_string(),
+                "session Sandbox is already pinned to a different specification".to_string(),
             ));
         }
-        self.get_environment(session_id)
+        self.get_primary_sandbox(session_id)
             .await?
-            .ok_or_else(|| SandboxStateError::Storage("pinned environment disappeared".to_string()))
+            .ok_or_else(|| SandboxStateError::Storage("pinned Sandbox disappeared".to_string()))
     }
 
-    pub async fn get_environment(
+    pub async fn get_primary_sandbox(
         &self,
         session_id: SessionId,
-    ) -> Result<Option<EnvironmentRecord>, SandboxStateError> {
+    ) -> Result<Option<PrimarySandboxRecord>, SandboxStateError> {
         #[derive(sqlx::FromRow)]
         struct Row {
             id: Uuid,
@@ -126,7 +127,8 @@ impl PgSandboxCheckpointStore {
             generation: i64,
             current_checkpoint_id: Option<Uuid>,
             last_activity_at: Option<DateTime<Utc>>,
-            environment_revision_id: Option<everruns_contracts::typed_id::EnvironmentRevisionId>,
+            environment_revision_id:
+                Option<everruns_contracts::typed_id::SandboxTemplateRevisionId>,
         }
 
         let row: Option<Row> = sqlx::query_as(
@@ -148,17 +150,17 @@ impl PgSandboxCheckpointStore {
         row.map(|row| {
             let snapshot = row.profile_snapshot.ok_or_else(|| {
                 SandboxStateError::Storage(
-                    "logical environment has no pinned profile snapshot".to_string(),
+                    "logical Sandbox has no pinned specification snapshot".to_string(),
                 )
             })?;
             let profile = serde_json::from_value(snapshot).map_err(state_storage_error)?;
-            Ok(EnvironmentRecord {
+            Ok(PrimarySandboxRecord {
                 id: row.id,
                 session_id: row.session_id,
                 provider: row.provider,
-                profile_name: row.profile_name.unwrap_or_else(|| "legacy".to_string()),
-                profile,
-                environment_revision_id: row.environment_revision_id,
+                binding_name: row.profile_name.unwrap_or_else(|| "legacy".to_string()),
+                spec: profile,
+                sandbox_template_revision_id: row.environment_revision_id,
                 desired_state: row.desired_state,
                 observed_state: row.observed_state,
                 generation: row.generation,

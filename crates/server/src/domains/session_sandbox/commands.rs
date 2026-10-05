@@ -1,45 +1,11 @@
 use super::queries as q;
-use super::types::{
-    GetSessionSandboxResponse, ManageSessionSandboxResponse, SessionSandboxAction,
-    SessionSandboxStatusValue,
-};
+use super::types::{ManageSessionSandboxResponse, SessionSandboxAction, SessionSandboxStatusValue};
 use crate::domains::common::*;
 use everruns_capabilities::session_sandbox::{
-    create_session_sandbox_provider, delete_session_sandbox, ensure_session_sandbox_running,
-    load_session_sandbox_state, pause_session_sandbox,
+    delete_session_sandbox, ensure_session_sandbox_running, pause_session_sandbox,
 };
 use serde::Deserialize;
 use utoipa::ToSchema;
-
-fn status_response(
-    configured: bool,
-    exists: bool,
-    provider: Option<String>,
-    state: Option<&everruns_capabilities::session_sandbox::SessionSandboxState>,
-    status: Option<everruns_capabilities::session_sandbox::SessionSandboxStatusResponse>,
-) -> GetSessionSandboxResponse {
-    let session_status = status
-        .as_ref()
-        .map(|status| SessionSandboxStatusValue::from(status.session_status));
-    GetSessionSandboxResponse {
-        configured,
-        exists,
-        provider,
-        session_status,
-        external_id: status.as_ref().map(|status| status.external_id.clone()),
-        display_name: status
-            .as_ref()
-            .and_then(|status| status.display_name.clone()),
-        workspace_path: status
-            .as_ref()
-            .and_then(|status| status.workspace_path.clone()),
-        metadata: status.map(|status| status.metadata),
-        init_completed_at: state.and_then(|state| state.init_completed_at.clone()),
-        last_init_error: state.and_then(|state| state.last_init_error.clone()),
-        created_at: state.map(|state| state.created_at.clone()),
-        updated_at: state.map(|state| state.updated_at.clone()),
-    }
-}
 
 fn manage_response_from_state(
     action: SessionSandboxAction,
@@ -56,83 +22,6 @@ fn manage_response_from_state(
         workspace_path: state.instance.workspace_path.clone(),
     }
 }
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct GetSessionSandbox {
-    /// Session's prefixed public identifier.
-    pub session_id: String,
-}
-
-impl Command for GetSessionSandbox {
-    type Output = GetSessionSandboxResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_session_sandbox",
-            category: "session_sandbox",
-            description: "Inspect the managed sandbox owned by a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/sandbox",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    async fn execute(self, ctx: &Ctx) -> Result<GetSessionSandboxResponse, CommandError> {
-        let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session_access(ctx, session_id).await?;
-
-        let service = q::session_sandbox_service(ctx)?;
-        let Some(config) = service
-            .config_for_session(session_id)
-            .await
-            .map_err(classify_anyhow)?
-        else {
-            return Ok(status_response(false, false, None, None, None));
-        };
-
-        let tool_context = service.tool_context(session_id);
-        let Some(state) = load_session_sandbox_state(&tool_context)
-            .await
-            .map_err(q::map_tool_error)?
-        else {
-            return Ok(status_response(
-                true,
-                false,
-                Some(config.provider),
-                None,
-                None,
-            ));
-        };
-
-        let provider = create_session_sandbox_provider(&config.provider).ok_or_else(|| {
-            CommandError::bad_request(format!(
-                "Session sandbox provider '{}' is not registered",
-                config.provider
-            ))
-        })?;
-        let status = provider
-            .status(&tool_context, &config, &state)
-            .await
-            .map_err(q::map_tool_error)?;
-
-        Ok(status_response(
-            true,
-            true,
-            Some(status.provider.clone()),
-            Some(&state),
-            Some(status),
-        ))
-    }
-}
-
-inventory::submit! { CommandDescriptor::of::<GetSessionSandbox>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ManageSessionSandbox {
@@ -450,29 +339,6 @@ mod tests {
         Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
             .with_session_service(Arc::new(SessionService::new(db)))
             .with_session_sandbox_service(sandbox_service)
-    }
-
-    #[tokio::test]
-    async fn get_session_sandbox_reports_unstarted_configured_state() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let session_id = create_test_session(&db).await;
-        let service = Arc::new(SessionSandboxService::new(
-            db.clone(),
-            test_storage_store(&db),
-            None,
-        ));
-        let ctx = test_ctx(db, service);
-
-        let response = GetSessionSandbox {
-            session_id: session_id.to_string(),
-        }
-        .execute(&ctx)
-        .await
-        .unwrap();
-
-        assert!(response.configured);
-        assert!(!response.exists);
-        assert_eq!(response.provider.as_deref(), Some("test-session-sandbox"));
     }
 
     #[tokio::test]

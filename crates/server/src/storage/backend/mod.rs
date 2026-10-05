@@ -144,7 +144,6 @@ mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;
 mod decision_defaults;
-mod environments;
 mod harnesses_sessions;
 mod health_issues;
 mod identity;
@@ -155,6 +154,7 @@ mod models_files;
 mod observers_billing;
 mod orgs_images;
 mod resources_tasks;
+mod sandbox_templates;
 
 #[cfg(test)]
 mod retention_tests {

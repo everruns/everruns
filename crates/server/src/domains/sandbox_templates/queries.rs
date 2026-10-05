@@ -1,6 +1,6 @@
 // Effective capability resolution for a session.
 //
-// Both the environment view and the managed-sandbox service need the same
+// Both the Session Sandbox view and the managed-sandbox service need the same
 // answer: what capabilities is this session actually running with, after the
 // harness -> agent -> session layering. One implementation, called from both.
 
@@ -17,7 +17,7 @@ use crate::storage::StorageBackend;
 /// Resolve the capabilities a session runs with, in merge order.
 ///
 /// `None` means the session or its harness no longer exists, which callers
-/// report as "not found" rather than as an empty environment.
+/// report as "not found" rather than as an empty sandbox.
 pub async fn effective_session_capabilities(
     db: &Arc<StorageBackend>,
     session_id: SessionId,
@@ -60,14 +60,14 @@ pub async fn effective_session_capabilities(
 
     let merged = merge_capabilities(&harness.capabilities, &agent_capabilities);
     let merged = merge_capabilities(&merged, &session_capabilities);
-    let environment = db
-        .get_environment(session_id)
+    let sandbox = db
+        .get_primary_sandbox(session_id)
         .await
-        .context("failed to load pinned session environment")?;
+        .context("failed to load pinned session sandbox")?;
     Ok(Some(
-        crate::domains::environments::profiles::apply_environment_to_capabilities(
+        crate::domains::sandbox_templates::resolution::apply_sandbox_to_capabilities(
             &merged,
-            environment.as_ref().map(|record| &record.profile),
+            sandbox.as_ref().map(|record| &record.spec),
         ),
     ))
 }

@@ -9,9 +9,8 @@ use everruns_contracts::session_sandbox::{
     SessionSandboxInstance, SessionSandboxState, SessionSandboxStatus,
 };
 use everruns_server::records::{
-    EnvironmentBootstrap, EnvironmentContainmentProfile, EnvironmentDurability,
-    EnvironmentLifecycle, EnvironmentNetworkPolicy, EnvironmentTargetProfile,
-    ResolvedEnvironmentProfile,
+    ResolvedSandboxSpec, SandboxBootstrap, SandboxContainmentSpec, SandboxDurability,
+    SandboxLifecycle, SandboxNetworkPolicy, SandboxTargetSpec,
 };
 use everruns_server::storage::{Database, PgSandboxCheckpointStore, StorageBackend};
 
@@ -166,24 +165,24 @@ async fn postgres_pins_profile_and_keeps_logical_environment_after_instance_dele
         .create_session(session_input(owner, "profiled-environment"))
         .await
         .expect("create session");
-    let profile = ResolvedEnvironmentProfile {
-        source_revision_id: None,
-        target: EnvironmentTargetProfile::managed("daytona"),
-        containment: EnvironmentContainmentProfile {
-            network: EnvironmentNetworkPolicy::Allow,
-            ..EnvironmentContainmentProfile::isolated()
+    let profile = ResolvedSandboxSpec {
+        template_revision_id: None,
+        target: SandboxTargetSpec::managed("daytona"),
+        containment: SandboxContainmentSpec {
+            network: SandboxNetworkPolicy::Allow,
+            ..SandboxContainmentSpec::isolated()
         },
-        durability: EnvironmentDurability::Checkpointed,
-        lifecycle: EnvironmentLifecycle::default(),
-        bootstrap: EnvironmentBootstrap::default(),
+        durability: SandboxDurability::Checkpointed,
+        lifecycle: SandboxLifecycle::default(),
+        bootstrap: SandboxBootstrap::default(),
     };
 
     let pinned = backend
-        .pin_environment(session.id, "build", &profile)
+        .pin_primary_sandbox(session.id, "build", &profile)
         .await
         .expect("pin environment");
-    assert_eq!(pinned.profile_name, "build");
-    assert_eq!(pinned.profile, profile);
+    assert_eq!(pinned.binding_name, "build");
+    assert_eq!(pinned.spec, profile);
     assert_eq!(pinned.observed_state, "absent");
 
     let store = PgSandboxCheckpointStore::new(pool);
@@ -210,7 +209,7 @@ async fn postgres_pins_profile_and_keeps_logical_environment_after_instance_dele
         .expect("attach physical instance");
     assert_eq!(
         backend
-            .get_environment(session.id)
+            .get_primary_sandbox(session.id)
             .await
             .expect("load environment")
             .expect("environment exists")
@@ -225,7 +224,7 @@ async fn postgres_pins_profile_and_keeps_logical_environment_after_instance_dele
             .expect("delete physical instance")
     );
     let logical = backend
-        .get_environment(session.id)
+        .get_primary_sandbox(session.id)
         .await
         .expect("load retained environment")
         .expect("logical environment survives");

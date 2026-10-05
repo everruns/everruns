@@ -12,12 +12,12 @@ pub mod checks;
 mod command_validation;
 pub mod commands;
 pub mod credentials;
-pub(crate) mod environment;
 pub mod health_check;
 mod managed;
 pub mod packages;
 pub mod preview;
 pub mod queries;
+pub(crate) mod sandbox_policy;
 pub mod types;
 pub(crate) mod version_policy;
 

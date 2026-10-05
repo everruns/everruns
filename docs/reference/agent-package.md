@@ -319,9 +319,9 @@ blocked = ["https://example.com/private/**"]
 restriction. Host policy can further restrict access. Network configuration
 is descriptive until an enforcing host binds it.
 
-`environments` retains the Platform's environment declarations; see
-[environments](/features/environments/) for the host configuration. The generic
-Framework package builder rejects these declarations until explicitly bound.
+`sandbox_policy` retains the Platform's Sandbox policy; see
+[Sandbox Templates](/features/sandbox-templates/) for the host configuration.
+The generic Framework package builder rejects this policy until explicitly bound.
 
 A `tools` declaration contains a `client_side` type, `name`, `description` and
 object JSON Schema `parameters`. Optional display metadata and execution hints

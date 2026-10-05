@@ -521,7 +521,7 @@ fn create_session_request() -> CreateSessionRequest {
         locale: None,
         tags: vec![],
         model_id: None,
-        environment: None,
+        sandbox: None,
         capabilities: vec![],
         tools: vec![],
         mcp_servers: Default::default(),

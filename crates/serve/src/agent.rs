@@ -117,8 +117,8 @@ impl Agent {
     /// Serve a materialized package, including archives embedded in a binary.
     pub fn package(package: everruns::AgentPackage) -> crate::Result<Self> {
         let m = package.manifest();
-        if m.environments.is_some() {
-            anyhow::bail!("package environments require an explicit host binding");
+        if m.sandbox_policy.is_some() {
+            anyhow::bail!("package sandbox policy requires an explicit host binding");
         }
         if let Some(harness) = m.harness.as_deref()
             && !matches!(harness, "base" | "conversation" | "worker-base" | "worker")

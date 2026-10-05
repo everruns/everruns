@@ -3,62 +3,67 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Archive, Container, Loader2 } from "lucide-react";
-import { EnvironmentProfilesEditor } from "@/components/agents/environment-profiles-editor";
+import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBreadcrumb, PageContainer, PageMain, PageMasthead } from "@/components/layout";
-import { useArchiveEnvironment, useEnvironment, usePageTitle, useReviseEnvironment } from "@/hooks";
-import type { Environment, EnvironmentSet } from "@/lib/api/types";
+import {
+  useArchiveSandboxTemplate,
+  usePageTitle,
+  useReviseSandboxTemplate,
+  useSandboxTemplate,
+} from "@/hooks";
+import type { SandboxPolicy, SandboxTemplate } from "@/lib/api/types";
 
-export default function EnvironmentPage() {
-  const { environmentId } = useParams<{ environmentId: string }>();
-  const { data: environment, isLoading } = useEnvironment(environmentId);
-  usePageTitle(environment?.display_name || "Environment", "Environments");
-  if (isLoading || !environment) return null;
+export default function SandboxTemplatePage() {
+  const { sandboxTemplateId } = useParams<{ sandboxTemplateId: string }>();
+  const { data: template, isLoading } = useSandboxTemplate(sandboxTemplateId);
+  usePageTitle(template?.display_name || "Sandbox Template", "Sandbox Templates");
+  if (isLoading || !template) return null;
   return (
-    <EnvironmentEditor
-      key={`${environment.id}:${environment.current_revision.id}`}
-      environment={environment}
+    <SandboxTemplateEditor
+      key={`${template.id}:${template.current_revision.id}`}
+      template={template}
     />
   );
 }
 
-function EnvironmentEditor({ environment }: { environment: Environment }) {
+function SandboxTemplateEditor({ template }: { template: SandboxTemplate }) {
   const router = useRouter();
-  const revise = useReviseEnvironment();
-  const archive = useArchiveEnvironment();
-  const [displayName, setDisplayName] = useState(environment.display_name);
-  const [description, setDescription] = useState(environment.description || "");
-  const [configuration, setConfiguration] = useState<EnvironmentSet | null>(() => ({
-    policy: "fixed",
-    default: environment.name,
-    profiles: { [environment.name]: environment.current_revision.profile },
+  const revise = useReviseSandboxTemplate();
+  const archive = useArchiveSandboxTemplate();
+  const [displayName, setDisplayName] = useState(template.display_name);
+  const [description, setDescription] = useState(template.description || "");
+  const [configuration, setConfiguration] = useState<SandboxPolicy | null>(() => ({
+    mode: "fixed",
+    default: template.name,
+    templates: { [template.name]: template.current_revision.spec },
   }));
-  const profile = configuration?.profiles?.[configuration.default];
+  const spec = configuration?.templates?.[configuration.default];
   const save = async () => {
-    if (!profile) return;
+    if (!spec) return;
     await revise.mutateAsync({
-      id: environment.id,
+      id: template.id,
       display_name: displayName,
       description: description || null,
-      profile,
+      spec,
     });
   };
   return (
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Environments", href: "/environments" },
-          { label: environment.display_name },
+          { label: "Sandbox Templates", href: "/sandbox-templates" },
+          { label: template.display_name },
         ]}
       />
       <PageMasthead
         icon={<Container />}
-        title={environment.display_name}
-        description={`${environment.name} · revision ${environment.current_revision.revision}${environment.is_managed ? " · managed" : ""}`}
+        title={template.display_name}
+        description={`${template.name} · revision ${template.current_revision.revision}${template.is_managed ? " · managed" : ""}`}
       />
       <PageMain className="max-w-3xl space-y-5">
         <Card>
@@ -72,7 +77,7 @@ function EnvironmentEditor({ environment }: { environment: Environment }) {
                 id="display-name"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
-                disabled={environment.is_managed}
+                disabled={template.is_managed}
               />
             </div>
             <div className="space-y-2">
@@ -81,28 +86,28 @@ function EnvironmentEditor({ environment }: { environment: Environment }) {
                 id="description"
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
-                disabled={environment.is_managed}
+                disabled={template.is_managed}
               />
             </div>
-            <EnvironmentProfilesEditor
+            <SandboxPolicyEditor
               value={configuration}
               onChange={setConfiguration}
-              disabled={environment.is_managed}
+              disabled={template.is_managed}
               definitionMode
             />
           </CardContent>
         </Card>
-        {!environment.is_managed ? (
+        {!template.is_managed ? (
           <div className="flex gap-2">
-            <Button variant="accent" onClick={save} disabled={!profile || revise.isPending}>
+            <Button variant="accent" onClick={save} disabled={!spec || revise.isPending}>
               {revise.isPending ? <Loader2 className="size-4 animate-spin" /> : null}Save new
               revision
             </Button>
             <Button
               variant="outline"
               onClick={async () => {
-                await archive.mutateAsync(environment.id);
-                router.push("/environments");
+                await archive.mutateAsync(template.id);
+                router.push("/sandbox-templates");
               }}
             >
               <Archive className="size-4" />
@@ -111,7 +116,7 @@ function EnvironmentEditor({ environment }: { environment: Environment }) {
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
-            Managed Environments are versioned by the platform and cannot be edited.
+            Managed Sandbox Templates are versioned by the platform and cannot be edited.
           </p>
         )}
       </PageMain>

@@ -47,19 +47,19 @@ fn environment_facts() -> EnvironmentFacts {
 }
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
-    // The environment half is derived; what remains is this capability's own
+    // The Sandbox half is derived; what remains is this capability's own
     // lifecycle guidance, which is the tool contract rather than a description
     // of the world.
     // No hand-written "this session owns one managed sandbox" line: the derived
     // preamble's first sentence already says what the sandbox is, and a second
     // wording of the same fact is exactly the drift this issue removes.
-    let mut prompt = String::from("## Execution Environment\n\n");
+    let mut prompt = String::from("## Primary Sandbox\n\n");
     if let Some(preamble) = environment_preamble(&environment_facts()) {
         prompt.push_str(&preamble);
         prompt.push_str("\n\n");
     }
     prompt.push_str(
-        "Use `bash` and the generic file tools against `/workspace`. The Environment starts or \
+        "Use `bash` and the generic file tools against `/workspace`. The Sandbox starts or \
          resumes automatically, and completed mutations are checkpointed before success.",
     );
     prompt
@@ -71,11 +71,11 @@ impl Capability for SessionSandboxCapability {
     }
 
     fn name(&self) -> &str {
-        "Managed Environment"
+        "Managed Sandbox"
     }
 
     fn description(&self) -> &str {
-        "One managed execution Environment owned by the current session, with stable shell and filesystem tools."
+        "One managed primary Sandbox owned by the current Session, with stable shell and filesystem tools."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -883,10 +883,10 @@ mod tests {
     use everruns_core::deployment::DeploymentGrade;
     use everruns_core::tool_context::ToolContext;
 
-    /// EVE-1042: the environment half of this prompt is derived from the facts
+    /// EVE-1042: the Sandbox half of this prompt is derived from the facts
     /// above, so it cannot drift from what the sandbox actually is.
     #[test]
-    fn the_prompt_describes_the_environment_from_its_facts() {
+    fn the_prompt_describes_the_sandbox_from_its_facts() {
         let prompt = SessionSandboxCapability
             .system_prompt_addition()
             .expect("a prompt");
@@ -984,7 +984,7 @@ mod tests {
     }
 
     #[test]
-    fn session_sandbox_registry_is_always_available_for_environment_profiles() {
+    fn session_sandbox_registry_is_always_available_for_sandbox_templates() {
         let registry =
             crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
         assert!(registry.has("session_sandbox"));

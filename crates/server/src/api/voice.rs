@@ -523,7 +523,7 @@ pub async fn create_agent_voice_session(
         tags: vec!["voice".to_string()],
         model_id: None,
         capabilities: Vec::new(),
-        environment: None,
+        sandbox: None,
         tools: Vec::new(),
         mcp_servers: Default::default(),
         system_prompt: None,

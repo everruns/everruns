@@ -2084,60 +2084,6 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/environment-targets": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description List the environment targets this deployment can offer, with the capabilities each one actually has. */
-    get: operations["list_environment_targets"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/environments": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description List active reusable Environments available to the organization. */
-    get: operations["list_environments"];
-    put?: never;
-    /** @description Create a reusable Environment and its first immutable revision. */
-    post: operations["create_environment"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/environments/{environment_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description Get one reusable Environment and its current immutable revision. */
-    get: operations["get_environment_definition"];
-    /** @description Create the next immutable revision of a reusable Environment. */
-    put: operations["revise_environment"];
-    post?: never;
-    /** @description Archive a user-managed reusable Environment without changing pinned Sessions. */
-    delete: operations["archive_environment"];
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
   "/v1/files": {
     parameters: {
       query?: never;
@@ -3765,6 +3711,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandbox-targets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List the Sandbox targets this deployment can offer, with the capabilities each one actually has. */
+    get: operations["list_sandbox_targets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-templates": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List active reusable Sandbox Templates available to the organization. */
+    get: operations["list_sandbox_templates"];
+    put?: never;
+    /** @description Create a reusable Sandbox Template and its first immutable revision. */
+    post: operations["create_sandbox_template"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandbox-templates/{sandbox_template_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description Get one reusable Sandbox Template and its current immutable revision. */
+    get: operations["get_sandbox_template"];
+    /** @description Create the next immutable revision of a reusable Sandbox Template. */
+    put: operations["revise_sandbox_template"];
+    post?: never;
+    /** @description Archive a user-managed Sandbox Template without changing pinned Sessions. */
+    delete: operations["archive_sandbox_template"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions": {
     parameters: {
       query?: never;
@@ -3958,23 +3958,6 @@ export interface paths {
     };
     /** GET /v1/sessions/{session_id}/databases/{name}/schema */
     get: operations["get_schema"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/v1/sessions/{session_id}/environment": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** @description Get the environment a session runs in: target, containment, and what it can actually do. */
-    get: operations["get_session_environment"];
     put?: never;
     post?: never;
     delete?: never;
@@ -4337,8 +4320,8 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Get the current session sandbox status (lease, runtime image, network access). */
-    get: operations["get_sandbox"];
+    /** @description Get the primary Sandbox a Session runs in: template, target, containment, and capabilities. */
+    get: operations["get_session_sandbox"];
     put?: never;
     /** @description Manage the session sandbox lifecycle (start, stop, reset). */
     post: operations["manage_sandbox"];
@@ -5497,7 +5480,6 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
-      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Whether any endpoint on this agent is currently live. Derived from the
        *     endpoint rows on read and never stored: a stored flag would be a second
@@ -5568,6 +5550,7 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      sandbox_policy?: components["schemas"]["SandboxPolicy"] | null;
       /** @description Org-scoped service account used when a tool acts as the agent. */
       service_virtual_user_id?: string | null;
       /**
@@ -7978,7 +7961,6 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
-      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Harness ID used as this agent's base execution environment. If omitted,
        *     the organization default is used (Conversation for new organizations).
@@ -8035,6 +8017,7 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      sandbox_policy?: components["schemas"]["SandboxPolicy"] | null;
       service_virtual_user_id?: string | null;
       /**
        * @description One-line description in simplified Markdown, shown below the chat title
@@ -8227,25 +8210,6 @@ export interface components {
     CreateDeclarativeCapabilityRequest: {
       /** @description Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref. */
       definition: Record<string, unknown>;
-    };
-    CreateEnvironmentRequest: {
-      /**
-       * @description Optional explanation of the Environment's intended workload.
-       * @example Recoverable coding workspace managed by Daytona
-       */
-      description?: string | null;
-      /**
-       * @description Human-readable name shown in management surfaces.
-       * @example Coding - Daytona
-       */
-      display_name: string;
-      /**
-       * @description Stable addressable name used by Agent environment references.
-       * @example coding-daytona
-       */
-      name: string;
-      /** @description Initial immutable execution profile revision. */
-      profile: components["schemas"]["EnvironmentProfile"];
     };
     /** @description Request to create a file */
     CreateFileRequest: {
@@ -8775,6 +8739,25 @@ export interface components {
        */
       url: string;
     };
+    CreateSandboxTemplateRequest: {
+      /**
+       * @description Optional explanation of the Sandbox Template's intended workload.
+       * @example Recoverable coding workspace managed by Daytona
+       */
+      description?: string | null;
+      /**
+       * @description Human-readable name shown in management surfaces.
+       * @example Coding - Daytona
+       */
+      display_name: string;
+      /**
+       * @description Stable addressable name used by Agent Sandbox policies.
+       * @example coding-daytona
+       */
+      name: string;
+      /** @description Initial immutable Sandbox specification revision. */
+      spec: components["schemas"]["SandboxTemplateSpec"];
+    };
     /** @description Request body for the `create_saved_report` operation. */
     CreateSavedReportRequest: {
       dashboard?: components["schemas"]["SavedReportDashboardMetadata"] | null;
@@ -8877,7 +8860,6 @@ export interface components {
        *     ]
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
-      environment?: components["schemas"]["EnvironmentSelection"] | null;
       /**
        * @description Optional objective for the session. Visible to the agent at system-prompt level.
        * @example Investigate the queue latency regression and propose a fix
@@ -8957,6 +8939,7 @@ export interface components {
       parallel_tool_calls?: boolean | null;
       /** @description Fixed Playground end user. Defaults to the caller's linked virtual user. Only valid with source=playground. */
       playground_user_id?: string | null;
+      sandbox?: components["schemas"]["SandboxSelection"] | null;
       /**
        * @description How this session was started. Clients may declare `chat`, `playground`, or `api`
        *     (the default); every other source is
@@ -9451,290 +9434,6 @@ export interface components {
        */
       task_id: string;
     };
-    /** @description Organization-scoped reusable execution Environment. */
-    Environment: {
-      /**
-       * Format: date-time
-       * @description Creation timestamp.
-       */
-      created_at: string;
-      /** @description Latest immutable revision used for new references. */
-      current_revision: components["schemas"]["EnvironmentRevision"];
-      /**
-       * @description Optional explanation of the Environment's intended workload.
-       * @example Recoverable coding workspace managed by Daytona
-       */
-      description?: string | null;
-      /**
-       * @description Human-readable name shown in management surfaces.
-       * @example Coding - Daytona
-       */
-      display_name: string;
-      /** @description Stable public Environment identifier. */
-      id: string;
-      /** @description Whether the definition is owned and sealed by the platform. */
-      is_managed: boolean;
-      /**
-       * @description Addressable name used in configuration.
-       * @example coding-daytona
-       */
-      name: string;
-      /**
-       * @description Lifecycle state such as `active` or `archived`.
-       * @example active
-       */
-      status: string;
-      /**
-       * Format: date-time
-       * @description Timestamp of the most recent definition or revision change.
-       */
-      updated_at: string;
-    };
-    /** @description Reproducible initialization pinned with the profile snapshot. */
-    EnvironmentBootstrap: {
-      /** @description Ordered commands replayed when creating or recovering physical compute. */
-      commands?: string[];
-    };
-    /**
-     * @description What the environment can actually do.
-     *
-     *     Read this before assuming a shell behaves like Linux. Bashkit reports
-     *     `native_processes: false`, which is why a build fails there; the answer is
-     *     available before the first turn rather than after a confusing tool error.
-     */
-    EnvironmentCapabilities: {
-      /** @description Whether commands can spawn operating-system processes. */
-      native_processes: boolean;
-      /** @description Whether the target enforces the declared outbound network policy. */
-      network_enforced: boolean;
-      /** @description Whether the runtime can install operating-system packages. */
-      packages: boolean;
-      /** @description Whether filesystem state has a portable checkpoint representation. */
-      portable_checkpoint: boolean;
-      /** @description Whether workloads can bind and expose network ports. */
-      ports: boolean;
-      /** @description Whether interactive pseudo-terminals are supported. */
-      pty: boolean;
-    };
-    /** @description What commands may touch, and who enforces it. */
-    EnvironmentContainment: {
-      /**
-       * @description `none`, `native`, or `isolated`.
-       * @example isolated
-       */
-      level: string;
-      /**
-       * @description Outbound network policy: `deny`, `allowlist`, or `allow`.
-       * @example allow
-       */
-      network: string;
-    };
-    /** @enum {string} */
-    EnvironmentContainmentLevel: "none" | "native" | "isolated";
-    /** @description What commands may touch. */
-    EnvironmentContainmentProfile: {
-      /** @description Whether the runtime may widen containment after Session creation. */
-      escalation?: components["schemas"]["EnvironmentEscalation"];
-      /** @description Filesystem mutation boundary for command execution. */
-      filesystem?: components["schemas"]["EnvironmentFilesystemPolicy"];
-      /** @description Isolation mechanism the provider must supply. */
-      level: components["schemas"]["EnvironmentContainmentLevel"];
-      /** @description Outbound network access the provider must enforce. */
-      network?: components["schemas"]["EnvironmentNetworkPolicy"];
-    };
-    /**
-     * @description What survives physical compute loss.
-     * @enum {string}
-     */
-    EnvironmentDurability: "checkpointed" | "provider_snapshot" | "none";
-    /**
-     * @description Who may widen containment after a session starts.
-     * @enum {string}
-     */
-    EnvironmentEscalation: "never" | "approval" | "auto";
-    /** @description Filesystem paths the target permits command execution to mutate. */
-    EnvironmentFilesystemPolicy: {
-      /** @description Absolute roots the runtime may mutate; empty means provider default. */
-      writable_roots?: string[];
-    };
-    /** @enum {string} */
-    EnvironmentIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
-    /** @description Control-plane lifecycle intent. Providers do not own these timers. */
-    EnvironmentLifecycle: {
-      /** @description Action Everruns requests after the idle interval. */
-      idle_action?: components["schemas"]["EnvironmentIdleAction"];
-      /**
-       * Format: int64
-       * @description Inactivity interval before applying `idle_action`.
-       * @example 300
-       */
-      idle_after_seconds?: number;
-    };
-    /** @description Non-secret lifecycle details for a managed Environment incarnation. */
-    EnvironmentLifecycleData: {
-      /** @description Replacement physical resource. Present only on `environment.recovered`. */
-      current_instance_id?: string | null;
-      /** @description Durable logical Environment identifier, when hosted persistence is available. */
-      environment_id?: string | null;
-      /**
-       * Format: int64
-       * @description Current incarnation fence, when hosted persistence is available.
-       */
-      generation?: number | null;
-      /** @description Physical provider resource that was lost or replaced. */
-      previous_instance_id: string;
-      /** @description Provider process state is ephemeral and is not restored across replacement. */
-      process_state_lost: boolean;
-      /** @description Compute provider selected by the Environment profile. */
-      provider: string;
-    };
-    /** @description Outbound network policy the target must actually enforce. */
-    EnvironmentNetworkPolicy:
-      | {
-          /** @enum {string} */
-          mode: "deny";
-        }
-      | {
-          allowed_hosts: string[];
-          /** @enum {string} */
-          mode: "allowlist";
-        }
-      | {
-          /** @enum {string} */
-          mode: "allow";
-        };
-    /**
-     * @description Agent policy for choosing the Session's one immutable primary Sandbox.
-     * @enum {string}
-     */
-    EnvironmentPolicyMode: "fixed" | "selectable" | "configurable";
-    /**
-     * @description Desired environment configuration authored by a human or application.
-     *
-     *     Containment and durability may be omitted when the target has exactly one
-     *     honest answer. Resolution fills those fields before the profile is pinned
-     *     to a Session.
-     */
-    EnvironmentProfile: {
-      /** @description Reproducible commands run when physical compute is initialized. */
-      bootstrap?: components["schemas"]["EnvironmentBootstrap"];
-      containment?: components["schemas"]["EnvironmentContainmentProfile"] | null;
-      durability?: components["schemas"]["EnvironmentDurability"] | null;
-      /** @description Idle lifecycle policy controlled by Everruns. */
-      lifecycle?: components["schemas"]["EnvironmentLifecycle"];
-      /**
-       * @description Immutable reusable Environment revision this profile was copied from.
-       *     The profile remains a complete snapshot so Agent versions are portable
-       *     and later Environment revisions cannot change an existing version.
-       */
-      source_revision_id?: string | null;
-      /** @description Provider-neutral target plus its concrete adapter binding. */
-      target: components["schemas"]["EnvironmentTargetProfile"];
-    };
-    /** @description Immutable revision of an Environment template. */
-    EnvironmentRevision: {
-      /**
-       * Format: date-time
-       * @description Revision creation timestamp.
-       */
-      created_at: string;
-      /** @description Parent reusable Environment identifier. */
-      environment_id: string;
-      /** @description Stable public revision identifier pinned into Agent and Session snapshots. */
-      id: string;
-      /** @description Complete immutable authored profile. */
-      profile: components["schemas"]["EnvironmentProfile"];
-      /**
-       * Format: int32
-       * @description Monotonically increasing revision number within the Environment.
-       * @example 3
-       */
-      revision: number;
-    };
-    /** @description Session-level selection: use an Agent profile, or provide an inline one. */
-    EnvironmentSelection:
-      | {
-          use: string;
-        }
-      | components["schemas"]["EnvironmentProfile"];
-    /** @description Named execution environments offered by an Agent version. */
-    EnvironmentSet: {
-      /**
-       * @description Profile inherited when session creation does not choose one explicitly.
-       * @example primary
-       */
-      default: string;
-      policy?: components["schemas"]["EnvironmentPolicyMode"] | null;
-      /** @description Human-authored profiles addressable by name at session creation. */
-      profiles?: {
-        [key: string]: components["schemas"]["EnvironmentProfile"];
-      };
-    };
-    /** @description Where a session's commands run. */
-    EnvironmentTarget: {
-      /**
-       * @description Registered connection used by a machine target.
-       * @example conn_01933b5a000070008000000000000001
-       */
-      connection_id?: string | null;
-      /**
-       * @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`.
-       * @example managed
-       */
-      kind: string;
-      /**
-       * @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...).
-       * @example daytona
-       */
-      provider?: string | null;
-    };
-    /** @description One target this deployment can offer, and what it can do. */
-    EnvironmentTargetDescriptor: {
-      /** @description Whether this deployment can actually run it right now. */
-      available: boolean;
-      /** @description Capabilities the deployment can honestly provide for this target. */
-      capabilities: components["schemas"]["EnvironmentCapabilities"];
-      /** @description Containment levels this target supports, weakest first. */
-      containment_levels: string[];
-      /** @description Recovery guarantee offered by this target. */
-      durability: string;
-      /** @description Provider-neutral target class. */
-      kind: string;
-      /** @description Concrete provider adapter, when the target class requires one. */
-      provider?: string | null;
-      /** @description Why it is unavailable. Present only when `available` is false. */
-      reason?: string | null;
-    };
-    /**
-     * @description Provider-neutral target class.
-     * @enum {string}
-     */
-    EnvironmentTargetKind: "host" | "machine" | "vfs" | "container" | "managed";
-    /** @description Where commands execute. */
-    EnvironmentTargetProfile: {
-      /**
-       * @description Credential/transport binding for a registered machine target.
-       * @example conn_01933b5a000070008000000000000001
-       */
-      connection_id?: string | null;
-      /** @description Provider-neutral target class. */
-      kind: components["schemas"]["EnvironmentTargetKind"];
-      /**
-       * @description Provider-owned, non-secret configuration. Credentials are references,
-       *     never values in this object.
-       */
-      options?: Record<string, unknown>;
-      /**
-       * @description Concrete adapter for target kinds with more than one implementation.
-       * @example daytona
-       */
-      provider?: string | null;
-    };
-    /** @description Response body for the `list_environment_targets` operation. */
-    EnvironmentTargetsResponse: {
-      /** @description Target descriptors known to this deployment. */
-      items: components["schemas"]["EnvironmentTargetDescriptor"][];
-    };
     /**
      * @description Standard error response.
      *
@@ -9919,8 +9618,10 @@ export interface components {
       | components["schemas"]["SessionIdledData"]
       | components["schemas"]["SessionTitleUpdatedData"]
       | components["schemas"]["SessionModelChangedData"]
-      | components["schemas"]["EnvironmentLifecycleData"]
-      | components["schemas"]["EnvironmentLifecycleData"]
+      | components["schemas"]["SandboxLifecycleData"]
+      | components["schemas"]["SandboxLifecycleData"]
+      | components["schemas"]["SandboxLifecycleData"]
+      | components["schemas"]["SandboxLifecycleData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["TaskMessageEventData"]
@@ -10538,32 +10239,6 @@ export interface components {
     GetResponse:
       | components["schemas"]["SessionFile"]
       | components["schemas"]["ListResponse_FileInfo"];
-    /** @description Response body for the `get_session_sandbox` operation. */
-    GetSessionSandboxResponse: {
-      /** @description Whether the session's harness opts in to a managed sandbox at all. */
-      configured: boolean;
-      /** @description Timestamp when this sandbox record was created (RFC 3339). */
-      created_at?: string | null;
-      /** @description Human-readable sandbox label. Safe to render in user-facing messages. */
-      display_name?: string | null;
-      /** @description Whether a sandbox instance currently exists for this session (within its lease). */
-      exists: boolean;
-      /** @description Provider-side sandbox identifier (workspace ID, container ID, etc.). */
-      external_id?: string | null;
-      /** @description Timestamp when sandbox initialization finished (RFC 3339); absent while still starting. */
-      init_completed_at?: string | null;
-      /** @description Most recent initialization error message; cleared on successful re-init. */
-      last_init_error?: string | null;
-      /** @description Provider-specific metadata (URLs, ports, credentials envelopes). */
-      metadata?: Record<string, unknown>;
-      /** @description Sandbox provider (`daytona`, `e2b`, `docker`, etc.) when one is configured. */
-      provider?: string | null;
-      session_status?: components["schemas"]["SessionSandboxStatusValue"] | null;
-      /** @description Timestamp when this sandbox record was last updated (RFC 3339). */
-      updated_at?: string | null;
-      /** @description Absolute path of the sandbox workspace root (used to scope file operations). */
-      workspace_path?: string | null;
-    };
     /** @description A commit entry in the log */
     GitCommitInfo: {
       /** @description Author email from the commit. */
@@ -11941,7 +11616,6 @@ export interface components {
          * @example Customer Support Agent
          */
         display_name?: string | null;
-        environments?: components["schemas"]["EnvironmentSet"] | null;
         /**
          * @description Whether any endpoint on this agent is currently live. Derived from the
          *     endpoint rows on read and never stored: a stored flag would be a second
@@ -12012,6 +11686,7 @@ export interface components {
          * @example agent_01933b5a00007000800000000000001
          */
         root_agent_id?: string | null;
+        sandbox_policy?: components["schemas"]["SandboxPolicy"] | null;
         /** @description Org-scoped service account used when a tool acts as the agent. */
         service_virtual_user_id?: string | null;
         /**
@@ -14253,8 +13928,6 @@ export interface components {
       description?: string | null;
       /** @description Human-readable agent label. Defaults to the stable name at the host. */
       display_name?: string | null;
-      /** @description Platform-specific environment requirements; other hosts must bind or reject them. */
-      environments?: unknown;
       /** @description Starting files or package-relative sources. Sources retain their relative paths. */
       files?: components["schemas"]["File"][];
       /** @description Named harness requirement. Omission uses the host's default harness. */
@@ -14277,6 +13950,11 @@ export interface components {
       network_access?: components["schemas"]["NetworkAccessList"] | null;
       /** @description Whether independent tool calls may run concurrently. Omission keeps the host default. */
       parallel_tool_calls?: boolean | null;
+      /**
+       * @description Platform-specific Sandbox policy. Other hosts must explicitly bind or
+       *     reject it rather than silently discarding execution requirements.
+       */
+      sandbox_policy?: unknown;
       /**
        * Format: int32
        * @description Portable format version. Currently 1; omitted values default to 1.
@@ -17489,22 +17167,22 @@ export interface components {
       org_name: string;
     };
     /**
-     * @description Session-pinned profile. Every security- and recovery-relevant default has
+     * @description Session-pinned specification. Every security- and recovery-relevant default has
      *     been made explicit.
      */
-    ResolvedEnvironmentProfile: {
+    ResolvedSandboxSpec: {
       /** @description Pinned initialization commands. */
-      bootstrap: components["schemas"]["EnvironmentBootstrap"];
+      bootstrap: components["schemas"]["SandboxBootstrap"];
       /** @description Fully resolved containment contract. */
-      containment: components["schemas"]["EnvironmentContainmentProfile"];
+      containment: components["schemas"]["SandboxContainmentSpec"];
       /** @description Fully resolved recovery guarantee. */
-      durability: components["schemas"]["EnvironmentDurability"];
+      durability: components["schemas"]["SandboxDurability"];
       /** @description Pinned lifecycle policy. */
-      lifecycle: components["schemas"]["EnvironmentLifecycle"];
-      /** @description Reusable revision from which this complete snapshot was copied. */
-      source_revision_id?: string | null;
+      lifecycle: components["schemas"]["SandboxLifecycle"];
       /** @description Exact target pinned for the Session. */
-      target: components["schemas"]["EnvironmentTargetProfile"];
+      target: components["schemas"]["SandboxTargetSpec"];
+      /** @description Reusable revision from which this complete snapshot was copied. */
+      template_revision_id?: string | null;
     };
     /**
      * @description Response type for per-resource config endpoints.
@@ -17637,7 +17315,7 @@ export interface components {
       resumed_budgets: number;
       session_id: string;
     };
-    ReviseEnvironmentRequest: {
+    ReviseSandboxTemplateRequest: {
       /**
        * @description Omit to preserve; send null to clear.
        * @example Larger recoverable workspace for repository builds
@@ -17648,8 +17326,8 @@ export interface components {
        * @example Coding - Daytona (large)
        */
       display_name?: string | null;
-      /** @description Complete profile stored as the next immutable revision. */
-      profile: components["schemas"]["EnvironmentProfile"];
+      /** @description Complete specification stored as the next immutable revision. */
+      spec: components["schemas"]["SandboxTemplateSpec"];
     };
     /**
      * @description Risk classification for capabilities (TM-AGENT-005).
@@ -17701,6 +17379,290 @@ export interface components {
      * @enum {string}
      */
     RuntimeMessageRole: "system" | "user" | "agent" | "tool_result";
+    /** @description Reproducible initialization pinned with the specification snapshot. */
+    SandboxBootstrap: {
+      /** @description Ordered commands replayed when creating or recovering physical compute. */
+      commands?: string[];
+    };
+    /**
+     * @description What the Sandbox target can actually do.
+     *
+     *     Read this before assuming a shell behaves like Linux. Bashkit reports
+     *     `native_processes: false`, which is why a build fails there; the answer is
+     *     available before the first turn rather than after a confusing tool error.
+     */
+    SandboxCapabilities: {
+      /** @description Whether commands can spawn operating-system processes. */
+      native_processes: boolean;
+      /** @description Whether the target enforces the declared outbound network policy. */
+      network_enforced: boolean;
+      /** @description Whether the runtime can install operating-system packages. */
+      packages: boolean;
+      /** @description Whether filesystem state has a portable checkpoint representation. */
+      portable_checkpoint: boolean;
+      /** @description Whether workloads can bind and expose network ports. */
+      ports: boolean;
+      /** @description Whether interactive pseudo-terminals are supported. */
+      pty: boolean;
+    };
+    /** @description What commands may touch, and who enforces it. */
+    SandboxContainment: {
+      /**
+       * @description `none`, `native`, or `isolated`.
+       * @example isolated
+       */
+      level: string;
+      /**
+       * @description Outbound network policy: `deny`, `allowlist`, or `allow`.
+       * @example allow
+       */
+      network: string;
+    };
+    /** @enum {string} */
+    SandboxContainmentLevel: "none" | "native" | "isolated";
+    /** @description What commands may touch. */
+    SandboxContainmentSpec: {
+      /** @description Whether the runtime may widen containment after Session creation. */
+      escalation?: components["schemas"]["SandboxEscalation"];
+      /** @description Filesystem mutation boundary for command execution. */
+      filesystem?: components["schemas"]["SandboxFilesystemPolicy"];
+      /** @description Isolation mechanism the provider must supply. */
+      level: components["schemas"]["SandboxContainmentLevel"];
+      /** @description Outbound network access the provider must enforce. */
+      network?: components["schemas"]["SandboxNetworkPolicy"];
+    };
+    /**
+     * @description What survives physical compute loss.
+     * @enum {string}
+     */
+    SandboxDurability: "checkpointed" | "provider_snapshot" | "none";
+    /**
+     * @description Who may widen containment after a session starts.
+     * @enum {string}
+     */
+    SandboxEscalation: "never" | "approval" | "auto";
+    /** @description Filesystem paths the target permits command execution to mutate. */
+    SandboxFilesystemPolicy: {
+      /** @description Absolute roots the runtime may mutate; empty means provider default. */
+      writable_roots?: string[];
+    };
+    /** @enum {string} */
+    SandboxIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
+    /** @description Control-plane lifecycle intent. Providers do not own these timers. */
+    SandboxLifecycle: {
+      /** @description Action Everruns requests after the idle interval. */
+      idle_action?: components["schemas"]["SandboxIdleAction"];
+      /**
+       * Format: int64
+       * @description Inactivity interval before applying `idle_action`.
+       * @example 300
+       */
+      idle_after_seconds?: number;
+    };
+    /** @description Non-secret lifecycle details for a managed Sandbox incarnation. */
+    SandboxLifecycleData: {
+      /** @description Replacement physical resource. Present only on the recovery event. */
+      current_instance_id?: string | null;
+      /**
+       * Format: int64
+       * @description Current incarnation fence, when hosted persistence is available.
+       */
+      generation?: number | null;
+      /** @description Physical provider resource that was lost or replaced. */
+      previous_instance_id: string;
+      /** @description Provider process state is ephemeral and is not restored across replacement. */
+      process_state_lost: boolean;
+      /** @description Compute provider selected by the Sandbox Template specification. */
+      provider: string;
+      /** @description Durable logical Sandbox identifier, when hosted persistence is available. */
+      sandbox_id?: string | null;
+    };
+    /** @description Outbound network policy the target must actually enforce. */
+    SandboxNetworkPolicy:
+      | {
+          /** @enum {string} */
+          mode: "deny";
+        }
+      | {
+          allowed_hosts: string[];
+          /** @enum {string} */
+          mode: "allowlist";
+        }
+      | {
+          /** @enum {string} */
+          mode: "allow";
+        };
+    /** @description Agent policy for selecting the Session's primary Sandbox Template. */
+    SandboxPolicy: {
+      /**
+       * @description Template binding inherited when Session creation does not choose one.
+       * @example primary
+       */
+      default: string;
+      mode?: components["schemas"]["SandboxPolicyMode"] | null;
+      /** @description Template snapshots addressable by binding name at Session creation. */
+      templates?: {
+        [key: string]: components["schemas"]["SandboxTemplateSpec"];
+      };
+    };
+    /**
+     * @description Agent policy for choosing the Session's one immutable primary Sandbox.
+     * @enum {string}
+     */
+    SandboxPolicyMode: "fixed" | "selectable" | "configurable";
+    /** @description Session-level selection: use an Agent template binding or provide an inline specification. */
+    SandboxSelection:
+      | {
+          use: string;
+        }
+      | components["schemas"]["SandboxTemplateSpec"];
+    /** @description Where a session's commands run. */
+    SandboxTarget: {
+      /**
+       * @description Registered connection used by a machine target.
+       * @example conn_01933b5a000070008000000000000001
+       */
+      connection_id?: string | null;
+      /**
+       * @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`.
+       * @example managed
+       */
+      kind: string;
+      /**
+       * @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...).
+       * @example daytona
+       */
+      provider?: string | null;
+    };
+    /** @description One target this deployment can offer, and what it can do. */
+    SandboxTargetDescriptor: {
+      /** @description Whether this deployment can actually run it right now. */
+      available: boolean;
+      /** @description Capabilities the deployment can honestly provide for this target. */
+      capabilities: components["schemas"]["SandboxCapabilities"];
+      /** @description Containment levels this target supports, weakest first. */
+      containment_levels: string[];
+      /** @description Recovery guarantee offered by this target. */
+      durability: string;
+      /** @description Provider-neutral target class. */
+      kind: string;
+      /** @description Concrete provider adapter, when the target class requires one. */
+      provider?: string | null;
+      /** @description Why it is unavailable. Present only when `available` is false. */
+      reason?: string | null;
+    };
+    /**
+     * @description Provider-neutral target class.
+     * @enum {string}
+     */
+    SandboxTargetKind: "host" | "machine" | "vfs" | "container" | "managed";
+    /** @description Where commands execute. */
+    SandboxTargetSpec: {
+      /**
+       * @description Credential/transport binding for a registered machine target.
+       * @example conn_01933b5a000070008000000000000001
+       */
+      connection_id?: string | null;
+      /** @description Provider-neutral target class. */
+      kind: components["schemas"]["SandboxTargetKind"];
+      /**
+       * @description Provider-owned, non-secret configuration. Credentials are references,
+       *     never values in this object.
+       */
+      options?: Record<string, unknown>;
+      /**
+       * @description Concrete adapter for target kinds with more than one implementation.
+       * @example daytona
+       */
+      provider?: string | null;
+    };
+    /** @description Response body for the `list_sandbox_targets` operation. */
+    SandboxTargetsResponse: {
+      /** @description Target descriptors known to this deployment. */
+      items: components["schemas"]["SandboxTargetDescriptor"][];
+    };
+    /** @description Organization-scoped reusable Sandbox Template. */
+    SandboxTemplate: {
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
+      created_at: string;
+      /** @description Latest immutable revision used for new references. */
+      current_revision: components["schemas"]["SandboxTemplateRevision"];
+      /**
+       * @description Optional explanation of the Sandbox Template's intended workload.
+       * @example Recoverable coding workspace managed by Daytona
+       */
+      description?: string | null;
+      /**
+       * @description Human-readable name shown in management surfaces.
+       * @example Coding - Daytona
+       */
+      display_name: string;
+      /** @description Stable public Sandbox Template identifier. */
+      id: string;
+      /** @description Whether the definition is owned and sealed by the platform. */
+      is_managed: boolean;
+      /**
+       * @description Addressable name used in configuration.
+       * @example coding-daytona
+       */
+      name: string;
+      /**
+       * @description Lifecycle state such as `active` or `archived`.
+       * @example active
+       */
+      status: string;
+      /**
+       * Format: date-time
+       * @description Timestamp of the most recent definition or revision change.
+       */
+      updated_at: string;
+    };
+    /** @description Immutable revision of a Sandbox Template. */
+    SandboxTemplateRevision: {
+      /**
+       * Format: date-time
+       * @description Revision creation timestamp.
+       */
+      created_at: string;
+      /** @description Stable public revision identifier pinned into Agent and Session snapshots. */
+      id: string;
+      /**
+       * Format: int32
+       * @description Monotonically increasing revision number within the Sandbox Template.
+       * @example 3
+       */
+      revision: number;
+      /** @description Parent reusable Sandbox Template identifier. */
+      sandbox_template_id: string;
+      /** @description Complete immutable authored specification. */
+      spec: components["schemas"]["SandboxTemplateSpec"];
+    };
+    /**
+     * @description Desired Sandbox configuration authored by a human or application.
+     *
+     *     Containment and durability may be omitted when the target has exactly one
+     *     honest answer. Resolution fills those fields before the specification is pinned
+     *     to a Session.
+     */
+    SandboxTemplateSpec: {
+      /** @description Reproducible commands run when physical compute is initialized. */
+      bootstrap?: components["schemas"]["SandboxBootstrap"];
+      containment?: components["schemas"]["SandboxContainmentSpec"] | null;
+      durability?: components["schemas"]["SandboxDurability"] | null;
+      /** @description Idle lifecycle policy controlled by Everruns. */
+      lifecycle?: components["schemas"]["SandboxLifecycle"];
+      /** @description Provider-neutral target plus its concrete adapter binding. */
+      target: components["schemas"]["SandboxTargetSpec"];
+      /**
+       * @description Immutable Sandbox Template revision this specification was copied from.
+       *     The specification remains complete so Agent versions are portable and
+       *     later template revisions cannot change an existing version.
+       */
+      template_revision_id?: string | null;
+    };
     /**
      * @description A user-saved report definition — a named, persistable wrapper around a
      *     `ReportQuery` with optional dashboard placement metadata.
@@ -18452,52 +18414,6 @@ export interface components {
       /** @description Prefixed session identifier this report describes. */
       session_id: string;
     };
-    /** @description The environment a session is running in. */
-    SessionEnvironmentResponse: {
-      capabilities: components["schemas"]["EnvironmentCapabilities"];
-      containment: components["schemas"]["EnvironmentContainment"];
-      /** @description Most recent checkpoint used to recover this logical Sandbox. */
-      current_checkpoint_id?: string | null;
-      /** @description Control-plane lifecycle intent and latest observed physical state. */
-      desired_state?: string | null;
-      /**
-       * @description `checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a
-       *     session on somebody else's machine is never reported as recoverable.
-       */
-      durability: string;
-      /** @description Reusable Environment revision pinned into this Sandbox. */
-      environment_revision_id?: string | null;
-      /**
-       * Format: int64
-       * @description Physical incarnation fence. Increments whenever compute is replaced.
-       */
-      generation?: number | null;
-      /** @description Deprecated alias for `sandbox_id` during the Environment-to-Sandbox migration. */
-      id?: string | null;
-      /**
-       * Format: date-time
-       * @description Last recorded runtime activity used by lifecycle policy.
-       */
-      last_activity_at?: string | null;
-      /** @description Agent profile name selected for this Session (`inline` for one-offs). */
-      name?: string | null;
-      /** @description Latest lifecycle state observed from the physical provider resource. */
-      observed_state?: string | null;
-      profile?: components["schemas"]["ResolvedEnvironmentProfile"] | null;
-      /**
-       * @description How this view was produced. `capabilities` means it was derived from the
-       *     session's effective capability set rather than read from a stored
-       *     environment profile.
-       */
-      resolved_from: string;
-      /** @description `primary` for the implicit shell/files binding. */
-      role?: string | null;
-      /** @description Durable logical primary Sandbox id. Absent for legacy capability-derived sessions. */
-      sandbox_id?: string | null;
-      /** @description Capability that supplied the compute, for operators tracing a surprise. */
-      source_capability?: string | null;
-      target?: components["schemas"]["EnvironmentTarget"] | null;
-    };
     /** @description One bucket of a sessions facet dimension. */
     SessionFacetCount: {
       /** Format: int64 */
@@ -18719,6 +18635,49 @@ export interface components {
      * @enum {string}
      */
     SessionSandboxAction: "pause" | "resume" | "delete";
+    /** @description The primary Sandbox a Session is running in. */
+    SessionSandboxResponse: {
+      capabilities: components["schemas"]["SandboxCapabilities"];
+      containment: components["schemas"]["SandboxContainment"];
+      /** @description Most recent checkpoint used to recover this logical Sandbox. */
+      current_checkpoint_id?: string | null;
+      /** @description Control-plane lifecycle intent and latest observed physical state. */
+      desired_state?: string | null;
+      /**
+       * @description `checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a
+       *     session on somebody else's machine is never reported as recoverable.
+       */
+      durability: string;
+      /**
+       * Format: int64
+       * @description Physical incarnation fence. Increments whenever compute is replaced.
+       */
+      generation?: number | null;
+      /**
+       * Format: date-time
+       * @description Last recorded runtime activity used by lifecycle policy.
+       */
+      last_activity_at?: string | null;
+      /** @description Agent template binding selected for this Session (`inline` for one-offs). */
+      name?: string | null;
+      /** @description Latest lifecycle state observed from the physical provider resource. */
+      observed_state?: string | null;
+      /**
+       * @description How this view was produced. `capabilities` means it was derived from the
+       *     Session's effective capability set rather than a stored Sandbox spec.
+       */
+      resolved_from: string;
+      /** @description `primary` for the implicit shell/files binding. */
+      role?: string | null;
+      /** @description Durable logical primary Sandbox id. Absent for legacy capability-derived sessions. */
+      sandbox_id?: string | null;
+      /** @description Reusable Sandbox Template revision pinned into this Sandbox. */
+      sandbox_template_revision_id?: string | null;
+      /** @description Capability that supplied the compute, for operators tracing a surprise. */
+      source_capability?: string | null;
+      spec?: components["schemas"]["ResolvedSandboxSpec"] | null;
+      target?: components["schemas"]["SandboxTarget"] | null;
+    };
     /**
      * @description Wire-facing status of a session sandbox. Mirrors
      *     `everruns_capabilities::session_sandbox::SessionSandboxStatus` for the public API.
@@ -20119,7 +20078,6 @@ export interface components {
        * @example Updated Support Agent
        */
       display_name?: string | null;
-      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Harness ID used as this agent's base execution environment. Omit to leave unchanged.
        * @example harness_01933b5a00007000800000000000001
@@ -20166,6 +20124,7 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      sandbox_policy?: components["schemas"]["SandboxPolicy"] | null;
       service_virtual_user_id?: string | null;
       /**
        * @description One-line description in simplified Markdown. Outer `None` leaves
@@ -21395,7 +21354,6 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
-      environments?: components["schemas"]["EnvironmentSet"] | null;
       /**
        * @description Whether any endpoint on this agent is currently live. Derived from the
        *     endpoint rows on read and never stored: a stored flag would be a second
@@ -21466,6 +21424,7 @@ export interface components {
        * @example agent_01933b5a00007000800000000000001
        */
       root_agent_id?: string | null;
+      sandbox_policy?: components["schemas"]["SandboxPolicy"] | null;
       /** @description Org-scoped service account used when a tool acts as the agent. */
       service_virtual_user_id?: string | null;
       /**
@@ -29044,135 +29003,6 @@ export interface operations {
       };
     };
   };
-  list_environment_targets: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Available environment targets */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["EnvironmentTargetsResponse"];
-        };
-      };
-    };
-  };
-  list_environments: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Environment"][];
-        };
-      };
-    };
-  };
-  create_environment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["CreateEnvironmentRequest"];
-      };
-    };
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Environment"];
-        };
-      };
-    };
-  };
-  get_environment_definition: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        environment_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Environment"];
-        };
-      };
-    };
-  };
-  revise_environment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        environment_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ReviseEnvironmentRequest"];
-      };
-    };
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Environment"];
-        };
-      };
-    };
-  };
-  archive_environment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        environment_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": unknown;
-        };
-      };
-    };
-  };
   list_files: {
     parameters: {
       query?: {
@@ -34495,6 +34325,135 @@ export interface operations {
       };
     };
   };
+  list_sandbox_targets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Available Sandbox targets */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTargetsResponse"];
+        };
+      };
+    };
+  };
+  list_sandbox_templates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"][];
+        };
+      };
+    };
+  };
+  create_sandbox_template: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateSandboxTemplateRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  get_sandbox_template: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sandbox_template_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  revise_sandbox_template: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sandbox_template_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ReviseSandboxTemplateRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTemplate"];
+        };
+      };
+    };
+  };
+  archive_sandbox_template: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        sandbox_template_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
   list_sessions: {
     parameters: {
       query?: {
@@ -35240,59 +35199,6 @@ export interface operations {
         };
       };
       /** @description Database not found */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
-    };
-  };
-  get_session_environment: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        /** @description Session ID */
-        session_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Resolved session environment */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          /**
-           * @example {
-           *       "capabilities": {
-           *         "native_processes": false,
-           *         "network_enforced": true,
-           *         "packages": false,
-           *         "portable_checkpoint": true,
-           *         "ports": false,
-           *         "pty": false
-           *       },
-           *       "containment": {
-           *         "level": "isolated",
-           *         "network": "deny"
-           *       },
-           *       "durability": "checkpointed",
-           *       "resolved_from": "capabilities",
-           *       "source_capability": "bashkit_shell",
-           *       "target": {
-           *         "kind": "vfs",
-           *         "provider": "bashkit"
-           *       }
-           *     }
-           */
-          "application/json": components["schemas"]["SessionEnvironmentResponse"];
-        };
-      };
-      /** @description Session not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -36328,7 +36234,7 @@ export interface operations {
       };
     };
   };
-  get_sandbox: {
+  get_session_sandbox: {
     parameters: {
       query?: never;
       header?: never;
@@ -36340,13 +36246,36 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Managed sandbox status */
+      /** @description Resolved primary Session Sandbox */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["GetSessionSandboxResponse"];
+          /**
+           * @example {
+           *       "capabilities": {
+           *         "native_processes": false,
+           *         "network_enforced": true,
+           *         "packages": false,
+           *         "portable_checkpoint": true,
+           *         "ports": false,
+           *         "pty": false
+           *       },
+           *       "containment": {
+           *         "level": "isolated",
+           *         "network": "deny"
+           *       },
+           *       "durability": "checkpointed",
+           *       "resolved_from": "capabilities",
+           *       "source_capability": "bashkit_shell",
+           *       "target": {
+           *         "kind": "vfs",
+           *         "provider": "bashkit"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["SessionSandboxResponse"];
         };
       };
       /** @description Session not found */

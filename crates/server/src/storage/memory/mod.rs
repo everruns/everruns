@@ -160,17 +160,17 @@ pub struct InMemoryDatabase {
     agent_mcp_secret_bindings: RwLock<HashMap<Uuid, AgentMcpSecretBindingRow>>,
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     pub(super) sessions: RwLock<HashMap<SessionId, SessionRow>>,
-    pub(super) environments: RwLock<HashMap<SessionId, super::EnvironmentRecord>>,
-    pub(super) environment_definitions: RwLock<
+    pub(super) primary_sandboxes: RwLock<HashMap<SessionId, super::PrimarySandboxRecord>>,
+    pub(super) sandbox_templates: RwLock<
         HashMap<
-            everruns_contracts::typed_id::EnvironmentId,
-            (i64, crate::records::EnvironmentDefinition),
+            everruns_contracts::typed_id::SandboxTemplateId,
+            (i64, crate::records::SandboxTemplate),
         >,
     >,
-    pub(super) environment_revisions: RwLock<
+    pub(super) sandbox_template_revisions: RwLock<
         HashMap<
-            everruns_contracts::typed_id::EnvironmentRevisionId,
-            (i64, crate::records::EnvironmentRevision),
+            everruns_contracts::typed_id::SandboxTemplateRevisionId,
+            (i64, crate::records::SandboxTemplateRevision),
         >,
     >,
     waiting_turn_resolutions: RwLock<HashMap<SessionId, WaitingTurnResolutionState>>,
@@ -375,9 +375,9 @@ impl Default for InMemoryDatabase {
             agent_mcp_secret_bindings: RwLock::new(HashMap::new()),
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
-            environments: RwLock::new(HashMap::new()),
-            environment_definitions: RwLock::new(HashMap::new()),
-            environment_revisions: RwLock::new(HashMap::new()),
+            primary_sandboxes: RwLock::new(HashMap::new()),
+            sandbox_templates: RwLock::new(HashMap::new()),
+            sandbox_template_revisions: RwLock::new(HashMap::new()),
             waiting_turn_resolutions: RwLock::new(HashMap::new()),
             session_participants: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),

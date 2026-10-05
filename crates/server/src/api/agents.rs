@@ -34,7 +34,7 @@ use super::common::{
     WithUrls, impl_auth_state,
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
-use crate::domains::agents::environment::selection_update as environment_update;
+use crate::domains::agents::sandbox_policy::selection_update as sandbox_policy_update;
 use crate::domains::agents::types::{
     AgentAnalysisResponse, CheckAgentNameQuery, CheckAgentNameResponse, CreateAgentRequest,
     CreateAgentVersionRequest, ForkAgentVersionRequest, ImportAgentQuery, ListAgentsQuery,
@@ -853,7 +853,7 @@ pub async fn upsert_agent(
                     harness_name: req.harness_name,
                     tags: Some(req.tags),
                     capabilities: Some(req.capabilities),
-                    environments: environment_update(req.environments),
+                    sandbox_policy: sandbox_policy_update(req.sandbox_policy),
                     initial_files: Some(req.initial_files),
                     tools: Some(req.tools),
                     mcp_servers: Some(req.mcp_servers),
@@ -1108,7 +1108,7 @@ async fn import_from_example(
         harness_name: Some(seed.harness_name.to_string()),
         tags: seed.tags.iter().map(|s| s.to_string()).collect(),
         capabilities,
-        environments: None,
+        sandbox_policy: None,
         initial_files: vec![],
         tools: vec![],
         mcp_servers: Default::default(),

@@ -384,7 +384,7 @@ export default function OrganizationPage() {
 
             <SettingsGroup
               title="Harnesses"
-              description="Harness fallbacks applied when sessions do not set their own runtime environment."
+              description="Harness fallbacks applied when Sessions do not set their own runtime Sandbox."
               status={canManage ? <AutoSaveBadge saveState={saveStates.harnesses} /> : null}
               error={saveStates.harnesses.error}
             >

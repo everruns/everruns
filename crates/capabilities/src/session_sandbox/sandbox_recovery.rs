@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, Weak};
 
 use everruns_core::event_emitter::EventEmitter;
-use everruns_core::events::{EnvironmentLifecycleData, EventContext, EventData, EventRequest};
+use everruns_core::events::{EventContext, EventData, EventRequest, SandboxLifecycleData};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
 
@@ -41,8 +41,8 @@ async fn emit_lifecycle_event(
     let Some(emitter) = context.event_emitter.as_ref() else {
         return;
     };
-    let data = EnvironmentLifecycleData {
-        environment_id: state.sandbox.as_ref().map(|sandbox| sandbox.id.to_string()),
+    let data = SandboxLifecycleData {
+        sandbox_id: state.sandbox.as_ref().map(|sandbox| sandbox.id.to_string()),
         provider: state.provider.clone(),
         previous_instance_id: previous_instance_id.to_string(),
         current_instance_id: recovered.then(|| state.instance.external_id.clone()),
@@ -50,9 +50,9 @@ async fn emit_lifecycle_event(
         process_state_lost: true,
     };
     let event_data = if recovered {
-        EventData::EnvironmentRecovered(data)
+        EventData::SandboxRecovered(data)
     } else {
-        EventData::EnvironmentInstanceLost(data)
+        EventData::SandboxInstanceLost(data)
     };
     let request = EventRequest::new(
         context.session_id,
@@ -63,7 +63,7 @@ async fn emit_lifecycle_event(
         event_data,
     );
     if let Err(error) = emitter.emit(request).await {
-        tracing::warn!(%error, "failed to emit managed Environment lifecycle event");
+        tracing::warn!(%error, "failed to emit managed Sandbox lifecycle event");
     }
 }
 
@@ -108,9 +108,7 @@ mod tests {
 
     use async_trait::async_trait;
     use everruns_contracts::typed_id::{EventId, SessionId};
-    use everruns_core::events::{
-        ENVIRONMENT_INSTANCE_LOST, ENVIRONMENT_RECOVERED, Event, EventRequest,
-    };
+    use everruns_core::events::{Event, EventRequest, SANDBOX_INSTANCE_LOST, SANDBOX_RECOVERED};
 
     use super::*;
     use crate::session_sandbox::SessionSandboxInstance;
@@ -154,10 +152,10 @@ mod tests {
 
         let requests = emitter.0.lock().unwrap();
         assert_eq!(requests.len(), 2);
-        assert_eq!(requests[0].event_type, ENVIRONMENT_INSTANCE_LOST);
-        assert_eq!(requests[1].event_type, ENVIRONMENT_RECOVERED);
-        let EventData::EnvironmentRecovered(data) = &requests[1].data else {
-            panic!("expected environment.recovered payload");
+        assert_eq!(requests[0].event_type, SANDBOX_INSTANCE_LOST);
+        assert_eq!(requests[1].event_type, SANDBOX_RECOVERED);
+        let EventData::SandboxRecovered(data) = &requests[1].data else {
+            panic!("expected sandbox.recovered payload");
         };
         assert_eq!(data.provider, "daytona");
         assert_eq!(data.previous_instance_id, "physical-old");

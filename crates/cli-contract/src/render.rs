@@ -43,7 +43,11 @@ fn leaf(command: &Command, path: &str) -> String {
         .map(argument)
         .collect();
     parts.sort();
-    format!("{path}\t{}", parts.join(" "))
+    if parts.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}\t{}", parts.join(" "))
+    }
 }
 
 fn argument(arg: &clap::Arg) -> String {
@@ -116,6 +120,14 @@ mod tests {
     #[test]
     fn a_leaf_renders_its_spelling_shorts_and_requirement() {
         assert_eq!(tree(&command()), "widgets list\t--limit/-l --name!");
+    }
+
+    #[test]
+    fn an_argument_free_leaf_has_no_trailing_whitespace() {
+        let command = clap::Command::new("root")
+            .subcommand(clap::Command::new("widgets").subcommand(clap::Command::new("list")));
+
+        assert_eq!(tree(&command), "widgets list");
     }
 
     /// The guard is only worth having if it fails, so prove it does.

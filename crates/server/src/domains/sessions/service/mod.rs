@@ -37,7 +37,7 @@ use crate::kernel_imports::{
 use crate::max_iterations;
 use crate::org_init;
 use crate::records::FeatureFlags;
-use crate::records::{AgentVersionPolicy, EnvironmentSet, MemoryConfig, MemoryMountAccess};
+use crate::records::{AgentVersionPolicy, MemoryConfig, MemoryMountAccess, SandboxPolicy};
 use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::server::ResourceLimitsConfig;
 use crate::services::{PrincipalService, row_to_principal};

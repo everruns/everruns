@@ -1,40 +1,40 @@
-//! Authored and resolved execution-environment profiles.
+//! Authored Sandbox Templates and resolved Session Sandbox specifications.
 //!
-//! Agent versions carry [`EnvironmentSet`] as desired configuration. A session
-//! resolves one profile exactly once and persists a [`ResolvedEnvironmentProfile`]
-//! snapshot on its logical environment, so later agent edits cannot move a
-//! running session to different compute.
+//! Agent versions carry [`SandboxPolicy`] as desired configuration. A session
+//! resolves one template exactly once and persists a [`ResolvedSandboxSpec`]
+//! snapshot on its logical Sandbox, so later Agent edits cannot move a running
+//! Session to different compute.
 
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::{EnvironmentId, EnvironmentRevisionId};
+use everruns_contracts::typed_id::{SandboxTemplateId, SandboxTemplateRevisionId};
 use serde::{Deserialize, Serialize};
 
 use utoipa::ToSchema;
 
-/// Named execution environments offered by an Agent version.
+/// Agent policy for selecting the Session's primary Sandbox Template.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentSet {
+pub struct SandboxPolicy {
     /// Who may choose the primary Sandbox for a Session. Older rows omit this
-    /// field; one profile then means `fixed`, while several mean `selectable`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub policy: Option<EnvironmentPolicyMode>,
-    /// Profile inherited when session creation does not choose one explicitly.
+    /// field; one template then means `fixed`, while several mean `selectable`.
+    #[serde(default, alias = "policy", skip_serializing_if = "Option::is_none")]
+    pub mode: Option<SandboxPolicyMode>,
+    /// Template binding inherited when Session creation does not choose one.
     #[schema(example = "primary")]
     pub default: String,
-    /// Human-authored profiles addressable by name at session creation.
-    #[serde(default)]
-    pub profiles: BTreeMap<String, EnvironmentProfile>,
+    /// Template snapshots addressable by binding name at Session creation.
+    #[serde(default, alias = "profiles")]
+    pub templates: BTreeMap<String, SandboxTemplateSpec>,
 }
 
-impl EnvironmentSet {
+impl SandboxPolicy {
     /// Effective policy, including the deterministic legacy migration rule.
-    pub fn effective_policy(&self) -> EnvironmentPolicyMode {
-        self.policy.unwrap_or(if self.profiles.len() <= 1 {
-            EnvironmentPolicyMode::Fixed
+    pub fn effective_mode(&self) -> SandboxPolicyMode {
+        self.mode.unwrap_or(if self.templates.len() <= 1 {
+            SandboxPolicyMode::Fixed
         } else {
-            EnvironmentPolicyMode::Selectable
+            SandboxPolicyMode::Selectable
         })
     }
 }
@@ -42,69 +42,77 @@ impl EnvironmentSet {
 /// Agent policy for choosing the Session's one immutable primary Sandbox.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EnvironmentPolicyMode {
-    /// Always use the default Environment; Session overrides are rejected.
+pub enum SandboxPolicyMode {
+    /// Always use the default Sandbox Template; Session overrides are rejected.
     Fixed,
-    /// A Session may select only one of the declared named Environments.
+    /// A Session may select only one of the declared template bindings.
     Selectable,
-    /// A Session may select a named Environment or submit a constrained one-off profile.
+    /// A Session may select a binding or submit a constrained one-off specification.
     Configurable,
 }
 
-/// Desired environment configuration authored by a human or application.
+/// Desired Sandbox configuration authored by a human or application.
 ///
 /// Containment and durability may be omitted when the target has exactly one
-/// honest answer. Resolution fills those fields before the profile is pinned
+/// honest answer. Resolution fills those fields before the specification is pinned
 /// to a Session.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentProfile {
-    /// Immutable reusable Environment revision this profile was copied from.
-    /// The profile remains a complete snapshot so Agent versions are portable
-    /// and later Environment revisions cannot change an existing version.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+pub struct SandboxTemplateSpec {
+    /// Immutable Sandbox Template revision this specification was copied from.
+    /// The specification remains complete so Agent versions are portable and
+    /// later template revisions cannot change an existing version.
+    #[serde(
+        default,
+        alias = "source_revision_id",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[schema(value_type = Option<String>)]
-    pub source_revision_id: Option<EnvironmentRevisionId>,
+    pub template_revision_id: Option<SandboxTemplateRevisionId>,
     /// Provider-neutral target plus its concrete adapter binding.
-    pub target: EnvironmentTargetProfile,
+    pub target: SandboxTargetSpec,
     /// Requested isolation policy; resolution supplies an honest target default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub containment: Option<EnvironmentContainmentProfile>,
+    pub containment: Option<SandboxContainmentSpec>,
     /// Requested recovery guarantee; resolution supplies a target default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub durability: Option<EnvironmentDurability>,
+    pub durability: Option<SandboxDurability>,
     /// Idle lifecycle policy controlled by Everruns.
     #[serde(default)]
-    pub lifecycle: EnvironmentLifecycle,
+    pub lifecycle: SandboxLifecycle,
     /// Reproducible commands run when physical compute is initialized.
     #[serde(default)]
-    pub bootstrap: EnvironmentBootstrap,
+    pub bootstrap: SandboxBootstrap,
 }
 
-/// Session-pinned profile. Every security- and recovery-relevant default has
+/// Session-pinned specification. Every security- and recovery-relevant default has
 /// been made explicit.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct ResolvedEnvironmentProfile {
+pub struct ResolvedSandboxSpec {
     /// Reusable revision from which this complete snapshot was copied.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        alias = "source_revision_id",
+        skip_serializing_if = "Option::is_none"
+    )]
     #[schema(value_type = Option<String>)]
-    pub source_revision_id: Option<EnvironmentRevisionId>,
+    pub template_revision_id: Option<SandboxTemplateRevisionId>,
     /// Exact target pinned for the Session.
-    pub target: EnvironmentTargetProfile,
+    pub target: SandboxTargetSpec,
     /// Fully resolved containment contract.
-    pub containment: EnvironmentContainmentProfile,
+    pub containment: SandboxContainmentSpec,
     /// Fully resolved recovery guarantee.
-    pub durability: EnvironmentDurability,
+    pub durability: SandboxDurability,
     /// Pinned lifecycle policy.
-    pub lifecycle: EnvironmentLifecycle,
+    pub lifecycle: SandboxLifecycle,
     /// Pinned initialization commands.
-    pub bootstrap: EnvironmentBootstrap,
+    pub bootstrap: SandboxBootstrap,
 }
 
 /// Where commands execute.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentTargetProfile {
+pub struct SandboxTargetSpec {
     /// Provider-neutral target class.
-    pub kind: EnvironmentTargetKind,
+    pub kind: SandboxTargetKind,
     /// Concrete adapter for target kinds with more than one implementation.
     #[serde(default, alias = "vendor", skip_serializing_if = "Option::is_none")]
     #[schema(example = "daytona")]
@@ -120,10 +128,10 @@ pub struct EnvironmentTargetProfile {
     pub options: serde_json::Value,
 }
 
-impl EnvironmentTargetProfile {
+impl SandboxTargetSpec {
     pub fn vfs(provider: impl Into<String>) -> Self {
         Self {
-            kind: EnvironmentTargetKind::Vfs,
+            kind: SandboxTargetKind::Vfs,
             provider: Some(provider.into()),
             connection_id: None,
             options: empty_object(),
@@ -132,7 +140,7 @@ impl EnvironmentTargetProfile {
 
     pub fn managed(provider: impl Into<String>) -> Self {
         Self {
-            kind: EnvironmentTargetKind::Managed,
+            kind: SandboxTargetKind::Managed,
             provider: Some(provider.into()),
             connection_id: None,
             options: empty_object(),
@@ -141,7 +149,7 @@ impl EnvironmentTargetProfile {
 
     pub fn host() -> Self {
         Self {
-            kind: EnvironmentTargetKind::Host,
+            kind: SandboxTargetKind::Host,
             provider: None,
             connection_id: None,
             options: empty_object(),
@@ -152,7 +160,7 @@ impl EnvironmentTargetProfile {
 /// Provider-neutral target class.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EnvironmentTargetKind {
+pub enum SandboxTargetKind {
     Host,
     Machine,
     Vfs,
@@ -160,7 +168,7 @@ pub enum EnvironmentTargetKind {
     Managed,
 }
 
-impl EnvironmentTargetKind {
+impl SandboxTargetKind {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Host => "host",
@@ -174,43 +182,43 @@ impl EnvironmentTargetKind {
 
 /// What commands may touch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentContainmentProfile {
+pub struct SandboxContainmentSpec {
     /// Isolation mechanism the provider must supply.
-    pub level: EnvironmentContainmentLevel,
+    pub level: SandboxContainmentLevel,
     /// Outbound network access the provider must enforce.
     #[serde(default)]
-    pub network: EnvironmentNetworkPolicy,
+    pub network: SandboxNetworkPolicy,
     /// Filesystem mutation boundary for command execution.
     #[serde(default)]
-    pub filesystem: EnvironmentFilesystemPolicy,
+    pub filesystem: SandboxFilesystemPolicy,
     /// Whether the runtime may widen containment after Session creation.
     #[serde(default)]
-    pub escalation: EnvironmentEscalation,
+    pub escalation: SandboxEscalation,
 }
 
-impl EnvironmentContainmentProfile {
+impl SandboxContainmentSpec {
     pub fn isolated() -> Self {
         Self {
-            level: EnvironmentContainmentLevel::Isolated,
-            network: EnvironmentNetworkPolicy::Deny,
-            filesystem: EnvironmentFilesystemPolicy::default(),
-            escalation: EnvironmentEscalation::Never,
+            level: SandboxContainmentLevel::Isolated,
+            network: SandboxNetworkPolicy::Deny,
+            filesystem: SandboxFilesystemPolicy::default(),
+            escalation: SandboxEscalation::Never,
         }
     }
 
     pub fn uncontained() -> Self {
         Self {
-            level: EnvironmentContainmentLevel::None,
-            network: EnvironmentNetworkPolicy::Allow,
-            filesystem: EnvironmentFilesystemPolicy::default(),
-            escalation: EnvironmentEscalation::Never,
+            level: SandboxContainmentLevel::None,
+            network: SandboxNetworkPolicy::Allow,
+            filesystem: SandboxFilesystemPolicy::default(),
+            escalation: SandboxEscalation::Never,
         }
     }
 }
 
 /// Filesystem paths the target permits command execution to mutate.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentFilesystemPolicy {
+pub struct SandboxFilesystemPolicy {
     /// Absolute roots the runtime may mutate; empty means provider default.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub writable_roots: Vec<String>,
@@ -218,7 +226,7 @@ pub struct EnvironmentFilesystemPolicy {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EnvironmentContainmentLevel {
+pub enum SandboxContainmentLevel {
     None,
     Native,
     Isolated,
@@ -227,7 +235,7 @@ pub enum EnvironmentContainmentLevel {
 /// Outbound network policy the target must actually enforce.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "mode", rename_all = "snake_case")]
-pub enum EnvironmentNetworkPolicy {
+pub enum SandboxNetworkPolicy {
     #[default]
     Deny,
     Allowlist {
@@ -239,7 +247,7 @@ pub enum EnvironmentNetworkPolicy {
 /// Who may widen containment after a session starts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EnvironmentEscalation {
+pub enum SandboxEscalation {
     #[default]
     Never,
     Approval,
@@ -249,7 +257,7 @@ pub enum EnvironmentEscalation {
 /// What survives physical compute loss.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EnvironmentDurability {
+pub enum SandboxDurability {
     Checkpointed,
     ProviderSnapshot,
     None,
@@ -257,65 +265,64 @@ pub enum EnvironmentDurability {
 
 /// Control-plane lifecycle intent. Providers do not own these timers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentLifecycle {
+pub struct SandboxLifecycle {
     /// Inactivity interval before applying `idle_action`.
     #[serde(default = "default_idle_after_seconds")]
     #[schema(example = 300)]
     pub idle_after_seconds: u64,
     /// Action Everruns requests after the idle interval.
     #[serde(default)]
-    pub idle_action: EnvironmentIdleAction,
+    pub idle_action: SandboxIdleAction,
 }
 
-impl Default for EnvironmentLifecycle {
+impl Default for SandboxLifecycle {
     fn default() -> Self {
         Self {
             idle_after_seconds: default_idle_after_seconds(),
-            idle_action: EnvironmentIdleAction::CheckpointAndStop,
+            idle_action: SandboxIdleAction::CheckpointAndStop,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EnvironmentIdleAction {
+pub enum SandboxIdleAction {
     #[default]
     CheckpointAndStop,
     Stop,
     KeepRunning,
 }
 
-/// Reproducible initialization pinned with the profile snapshot.
+/// Reproducible initialization pinned with the specification snapshot.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentBootstrap {
+pub struct SandboxBootstrap {
     /// Ordered commands replayed when creating or recovering physical compute.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commands: Vec<String>,
 }
 
-/// Session-level selection: use an Agent profile, or provide an inline one.
+/// Session-level selection: use an Agent template binding or provide an inline specification.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(untagged)]
-pub enum EnvironmentSelection {
+pub enum SandboxSelection {
     Named { r#use: String },
-    Inline(EnvironmentProfile),
+    Inline(SandboxTemplateSpec),
 }
 
-/// Organization-scoped reusable execution Environment.
+/// Organization-scoped reusable Sandbox Template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-#[schema(as = Environment)]
-pub struct EnvironmentDefinition {
-    /// Stable public Environment identifier.
+pub struct SandboxTemplate {
+    /// Stable public Sandbox Template identifier.
     #[serde(rename = "id")]
     #[schema(value_type = String)]
-    pub public_id: EnvironmentId,
+    pub public_id: SandboxTemplateId,
     /// Addressable name used in configuration.
     #[schema(example = "coding-daytona")]
     pub name: String,
     /// Human-readable name shown in management surfaces.
     #[schema(example = "Coding - Daytona")]
     pub display_name: String,
-    /// Optional explanation of the Environment's intended workload.
+    /// Optional explanation of the Sandbox Template's intended workload.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "Recoverable coding workspace managed by Daytona")]
     pub description: Option<String>,
@@ -325,28 +332,30 @@ pub struct EnvironmentDefinition {
     #[schema(example = "active")]
     pub status: String,
     /// Latest immutable revision used for new references.
-    pub current_revision: EnvironmentRevision,
+    pub current_revision: SandboxTemplateRevision,
     /// Creation timestamp.
     pub created_at: DateTime<Utc>,
     /// Timestamp of the most recent definition or revision change.
     pub updated_at: DateTime<Utc>,
 }
 
-/// Immutable revision of an Environment template.
+/// Immutable revision of a Sandbox Template.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentRevision {
+pub struct SandboxTemplateRevision {
     /// Stable public revision identifier pinned into Agent and Session snapshots.
     #[serde(rename = "id")]
     #[schema(value_type = String)]
-    pub public_id: EnvironmentRevisionId,
-    /// Parent reusable Environment identifier.
+    pub public_id: SandboxTemplateRevisionId,
+    /// Parent reusable Sandbox Template identifier.
+    #[serde(alias = "environment_id")]
     #[schema(value_type = String)]
-    pub environment_id: EnvironmentId,
-    /// Monotonically increasing revision number within the Environment.
+    pub sandbox_template_id: SandboxTemplateId,
+    /// Monotonically increasing revision number within the Sandbox Template.
     #[schema(example = 3)]
     pub revision: i32,
-    /// Complete immutable authored profile.
-    pub profile: EnvironmentProfile,
+    /// Complete immutable authored specification.
+    #[serde(alias = "profile")]
+    pub spec: SandboxTemplateSpec,
     /// Revision creation timestamp.
     pub created_at: DateTime<Utc>,
 }
@@ -369,49 +378,64 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn named_selection_is_distinct_from_inline_profile() {
-        let named: EnvironmentSelection = serde_json::from_value(json!({"use": "build"})).unwrap();
+    fn named_selection_is_distinct_from_inline_spec() {
+        let named: SandboxSelection = serde_json::from_value(json!({"use": "build"})).unwrap();
         assert_eq!(
             named,
-            EnvironmentSelection::Named {
+            SandboxSelection::Named {
                 r#use: "build".into()
             }
         );
 
-        let inline: EnvironmentSelection = serde_json::from_value(json!({
+        let inline: SandboxSelection = serde_json::from_value(json!({
             "target": {"kind": "vfs", "provider": "bashkit"}
         }))
         .unwrap();
-        assert!(matches!(inline, EnvironmentSelection::Inline(_)));
+        assert!(matches!(inline, SandboxSelection::Inline(_)));
     }
 
     #[test]
-    fn legacy_environment_sets_get_a_deterministic_policy() {
-        let profile: EnvironmentProfile = serde_json::from_value(json!({
+    fn omitted_mode_gets_a_deterministic_policy() {
+        let spec: SandboxTemplateSpec = serde_json::from_value(json!({
             "target": {"kind": "vfs", "provider": "bashkit"}
         }))
         .unwrap();
-        let fixed = EnvironmentSet {
-            policy: None,
+        let fixed = SandboxPolicy {
+            mode: None,
             default: "default".into(),
-            profiles: BTreeMap::from([("default".into(), profile.clone())]),
+            templates: BTreeMap::from([("default".into(), spec.clone())]),
         };
-        assert_eq!(fixed.effective_policy(), EnvironmentPolicyMode::Fixed);
+        assert_eq!(fixed.effective_mode(), SandboxPolicyMode::Fixed);
 
-        let selectable = EnvironmentSet {
-            policy: None,
+        let selectable = SandboxPolicy {
+            mode: None,
             default: "one".into(),
-            profiles: BTreeMap::from([("one".into(), profile.clone()), ("two".into(), profile)]),
+            templates: BTreeMap::from([("one".into(), spec.clone()), ("two".into(), spec)]),
         };
-        assert_eq!(
-            selectable.effective_policy(),
-            EnvironmentPolicyMode::Selectable
-        );
+        assert_eq!(selectable.effective_mode(), SandboxPolicyMode::Selectable);
+    }
+
+    #[test]
+    fn legacy_policy_keys_are_input_only_aliases() {
+        let policy: SandboxPolicy = serde_json::from_value(json!({
+            "policy": "selectable",
+            "default": "scratch",
+            "profiles": {
+                "scratch": {"target": {"kind": "vfs", "provider": "bashkit"}}
+            }
+        }))
+        .unwrap();
+
+        let serialized = serde_json::to_value(policy).unwrap();
+        assert_eq!(serialized["mode"], "selectable");
+        assert!(serialized.get("templates").is_some());
+        assert!(serialized.get("policy").is_none());
+        assert!(serialized.get("profiles").is_none());
     }
 
     #[test]
     fn target_accepts_vendor_as_a_legacy_authoring_alias() {
-        let target: EnvironmentTargetProfile = serde_json::from_value(json!({
+        let target: SandboxTargetSpec = serde_json::from_value(json!({
             "kind": "managed",
             "vendor": "daytona"
         }))
@@ -422,7 +446,7 @@ mod tests {
 
     #[test]
     fn omitted_target_options_resolve_to_an_empty_object() {
-        let target: EnvironmentTargetProfile = serde_json::from_value(json!({
+        let target: SandboxTargetSpec = serde_json::from_value(json!({
             "kind": "vfs",
             "provider": "bashkit"
         }))

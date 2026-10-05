@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NewPlaygroundChatForm } from "@/components/chat/new-chat-form";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
-import type { EnvironmentSet } from "@/lib/api/types";
+import type { SandboxPolicy } from "@/lib/api/types";
 
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -122,7 +122,8 @@ function setup({
     id: string;
     name: string;
     display_name: string;
-    environments?: EnvironmentSet;
+    sandbox_policy?: SandboxPolicy;
+    effective_harness?: { name: string };
   }>;
   harnesses?: Array<{ id: string; name: string; display_name: string }>;
 } = {}) {
@@ -158,16 +159,16 @@ describe("NewPlaygroundChatForm", () => {
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/playground/sess_new"));
   });
 
-  it("shows an agent's environments and pins the selected profile", async () => {
+  it("shows an agent.s sandboxes and pins the selected sandbox", async () => {
     setup({
       agents: [
         {
           id: "agent_1",
           name: "scout",
           display_name: "Scout",
-          environments: {
+          sandbox_policy: {
             default: "scratch",
-            profiles: {
+            templates: {
               scratch: { target: { kind: "vfs", provider: "bashkit" } },
               build: { target: { kind: "managed", provider: "daytona" } },
             },
@@ -180,8 +181,8 @@ describe("NewPlaygroundChatForm", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
       target: { value: "agent:agent_1" },
     });
-    expect(screen.getByRole("combobox", { name: "Environment" })).toHaveValue("scratch");
-    fireEvent.change(screen.getByRole("combobox", { name: "Environment" }), {
+    expect(screen.getByRole("combobox", { name: "Sandbox" })).toHaveValue("scratch");
+    fireEvent.change(screen.getByRole("combobox", { name: "Sandbox" }), {
       target: { value: "build" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
@@ -190,7 +191,7 @@ describe("NewPlaygroundChatForm", () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         request: {
           agent_id: "agent_1",
-          environment: { use: "build" },
+          sandbox: { use: "build" },
           source: "playground",
           playground_user_id: "identity_customer",
         },
@@ -198,16 +199,16 @@ describe("NewPlaygroundChatForm", () => {
     );
   });
 
-  it("shows a fixed Environment without sending a Session override", async () => {
+  it("shows a fixed Sandbox without sending a Session override", async () => {
     setup({
       agents: [
         {
           id: "agent_1",
           name: "scout",
           display_name: "Scout",
-          environments: {
+          sandbox_policy: {
             default: "build",
-            profiles: {
+            templates: {
               build: { target: { kind: "managed", provider: "daytona" } },
             },
           },
@@ -218,7 +219,7 @@ describe("NewPlaygroundChatForm", () => {
     render(<NewPlaygroundChatForm initialAgentId="agent_1" endUserId="identity_customer" />);
 
     expect(screen.getByText("build · fixed by Agent")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "Environment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Sandbox" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Start Playground chat/ }));
 
     await waitFor(() =>
@@ -260,6 +261,48 @@ describe("NewPlaygroundChatForm", () => {
         },
       }),
     );
+  });
+
+  it("shows the harness-owned Bashkit sandbox without allowing an override", () => {
+    setup({
+      harnesses: [
+        {
+          id: "harness_bashkit",
+          name: "bashkit-worker",
+          display_name: "Bashkit Worker",
+        },
+      ],
+    });
+
+    render(<NewPlaygroundChatForm endUserId="identity_customer" />);
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "harness:bashkit-worker" },
+    });
+    expect(
+      screen.getByText("Bashkit Virtual Workspace · fixed by Bashkit Worker"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Sandbox" })).not.toBeInTheDocument();
+  });
+
+  it("shows the harness-owned Bashkit sandbox for an Agent", () => {
+    setup({
+      agents: [
+        {
+          id: "agent_1",
+          name: "scout",
+          display_name: "Scout",
+          effective_harness: { name: "bashkit-worker" },
+        },
+      ],
+    });
+
+    render(<NewPlaygroundChatForm initialAgentId="agent_1" endUserId="identity_customer" />);
+
+    expect(
+      screen.getByText("Bashkit Virtual Workspace · fixed by Bashkit Worker"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Sandbox" })).not.toBeInTheDocument();
   });
 
   it("points at agent creation when there is nothing to talk to", () => {

@@ -15,7 +15,7 @@
 //! machine, where the same box can run a command wide open or under a kernel
 //! policy.
 //!
-//! See `knowledge/harnesses/execution-environments.md`.
+//! See `knowledge/harnesses/sandbox-templates.md`.
 
 use std::fmt;
 use std::sync::Arc;

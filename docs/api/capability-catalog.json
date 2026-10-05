@@ -1157,7 +1157,7 @@
         "dev"
       ],
       "id": "session_sandbox",
-      "name": "Managed Environment",
+      "name": "Managed Sandbox",
       "status": "available",
       "tools": [
         "bash",

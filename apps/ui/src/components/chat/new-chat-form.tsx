@@ -1,11 +1,11 @@
 /**
  * New Playground chat: pick an Agent or harness, virtual user, and optional
- * Agent Environment before creating the session. Those bindings stay fixed
+ * Agent Sandbox before creating the session. Those bindings stay fixed
  * for the session lifetime (knowledge/ui/information-architecture.md).
  *
  * Personal Chats do not use this form. They always run the managed Platform
  * Chat Agent on its fixed runtime; Playground owns arbitrary Agent, harness,
- * identity, and Environment selection.
+ * identity, and Sandbox selection.
  *
  * An org with no model to chat with never reaches this form: both hosts own
  * their empty-state frame, so they swap the whole frame for the
@@ -63,24 +63,30 @@ export function NewPlaygroundChatForm({
       selection === `${HARNESS_VALUE_PREFIX}${harness.name}` ||
       !isHarnessDeprecated(harness),
   );
-  const [environment, setEnvironment] = useState("");
+  const [sandbox, setSandbox] = useState("");
   const [error, setError] = useState<string | null>(null);
   const optionsLoading = agentsLoading || harnessesLoading;
   const selectedAgent = selection.startsWith(AGENT_VALUE_PREFIX)
     ? agents.find((agent) => agent.id === selection.slice(AGENT_VALUE_PREFIX.length))
     : undefined;
-  const environmentProfiles = selectedAgent?.environments?.profiles ?? {};
-  const environmentNames = Object.keys(environmentProfiles);
-  const environmentPolicy =
-    selectedAgent?.environments?.policy ?? (environmentNames.length > 1 ? "selectable" : "fixed");
-  const selectedEnvironment = environment || selectedAgent?.environments?.default || "";
+  const selectedHarness = selection.startsWith(HARNESS_VALUE_PREFIX)
+    ? harnesses.find((harness) => harness.name === selection.slice(HARNESS_VALUE_PREFIX.length))
+    : undefined;
+  const usesManagedBashkitSandbox =
+    selectedHarness?.name === "bashkit-worker" ||
+    selectedAgent?.effective_harness?.name === "bashkit-worker";
+  const sandboxTemplates = selectedAgent?.sandbox_policy?.templates ?? {};
+  const sandboxNames = Object.keys(sandboxTemplates);
+  const sandboxMode =
+    selectedAgent?.sandbox_policy?.mode ?? (sandboxNames.length > 1 ? "selectable" : "fixed");
+  const selectedSandbox = sandbox || selectedAgent?.sandbox_policy?.default || "";
 
   const selectCounterpart = (value: string) => {
     setSelection(value);
     const agent = value.startsWith(AGENT_VALUE_PREFIX)
       ? agents.find((candidate) => candidate.id === value.slice(AGENT_VALUE_PREFIX.length))
       : undefined;
-    setEnvironment(agent?.environments?.default ?? "");
+    setSandbox(agent?.sandbox_policy?.default ?? "");
   };
 
   const start = async () => {
@@ -94,8 +100,8 @@ export function NewPlaygroundChatForm({
       const session = await createSession.mutateAsync({
         request: {
           ...binding,
-          ...(selectedAgent?.environments && selectedEnvironment && environmentPolicy !== "fixed"
-            ? { environment: { use: selectedEnvironment } }
+          ...(selectedAgent?.sandbox_policy && selectedSandbox && sandboxMode !== "fixed"
+            ? { sandbox: { use: selectedSandbox } }
             : {}),
           source: "playground",
           playground_user_id: endUserId,
@@ -160,33 +166,36 @@ export function NewPlaygroundChatForm({
             )}
           </SelectContent>
         </Select>
-        {selectedAgent?.environments &&
-        environmentNames.length > 0 &&
-        environmentPolicy !== "fixed" ? (
-          <Select value={selectedEnvironment} onValueChange={setEnvironment}>
-            <SelectTrigger className="w-full" aria-label="Environment">
-              <SelectValue placeholder="Pick an environment" />
+        {selectedAgent?.sandbox_policy && sandboxNames.length > 0 && sandboxMode !== "fixed" ? (
+          <Select value={selectedSandbox} onValueChange={setSandbox}>
+            <SelectTrigger className="w-full" aria-label="Sandbox">
+              <SelectValue placeholder="Pick a sandbox" />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
                 <SelectLabel>Runs in</SelectLabel>
-                {environmentNames.map((name) => {
-                  const profile = environmentProfiles[name];
-                  const target = profile.target.provider || profile.target.kind;
+                {sandboxNames.map((name) => {
+                  const spec = sandboxTemplates[name];
+                  const target = spec.target.provider || spec.target.kind;
                   return (
                     <SelectItem key={name} value={name}>
-                      {name === selectedAgent.environments?.default ? `${name} (default)` : name} ·{" "}
-                      {target}
+                      {name === selectedAgent.sandbox_policy?.default ? `${name} (default)` : name}{" "}
+                      · {target}
                     </SelectItem>
                   );
                 })}
               </SelectGroup>
             </SelectContent>
           </Select>
-        ) : selectedAgent?.environments && environmentNames.length > 0 ? (
+        ) : selectedAgent?.sandbox_policy && sandboxNames.length > 0 ? (
           <div className="border bg-muted/40 px-3 py-2 text-sm">
-            <span className="text-muted-foreground">Environment: </span>
-            {selectedEnvironment} · fixed by Agent
+            <span className="text-muted-foreground">Sandbox: </span>
+            {selectedSandbox} · fixed by Agent
+          </div>
+        ) : usesManagedBashkitSandbox ? (
+          <div className="border bg-muted/40 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Sandbox: </span>
+            Bashkit Virtual Workspace · fixed by Bashkit Worker
           </div>
         ) : null}
         {children}

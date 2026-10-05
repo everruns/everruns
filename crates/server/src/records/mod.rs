@@ -9,7 +9,6 @@ pub mod audit;
 pub mod budget;
 pub mod capability_schema;
 pub mod email;
-pub mod environment_profile;
 pub mod eval;
 pub mod exposure;
 pub mod feature_flags;
@@ -22,6 +21,7 @@ pub mod payment;
 pub mod principal;
 pub mod provider;
 pub mod reporting;
+pub mod sandbox_template;
 pub mod session;
 pub mod slack_channel;
 pub mod slack_provisioning;
@@ -107,7 +107,7 @@ pub mod wire;
 #[cfg(test)]
 mod wire_tests;
 
-pub use environment_profile::*;
+pub use sandbox_template::*;
 pub mod mcp_server;
 pub mod model_router;
 pub mod skill;

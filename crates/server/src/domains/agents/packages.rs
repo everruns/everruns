@@ -284,7 +284,7 @@ pub async fn export(ctx: &Ctx, id: &str) -> Result<AgentPackage, CommandError> {
         "intro_markdown",
         "short_description",
         "starters",
-        "environments",
+        "sandbox_policy",
     ];
     object.retain(|key, _| allowed.contains(&key.as_str()));
     object.insert("schema_version".into(), json!(1));
@@ -527,12 +527,12 @@ pub async fn request(
         harness_name: m.harness.clone(),
         tags: m.tags.clone(),
         capabilities: m.capabilities.clone(),
-        environments: m
-            .environments
+        sandbox_policy: m
+            .sandbox_policy
             .clone()
             .map(serde_json::from_value)
             .transpose()
-            .map_err(|e| CommandError::bad_request(format!("environments: {e}")))?,
+            .map_err(|e| CommandError::bad_request(format!("sandbox_policy: {e}")))?,
         initial_files: package.files().map_err(package_error)?,
         tools: m.tools.clone(),
         mcp_servers: m.mcp_servers.clone(),
@@ -556,7 +556,7 @@ pub async fn request(
         &req.starters,
     )
     .map_err(CommandError::bad_request)?;
-    super::environment::validate(req.environments.as_ref())?;
+    super::sandbox_policy::validate(req.sandbox_policy.as_ref())?;
     super::managed::check_high_risk_caps(ctx, &req.capabilities).await?;
     let caps = crate::domains::capabilities::validation::normalize_capability_refs(
         &ctx.db,

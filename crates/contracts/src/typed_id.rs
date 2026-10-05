@@ -47,6 +47,10 @@ pub trait IdMarker: Clone + Copy + Send + Sync + 'static {
     /// The prefix for this ID type (e.g., "agt" for agents)
     const PREFIX: &'static str;
 
+    /// Older wire prefixes accepted while a public resource is being renamed.
+    /// Serialization always emits [`Self::PREFIX`].
+    const LEGACY_PREFIXES: &'static [&'static str] = &[];
+
     /// Generate a fresh UUID for a new id of this class.
     ///
     /// Defaults to UUIDv7, whose time-ordering gives DB-backed keys B-tree
@@ -109,17 +113,19 @@ impl<T: IdMarker> TypedId<T> {
 
     /// Parse an ID from a prefixed string
     pub fn parse(s: &str) -> Result<Self, IdParseError> {
-        let expected_prefix = format!("{}_", T::PREFIX);
+        let matched_prefix = std::iter::once(T::PREFIX)
+            .chain(T::LEGACY_PREFIXES.iter().copied())
+            .find(|prefix| s.starts_with(&format!("{prefix}_")));
 
-        if !s.starts_with(&expected_prefix) {
+        let Some(matched_prefix) = matched_prefix else {
             let got_prefix = s.split('_').next().unwrap_or("").to_string();
             return Err(IdParseError::InvalidPrefix {
                 expected: T::PREFIX,
                 got: got_prefix,
             });
-        }
+        };
 
-        let suffix = &s[expected_prefix.len()..];
+        let suffix = &s[matched_prefix.len() + 1..];
 
         if suffix.len() != 32 {
             return Err(IdParseError::InvalidLength {
@@ -369,18 +375,20 @@ impl IdMarker for SessionIdMarker {
     const PREFIX: &'static str = "session";
 }
 
-/// Marker for reusable execution Environment configuration IDs.
+/// Marker for reusable Sandbox Template IDs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct EnvironmentIdMarker;
-impl IdMarker for EnvironmentIdMarker {
-    const PREFIX: &'static str = "env";
+pub struct SandboxTemplateIdMarker;
+impl IdMarker for SandboxTemplateIdMarker {
+    const PREFIX: &'static str = "sbxtpl";
+    const LEGACY_PREFIXES: &'static [&'static str] = &["env"];
 }
 
-/// Marker for immutable Environment revision IDs.
+/// Marker for immutable Sandbox Template revision IDs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct EnvironmentRevisionIdMarker;
-impl IdMarker for EnvironmentRevisionIdMarker {
-    const PREFIX: &'static str = "envrev";
+pub struct SandboxTemplateRevisionIdMarker;
+impl IdMarker for SandboxTemplateRevisionIdMarker {
+    const PREFIX: &'static str = "sbxtplrev";
+    const LEGACY_PREFIXES: &'static [&'static str] = &["envrev"];
 }
 
 /// Marker for durable logical Sandbox IDs.
@@ -748,10 +756,10 @@ pub type NotificationId = TypedId<NotificationIdMarker>;
 pub type MemoryId = TypedId<MemoryIdMarker>;
 /// Workspace ID (org-scoped named Workspace — see `knowledge/runtime-resources/workspace.md`)
 pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
-/// Reusable execution Environment configuration ID.
-pub type EnvironmentId = TypedId<EnvironmentIdMarker>;
-/// Immutable Environment revision ID.
-pub type EnvironmentRevisionId = TypedId<EnvironmentRevisionIdMarker>;
+/// Reusable Sandbox Template ID.
+pub type SandboxTemplateId = TypedId<SandboxTemplateIdMarker>;
+/// Immutable Sandbox Template revision ID.
+pub type SandboxTemplateRevisionId = TypedId<SandboxTemplateRevisionIdMarker>;
 /// Durable logical Sandbox ID.
 pub type SandboxId = TypedId<SandboxIdMarker>;
 /// Eval ID
@@ -846,6 +854,20 @@ mod tests {
                 id
             );
         }
+    }
+
+    #[test]
+    fn sandbox_template_ids_accept_legacy_prefixes_but_serialize_canonically() {
+        let suffix = "0000000000000000000000000000002a";
+        let template = SandboxTemplateId::parse(&format!("env_{suffix}")).unwrap();
+        let revision = SandboxTemplateRevisionId::parse(&format!("envrev_{suffix}")).unwrap();
+
+        assert_eq!(template.to_string(), format!("sbxtpl_{suffix}"));
+        assert_eq!(revision.to_string(), format!("sbxtplrev_{suffix}"));
+        assert_eq!(
+            serde_json::to_value(template).unwrap(),
+            serde_json::json!(format!("sbxtpl_{suffix}"))
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 ---
 title: Built-ins Overview
-description: Built-in harness types and capabilities that ship with Everruns. Harnesses define reusable behavior; Agent Environment profiles select compute.
+description: Built-in harness types and capabilities that ship with Everruns. Harnesses define reusable behavior; Agent Sandbox Template bindings select compute.
 ---
 
 Everruns ships with built-in **harness types** and **capabilities** that provide the foundation for agent sessions.
@@ -9,7 +9,7 @@ Everruns ships with built-in **harness types** and **capabilities** that provide
 
 A harness defines reusable session behavior: system prompt, default model, starter files, network
 policy, and bundled capabilities. Every session is assigned a harness. An Agent
-[Environment profile](/features/environments/) independently selects the filesystem and compute
+[Sandbox Template binding](/features/sandbox-templates/) independently selects the filesystem and compute
 target for new sessions.
 
 | Harness | Description | Capabilities |
@@ -32,7 +32,7 @@ Harness examples are adoptable templates. Import them when you want a preconfigu
 
 | Example | Import Name | Description |
 |---------|-------------|-------------|
-| Coding | `coding` | Provider-neutral coding behavior + GitHub Scout; the Agent Environment profile selects Bashkit, Daytona, or another target |
+| Coding | `coding` | Provider-neutral coding behavior + GitHub Scout; the Agent Sandbox Template binding selects Bashkit, Daytona, or another target |
 | Data Analyst | `data-analyst` | Worker Base + SQL databases, charts, persistent memory, and curated data knowledge |
 
 ## Capabilities

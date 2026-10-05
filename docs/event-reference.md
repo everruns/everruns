@@ -43,8 +43,10 @@ This page lists every event type in the Everruns event protocol and documents th
 | [`session.idled`](#sessionidled) | Session returned to idle. |
 | `session.title.updated` | Session title changed. |
 | `session.model.changed` | Model override differs from the previous turn's. |
-| [`environment.instance_lost`](#environmentinstance_lost) | Managed Environment compute disappeared and will be replaced. |
-| [`environment.recovered`](#environmentrecovered) | Managed Environment compute was replaced and its durable workspace restored. |
+| [`sandbox.instance_lost`](#sandboxinstance_lost) | Managed Sandbox compute disappeared and will be replaced. |
+| [`sandbox.recovered`](#sandboxrecovered) | Managed Sandbox compute was replaced and its durable workspace restored. |
+| [`environment.instance_lost`](#sandboxinstance_lost) | Legacy compatibility name for `sandbox.instance_lost`. |
+| [`environment.recovered`](#sandboxrecovered) | Legacy compatibility name for `sandbox.recovered`. |
 | `schedule.triggered` | A schedule fired. |
 | `task.created` | Session task created. |
 | `task.updated` | Session task changed. |
@@ -631,18 +633,18 @@ Emitted when a session becomes idle (turn completed).
 }
 ```
 
-## Environment Events
+## Sandbox Events
 
-Managed Environments keep a durable logical workspace while their physical
+Managed Sandboxes keep a durable logical workspace while their physical
 compute instance may be replaced. These events make that replacement visible
 on the session event stream. Provider process state is not restored.
 
-### environment.instance_lost
+### sandbox.instance_lost
 
-Emitted after Everruns observes that a managed Environment's physical compute
+Emitted after Everruns observes that a managed Sandbox's physical compute
 instance is gone and before it creates a replacement.
 
-### environment.recovered
+### sandbox.recovered
 
 Emitted after Everruns creates the replacement instance, restores the durable
 workspace, and persists the new generation.
@@ -651,18 +653,18 @@ Both events use the same payload:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `environment_id` | string? | Durable logical Environment ID when hosted persistence is available. |
-| `provider` | string | Compute provider selected by the Environment profile. |
+| `sandbox_id` | string? | Durable logical Sandbox ID when hosted persistence is available. |
+| `provider` | string | Compute provider selected by the Sandbox Template. |
 | `previous_instance_id` | string | Physical provider resource that disappeared. |
-| `current_instance_id` | string? | Replacement resource; present only for `environment.recovered`. |
+| `current_instance_id` | string? | Replacement resource; present only for `sandbox.recovered`. |
 | `generation` | integer? | Current incarnation fence when hosted persistence is available. |
 | `process_state_lost` | boolean | Always `true`; processes and memory do not survive replacement. |
 
 ```json
 {
-  "type": "environment.recovered",
+  "type": "sandbox.recovered",
   "data": {
-    "environment_id": "sandbox_...",
+    "sandbox_id": "sandbox_...",
     "provider": "daytona",
     "previous_instance_id": "old-provider-instance",
     "current_instance_id": "new-provider-instance",

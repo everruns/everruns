@@ -677,7 +677,7 @@ impl ServerAppBuilder {
                 }
                 None => {
                     tracing::warn!(
-                        "encryption is not configured; managed Environment lifecycle is disabled"
+                        "encryption is not configured; managed Sandbox lifecycle is disabled"
                     );
                     None
                 }
@@ -855,7 +855,7 @@ impl ServerAppBuilder {
         // (forward-progress guard, EVE-534). `sessions_state` is moved into the
         // router later, so grab a clone of the service now.
         let reclaim_session_service = sessions_state.session_service.clone();
-        let environments_state = api::environments::AppState::new(
+        let sandbox_templates_state = api::sandbox_templates::AppState::new(
             db.clone(),
             sessions_state.session_service.clone(),
             auth_state.clone(),
@@ -1594,10 +1594,10 @@ impl ServerAppBuilder {
             tracing::info!("Observers disabled via feature flag");
         }
 
-        // Every session has an Environment, including one with no compute.
-        // This is a core resource now that new sessions pin profiles; only the
+        // Every Session can resolve a primary Sandbox, including one with no compute.
+        // This is a core resource now that new Sessions pin specifications; only the
         // optional provider adapters remain deployment-gated.
-        api_routes = api_routes.merge(api::environments::routes(environments_state));
+        api_routes = api_routes.merge(api::sandbox_templates::routes(sandbox_templates_state));
         if let Some(session_sandbox_state) = session_sandbox_state {
             api_routes = api_routes.merge(api::session_sandbox::routes(session_sandbox_state));
         }

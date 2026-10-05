@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Box, Check, Cpu, Plus, Star, Trash2, TriangleAlert } from "lucide-react";
-import { useEnvironments, useEnvironmentTargets } from "@/hooks";
+import { useSandboxTargets, useSandboxTemplates } from "@/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,17 +16,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type {
-  EnvironmentProfile,
-  EnvironmentSet,
-  EnvironmentTargetDescriptor,
-} from "@/lib/api/types";
+import type { SandboxTemplateSpec, SandboxPolicy, SandboxTargetDescriptor } from "@/lib/api/types";
 
-const MAX_PROFILES = 16;
+const MAX_TEMPLATES = 16;
 const DEFAULT_IDLE_SECONDS = 180;
 
 const CAPABILITIES: Array<{
-  key: keyof EnvironmentTargetDescriptor["capabilities"];
+  key: keyof SandboxTargetDescriptor["capabilities"];
   label: string;
 }> = [
   { key: "native_processes", label: "Native processes" },
@@ -36,32 +32,32 @@ const CAPABILITIES: Array<{
   { key: "portable_checkpoint", label: "Portable recovery" },
 ];
 
-function targetKey(target: Pick<EnvironmentTargetDescriptor, "kind" | "provider">): string {
+function targetKey(target: Pick<SandboxTargetDescriptor, "kind" | "provider">): string {
   return `${target.kind}:${target.provider ?? ""}`;
 }
 
-function targetLabel(target: Pick<EnvironmentTargetDescriptor, "kind" | "provider">): string {
+function targetLabel(target: Pick<SandboxTargetDescriptor, "kind" | "provider">): string {
   if (target.kind === "vfs" && target.provider === "bashkit") return "Bashkit";
   if (target.kind === "managed" && target.provider === "daytona") return "Daytona";
   return target.provider ? `${target.provider} (${target.kind})` : target.kind;
 }
 
-function profileTargetKey(profile: EnvironmentProfile): string {
-  return `${profile.target.kind}:${profile.target.provider ?? ""}`;
+function specTargetKey(spec: SandboxTemplateSpec): string {
+  return `${spec.target.kind}:${spec.target.provider ?? ""}`;
 }
 
-function targetOptions(profile: EnvironmentProfile): Record<string, unknown> {
-  const options = profile.target.options;
+function targetOptions(spec: SandboxTemplateSpec): Record<string, unknown> {
+  const options = spec.target.options;
   return options && typeof options === "object" && !Array.isArray(options) ? { ...options } : {};
 }
 
-export function createEnvironmentProfile(target: EnvironmentTargetDescriptor): EnvironmentProfile {
+export function createSandboxTemplateSpec(target: SandboxTargetDescriptor): SandboxTemplateSpec {
   return {
     target: {
-      kind: target.kind as EnvironmentProfile["target"]["kind"],
+      kind: target.kind as SandboxTemplateSpec["target"]["kind"],
       ...(target.provider ? { provider: target.provider } : {}),
     },
-    durability: target.durability as EnvironmentProfile["durability"],
+    durability: target.durability as SandboxTemplateSpec["durability"],
     lifecycle: {
       idle_after_seconds: DEFAULT_IDLE_SECONDS,
       idle_action: "checkpoint_and_stop",
@@ -70,42 +66,42 @@ export function createEnvironmentProfile(target: EnvironmentTargetDescriptor): E
   };
 }
 
-export function nextEnvironmentName(
-  target: EnvironmentTargetDescriptor,
-  profiles: Record<string, EnvironmentProfile>,
+export function nextSandboxBindingName(
+  target: SandboxTargetDescriptor,
+  templates: Record<string, SandboxTemplateSpec>,
 ): string {
-  const base = target.provider || target.kind || "environment";
-  if (!profiles[base]) return base;
-  for (let suffix = 2; suffix <= MAX_PROFILES + 1; suffix += 1) {
+  const base = target.provider || target.kind || "sandbox";
+  if (!templates[base]) return base;
+  for (let suffix = 2; suffix <= MAX_TEMPLATES + 1; suffix += 1) {
     const candidate = `${base}-${suffix}`;
-    if (!profiles[candidate]) return candidate;
+    if (!templates[candidate]) return candidate;
   }
-  return `environment-${Object.keys(profiles).length + 1}`;
+  return `sandbox-${Object.keys(templates).length + 1}`;
 }
 
-function validateProfileName(name: string, current: string, profiles: Record<string, unknown>) {
+function validateBindingName(name: string, current: string, templates: Record<string, unknown>) {
   if (!name) return "Enter a name.";
   if (name.length > 64) return "Use at most 64 characters.";
   if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name) || name.includes("--")) {
     return "Use lowercase letters, numbers, and single hyphens.";
   }
-  if (name !== current && profiles[name]) return "That name is already used.";
+  if (name !== current && templates[name]) return "That name is already used.";
   return null;
 }
 
-function ProfileNameInput({
+function TemplateBindingNameInput({
   name,
-  profiles,
+  templates,
   disabled,
   onRename,
 }: {
   name: string;
-  profiles: Record<string, EnvironmentProfile>;
+  templates: Record<string, SandboxTemplateSpec>;
   disabled: boolean;
   onRename: (name: string) => void;
 }) {
   const [draft, setDraft] = useState(name);
-  const error = validateProfileName(draft, name, profiles);
+  const error = validateBindingName(draft, name, templates);
 
   const commit = () => {
     if (!error && draft !== name) onRename(draft);
@@ -115,7 +111,7 @@ function ProfileNameInput({
   return (
     <div className="min-w-0 flex-1 space-y-1">
       <Input
-        aria-label={`Environment profile name ${name}`}
+        aria-label={`Sandbox binding name ${name}`}
         value={draft}
         onChange={(event) => setDraft(event.target.value.toLowerCase())}
         onBlur={commit}
@@ -133,10 +129,10 @@ function ProfileNameInput({
   );
 }
 
-function ProfileEditor({
+function TemplateSpecEditor({
   name,
-  profile,
-  profiles,
+  spec,
+  templates,
   isDefault,
   targets,
   disabled,
@@ -146,42 +142,47 @@ function ProfileEditor({
   onRemove,
 }: {
   name: string;
-  profile: EnvironmentProfile;
-  profiles: Record<string, EnvironmentProfile>;
+  spec: SandboxTemplateSpec;
+  templates: Record<string, SandboxTemplateSpec>;
   isDefault: boolean;
-  targets: EnvironmentTargetDescriptor[];
+  targets: SandboxTargetDescriptor[];
   disabled: boolean;
-  onChange: (profile: EnvironmentProfile) => void;
+  onChange: (spec: SandboxTemplateSpec) => void;
   onRename: (name: string) => void;
   onDefault: () => void;
   onRemove: () => void;
 }) {
-  const descriptor = targets.find((target) => targetKey(target) === profileTargetKey(profile));
-  const options = targetOptions(profile);
-  const managed = profile.target.kind === "managed";
+  const descriptor = targets.find((target) => targetKey(target) === specTargetKey(spec));
+  const options = targetOptions(spec);
+  const managed = spec.target.kind === "managed";
   const lifecycle = {
-    idle_after_seconds: profile.lifecycle?.idle_after_seconds ?? DEFAULT_IDLE_SECONDS,
-    idle_action: profile.lifecycle?.idle_action ?? "checkpoint_and_stop",
+    idle_after_seconds: spec.lifecycle?.idle_after_seconds ?? DEFAULT_IDLE_SECONDS,
+    idle_action: spec.lifecycle?.idle_action ?? "checkpoint_and_stop",
   };
 
   const setOption = (key: string, value: unknown) => {
-    const next = targetOptions(profile);
+    const next = targetOptions(spec);
     if (value === "" || value === undefined) delete next[key];
     else next[key] = value;
-    onChange({ ...profile, target: { ...profile.target, options: next } });
+    onChange({ ...spec, target: { ...spec.target, options: next } });
   };
 
   return (
-    <section className="space-y-5 border bg-background p-4" aria-label={`Environment ${name}`}>
+    <section className="space-y-5 border bg-background p-4" aria-label={`Sandbox ${name}`}>
       <div className="flex items-start gap-2">
-        <ProfileNameInput name={name} profiles={profiles} disabled={disabled} onRename={onRename} />
+        <TemplateBindingNameInput
+          name={name}
+          templates={templates}
+          disabled={disabled}
+          onRename={onRename}
+        />
         <Button
           type="button"
           variant={isDefault ? "secondary" : "outline"}
           size="sm"
           onClick={onDefault}
           disabled={disabled || isDefault}
-          aria-label={isDefault ? `${name} is the default environment` : `Make ${name} default`}
+          aria-label={isDefault ? `${name} is the default sandbox` : `Make ${name} default`}
         >
           <Star className="size-3.5" />
           {isDefault ? "Default" : "Make default"}
@@ -199,25 +200,25 @@ function ProfileEditor({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor={`environment-target-${name}`}>Runs in</Label>
+        <Label htmlFor={`sandbox-target-${name}`}>Runs in</Label>
         <Select
-          value={profileTargetKey(profile)}
+          value={specTargetKey(spec)}
           onValueChange={(value) => {
             const target = targets.find((candidate) => targetKey(candidate) === value);
             if (!target) return;
-            const replacement = createEnvironmentProfile(target);
+            const replacement = createSandboxTemplateSpec(target);
             onChange({
               ...replacement,
-              lifecycle: profile.lifecycle ?? replacement.lifecycle,
+              lifecycle: spec.lifecycle ?? replacement.lifecycle,
               bootstrap:
                 target.kind === "managed"
-                  ? (profile.bootstrap ?? replacement.bootstrap)
+                  ? (spec.bootstrap ?? replacement.bootstrap)
                   : { commands: [] },
             });
           }}
           disabled={disabled}
         >
-          <SelectTrigger id={`environment-target-${name}`} className="w-full">
+          <SelectTrigger id={`sandbox-target-${name}`} className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -269,13 +270,13 @@ function ProfileEditor({
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor={`environment-size-${name}`}>Compute size</Label>
+              <Label htmlFor={`sandbox-size-${name}`}>Compute size</Label>
               <Select
                 value={typeof options.size === "string" ? options.size : "default"}
                 onValueChange={(value) => setOption("size", value === "default" ? "" : value)}
                 disabled={disabled}
               >
-                <SelectTrigger id={`environment-size-${name}`} className="w-full">
+                <SelectTrigger id={`sandbox-size-${name}`} className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -287,9 +288,9 @@ function ProfileEditor({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`environment-snapshot-${name}`}>Snapshot</Label>
+              <Label htmlFor={`sandbox-snapshot-${name}`}>Snapshot</Label>
               <Input
-                id={`environment-snapshot-${name}`}
+                id={`sandbox-snapshot-${name}`}
                 value={typeof options.snapshot === "string" ? options.snapshot : ""}
                 onChange={(event) => setOption("snapshot", event.target.value)}
                 placeholder="Provider default"
@@ -297,9 +298,9 @@ function ProfileEditor({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`environment-workspace-${name}`}>Workspace path</Label>
+              <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
               <Input
-                id={`environment-workspace-${name}`}
+                id={`sandbox-workspace-${name}`}
                 value={typeof options.workspace_path === "string" ? options.workspace_path : ""}
                 onChange={(event) => setOption("workspace_path", event.target.value)}
                 placeholder="/home/daytona/workspace"
@@ -308,9 +309,9 @@ function ProfileEditor({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`environment-auto-stop-${name}`}>Provider auto-stop (minutes)</Label>
+              <Label htmlFor={`sandbox-auto-stop-${name}`}>Provider auto-stop (minutes)</Label>
               <Input
-                id={`environment-auto-stop-${name}`}
+                id={`sandbox-auto-stop-${name}`}
                 type="number"
                 min={1}
                 max={60}
@@ -333,12 +334,12 @@ function ProfileEditor({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor={`environment-idle-action-${name}`}>When idle</Label>
+          <Label htmlFor={`sandbox-idle-action-${name}`}>When idle</Label>
           <Select
             value={lifecycle.idle_action}
             onValueChange={(idle_action) =>
               onChange({
-                ...profile,
+                ...spec,
                 lifecycle: {
                   ...lifecycle,
                   idle_action: idle_action as typeof lifecycle.idle_action,
@@ -347,7 +348,7 @@ function ProfileEditor({
             }
             disabled={disabled}
           >
-            <SelectTrigger id={`environment-idle-action-${name}`} className="w-full">
+            <SelectTrigger id={`sandbox-idle-action-${name}`} className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -358,16 +359,16 @@ function ProfileEditor({
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor={`environment-idle-after-${name}`}>Idle after (seconds)</Label>
+          <Label htmlFor={`sandbox-idle-after-${name}`}>Idle after (seconds)</Label>
           <Input
-            id={`environment-idle-after-${name}`}
+            id={`sandbox-idle-after-${name}`}
             type="number"
             min={1}
             max={86_400}
             value={lifecycle.idle_after_seconds}
             onChange={(event) =>
               onChange({
-                ...profile,
+                ...spec,
                 lifecycle: {
                   ...lifecycle,
                   idle_after_seconds: Number(event.target.value),
@@ -381,13 +382,13 @@ function ProfileEditor({
 
       {managed ? (
         <div className="space-y-2">
-          <Label htmlFor={`environment-bootstrap-${name}`}>Bootstrap commands</Label>
+          <Label htmlFor={`sandbox-bootstrap-${name}`}>Bootstrap commands</Label>
           <Textarea
-            id={`environment-bootstrap-${name}`}
-            value={(profile.bootstrap?.commands ?? []).join("\n")}
+            id={`sandbox-bootstrap-${name}`}
+            value={(spec.bootstrap?.commands ?? []).join("\n")}
             onChange={(event) =>
               onChange({
-                ...profile,
+                ...spec,
                 bootstrap: {
                   commands: event.target.value
                     .split("\n")
@@ -410,77 +411,77 @@ function ProfileEditor({
   );
 }
 
-export function EnvironmentProfilesEditor({
+export function SandboxPolicyEditor({
   value,
   onChange,
   disabled = false,
   definitionMode = false,
 }: {
-  value: EnvironmentSet | null;
-  onChange: (value: EnvironmentSet | null) => void;
+  value: SandboxPolicy | null;
+  onChange: (value: SandboxPolicy | null) => void;
   disabled?: boolean;
-  /** Edit one reusable Environment definition, not an Agent binding policy. */
+  /** Edit one reusable Sandbox Template definition, not an Agent binding policy. */
   definitionMode?: boolean;
 }) {
-  const { data, isLoading, error } = useEnvironmentTargets();
-  const { data: reusableEnvironments = [] } = useEnvironments();
+  const { data, isLoading, error } = useSandboxTargets();
+  const { data: sandboxTemplates = [] } = useSandboxTemplates();
   const targets = useMemo(() => data?.items ?? [], [data?.items]);
-  const profiles = value?.profiles ?? {};
-  const entries = Object.entries(profiles);
+  const templates = value?.templates ?? {};
+  const entries = Object.entries(templates);
 
-  const add = (target: EnvironmentTargetDescriptor) => {
-    const name = nextEnvironmentName(target, profiles);
+  const add = (target: SandboxTargetDescriptor) => {
+    const name = nextSandboxBindingName(target, templates);
     onChange({
-      policy: value?.policy ?? "fixed",
+      mode: value?.mode ?? "fixed",
       default: value?.default || name,
-      profiles: { ...profiles, [name]: createEnvironmentProfile(target) },
+      templates: { ...templates, [name]: createSandboxTemplateSpec(target) },
     });
   };
 
-  const addReusable = (environment: (typeof reusableEnvironments)[number]) => {
-    const base = environment.name;
-    const name = profiles[base]
-      ? nextEnvironmentName(
-          environment.current_revision.profile.target as EnvironmentTargetDescriptor,
-          profiles,
+  const addReusable = (sandboxTemplate: (typeof sandboxTemplates)[number]) => {
+    const base = sandboxTemplate.name;
+    const name = templates[base]
+      ? nextSandboxBindingName(
+          sandboxTemplate.current_revision.spec.target as SandboxTargetDescriptor,
+          templates,
         )
       : base;
     onChange({
-      policy: value?.policy ?? "fixed",
+      mode: value?.mode ?? "fixed",
       default: value?.default || name,
-      profiles: {
-        ...profiles,
+      templates: {
+        ...templates,
         [name]: {
-          ...environment.current_revision.profile,
-          source_revision_id: environment.current_revision.id,
+          ...sandboxTemplate.current_revision.spec,
+          template_revision_id: sandboxTemplate.current_revision.id,
         },
       },
     });
   };
 
-  const update = (name: string, profile: EnvironmentProfile) => {
+  const update = (name: string, spec: SandboxTemplateSpec) => {
     onChange({
-      policy: value?.policy ?? "fixed",
+      mode: value?.mode ?? "fixed",
       default: value?.default || name,
-      profiles: { ...profiles, [name]: profile },
+      templates: { ...templates, [name]: spec },
     });
   };
 
   const rename = (from: string, to: string) => {
-    const renamed: Record<string, EnvironmentProfile> = {};
-    for (const [name, profile] of Object.entries(profiles)) {
-      renamed[name === from ? to : name] = profile;
+    const renamed: Record<string, SandboxTemplateSpec> = {};
+    for (const [name, spec] of Object.entries(templates)) {
+      renamed[name === from ? to : name] = spec;
     }
     onChange({
-      policy: value?.policy ?? "fixed",
+      mode: value?.mode ?? "fixed",
       default: value?.default === from ? to : value?.default || to,
-      profiles: renamed,
+      templates: renamed,
     });
   };
 
   const remove = (name: string) => {
     const remaining = Object.fromEntries(
-      Object.entries(profiles).filter(([profileName]) => profileName !== name),
+      Object.entries(templates).filter(([templateName]) => templateName !== name),
     );
     const names = Object.keys(remaining);
     if (names.length === 0) {
@@ -488,9 +489,9 @@ export function EnvironmentProfilesEditor({
       return;
     }
     onChange({
-      policy: value?.policy ?? "fixed",
+      mode: value?.mode ?? "fixed",
       default: value?.default === name ? names[0] : value?.default || names[0],
-      profiles: remaining,
+      templates: remaining,
     });
   };
 
@@ -504,8 +505,8 @@ export function EnvironmentProfilesEditor({
           <div className="space-y-1">
             <p className="text-sm font-medium">Filesystem plus replaceable compute</p>
             <p className="text-xs text-muted-foreground">
-              New Playground sessions pin one named profile. Checkpointed profiles restore the
-              workspace into replacement compute if the physical sandbox disappears; running
+              New Playground sessions pin one named sandbox binding. Checkpointed sandboxes restore
+              the workspace into replacement compute if the physical sandbox disappears; running
               processes do not survive replacement.
             </p>
           </div>
@@ -516,9 +517,9 @@ export function EnvironmentProfilesEditor({
         <div className="space-y-2">
           <Label htmlFor="sandbox-policy">Session choice</Label>
           <Select
-            value={value?.policy ?? "fixed"}
-            onValueChange={(policy) =>
-              onChange(value ? { ...value, policy: policy as EnvironmentSet["policy"] } : value)
+            value={value?.mode ?? "fixed"}
+            onValueChange={(mode) =>
+              onChange(value ? { ...value, mode: mode as SandboxPolicy["mode"] } : value)
             }
             disabled={disabled || !value}
           >
@@ -529,7 +530,7 @@ export function EnvironmentProfilesEditor({
               <SelectItem value="fixed" disabled={entries.length > 1}>
                 Fixed — sessions cannot override
               </SelectItem>
-              <SelectItem value="selectable">Selectable — declared environments only</SelectItem>
+              <SelectItem value="selectable">Selectable — declared sandboxes only</SelectItem>
               <SelectItem value="configurable">
                 Configurable — allow constrained one-offs
               </SelectItem>
@@ -542,18 +543,18 @@ export function EnvironmentProfilesEditor({
         </div>
       ) : null}
 
-      {entries.map(([name, profile]) => (
-        <ProfileEditor
+      {entries.map(([name, spec]) => (
+        <TemplateSpecEditor
           key={name}
           name={name}
-          profile={profile}
-          profiles={profiles}
+          spec={spec}
+          templates={templates}
           isDefault={value?.default === name}
           targets={targets}
           disabled={disabled}
-          onChange={(next) => update(name, { ...next, source_revision_id: undefined })}
+          onChange={(next) => update(name, { ...next, template_revision_id: undefined })}
           onRename={(next) => rename(name, next)}
-          onDefault={() => onChange({ policy: value?.policy ?? "fixed", default: name, profiles })}
+          onDefault={() => onChange({ mode: value?.mode ?? "fixed", default: name, templates })}
           onRemove={() => remove(name)}
         />
       ))}
@@ -565,35 +566,33 @@ export function EnvironmentProfilesEditor({
         </p>
       ) : null}
 
-      {!disabled && entries.length < MAX_PROFILES ? (
+      {!disabled && entries.length < MAX_TEMPLATES ? (
         <div className="space-y-2">
-          {!definitionMode && reusableEnvironments.length > 0 ? (
+          {!definitionMode && sandboxTemplates.length > 0 ? (
             <>
-              <p className="text-xs font-medium text-muted-foreground">
-                Use a reusable environment
-              </p>
+              <p className="text-xs font-medium text-muted-foreground">Use a Sandbox Template</p>
               <div className="flex flex-wrap gap-2">
-                {reusableEnvironments.map((environment) => (
+                {sandboxTemplates.map((sandboxTemplate) => (
                   <Button
-                    key={environment.id}
+                    key={sandboxTemplate.id}
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => addReusable(environment)}
-                    disabled={(value?.policy ?? "fixed") === "fixed" && entries.length > 0}
+                    onClick={() => addReusable(sandboxTemplate)}
+                    disabled={(value?.mode ?? "fixed") === "fixed" && entries.length > 0}
                   >
                     <Box className="size-4" />
                     <Plus className="size-3" />
-                    {environment.display_name}
+                    {sandboxTemplate.display_name}
                   </Button>
                 ))}
               </div>
-              <Link href="/environments" className="text-xs text-muted-foreground underline">
-                Manage reusable environments
+              <Link href="/sandbox-templates" className="text-xs text-muted-foreground underline">
+                Manage Sandbox Templates
               </Link>
             </>
           ) : null}
-          <p className="text-xs font-medium text-muted-foreground">Add an environment</p>
+          <p className="text-xs font-medium text-muted-foreground">Add a sandbox target</p>
           <div className="flex flex-wrap gap-2">
             {isLoading ? (
               <span className="text-sm text-muted-foreground">Loading targets…</span>
@@ -605,7 +604,7 @@ export function EnvironmentProfilesEditor({
                 variant="outline"
                 size="sm"
                 onClick={() => add(target)}
-                disabled={(value?.policy ?? "fixed") === "fixed" && entries.length > 0}
+                disabled={(value?.mode ?? "fixed") === "fixed" && entries.length > 0}
               >
                 {target.kind === "vfs" ? <Box className="size-4" /> : <Cpu className="size-4" />}
                 <Plus className="size-3" />

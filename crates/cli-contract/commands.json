@@ -509,12 +509,6 @@
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
       },
       {
-        "field": "environments",
-        "long": "environments",
-        "kind": "json",
-        "required": false
-      },
-      {
         "field": "harness_name",
         "long": "harness",
         "short": "H",
@@ -582,6 +576,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "sandbox_policy",
+        "long": "sandbox-policy",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "service_virtual_user_id",
@@ -1652,12 +1652,6 @@
         "help": "Human-readable display name shown in UI."
       },
       {
-        "field": "environments",
-        "long": "environments",
-        "kind": "json",
-        "required": false
-      },
-      {
         "field": "harness_name",
         "long": "harness",
         "short": "H",
@@ -1718,6 +1712,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "sandbox_policy",
+        "long": "sandbox-policy",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "service_virtual_user_id",
@@ -1821,12 +1821,6 @@
         "help": "Human-readable display name shown in UI. Falls back to `name` when absent."
       },
       {
-        "field": "environments",
-        "long": "environments",
-        "kind": "json",
-        "required": false
-      },
-      {
         "field": "harness_name",
         "long": "harness",
         "short": "H",
@@ -1887,6 +1881,12 @@
         "kind": "boolean",
         "required": false,
         "help": "Request-level parallel tool calling preference (EVE-598)."
+      },
+      {
+        "field": "sandbox_policy",
+        "long": "sandbox-policy",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "service_virtual_user_id",
@@ -3122,17 +3122,6 @@
         "help": "New timezone (IANA name)."
       }
     ]
-  },
-  {
-    "wire_name": "list_environment_targets",
-    "path": [
-      "environment-targets"
-    ],
-    "verb": "list",
-    "description": "List the environment targets this deployment can offer.",
-    "method": "GET",
-    "http_path": "/v1/environment-targets",
-    "args": []
   },
   {
     "wire_name": "import_atif_trajectories",
@@ -7428,6 +7417,17 @@
     ]
   },
   {
+    "wire_name": "list_sandbox_targets",
+    "path": [
+      "sandbox-targets"
+    ],
+    "verb": "list",
+    "description": "List the Sandbox targets this deployment can offer.",
+    "method": "GET",
+    "http_path": "/v1/sandbox-targets",
+    "args": []
+  },
+  {
     "wire_name": "archive_session",
     "path": [
       "sessions"
@@ -7578,12 +7578,6 @@
         "help": "Session-level capabilities (additive to agent capabilities). Applied after agent capabilities..."
       },
       {
-        "field": "environment",
-        "long": "environment",
-        "kind": "json",
-        "required": false
-      },
-      {
         "field": "goal",
         "long": "goal",
         "kind": "string",
@@ -7665,6 +7659,12 @@
         "kind": "string",
         "required": false,
         "help": "Fixed Playground end user."
+      },
+      {
+        "field": "sandbox",
+        "long": "sandbox",
+        "kind": "json",
+        "required": false
       },
       {
         "field": "source",
@@ -7875,26 +7875,6 @@
       {
         "intent": "Archive a session, keeping it restorable",
         "command": "everruns sessions delete ses_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "get_session_environment",
-    "path": [
-      "sessions",
-      "environment"
-    ],
-    "verb": "get",
-    "description": "Inspect where a session's commands run and what they may touch.",
-    "method": "GET",
-    "http_path": "/v1/sessions/{session_id}/environment",
-    "args": [
-      {
-        "field": "session_id",
-        "long": "session-id",
-        "kind": "string",
-        "required": true,
-        "help": "Session's prefixed public identifier."
       }
     ]
   },
@@ -9049,7 +9029,7 @@
       "sandbox"
     ],
     "verb": "get",
-    "description": "Inspect the managed sandbox owned by a session.",
+    "description": "Inspect a Session's primary Sandbox and what it may touch.",
     "method": "GET",
     "http_path": "/v1/sessions/{session_id}/sandbox",
     "args": [
