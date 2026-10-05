@@ -1059,6 +1059,7 @@ An agent influenced by prompt injection (via tool results or user messages) coul
 Some execution capabilities intentionally originate network traffic outside the worker process:
 - `daytona` sandboxes have full Linux and network access by design
 - `e2b` sandboxes have full Linux and network access by design
+- `modal` sandboxes have full Linux and network access by design, and can expose public tunnels
 - `docker_container` uses host networking and is experimental/dev-only
 
 This means an agent with one of these capabilities can probe whatever network the sandbox/container can reach. Current mitigations are:
@@ -1460,6 +1461,19 @@ Session A cannot access sb_xyz because tool-side ownership checks reject non-own
 before the E2B API call, and storage lookups remain scoped by session_id.
 ```
 
+## 18A. Modal Sandbox (TM-MODAL)
+
+Modal sandboxes are remote Linux VMs (default) or gVisor containers driven over Modal's gRPC API: the control plane at `api.modal.com` plus a per-task command router for exec. Users bring their own Modal token pair via the connection provider; there is no platform-owned or environment-variable fallback. The capability is experimental (dev grade only). Design: [`knowledge/integrations/modal.md`](../integrations/modal.md).
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-MODAL-001 | Modal token captured in chat history or tool output | High | Tools return `ConnectionRequired` when no connection exists, triggering the inline connection dialog; the token pair lives only in encrypted user connections and is sent only in Modal auth headers; `ModalCredentials` redacts the secret in `Debug` | MITIGATED |
+| TM-MODAL-002 | Cross-session sandbox access | Critical | Tools resolve `sandbox_id` through session-owned leased resources before any Modal call; sandbox state is a reserved session secret `modal_sandbox:{id}` that `secret_store` cannot read or forge; ids are shape-checked (`sb-` plus alphanumerics) | MITIGATED |
+| TM-MODAL-003 | Command router redirect leaks the router JWT | High | The router URL comes from Modal's authenticated control plane and must be HTTPS (plain HTTP only for loopback test servers); the JWT is held in memory per client and never persisted | MITIGATED |
+| TM-MODAL-004 | Shell injection through file paths | Medium | `modal_write_file` passes the path as a positional argument to a fixed `sh -c` script and the content over stdin; `modal_read_file` runs `cat --` with an argv path, not a shell string | MITIGATED |
+| TM-MODAL-005 | Sandbox not terminated, resource leak and spend | Medium | Every sandbox has a Modal-side lifetime (default 1 hour, max 24 hours), a 30-minute Everruns lease refreshed on use, and lease cleanup that terminates it; a failed state save terminates the just-created sandbox | MITIGATED |
+| TM-MODAL-006 | Full-network sandbox misuse and public tunnels | High | Capability is high-risk and Admin-gated via capability assignment policy; exposed ports are public HTTPS URLs by Modal design and the docs say so; residual network exposure depends on the user's Modal workspace | **CALLER RISK** |
+
 ## 19. Client-Side Tools (TM-CLIENT)
 
 Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing, timeout abuse, and a server policy that never sees the call before the client is asked to run it.
@@ -1838,6 +1852,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate channel-owned native
 | Task ownership | TM-DURABLE | Verified on completion, heartbeat-based reclaim |
 | Daytona sandbox isolation | TM-DAYTONA | Session-scoped secrets, encrypted API key, auto-stop, short-lived git tokens |
 | E2B sandbox isolation | TM-E2B | Session-scoped secrets, envd access tokens, timeout refresh, leased-resource cleanup |
+| Modal sandbox isolation | TM-MODAL | Reserved session secrets, leased-resource ownership, HTTPS-only command router, lease cleanup |
 | Slack webhook forgery | TM-SLACK-001 | HMAC-SHA256 signing secret verification, 5-min replay window; a channel whose secret is not yet configured rejects every request with 401, including `url_verification`, and an empty secret is refused by the verifier itself rather than keying an HMAC anyone can compute |
 | Slack bot loop | TM-SLACK-002 | Skip events with `bot_id` or `subtype` to prevent infinite loops |
 | Slack signing secret exposure | TM-SLACK-003 | Stored in `channel_config` (org-scoped access), not logged |

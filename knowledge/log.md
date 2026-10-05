@@ -2,6 +2,13 @@
 
 ## 2026-10-05
 
+* **Modal sandboxes, in a new everruns-integrations crate.** The `modal`
+  capability runs agent code in Modal VM sandboxes (own kernel) or gVisor
+  containers over Modal's gRPC API, with files, snapshots and tunnels.
+  It is the first module of `everruns-integrations`, which folds vendor
+  integrations behind per-vendor features like `everruns-drivers`.
+  Experimental (dev grade only). See [Modal Sandboxes](integrations/modal.md).
+
 * **Proposed: one entity actions menu.** Every entity page gets one header
   overflow menu with fixed groups (entity actions, Record, Lifecycle) for
   secondary functions such as History and Manager notes. See

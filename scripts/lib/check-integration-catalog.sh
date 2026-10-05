@@ -43,15 +43,26 @@ while IFS= read -r manifest; do
   case "$crate_dir" in
     crates/integrations-catalog|crates/capabilities|crates/test-support) continue ;;
   esac
-  if ! grep -rqE '^\s*pub const (CAPABILITY|CONNECTOR)_PLUGINS' "$crate_dir/src" 2>/dev/null; then
+  publishers="$(grep -rlE '^\s*pub const (CAPABILITY|CONNECTOR)_PLUGINS' "$crate_dir/src" 2>/dev/null || true)"
+  if [ -z "$publishers" ]; then
     continue
   fi
   package="$(sed -n 's/^name = "\(.*\)"$/\1/p' "$manifest" | head -1)"
-  if ! grep -q "crate_name: \"$package\"" "$CATALOG"; then
-    echo "Publishes plugins but is not named in the catalog: $package ($crate_dir)"
-    echo "  add a CatalogEntry to $CATALOG, or stop publishing the const"
-    FAILED=1
+  if grep -q "crate_name: \"$package\"" "$CATALOG"; then
+    continue
   fi
+  # A crate that folds several vendors (everruns-integrations) names each
+  # module separately, as `<package>::<module>`.
+  while IFS= read -r file; do
+    module="${file#"$crate_dir/src/"}"
+    module="${module%%/*}"
+    module="${module%.rs}"
+    if [ "$module" = "lib" ] || ! grep -q "crate_name: \"$package::$module\"" "$CATALOG"; then
+      echo "Publishes plugins but is not named in the catalog: $package ($file)"
+      echo "  add a CatalogEntry to $CATALOG, or stop publishing the const"
+      FAILED=1
+    fi
+  done <<< "$publishers"
 done < <(find crates integrations -mindepth 2 -maxdepth 2 -name Cargo.toml)
 
 # 2. Capability and connector registration stays an explicit list.

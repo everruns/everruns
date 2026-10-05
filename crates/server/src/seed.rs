@@ -62,7 +62,7 @@ mod seed_ids {
     pub const E2B_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_00000000010f);
     pub const DENO_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000110);
     pub const SPRITES_CODER_AGENT: Uuid = Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000111);
-    // 0x…0109: retired Cloud Cost & Security Auditor demo agent (EVE-875). Do not reuse.
+    // 0x…0109: retired Cloud Cost & Security Auditor demo agent (EVE-875). Do not reuse. 0x…0118: Modal Coder, in seed/agents.rs (this file may not grow).
     pub const PLATFORM_MANAGER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010a);
     pub const WEB_RESEARCHER_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000010b);

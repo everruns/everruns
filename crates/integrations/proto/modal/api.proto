@@ -1,0 +1,212 @@
+// Trimmed subset of Modal's control-plane API.
+//
+// Source: https://github.com/modal-labs/modal-client/blob/main/modal_proto/api.proto
+// (Apache-2.0). Only the RPCs and fields the Everruns Modal sandbox integration
+// sends or reads are kept. Field numbers, names, and the package are copied
+// verbatim: they are the wire contract, and proto3 ignores the fields left out.
+// When extending, copy the definition from upstream rather than writing it.
+
+syntax = "proto3";
+
+package modal.client;
+
+enum ObjectCreationType {
+  OBJECT_CREATION_TYPE_UNSPECIFIED = 0;
+  OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
+  OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS = 2;
+  OBJECT_CREATION_TYPE_CREATE_OVERWRITE_IF_EXISTS = 3;
+  OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP = 4;
+  OBJECT_CREATION_TYPE_EPHEMERAL = 5;
+}
+
+message GenericResult {
+  enum GenericStatus {
+    GENERIC_STATUS_UNSPECIFIED = 0;
+    GENERIC_STATUS_SUCCESS = 1;
+    GENERIC_STATUS_FAILURE = 2;
+    GENERIC_STATUS_TERMINATED = 3;
+    GENERIC_STATUS_TIMEOUT = 4;
+    GENERIC_STATUS_INIT_FAILURE = 5;
+    GENERIC_STATUS_INTERNAL_FAILURE = 6;
+    GENERIC_STATUS_IDLE_TIMEOUT = 7;
+    GENERIC_STATUS_MEMORY_MANAGER_EVICTION = 8;
+  }
+
+  GenericStatus status = 1;
+  string exception = 2;
+  int32 exitcode = 3;
+}
+
+message AuthTokenGetRequest {
+}
+
+message AuthTokenGetResponse {
+  string token = 1;
+}
+
+message AppGetOrCreateRequest {
+  string app_name = 1;
+  string environment_name = 2;
+  ObjectCreationType object_creation_type = 3;
+}
+
+message AppGetOrCreateResponse {
+  string app_id = 1;
+}
+
+message BaseImage {
+  string image_id = 1;
+  string docker_tag = 2;
+}
+
+message Image {
+  repeated BaseImage base_images = 5;
+  repeated string dockerfile_commands = 6;
+}
+
+message ImageGetOrCreateRequest {
+  Image image = 2;
+  string app_id = 4;
+  bool force_build = 7;
+  string builder_version = 9;
+}
+
+message ImageGetOrCreateResponse {
+  string image_id = 1;
+  GenericResult result = 2;
+}
+
+message ImageJoinStreamingRequest {
+  string image_id = 1;
+  float timeout = 2;
+  string last_entry_id = 3;
+  bool include_logs_for_finished = 4;
+}
+
+message ImageJoinStreamingResponse {
+  GenericResult result = 1;
+  string entry_id = 3;
+  bool eof = 4;
+}
+
+message Resources {
+  uint32 memory_mb = 2;
+  uint32 milli_cpu = 3;
+}
+
+message PortSpec {
+  uint32 port = 1;
+  bool unencrypted = 2;
+}
+
+message PortSpecs {
+  repeated PortSpec ports = 1;
+}
+
+message Sandbox {
+  repeated string entrypoint_args = 1;
+  string image_id = 3;
+  Resources resources = 5;
+  uint32 timeout_secs = 7;
+  optional string workdir = 8;
+  oneof open_ports_oneof {
+    PortSpecs open_ports = 20;
+  }
+  optional string runtime = 28;
+  optional string name = 30;
+  optional uint32 idle_timeout_secs = 33;
+}
+
+message SandboxTag {
+  string tag_name = 1;
+  string tag_value = 2;
+}
+
+message SandboxCreateRequest {
+  string app_id = 1;
+  Sandbox definition = 2;
+  repeated SandboxTag tags = 4;
+}
+
+message SandboxCreateResponse {
+  string sandbox_id = 1;
+}
+
+message SandboxGetTaskIdRequest {
+  string sandbox_id = 1;
+  optional float timeout = 2;
+  bool wait_until_ready = 3;
+}
+
+message SandboxGetTaskIdResponse {
+  optional string task_id = 1;
+  optional GenericResult task_result = 2;
+}
+
+message SandboxWaitRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxWaitResponse {
+  GenericResult result = 1;
+}
+
+message SandboxTerminateRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxTerminateResponse {
+  GenericResult existing_result = 1;
+}
+
+message TunnelData {
+  string host = 1;
+  uint32 port = 2;
+  optional string unencrypted_host = 3;
+  optional uint32 unencrypted_port = 4;
+  uint32 container_port = 5;
+}
+
+message SandboxGetTunnelsRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxGetTunnelsResponse {
+  GenericResult result = 1;
+  repeated TunnelData tunnels = 2;
+}
+
+message SandboxSnapshotFsRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxSnapshotFsResponse {
+  string image_id = 1;
+  GenericResult result = 2;
+}
+
+message TaskGetCommandRouterAccessRequest {
+  string task_id = 1;
+}
+
+message TaskGetCommandRouterAccessResponse {
+  string jwt = 1;
+  string url = 2;
+}
+
+service ModalClient {
+  rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
+  rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
+  rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
+  rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
+  rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse);
+  rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
+  rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
+  rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
+  rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
+  rpc TaskGetCommandRouterAccess(TaskGetCommandRouterAccessRequest) returns (TaskGetCommandRouterAccessResponse);
+}

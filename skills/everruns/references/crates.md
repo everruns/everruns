@@ -50,6 +50,7 @@ Integration crates ship optional capabilities. Construct the capability and
 | `everruns-integrations-docker` | Docker capability | Local Docker container sandbox |
 | `everruns-integrations-deno` | Deno capability | Deno sandbox |
 | `everruns-integrations-sprites` | Sprites capability | Sprites cloud sandbox |
+| `everruns-integrations` feature `modal` | `modal::ModalCapability` | Modal VM or gVisor sandbox. Connection-aware; experimental |
 | `everruns-integrations-cursor` | Cursor capability | Cursor Cloud Agents |
 
 ### Search / web

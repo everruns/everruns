@@ -50,7 +50,9 @@ use everruns_core::{DeploymentGrade, ExecutionFeatureDecisions};
 
 /// One integration crate's contribution to the hosted product.
 pub struct CatalogEntry {
-    /// The contributing crate, for diagnostics and for embedders filtering the catalog.
+    /// The contributing crate, for diagnostics and for embedders filtering the
+    /// catalog. Feature modules of `everruns-integrations` name the module too
+    /// (`everruns-integrations::modal`), since one crate contributes several.
     pub crate_name: &'static str,
     /// Capabilities the crate contributes.
     pub capabilities: &'static [IntegrationPlugin],
@@ -113,6 +115,11 @@ pub const CATALOG: &[CatalogEntry] = &[
         crate_name: "everruns-integrations-github",
         capabilities: everruns_integrations_github::CAPABILITY_PLUGINS,
         connectors: &[],
+    },
+    CatalogEntry {
+        crate_name: "everruns-integrations::modal",
+        capabilities: everruns_integrations::modal::CAPABILITY_PLUGINS,
+        connectors: everruns_integrations::modal::CONNECTOR_PLUGINS,
     },
     CatalogEntry {
         crate_name: "everruns-integrations-openai-image",
