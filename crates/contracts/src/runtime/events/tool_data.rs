@@ -383,15 +383,20 @@ impl ToolCompletedData {
     /// `authored` is what the model asked for, `executed` what was invoked.
     /// Equal arguments leave the event unchanged, so the field only appears
     /// when a hook rewrote the call. Values under credential-named keys are
-    /// withheld: a hook may inject a credential the model never saw, and the
-    /// event log is readable by everyone who can read the session.
+    /// withheld and credential-looking string values are scrubbed: a hook may
+    /// inject a credential the model never saw, and the event log is readable
+    /// by everyone who can read the session.
     pub fn with_executed_arguments(
         mut self,
         authored: &serde_json::Value,
         executed: &serde_json::Value,
     ) -> Self {
+        // Compare the raw values: scrubbing must not hide or invent a rewrite.
         if authored != executed {
-            let redacted = redact_credential_fields(executed);
+            let mut redacted = redact_credential_fields(executed);
+            // Scrub before truncating so the bound cannot split a secret into
+            // a prefix the patterns no longer recognise.
+            crate::secret_scrub::scrub_secrets_in_value(&mut redacted);
             let (preview, truncated) =
                 crate::tool_approval_types::preview_tool_arguments(&redacted);
             self.executed_arguments = Some(preview);
@@ -413,31 +418,18 @@ impl ToolCompletedData {
 }
 
 /// Placeholder for a value withheld from `executed_arguments`.
-const REDACTED_ARGUMENT: &str = "[REDACTED]";
+const REDACTED_ARGUMENT: &str = crate::secret_scrub::REDACTED;
 
-/// Key fragments (lowercased, `-`/`_` removed) that mark a credential value.
-const CREDENTIAL_KEY_FRAGMENTS: [&str; 10] = [
-    "apikey",
-    "accesskey",
-    "secretkey",
-    "privatekey",
-    "secret",
-    "password",
-    "passwd",
-    "credential",
-    "authorization",
-    "cookie",
-];
-
-/// THREAT[TM-HOOK-007]: copy of `value` with credential-named fields replaced,
-/// so recording what a hook rewrote does not publish what the hook injected.
+/// THREAT[TM-HOOK-007]: copy of `value` with credential-named fields replaced
+/// (value patterns are scrubbed separately by `secret_scrub`), so recording
+/// what a hook rewrote does not publish what the hook injected.
 fn redact_credential_fields(value: &serde_json::Value) -> serde_json::Value {
     match value {
         serde_json::Value::Object(object) => serde_json::Value::Object(
             object
                 .iter()
                 .map(|(key, item)| {
-                    let item = if is_credential_key(key) {
+                    let item = if crate::secret_scrub::is_credential_key(key) {
                         serde_json::Value::String(REDACTED_ARGUMENT.to_string())
                     } else {
                         redact_credential_fields(item)
@@ -451,15 +443,6 @@ fn redact_credential_fields(value: &serde_json::Value) -> serde_json::Value {
         }
         other => other.clone(),
     }
-}
-
-fn is_credential_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
-    // `token` only as a suffix: `access_token` is a credential, `max_tokens` is not.
-    normalized.ends_with("token")
-        || CREDENTIAL_KEY_FRAGMENTS
-            .iter()
-            .any(|fragment| normalized.contains(fragment))
 }
 
 /// Data for tool.progress event.
@@ -715,5 +698,68 @@ mod executed_arguments_tests {
             }))
         );
         assert!(!data.executed_arguments_truncated);
+    }
+
+    #[test]
+    fn hook_injected_secrets_under_innocuous_keys_are_scrubbed() {
+        let authored = json!({ "cmd": "curl https://api.example.com" });
+        let executed = json!({
+            "cmd": "curl -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig' https://api.example.com",
+            "env": ["OPENAI=sk-live0123456789abcdefXYZ", "AWS=AKIAABCDEFGHIJKLMNOP"],
+            "steps": [{ "remote": "https://bot:hunter2@git.example.com/o/r.git" }],
+            "note": "plain text stays",
+        });
+        let data = completed().with_executed_arguments(&authored, &executed);
+        assert_eq!(
+            data.executed_arguments,
+            Some(json!({
+                "cmd": "curl -H 'Authorization: [REDACTED]' https://api.example.com",
+                "env": ["OPENAI=[REDACTED]", "AWS=[REDACTED]"],
+                "steps": [{ "remote": "https://[REDACTED]@git.example.com/o/r.git" }],
+                "note": "plain text stays",
+            }))
+        );
+    }
+
+    #[test]
+    fn secret_free_rewrite_is_recorded_verbatim() {
+        let authored = json!({ "url": "https://example.com" });
+        let executed = json!({ "url": "https://example.com", "timeout_ms": 500, "tag": "a@b" });
+        let data = completed().with_executed_arguments(&authored, &executed);
+        assert_eq!(data.executed_arguments, Some(executed));
+    }
+
+    #[test]
+    fn rewrite_that_only_swaps_a_secret_is_still_recorded() {
+        // Both scrub to the same text, so detection must compare raw values.
+        let authored = json!({ "cmd": "use sk-aaaaaaaaaaaaaaaaaaaa" });
+        let executed = json!({ "cmd": "use sk-bbbbbbbbbbbbbbbbbbbb" });
+        let data = completed().with_executed_arguments(&authored, &executed);
+        assert_eq!(
+            data.executed_arguments,
+            Some(json!({ "cmd": "use [REDACTED]" }))
+        );
+    }
+
+    #[test]
+    fn secrets_are_scrubbed_before_truncation() {
+        use crate::tool_approval_types::TOOL_ARGUMENTS_PREVIEW_BYTES;
+        let key = "sk-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        // Serialized as `{"a":"<pad> <key>"}`: the preview bound falls 8 bytes
+        // into the key, leaving `sk-` plus fewer than the 16 chars the pattern
+        // needs, so truncating first would publish an unscrubbable prefix.
+        let prefix = r#"{"a":""#.len();
+        let pad = "x".repeat(TOOL_ARGUMENTS_PREVIEW_BYTES - prefix - 1 - 8);
+        let executed = json!({ "a": format!("{pad} {key}") });
+        let data = completed().with_executed_arguments(&json!({}), &executed);
+        assert!(data.executed_arguments_truncated);
+        let preview = data.executed_arguments.unwrap();
+        let preview = preview.as_str().unwrap();
+        assert!(
+            !preview.contains("sk-AAAA"),
+            "secret prefix leaked: {}",
+            &preview[preview.len() - 16..]
+        );
+        assert!(preview.ends_with(" [REDACTE"));
     }
 }
