@@ -369,3 +369,110 @@ async fn managed_provider_pauses_to_a_snapshot_and_resumes_with_files_intact() {
         .count();
     assert_eq!(active, 0, "every lease is released");
 }
+
+/// Boots a managed sandbox with `provider_config` and runs `script` in it.
+async fn managed_run(
+    connections: &[(&str, &str)],
+    provider_config: serde_json::Value,
+    script: &str,
+) -> everruns_contracts::session_sandbox::SessionSandboxExecResponse {
+    use everruns_contracts::session_sandbox::{
+        SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxProvider,
+    };
+    use everruns_integrations::modal::ModalSessionSandboxProvider;
+
+    let creds = credentials();
+    let token = format!("{}:{}", creds.token_id, creds.token_secret);
+    let mut all = vec![("modal", token.as_str())];
+    all.extend_from_slice(connections);
+    let (ctx, _) = common::context_with_connections(&all);
+    let config = SessionSandboxConfig {
+        provider: "modal".into(),
+        provider_config,
+        ..Default::default()
+    };
+    let provider = ModalSessionSandboxProvider;
+    let created = provider.create(&ctx, &config).await.unwrap();
+    let _guard = SandboxGuard(created.external_id.clone());
+    let out = provider
+        .exec(
+            &ctx,
+            &config,
+            &created,
+            &SessionSandboxExecRequest {
+                command: script.into(),
+                cwd: None,
+                timeout_ms: Some(90_000),
+                output_mode: "full".into(),
+            },
+        )
+        .await
+        .unwrap();
+    provider.delete(&ctx, &config, &created).await.unwrap();
+    out
+}
+
+#[tokio::test]
+async fn blocked_and_allowlisted_egress_is_enforced_by_modal() {
+    let probe = "for u in https://example.com https://www.google.com; do \
+                 if curl -s -o /dev/null -m 15 \"$u\"; then echo \"$u ok\"; else echo \"$u blocked\"; fi; done";
+
+    let blocked = managed_run(&[], json!({"network": {"mode": "blocked"}}), probe).await;
+    assert!(
+        blocked.stdout.contains("https://example.com blocked"),
+        "{}",
+        blocked.stdout
+    );
+
+    let allowlisted = managed_run(
+        &[],
+        json!({"network": {"mode": "allowlist", "domains": ["example.com"]}}),
+        probe,
+    )
+    .await;
+    assert!(
+        allowlisted.stdout.contains("https://example.com ok"),
+        "{}",
+        allowlisted.stdout
+    );
+    assert!(
+        allowlisted
+            .stdout
+            .contains("https://www.google.com blocked"),
+        "{}",
+        allowlisted.stdout
+    );
+}
+
+#[tokio::test]
+async fn github_token_is_injected_but_never_visible_inside() {
+    // A made-up token keeps this test free of a real GitHub credential:
+    // GitHub answers "Requires authentication" when no Authorization header
+    // arrives and "Bad credentials" when one does, so the second proves Modal
+    // injected it. (The byte-exact header value is covered by a mock test.)
+    let fake = "ghp_everrunsModalInjectionProbe000000000";
+    let out = managed_run(
+        &[("github", fake)],
+        json!({"inject_connections": ["github"]}),
+        &format!(
+            "curl -s https://api.github.com/user; echo; \
+             if env | grep -q -F -- '{fake}' || grep -rqs -F -- '{fake}' /etc /root /workspace; \
+             then echo leaked; else echo clean; fi"
+        ),
+    )
+    .await;
+    assert!(
+        out.stdout.contains("Bad credentials"),
+        "{} {}",
+        out.stdout,
+        out.stderr
+    );
+    assert!(out.stdout.trim_end().ends_with("clean"), "{}", out.stdout);
+
+    let without = managed_run(&[], json!({}), "curl -s https://api.github.com/user").await;
+    assert!(
+        without.stdout.contains("Requires authentication"),
+        "{}",
+        without.stdout
+    );
+}

@@ -368,3 +368,57 @@ async fn tools_without_context_refuse() {
         }
     }
 }
+
+#[tokio::test]
+async fn create_applies_egress_and_terminate_deletes_the_secret() {
+    let (mock, url) = start_mock().await;
+    let (context, leases) = common::context_with_connections(&[
+        ("modal", &format!("{TOKEN_ID}:{TOKEN_SECRET}")),
+        ("github", "ghp_tool"),
+    ]);
+    let context = context.with_extension(Arc::new(ModalServerUrlOverride(url)));
+
+    let created = ok(call_tool(
+        &context,
+        "modal_create_sandbox",
+        json!({"inject_connections": ["github"], "network": {"mode": "open"}}),
+    )
+    .await);
+    assert_eq!(created["injected_connections"], json!(["github"]));
+    let sandbox_id = created["sandbox_id"].as_str().unwrap().to_string();
+    let secret_id = {
+        let state = mock.lock();
+        let (secret_id, (_, values)) = state.secrets.iter().next().unwrap();
+        assert_eq!(values["GITHUB_BEARER"], "ghp_tool");
+        assert!(state.sandboxes[&sandbox_id].outbound_policy.is_some());
+        secret_id.clone()
+    };
+    assert_eq!(
+        leases.resources.lock().await[0].metadata["egress_secret_id"],
+        secret_id
+    );
+    // The agent sees which connections are injected, never the token.
+    assert!(!created.to_string().contains("ghp_tool"));
+
+    ok(call_tool(
+        &context,
+        "modal_manage_sandbox",
+        json!({"sandbox_id": sandbox_id, "action": "terminate"}),
+    )
+    .await);
+    assert!(mock.lock().secrets.is_empty());
+
+    for (args, expected) in [
+        (
+            json!({"inject_connections": ["slack"]}),
+            "cannot be injected",
+        ),
+        (
+            json!({"inject_connections": ["github"], "network": {"mode": "blocked"}}),
+            "needs network",
+        ),
+    ] {
+        let error = tool_error(call_tool(&context, "modal_create_sandbox", args).await);
+        assert!(error.contains(expected), "{error}");
+    }
+}

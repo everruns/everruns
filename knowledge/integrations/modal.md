@@ -118,10 +118,36 @@ the `modal_*` tools. The provider maps the lifecycle Modal lacks:
   `managed_provider_offered` offers Modal only at development grade, both in
   `/v1/sandbox-targets` and when a Session resolves its template.
 
+## Egress: allowlists and keyless credentials
+
+`modal/egress.rs` owns the outbound rules, used by both the tools and the
+managed provider:
+
+- **Network**: open, blocked, or an allowlist of domains (`*.` wildcards) and
+  CIDRs, enforced by Modal outside the sandbox (`NetworkAccess`). For the
+  managed target the server writes it from the template's
+  `containment.network`, so Modal is the first managed target with
+  `network_enforced`.
+- **Keyless credentials** (`inject_connections`): a connection's token goes
+  into a Modal Secret, and Modal adds it as a header to matching HTTPS requests
+  (`OutboundPolicy`). The sandbox never holds the token. `github` is the only
+  injectable connection: `Bearer` on `api.github.com`, basic auth with
+  `x-access-token` on `github.com` for git.
+- **Fixed domains**: which domains receive a token is a table in code, never
+  input. Otherwise a template author or a prompt-injected agent could send a
+  user's token to their own host.
+- **Modal's limits**: injection cannot combine with a blocked network or a
+  domain allowlist (CIDR-only allowlists work). Server validation and the
+  provider reject those combinations up front.
+- **Secret lifecycle**: the Secret is anonymous and owned by the shared app,
+  so it is deleted on terminate, pause and delete. Its ID rides in the lease
+  metadata so worker cleanup deletes it too.
+- **Live tests** prove blocked and allowlisted egress, and that GitHub sees an
+  injected `Authorization` header while `env` and the filesystem hold no token.
+
 ## Gaps
 
-- No Modal Volumes, Secrets or custom networking (block/allow lists) yet.
-- Network for the managed target is `allow` only until egress allowlists are
-  enforced through Modal's network access controls.
+- No Modal Volumes yet; Modal Secrets are used only for injected connections.
+- Egress is fixed at boot: no runtime changes (`TaskSetNetworkAccess`).
 - No memory snapshots: resume restores the filesystem, not running processes.
 - Threats: [TM-MODAL](../security/threat-model.md#18a-modal-sandbox-tm-modal).

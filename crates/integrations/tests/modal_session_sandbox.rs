@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 mod common;
 mod mock_modal;
 
-use common::{MockLeasedResourceStore, context};
+use common::{MockLeasedResourceStore, context, context_with_connections};
 use mock_modal::{MockModal, TOKEN_ID, TOKEN_SECRET, start_mock};
 
 fn config(url: &str, extra: Value) -> SessionSandboxConfig {
@@ -304,4 +304,122 @@ async fn invalid_options_are_rejected_before_any_sandbox_exists() {
         assert!(matches!(err, ToolExecutionResult::ToolError(_)), "{bad}");
     }
     assert!(mock.lock().sandboxes.is_empty());
+}
+
+#[tokio::test]
+async fn egress_rules_reach_modal_and_the_token_stays_in_a_secret() {
+    use everruns_integrations::modal::proto::client::network_access::NetworkAccessType;
+
+    let (mock, url) = start_mock().await;
+    let (ctx, leases) = context_with_connections(&[("modal", &token()), ("github", "ghp_secret")]);
+    let cfg = config(
+        &url,
+        json!({
+            "inject_connections": ["github"],
+            "network": {"mode": "allowlist", "cidrs": ["140.82.112.0/20"]}
+        }),
+    );
+    let provider = ModalSessionSandboxProvider;
+
+    let created = provider.create(&ctx, &cfg).await.unwrap();
+    let secret_id = created.provider_state["egress_secret_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    {
+        let state = mock.lock();
+        let (_, values) = &state.secrets[&secret_id];
+        assert_eq!(values["GITHUB_BEARER"], "ghp_secret");
+        let definition = &state.sandboxes[&created.external_id];
+        let network = definition.network_access.as_ref().unwrap();
+        assert_eq!(
+            network.network_access_type,
+            NetworkAccessType::Allowlist as i32
+        );
+        assert_eq!(network.allowed_cidrs, vec!["140.82.112.0/20".to_string()]);
+        let policy = definition.outbound_policy.as_ref().unwrap();
+        let domains: Vec<_> = policy
+            .header_replacements
+            .iter()
+            .map(|r| r.domain.as_str())
+            .collect();
+        assert_eq!(domains, ["api.github.com", "github.com"]);
+        assert!(
+            policy
+                .header_replacements
+                .iter()
+                .all(|r| r.secret_id == secret_id)
+        );
+        // The sandbox definition carries only a reference, never the token.
+        assert!(!format!("{definition:?}").contains("ghp_secret"));
+    }
+    // Cleanup can find the secret even if the session never pauses.
+    let lease = leases.resources.lock().await[0].metadata.clone();
+    assert_eq!(lease["egress_secret_id"], secret_id);
+    assert!(!lease.to_string().contains("ghp_secret"));
+
+    // Pause deletes the secret; resume makes a fresh one; delete removes it.
+    let paused = provider.pause(&ctx, &cfg, &created).await.unwrap();
+    assert!(mock.lock().deleted_secrets.contains(&secret_id));
+    assert!(paused.provider_state.get("egress_secret_id").is_none());
+    let resumed = provider.resume(&ctx, &cfg, &paused).await.unwrap();
+    let second = resumed.provider_state["egress_secret_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(second, secret_id);
+    assert!(
+        mock.lock().sandboxes[&resumed.external_id]
+            .outbound_policy
+            .is_some()
+    );
+    provider.delete(&ctx, &cfg, &resumed).await.unwrap();
+    assert!(
+        mock.lock().secrets.is_empty(),
+        "no secret outlives the sandbox"
+    );
+}
+
+#[tokio::test]
+async fn blocked_network_reaches_modal_without_a_secret() {
+    use everruns_integrations::modal::proto::client::network_access::NetworkAccessType;
+
+    let (mock, url) = start_mock().await;
+    let (ctx, _, _) = context(Some(&token()));
+    let cfg = config(&url, json!({"network": {"mode": "blocked"}}));
+    let created = ModalSessionSandboxProvider
+        .create(&ctx, &cfg)
+        .await
+        .unwrap();
+    let state = mock.lock();
+    let definition = &state.sandboxes[&created.external_id];
+    assert_eq!(
+        definition
+            .network_access
+            .as_ref()
+            .unwrap()
+            .network_access_type,
+        NetworkAccessType::Blocked as i32
+    );
+    assert!(definition.outbound_policy.is_none());
+    assert_eq!(state.secrets_created, 0);
+}
+
+#[tokio::test]
+async fn a_missing_injected_connection_asks_for_it_and_creates_nothing() {
+    let (mock, url) = start_mock().await;
+    let (ctx, _) = context_with_connections(&[("modal", &token())]);
+    let err = ModalSessionSandboxProvider
+        .create(
+            &ctx,
+            &config(&url, json!({"inject_connections": ["github"]})),
+        )
+        .await
+        .unwrap_err();
+    match err {
+        ToolExecutionResult::ConnectionRequired { provider, .. } => assert_eq!(provider, "github"),
+        other => panic!("expected ConnectionRequired, got {other:?}"),
+    }
+    let state = mock.lock();
+    assert!(state.sandboxes.is_empty() && state.secrets.is_empty());
 }

@@ -100,6 +100,8 @@ everruns-capabilities = { path = "../capabilities", features = ["openapi", "envi
 # neutral event-listener contracts only.
 everruns-cli-contract.workspace = true
 everruns-integrations-catalog.workspace = true
+# Sandbox Templates validate Modal egress with the provider's own rules.
+everruns-integrations = { workspace = true, features = ["modal"] }
 everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
 everruns-integrations-bashkit.workspace = true
 everruns-integrations-web-fetch.workspace = true

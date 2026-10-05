@@ -45,6 +45,9 @@ pub struct ModalSandboxState {
     /// Ports exposed through tunnels.
     #[serde(default)]
     pub exposed_ports: Vec<u32>,
+    /// Modal Secret holding injected connection tokens; deleted with the sandbox.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub egress_secret_id: Option<String>,
 }
 
 /// Test-only override for the Modal control-plane URL, attached to
@@ -258,6 +261,8 @@ pub async fn touch_sandbox_lease(
                 "workspace_path": state.workspace_path,
                 "started_at": state.started_at,
                 "timeout_seconds": state.timeout_seconds,
+                // An ID, not the secret: cleanup deletes the Modal Secret by it.
+                "egress_secret_id": state.egress_secret_id,
             }),
         })
         .await

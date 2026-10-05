@@ -303,7 +303,11 @@ fn sandbox_targets_for_grade(
             } else {
                 None
             },
-            capabilities: managed_capabilities(false),
+            // Modal enforces deny and allowlists outside the sandbox.
+            capabilities: SandboxCapabilities {
+                network_enforced: true,
+                ..managed_capabilities(false)
+            },
             containment_levels: vec!["isolated".to_string()],
             durability: "provider_snapshot".to_string(),
         },
@@ -439,6 +443,7 @@ mod tests {
         assert!(dev.available, "{:?}", dev.reason);
         assert_eq!(dev.durability, "provider_snapshot");
         assert!(!dev.capabilities.portable_checkpoint);
+        assert!(dev.capabilities.network_enforced);
 
         let prod = modal(everruns_core::DeploymentGrade::Prod);
         assert!(!prod.available);

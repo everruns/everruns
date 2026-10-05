@@ -138,6 +138,38 @@ pub struct CreateSandboxParams {
     pub encrypted_ports: Vec<u32>,
     /// Tags recorded on the sandbox (visible in the Modal dashboard).
     pub tags: Vec<(String, String)>,
+    /// Outbound network access; `None` keeps Modal's default (open).
+    pub network_access: Option<NetworkAccess>,
+    /// Headers Modal injects into outbound HTTPS requests, outside the sandbox.
+    pub header_replacements: Vec<HeaderReplacement>,
+}
+
+/// Outbound network access for a sandbox, enforced by Modal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NetworkAccess {
+    /// Any destination.
+    Open,
+    /// No outbound network.
+    Blocked,
+    /// Only these domains (`*.` wildcards allowed) and CIDRs.
+    Allowlist {
+        domains: Vec<String>,
+        cidrs: Vec<String>,
+    },
+}
+
+/// One domain-scoped group of header replacements (Modal `OutboundPolicy`).
+///
+/// Header values may reference keys of `secret_id` as `$KEY`; Modal resolves
+/// them outside the sandbox, so the secret value never enters it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeaderReplacement {
+    /// Domain the headers apply to; `*.` wildcard prefixes are allowed.
+    pub domain: String,
+    /// Modal Secret whose keys the header templates reference.
+    pub secret_id: Option<String>,
+    /// Header name and value template pairs.
+    pub headers: Vec<(String, String)>,
 }
 
 /// Result of [`ModalClient::exec`].
@@ -502,6 +534,18 @@ impl ModalClient {
             runtime: params.runtime.clone(),
             name: None,
             idle_timeout_secs: params.idle_timeout_secs,
+            network_access: params.network_access.as_ref().map(network_access_proto),
+            outbound_policy: (!params.header_replacements.is_empty()).then(|| pb::OutboundPolicy {
+                header_replacements: params
+                    .header_replacements
+                    .iter()
+                    .map(|r| pb::outbound_policy::HeaderReplacement {
+                        domain: r.domain.clone(),
+                        secret_id: r.secret_id.clone().unwrap_or_default(),
+                        headers: r.headers.iter().cloned().collect(),
+                    })
+                    .collect(),
+            }),
         };
         let request = self
             .request(pb::SandboxCreateRequest {
@@ -603,6 +647,45 @@ impl ModalClient {
             }
             _ => SandboxStatus::Running,
         })
+    }
+
+    /// Create an anonymous Secret owned by `app_id` holding `env`, returning its ID.
+    pub async fn create_secret(
+        &self,
+        app_id: &str,
+        env: &HashMap<String, String>,
+    ) -> Result<String, String> {
+        let request = self
+            .request(pb::SecretGetOrCreateRequest {
+                object_creation_type: pb::ObjectCreationType::AnonymousOwnedByApp as i32,
+                env_dict: env.clone(),
+                app_id: app_id.to_string(),
+                ..Default::default()
+            })
+            .await?;
+        let response = self
+            .stub
+            .clone()
+            .secret_get_or_create(request)
+            .await
+            .map_err(|s| status_error("Failed to create Modal secret", &s))?
+            .into_inner();
+        Ok(response.secret_id)
+    }
+
+    /// Delete a Secret. Deleting one that is already gone reports "not found".
+    pub async fn delete_secret(&self, secret_id: &str) -> Result<(), String> {
+        let request = self
+            .request(pb::SecretDeleteRequest {
+                secret_id: secret_id.to_string(),
+            })
+            .await?;
+        self.stub
+            .clone()
+            .secret_delete(request)
+            .await
+            .map_err(|s| status_error("Failed to delete Modal secret", &s))?;
+        Ok(())
     }
 
     /// Terminate a sandbox. Terminating one that already finished succeeds.
@@ -1010,6 +1093,25 @@ impl ModalClient {
                 }
             }
         }
+    }
+}
+
+fn network_access_proto(access: &NetworkAccess) -> pb::NetworkAccess {
+    use pb::network_access::NetworkAccessType;
+    match access {
+        NetworkAccess::Open => pb::NetworkAccess {
+            network_access_type: NetworkAccessType::Open as i32,
+            ..Default::default()
+        },
+        NetworkAccess::Blocked => pb::NetworkAccess {
+            network_access_type: NetworkAccessType::Blocked as i32,
+            ..Default::default()
+        },
+        NetworkAccess::Allowlist { domains, cidrs } => pb::NetworkAccess {
+            network_access_type: NetworkAccessType::Allowlist as i32,
+            allowed_cidrs: cidrs.clone(),
+            allowed_domains: domains.clone(),
+        },
     }
 }
 

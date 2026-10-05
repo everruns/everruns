@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
-import type { SandboxPolicy, SandboxTargetDescriptor } from "@/lib/api/types";
+import type { SandboxPolicy, SandboxTargetDescriptor, SandboxTemplateSpec } from "@/lib/api/types";
 
 const capabilities = {
   native_processes: true,
@@ -35,12 +35,15 @@ jest.mock("@/hooks", () => ({
   useSandboxTemplates: () => ({ data: [] }),
 }));
 
-const policy = (options: Record<string, unknown> = {}): SandboxPolicy => ({
+type Network = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>["network"]>;
+
+const policy = (options: Record<string, unknown> = {}, network?: Network): SandboxPolicy => ({
   mode: "fixed",
   default: "modal",
   templates: {
     modal: {
       target: { kind: "managed", provider: "modal", options },
+      ...(network ? { containment: { level: "isolated", network } } : {}),
       durability: "provider_snapshot",
       lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
       bootstrap: { commands: [] },
@@ -73,5 +76,42 @@ describe("SandboxPolicyEditor with a Modal template", () => {
 
     fireEvent.change(screen.getByLabelText("CPU cores"), { target: { value: "" } });
     expect(onChange.mock.lastCall[0].templates.modal.target.options).toEqual({});
+  });
+
+  it("injects the GitHub connection only with open egress", () => {
+    const onChange = jest.fn();
+    const { rerender } = render(<SandboxPolicyEditor value={policy()} onChange={onChange} />);
+
+    fireEvent.click(screen.getByLabelText("Use my GitHub connection"));
+    expect(onChange.mock.lastCall[0].templates.modal.target.options).toEqual({
+      inject_connections: ["github"],
+    });
+
+    rerender(
+      <SandboxPolicyEditor
+        value={policy({ inject_connections: ["github"] }, { mode: "deny" })}
+        onChange={onChange}
+      />,
+    );
+    expect(screen.getByLabelText("Use my GitHub connection")).toBeDisabled();
+    expect(screen.getByText(/Needs open network/)).toBeInTheDocument();
+  });
+
+  it("edits the domain allowlist as template containment", () => {
+    const onChange = jest.fn();
+    render(
+      <SandboxPolicyEditor
+        value={policy({}, { mode: "allowlist", allowed_hosts: ["pypi.org"] })}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Allowed domains"), {
+      target: { value: "pypi.org\n *.pythonhosted.org \n" },
+    });
+    expect(onChange.mock.lastCall[0].templates.modal.containment).toEqual({
+      level: "isolated",
+      network: { mode: "allowlist", allowed_hosts: ["pypi.org", "*.pythonhosted.org"] },
+    });
   });
 });

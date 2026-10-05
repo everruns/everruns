@@ -173,7 +173,15 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
         .unwrap_or_else(|| default_durability(authored.target.kind));
 
     validate_containment(&containment)?;
-    validate_target_contract(authored.target.kind, &containment, durability)?;
+    validate_target_contract(
+        authored.target.kind,
+        authored.target.provider.as_deref(),
+        &containment,
+        durability,
+    )?;
+    if is_modal(authored) {
+        modal_egress(authored, &containment)?;
+    }
 
     if authored.target.kind == SandboxTargetKind::Vfs && !authored.bootstrap.commands.is_empty() {
         return Err("bashkit bootstrap commands are not supported".to_string());
@@ -285,6 +293,31 @@ fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> 
     Ok(())
 }
 
+fn is_modal(profile: &SandboxTemplateSpec) -> bool {
+    profile.target.kind == SandboxTargetKind::Managed
+        && profile.target.provider.as_deref() == Some("modal")
+}
+
+/// The provider-config egress Modal enforces: the template's network policy
+/// plus any connections whose tokens Modal injects. Validated with the
+/// provider's own rules so a template cannot save what Modal would reject.
+fn modal_egress(
+    profile: &SandboxTemplateSpec,
+    containment: &SandboxContainmentSpec,
+) -> Result<(), String> {
+    let mut egress = Map::new();
+    egress.insert(
+        "network".to_string(),
+        modal_network_config(&containment.network),
+    );
+    if let Some(connections) = profile.target.options.get("inject_connections") {
+        egress.insert("inject_connections".to_string(), connections.clone());
+    }
+    everruns_integrations::modal::egress::EgressSpec::from_json(&Value::Object(egress))
+        .map(|_| ())
+        .map_err(|error| format!("modal egress: {error}"))
+}
+
 /// Modal options mirror what the provider reads; it validates them again.
 fn validate_modal_options(
     profile: &SandboxTemplateSpec,
@@ -297,6 +330,7 @@ fn validate_modal_options(
         "memory_mb",
         "workspace_path",
         "title",
+        "inject_connections",
     ];
     // Modal has no stop/start: pause is a provider filesystem snapshot, and
     // there is no Everruns recovery volume to checkpoint into.
@@ -428,6 +462,13 @@ pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
+            if profile.target.provider.as_deref() == Some("modal") {
+                // Server-written: `network` is not a caller option.
+                provider_config.insert(
+                    "network".to_string(),
+                    modal_network_config(&profile.containment.network),
+                );
+            }
             if profile.durability == SandboxDurability::Checkpointed {
                 provider_config
                     .entry("workspace_path".to_string())
@@ -453,6 +494,16 @@ pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
         // adapters exist, so this branch cannot reach runtime assembly.
         SandboxTargetKind::Host | SandboxTargetKind::Machine => {
             CapabilityRef::with_config("host_shell", json!({}))
+        }
+    }
+}
+
+fn modal_network_config(network: &SandboxNetworkPolicy) -> Value {
+    match network {
+        SandboxNetworkPolicy::Allow => json!({"mode": "open"}),
+        SandboxNetworkPolicy::Deny => json!({"mode": "blocked"}),
+        SandboxNetworkPolicy::Allowlist { allowed_hosts } => {
+            json!({"mode": "allowlist", "domains": allowed_hosts})
         }
     }
 }
@@ -501,6 +552,7 @@ fn require_provider(actual: Option<&str>, expected: &str) -> Result<(), String> 
 
 fn validate_target_contract(
     kind: SandboxTargetKind,
+    provider: Option<&str>,
     containment: &SandboxContainmentSpec,
     durability: SandboxDurability,
 ) -> Result<(), String> {
@@ -522,7 +574,8 @@ fn validate_target_contract(
         }
         SandboxTargetKind::Managed => {
             require_isolated(containment, kind)?;
-            if containment.network != SandboxNetworkPolicy::Allow {
+            // Modal enforces deny and allowlists itself (`modal_egress`).
+            if provider != Some("modal") && containment.network != SandboxNetworkPolicy::Allow {
                 return Err(
                     "managed targets currently support only network.mode=allow; an unenforced allowlist is rejected"
                         .to_string(),
@@ -912,6 +965,85 @@ mod tests {
             resolve_spec(&unknown)
                 .unwrap_err()
                 .contains("daytona, modal")
+        );
+    }
+
+    #[test]
+    fn modal_enforces_the_template_network_policy() {
+        let modal = |network: SandboxNetworkPolicy, options: Value| {
+            let mut value = profile(SandboxTargetSpec::managed("modal"));
+            value.containment = Some(SandboxContainmentSpec {
+                network,
+                ..SandboxContainmentSpec::isolated()
+            });
+            value.target.options = options;
+            resolve_spec(&value)
+        };
+        let config = |resolved: &ResolvedSandboxSpec| {
+            capability_for_sandbox(resolved).config_value()["provider_config"].clone()
+        };
+
+        let denied = modal(SandboxNetworkPolicy::Deny, json!({})).unwrap();
+        assert_eq!(config(&denied)["network"], json!({"mode": "blocked"}));
+        let listed = modal(
+            SandboxNetworkPolicy::Allowlist {
+                allowed_hosts: vec!["pypi.org".into(), "*.pythonhosted.org".into()],
+            },
+            json!({}),
+        )
+        .unwrap();
+        assert_eq!(
+            config(&listed)["network"],
+            json!({"mode": "allowlist", "domains": ["pypi.org", "*.pythonhosted.org"]})
+        );
+        let injected = modal(
+            SandboxNetworkPolicy::Allow,
+            json!({"inject_connections": ["github"]}),
+        )
+        .unwrap();
+        assert_eq!(config(&injected)["network"], json!({"mode": "open"}));
+        assert_eq!(config(&injected)["inject_connections"], json!(["github"]));
+
+        for (network, options, expected) in [
+            (
+                SandboxNetworkPolicy::Deny,
+                json!({"inject_connections": ["github"]}),
+                "needs network",
+            ),
+            (
+                SandboxNetworkPolicy::Allowlist {
+                    allowed_hosts: vec!["github.com".into()],
+                },
+                json!({"inject_connections": ["github"]}),
+                "limited to domains",
+            ),
+            (
+                SandboxNetworkPolicy::Allow,
+                json!({"inject_connections": ["slack"]}),
+                "cannot be injected",
+            ),
+            (
+                SandboxNetworkPolicy::Allowlist {
+                    allowed_hosts: vec!["localhost".into()],
+                },
+                json!({}),
+                "not a domain",
+            ),
+        ] {
+            let error = modal(network, options).unwrap_err();
+            assert!(error.contains(expected), "{error}");
+        }
+
+        // Daytona still cannot enforce anything but open egress.
+        let mut daytona = profile(SandboxTargetSpec::managed("daytona"));
+        daytona.containment = Some(SandboxContainmentSpec {
+            network: SandboxNetworkPolicy::Deny,
+            ..SandboxContainmentSpec::isolated()
+        });
+        assert!(
+            resolve_spec(&daytona)
+                .unwrap_err()
+                .contains("network.mode=allow")
         );
     }
 

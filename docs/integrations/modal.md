@@ -66,6 +66,18 @@ Commands and relative file paths start in `/workspace` inside the sandbox.
 
 Modal caches built images per workspace, so the first sandbox from a new image takes longer than the ones after it.
 
+## Network and GitHub access
+
+Pass `network` to `modal_create_sandbox` to control outbound traffic. Modal enforces it outside the sandbox:
+
+- `{"mode": "blocked"}`: no outbound network
+- `{"mode": "allowlist", "domains": ["pypi.org", "*.pythonhosted.org"], "cidrs": ["10.0.0.0/8"]}`: only those destinations
+- `{"mode": "open"}`: anything (the default)
+
+Pass `"inject_connections": ["github"]` to let the sandbox use your GitHub connection without exposing the token. Modal adds it to requests for `api.github.com` and to git over `https://github.com`, so `curl https://api.github.com/user` and `git clone` of private repositories work, but the token never appears in the sandbox environment or files. Injection needs open network or a CIDR-only allowlist.
+
+In Sandbox Templates, the template's network setting (Open, Only listed domains, Blocked) is enforced the same way, and the **Use my GitHub connection** switch turns on injection.
+
 ## Snapshots
 
 1. Call `modal_snapshot_sandbox` to save the current filesystem. The sandbox keeps running.
@@ -92,4 +104,5 @@ Sandboxes run until the agent terminates them, their `timeout_seconds` or idle t
 - **Isolation**: VM sandboxes run their own kernel; gVisor sandboxes run behind a user-space kernel
 - **Encrypted credentials**: the token is stored in user connections, encrypted at rest
 - **Session ownership**: tools only act on sandboxes this session created
-- **Network access**: sandboxes have outbound internet access, and exposed ports are public. Treat anything served on a tunnel as public
+- **Network access**: sandboxes have open outbound access unless you block or allowlist it, and exposed ports are public. Treat anything served on a tunnel as public
+- **Injected credentials**: injected tokens go only to the service's own domains, and the sandbox never holds them

@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 use tracing::warn;
 
 use super::client::{CreateSandboxParams, ModalClient, SandboxStatus};
+use super::egress::{EgressSpec, INJECTABLE_CONNECTIONS, delete_egress_secret};
 use super::state::{
     ModalSandboxState, client_for, delete_sandbox_state, get_credentials, get_sandbox_state,
     list_sandbox_states, release_sandbox_lease, required_str, save_sandbox_state,
@@ -203,6 +204,22 @@ impl Tool for ModalCreateSandboxTool {
                     "items": {"type": "integer", "minimum": 1, "maximum": 65535},
                     "maxItems": 10,
                     "description": "Ports to publish on public HTTPS URLs (see modal_tunnel_urls)"
+                },
+                "network": {
+                    "type": "object",
+                    "description": "Outbound network Modal enforces (default open). allowlist takes domains (\"*.\" for subdomains) and/or CIDRs.",
+                    "properties": {
+                        "mode": {"type": "string", "enum": ["open", "blocked", "allowlist"]},
+                        "domains": {"type": "array", "items": {"type": "string"}, "maxItems": 128},
+                        "cidrs": {"type": "array", "items": {"type": "string"}, "maxItems": 128}
+                    },
+                    "required": ["mode"],
+                    "additionalProperties": false
+                },
+                "inject_connections": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": INJECTABLE_CONNECTIONS},
+                    "description": "Connections whose credentials Modal adds to outbound requests for that service (github: api.github.com and git over https://github.com). The token never enters the sandbox, so do not configure credentials yourself. Needs open egress or a CIDR-only allowlist."
                 }
             },
             "additionalProperties": false
@@ -323,6 +340,10 @@ impl Tool for ModalCreateSandboxTool {
             .get("title")
             .and_then(Value::as_str)
             .map(|t| t.chars().take(120).collect::<String>());
+        let egress = match EgressSpec::from_json(&arguments) {
+            Ok(egress) => egress,
+            Err(err) => return ToolExecutionResult::tool_error(format!("Invalid egress: {err}")),
+        };
 
         let credentials = try_tool!(get_credentials(context).await);
         let client = try_tool!(client_for(credentials, context));
@@ -350,6 +371,11 @@ impl Tool for ModalCreateSandboxTool {
             }
         };
 
+        let (egress_secret_id, header_replacements) =
+            match egress.prepare(&client, &app_id, context).await {
+                Ok(prepared) => prepared,
+                Err(err) => return err,
+            };
         let mut tags = vec![
             ("everruns".to_string(), "true".to_string()),
             (
@@ -370,10 +396,15 @@ impl Tool for ModalCreateSandboxTool {
             memory_mb,
             encrypted_ports: ports.clone(),
             tags,
+            network_access: egress.network.clone(),
+            header_replacements,
         };
         let (sandbox_id, task_id) = match client.create_sandbox(&app_id, &params).await {
             Ok(ids) => ids,
-            Err(err) => return ToolExecutionResult::tool_error(err),
+            Err(err) => {
+                delete_egress_secret(&client, egress_secret_id.as_deref()).await;
+                return ToolExecutionResult::tool_error(err);
+            }
         };
 
         let state = ModalSandboxState {
@@ -387,14 +418,17 @@ impl Tool for ModalCreateSandboxTool {
             timeout_seconds: timeout_secs,
             title,
             exposed_ports: ports.clone(),
+            egress_secret_id,
         };
         // A sandbox the session cannot record is one nothing would clean up.
         if let Err(err) = save_sandbox_state(context, &state).await {
             let _ = client.terminate(&sandbox_id).await;
+            delete_egress_secret(&client, state.egress_secret_id.as_deref()).await;
             return err;
         }
         if let Err(err) = touch_sandbox_lease(context, &state).await {
             let _ = client.terminate(&sandbox_id).await;
+            delete_egress_secret(&client, state.egress_secret_id.as_deref()).await;
             let _ = delete_sandbox_state(context, &sandbox_id).await;
             return err;
         }
@@ -426,6 +460,9 @@ impl Tool for ModalCreateSandboxTool {
             "workspace_path": state.workspace_path,
             "timeout_seconds": timeout_secs,
         });
+        if !egress.inject_connections.is_empty() {
+            result["injected_connections"] = json!(egress.inject_connections);
+        }
         if !ports.is_empty() {
             match client.tunnels(&sandbox_id).await {
                 Ok(tunnels) => {
@@ -1069,6 +1106,7 @@ impl Tool for ModalManageSandboxTool {
                 if let Err(err) = client.terminate(sandbox_id).await {
                     return ToolExecutionResult::tool_error(err);
                 }
+                delete_egress_secret(&client, state.egress_secret_id.as_deref()).await;
                 try_tool!(delete_sandbox_state(context, sandbox_id).await);
                 try_tool!(release_sandbox_lease(context, sandbox_id).await);
                 ToolExecutionResult::success(json!({
@@ -1304,6 +1342,7 @@ mod tests {
             timeout_seconds: 60,
             title: None,
             exposed_ports: vec![],
+            egress_secret_id: None,
         };
         assert_eq!(resolve_path(&state, "a/b.txt"), "/workspace/a/b.txt");
         assert_eq!(resolve_path(&state, "/etc/hosts"), "/etc/hosts");
