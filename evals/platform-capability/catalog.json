@@ -1501,6 +1501,7 @@
             },
             "idle_after_seconds": {
               "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -1626,6 +1627,7 @@
           "properties": {
             "default": {
               "description": "Profile inherited when session creation does not choose one explicitly.",
+              "example": "primary",
               "type": "string"
             },
             "policy": {
@@ -1671,6 +1673,7 @@
           "properties": {
             "connection_id": {
               "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
@@ -1686,6 +1689,7 @@
             },
             "provider": {
               "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
               "type": [
                 "string",
                 "null"
@@ -6767,6 +6771,7 @@
             },
             "idle_after_seconds": {
               "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -6913,6 +6918,7 @@
           "properties": {
             "connection_id": {
               "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
@@ -6928,6 +6934,7 @@
             },
             "provider": {
               "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
               "type": [
                 "string",
                 "null"
@@ -15862,6 +15869,7 @@
             },
             "idle_after_seconds": {
               "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -15987,6 +15995,7 @@
           "properties": {
             "default": {
               "description": "Profile inherited when session creation does not choose one explicitly.",
+              "example": "primary",
               "type": "string"
             },
             "policy": {
@@ -16032,6 +16041,7 @@
           "properties": {
             "connection_id": {
               "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
@@ -16047,6 +16057,7 @@
             },
             "provider": {
               "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
               "type": [
                 "string",
                 "null"
@@ -21316,6 +21327,7 @@
             },
             "idle_after_seconds": {
               "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
               "format": "int64",
               "minimum": 0,
               "type": "integer"
@@ -21441,6 +21453,7 @@
           "properties": {
             "default": {
               "description": "Profile inherited when session creation does not choose one explicitly.",
+              "example": "primary",
               "type": "string"
             },
             "policy": {
@@ -21486,6 +21499,7 @@
           "properties": {
             "connection_id": {
               "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
               "type": [
                 "string",
                 "null"
@@ -21501,6 +21515,7 @@
             },
             "provider": {
               "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
               "type": [
                 "string",
                 "null"
