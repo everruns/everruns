@@ -1,0 +1,30 @@
+# Procedural macros private to everruns-server.
+#
+# Decision: `#[command(...)]` declares a domain command's metadata, policy,
+# CLI route and HTTP surface in one place, so the REST path is written once
+# instead of three times (axum route, `#[utoipa::path]`, `CommandMeta`).
+# Expansions reference server items through `crate::…`, so the attribute is
+# only usable inside everruns-server. Not published.
+
+[package]
+name = "everruns-server-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+description = "Attribute macros private to everruns-server: #[command]"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

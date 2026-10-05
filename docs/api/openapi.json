@@ -18064,7 +18064,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "GET /v1/skills - List all skills",
+        "summary": "List all active skills. Use search for name search, include_archived=true to include archived.",
         "operationId": "list_skills",
         "parameters": [
           {
@@ -18073,10 +18073,7 @@
             "description": "Search by name or description (case-insensitive substring match).",
             "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
@@ -18085,16 +18082,13 @@
             "description": "Include archived skills. Deleted skills never appear in lists.",
             "required": false,
             "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
+              "type": "boolean"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "List of skills",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -18109,7 +18103,7 @@
         "tags": [
           "skills"
         ],
-        "summary": "POST /v1/skills - Create skill from SKILL.md",
+        "summary": "Create a new skill from SKILL.md content.",
         "operationId": "create_skill",
         "requestBody": {
           "content": {
@@ -18123,7 +18117,7 @@
         },
         "responses": {
           "201": {
-            "description": "Skill created",
+            "description": "Created",
             "content": {
               "application/json": {
                 "schema": {
@@ -18232,11 +18226,11 @@
         "tags": [
           "skills"
         ],
-        "summary": "GET /v1/skills/usage - Count agents/harnesses referencing each skill",
+        "summary": "Count agents and harnesses referencing each skill capability.",
         "operationId": "list_skills_usage",
         "responses": {
           "200": {
-            "description": "Usage map keyed by skill id",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -18285,18 +18279,18 @@
         }
       }
     },
-    "/v1/skills/{skill_id}": {
+    "/v1/skills/{id}": {
       "get": {
         "tags": [
           "skills"
         ],
-        "summary": "GET /v1/skills/{skill_id} - Get skill by ID",
+        "summary": "Get a single skill by ID.",
         "operationId": "get_skill",
         "parameters": [
           {
-            "name": "skill_id",
+            "name": "id",
             "in": "path",
-            "description": "Skill ID (prefixed, e.g., skill_...)",
+            "description": "Prefixed public identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -18305,7 +18299,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Skill found",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -18323,13 +18317,13 @@
         "tags": [
           "skills"
         ],
-        "summary": "DELETE /v1/skills/{skill_id} - Delete skill",
+        "summary": "Archive a skill (soft delete). Can be restored.",
         "operationId": "delete_skill",
         "parameters": [
           {
-            "name": "skill_id",
+            "name": "id",
             "in": "path",
-            "description": "Skill ID",
+            "description": "Prefixed public identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -18338,7 +18332,7 @@
         ],
         "responses": {
           "204": {
-            "description": "Skill deleted"
+            "description": "No content"
           },
           "404": {
             "description": "Skill not found"
@@ -18349,12 +18343,13 @@
         "tags": [
           "skills"
         ],
-        "summary": "PATCH /v1/skills/{skill_id} - Update skill",
+        "summary": "Update a skill. Only provided fields are changed.",
         "operationId": "update_skill",
         "parameters": [
           {
-            "name": "skill_id",
+            "name": "id",
             "in": "path",
+            "description": "Prefixed public identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -18373,7 +18368,7 @@
         },
         "responses": {
           "200": {
-            "description": "Skill updated",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
@@ -18408,18 +18403,18 @@
         }
       }
     },
-    "/v1/skills/{skill_id}/content": {
+    "/v1/skills/{id}/content": {
       "get": {
         "tags": [
           "skills"
         ],
-        "summary": "GET /v1/skills/{skill_id}/content - Get full skill content",
+        "summary": "Get full skill content (SKILL.md + files).",
         "operationId": "get_skill_content",
         "parameters": [
           {
-            "name": "skill_id",
+            "name": "id",
             "in": "path",
-            "description": "Skill ID",
+            "description": "Prefixed public identifier",
             "required": true,
             "schema": {
               "type": "string"
@@ -18428,11 +18423,49 @@
         ],
         "responses": {
           "200": {
-            "description": "Skill content",
+            "description": "Success",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SkillContent"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Skill not found"
+          }
+        }
+      }
+    },
+    "/v1/skills/{id}/delete": {
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Permanently delete an archived skill.",
+        "operationId": "destroy_skill",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "400": {
+            "description": "Skill is not archived",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
