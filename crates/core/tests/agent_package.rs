@@ -387,8 +387,8 @@ fn empty_directory_trees_have_bounded_nesting() {
 
 #[test]
 fn folder_text_exports_preserve_embedded_skill_frontmatter() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../examples/agent-packages/triage");
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/agents/triage");
     let package = AgentPackage::load(root).unwrap();
     for format in [Format::Markdown, Format::Yaml, Format::Toml, Format::Json] {
         let text = package.to_string(format).unwrap();

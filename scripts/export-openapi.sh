@@ -38,6 +38,10 @@ fi
 mv "$TEMP_FILE" "$OUTPUT_FILE"
 trap - EXIT
 
+if [ "$OUTPUT_FILE" = "docs/api/openapi.json" ]; then
+  node scripts/generate-agent-schema.mjs
+fi
+
 echo "OpenAPI spec saved to $OUTPUT_FILE"
 echo "Spec version: $(jq -r '.info.version' "$OUTPUT_FILE")"
 echo "Endpoints: $(jq '.paths | keys | length' "$OUTPUT_FILE")"

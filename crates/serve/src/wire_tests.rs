@@ -1204,7 +1204,7 @@ mod a2a;
 #[tokio::test]
 async fn a_file_package_serves_a_real_session_and_pins_assets() {
     let path = format!(
-        "{}/../../examples/agent-packages/triage",
+        "{}/../../examples/agents/triage",
         env!("CARGO_MANIFEST_DIR")
     );
     let app = App::builder().agent_package(&path).try_build().unwrap();

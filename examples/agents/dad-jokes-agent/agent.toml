@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "dad-jokes-agent"
+display_name = "Dad Jokes Agent"
+description = "A friendly agent that tells dad jokes and knows what time it is."
+tags = ["humor","demo","seed"]
+capabilities = ["current_time"]

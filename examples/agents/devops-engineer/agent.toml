@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "devops-engineer"
+display_name = "DevOps Engineer"
+description = "Manages infrastructure, deployments, and operational workflows"
+tags = ["demo","devops","multi-capability"]
+capabilities = ["fake_aws","current_time","session_file_system"]

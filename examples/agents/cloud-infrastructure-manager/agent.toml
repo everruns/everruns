@@ -1,0 +1,28 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "cloud-infrastructure-manager"
+display_name = "Cloud Cost & Security Auditor"
+description = "Autonomous auditor that inventories fake AWS infrastructure, checks CloudWatch metrics, identifies cost waste and security violations, remediates issues, and writes a findings report. Designed for benchmarking long-running agents with 25+ tool calls."
+tags = ["demo","aws","infrastructure","audit","benchmark"]
+
+[[capabilities]]
+ref = "fake_aws"
+
+[[capabilities]]
+ref = "current_time"
+
+[[capabilities]]
+ref = "session_file_system"
+
+[[capabilities]]
+ref = "user_hooks"
+
+[[capabilities.config.hooks]]
+id = "audit_tool_calls"
+event = "post_tool_use"
+timeout_ms = 3000
+on_error = "warn"
+description = "Append timestamped audit line per tool call"
+[capabilities.config.hooks.executor]
+type = "bash"
+command = "printf '[%s] %s:%s\\n' \"$(date -u +%FT%TZ)\" \"$EVERRUNS_HOOK_TOOL_NAME\" \"$EVERRUNS_HOOK_TOOL_CALL_ID\" >> /workspace/.audit.log; echo '{}'"

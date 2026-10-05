@@ -234,6 +234,7 @@ export default defineConfig({
                   items: [
                     { label: "Agents and Tools", slug: "framework/agents" },
                     { label: "File-based Agents", slug: "how-to/define-agents-as-files" },
+                    { label: "Agent Format Reference", slug: "reference/agent-package" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Direct Calls and Decisions", slug: "framework/direct-model-calls" },
                     { label: "Sessions", slug: "framework/sessions" },

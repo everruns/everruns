@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "incident-commander-agent"
+display_name = "Incident Commander Agent"
+description = "Coordinates a production incident with an evidence log, bounded actions, and stakeholder updates"
+tags = ["demo","operations","incident-response"]
+capabilities = ["current_time","stateless_todo_list","session_file_system"]

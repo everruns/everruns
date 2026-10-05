@@ -18,15 +18,15 @@ Checks legacy Markdown, complete ZIP assets, destination diffs and invalid input
 
 - Canonical development stack is running with `AUTH_MODE=none`.
 - Skills are enabled when testing the complete triage folder.
-- Use the [package examples](../../../../examples/agent-packages/README.md).
+- Use the [package examples](../../../../examples/agents/README.md).
 
 ## Steps
 
-1. Open Agents, import the simple Dad Jokes Markdown example and wait for validation.
-2. Confirm create is the default destination; import and inspect the Instructions pane.
+1. Open Agents, select the triage ZIP and wait for validation. Review instructions, model/harness defaults, files and permissions, skill names, MCP servers and channel intent.
+2. Confirm create is the default destination; import and inspect the Instructions pane. Repeat with the legacy Dad Jokes Markdown fixture.
 3. Export Markdown and a complete ZIP, and verify both can be imported again.
 4. Change the instructions in a copy, import it, and select the original agent as the destination.
-5. Inspect the semantic diff before applying; confirm changed instructions persist after reload.
+5. Inspect Current / Imported instructions and Added / Removed / Updated file changes before applying; confirm changed instructions persist after reload.
 6. Import a malformed definition and confirm a useful diagnostic appears with Import disabled.
 7. Import a ZIP of the triage folder and inspect its initial files, including the skill script.
 8. Compare that exported ZIP with its agent and confirm no semantic changes.
@@ -49,3 +49,6 @@ Create a session and open Files. Verify the same tree and relative selected-file
 path. Updating the agent must not rewrite that session's files. Attaching a new
 session to its existing file tree must preserve current contents; request-level
 starting files on attachment must fail before a session is created.
+
+A valid definition with a missing destination dependency must still show its
+authored preview, display the dependency diagnostic, and keep Import disabled.

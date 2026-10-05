@@ -484,6 +484,7 @@ export type OpenApiScheduleTargetResponse = Schemas["ScheduleTargetResponse"];
 export type OpenApiScheduleTriggerConfig = Schemas["ScheduleTriggerConfig"];
 export type OpenApiSchedulesListResponse = Schemas["SchedulesListResponse"];
 export type OpenApiSchemaResponse = Schemas["SchemaResponse"];
+export type OpenApiScopedMcpServer = Schemas["ScopedMcpServer"];
 export type OpenApiSecretInfo = Schemas["SecretInfo"];
 export type OpenApiSendSignalRequest = Schemas["SendSignalRequest"];
 export type OpenApiServiceKind = Schemas["ServiceKind"];

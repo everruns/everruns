@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "everruns-support-agent"
+display_name = "Everruns Support Agent"
+description = "Troubleshoots Everruns Framework and Platform questions using public documentation and structured investigation notes"
+tags = ["demo","everruns","support"]
+capabilities = ["stateless_todo_list","web_fetch","session_file_system"]

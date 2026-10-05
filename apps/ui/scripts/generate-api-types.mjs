@@ -17,6 +17,7 @@ const legacyTypesPaths = [
   "legacy-api-types.ts",
   "agent-types.ts",
   "agent-preview-types.ts",
+  "agent-mcp-types.ts",
   "mcp-server-types.ts",
   "runtime-account-types.ts",
   "provider-driver-types.ts",

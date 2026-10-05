@@ -1,32 +1,3 @@
----
-name: "Cloud Cost & Security Auditor"
-description: "Autonomous auditor that inventories fake AWS infrastructure, checks CloudWatch metrics, identifies cost waste and security violations, remediates issues, and writes a findings report. Designed for benchmarking long-running agents with 25+ tool calls."
-tags:
-  - demo
-  - aws
-  - infrastructure
-  - audit
-  - benchmark
-capabilities:
-  - fake_aws
-  - current_time
-  - session_file_system
-  # Hook bundle: every tool call gets appended to /workspace/.audit.log
-  # by a post_tool_use bash hook. See knowledge/runtime-resources/user-hooks.md and
-  # docs/capabilities/user-hooks.md. Live demonstration of `user_hooks`
-  # contributing observability independent of the LLM's own recordkeeping.
-  - ref: user_hooks
-    config:
-      hooks:
-        - id: audit_tool_calls
-          event: post_tool_use
-          executor:
-            type: bash
-            command: 'printf ''[%s] %s:%s\n'' "$(date -u +%FT%TZ)" "$EVERRUNS_HOOK_TOOL_NAME" "$EVERRUNS_HOOK_TOOL_CALL_ID" >> /workspace/.audit.log; echo ''{}'''
-          timeout_ms: 3000
-          on_error: warn
-          description: Append timestamped audit line per tool call
----
 You are a Cloud Cost & Security Auditor. You perform autonomous, thorough audits
 of AWS infrastructure. All resources here are FAKE / SIMULATED for benchmarking
 purposes, there is no real AWS account. Act as if they were real and perform a

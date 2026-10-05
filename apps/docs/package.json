@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "prepare-content": "node scripts/render-notebooks.mjs && node scripts/copy-openapi.mjs",
+    "prepare-content": "node scripts/render-notebooks.mjs && node scripts/copy-openapi.mjs && node scripts/copy-agent-schema.mjs",
     "dev": "astro dev",
     "predev": "pnpm run prepare-content",
     "precheck": "pnpm run prepare-content",

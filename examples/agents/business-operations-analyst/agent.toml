@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "business-operations-analyst"
+display_name = "Business Operations Analyst"
+description = "Analyzes business operations across warehouse, finance, and customer data"
+tags = ["demo","operations","multi-capability"]
+capabilities = ["fake_warehouse","fake_crm","fake_financial","current_time","session_file_system"]

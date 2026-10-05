@@ -18,6 +18,18 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
         .assert_success()
         .json_value();
     assert_eq!(validation["valid"], true, "{validation}");
+    assert_eq!(validation["preview"]["instructions"], "Read the runbook.");
+    assert_eq!(validation["preview"]["files"]["runbook.md"]["bytes"], 11);
+    assert_eq!(
+        validation["preview"]["files"]["runbook.md"]["is_readonly"],
+        true
+    );
+    assert!(
+        validation["preview"]["files"]["runbook.md"]
+            .get("content")
+            .is_none()
+    );
+    assert!(validation["preview"].get("id").is_none());
     let agent = server
         .post("/v1/agents/import", &body)
         .await
