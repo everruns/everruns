@@ -1111,3 +1111,68 @@ async fn provider_correlation_and_unknown_costs_reach_the_chat_span() {
     assert!(unknown.contains("container:openai_hosted"), "{unknown}");
     assert!(!unknown.contains("model_tokens"), "{unknown}");
 }
+
+/// Runs one tool call whose completion records `executed`, returning the
+/// finished `execute_tool` span.
+async fn tool_span_with_executed(
+    record_content: bool,
+    executed: Option<serde_json::Value>,
+    truncated: bool,
+) -> SpanData {
+    let h = OtelHarness::new(record_content, TraceConventions::ALL);
+    h.emit(0, h.context(None, None, None), h.turn_started())
+        .await;
+    h.emit(630, h.context(None, Some("t1"), None), tool_started())
+        .await;
+    let mut completed = ToolCompletedData::success(
+        "call_1".to_string(),
+        "get_weather".to_string(),
+        vec![ContentPart::text("rainy, 14C")],
+        Some(70),
+    );
+    completed.executed_arguments = executed;
+    completed.executed_arguments_truncated = truncated;
+    h.emit(700, h.context(None, Some("t1"), None), completed)
+        .await;
+    by_name(&h.spans(), "execute_tool get_weather").clone()
+}
+
+/// EVE-1218: arguments a pre-tool hook rewrote are exported next to the
+/// authored ones, exactly as the event recorded them, under content capture.
+#[tokio::test]
+async fn hook_rewritten_arguments_reach_the_tool_span() {
+    let executed = json!({ "city": "Paris", "units": "metric", "api_key": "[REDACTED]" });
+    let tool = tool_span_with_executed(true, Some(executed.clone()), false).await;
+    assert_eq!(
+        attr_str(&tool, "everruns.tool.executed_arguments"),
+        Some(executed.to_string())
+    );
+    assert_eq!(
+        attr_str(&tool, "gen_ai.tool.call.arguments"),
+        Some(json!({ "city": "Paris" }).to_string())
+    );
+    assert!(attr(&tool, "everruns.tool.executed_arguments_truncated").is_none());
+
+    // A truncated preview is a string already: exported as-is, and flagged.
+    let preview = "{\"city\":\"Par...".to_string();
+    let tool = tool_span_with_executed(true, Some(json!(preview)), true).await;
+    assert_eq!(
+        attr_str(&tool, "everruns.tool.executed_arguments"),
+        Some(preview.clone())
+    );
+    assert_eq!(
+        attr(&tool, "everruns.tool.executed_arguments_truncated"),
+        Some(&Value::Bool(true))
+    );
+
+    // Not rewritten: nothing new on the span.
+    let tool = tool_span_with_executed(true, None, false).await;
+    assert!(attr(&tool, "everruns.tool.executed_arguments").is_none());
+    assert!(attr(&tool, "everruns.tool.executed_arguments_truncated").is_none());
+
+    // Content capture off: withheld like the authored arguments.
+    let tool = tool_span_with_executed(false, Some(json!(preview)), true).await;
+    assert!(attr(&tool, "everruns.tool.executed_arguments").is_none());
+    assert!(attr(&tool, "everruns.tool.executed_arguments_truncated").is_none());
+    assert!(attr(&tool, "gen_ai.tool.call.arguments").is_none());
+}

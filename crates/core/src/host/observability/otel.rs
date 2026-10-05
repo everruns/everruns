@@ -85,6 +85,9 @@ mod everruns_attr {
     pub const TOOL_STATUS: &str = "everruns.tool.status";
     pub const TOOL_CAPABILITY_ID: &str = "everruns.tool.capability.id";
     pub const TOOL_CAPABILITY_NAME: &str = "everruns.tool.capability.name";
+    pub const TOOL_EXECUTED_ARGUMENTS: &str = "everruns.tool.executed_arguments";
+    pub const TOOL_EXECUTED_ARGUMENTS_TRUNCATED: &str =
+        "everruns.tool.executed_arguments_truncated";
     pub const LLM_RETRY_ATTEMPTS: &str = "everruns.llm.retry.attempts";
     pub const LLM_RETRY_WAIT_MS: &str = "everruns.llm.retry.total_wait_ms";
     pub const USAGE_COST_USD: &str = "everruns.usage.cost_usd";
@@ -1337,6 +1340,22 @@ impl OtelEventListener {
                 everruns_attr::TOOL_CAPABILITY_NAME,
                 name.clone(),
             ));
+        }
+        // Hook-rewritten args as recorded; a truncated preview is not re-quoted.
+        if self.record_content
+            && let Some(executed) = &data.executed_arguments
+        {
+            let value = match executed {
+                serde_json::Value::String(preview) => preview.clone(),
+                other => other.to_string(),
+            };
+            attrs.push(KeyValue::new(everruns_attr::TOOL_EXECUTED_ARGUMENTS, value));
+            if data.executed_arguments_truncated {
+                attrs.push(KeyValue::new(
+                    everruns_attr::TOOL_EXECUTED_ARGUMENTS_TRUNCATED,
+                    true,
+                ));
+            }
         }
         if self.record_content
             && let Some(result) = &data.result

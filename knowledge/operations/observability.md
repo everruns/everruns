@@ -175,7 +175,10 @@ the chat span carries `gen_ai.system_instructions`, `gen_ai.input.messages`,
 `{role, parts}` JSON (built by `everruns_core::telemetry::content`), plus the
 OpenInference `input.value`/`output.value` and flattened
 `llm.input_messages.N.message.*` / `llm.output_messages.0.message.*`. Tool
-spans carry `gen_ai.tool.call.arguments/result` and `input.value`/`output.value`;
+spans carry `gen_ai.tool.call.arguments/result` and `input.value`/`output.value`,
+plus `everruns.tool.executed_arguments` (and `_truncated`) when a pre-tool hook
+rewrote the call — exported exactly as `tool.completed` recorded it (bounded,
+redacted), never re-derived from the raw call;
 the turn root carries the input message and the final answer preview; the
 thinking span carries the reasoning text as `output.value`.
 
@@ -283,7 +286,7 @@ For the complete field-by-field mapping (LLM generation, tool events, thinking e
 - **Cache tokens**: `metadata.usage.cache_read_tokens` → `metrics.cache_read_tokens`
 - **Timing**: `metadata.duration_ms` → `metrics.start`/`metrics.end`; `metadata.time_to_first_token_ms` → `metrics.time_to_first_token` (seconds)
 - **Messages**: Converted to Braintrust/OpenAI-compatible payloads only when `BRAINTRUST_RECORD_CONTENT=true`; otherwise the exporter sends structural summaries without raw text previews
-- **Tool args/results**: Controlled independently via `BRAINTRUST_TOOL_ARGS_MODE` and `BRAINTRUST_TOOL_RESULTS_MODE`, including tool-call/tool-result payloads nested inside recorded LLM input/output
+- **Tool args/results**: Controlled independently via `BRAINTRUST_TOOL_ARGS_MODE` and `BRAINTRUST_TOOL_RESULTS_MODE`, including tool-call/tool-result payloads nested inside recorded LLM input/output; hook-rewritten `executed_arguments` from `tool.completed` join the tool span's input under the args mode
 - **Thinking content**: Controlled independently via `BRAINTRUST_RECORD_THINKING`
 - **Root turn metadata**: Every exported turn root includes `session_id`; when available it also includes `input_message_id`, monotonic session ordering fields, deployment grade, session status, model/provider summary, retry markers, and compaction markers
 - **Session lifecycle markers**: `session.started`, `session.activated`, and `session.idled` are exported as lightweight session lifecycle logs to preserve grouped-session flow

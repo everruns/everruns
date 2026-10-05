@@ -810,7 +810,7 @@ OTEL_RECORD_CONTENT=true
 ```
 
 **Notes:**
-- When enabled, the chat span records `gen_ai.system_instructions`, `gen_ai.input.messages`, `gen_ai.output.messages`, and `gen_ai.tool.definitions` (plus the OpenInference `input.value`, `output.value`, and flattened `llm.input_messages.*`); tool spans record `gen_ai.tool.call.arguments` and `gen_ai.tool.call.result`; the turn root records the input message and final answer; the thinking span records the reasoning text
+- When enabled, the chat span records `gen_ai.system_instructions`, `gen_ai.input.messages`, `gen_ai.output.messages`, and `gen_ai.tool.definitions` (plus the OpenInference `input.value`, `output.value`, and flattened `llm.input_messages.*`); tool spans record `gen_ai.tool.call.arguments` and `gen_ai.tool.call.result` (plus `everruns.tool.executed_arguments` when a pre-tool hook rewrote the call); the turn root records the input message and final answer; the thinking span records the reasoning text
 - Disabled by default for privacy and data size concerns
 - Only enable in development or when debugging specific issues
 
