@@ -8047,11 +8047,20 @@ export interface components {
       definition: Record<string, unknown>;
     };
     CreateEnvironmentRequest: {
-      /** @description Optional explanation of the Environment's intended workload. */
+      /**
+       * @description Optional explanation of the Environment's intended workload.
+       * @example Recoverable coding workspace managed by Daytona
+       */
       description?: string | null;
-      /** @description Human-readable name shown in management surfaces. */
+      /**
+       * @description Human-readable name shown in management surfaces.
+       * @example Coding - Daytona
+       */
       display_name: string;
-      /** @description Stable addressable name used by Agent environment references. */
+      /**
+       * @description Stable addressable name used by Agent environment references.
+       * @example coding-daytona
+       */
       name: string;
       /** @description Initial immutable execution profile revision. */
       profile: components["schemas"]["EnvironmentProfile"];
@@ -9269,17 +9278,29 @@ export interface components {
       created_at: string;
       /** @description Latest immutable revision used for new references. */
       current_revision: components["schemas"]["EnvironmentRevision"];
-      /** @description Optional explanation of the Environment's intended workload. */
+      /**
+       * @description Optional explanation of the Environment's intended workload.
+       * @example Recoverable coding workspace managed by Daytona
+       */
       description?: string | null;
-      /** @description Human-readable name shown in management surfaces. */
+      /**
+       * @description Human-readable name shown in management surfaces.
+       * @example Coding - Daytona
+       */
       display_name: string;
       /** @description Stable public Environment identifier. */
       id: string;
       /** @description Whether the definition is owned and sealed by the platform. */
       is_managed: boolean;
-      /** @description Addressable name used in configuration. */
+      /**
+       * @description Addressable name used in configuration.
+       * @example coding-daytona
+       */
       name: string;
-      /** @description Lifecycle state such as `active` or `archived`. */
+      /**
+       * @description Lifecycle state such as `active` or `archived`.
+       * @example active
+       */
       status: string;
       /**
        * Format: date-time
@@ -9315,9 +9336,15 @@ export interface components {
     };
     /** @description What commands may touch, and who enforces it. */
     EnvironmentContainment: {
-      /** @description `none`, `native`, or `isolated`. */
+      /**
+       * @description `none`, `native`, or `isolated`.
+       * @example isolated
+       */
       level: string;
-      /** @description Outbound network policy: `deny`, `allowlist`, or `allow`. */
+      /**
+       * @description Outbound network policy: `deny`, `allowlist`, or `allow`.
+       * @example allow
+       */
       network: string;
     };
     /** @enum {string} */
@@ -9357,6 +9384,7 @@ export interface components {
       /**
        * Format: int64
        * @description Inactivity interval before applying `idle_action`.
+       * @example 300
        */
       idle_after_seconds?: number;
     };
@@ -9437,6 +9465,7 @@ export interface components {
       /**
        * Format: int32
        * @description Monotonically increasing revision number within the Environment.
+       * @example 3
        */
       revision: number;
     };
@@ -9448,7 +9477,10 @@ export interface components {
       | components["schemas"]["EnvironmentProfile"];
     /** @description Named execution environments offered by an Agent version. */
     EnvironmentSet: {
-      /** @description Profile inherited when session creation does not choose one explicitly. */
+      /**
+       * @description Profile inherited when session creation does not choose one explicitly.
+       * @example primary
+       */
       default: string;
       policy?: components["schemas"]["EnvironmentPolicyMode"] | null;
       /** @description Human-authored profiles addressable by name at session creation. */
@@ -9458,11 +9490,20 @@ export interface components {
     };
     /** @description Where a session's commands run. */
     EnvironmentTarget: {
-      /** @description Registered connection used by a machine target. */
+      /**
+       * @description Registered connection used by a machine target.
+       * @example conn_01933b5a000070008000000000000001
+       */
       connection_id?: string | null;
-      /** @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`. */
+      /**
+       * @description Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`.
+       * @example managed
+       */
       kind: string;
-      /** @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...). */
+      /**
+       * @description Concrete provider, when the kind has one (`bashkit`, `daytona`, ...).
+       * @example daytona
+       */
       provider?: string | null;
     };
     /** @description One target this deployment can offer, and what it can do. */
@@ -9489,7 +9530,10 @@ export interface components {
     EnvironmentTargetKind: "host" | "machine" | "vfs" | "container" | "managed";
     /** @description Where commands execute. */
     EnvironmentTargetProfile: {
-      /** @description Credential/transport binding for a registered machine target. */
+      /**
+       * @description Credential/transport binding for a registered machine target.
+       * @example conn_01933b5a000070008000000000000001
+       */
       connection_id?: string | null;
       /** @description Provider-neutral target class. */
       kind: components["schemas"]["EnvironmentTargetKind"];
@@ -9498,7 +9542,10 @@ export interface components {
        *     never values in this object.
        */
       options?: Record<string, unknown>;
-      /** @description Concrete adapter for target kinds with more than one implementation. */
+      /**
+       * @description Concrete adapter for target kinds with more than one implementation.
+       * @example daytona
+       */
       provider?: string | null;
     };
     /** @description Response body for the `list_environment_targets` operation. */
@@ -17406,9 +17453,15 @@ export interface components {
       session_id: string;
     };
     ReviseEnvironmentRequest: {
-      /** @description Omit to preserve; send null to clear. */
+      /**
+       * @description Omit to preserve; send null to clear.
+       * @example Larger recoverable workspace for repository builds
+       */
       description?: string | null;
-      /** @description Replacement display name; omit to preserve the current value. */
+      /**
+       * @description Replacement display name; omit to preserve the current value.
+       * @example Coding - Daytona (large)
+       */
       display_name?: string | null;
       /** @description Complete profile stored as the next immutable revision. */
       profile: components["schemas"]["EnvironmentProfile"];
