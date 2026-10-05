@@ -17,7 +17,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Pin, Plus } from "lucide-react";
+import { ArrowRight, Pin, Plus } from "lucide-react";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { usePlatformChatThread } from "@/hooks/use-platform-chat-thread";
 import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
@@ -25,7 +25,7 @@ import type { Session } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 const rowClass =
-  "flex items-center gap-2 py-1 pl-5 pr-2 text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+  "flex items-center gap-2 py-1 px-2 text-xs leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
 
 /** Hold `value` steady while `frozen` is true, adopting the latest on thaw. */
 function useFrozen<T>(value: T, frozen: boolean): T {
@@ -54,57 +54,63 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
     <div
       role="group"
       aria-label="Side chats"
-      className="ml-9 mr-2.5 mb-1 border-l border-border"
+      className="ml-9 mr-2.5 mb-1"
       onMouseEnter={() => setInteracting(true)}
       onMouseLeave={() => setInteracting(false)}
       onFocusCapture={() => setInteracting(true)}
       onBlurCapture={() => setInteracting(false)}
     >
-      <p className="py-1 pl-5 pr-2 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-        Side chats
-      </p>
-      {visible.map((thread) => {
-        const href = `/chats/${thread.id}`;
-        const isActive = pathname === href;
-        return (
+      <div className="border-l border-border">
+        <div className="flex items-center justify-between pl-2 pr-1 text-muted-foreground">
+          <p className="text-[10px] font-medium uppercase tracking-[0.08em]">Side chats</p>
           <Link
-            key={thread.id}
-            href={href}
+            href="/chats/new"
             prefetch={false}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              rowClass,
-              isActive
-                ? "bg-muted font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
+            aria-label="New side chat"
+            title="New side chat"
+            className="flex size-7 shrink-0 items-center justify-center hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           >
-            <span className="truncate">{threadTitle(thread)}</span>
-            {thread.is_pinned === true && (
-              <Pin className="ml-auto size-3 shrink-0 text-primary" aria-label="Pinned" />
-            )}
+            <Plus className="size-3.5" aria-hidden="true" />
           </Link>
-        );
-      })}
+        </div>
+        {visible.map((thread) => {
+          const href = `/chats/${thread.id}`;
+          const isActive = pathname === href;
+          return (
+            <Link
+              key={thread.id}
+              href={href}
+              prefetch={false}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                rowClass,
+                isActive
+                  ? "bg-muted font-medium text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <span className="truncate">{threadTitle(thread)}</span>
+              {thread.is_pinned === true && (
+                <Pin className="ml-auto size-3 shrink-0 text-primary" aria-label="Pinned" />
+              )}
+            </Link>
+          );
+        })}
+      </div>
 
-      <Link
-        href="/chats/new"
-        prefetch={false}
-        className={cn(rowClass, "text-muted-foreground hover:bg-muted hover:text-foreground")}
-      >
-        <Plus className="size-3.5 shrink-0" />
-        New side chat
-      </Link>
-
-      {/* Always offered, even with nothing above it: the all-chats page is the
-          only place archived threads can be brought back into view. */}
-      <Link
-        href="/chats/history"
-        prefetch={false}
-        className={cn(rowClass, "text-muted-foreground hover:bg-muted hover:text-foreground")}
-      >
-        All chats
-      </Link>
+      {stableThreads.length > SIDEBAR_THREAD_LIMIT && (
+        <Link
+          href="/chats/history"
+          prefetch={false}
+          className={cn(
+            rowClass,
+            "mt-1 font-medium text-foreground underline-offset-4 hover:bg-muted hover:underline focus-visible:underline",
+          )}
+        >
+          View all chats
+          <ArrowRight className="size-3.5 shrink-0" aria-hidden="true" />
+        </Link>
+      )}
     </div>
   );
 }
