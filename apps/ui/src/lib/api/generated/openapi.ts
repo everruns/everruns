@@ -236,6 +236,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/avatar/preset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent. */
+    get: operations["get_avatar_preset_selection"];
+    /** Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons. */
+    put: operations["select_avatar_preset"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/channels": {
     parameters: {
       query?: never;
@@ -1013,6 +1031,40 @@ export interface paths {
     put?: never;
     /** @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message. */
     post: operations["invoke_webhook_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/avatar-presets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The public catalog contains presentation metadata only, never agent configuration. */
+    get: operations["list_avatar_presets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/avatar-presets/{preset_id}/{variant}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes. */
+    get: operations["get_avatar_preset_variant"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -6501,6 +6553,41 @@ export interface components {
      * @enum {string}
      */
     AppStatus: "draft" | "published" | "archived" | "deleted";
+    /** @description Presentation and search metadata for one curated agent avatar. */
+    AvatarPreset: {
+      /** @description Short description of the preset's appearance. */
+      description: string;
+      /**
+       * @description Visual family used to filter the catalog.
+       * @example Familiars
+       */
+      family: string;
+      /**
+       * @description Stable catalog ID used to select this preset.
+       * @example familiars-patch
+       */
+      id: string;
+      /** @description Search terms covering the preset's appearance and suggested uses. */
+      keywords: string[];
+      /**
+       * @description Display name of the character or design.
+       * @example Patch
+       */
+      name: string;
+      /**
+       * @description Suggested agent role for this design.
+       * @example Developer
+       */
+      role: string;
+    };
+    /** @description The curated preset currently assigned to an agent, if any. */
+    AvatarPresetSelection: {
+      /**
+       * @description Catalog ID, or null when the agent has an upload or no avatar.
+       * @example familiars-patch
+       */
+      preset_id?: string | null;
+    };
     BTreeMap: {
       [key: string]: {
         /** @description Identity whose grant this attachment requests. */
@@ -18043,6 +18130,14 @@ export interface components {
       /** @description When the secret was last updated */
       updated_at: string;
     };
+    /** @description Select a curated avatar by its stable catalog ID. */
+    SelectAvatarPreset: {
+      /**
+       * @description Stable ID returned by the public avatar preset catalog.
+       * @example familiars-patch
+       */
+      preset_id: string;
+    };
     /** @description Request to send a signal to a workflow */
     SendSignalRequest: {
       /**
@@ -23774,6 +23869,92 @@ export interface operations {
       };
     };
   };
+  get_avatar_preset_selection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AvatarPresetSelection"];
+        };
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  select_avatar_preset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SelectAvatarPreset"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentAvatar"];
+        };
+      };
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_agent_channels: {
     parameters: {
       query?: never;
@@ -26107,6 +26288,53 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  list_avatar_presets: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AvatarPreset"][];
+        };
+      };
+    };
+  };
+  get_avatar_preset_variant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        preset_id: string;
+        variant: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": unknown;
+        };
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

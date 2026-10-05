@@ -45,8 +45,14 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
 - **Agent Cards.** The A2A card carries the 256 px square as `iconUrl` on the card's own origin.
   The MCP agent card inlines the 64 px square as a data URI because its CSP blocks fetches.
 
-## Open
+- **Curated sources share the upload pipeline.** Branding offers a searchable catalog of 25
+  avatars in five visual families. Stable IDs, names, descriptions and keywords are owned by
+  [`avatar_presets.rs`](../../crates/server/src/domains/agents/avatar_presets.rs). Selection accepts
+  only an exact catalog ID, retains that identity with the stored avatar, and persists the same
+  square/circle variants and Slack updates as upload. No client-supplied source URL is fetched.
+- **Search is presentation only.** Each whitespace-separated term can match any metadata field,
+  case-insensitively. Role labels never change the agent's behavior or configuration. Current
+  selection survives reload; custom images remain uploadable, replaceable and removable.
 
-- `agent_avatars.source` is `upload` only. A curated set of predefined avatars would add a value
-  there and share the same serving path.
+## Open
 - Avatars generated from the display name were considered and left out for now.

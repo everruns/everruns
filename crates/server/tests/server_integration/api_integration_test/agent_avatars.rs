@@ -293,3 +293,197 @@ async fn a2a_agent_card_advertises_the_avatar_as_icon_url() {
         "{icon}"
     );
 }
+
+#[tokio::test]
+async fn curated_preset_selection_persists_and_shares_upload_pipeline() {
+    let server = TestServer::in_memory().await;
+    let catalog: Vec<Value> = server
+        .get("/v1/avatar-presets")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(catalog.len(), 25);
+    let agent = create_agent(&server, "preset-avatar").await;
+    let id = agent["id"].as_str().unwrap();
+    let path = format!("/v1/agents/{id}/avatar/preset");
+    for bad in [
+        "unknown",
+        "../watchers-bracket",
+        "https://example.com/a.png",
+        "WATCHERS-BRACKET",
+    ] {
+        server
+            .put(&path, json!({"preset_id": bad}))
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+    let preset: Value = server
+        .put(&path, json!({"preset_id": "familiars-patch"}))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let current: Value = server.get(&path).await.assert_status(StatusCode::OK).json();
+    assert_eq!(current["preset_id"], "familiars-patch");
+    let fetched: Value = server
+        .get(&format!("/v1/agents/{id}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(fetched["avatar"], preset);
+    for shape in ["square", "circle"] {
+        let stored = server
+            .request_raw(
+                Method::GET,
+                &format!(
+                    "/v1/avatars/{}/{shape}-64.png",
+                    preset["id"].as_str().unwrap()
+                ),
+                vec![],
+                vec![],
+            )
+            .await
+            .assert_status(StatusCode::OK);
+        let preview = server
+            .request_raw(
+                Method::GET,
+                &format!("/v1/avatar-presets/familiars-patch/{shape}-64.png"),
+                vec![],
+                vec![],
+            )
+            .await
+            .assert_status(StatusCode::OK);
+        assert_eq!(stored.bytes(), preview.bytes());
+    }
+    let custom: Value = upload(&server, id, "image/png", &png(128, 128, [30, 40, 50]))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_ne!(custom["id"], preset["id"]);
+    let current: Value = server.get(&path).await.json();
+    assert!(current["preset_id"].is_null());
+    server
+        .request_raw(Method::GET, preset["url"].as_str().unwrap(), vec![], vec![])
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .put(&path, json!({"preset_id": "bloom-mint"}))
+        .await
+        .assert_status(StatusCode::OK);
+    server
+        .delete(&format!("/v1/agents/{id}/avatar"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let current: Value = server.get(&path).await.json();
+    assert!(current["preset_id"].is_null());
+    server
+        .put(
+            "/v1/agents/agent_01933b5a000070008000000000000099/avatar/preset",
+            json!({"preset_id":"bloom-mint"}),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    for path in [
+        "/v1/avatar-presets/missing/square-64.png",
+        "/v1/avatar-presets/bloom-mint/oval-64.png",
+    ] {
+        server
+            .request_raw(Method::GET, path, vec![], vec![])
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+    }
+}
+
+mod authorization {
+    use super::*;
+    use async_trait::async_trait;
+    use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+    use everruns_core::{Caller, Permission, PermissionResolver};
+    use everruns_worker::AgentRunner;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
+    struct IdleRunner;
+
+    #[async_trait]
+    impl AgentRunner for IdleRunner {
+        async fn start_run(
+            &self,
+            _org_id: i64,
+            _session_id: SessionId,
+            _harness_id: HarnessId,
+            _agent_id: Option<AgentId>,
+            _input_message_id: MessageId,
+            _request_id: Option<String>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn resume_after_tool_results(
+            &self,
+            _session_id: SessionId,
+            _resolution_id: uuid::Uuid,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn is_running(&self, _run_id: SessionId) -> bool {
+            false
+        }
+
+        async fn active_count(&self) -> usize {
+            0
+        }
+    }
+
+    #[derive(Default)]
+    struct DenyAvatarWrites {
+        armed: AtomicBool,
+    }
+    impl PermissionResolver for DenyAvatarWrites {
+        fn has_permission(&self, _: &Caller, permission: &Permission) -> bool {
+            !(self.armed.load(Ordering::SeqCst) && permission == &Permission::OrgAgentsManage)
+        }
+        fn caller_permissions(&self, caller: &Caller) -> Vec<Permission> {
+            Permission::ALL
+                .iter()
+                .copied()
+                .filter(|p| self.has_permission(caller, p))
+                .collect()
+        }
+    }
+    #[tokio::test]
+    async fn preset_mutation_honors_custom_permission_resolver() {
+        let resolver = Arc::new(DenyAvatarWrites::default());
+        let server = TestServer::in_memory_with_runner_and_permission_resolver(
+            Arc::new(IdleRunner),
+            resolver.clone(),
+        )
+        .await;
+        let agent = create_agent(&server, "avatar-authz").await;
+        let id = agent["id"].as_str().unwrap();
+        resolver.armed.store(true, Ordering::SeqCst);
+        server
+            .put(
+                &format!("/v1/agents/{id}/avatar/preset"),
+                json!({"preset_id": "bloom-mint"}),
+            )
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+        server
+            .get(&format!("/v1/agents/{id}/avatar/preset"))
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+        upload(&server, id, "image/png", &png(128, 128, [0, 0, 0]))
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+        server
+            .delete(&format!("/v1/agents/{id}/avatar"))
+            .await
+            .assert_status(StatusCode::FORBIDDEN);
+    }
+}

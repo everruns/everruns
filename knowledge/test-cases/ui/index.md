@@ -1,6 +1,7 @@
 # UI test cases
 
 * [Admin login](admin_login/) - 3 manual UI cases.
+* [Agent avatars](agent_avatars/) - 1 manual UI case.
 * [Agent chat](agent_chat/) - 2 manual UI cases.
 * [Agent checks](agent_checks/) - 2 manual UI cases.
 * [Agent credentials](agent_credentials/) - 1 manual UI case.

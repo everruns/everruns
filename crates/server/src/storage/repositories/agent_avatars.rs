@@ -55,6 +55,20 @@ impl Database {
         Ok(Some(avatar_id))
     }
 
+    pub async fn get_agent_avatar_source(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Option<String>> {
+        Ok(sqlx::query_scalar(
+            "SELECT source FROM agent_avatars WHERE org_id = $1 AND agent_id = $2",
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
     /// Remove the agent's avatar. Returns whether one was removed.
     pub async fn clear_agent_avatar(&self, org_id: i64, agent_id: Uuid) -> Result<bool> {
         let mut tx = self.pool.begin().await?;

@@ -46,9 +46,11 @@ const mockUpload = {
   isPending: false,
   error: null,
 };
+const mockSelect = { mutateAsync: jest.fn(), reset: jest.fn(), isPending: false, error: null };
 const mockRemove = { mutate: jest.fn(), isPending: false, error: null };
 jest.mock("@/hooks", () => ({
-  useAgentAvatar: () => ({ upload: mockUpload, remove: mockRemove }),
+  useAvatarPresets: () => ({ catalog: { data: [], isLoading: false }, current: {} }),
+  useAgentAvatar: () => ({ upload: mockUpload, remove: mockRemove, selectPreset: mockSelect }),
 }));
 
 describe("avatar field", () => {
@@ -88,5 +90,6 @@ describe("avatar field", () => {
     render(<AgentAvatarField agent={agent} readOnly />);
     expect(screen.getByRole("button", { name: "Replace avatar" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Remove/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Choose preset" })).toBeDisabled();
   });
 });

@@ -185,7 +185,9 @@ jest.mock("@/hooks", () => ({
   useDeleteAgent: () => mutation(mockArchive),
   useDestroyAgent: () => mutation(),
   useAgentNameAvailability: () => ({ isChecking: false, available: null }),
+  useAvatarPresets: () => ({ catalog: { data: [], isLoading: false }, current: {} }),
   useAgentAvatar: () => ({
+    selectPreset: { isPending: false, error: null, reset: jest.fn(), mutateAsync: jest.fn() },
     upload: { mutate: jest.fn(), isPending: false, error: null },
     remove: { mutate: jest.fn(), isPending: false, error: null },
   }),

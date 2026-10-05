@@ -3,6 +3,7 @@
 
 import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { AgentAvatar } from "./agent-types";
+import type { AvatarPreset, AvatarPresetSelection } from "./schema-types";
 import { createCrudApi } from "./crud";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -360,4 +361,28 @@ export function agentAvatarUrl(
     ? size
     : (avatar.sizes.find((s) => s >= size) ?? avatar.sizes[avatar.sizes.length - 1]);
   return `${getApiBaseUrl()}/v1/avatars/${avatar.id}/${shape}-${preset}.png`;
+}
+
+/** Curated presentation metadata; choosing a role never changes agent behavior. */
+export type { AvatarPreset } from "./schema-types";
+
+export async function listAvatarPresets(): Promise<AvatarPreset[]> {
+  return (await api.get<AvatarPreset[]>("/v1/avatar-presets")).data;
+}
+export async function getAvatarPresetSelection(agentId: string): Promise<AvatarPresetSelection> {
+  return (await api.get<AvatarPresetSelection>(`/v1/agents/${agentId}/avatar/preset`)).data;
+}
+export async function selectAgentAvatarPreset(
+  agentId: string,
+  presetId: string,
+): Promise<AgentAvatar> {
+  return (
+    await api.put<AgentAvatar>(`/v1/agents/${agentId}/avatar/preset`, { preset_id: presetId })
+  ).data;
+}
+export function avatarPresetUrl(
+  preset: AvatarPreset,
+  shape: "square" | "circle" = "square",
+): string {
+  return `${getApiBaseUrl()}/v1/avatar-presets/${encodeURIComponent(preset.id)}/${shape}-256.png`;
 }

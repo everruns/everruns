@@ -9,6 +9,14 @@ impl StorageBackend {
         dispatch!(self, set_agent_avatar, input)
     }
 
+    pub async fn get_agent_avatar_source(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+    ) -> Result<Option<String>> {
+        dispatch!(self, get_agent_avatar_source, org_id, agent_id)
+    }
+
     pub async fn clear_agent_avatar(&self, org_id: i64, agent_id: Uuid) -> Result<bool> {
         dispatch!(self, clear_agent_avatar, org_id, agent_id)
     }
