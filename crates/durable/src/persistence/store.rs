@@ -209,7 +209,7 @@ pub struct ClaimedTask {
 #[derive(Debug, Clone)]
 pub enum Enqueued {
     /// Enqueued claimed by the requesting worker, which runs it now.
-    Claimed(ClaimedTask),
+    Claimed(Box<ClaimedTask>),
     /// Enqueued pending, with this id, for whichever worker claims it.
     Queued(Uuid),
 }
@@ -226,7 +226,7 @@ impl Enqueued {
     /// The claimed task, when it was enqueued claimed.
     pub fn into_claimed(self) -> Option<ClaimedTask> {
         match self {
-            Self::Claimed(task) => Some(task),
+            Self::Claimed(task) => Some(*task),
             Self::Queued(_) => None,
         }
     }

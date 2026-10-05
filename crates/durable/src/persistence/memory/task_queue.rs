@@ -87,7 +87,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
         }) {
             claimed.workflow_status = Some(wf);
         }
-        Ok(Enqueued::Claimed(claimed))
+        Ok(Enqueued::Claimed(Box::new(claimed)))
     }
 
     async fn claim_task(

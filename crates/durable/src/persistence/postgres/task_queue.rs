@@ -263,7 +263,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         }
 
         debug!(%task_id, activity_type = %task.activity_type, worker_id, "enqueued claimed task");
-        Ok(Enqueued::Claimed(ClaimedTask {
+        Ok(Enqueued::Claimed(Box::new(ClaimedTask {
             id: task_id,
             workflow_id: task.workflow_id,
             max_attempts: task.options.retry_policy.max_attempts,
@@ -273,7 +273,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             options: task.options,
             attempt: 1,
             workflow_status,
-        }))
+        })))
     }
 
     #[instrument(skip(self, activity_types))]
