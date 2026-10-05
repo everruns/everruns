@@ -505,7 +505,7 @@ struct TurnAgentIdentity {
 
 pub struct RuntimeSessionLifecycle<A: RuntimeHostAdapter> {
     pub(crate) adapter: A,
-    org_id: i64,
+    pub(super) org_id: i64,
     pub(crate) session_id: SessionId,
 }
 
