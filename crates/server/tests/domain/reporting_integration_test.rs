@@ -167,7 +167,7 @@ async fn reporting_backfill_endpoint_is_admin_scoped() {
 
 #[tokio::test]
 async fn reporting_backfill_enqueues_missing_postgres_session_fact() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let title = format!("reporting-backfill-{}", Uuid::now_v7());
 
     // `sessions.owner_principal_id` is NOT NULL (migration 018), so seed a
@@ -298,7 +298,7 @@ async fn create_reporting_repair_session(server: &TestServer, org_id: i64, suffi
 
 #[tokio::test]
 async fn reporting_backfill_skips_malformed_capability_usage_records() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let session_id = create_reporting_repair_session(&server, 1, "malformed-backfill").await;
     let malformed = Uuid::now_v7();
     let missing_turn = Uuid::now_v7();
@@ -363,7 +363,7 @@ async fn reporting_backfill_skips_malformed_capability_usage_records() {
 
 #[tokio::test]
 async fn bounded_event_repair_enqueues_only_missing_projections() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let other_org = server
         .db
         .create_organization(CreateOrganizationRow {
@@ -680,7 +680,7 @@ async fn bounded_event_repair_enqueues_only_missing_projections() {
 #[tokio::test]
 #[ignore = "benchmark: seeds 60k events and 180k capability facts"]
 async fn reporting_event_repair_benchmark() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let session_id = create_reporting_repair_session(&server, 1, "benchmark").await;
     let base_time = Utc::now() + Duration::days(60);
 
@@ -795,7 +795,7 @@ async fn reporting_event_repair_benchmark() {
 
 #[tokio::test]
 async fn fact_session_projection_uses_denormalized_counts_for_large_histories() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let org = server
         .db
         .create_organization(CreateOrganizationRow {
@@ -1011,7 +1011,7 @@ async fn fact_session_projection_uses_denormalized_counts_for_large_histories() 
 /// dropped them silently, which is worse than not ledgering at all.
 #[tokio::test]
 async fn session_less_generation_projects_with_null_session_dimensions() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let org = server
         .db
         .create_organization(CreateOrganizationRow {

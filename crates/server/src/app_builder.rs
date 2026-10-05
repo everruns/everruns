@@ -1230,7 +1230,7 @@ impl ServerAppBuilder {
         );
         let durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> =
             if let Some(ref shared_store) = shared_durable_store {
-                tracing::info!("Using shared in-memory workflow event store for DEV MODE");
+                tracing::info!("Using the embedded workflow event store for DEV MODE");
                 Some(shared_store.clone() as Arc<dyn WorkflowEventStore + Send + Sync>)
             } else {
                 db.pool().cloned().map(|p| {

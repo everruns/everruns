@@ -273,7 +273,7 @@ async fn a_non_owner_cannot_change_platform_chat_schedules() {
     let server = TestServer::in_memory_with_runner(Arc::new(IdleRunner)).await;
     let session = create_platform_chat_session(&server).await;
     let schedule_id = seed_schedule(&server, &session).await;
-    reassign_owner(&server, &session, Uuid::now_v7()).await;
+    reassign_owner(&server, &session, server.create_user("other-owner").await).await;
 
     let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
     server
@@ -326,7 +326,7 @@ async fn other_sessions_schedules_are_not_owner_bound() {
     let server = TestServer::in_memory_with_runner(Arc::new(IdleRunner)).await;
     let session = create_session(&server).await;
     let schedule_id = seed_schedule(&server, &session).await;
-    reassign_owner(&server, &session, Uuid::now_v7()).await;
+    reassign_owner(&server, &session, server.create_user("other-owner").await).await;
 
     manage_schedule(&server, &session, schedule_id).await;
 }

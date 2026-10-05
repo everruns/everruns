@@ -329,7 +329,8 @@ async fn platform_chat_owner_can_answer_a_question() {
 async fn platform_chat_non_owner_cannot_resume_through_answer_or_raw_tool_result() {
     for path in ["question-answers", "tool-results"] {
         let server = test_server().await;
-        let session_id = platform_chat_waiting_session(&server, Uuid::now_v7()).await;
+        let session_id =
+            platform_chat_waiting_session(&server, server.create_user("other-owner").await).await;
         emit_question_card(&server, session_id, "toolu_victim").await;
         let body = if path == "question-answers" {
             json!({"status": "declined"})

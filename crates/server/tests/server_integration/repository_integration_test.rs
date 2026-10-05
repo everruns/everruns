@@ -4115,7 +4115,10 @@ async fn connect_to_fixture_schema(database_url: &str) -> PgConnection {
 
 #[tokio::test]
 async fn agent_synthesis_migration_avoids_preclaimed_names_and_honors_name_limit() {
-    let database_url = get_database_url();
+    // Both synthesis tests build the same fixture schema, so each gets a
+    // database of its own instead of colliding in the shared one.
+    let database = test_harness::isolated_test_database().await;
+    let database_url = database.url();
     let mut conn = PgConnection::connect(&database_url)
         .await
         .expect("connect to PostgreSQL");
@@ -4204,7 +4207,10 @@ async fn agent_synthesis_migration_avoids_preclaimed_names_and_honors_name_limit
 
 #[tokio::test]
 async fn agent_synthesis_migration_waits_for_concurrent_app_assignment() {
-    let database_url = get_database_url();
+    // Both synthesis tests build the same fixture schema, so each gets a
+    // database of its own instead of colliding in the shared one.
+    let database = test_harness::isolated_test_database().await;
+    let database_url = database.url();
     let mut setup = PgConnection::connect(&database_url)
         .await
         .expect("connect to PostgreSQL");

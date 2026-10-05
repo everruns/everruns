@@ -551,7 +551,7 @@ async fn platform_chat_non_owner_cannot_accept_or_decline() {
     for action in ["accept", "decline"] {
         let server = test_server().await;
         let session_id = waiting_session_for_agent(&server, true).await;
-        make_platform_chat(&server, session_id, Uuid::now_v7()).await;
+        make_platform_chat(&server, session_id, server.create_user("other-owner").await).await;
         emit_elicitation_card(&server, session_id, "url_elicitation_victim").await;
 
         let response = post_consent(

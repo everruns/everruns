@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 use crate::storage::StorageBackend;
-use everruns_durable::InMemoryWorkflowEventStore;
+use everruns_durable::PostgresWorkflowEventStore;
 use everruns_worker::{
     AgentRunner, DurableTaskNotifier, RunnerBackend, create_runner_with_backend,
 };
@@ -20,7 +20,7 @@ pub(crate) struct StorageInit {
     pub(crate) db: Arc<StorageBackend>,
     pub(crate) runner: Arc<dyn AgentRunner>,
     pub(crate) background_runner: Arc<dyn AgentRunner>,
-    pub(crate) shared_durable_store: Option<Arc<InMemoryWorkflowEventStore>>,
+    pub(crate) shared_durable_store: Option<Arc<PostgresWorkflowEventStore>>,
     pub(crate) database_url: Option<String>,
     pub(crate) database_unpooled_url: Option<String>,
     pub(crate) task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
@@ -36,8 +36,9 @@ pub(crate) async fn init_storage(
         // Dev mode needs no database of its own: records live in a throwaway
         // PostgreSQL owned by this process, so they run through the same
         // repositories as production. DATABASE_URL is ignored on purpose, so a
-        // dev run never writes into a real database. Durable execution stays in
-        // memory with the in-process worker.
+        // dev run never writes into a real database. Durable state shares that
+        // database (records reference durable rows by foreign key, trigger
+        // schedules for one) and the in-process worker executes it.
         tracing::info!("Starting in DEV MODE (embedded PostgreSQL, deleted on exit)");
         let pg = everruns_pg_embedded::EmbeddedPostgres::shared()
             .await
@@ -49,11 +50,14 @@ pub(crate) async fn init_storage(
             .context("Failed to connect to embedded PostgreSQL")?;
         run_migrations(&backend, migrations).await?;
 
-        let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-        let runner =
-            create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store.clone()))
-                .await
-                .context("Failed to create in-memory agent runner")?;
+        let pool = backend
+            .pool()
+            .context("embedded backend has a pool")?
+            .clone();
+        let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
+        let runner = create_runner_with_backend(RunnerBackend::Postgres(pool))
+            .await
+            .context("Failed to create agent runner")?;
         return Ok(StorageInit {
             db: Arc::new(backend),
             background_runner: runner.clone(),

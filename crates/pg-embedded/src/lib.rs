@@ -71,13 +71,31 @@ impl EmbeddedPostgres {
     pub async fn create_database(&self, name: &str, template: Option<&str>) -> Result<()> {
         let mut sql = format!("CREATE DATABASE {}", identifier(name)?);
         if let Some(template) = template {
-            sql.push_str(&format!(" TEMPLATE {}", identifier(template)?));
+            // FILE_COPY copies the files directly instead of writing every
+            // block of the template into WAL; its checkpoint is cheap with
+            // fsync off.
+            sql.push_str(&format!(
+                " TEMPLATE {} STRATEGY FILE_COPY",
+                identifier(template)?
+            ));
         }
         let mut conn = sqlx::PgConnection::connect(&self.url("postgres")).await?;
         sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
             .execute(&mut conn)
             .await
             .with_context(|| format!("creating database {name}"))?;
+        conn.close().await?;
+        Ok(())
+    }
+
+    /// Drop `name`, disconnecting anything still connected to it.
+    pub async fn drop_database(&self, name: &str) -> Result<()> {
+        let sql = format!("DROP DATABASE IF EXISTS {} WITH (FORCE)", identifier(name)?);
+        let mut conn = sqlx::PgConnection::connect(&self.url("postgres")).await?;
+        sqlx::raw_sql(sqlx::AssertSqlSafe(sql))
+            .execute(&mut conn)
+            .await
+            .with_context(|| format!("dropping database {name}"))?;
         conn.close().await?;
         Ok(())
     }
@@ -135,6 +153,11 @@ impl EmbeddedPostgres {
             // Throwaway data: trade durability for speed.
             .args(["-c", "fsync=off", "-c", "synchronous_commit=off"])
             .args(["-c", "full_page_writes=off", "-c", "max_connections=500"])
+            // Nothing replicates or archives, so log only what crash recovery
+            // needs and recycle WAL early; a test run creates hundreds of
+            // databases and would otherwise keep gigabytes of WAL.
+            .args(["-c", "wal_level=minimal", "-c", "max_wal_senders=0"])
+            .args(["-c", "max_wal_size=128MB", "-c", "min_wal_size=32MB"])
             .stdout(Stdio::from(fs::File::create(&log)?))
             .stderr(Stdio::from(fs::File::options().append(true).open(&log)?));
         spawn_tied_to_process(cmd)?;
@@ -419,5 +442,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count, 1);
+
+        // Dropping disconnects the open session instead of failing on it.
+        pg.drop_database("copy").await.unwrap();
+        assert!(conn.ping().await.is_err());
+        assert!(sqlx::PgConnection::connect(&pg.url("copy")).await.is_err());
     }
 }

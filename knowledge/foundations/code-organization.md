@@ -441,10 +441,12 @@ just test-shell
 - Provides fast, isolated tests with full router stack
 
 **Database setup:**
-- Tests use `DATABASE_URL` environment variable
-- Default: `postgres://everruns:everruns@localhost:5432/everruns_test`
-- CI uses PostgreSQL service container
-- Local: `just start-infra` (native pg_ctl + valkey)
+- Server tests need no database to be running. `TestServer::in_memory()` gives each test a
+  private copy of the migrated schema on a temporary PostgreSQL the test process starts
+  (`crates/pg-embedded`), dropped when the test ends, so constraints apply as in production.
+- `TestServer::new()` shares one database: `DATABASE_URL` when set (CI, `just test`), else
+  `DB_PORT` on localhost, else a shared database on that same temporary cluster.
+- CI uses a PostgreSQL service container for the shared database.
 
 ### When to Add Tests
 
