@@ -18,6 +18,13 @@
   [Durable Execution Engine](operations/durable-execution-engine.md) and
   [Execution Backends](framework/execution-backends.md).
 
+* **Durable PostgreSQL tests run in CI and cannot skip there.** The durable
+  shard now runs durable-engine's PostgreSQL backend tests and the facade's
+  backend conformance suite against its database, with
+  `EVERRUNS_REQUIRE_POSTGRES_TESTS` turning a missing `DATABASE_URL` into a
+  failure. Before, both skipped in every CI job. See
+  [Execution Backends](framework/execution-backends.md#success-bars).
+
 * **Proposed: one entity actions menu.** Every entity page gets one header
   overflow menu with fixed groups (entity actions, Record, Lifecycle) for
   secondary functions such as History and Manager notes. See

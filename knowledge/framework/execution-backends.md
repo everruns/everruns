@@ -315,7 +315,9 @@ workflows that fit them; turns do not use them. The option is recorded in
   persisted event sequences. Park and resume runs both through a session's
   AG-UI runs and directly on the seam, where the resumed turn's result is
   visible. It passes on the in-process, the durable memory and, with
-  `DATABASE_URL` set, the durable PostgreSQL backend.
+  `DATABASE_URL` set, the durable PostgreSQL backend. CI's durable PostgreSQL
+  shard runs the PostgreSQL half with `EVERRUNS_REQUIRE_POSTGRES_TESTS` set,
+  so a job without a database fails instead of passing on two backends.
 - Core's default build stays wasm-safe: the seam spawns nothing.
 - The facade's default build compiles no durable engine; durable execution
   is the opt-in `durable` feature.
