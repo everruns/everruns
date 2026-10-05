@@ -165,6 +165,7 @@ PUBLIC_APP_URL=https://everruns.example.com
 - `AUTH_BASE_URL` defaults to `PUBLIC_APP_URL` plus `API_PREFIX` (for example, `https://everruns.example.com/api`)
 - Set `FRONTEND_URL` only when browser redirects must land on a different origin
 - Set `AUTH_BASE_URL` only when OAuth callbacks use a different public API base
+- In the UI runtime, it is the fallback API base for server-rendered pages; see [`UI_SERVER_API_URL`](#ui_server_api_url)
 
 ## AUTH_LOGIN_ORIGIN
 
@@ -188,6 +189,29 @@ AUTH_LOGIN_ORIGIN=https://id.example.com
 - The value is trusted deployment configuration; request/query input cannot override it
 - `return_to` remains a relative path and is still sanitized against open redirects
 - Configured absolute login redirects use full-page navigation
+
+## UI_SERVER_API_URL
+
+API base URL the UI server calls when it pre-renders a page (for example the
+agent, harness, session, and skill lists). Set it on the **UI** service. It may
+be an internal address that only the UI can reach.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `PUBLIC_APP_URL` (as set in the UI runtime) plus `/api`; unset when neither is set |
+
+**Example:**
+
+```bash
+UI_SERVER_API_URL=http://server:9000/api
+```
+
+**Notes:**
+- Include the API prefix (`/api` by default); supply an HTTP(S) URL with no credentials, query, or fragment
+- The UI forwards the signed-in user's cookies on these requests, so the destination comes only from deployment configuration; the request's `Host` header is never used
+- Redirects are not followed; a redirect response counts as a failed prefetch
+- If neither this nor `PUBLIC_APP_URL` is set in the UI runtime, or the value is invalid, the UI skips server prefetch and the browser loads the data after the page renders
 
 ## CORS_ALLOWED_ORIGINS
 

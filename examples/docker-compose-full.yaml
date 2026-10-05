@@ -167,6 +167,8 @@ services:
       PORT: "9305"
       HOSTNAME: 0.0.0.0
       AUTH_MODE: ${AUTH_MODE:-admin}
+      # Trusted API base for server-rendered page data (never the request Host).
+      UI_SERVER_API_URL: http://server:9000/api
     depends_on:
       server:
         condition: service_started
