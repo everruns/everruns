@@ -254,8 +254,9 @@ that have at least one check:
   on every subsequent delta).
 - **`tool_use`** → a `PreToolUseHook`. A blocking hit refuses the tool call and
   feeds the reason back to the model (which can self-correct); sibling calls in
-  the batch are unaffected. Capability-contributed pre-hooks, including this
-  one, run before user-hook (`PreToolUse`) specs; the first block wins.
+  the batch are unaffected. This hook is a policy gate: it runs after every
+  transforming pre-hook, including user-hook (`PreToolUse`) specs, so it judges
+  the arguments that will actually execute; the first block wins.
 - **`tool_output`** → a `PostToolExecHook`. A blocking hit replaces the tool
   result with the notice and drops the error/images/raw payloads so the
   original content never reaches model context. Runs before the infrastructure

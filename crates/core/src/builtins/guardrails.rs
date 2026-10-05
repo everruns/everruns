@@ -20,7 +20,7 @@ use crate::builtins::output_guardrail::{
     PostGenerationOutputContext, PostGenerationOutputGuardrail,
 };
 use crate::builtins::tool_hooks::{
-    PostToolExecHook, PostToolExecHookPriority, PreToolUseDecision, PreToolUseHook,
+    PolicyGate, PostToolExecHook, PostToolExecHookPriority, PreToolUseDecision, PreToolUseHook,
 };
 use crate::builtins::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::builtins::utility_llm::{UtilityLlmReasoningEffort, UtilityLlmRequest};
@@ -210,7 +210,7 @@ impl Capability for GuardrailsCapability {
         config: &serde_json::Value,
     ) -> Vec<Arc<dyn PreToolUseHook>> {
         match compile_config_for_stage(config, GuardrailStage::ToolUse) {
-            Some(compiled) => vec![Arc::new(GuardrailPreToolHook { compiled })],
+            Some(compiled) => vec![Arc::new(PolicyGate(GuardrailPreToolHook { compiled }))],
             None => vec![],
         }
     }

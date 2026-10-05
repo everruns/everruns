@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::builtins::capabilities::{Capability, CapabilityStatus};
 use crate::builtins::tool_approval_durable::preview_arguments;
-use crate::builtins::tool_hooks::{PreToolUseDecision, PreToolUseHook};
+use crate::builtins::tool_hooks::{PolicyGate, PreToolUseDecision, PreToolUseHook};
 use crate::builtins::tool_types::{
     TOOL_APPROVAL_REQUIRED_CODE, ToolApprovalRequired, ToolCall, ToolDefinition, ToolPolicy,
     ToolResult,
@@ -295,13 +295,15 @@ impl ToolApprovalCapability {
         mode: ApprovalMode,
         timeout_seconds: u64,
     ) -> Arc<dyn PreToolUseHook> {
-        Arc::new(ToolApprovalHook {
+        // A policy gate, so it decides on the call after every argument
+        // rewrite: what a person approves is what runs (EVE-1184).
+        Arc::new(PolicyGate(ToolApprovalHook {
             approver: self.approver.clone(),
             mode,
             timeout_seconds,
             policy: self.policy.clone(),
             remembered: self.remembered.clone(),
-        })
+        }))
     }
 }
 

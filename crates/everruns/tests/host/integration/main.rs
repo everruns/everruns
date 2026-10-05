@@ -18,6 +18,7 @@ mod mid_turn_wake_test;
 mod model_change_event_test;
 mod model_visible_path_identity_test;
 mod native_async_http;
+mod pre_tool_policy_recheck_test;
 mod resolved_snapshot_test;
 mod runtime_artifact_store_test;
 mod runtime_host_test;

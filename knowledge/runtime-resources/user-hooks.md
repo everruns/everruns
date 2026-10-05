@@ -292,7 +292,11 @@ Per-event semantics:
 - **`pre_tool_use`**: chain runs sequentially. Each hook sees the previous
   hook's mutated `ToolCall`. The first `block` aborts the chain and the
   tool returns an error result. Mutations from earlier hooks survive even
-  if a later hook in the chain blocks.
+  if a later hook in the chain blocks. Capability policy gates (tool
+  approval, `tool_use` guardrails) run after the whole user-hook chain, so
+  they decide on the mutated call and a hook cannot rewrite an approved
+  call into an unapproved one (EVE-1184). A hook that blocks prevents the
+  approval prompt entirely.
 - **`post_tool_use`**: chain runs sequentially on `&mut ToolResult`,
   matching the existing `PostToolExecHook` contract. No blocking.
 - **`user_prompt_submit`**: chain runs sequentially on `&mut message`.

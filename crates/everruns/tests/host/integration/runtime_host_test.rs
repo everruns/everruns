@@ -590,7 +590,7 @@ impl Capability for ExplicitNarrationCapability {
     }
 }
 
-fn harness() -> HarnessDefinition {
+pub(super) fn harness() -> HarnessDefinition {
     HarnessDefinition {
         capabilities: vec![everruns_contracts::CapabilityRef::new("test_math")],
         ..HarnessDefinition::new("math", "You are a math harness.")
@@ -697,14 +697,14 @@ pub(super) fn mock_host() -> MockHostAdapter {
     }
 }
 
-async fn set_default_model_spec(adapter: &MockHostAdapter) {
+pub(super) async fn set_default_model_spec(adapter: &MockHostAdapter) {
     adapter
         .provider_store
         .set_default_model_spec(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .await;
 }
 
-async fn reason_tool_definitions(
+pub(super) async fn reason_tool_definitions(
     adapter: &MockHostAdapter,
     session_id: SessionId,
     harness_id: HarnessId,

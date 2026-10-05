@@ -339,6 +339,8 @@ Two sources feed the chain, in this order:
 1. **Capability hooks**: from active capabilities via `Capability::pre_tool_use_hooks()`. This is the boundary for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).
 2. **User-hook specs**: `pre_tool_use` hooks dispatched per `knowledge/runtime-resources/user-hooks.md`.
 
+Policy gates decide on the call that executes, not the call the model wrote (EVE-1184). A hook marked as a policy gate (`PolicyGate` in `crates/core/src/tool_hooks.rs`; tool approval and `tool_use` guardrails) runs after every transforming hook regardless of declaration order, so a later hook cannot rewrite an approved call into one nobody approved. Approval requests therefore show, and fingerprint, the rewritten arguments. If a gate itself rewrites the call, every gate decides again on the new arguments; a chain that does not settle fails closed. See `run_pre_tool_use_hooks` in `crates/core/src/engine/execution/act_hooks.rs`.
+
 Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/core/src/host/host.rs` (`load_execution_capabilities`).
 
 ### PostToolExecHook (per-tool hooks)
