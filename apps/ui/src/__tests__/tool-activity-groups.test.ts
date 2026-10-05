@@ -347,4 +347,36 @@ describe("buildToolActivityGroups", () => {
     expect(built.byAnchorEventId.size).toBe(0);
     expect(built.narratedToolCallIds.has("approval-1")).toBe(false);
   });
+
+  it("keeps model-authored arguments next to hook-rewritten executed arguments", () => {
+    const built = buildToolActivityGroups(
+      [
+        event(
+          "started",
+          "tool.started",
+          "exec-1",
+          { tool_call: { id: "call-1", name: "bash", arguments: { command: "rm -rf build" } } },
+          1,
+        ),
+        event(
+          "completed",
+          "tool.completed",
+          "exec-1",
+          {
+            tool_call_id: "call-1",
+            tool_name: "bash",
+            success: true,
+            status: "success",
+            executed_arguments: { command: "rm -rf ./build" },
+          },
+          2,
+        ),
+      ],
+      "Working",
+    );
+
+    const row = built.byAnchorEventId.get("started")?.rows[0];
+    expect(row?.arguments).toEqual({ command: "rm -rf build" });
+    expect(row?.result?.executed_arguments).toEqual({ command: "rm -rf ./build" });
+  });
 });

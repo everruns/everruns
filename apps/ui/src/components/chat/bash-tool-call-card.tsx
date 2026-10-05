@@ -6,6 +6,7 @@ import type { ToolCompletedData } from "@/lib/api/types";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
+import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 
 // Re-export from centralized registry for backward-compatible imports.
@@ -242,6 +243,12 @@ export function BashToolCallCard({ toolCall, toolResult, streamedOutput }: BashT
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}
+
+      <ExecutedArgumentsNotice
+        toolResult={toolResult}
+        originalArguments={toolCall.arguments}
+        className="ml-[22px]"
+      />
 
       {/* Expanded output: streamed (while running) or final (when complete) */}
       {isExpanded && hasStreamedOutput && (

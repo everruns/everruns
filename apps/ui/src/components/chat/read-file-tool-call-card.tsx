@@ -13,6 +13,7 @@ import type { ContentPart, ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
 import { formatFileSize } from "@/lib/formatting";
+import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { buildImageSrc, getFullText, isImagePart, type ToolCallContent } from "./tool-call-utils";
 import { formatImageCount } from "@/lib/i18n";
 import { useLocale } from "@/providers/locale-provider";
@@ -192,6 +193,12 @@ export function ReadFileToolCallCard({ toolCall, toolResult }: ReadFileToolCallC
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}
+
+      <ExecutedArgumentsNotice
+        toolResult={toolResult}
+        originalArguments={toolCall.arguments}
+        className="ml-[22px]"
+      />
 
       {!hasError && preview && !showDetails && (
         <div className="ml-[22px] mt-0.5 truncate text-[10px] opacity-70">{preview}</div>

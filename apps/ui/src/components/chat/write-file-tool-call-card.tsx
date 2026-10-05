@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { basename } from "@/lib/path-utils";
 import { formatEditCount } from "@/lib/i18n";
 import { formatFileSize } from "@/lib/formatting";
+import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { getFullText, type ToolCallContent } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -208,6 +209,12 @@ export function WriteFileToolCallCard({ toolCall, toolResult }: WriteFileToolCal
           {locale.t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}
+
+      <ExecutedArgumentsNotice
+        toolResult={toolResult}
+        originalArguments={toolCall.arguments}
+        className="ml-[22px]"
+      />
 
       {!hasError && preview && !isExpanded && (
         <div className="ml-[22px] mt-0.5 truncate text-[10px] opacity-70">
