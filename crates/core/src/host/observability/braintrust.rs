@@ -737,6 +737,12 @@ impl BraintrustListener {
         }
     }
 
+    /// [`Self::annotate_metadata`] for a child span, keyed by the event's turn.
+    fn annotate_event_metadata(&self, event: &Event, metadata: &mut serde_json::Value) {
+        let turn_id = event.context.turn_id.as_ref().map(ToString::to_string);
+        self.annotate_metadata(event, metadata, turn_id.as_deref());
+    }
+
     fn annotate_metadata(
         &self,
         event: &Event,
@@ -1358,16 +1364,7 @@ impl BraintrustListener {
         if let Some(compaction) = &data.metadata.compaction {
             metadata["compaction"] = serde_json::json!(compaction);
         }
-        self.annotate_metadata(
-            event,
-            &mut metadata,
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|turn_id| turn_id.to_string())
-                .as_deref(),
-        );
+        self.annotate_event_metadata(event, &mut metadata);
 
         // Build metrics with prompt caching support
         let metrics = data.metadata.usage.as_ref().map(|usage| {
@@ -1422,12 +1419,22 @@ impl BraintrustListener {
         event: &Event,
         data: &crate::ToolCompletedData,
     ) -> BraintrustLogEvent {
-        let input = serde_json::json!({
+        let mut input = serde_json::json!({
             "tool_call_id": data.tool_call_id,
             "tool_name": data.tool_name,
             "success": data.success,
             "status": data.status,
         });
+        // Hook-rewritten arguments, as recorded (already bounded and
+        // redacted), next to the authored `arguments` from tool.started and
+        // under the same `tool_args_mode`.
+        let executed = data.executed_arguments.as_ref();
+        if let Some(executed) = executed.and_then(|args| self.serialize_tool_arguments(args)) {
+            input["executed_arguments"] = executed;
+            if data.executed_arguments_truncated {
+                input["executed_arguments_truncated"] = serde_json::json!(true);
+            }
+        }
         let mut output = serde_json::json!({
             "status": data.status,
         });
@@ -1452,16 +1459,7 @@ impl BraintrustListener {
             }
         }
 
-        self.annotate_metadata(
-            event,
-            &mut metadata,
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|turn_id| turn_id.to_string())
-                .as_deref(),
-        );
+        self.annotate_event_metadata(event, &mut metadata);
 
         // Build metrics if we have duration for timeline display
         let metrics = data.duration_ms.map(|duration_ms| {
@@ -1623,16 +1621,7 @@ impl BraintrustListener {
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
-        self.annotate_metadata(
-            event,
-            &mut metadata,
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|turn_id| turn_id.to_string())
-                .as_deref(),
-        );
+        self.annotate_event_metadata(event, &mut metadata);
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -1719,16 +1708,7 @@ impl BraintrustListener {
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
-        self.annotate_metadata(
-            event,
-            &mut metadata,
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|turn_id| turn_id.to_string())
-                .as_deref(),
-        );
+        self.annotate_event_metadata(event, &mut metadata);
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -1896,16 +1876,7 @@ impl BraintrustListener {
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
-        self.annotate_metadata(
-            event,
-            &mut metadata,
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|turn_id| turn_id.to_string())
-                .as_deref(),
-        );
+        self.annotate_event_metadata(event, &mut metadata);
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -1984,16 +1955,7 @@ impl BraintrustListener {
         if let Some(exec_id) = &event.context.exec_id {
             metadata["exec_id"] = serde_json::json!(exec_id.to_string());
         }
-        self.annotate_metadata(
-            event,
-            &mut metadata,
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|turn_id| turn_id.to_string())
-                .as_deref(),
-        );
+        self.annotate_event_metadata(event, &mut metadata);
 
         // Use span_id as log ID so started/completed merge into one span
         let log_id = span_id.clone().unwrap_or_else(|| event.id.to_string());
@@ -2046,16 +2008,7 @@ impl BraintrustListener {
             }
         }
 
-        self.annotate_metadata(
-            event,
-            &mut metadata,
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|turn_id| turn_id.to_string())
-                .as_deref(),
-        );
+        self.annotate_event_metadata(event, &mut metadata);
 
         // Parent-child linking using OTel-style span fields from context
         let (span_id, root_span_id, span_parents) = Self::compute_child_span_linkage(event);

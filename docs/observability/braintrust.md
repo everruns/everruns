@@ -64,7 +64,7 @@ export BRAINTRUST_TOOL_RESULTS_MODE=summary
 | `BRAINTRUST_RETRY_MAX_DELAY_MS` | No | `5000` | Retry backoff cap |
 | `BRAINTRUST_RECORD_CONTENT` | No | `false` | Export raw turn and LLM text content |
 | `BRAINTRUST_RECORD_THINKING` | No | `none` | Export thinking as `none`, `summary`, or `full` |
-| `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Export tool args as `full`, `redacted`, or `none` |
+| `BRAINTRUST_TOOL_ARGS_MODE` | No | `redacted` | Export tool args as `full`, `redacted`, or `none`; also governs `executed_arguments`, the hook-rewritten arguments a tool span carries when a pre-tool hook changed the call |
 | `BRAINTRUST_TOOL_RESULTS_MODE` | No | `summary` | Export tool results as `full`, `summary`, `redacted`, or `none` |
 | `BRAINTRUST_DEBUG_PAYLOADS` | No | `false` | Print full outbound Braintrust payload JSON to local debug logs |
 

@@ -125,6 +125,7 @@ Spans also carry a few Everruns-specific attributes under their own namespace, s
 | `everruns.phase` | `reason`, `act`, `thinking` | Which phase the span represents |
 | `everruns.turn.iterations`, `everruns.turn.tool_call_count`, `everruns.turn.llm_call_count`, `everruns.turn.status` | `invoke_agent` | Turn counters and outcome |
 | `everruns.tool.status`, `everruns.tool.capability.id` | `execute_tool` | Tool outcome and the capability that provided it |
+| `everruns.tool.executed_arguments`, `everruns.tool.executed_arguments_truncated` (opt-in) | `execute_tool` | The arguments the tool actually ran with, present only when a pre-tool hook rewrote the call. Bounded, with credential values redacted; emitted only with content capture |
 | `everruns.usage.cost_usd` | `chat`, `invoke_agent` | Cost when known |
 | `everruns.llm.retry.attempts`, `everruns.llm.retry.total_wait_ms` | `chat` | Provider retries behind a single call |
 | `everruns.span.orphaned`, `everruns.span.unterminated` | Any | Diagnostics: a span rebuilt from a terminal event, or closed because its turn ended first |

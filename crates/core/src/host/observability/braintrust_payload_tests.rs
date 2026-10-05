@@ -638,6 +638,58 @@ fn test_tool_completed_summary_omits_text_preview() {
     );
 }
 
+/// EVE-1218: hook-rewritten arguments join the tool span's input under the
+/// same `tool_args_mode` as the authored arguments on tool.started.
+#[test]
+fn test_tool_completed_exports_hook_rewritten_arguments() {
+    let input_for = |mode: BraintrustPayloadMode, executed: Option<serde_json::Value>| {
+        let mut config = test_config();
+        config.content.tool_args_mode = mode;
+        let listener = BraintrustListener::new(config).unwrap();
+        let mut data = ToolCompletedData::success(
+            "call_1".to_string(),
+            "exec".to_string(),
+            Vec::new(),
+            Some(5),
+        );
+        data.executed_arguments_truncated = executed.as_ref().is_some_and(|v| v.is_string());
+        data.executed_arguments = executed;
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::turn(TurnId::new(), MessageId::new()),
+            EventData::ToolCompleted(data.clone()),
+        );
+        listener
+            .convert_tool_call_completed(&event, &data)
+            .input
+            .unwrap()
+    };
+    let executed = json!({"path": "/srv/data", "token": "[REDACTED]"});
+
+    let full = input_for(BraintrustPayloadMode::Full, Some(executed.clone()));
+    assert_eq!(full["executed_arguments"], executed);
+    assert!(full.get("executed_arguments_truncated").is_none());
+
+    let truncated = input_for(
+        BraintrustPayloadMode::Full,
+        Some(json!("{\"path\":\"/s...")),
+    );
+    assert_eq!(truncated["executed_arguments"], "{\"path\":\"/s...");
+    assert_eq!(truncated["executed_arguments_truncated"], true);
+
+    let redacted = input_for(BraintrustPayloadMode::Redacted, Some(executed.clone()));
+    assert_eq!(redacted["executed_arguments"]["redacted"], true);
+    assert!(!redacted.to_string().contains("/srv/data"));
+
+    let none = input_for(BraintrustPayloadMode::None, Some(executed));
+    assert!(none.get("executed_arguments").is_none());
+
+    // Not rewritten: the input is unchanged.
+    let plain = input_for(BraintrustPayloadMode::Full, None);
+    assert!(plain.get("executed_arguments").is_none());
+    assert!(plain.get("executed_arguments_truncated").is_none());
+}
+
 #[tokio::test]
 async fn test_session_idled_prunes_session_state() {
     let listener = BraintrustListener::new(test_config()).unwrap();
