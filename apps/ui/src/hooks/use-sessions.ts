@@ -647,7 +647,10 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
             if (eventIdsRef.current.has(event.id)) return;
 
             eventIdsRef.current.add(event.id);
-            lastEventIdRef.current = event.id;
+            // Resume only from stored events. Deltas are ephemeral (no
+            // sequence): reconnecting with one as `since_id` matches nothing,
+            // so durable events missed during the gap were never replayed.
+            if (event.sequence != null) lastEventIdRef.current = event.id;
             // Keep this updater pure: React may invoke a state updater more than
             // once for a single update (StrictMode, concurrent replays). The
             // dedup set is reconciled to the in-memory window by the effect

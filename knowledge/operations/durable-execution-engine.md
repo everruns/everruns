@@ -186,6 +186,8 @@ Once a phase is claimed, its own setup is the next cost: before a reason phase c
 
 The first hand-off of a turn is gone: the `process_input` task runs the input step and then the turn's first reason in the same task, and is completed and scheduled as that `reason` (`crates/worker/src/turn_start.rs`). The reason's setup reads start before the input runs, so they overlap. Locally this moved the first model call from 138-175 ms after `turn.started` to 32-46 ms; in production the saved hop was about 230 ms. The turn id comes from the task id, so a retried task reopens the same turn.
 
+Two smaller costs sat on every turn. The server's database pools pinged each idle connection before handing it out, which doubled the round trips of every query outside a transaction. They now ping only connections idle for 30 s or more (`crates/server/src/storage/repositories/mod.rs`). And the first text delta waited a full 100 ms batch after the model's first token, because the batch clock started with the stream; the first token now goes out at once (`crates/core/src/engine/execution/reason.rs`). In the UI, the streaming typewriter reveals each chunk over about one batch (`apps/ui/src/components/streaming-message.tsx`) instead of at a fixed rate that left the text several hundred milliseconds behind the model.
+
 Operational contract:
 
 - NATS is the preferred backend when configured

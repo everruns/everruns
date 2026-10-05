@@ -55,7 +55,17 @@ describe("StreamingMessage", () => {
     expect(screen.getByTestId("message-content")).toHaveTextContent("Hel");
 
     advanceFrame();
-    expect(screen.getByTestId("message-content")).toHaveTextContent("Hell");
+    expect(screen.getByTestId("message-content")).toHaveTextContent("Hello");
+  });
+
+  it("catches up with a large chunk within one delta batch", () => {
+    const { rerender } = render(<StreamingMessage messageId="message-1" text="A" />);
+    const chunk = "A" + "b".repeat(239);
+
+    rerender(<StreamingMessage messageId="message-1" text={chunk} />);
+    for (let frame = 0; frame < 6; frame++) advanceFrame();
+
+    expect(screen.getByTestId("message-content")).toHaveTextContent(chunk);
   });
 
   it("resets cleanly when a different message starts in the same turn", () => {

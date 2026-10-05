@@ -82,7 +82,7 @@ use output_hooks::{client_visible_guardrail_text, collect_output_hooks};
 use request_controls::resolve_request_controls;
 use stream_state::{
     StreamReplayState, StreamTermination, advances_stall_deadline, append_guarded_thinking_delta,
-    inspect_guarded_reasoning_item, merge_retry_metadata,
+    batch_due, inspect_guarded_reasoning_item, merge_retry_metadata,
 };
 use transcript::repair_dangling_tool_calls;
 
@@ -1511,8 +1511,8 @@ impl ReasonAtom {
             let mut replay_state = StreamReplayState::for_request(has_provider_executed_tools);
             let mut pending_delta = String::new();
             let mut pending_thinking_delta = String::new();
-            let mut last_delta_emit = Instant::now();
-            let mut last_thinking_delta_emit = Instant::now();
+            let mut last_delta_emit: Option<Instant> = None;
+            let mut last_thinking_delta_emit: Option<Instant> = None;
             let mut time_to_first_token_ms: Option<u64> = None;
 
             // EVE-531: stall timeout + keepalive heartbeat for stream-liveness
@@ -1672,8 +1672,7 @@ impl ReasonAtom {
 
                         // Emit batched delta if interval elapsed
                         if !buffer_output_deltas
-                            && last_delta_emit.elapsed().as_millis() as u64
-                                >= DELTA_BATCH_INTERVAL_MS
+                            && batch_due(last_delta_emit, DELTA_BATCH_INTERVAL_MS)
                             && !pending_delta.is_empty()
                         {
                             if let Err(e) = self
@@ -1698,7 +1697,7 @@ impl ReasonAtom {
                                 );
                             }
                             pending_delta.clear();
-                            last_delta_emit = Instant::now();
+                            last_delta_emit = Some(Instant::now());
                         }
                     }
                     LlmStreamEvent::ReasoningDelta { delta, summary: _ } => {
@@ -1728,8 +1727,7 @@ impl ReasonAtom {
                         );
 
                         // Emit batched thinking delta if interval elapsed
-                        if last_thinking_delta_emit.elapsed().as_millis() as u64
-                            >= DELTA_BATCH_INTERVAL_MS
+                        if batch_due(last_thinking_delta_emit, DELTA_BATCH_INTERVAL_MS)
                             && !pending_thinking_delta.is_empty()
                         {
                             if let Err(e) = self
@@ -1752,7 +1750,7 @@ impl ReasonAtom {
                                 );
                             }
                             pending_thinking_delta.clear();
-                            last_thinking_delta_emit = Instant::now();
+                            last_thinking_delta_emit = Some(Instant::now());
                         }
                     }
                     LlmStreamEvent::ReasoningItem(item) => {
