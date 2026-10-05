@@ -84,6 +84,10 @@ impl SystemAllowlist {
     }
 
     /// The curated allowlist embedded in the binary (parsed once and cached).
+    #[expect(
+        clippy::expect_used,
+        reason = "the embedded allowlist is validated by its tests"
+    )]
     pub fn embedded() -> Arc<SystemAllowlist> {
         static EMBEDDED: OnceLock<Arc<SystemAllowlist>> = OnceLock::new();
         EMBEDDED

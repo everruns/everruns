@@ -10,10 +10,12 @@ use std::sync::LazyLock;
 use tracing::warn;
 
 /// Match argument placeholders in the template, never in inserted argument values.
+#[expect(clippy::unwrap_used, reason = "the pattern is a valid literal regex")]
 static ARGUMENTS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$ARGUMENTS(?:\[([0-9]+)\])?|\$([0-9])").unwrap());
 
 /// Cached regex for ``!`command` `` dynamic command injection syntax.
+#[expect(clippy::unwrap_used, reason = "the pattern is a valid literal regex")]
 static COMMAND_INJECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!`([^`]+)`").unwrap());
 
 #[cfg(feature = "openapi")]
@@ -487,6 +489,10 @@ fn split_skill_args(raw: &str) -> Vec<String> {
 ///
 /// If no placeholders are found and arguments are non-empty, appends `ARGUMENTS: <value>`.
 /// Out-of-bounds indices resolve to empty string.
+#[expect(
+    clippy::unwrap_used,
+    reason = "capture group 0 is always the whole match"
+)]
 pub fn expand_skill_arguments(content: &str, raw_args: &str) -> String {
     if raw_args.is_empty() {
         return content.to_string();
@@ -616,6 +622,10 @@ const COMMAND_EXECUTION_CONCURRENCY: usize = 4;
 /// only be called for skill content that came from a trusted source (see the
 /// trust-gate note at the top of this module). Untrusted content must bypass
 /// this step and be used verbatim.
+#[expect(
+    clippy::unwrap_used,
+    reason = "capture group 0 is always the whole match"
+)]
 pub async fn preprocess_command_injections(
     content: &str,
     executor: &dyn CommandExecutor,

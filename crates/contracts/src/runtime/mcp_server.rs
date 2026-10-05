@@ -124,6 +124,10 @@ pub struct McpServerPresetRef(String);
 
 impl McpServerPresetRef {
     /// Return the organization catalog entry name without the `catalog:` prefix.
+    #[expect(
+        clippy::expect_used,
+        reason = "construction only admits references with the `catalog:` prefix"
+    )]
     pub fn catalog_name(&self) -> &str {
         self.0
             .strip_prefix("catalog:")

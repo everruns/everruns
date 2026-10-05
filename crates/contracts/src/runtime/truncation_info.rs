@@ -142,6 +142,10 @@ impl TruncationInfo {
 
     /// Attach this block to a JSON object under the `truncation` key.
     /// No-op if `target` is not an object.
+    #[expect(
+        clippy::expect_used,
+        reason = "TruncationInfo has only JSON-safe fields"
+    )]
     pub fn attach(&self, target: &mut Value) {
         if let Some(obj) = target.as_object_mut() {
             obj.insert(
@@ -152,6 +156,10 @@ impl TruncationInfo {
     }
 
     /// Serialize as a JSON `Value` for manual insertion.
+    #[expect(
+        clippy::expect_used,
+        reason = "TruncationInfo has only JSON-safe fields"
+    )]
     pub fn to_json(&self) -> Value {
         serde_json::to_value(self).expect("TruncationInfo serializes")
     }

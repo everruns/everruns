@@ -497,6 +497,10 @@ fn apply_grep_byte_budget(
 }
 
 // Include a comma per entry so a collection of entries never exceeds the reported budget.
+#[expect(
+    clippy::expect_used,
+    reason = "grep result types are always JSON serializable"
+)]
 fn serialized_entry_len<T: Serialize>(value: &T) -> usize {
     serde_json::to_vec(value)
         .expect("grep result types are always JSON serializable")

@@ -149,6 +149,10 @@ impl SkillContribution {
 }
 
 /// Reconstruct a canonical SKILL.md document from stored fields.
+#[expect(
+    clippy::expect_used,
+    reason = "serializing a `&str` to YAML cannot fail"
+)]
 pub fn reconstruct_skill_md(
     name: &str,
     description: &str,
