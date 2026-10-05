@@ -396,14 +396,15 @@ jobs:
             ard:
               - 'crates/ard/**'
 
-      # Exclusion filters need `predicate-quantifier: every`; with the default
-      # `some`, a rule like `!integrations/foo/**/*.md` matches almost every
-      # non-markdown file and incorrectly enables the live paid matrix.
+      # Live filters combine multiple provider/shared paths with exclusions.
+      # `some-with-excludes` matches any positive path while making every
+      # negated docs pattern final; `some` leaks exclusions and `every` makes
+      # disjoint positive paths impossible to match.
       - uses: dorny/paths-filter@v4
         id: live_filter
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         with:
-          predicate-quantifier: every
+          predicate-quantifier: some-with-excludes
           filters: |
             # Live API jobs (daytona/browserless/e2b) hit real external
             # services and cost real API budget. Exclude doc-only changes so
