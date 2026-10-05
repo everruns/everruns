@@ -25,6 +25,14 @@
   failure. Before, both skipped in every CI job. See
   [Execution Backends](framework/execution-backends.md#success-bars).
 
+* **Turns use no circuit breaker.** Corrected the provider rate-limiting
+  dismissal, which claimed the durable worker wrapped reason with
+  `DistributedCircuitBreaker`. Breakers exist in `everruns-durable` and the
+  server exposes them over gRPC and the admin API, but no turn step uses
+  them; provider failures are absorbed only by per-call retry in the drivers.
+  The worker's unused breaker client methods were removed. See
+  [Dismissed Options](project/dismissed-options.md#process-level-llm-provider-rate-limiting-eve-7).
+
 * **Proposed: one entity actions menu.** Every entity page gets one header
   overflow menu with fixed groups (entity actions, Record, Lifecycle) for
   secondary functions such as History and Manager notes. See
