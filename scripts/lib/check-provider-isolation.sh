@@ -124,14 +124,14 @@ done
 # Extension implementations depend on contracts rather than the hosted product.
 # Include optional/build/dev declarations: an integration test must not quietly
 # pull control-plane records back into a library host's dependency graph.
-for manifest in integrations/*/Cargo.toml crates/ard/Cargo.toml crates/turbopuffer/Cargo.toml; do
+for manifest in integrations/*/Cargo.toml crates/integrations/Cargo.toml crates/ard/Cargo.toml crates/turbopuffer/Cargo.toml; do
   if matches=$(grep -nE '^[[:space:]]*everruns-(platform|capabilities)[[:space:]]*[.=]' "$manifest"); then
     echo "$manifest must use everruns-contracts extension SPIs, never platform:"
     echo "$matches"
     FAILED=1
   fi
 done
-if matches=$(grep -rnE 'everruns_(platform|capabilities)::' integrations crates/ard crates/turbopuffer --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'everruns_(platform|capabilities)::' integrations crates/integrations crates/ard crates/turbopuffer --include='*.rs' 2>/dev/null); then
   echo "Extension implementations must not reference platform records:"
   echo "$matches"
   FAILED=1
@@ -140,8 +140,9 @@ fi
 # Integrations implement the runtime SPI in `everruns_contracts::runtime` and
 # never ship against core. Dev edges stay allowed: tests may drive a core host.
 # The tree check covers optional, renamed, and transitive edges alike.
+# crates/integrations is the feature-module crate new integrations land in.
 integration_packages=()
-for manifest in integrations/*/Cargo.toml; do
+for manifest in integrations/*/Cargo.toml crates/integrations/Cargo.toml; do
   integration_packages+=(-p "$(sed -nE 's/^name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$manifest" | head -n1)")
 done
 tree=$(guard_cargo_tree "${integration_packages[@]}" --all-features --edges normal,build --prefix none)

@@ -22,6 +22,7 @@
 * [TypeSafe connection](typesafe_connection/) - 1 manual UI case.
 * [Daytona connection](daytona_connection/) - 1 manual UI case.
 * [Deno connection](deno_connection/) - 1 manual UI case.
+* [Modal connection](modal_connection/) - 1 manual UI case.
 * [Durable operations](durable_operations/) - 4 manual UI cases.
 * [Entity identity](entity_identity/) - 1 manual UI case.
 * [Evals](evals/) - 7 manual UI cases.

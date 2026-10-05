@@ -504,6 +504,7 @@ jobs:
             -p everruns-durable \
             -p everruns-durable-engine \
             -p everruns-drivers \
+            -p everruns-integrations \
             -p everruns-turbopuffer \
             -p everruns-integrations-duckduckgo \
             -p everruns-integrations-github \
@@ -1102,6 +1103,11 @@ jobs:
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
+          # The modal feature with its mock-gRPC tool tests; live tests run in
+          # modal-integration.yml.
+          cargo test -p everruns-integrations --features modal,test-util
+          # The crate must also build with no vendor feature on.
+          cargo check -p everruns-integrations --no-default-features
           cargo test -p everruns-integrations-typesafe
           # The lib-only half (client, classifier, framework capability) must keep
           # compiling without `hosted`; that is the shape an embedder carries, and

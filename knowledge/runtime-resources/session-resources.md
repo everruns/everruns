@@ -55,6 +55,7 @@ rather than duplicate.
 | Sandbox (Daytona, E2B, Deno) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
 | Browser (Browserless)        | `LeasedResourceStore.upsert_resource` | `browser_session` | Leased resource public ID  |
 | Sprites                      | `LeasedResourceStore.upsert_resource` | `sprite`          | Leased resource public ID  |
+| Modal                        | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
 | Voice Connections            | Voice bootstrap endpoints             | `voice_connection` | Voice connection public ID |
 | *(future)*                   | Direct `registry.register()`          | *(any string)*    | Caller-defined             |
 

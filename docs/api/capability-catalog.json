@@ -764,6 +764,33 @@
       "tools": []
     },
     {
+      "category": "Execution",
+      "dependencies": [
+        "session_storage"
+      ],
+      "docs_slug": null,
+      "feature_flag": null,
+      "features": [
+        "leased_resources"
+      ],
+      "grades": [
+        "dev"
+      ],
+      "id": "modal",
+      "name": "Modal",
+      "status": "available",
+      "tools": [
+        "modal_create_sandbox",
+        "modal_exec",
+        "modal_list_sandboxes",
+        "modal_manage_sandbox",
+        "modal_read_file",
+        "modal_snapshot_sandbox",
+        "modal_tunnel_urls",
+        "modal_write_file"
+      ]
+    },
+    {
       "category": "AI",
       "dependencies": [],
       "docs_slug": null,

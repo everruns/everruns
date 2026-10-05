@@ -43,6 +43,7 @@ const TOOL_REGISTRY: Record<string, ToolRegistryEntry> = {
   deno_exec: { category: "shell", segmentMode: "standalone" },
   docker_exec: { category: "shell", segmentMode: "standalone" },
   sprites_exec: { category: "shell", segmentMode: "standalone" },
+  modal_exec: { category: "shell", segmentMode: "standalone" },
 
   // Read tools
   read_file: { category: "read", segmentMode: "standalone" },

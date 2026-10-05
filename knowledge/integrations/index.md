@@ -26,5 +26,6 @@
 * [Slack One-Click Install](slack-one-click-install.md) - What a live PoC established about creating per-agent Slack apps programmatically.
 * [Per-agent GitHub Apps](github-apps.md) - One-click GitHub App per agent identity: one installation for GitHub tools, MCP and events.
 * [GitHub review and security agent templates](github-agent-templates.md) - PR Reviewer and Security Scanner: guided agent examples, deterministic repeat suppression, settings the tools enforce.
+* [Modal Sandboxes](modal.md) - Modal VM and gVisor sandboxes as the first module of the everruns-integrations crate: gRPC transport, credentials, state and leases, testing.
 * [Plugins](plugins.md) - Plugin host: marketplaces and cross-host plugin packages installed as capabilities.
 * [Model Router Specification](model-router.md) - Model Routers.

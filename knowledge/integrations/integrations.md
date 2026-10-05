@@ -76,6 +76,7 @@ Each crate publishes `CAPABILITY_PLUGINS` / `CONNECTOR_PLUGINS` consts and is na
 | Daytona | [`integrations/daytona/SPEC.md`](../../integrations/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
 | Deno | [`integrations/deno/SPEC.md`](../../integrations/deno/SPEC.md) | Cloud sandbox environments via Deno websocket sandbox API. Multiple sandboxes per session. **Unsupported — untested.** Deno sandboxes require a paid plan the project does not hold, so there is no live coverage and the integration is not exercised end to end; only mock-backed unit tests run. Not listed in the public docs. See EVE-946. |
 | Sprites | [`integrations/sprites/SPEC.md`](../../integrations/sprites/SPEC.md) | Persistent Firecracker microVMs via Sprites (Fly.io). Persistent filesystem, checkpoints, HTTP services. Experimental (Dev only). Live tests run only on manual dispatch, not on push or in the weekly sweep. |
+| Modal | [`modal.md`](modal.md) | Modal VM (default) or gVisor sandboxes over gRPC, with files, snapshots and tunnels. First module of the `crates/integrations` (`everruns-integrations`) crate, feature `modal`. Experimental (Dev only). Live tests run on push to `main` and in the weekly sweep. |
 | Cursor | [`integrations/cursor/SPEC.md`](../../integrations/cursor/SPEC.md) | Cursor Cloud Agents API for launching and managing asynchronous coding agents on GitHub repositories. |
 | Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
 

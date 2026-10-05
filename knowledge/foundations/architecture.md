@@ -256,7 +256,11 @@ integrations → hosted capabilities, so a hosted capability still wins a
 canonical-id collision.
 
 Adding a new integration crate requires:
-1. Create the crate under `integrations/`, publishing its plugin consts.
+1. Create the crate under `integrations/`, publishing its plugin consts. New
+   vendors may instead be a feature-gated module of `crates/integrations`
+   (`everruns-integrations`), which folds integrations the way
+   `everruns-drivers` folds drivers; its entry is named
+   `everruns-integrations::<module>` (Modal is the first).
 2. Add it as a dependency of `crates/integrations-catalog`.
 3. Add a `CatalogEntry` to `CATALOG`.
 

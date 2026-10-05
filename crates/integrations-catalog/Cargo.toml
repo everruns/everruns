@@ -24,6 +24,8 @@ everruns-core.workspace = true
 everruns-capabilities.workspace = true
 
 everruns-ard.workspace = true
+# Feature-module integrations (one crate, one feature per vendor).
+everruns-integrations = { workspace = true, features = ["modal"] }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search", version = "0.41.0", features = ["hosted"] }
 everruns-integrations-browserless = { path = "../../integrations/browserless", version = "0.41.0" }
 everruns-integrations-cursor = { path = "../../integrations/cursor", version = "0.41.0" }

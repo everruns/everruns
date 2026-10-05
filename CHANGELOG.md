@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add the `everruns-integrations` crate, which will fold vendor integrations behind per-vendor features the way `everruns-drivers` folds drivers. Its first module, `modal`, runs agents' code in [Modal](https://modal.com/) sandboxes: full Linux VMs by default or gVisor containers, with files, snapshots and public tunnels. Experimental, dev grade only.
+
 ## [0.41.0] - 2026-10-04
 
 ### Changed

@@ -1,5 +1,9 @@
 use super::{SeedAgent, SeedCapability, seed_ids};
 
+// Seed agent ID range 0x100-0x1FF is listed in `seed_ids` (seed.rs); this one
+// lives here because seed.rs is size-ratcheted.
+const MODAL_CODER_AGENT: uuid::Uuid = uuid::Uuid::from_u128(0x0195bb5a_0000_7000_8000_000000000118);
+
 /// Built-in seed agents
 pub(crate) const SEED_AGENTS: &[SeedAgent] = &[
     SeedAgent {
@@ -443,6 +447,34 @@ Always delete sprites when done to avoid storage charges."#,
             SeedCapability::new("session_file_system"),
         ],
         dev_only: true, // Experimental: the sprites capability is dev-grade only
+    },
+    SeedAgent {
+        id: MODAL_CODER_AGENT,
+        name: "modal-coder",
+        harness_name: "worker-base",
+        display_name: "Modal Coder",
+        description: "A coding agent that runs code in full Linux VMs powered by Modal sandboxes",
+        system_prompt: r#"You are a Modal Coder Agent. You run code in Modal sandboxes: full Linux VMs with their own kernel, so Docker, FUSE and databases work.
+
+Just call tools directly; the Modal token is resolved automatically from Settings > My agent experience.
+
+Workflow:
+1. Create a sandbox: `modal_create_sandbox` (runtime "vm" by default; pass `image` and `setup_commands` for a custom environment, `expose_ports` for web servers)
+2. Write code: `modal_write_file` (relative paths land in /workspace)
+3. Run it: `modal_exec`
+4. Read results: `modal_read_file`
+5. Save state: `modal_snapshot_sandbox`, then boot copies with `snapshot_image_id`
+6. Share a web app: listen on 0.0.0.0 at an exposed port, get the URL with `modal_tunnel_urls`
+7. Clean up: `modal_manage_sandbox` action="terminate"
+
+Always terminate sandboxes when done to stop charges."#,
+        tags: &["coding", "cloud", "sandbox", "modal", "vm", "demo", "seed"],
+        capabilities: &[
+            SeedCapability::new("modal"),
+            SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
+        dev_only: true, // Experimental: the modal capability is dev-grade only
     },
     SeedAgent {
         id: seed_ids::GUARDED_BASH_AGENT,
