@@ -84,7 +84,7 @@ Default working directory inside a sprite is `/home/sprite`.
 | **Credential storage** | API token stored in user_connections (encrypted). Never in session events. |
 | **Network isolation** | Firecracker VM-level isolation (stronger than containers). L3 network policies. |
 | **Data persistence** | Filesystem persists, users should be aware data outlives sessions. |
-| **Leased resources** | Registered for cleanup; 30-min lease duration. |
+| **Leased resources** | Registered for cleanup; 30-min lease duration. Also the ownership record: every tool that acts on a sprite name rejects names without an active lease in the current session, so a `sprites_sprite:` secret alone cannot redirect tools (TM-AGENT-020). |
 | **Metadata labels** | Sprites tagged with `everruns.*` metadata for audit and orphan cleanup. |
 
 ## Testing

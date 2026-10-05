@@ -3,6 +3,7 @@
 //! Decision: Embrace persistence — SpriteState includes the public HTTP URL
 
 use everruns_contracts::runtime::UpsertLeasedResource;
+use everruns_contracts::runtime::resource_ownership::verify_owned_external_resource_if_available;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::ToolExecutionResult;
 
@@ -96,6 +97,11 @@ pub async fn get_sprite_state(
     sprite_name: &str,
 ) -> Result<SpriteState, ToolExecutionResult> {
     validate_sprite_name(sprite_name)?;
+    // THREAT[TM-AGENT-020]: a `sprites_sprite:` secret alone is not proof of
+    // ownership (EVE-1170). Re-check the session's leased resources, which
+    // sprites_create_sprite registers via touch_sprite_lease, so a forged
+    // state entry cannot redirect tools to another session's sprite.
+    verify_owned_external_resource_if_available(context, "sprites", "sprite", sprite_name).await?;
 
     let storage = context
         .storage_store

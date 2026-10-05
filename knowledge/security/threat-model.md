@@ -1066,8 +1066,8 @@ This means an agent with one of these capabilities can probe whatever network th
 Residual risk remains with the deployment topology. Production operators must enforce egress filtering and network segmentation for any execution environment that can reach internal services.
 
 **TM-AGENT-020, Cross-Session Resource Reuse (MITIGATED):**
-Tools that accept provider-owned external IDs (`sandbox_id`, raw Daytona toolbox paths, and
-similar handles) resolve ownership through the active session's leased resources before calling
+Tools that accept provider-owned external IDs (`sandbox_id`, Sprites sprite names, raw Daytona
+toolbox paths, and similar handles) resolve ownership through the active session's leased resources before calling
 the backend. The session resource registry carries the same external-ID metadata for runtimes
 that only expose the generic registry. Raw sandbox list calls are filtered to the IDs owned by
 the active session before results are returned to the agent.
