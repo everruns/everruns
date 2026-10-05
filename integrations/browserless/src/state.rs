@@ -3,8 +3,8 @@
 //! Decision: API token ONLY comes from user connection (Settings > My agent experience).
 //!   Never stored in session secrets. Session state only tracks the WS endpoint.
 
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::ToolExecutionResult;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::ToolExecutionResult;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

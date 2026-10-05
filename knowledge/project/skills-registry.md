@@ -78,12 +78,12 @@ status, and, for archive uploads, the original ZIP alongside its extracted files
 stored individually rather than unpacked on demand, so activation and VFS mounting never pay for ZIP
 extraction at runtime.
 
-Fields and types: [`Skill` and `SkillFileEntry`](../../crates/core/src/skill.rs). Persistence:
+Fields and types: [`Skill` and `SkillFileEntry`](../../crates/contracts/src/runtime/skill.rs). Persistence:
 `skills` and `skill_files` in [`crates/server/migrations/001_base_schema.sql`](../../crates/server/migrations/001_base_schema.sql).
 
 Two source types exist: `markdown` (a pasted SKILL.md, instructions only) and `archive` (a ZIP
 holding the full skill directory with scripts, references, and assets). Statuses come from
-[`SkillStatus`](../../crates/core/src/skill.rs); only `active` skills are offered to agents.
+[`SkillStatus`](../../crates/contracts/src/runtime/skill.rs); only `active` skills are offered to agents.
 
 ### Limits and validation
 
@@ -94,7 +94,7 @@ across tenants.
 Every other bound (field lengths, archive size, file count, decompressed size) exists to keep skills
 what they are: instructions, not binary packages. The enforced numbers live in
 [`crates/server/src/domains/skills/archive.rs`](../../crates/server/src/domains/skills/archive.rs) and
-the SKILL.md parser in [`crates/core/src/skill.rs`](../../crates/core/src/skill.rs).
+the SKILL.md parser in [`crates/contracts/src/runtime/skill.rs`](../../crates/contracts/src/runtime/skill.rs).
 
 ### API surface
 
@@ -210,7 +210,7 @@ This approach:
 
 ### Capability-Contributed Skills
 
-Beyond user-uploaded (registry) and filesystem skills, any `Capability` can ship skills in code via `contribute_skills() -> Vec<SkillContribution>`. See `knowledge/execution/capabilities.md` for the trait method and `crates/core/src/capabilities/skill_contribution.rs` for the neutral `SkillContribution` values.
+Beyond user-uploaded (registry) and filesystem skills, any `Capability` can ship skills in code via `contribute_skills() -> Vec<SkillContribution>`. See `knowledge/execution/capabilities.md` for the trait method and `crates/contracts/src/runtime/capabilities/skill_contribution.rs` for the neutral `SkillContribution` values.
 
 Contributed skills flow through the **same** discovery/activation path as other skills:
 
@@ -259,7 +259,7 @@ Re-enabling the feature requires BOTH:
 
 See threat-model entry [`TM-TOOL-020`](../security/threat-model.md) for the mitigation state and EVE-388 for follow-up.
 
-Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_with_context` (`crates/core/src/builtins/skills.rs`). The `preprocess_command_injections` function in `crates/core/src/skill.rs` is kept wired up (with unit tests) so the re-enable follow-up only needs to flip the gate after introducing the provenance field. The function is bounded (`MAX_COMMAND_PLACEHOLDERS_PER_SKILL` = 32 placeholders per activation, concurrency cap of 4 shells) so a trusted-but-large SKILL.md cannot exhaust worker resources.
+Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_with_context` (`crates/core/src/builtins/skills.rs`). The `preprocess_command_injections` function in `crates/contracts/src/runtime/skill.rs` is kept wired up (with unit tests) so the re-enable follow-up only needs to flip the gate after introducing the provenance field. The function is bounded (`MAX_COMMAND_PLACEHOLDERS_PER_SKILL` = 32 placeholders per activation, concurrency cap of 4 shells) so a trusted-but-large SKILL.md cannot exhaust worker resources.
 
 ## Security Considerations
 
@@ -288,7 +288,7 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 
 | Concern | Source |
 |---|---|
-| SKILL.md parsing, name validation, `Skill` types | [`crates/core/src/skill.rs`](../../crates/core/src/skill.rs) |
+| SKILL.md parsing, name validation, `Skill` types | [`crates/contracts/src/runtime/skill.rs`](../../crates/contracts/src/runtime/skill.rs) |
 | `skills` capability: VFS scan, `list_skills`, `activate_skill` | [`crates/core/src/builtins/skills.rs`](../../crates/core/src/builtins/skills.rs) |
 | `skill:{uuid}` mount-only capability for registry skills | [`crates/core/src/builtins/attach_skill.rs`](../../crates/core/src/builtins/attach_skill.rs) |
 | CRUD, archive extraction, capability listing | [`crates/server/src/domains/skills/`](../../crates/server/src/domains/skills) |

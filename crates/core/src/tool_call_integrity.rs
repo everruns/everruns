@@ -135,6 +135,9 @@ fn message_has_visible_content(message: &RuntimeMessage) -> bool {
         // Reasoning is never user-visible content on its own: a message
         // carrying only reasoning has nothing to show and nothing to act on.
         ContentPart::Reasoning(_) | ContentPart::ProviderOpaque(_) => false,
+        // ContentPart lives in everruns-contracts and is non-exhaustive here;
+        // an unknown part is treated as visible so the message is kept.
+        _ => true,
     })
 }
 

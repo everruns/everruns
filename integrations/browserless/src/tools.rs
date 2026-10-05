@@ -19,10 +19,10 @@
 //! there the session ACL travels as Browserless rejection patterns.
 
 use everruns_contracts::ToolResultImage;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::truncation_info::{TruncationInfo, TruncationReason};
 use everruns_contracts::tool_types::ToolHints;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::truncation_info::{TruncationInfo, TruncationReason};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

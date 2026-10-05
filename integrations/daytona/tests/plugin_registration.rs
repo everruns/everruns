@@ -1,13 +1,13 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 //! Integration tests for Daytona plugin registration and capability.
 
-use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
-use everruns_core::deployment::DeploymentGrade;
+use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_contracts::runtime::deployment::DeploymentGrade;
 
 use everruns_integrations_daytona::CAPABILITY_PLUGINS;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())

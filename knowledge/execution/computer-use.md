@@ -13,7 +13,7 @@ tags:
 
 Status: phases 1 and 2 implemented, behind experimental mode. Capability
 `computer_use`, contract in
-[`crates/core/src/computer_use.rs`](../../crates/core/src/computer_use.rs), first
+[`crates/contracts/src/runtime/computer_use.rs`](../../crates/contracts/src/runtime/computer_use.rs), first
 backend in
 [`integrations/browserless/src/computer.rs`](../../integrations/browserless/src/computer.rs).
 Tracked as EVE-1119 (phase 1) and EVE-1133 (phase 2).

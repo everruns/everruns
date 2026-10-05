@@ -1,5 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
 
 use everruns_integrations_github::CAPABILITY_PLUGINS;
 

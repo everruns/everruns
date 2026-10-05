@@ -109,7 +109,7 @@ Capability hooks involved:
 
 Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive, existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including the managed-Environment `read_file`, accept `offset` and `limit` and return only that line window for text files. Non-image binary file reads return metadata by default instead of raw base64 or lossy UTF-8.
 
-See [`crates/core/src/truncation_info.rs`](../../crates/core/src/truncation_info.rs) for the source of truth: `TruncationInfo`, `TruncationReason`, and the `assert_conforms` conformance helper.
+See [`crates/contracts/src/runtime/truncation_info.rs`](../../crates/contracts/src/runtime/truncation_info.rs) for the source of truth: `TruncationInfo`, `TruncationReason`, and the `assert_conforms` conformance helper.
 
 **Scope, the reading-tool class:**
 
@@ -161,7 +161,7 @@ Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`out
 
 ### Exec Tool Output Sanitization
 
-Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) sanitize their output before returning results. Each tool calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.
+Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) sanitize their output before returning results. Each tool calls `sanitize_exec_output()` from `crates/contracts/src/runtime/tool_output_sanitizer.rs`.
 
 The pipeline:
 1. **Strip ANSI**: remove SGR, CSI, OSC escape sequences
@@ -183,11 +183,11 @@ All exec tools accept an `output` parameter controlling how much output is retur
 
 Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET`; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. When that budget omits content, `PersistOutputHook` adds a recovery pointer and keeps the inline `stdout` field around 512 bytes total. When all content fits inline, persistence remains internal and no recovery affordance is exposed. Model-visible pointers use the session filesystem's display identity. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. The persistence hook reads the original tool-call argument and does not re-resolve explicit `silent`/`concise`/`normal`/`verbose`/`full` modes to `auto`; those modes retain their fixed inline window and ignore exit code.
 
-Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence`, stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`, and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/core/src/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
+Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence`, stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`, and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/contracts/src/runtime/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
 
 The shared prompt hints (`EXEC_OUTPUT_HINT`, `READ_ECONOMY_HINT` in `tool_output_sanitizer.rs`) also carry a single-read/contextual-search policy for persisted output (EVE-778): pre-filter in the originating command when the filter is known, read a small persisted log (≤200 lines or ≤64 KiB) once with an ample `limit`, search larger ones with one contextual `grep_files` call, never reconstruct a file through sequential or overlapping read windows, and stop once diagnostic evidence suffices. Both constants are appended by every harness surface that exposes output persistence and filesystem tools (bashkit, sandbox integrations, the FileSystem capability).
 
-This is the tool's responsibility, each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
+This is the tool's responsibility, each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/contracts/src/runtime/tool_output_sanitizer.rs` for the primitives.
 
 ### Structured Exec Result Contract
 
@@ -215,7 +215,7 @@ Human-facing exec tools should return a structured result instead of a single co
 
 **Legacy compatibility:** Tools may continue to carry a combined pre-truncation string in `ToolResult.raw_output` for persistence hooks and logging, but the user-visible JSON contract should use `stdout`/`stderr`.
 
-Implementation note: shared shaping helpers live in [`crates/core/src/exec_tool_result.rs`](../../crates/core/src/exec_tool_result.rs). New shell-like tools should use that helper or match its contract exactly.
+Implementation note: shared shaping helpers live in [`crates/contracts/src/runtime/exec_tool_result.rs`](../../crates/contracts/src/runtime/exec_tool_result.rs). New shell-like tools should use that helper or match its contract exactly.
 
 ### Exec Human Representation
 
@@ -346,7 +346,7 @@ Two sources feed the chain, in this order:
 1. **Capability hooks**: from active capabilities via `Capability::pre_tool_use_hooks()`. This is the boundary for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).
 2. **User-hook specs**: `pre_tool_use` hooks dispatched per `knowledge/runtime-resources/user-hooks.md`.
 
-Policy gates decide on the call that executes, not the call the model wrote (EVE-1184). A hook marked as a policy gate (`PolicyGate` in `crates/core/src/tool_hooks.rs`; tool approval and `tool_use` guardrails) runs after every transforming hook regardless of declaration order, so a later hook cannot rewrite an approved call into one nobody approved. Approval requests therefore show, and fingerprint, the rewritten arguments. If a gate itself rewrites the call, every gate decides again on the new arguments; a chain that does not settle fails closed. See `run_pre_tool_use_hooks` in `crates/core/src/engine/execution/act_hooks.rs`.
+Policy gates decide on the call that executes, not the call the model wrote (EVE-1184). A hook marked as a policy gate (`PolicyGate` in `crates/contracts/src/runtime/tool_hooks.rs`; tool approval and `tool_use` guardrails) runs after every transforming hook regardless of declaration order, so a later hook cannot rewrite an approved call into one nobody approved. Approval requests therefore show, and fingerprint, the rewritten arguments. If a gate itself rewrites the call, every gate decides again on the new arguments; a chain that does not settle fails closed. See `run_pre_tool_use_hooks` in `crates/core/src/engine/execution/act_hooks.rs`.
 
 Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/core/src/host/host.rs` (`load_execution_capabilities`).
 

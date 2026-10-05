@@ -1,8 +1,8 @@
 //! Compatibility application helper for the deployment-opted-in Decisions preview.
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
+use everruns_contracts::runtime::{DecisionOutcome, DecisionRequest, DecisionsService};
 use everruns_contracts::{BearerAuth, Provider};
-use everruns_core::{DecisionOutcome, DecisionRequest, DecisionsService};
 pub use everruns_drivers::openai::decisions::{
     DEFAULT_BASE_URL, DEFAULT_MODEL, OPENAI_DECISION_DRIVER_ID, wire,
 };

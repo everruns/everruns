@@ -6,9 +6,9 @@
 //! earlier summary rather than stacking a new comment per push.
 
 use async_trait::async_trait;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::tool_types::ToolHints;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::{Tool, ToolExecutionResult};
 use serde_json::{Value, json};
 
 use crate::tools::{

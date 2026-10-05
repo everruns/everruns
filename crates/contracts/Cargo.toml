@@ -47,6 +47,19 @@ rand.workspace = true
 # (re-exports std elsewhere). See `rt`.
 web-time = "1"
 
+# Runtime SPI (capabilities, tools, sessions) moved from everruns-core; `runtime` only.
+tokio-util = { version = "0.7", default-features = false, optional = true }
+jsonschema = { version = "0.58.1", default-features = false, optional = true }
+serde_yaml = { workspace = true, optional = true }
+toml = { version = "1.1", optional = true }
+cron = { version = "0.17", optional = true }
+globset = { workspace = true, optional = true }
+# Tree-sitter for structural outlines (EVE-248), only with `tree-sitter-outlines`.
+tree-sitter = { version = "0.27", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
+
 # Errors / tracing
 anyhow.workspace = true
 thiserror.workspace = true
@@ -69,6 +82,9 @@ wasm-bindgen-futures = "0.4"
 
 [features]
 session-sandbox = ["dep:inventory"]
+# Runtime SPI that integrations implement (`everruns_contracts::runtime`). Off for
+# provider-only builds, which keep the lean wire-protocol tree.
+runtime = ["session-sandbox", "dep:inventory", "dep:tokio-util", "dep:jsonschema", "dep:serde_yaml", "dep:toml", "dep:cron", "dep:globset"]
 default = ["definition"]
 definition = ["dep:schemars"]
 # Shared protocol drivers, request helpers, and streaming reconnect support.
@@ -80,6 +96,9 @@ responses-websocket = ["http", "dep:tokio-tungstenite", "tokio/macros"]
 # Process-wide crypto-provider install for products that build TLS clients.
 # The workspace links `aws-lc-rs` only (EVE-924).
 tls-aws-lc-rs = ["dep:rustls"]
+
+# Structural outlines for truncated file reads (EVE-248).
+tree-sitter-outlines = ["runtime", "dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 
 # OpenAPI schema derives (utoipa::ToSchema).
 openapi = ["dep:utoipa"]
@@ -93,6 +112,8 @@ required-features = ["http", "tls-aws-lc-rs"]
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
+tempfile.workspace = true
+insta = { version = "1.40", features = ["json", "redactions"] }
 
 [lints]
 workspace = true

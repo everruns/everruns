@@ -13,7 +13,7 @@
 //! let _capability = GptImageGenCapability;
 //! ```
 //!
-//! [`IntegrationPlugin`]: everruns_core::capabilities::IntegrationPlugin
+//! [`IntegrationPlugin`]: everruns_contracts::runtime::capabilities::IntegrationPlugin
 //!
 //! This capability lives outside the `everruns-openai` driver crate so that
 //! provider crates stay pure `ChatDriver` implementations with no dependency

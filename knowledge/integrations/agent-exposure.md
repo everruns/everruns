@@ -153,7 +153,7 @@ identity keys the session* — and having two of them is why "some channels are
 session-per-event and some are one single session" read as an inconsistency rather than a
 setting.
 
-Unified into one `SessionBinding` in `crates/core/src/channel.rs` (EVE-1005), where every
+Unified into one `SessionBinding` in `crates/contracts/src/runtime/channel.rs` (EVE-1005), where every
 existing value maps 1:1 and nothing is lost:
 
 | `SessionBinding` | Key | Replaces |

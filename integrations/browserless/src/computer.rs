@@ -1,6 +1,6 @@
 //! Computer use on a Browserless page (EVE-1119).
 //!
-//! The provider-neutral `computer` tool (`everruns_core::computer_use`) drives
+//! The provider-neutral `computer` tool (`everruns_contracts::runtime::computer_use`) drives
 //! a display through [`ComputerBackend`]. This module is the browser-only
 //! backend: the display is one Chromium page, reached over CDP.
 //!
@@ -33,14 +33,14 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use everruns_core::computer_use::{
+use everruns_contracts::runtime::computer_use::{
     COMPUTER_USE_CAPABILITY_ID, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction, ComputerBackend,
     ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier, MouseButton,
     Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
 };
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_hooks::PreToolUseHook;
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_hooks::PreToolUseHook;
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use tracing::warn;
 
 use crate::browser_egress::BrowserEgress;
@@ -544,7 +544,7 @@ async fn save_cursor(context: &ToolContext, [x, y]: [u32; 2]) {
 /// Provider-neutral computer use on a Browserless browser.
 pub struct BrowserlessComputerUseCapability;
 
-impl everruns_core::capabilities::Capability for BrowserlessComputerUseCapability {
+impl everruns_contracts::runtime::capabilities::Capability for BrowserlessComputerUseCapability {
     fn id(&self) -> &str {
         COMPUTER_USE_CAPABILITY_ID
     }
@@ -560,12 +560,12 @@ impl everruns_core::capabilities::Capability for BrowserlessComputerUseCapabilit
          steer it; keep credentials out of reach. Runs on a Browserless browser."
     }
 
-    fn status(&self) -> everruns_core::capabilities::CapabilityStatus {
-        everruns_core::capabilities::CapabilityStatus::Available
+    fn status(&self) -> everruns_contracts::runtime::capabilities::CapabilityStatus {
+        everruns_contracts::runtime::capabilities::CapabilityStatus::Available
     }
 
-    fn risk_level(&self) -> everruns_core::capabilities::RiskLevel {
-        everruns_core::capabilities::RiskLevel::High
+    fn risk_level(&self) -> everruns_contracts::runtime::capabilities::RiskLevel {
+        everruns_contracts::runtime::capabilities::RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {
@@ -621,7 +621,7 @@ impl everruns_core::capabilities::Capability for BrowserlessComputerUseCapabilit
     }
 
     fn features(&self) -> Vec<&'static str> {
-        vec![everruns_core::LEASED_RESOURCES_FEATURE]
+        vec![everruns_contracts::runtime::LEASED_RESOURCES_FEATURE]
     }
 }
 

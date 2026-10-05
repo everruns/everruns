@@ -152,7 +152,7 @@ vocabulary in `crates/core/src/telemetry.rs` (`gen_ai`) and
   retry counts, `everruns.usage.cost_usd`, `everruns.usage.cost_unknown_components`
   (billable components with no known amount), provider correlation ids copied
   from event metadata (`everruns.provider_session_id`, `everruns.provider_turn_id`,
-  `everruns.provider_trace_url`, ...; see `crates/core/src/events/correlation.rs`),
+  `everruns.provider_trace_url`, ...; see `crates/contracts/src/runtime/events/correlation.rs`),
   and the diagnostic markers
   `everruns.span.orphaned` (terminal event without a start) and
   `everruns.span.unterminated` (closed by its turn ending).
@@ -314,7 +314,7 @@ Consumers should group by `metadata.session_id` and use Braintrust timeline/thre
 - **File**: `crates/core/src/host/observability/braintrust.rs`
 - **Registration**: `crates/server/src/main.rs` (event listener setup)
 - **Configuration**: `docs/sre/environment-variables.md`
-- **Format conversion**: `crates/core/src/message.rs` (`Message::to_openai_format()`)
+- **Format conversion**: `crates/contracts/src/runtime/message.rs` (`Message::to_openai_format()`)
 
 ### API Endpoints Used
 

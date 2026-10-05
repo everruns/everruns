@@ -137,6 +137,20 @@ if matches=$(grep -rnE 'everruns_(platform|capabilities)::' integrations crates/
   FAILED=1
 fi
 
+# Integrations implement the runtime SPI in `everruns_contracts::runtime` and
+# never ship against core. Dev edges stay allowed: tests may drive a core host.
+# The tree check covers optional, renamed, and transitive edges alike.
+integration_packages=()
+for manifest in integrations/*/Cargo.toml; do
+  integration_packages+=(-p "$(sed -nE 's/^name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$manifest" | head -n1)")
+done
+tree=$(guard_cargo_tree "${integration_packages[@]}" --all-features --edges normal,build --prefix none)
+if echo "$tree" | grep -qE '^everruns-core '; then
+  echo "Integrations must depend on everruns-contracts, never everruns-core (normal or build edge):"
+  echo "$tree" | grep -E '^everruns-core ' | sort -u
+  FAILED=1
+fi
+
 # 5. Org-scoped code never pairs a driver's declared variable names with a real
 #    environment lookup. The names are the drivers'; the lookup belongs to
 #    standalone/CLI/dev entrypoints only.

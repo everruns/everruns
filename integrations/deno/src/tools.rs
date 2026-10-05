@@ -4,12 +4,12 @@
 //! write, list, delete.
 
 use async_trait::async_trait;
-use everruns_contracts::tool_types::ToolHints;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_output_sanitizer::{
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
 };
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 use tracing::debug;
 
@@ -216,17 +216,19 @@ impl Tool for DenoExecTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Deno");
-        Some(everruns_core::tool_narration::narrate_shell_exec(
-            &tool_call.arguments,
-            fallback,
-            phase,
-            locale,
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_shell_exec(
+                &tool_call.arguments,
+                fallback,
+                phase,
+                locale,
+            ),
+        )
     }
 
     fn name(&self) -> &str {
@@ -244,7 +246,7 @@ impl Tool for DenoExecTool {
                 "sandbox_id": { "type": "string", "description": "Sandbox ID" },
                 "command": { "type": "string", "description": "Shell command to run" },
                 "cwd": { "type": "string", "description": "Optional working directory" },
-                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
+                "output": everruns_contracts::runtime::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["sandbox_id", "command"],
             "additionalProperties": false
@@ -305,7 +307,7 @@ impl Tool for DenoExecTool {
         }
 
         {
-            use everruns_core::tool_output_sanitizer::{
+            use everruns_contracts::runtime::tool_output_sanitizer::{
                 clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                 resolve_auto_mode,
             };

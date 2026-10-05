@@ -18,23 +18,21 @@
 //! See `integrations/daytona/SPEC.md` (GitHub clone-auth host allowlist) and
 //! `TM-DAYTONA-008` in `knowledge/security/threat-model.md`.
 
-use everruns_contracts::tool_types::ToolHints;
-use everruns_core::SessionFile;
-use everruns_core::exec_tool_result::ExecToolResultPayload;
-use everruns_core::resource_ownership::{
+use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
+use everruns_contracts::runtime::resource_ownership::{
     list_owned_external_resource_ids, ownership_tracking_unavailable_error,
     require_owned_external_resource,
 };
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_narration::{
+use everruns_contracts::runtime::tool_narration::{
     arg_str, generic_phrase, labeled_phrase, narrate_read_file, narrate_write_file, safe_arg_str,
     truncate, url_display,
 };
-use everruns_core::tool_output_sanitizer::{
+use everruns_contracts::runtime::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_binary_read_file_result, build_text_read_file_result,
     parse_read_file_window_args,
 };
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::{SessionFile, Tool, ToolContext, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -188,9 +186,9 @@ impl Tool for DaytonaCreateSandboxTool {
     fn narrate(
         &self,
         _tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(generic_phrase(
             "Creating Daytona sandbox",
@@ -459,17 +457,19 @@ impl Tool for DaytonaExecTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Daytona");
-        Some(everruns_core::tool_narration::narrate_shell_exec(
-            &tool_call.arguments,
-            fallback,
-            phase,
-            locale,
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_shell_exec(
+                &tool_call.arguments,
+                fallback,
+                phase,
+                locale,
+            ),
+        )
     }
 
     fn name(&self) -> &str {
@@ -502,7 +502,7 @@ impl Tool for DaytonaExecTool {
                     "type": "integer",
                     "description": "Timeout in milliseconds (optional, default: 300000)"
                 },
-                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
+                "output": everruns_contracts::runtime::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["sandbox_id", "command"],
             "additionalProperties": false
@@ -626,9 +626,9 @@ impl Tool for DaytonaReadFileTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(narrate_read_file(&tool_call.arguments, phase, locale))
     }
@@ -754,9 +754,9 @@ impl Tool for DaytonaWriteFileTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(narrate_write_file(&tool_call.arguments, phase, locale))
     }
@@ -865,9 +865,9 @@ impl Tool for DaytonaDownloadWorkspaceTool {
     fn narrate(
         &self,
         _tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(generic_phrase(
             "Downloading workspace",
@@ -1068,9 +1068,9 @@ impl Tool for DaytonaListSnapshotsTool {
     fn narrate(
         &self,
         _tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(generic_phrase(
             "Listing snapshots",
@@ -1181,9 +1181,9 @@ impl Tool for DaytonaListSandboxesTool {
     fn narrate(
         &self,
         _tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(generic_phrase(
             "Listing sandboxes",
@@ -1267,9 +1267,9 @@ impl Tool for DaytonaManageSandboxTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(labeled_phrase(
             "Managing sandbox",
@@ -1395,9 +1395,9 @@ impl Tool for DaytonaGitCloneTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // Schema key is `repo_url`; also accept common aliases. Rendered via
         // url_display so any embedded credentials/userinfo are stripped.
@@ -1620,9 +1620,9 @@ impl Tool for DaytonaGitCredentialsTool {
     fn narrate(
         &self,
         _tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // Never render arguments: this tool handles secret credentials.
         Some(generic_phrase(
@@ -2011,9 +2011,9 @@ impl Tool for DaytonaApiCallTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // Show only the endpoint path; never render the request body.
         let endpoint = safe_arg_str(&tool_call.arguments, &["path", "endpoint"])
@@ -2360,11 +2360,11 @@ mod tests {
     // ========================================================================
 
     use everruns_contracts::error::Result;
-    use everruns_contracts::typed_id::SessionId;
-    use everruns_core::{
+    use everruns_contracts::runtime::{
         connection_services::UserConnectionResolver, session_services::KeyInfo,
         session_services::SecretInfo, session_services::SessionStorageStore,
     };
+    use everruns_contracts::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -3629,8 +3629,8 @@ mod tests {
     // Tool narration
     // ========================================================================
 
+    use everruns_contracts::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
     use everruns_contracts::tool_types::ToolCall;
-    use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 
     fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
         let call = ToolCall {

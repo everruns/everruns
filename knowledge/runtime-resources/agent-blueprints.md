@@ -22,7 +22,7 @@ do not introduce a second execution engine.
 
 ## Sources of truth
 
-- [`crates/core/src/capabilities/mod.rs`](../../crates/core/src/capabilities/mod.rs)
+- [`crates/contracts/src/runtime/capabilities/mod.rs`](../../crates/contracts/src/runtime/capabilities/mod.rs)
   owns the blueprint model, capability contribution hook, and registry lookup.
 - [`crates/capabilities/src/capabilities/subagents.rs`](../../crates/capabilities/src/capabilities/subagents.rs)
   owns discovery, invocation schema, task creation, and governed-depth
@@ -30,7 +30,7 @@ do not introduce a second execution engine.
 - [`crates/contracts/src/capability/definition.rs`](../../crates/contracts/src/capability/definition.rs)
   owns schema derivation from a Rust type (`json_schema_for`), shared with
   typed capability tool schemas.
-- [`crates/core/src/session.rs`](../../crates/core/src/session.rs) owns persisted
+- [`crates/contracts/src/runtime/session.rs`](../../crates/contracts/src/runtime/session.rs) owns persisted
   session blueprint references.
 - [`crates/core/src/host/`](../../crates/core/src/host) owns runtime-agent assembly
   and execution for blueprint sessions.
@@ -74,7 +74,7 @@ Blueprints choose one of three strategies:
 - inherit: the blueprint uses the parent model.
 
 The current enum representation and owned string types live in
-`crates/core/src/capabilities/mod.rs`. Concrete model identifiers belong to each
+`crates/contracts/src/runtime/capabilities/mod.rs`. Concrete model identifiers belong to each
 blueprint implementation.
 
 Fixed selection is useful when specialist work has a known cost/quality target.

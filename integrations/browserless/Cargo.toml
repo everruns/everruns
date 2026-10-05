@@ -19,9 +19,8 @@ categories = ["api-bindings", "development-tools"]
 documentation = "https://docs.rs/everruns-integrations-browserless"
 
 [dependencies]
-everruns-core.workspace = true
 # `http`: SsrfGuardResolver for the browser egress boundary (EVE-1189)
-everruns-contracts = { workspace = true, features = ["http"] }
+everruns-contracts = { workspace = true, features = ["runtime", "http"] }
 
 # HTTP client for Browserless REST API
 reqwest.workspace = true

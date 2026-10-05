@@ -18,8 +18,7 @@ keywords = ["everruns", "typesafe", "agents", "classification", "llm"]
 categories = ["api-bindings", "development-tools"]
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["definition"] }
-everruns-core.workspace = true
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime", "definition"] }
 everruns-drivers = { workspace = true, features = ["typesafe", "openrouter"] }
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.

@@ -164,8 +164,8 @@ a `_` arm, so the addition cannot break them when they upgrade.
 
 The types carrying it are the ones with a demonstrated break, not every public
 type: see [`LlmErrorKind`](../../crates/contracts/src/error.rs), the two
-[`ContentPart`](../../crates/core/src/message.rs) enums,
-[`CapabilityStatus`](../../crates/core/src/capability_types.rs),
+[`ContentPart`](../../crates/contracts/src/runtime/message.rs) enums,
+[`CapabilityStatus`](../../crates/contracts/src/runtime/capability_types.rs),
 [`ModelCost`/`CostTier`](../../crates/contracts/src/model_profile_data/types.rs),
 [`LlmCallConfig`/`ProviderConfig`/`LlmCompletionMetadata`/`LlmStreamEvent`/`LlmContentPart`](../../crates/contracts/src/driver_registry.rs), and
 [`AgentAction`](../../crates/server/src/records/audit.rs), which grows a variant whenever an

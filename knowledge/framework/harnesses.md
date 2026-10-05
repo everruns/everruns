@@ -44,7 +44,7 @@ The broader industry sometimes calls the whole loop a harness. Everruns uses Eng
 
 - [Application-facing Harness](../../crates/everruns/src/harness.rs)
 - [Hosted Harness](../../crates/server/src/records/harness.rs)
-- [Portable runtime projection](../../crates/core/src/harness_definition.rs)
+- [Portable runtime projection](../../crates/contracts/src/runtime/harness_definition.rs)
 - [Hosted definitions](../../crates/server/src/harnesses/mod.rs)
 - [Session binding](../../crates/everruns/src/session.rs)
 - [Environment](../../crates/core/src/host/workspace.rs)

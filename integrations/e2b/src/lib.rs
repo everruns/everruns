@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::capabilities::Capability;
+//! use everruns_contracts::runtime::capabilities::Capability;
 //! use everruns_integrations_e2b::E2BCapability;
 //!
 //! let capability = E2BCapability;
@@ -31,11 +31,11 @@ pub mod state;
 mod tools;
 
 use everruns_contracts::connector::ConnectorPlugin;
-use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::LEASED_RESOURCES_FEATURE;
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::tools::Tool;
+use everruns_contracts::runtime::tools::Tool;
 
 use std::sync::LazyLock;
 
@@ -68,7 +68,7 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
         "E2B sandboxes are isolated networked Linux environments. Create or select a sandbox before sandbox-scoped operations, prefer `/home/user` as workspace root, and pause or delete sandboxes when done.",
     );
-    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt.push_str(everruns_contracts::runtime::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
 });
 
@@ -170,9 +170,10 @@ mod tests {
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = E2BCapability;
-        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-            everruns_contracts::typed_id::SessionId::new(),
-        );
+        let ctx =
+            everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
+                everruns_contracts::typed_id::SessionId::new(),
+            );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1000 → 1300: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
         // single-read/contextual-search policy (+438 bytes), taking this

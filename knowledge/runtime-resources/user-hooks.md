@@ -429,12 +429,12 @@ No breaking changes to existing user configs.
 
 | Concern | Location |
 |---|---|
-| `HookEvent`, `HookMatcher`, `HookOutcome`, `UserHookSpec`, `ExecutorSpec`, `OnError`, `HookId`, `HookSource` | `crates/core/src/user_hook_types.rs` |
-| `HookExecutor` trait + `BashHookExecutor` | `crates/core/src/hook_executor.rs` |
-| `PreToolUseHook` trait | `crates/core/src/tool_hooks.rs` (alongside existing hooks) |
+| `HookEvent`, `HookMatcher`, `HookOutcome`, `UserHookSpec`, `ExecutorSpec`, `OnError`, `HookId`, `HookSource` | `crates/contracts/src/runtime/user_hook_types.rs` |
+| `HookExecutor` trait + `BashHookExecutor` | `crates/contracts/src/runtime/hook_executor.rs` |
+| `PreToolUseHook` trait | `crates/contracts/src/runtime/tool_hooks.rs` (alongside existing hooks) |
 | `SessionLifecycleHook`, `TurnLifecycleHook` traits | `crates/core/src/lifecycle_hooks.rs` — defines both traits plus `BashLifecycleHook` |
 | `HookAdapterBuilder` (spec → adapter) | `crates/core/src/hook_adapter.rs` |
-| `Capability::user_hooks()` default + collection extension | `crates/core/src/capabilities/mod.rs` |
+| `Capability::user_hooks()` default + collection extension | `crates/contracts/src/runtime/capabilities/mod.rs` |
 | `user_hooks` capability | `crates/capabilities/src/capabilities/user_hooks.rs` |
 | `pre_tool_use` wire-in | `crates/core/src/engine/execution/act.rs::execute_single_tool` |
 | `post_tool_use` wire-in | existing `PostToolExecHook` chain |

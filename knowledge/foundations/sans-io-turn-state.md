@@ -195,7 +195,7 @@ converge later.
 - `crates/core/src/engine/execution/`, the shared Input/Reason/Act algorithms and
   engine-owned phase I/O values
 - `crates/core/src/engine/phase_effects.rs`, live host-applied phase effects
-- `crates/core/src/execution_context.rs` and `crates/core/src/tool_hooks.rs`,
+- `crates/contracts/src/runtime/execution_context.rs` and `crates/contracts/src/runtime/tool_hooks.rs`,
   neutral contracts used by the engine and capability authors
 - `crates/core/src/host/turn_strategy.rs`, `advance_host_execution`, the runtime
   host's thin I/O wrapper over an explicit engine driver, plus host-fact

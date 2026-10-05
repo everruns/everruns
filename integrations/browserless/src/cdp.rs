@@ -34,7 +34,7 @@ use tokio_tungstenite::{
 use tracing::debug;
 
 use crate::validation::validate_browserless_navigation;
-use everruns_core::network_access::NetworkAccessList;
+use everruns_contracts::runtime::network_access::NetworkAccessList;
 
 use crate::browser_egress::{
     BrowserEgress, DEAD_PROXY_BYPASS_LIST, DEAD_PROXY_SERVER, PausedAnswer,
@@ -744,7 +744,9 @@ impl CdpSession {
         if let Err(result) = validate_browserless_navigation(access, &url) {
             let _ = self.navigate("about:blank").await;
             return Err(match result {
-                everruns_core::tools::ToolExecutionResult::ToolError(message) => message,
+                everruns_contracts::runtime::tools::ToolExecutionResult::ToolError(message) => {
+                    message
+                }
                 other => format!("{other:?}"),
             });
         }

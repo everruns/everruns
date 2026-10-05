@@ -14,7 +14,7 @@
 //! classify.
 //!
 //! ```
-//! use everruns_core::capabilities::Capability;
+//! use everruns_contracts::runtime::capabilities::Capability;
 //! use everruns_integrations_typesafe::JevCapability;
 //!
 //! assert_eq!(JevCapability.id(), "jev");

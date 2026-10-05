@@ -1,6 +1,6 @@
 use super::*;
 use crate::validation::validate_interaction_steps;
-use everruns_core::capabilities::Capability;
+use everruns_contracts::runtime::capabilities::Capability;
 
 #[test]
 fn test_validate_url_accepts_public_https_url() {
@@ -56,8 +56,8 @@ fn test_validate_interaction_steps_rejects_blocked_navigate_url() {
 }
 
 fn acl_context(patterns: &[&str], block: bool) -> ToolContext {
+    use everruns_contracts::runtime::network_access::NetworkAccessList;
     use everruns_contracts::typed_id::SessionId;
-    use everruns_core::network_access::NetworkAccessList;
     let mut context = ToolContext::new(SessionId::new());
     context.network_access = Some(if block {
         NetworkAccessList::block(patterns.iter().copied())
@@ -302,7 +302,7 @@ fn test_truncate_html_under_cap() {
         "truncated": was_truncated
     });
     attach_content_truncation(&mut response, &content, 0, false);
-    everruns_core::truncation_info::assert_conforms("browserless_content", &response);
+    everruns_contracts::runtime::truncation_info::assert_conforms("browserless_content", &response);
     assert_eq!(response["truncation"]["truncated"], false);
 }
 
@@ -320,7 +320,7 @@ fn test_truncate_html_over_cap_emits_without_resume() {
         "truncated": was_truncated
     });
     attach_content_truncation(&mut response, &content, total, true);
-    everruns_core::truncation_info::assert_conforms("browserless_content", &response);
+    everruns_contracts::runtime::truncation_info::assert_conforms("browserless_content", &response);
     assert_eq!(response["truncation"]["truncated"], true);
     assert_eq!(response["truncation"]["reason"], "size_cap");
     assert_eq!(response["truncation"]["bytes_total"], total);

@@ -17,8 +17,7 @@ categories = ["development-tools", "asynchronous"]
 default = []
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false }
-everruns-core.workspace = true
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
 # The tree, its help and argv resolution are the contract crate's, so every
 # host spells and resolves `everruns ...` identically.
 everruns-cli-contract.workspace = true
@@ -40,6 +39,8 @@ url = "2"
 [dev-dependencies]
 anyhow.workspace = true
 chrono.workspace = true
+# Engine hook adapters drive the end-to-end hook tests.
+everruns-core.workspace = true
 regex.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 uuid.workspace = true

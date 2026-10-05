@@ -23,7 +23,7 @@ An off feature is unavailable regardless of existing organisation records or act
 Feature defaults live in the [catalog](../../crates/server/src/records/feature_flags.rs).
 An environment override replaces a feature's rollout grade at process startup. Invalid
 values disable the feature rather than silently promoting it. The shared
-[grade policy](../../crates/core/src/feature_flag_grade.rs) owns parsing, availability,
+[grade policy](../../crates/contracts/src/runtime/feature_flag_grade.rs) owns parsing, availability,
 defaults, and tenant configuration authority.
 
 Dev features start enabled on a local development deployment and may be disabled there.
@@ -76,7 +76,7 @@ operations. A flag's scope is the surface it owns; reporting aggregation and exi
 recordings remain infrastructure rather than being deleted when a UI feature is unavailable.
 
 The runtime receives resolved booleans, not rollout-management records. The
-[core registration decisions](../../crates/core/src/execution_features.rs) and the
+[core registration decisions](../../crates/contracts/src/runtime/execution_features.rs) and the
 [platform catalog](../../crates/server/src/records/feature_flags.rs) share the grade policy;
 only the hosted platform resolves durable organisation overrides.
 

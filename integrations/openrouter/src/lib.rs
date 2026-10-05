@@ -13,18 +13,18 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::Capability;
+//! use everruns_contracts::runtime::Capability;
 //! use everruns_integrations_openrouter::OpenRouterWorkspaceCapability;
 //!
 //! assert_eq!(OpenRouterWorkspaceCapability.id(), "openrouter_workspace");
 //! ```
 
-#[cfg(test)]
-use everruns_contracts::{error, typed_id::SessionId};
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
-use everruns_core::*;
+use everruns_contracts::runtime::*;
+#[cfg(test)]
+use everruns_contracts::{error, typed_id::SessionId};
 
 mod model_scout;
 mod server_tools;

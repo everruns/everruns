@@ -182,6 +182,9 @@ pub fn llm_message_from_message_with_attachments(
                 let text = truncate_tool_result(text);
                 parts.push(LlmContentPart::Text { text });
             }
+            // ContentPart lives in everruns-contracts and is non-exhaustive
+            // here; a part with no LLM form is not sent.
+            _ => {}
         }
     }
 
@@ -272,8 +275,10 @@ pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCa
 mod tests {
     use super::*;
     use crate::driver_registry::{LlmContentPart, MessageContent, MessageRole};
-    use crate::message::TextContentPart;
+    use crate::message::{TextContentPart, ToolCallContentPart};
+    use everruns_contracts::ProviderOpaqueContent;
     use everruns_contracts::model::ReasoningEffort;
+    use serde_json::json;
 
     #[test]
     fn test_resolved_parallel_tool_calls_gating() {
@@ -595,5 +600,67 @@ mod tests {
                 serde_json::to_value(vec![reasoning.clone()]).unwrap()
             );
         }
+    }
+
+    // Moved from the runtime message tests when RuntimeMessage moved to
+    // everruns-contracts: they exercise core's LLM conversion.
+    #[test]
+    fn native_custom_call_survives_transcript_serialization_and_conversion() {
+        let native = everruns_contracts::native_async::NativeToolCall::Custom {
+            call_id: "original-call".into(),
+            name: "lookup".into(),
+            input: "raw\nquery: \"value\"".into(),
+            asynchronous: true,
+        };
+        let mut message = RuntimeMessage::assistant("");
+        message.content.push(ContentPart::ToolCall(
+            ToolCallContentPart::from_native(native.clone()).unwrap(),
+        ));
+        let restored: RuntimeMessage =
+            serde_json::from_slice(&serde_json::to_vec(&message).unwrap()).unwrap();
+        assert_eq!(restored.tool_calls()[0].native.as_ref(), Some(&native));
+        let llm = crate::llm_conversions::llm_message_from_message(&restored);
+        assert_eq!(llm.native_tool_calls, vec![native]);
+        assert_eq!(llm.tool_calls.unwrap()[0].id, "original-call");
+    }
+    #[test]
+    fn provider_opaque_content_persists_internally_and_is_removed_from_public_messages() {
+        let opaque = ProviderOpaqueContent::new(
+            "anthropic",
+            json!([{"type": "thinking", "signature": "PRIVATE-SIGNATURE"}]),
+        );
+        let mut message = RuntimeMessage::assistant("answer");
+        message
+            .content
+            .push(ContentPart::ProviderOpaque(opaque.clone()));
+
+        let restored: RuntimeMessage =
+            serde_json::from_slice(&serde_json::to_vec(&message).unwrap()).unwrap();
+        assert!(
+            restored
+                .content
+                .contains(&ContentPart::ProviderOpaque(opaque.clone()))
+        );
+        let llm = crate::llm_conversions::llm_message_from_message(&restored);
+        let MessageContent::Parts(parts) = llm.content else {
+            panic!("opaque replay content must use multipart provider content");
+        };
+        assert_eq!(
+            parts,
+            vec![
+                LlmContentPart::ProviderOpaque(opaque),
+                LlmContentPart::Text {
+                    text: "answer".into()
+                }
+            ]
+        );
+
+        let public = restored.into_public();
+        assert_eq!(public.content, vec![ContentPart::text("answer")]);
+        assert!(
+            !serde_json::to_string(&public)
+                .unwrap()
+                .contains("PRIVATE-SIGNATURE")
+        );
     }
 }

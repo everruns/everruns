@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::capabilities::Capability;
+//! use everruns_contracts::runtime::capabilities::Capability;
 //! use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 //!
 //! let capability = DuckDuckGoCapability;
@@ -22,10 +22,10 @@
 pub mod client;
 mod tools;
 
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
-use everruns_core::tools::Tool;
+use everruns_contracts::runtime::tools::Tool;
 
 use tools::DuckDuckGoSearchTool;
 
@@ -129,7 +129,7 @@ impl Capability for DuckDuckGoCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::capabilities::CapabilityStatus;
+    use everruns_contracts::runtime::capabilities::CapabilityStatus;
 
     #[test]
     fn test_capability_metadata() {

@@ -7,7 +7,7 @@
 use crate::client::{RetryPolicy, TypeSafeAIClient, question::DEFAULT_MODEL};
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_core::{DecisionOutcome, DecisionRequest, DecisionsService};
+use everruns_contracts::runtime::{DecisionOutcome, DecisionRequest, DecisionsService};
 
 /// Environment variable used by the deployment-owned judgment client.
 ///

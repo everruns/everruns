@@ -27,7 +27,7 @@ exclude = ["testdata/", "src/ag_ui/spec/1.0/fixtures", "src/ag_ui/spec/1.0/confo
 # Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing
 # error taxonomy, capability identity, compact contracts, URL validation). Core
 # enables no concrete provider transport or provider-owned module re-exports.
-everruns-contracts = { workspace = true, default-features = false }
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
 
 # Core dependencies
 anyhow.workspace = true
@@ -78,11 +78,6 @@ globset.workspace = true
 # URL parsing
 url = "2"
 
-# Tree-sitter for structural outlines (EVE-248)
-tree-sitter = { version = "0.27", optional = true }
-tree-sitter-rust = { version = "0.24", optional = true }
-tree-sitter-typescript = { version = "0.23", optional = true }
-tree-sitter-python = { version = "0.25", optional = true }
 
 # OpenAPI schema generation (optional, enabled by everruns-server)
 utoipa = { workspace = true, optional = true }
@@ -106,6 +101,7 @@ reqwest = { workspace = true, optional = true, features = ["json", "stream", "ru
 eventsource-stream = { workspace = true, optional = true }
 serde_urlencoded = { version = "0.7", optional = true }
 futures-util = { workspace = true, optional = true }
+tree-sitter = { version = "0.27", optional = true }
 tree-sitter-bash = { version = "0.25", optional = true }
 a2a-wire = { package = "a2a-lf", version = "0.4", optional = true }
 a2a-client = { workspace = true, optional = true }
@@ -144,7 +140,7 @@ agent-package = ["dep:zip"]
 # Native filesystem effects are a separate opt-in; codec-only hosts use entries.
 agent-package-fs = ["agent-package"]
 openapi = ["dep:utoipa", "everruns-contracts/openapi"]
-tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
+tree-sitter-outlines = ["everruns-contracts/tree-sitter-outlines"]
 
 [dev-dependencies]
 wiremock = "0.6"

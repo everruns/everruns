@@ -211,7 +211,7 @@ const TIMESTAMP_SCHEMA_DESCRIPTION: &str =
 
 /// Backend-authored narration shared by this capability's tools.
 ///
-/// `crates/core/src/tool_narration.rs` is on the file-size allowlist
+/// `crates/contracts/src/runtime/tool_narration.rs` is on the file-size allowlist
 /// (`scripts/lib/file-size-allowlist.txt`) and may not grow, so these four
 /// simple, English-only phrases live here rather than joining its
 /// `narrate_*` helpers (see `crates/capabilities/tests/capability_boundary.rs`,

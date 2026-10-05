@@ -8,7 +8,7 @@
 
 #![cfg(feature = "integration")]
 
-use everruns_core::{McpToolCallRequest, McpToolCallResponse, McpToolsListRequest};
+use everruns_contracts::runtime::{McpToolCallRequest, McpToolCallResponse, McpToolsListRequest};
 use everruns_integrations_parallel::PARALLEL_MCP_URL;
 use serde_json::json;
 
@@ -27,7 +27,7 @@ async fn smoke_tools_list_free_mcp() {
         response.status()
     );
 
-    let body: everruns_core::McpToolsListResponse = response
+    let body: everruns_contracts::runtime::McpToolsListResponse = response
         .json()
         .await
         .expect("valid MCP tools/list response");

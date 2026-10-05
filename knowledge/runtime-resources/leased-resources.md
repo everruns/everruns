@@ -19,7 +19,7 @@ Leased resources are the generic control-plane primitive for any provider-owned 
 
 ## Model
 
-See [`crates/core/src/leased_resource.rs`](../../crates/core/src/leased_resource.rs) for the public domain type and [`crates/server/migrations/007_v0.8.6.sql`](../../crates/server/migrations/007_v0.8.6.sql) for persistence details.
+See [`crates/contracts/src/runtime/leased_resource.rs`](../../crates/contracts/src/runtime/leased_resource.rs) for the public domain type and [`crates/server/migrations/007_v0.8.6.sql`](../../crates/server/migrations/007_v0.8.6.sql) for persistence details.
 
 Important constraints:
 
@@ -32,7 +32,7 @@ Important constraints:
 ## Lifecycle
 
 Tool-side integrations use the generic store in
-[`crates/core/src/session_services.rs`](../../crates/core/src/session_services.rs):
+[`crates/contracts/src/runtime/session_services.rs`](../../crates/contracts/src/runtime/session_services.rs):
 
 - `upsert_resource`: create or extend a lease after successful remote creation or use.
 - `release_resource`: fast-path explicit deletion/close operations.

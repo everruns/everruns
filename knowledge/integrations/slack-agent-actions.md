@@ -246,7 +246,7 @@ authorized is not drawn at all.
 ## Files
 
 - `crates/core/src/capabilities/` — capability registration
-- `crates/core/src/tool_context.rs` — `session_store`, `session_task_registry`, the services a Slack capability needs
+- `crates/contracts/src/runtime/tool_context.rs` — `session_store`, `session_task_registry`, the services a Slack capability needs
 - `crates/server/src/api/slack_events.rs` — webhook, manifest, and the future interactivity endpoint
 - `crates/server/src/slack_delivery.rs` — delivery adapter and progress rendering
 - [Client Hints](../runtime-resources/client-hints.md) — the pause-and-consent mechanism this reuses

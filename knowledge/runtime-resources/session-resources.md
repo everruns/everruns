@@ -30,7 +30,7 @@ lifecycle management.
 
 ### Core trait, `SessionResourceRegistry`
 
-Lives in `crates/core/src/session_services.rs`. Available on `ToolContext` as
+Lives in `crates/contracts/src/runtime/session_services.rs`. Available on `ToolContext` as
 `session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>`.
 
 ```
@@ -43,7 +43,7 @@ deregister(session_id, id)            — remove from registry
 
 ### Model, `SessionResourceEntry`
 
-See `crates/core/src/session_resource.rs` for the full `SessionResourceEntry` struct and `SessionResourceStatus` enum.
+See `crates/contracts/src/runtime/session_resource.rs` for the full `SessionResourceEntry` struct and `SessionResourceStatus` enum.
 
 `resource_id` is unique per session, repeated calls with the same ID update
 rather than duplicate.

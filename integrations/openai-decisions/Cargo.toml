@@ -14,9 +14,8 @@ description = "OpenAI Decisions API as an Everruns decision driver (preview)"
 publish = false
 
 [dependencies]
-everruns-core.workspace = true
 everruns-drivers = { workspace = true, features = ["openai"] }
-everruns-contracts = { workspace = true, default-features = false }
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
 
 async-trait.workspace = true
 futures.workspace = true

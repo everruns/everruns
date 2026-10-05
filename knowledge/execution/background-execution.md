@@ -48,8 +48,8 @@ When a new cross-cutting capability is added, extend the auto-activation block r
 The capability ships with three layers of tests:
 
 - **Capability unit tests** (`crates/capabilities/src/capabilities/background_execution.rs`): metadata, single-tool contribution, and hosted-registry activation.
-- **Activation unit tests** (`crates/core/src/capabilities/mod.rs`): positive trigger via `bashkit_shell`, negative trigger with `current_time`, idempotence under explicit + auto-activation.
-- **Lockstep regression** (`crates/core/src/tools.rs`, `crates/core/src/capabilities/mod.rs`): `ToolRegistry::with_defaults()` must not include `spawn_background`.
+- **Activation unit tests** (`crates/contracts/src/runtime/capabilities/mod.rs`): positive trigger via `bashkit_shell`, negative trigger with `current_time`, idempotence under explicit + auto-activation.
+- **Lockstep regression** (`crates/core/src/tools.rs`, `crates/contracts/src/runtime/capabilities/mod.rs`): `ToolRegistry::with_defaults()` must not include `spawn_background`.
 
 End-to-end scripted-session coverage (using `llmsim` scripted mode to drive an agent through a real `spawn_background` call) is the suggested next layer; it belongs alongside the existing `crates/server/tests/workflow_test.rs` LlmSim scenarios.
 

@@ -30,8 +30,7 @@ buffa = "0.9"
 rustls.workspace = true
 rustls-native-certs = "0.8"
 
-everruns-core.workspace = true
-everruns-contracts = { workspace = true, default-features = false }
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 

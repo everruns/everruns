@@ -17,13 +17,13 @@ Messaging integrations connect agents to external messaging platforms (Slack, Di
 - **ThreadContext is session-level, ExternalActor is message-level**: A session bound to a platform thread accumulates participants in `ThreadContext`. Each individual message carries `ExternalActor` for LLM attribution. This separation lets the agent know both "who's in this conversation" and "who said this specific thing."
 - **Async agent invocation is first-class**: The `ChannelDeliveryAdapter` trait models the webhook→ack→async-response pattern. All platforms share the same lifecycle: register delivery on inbound event, deliver output when agent finishes (seconds to hours later), unregister on turn end.
 - **Generic session tags**: Session routing uses `{platform}:thread:{ref}`, `{platform}:channel:{id}`, `{platform}:user:{id}` tags. The `build_session_routing_tag()` helper generates these from metadata. Slack's existing tags remain as a concrete instance of this pattern.
-- **Agent-controlled communication is channel-neutral**: explicit posts let the agent choose when to communicate and how to word updates, questions, and answers. The runtime binds the destination to the input invocation and retains credential ownership in the control plane. Success confirms platform acceptance, rather than merely accepting a report payload. Automatic assistant forwarding remains an endpoint choice. Stored progress-only settings opt into this broader contract. See [the tool and sender contract](../../crates/core/src/channel_messaging.rs) and [the Slack adapter](../../crates/capabilities/src/channel_message_sender.rs).
+- **Agent-controlled communication is channel-neutral**: explicit posts let the agent choose when to communicate and how to word updates, questions, and answers. The runtime binds the destination to the input invocation and retains credential ownership in the control plane. Success confirms platform acceptance, rather than merely accepting a report payload. Automatic assistant forwarding remains an endpoint choice. Stored progress-only settings opt into this broader contract. See [the tool and sender contract](../../crates/contracts/src/runtime/channel_messaging.rs) and [the Slack adapter](../../crates/capabilities/src/channel_message_sender.rs).
 - **Platform actions stay in capabilities**: Slack contributes native reactions, edits, user lookup, and file uploads through its hosted capability. Neutral posting shares its bound endpoint action service. See [Slack Agent Actions](slack-agent-actions.md).
 - **Messaging integrations live in `crates/server/`**: Unlike sandbox/execution integrations (`integrations/`), messaging integrations are deeply coupled to server internals (SessionService, MessageService, EventService, EventNotificationBroadcaster). Slack currently lives in flat `crates/server/src/slack_delivery.rs` + `api/slack_events.rs` files; a `crates/server/src/messaging/{platform}/` split is the intended layout once a second platform lands (see Code Organization).
 
 ## Types
 
-See `crates/core/src/channel.rs` for full definitions.
+See `crates/contracts/src/runtime/channel.rs` for full definitions.
 
 ### Thread & Participants
 
@@ -55,7 +55,7 @@ See `crates/core/src/channel.rs` for full definitions.
 | Type | Purpose |
 |------|---------|
 | `SessionBinding` | Thread (default), Conversation, Requester, Endpoint, Ephemeral |
-| `ChannelReplyMode` | Automatic forwarding or agent-controlled communication; see [the mode contract](../../crates/core/src/channel.rs) |
+| `ChannelReplyMode` | Automatic forwarding or agent-controlled communication; see [the mode contract](../../crates/contracts/src/runtime/channel.rs) |
 | `build_session_routing_tag()` | Generates `{platform}:{thread\|channel\|user}:{ref}` session tag. The segment keeps the pre-EVE-1005 word, not the binding name: renaming it orphans live sessions. |
 
 ## Adapter Lifecycle
@@ -141,7 +141,7 @@ A per-platform `messaging/{platform}/` split (shared orchestration in
 `messaging/mod.rs`, one module per platform) is the intended layout once a
 second platform lands; until then Slack stays in these two files.
 
-Core abstraction types remain in `crates/core/src/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/server/src/records/app.rs`. Each `AgentChannel` holds transport type and configuration, enabling multiple independent endpoints per agent.
+Core abstraction types remain in `crates/contracts/src/runtime/channel.rs`. Platform-specific channel configs (e.g. `SlackChannelConfig`) remain in `crates/server/src/records/app.rs`. Each `AgentChannel` holds transport type and configuration, enabling multiple independent endpoints per agent.
 
 ## Concrete Implementations
 
@@ -182,9 +182,9 @@ Slack implements platform actions through its native capability and endpoint act
 
 ## Files
 
-- `crates/core/src/channel.rs`, All types and traits defined here
+- `crates/contracts/src/runtime/channel.rs`, All types and traits defined here
 - `crates/server/src/records/app.rs`, `SlackChannelConfig`, `session_strategy: SessionBinding`, `SlackReplyMode` (→ `ChannelReplyMode`)
-- `crates/core/src/channel_messaging.rs`, Neutral posting contract, invocation authority, and mode composition
+- `crates/contracts/src/runtime/channel_messaging.rs`, Neutral posting contract, invocation authority, and mode composition
 - `crates/core/src/lib.rs`, Module registration and re-exports
 - `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters
 - `crates/server/specs/slack-integration.md`, Slack-specific implementation spec

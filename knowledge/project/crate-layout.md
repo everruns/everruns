@@ -52,7 +52,7 @@ layer, never upward.
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
 | | `everruns-integrations-*` | one external service each | yes |
 | | `everruns-durable` | durable workflow primitives and their own Postgres store | yes |
-| Foundation | `everruns-contracts` | provider and capability SPIs, model profiles, typed ids, runtime view types, connector, store, sandbox, and vector-store traits | yes |
+| Foundation | `everruns-contracts` | provider and capability SPIs, model profiles, typed ids, runtime view types, connector, store, sandbox, and vector-store traits; the runtime SPI (capability, tool, tool context, session, message, event) behind its `runtime` feature | yes |
 
 The supporting crates keep their boundaries: `everruns-macros` and the serve macros
 (proc-macro crates must stand alone), `everruns-cli` and `everruns-cli-contract`,
@@ -126,6 +126,18 @@ erase the kernel firewall that [WASM Kernel](../framework/wasm-kernel.md) and
 protect. Effects (HTTP, process, filesystem, MCP stdio, gRPC) sit behind features. The
 default build stays wasm-safe, and the guard checks the default feature set rather than
 the whole crate.
+
+### Integrations depend on contracts, never on core
+
+An integration implements the runtime SPI in `everruns_contracts::runtime`
+([source](../../crates/contracts/src/runtime/mod.rs)) and ships against nothing else.
+Core re-exports each runtime module at its old `everruns_core::` path, so hosts and
+capabilities keep importing it from core. The `runtime` feature keeps provider-only
+builds free of the SPI's dependencies. Tests may still take core as a dev-dependency
+to drive a real host.
+[`check-provider-isolation.sh`](../../scripts/lib/check-provider-isolation.sh) rejects
+any normal or build edge from an integration to `everruns-core`, transitive ones
+included.
 
 ### Integrations never depend on core's host
 

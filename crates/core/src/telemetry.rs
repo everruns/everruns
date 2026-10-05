@@ -407,6 +407,9 @@ pub mod content {
                 }))
             }
             ContentPart::ProviderOpaque(_) => None,
+            // ContentPart lives in everruns-contracts and is non-exhaustive
+            // here; a part without a gen-ai shape is omitted.
+            _ => None,
         }
     }
 }

@@ -2,16 +2,16 @@
 //! Integration test: verify Cursor plugin and connection provider registration.
 
 use everruns_contracts::connector::ConnectorPlugin;
+use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_contracts::runtime::deployment::DeploymentGrade;
+use everruns_contracts::runtime::tool_narration::ToolNarrationPhase;
 use everruns_contracts::tool_types::ToolCall;
-use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
-use everruns_core::deployment::DeploymentGrade;
-use everruns_core::tool_narration::ToolNarrationPhase;
 use serde_json::json;
 
 use everruns_integrations_cursor::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
         (!plugin.experimental_only || grade.experimental_features_enabled())
@@ -74,7 +74,7 @@ fn cursor_connection_provider_is_published() {
 
 #[test]
 fn cursor_narration_names_agent_work() {
-    use everruns_core::capabilities::Capability;
+    use everruns_contracts::runtime::capabilities::Capability;
     let cap = everruns_integrations_cursor::CursorCapability;
     let call = ToolCall {
         id: "call_1".into(),
@@ -92,7 +92,7 @@ fn cursor_narration_names_agent_work() {
             &call,
             ToolNarrationPhase::Started,
             None,
-            everruns_core::tool_narration::ToolNarrationContext::default(),
+            everruns_contracts::runtime::tool_narration::ToolNarrationContext::default(),
         )
         .expect("narration");
     assert_eq!(narration, "Starting Cursor agent: Fix checkout bug");

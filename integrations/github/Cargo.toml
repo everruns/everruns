@@ -19,10 +19,9 @@ categories = ["api-bindings", "development-tools"]
 description = "GitHub pull request tools and agent blueprints for Everruns"
 
 [dependencies]
-everruns-core.workspace = true
 # `definition` supplies `json_schema_for` + schemars so the blueprint config
 # schema is derived from `GitHubScoutConfig` instead of hand-written JSON.
-everruns-contracts = { workspace = true, default-features = false, features = ["definition"] }
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime", "definition"] }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

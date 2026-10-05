@@ -49,7 +49,7 @@ Evidence and implementation entry points:
 - [Auth account storage](../../crates/server/src/storage/models.rs),
   [AuthUser](../../crates/server/src/auth/middleware.rs), and
   [external auth contract](../../crates/server/src/auth/backend.rs).
-- [Principal value types](../../crates/core/src/principal.rs),
+- [Principal value types](../../crates/contracts/src/runtime/principal.rs),
   [principal aggregate](../../crates/server/src/records/principal.rs), and
   [principal service](../../crates/server/src/services/principal.rs).
   External principal identity currently hashes `source:actor_id`; provider realm
@@ -67,7 +67,7 @@ Evidence and implementation entry points:
   non-MCP lookup still prefers identity connections and falls back to the
   session's resolved management owner.
 - [Slack participants](../../crates/server/src/api/slack_events/events.rs),
-  [ExternalActor](../../crates/core/src/message.rs), and
+  [ExternalActor](../../crates/contracts/src/runtime/message.rs), and
   [Public Chat visitor binding](../../crates/server/src/api/public_chat.rs).
 - [Chats](../../apps/ui/src/hooks/use-chat-threads.ts) are ordinary sessions.
   [Client selection](../../apps/ui/src/lib/chat-threads.ts) uses the auth user;
@@ -243,7 +243,7 @@ runtime auth, so connecting does not require a console account.
 Remote-resource cleanup stores the creating virtual user and provider, and
 retains pending grant provenance during cutover. It cannot resolve the session's current owner or
 fall back after account replacement. This replaces the human-only assumptions
-in [leased resources](../../crates/core/src/leased_resource.rs) and
+in [leased resources](../../crates/contracts/src/runtime/leased_resource.rs) and
 [worker connection RPCs](../../crates/server/src/grpc_service/worker/connections.rs).
 
 ## Console proxy and settings

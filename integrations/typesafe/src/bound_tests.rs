@@ -1,7 +1,7 @@
 use super::*;
 use async_trait::async_trait;
-use everruns_core::tool_execution::BudgetChecker;
-use everruns_core::{
+use everruns_contracts::runtime::tool_execution::BudgetChecker;
+use everruns_contracts::runtime::{
     EgressResponse, EgressResult, EgressService, EgressStreamResponse, Event, EventEmitter,
 };
 use std::sync::{Arc, Mutex};
@@ -12,8 +12,9 @@ impl BudgetChecker for BudgetFixture {
     async fn check_budgets(
         &self,
         _: &str,
-    ) -> everruns_contracts::error::Result<everruns_core::budget::BudgetToolResponse> {
-        Ok(everruns_core::budget::BudgetToolResponse {
+    ) -> everruns_contracts::error::Result<everruns_contracts::runtime::budget::BudgetToolResponse>
+    {
+        Ok(everruns_contracts::runtime::budget::BudgetToolResponse {
             status: self.0.into(),
             budgets: vec![],
             hint: None,
@@ -69,7 +70,7 @@ fn context(response: Vec<u8>, status: &'static str) -> (ToolContext, Arc<Events>
     context.budget_checker = Some(Arc::new(BudgetFixture(status)));
     context.egress_service = Some(Arc::new(Network(response)));
     context.event_emitter = Some(events.clone());
-    context.event_context = Some(everruns_core::EventContext::empty());
+    context.event_context = Some(everruns_contracts::runtime::EventContext::empty());
     (context, events)
 }
 fn input() -> EvaluateInput {

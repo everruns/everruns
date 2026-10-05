@@ -8,9 +8,11 @@
 
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::{
+    connection_services::UserConnectionResolver, tool_context::ToolContext,
+};
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{connection_services::UserConnectionResolver, tool_context::ToolContext};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -38,7 +40,7 @@ impl UserConnectionResolver for TokenResolver {
 }
 
 fn tool(name: &str) -> Box<dyn Tool> {
-    use everruns_core::capabilities::Capability;
+    use everruns_contracts::runtime::capabilities::Capability;
     everruns_integrations_browserless::BrowserlessCapability
         .tools()
         .into_iter()

@@ -21,7 +21,7 @@ route payloads.
 
 ## Sources of truth
 
-- [`crates/core/src/organization.rs`](../../crates/core/src/organization.rs) owns
+- [`crates/contracts/src/runtime/organization.rs`](../../crates/contracts/src/runtime/organization.rs) owns
   organization identifiers, membership DTOs, and role ordering.
 - [`crates/server/src/auth/middleware.rs`](../../crates/server/src/auth/middleware.rs)
   owns authenticated organization resolution and membership checks.

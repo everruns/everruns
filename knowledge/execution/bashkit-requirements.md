@@ -37,7 +37,7 @@ See `integrations/bashkit/src/lib.rs` for the full implementation.
 
 ## Output Sanitization
 
-`BashTool` sanitizes stdout/stderr before returning results to the LLM. This is the tool's responsibility, it calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.
+`BashTool` sanitizes stdout/stderr before returning results to the LLM. This is the tool's responsibility, it calls `sanitize_exec_output()` from `crates/contracts/src/runtime/tool_output_sanitizer.rs`.
 
 Pipeline: strip ANSI escape codes → collapse `\r`-overwritten lines → middle-truncate at 16 KiB (20% head / 80% tail).
 

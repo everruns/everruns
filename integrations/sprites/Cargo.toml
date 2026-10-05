@@ -18,8 +18,7 @@ categories = ["api-bindings", "development-tools"]
 documentation = "https://docs.rs/everruns-integrations-sprites"
 
 [dependencies]
-everruns-core.workspace = true
-everruns-contracts = { workspace = true, default-features = false }
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 

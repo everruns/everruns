@@ -28,7 +28,7 @@ aggregates that do not require reading the page.
 
 `Session.source` is a **closed, typed set**, not a free-form string, because
 the facet rail enumerates it. See
-[`SessionSource`](../../crates/core/src/session.rs) for the variants.
+[`SessionSource`](../../crates/contracts/src/runtime/session.rs) for the variants.
 
 Three rules govern it:
 
@@ -75,7 +75,7 @@ triggers on `events`, the same incremental-counter pattern
 not rescan event history per row.
 
 The derivation exists twice, in Rust
-([`SessionActivity::derive`](../../crates/core/src/session.rs)) and in SQL
+([`SessionActivity::derive`](../../crates/contracts/src/runtime/session.rs)) and in SQL
 ([`ACTIVITY_SQL`](../../crates/server/src/storage/repositories/sessions.rs)),
 because the list filters in the database and the in-memory backend filters in
 Rust. They are pinned to one truth table by test; change them together.

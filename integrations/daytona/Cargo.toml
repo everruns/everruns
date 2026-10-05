@@ -17,8 +17,7 @@ categories = ["api-bindings", "development-tools"]
 description = "Daytona cloud sandbox integration for Everruns"
 
 [dependencies]
-everruns-core.workspace = true
-everruns-contracts = { workspace = true, features = ["session-sandbox"] }
+everruns-contracts = { workspace = true, features = ["runtime", "session-sandbox"] }
 inventory.workspace = true
 
 # HTTP client for Daytona API

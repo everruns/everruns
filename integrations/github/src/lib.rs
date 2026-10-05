@@ -19,7 +19,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::capabilities::Capability;
+//! use everruns_contracts::runtime::capabilities::Capability;
 //! use everruns_integrations_github::GitHubCapability;
 //!
 //! let names: Vec<String> = GitHubCapability
@@ -39,11 +39,11 @@ mod tools;
 
 use everruns_contracts::capability::json_schema_for;
 use everruns_contracts::capability::schemars::JsonSchema;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus,
     IntegrationPlugin,
 };
-use everruns_core::tools::Tool;
+use everruns_contracts::runtime::tools::Tool;
 use serde::{Deserialize, Serialize};
 
 use fix_pull_requests::CreateGitHubPullRequestTool;

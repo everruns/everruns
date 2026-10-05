@@ -1,9 +1,9 @@
 //! E2B API types and session state helpers.
 
-use everruns_core::UpsertLeasedResource;
-use everruns_core::resource_ownership::verify_owned_external_resource_if_available;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::ToolExecutionResult;
+use everruns_contracts::runtime::UpsertLeasedResource;
+use everruns_contracts::runtime::resource_ownership::verify_owned_external_resource_if_available;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::ToolExecutionResult;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{error, warn};

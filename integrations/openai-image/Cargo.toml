@@ -22,8 +22,7 @@ documentation = "https://docs.rs/everruns-integrations-openai-image"
 [dependencies]
 # Capability/tool/session runtime lives in core with default features on, the
 # same as the other integration crates.
-everruns-core.workspace = true
-everruns-contracts = { workspace = true, default-features = false, features = ["http"] }
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime", "http"] }
 
 # URL type only: requests go through the host EgressService (EVE-1174).
 reqwest.workspace = true

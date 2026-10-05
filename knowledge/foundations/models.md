@@ -62,7 +62,7 @@ Last-resort validation limits to guard against abuse. API returns generic `400 B
 
 An instance of agentic loop execution. Sessions are top-level entities under organizations, with an optional host agent assigned to work in each session.
 
-See `crates/core/src/session.rs` for full field definitions.
+See `crates/contracts/src/runtime/session.rs` for full field definitions.
 
 See `knowledge/operations/localization.md` for locale/timezone resolution and durable preference rules.
 
@@ -86,7 +86,7 @@ Key design points:
 
 Durable ownership is modeled through org-scoped `Principal` records instead of raw user IDs.
 
-See `crates/core/src/principal.rs` for the durable principal type and `crates/server/src/services/principal.rs` for ownership resolution rules.
+See `crates/contracts/src/runtime/principal.rs` for the durable principal type and `crates/server/src/services/principal.rs` for ownership resolution rules.
 
 Key design points:
 - `Principal.kind` is currently `user`, `agent_identity`, or `system`.
@@ -100,7 +100,7 @@ Key design points:
 
 Conversation data stored as events in the `events` table. Messages are reconstructed from events when loaded.
 
-See `crates/core/src/message.rs` for `Message`, `ContentPart`, `Controls`, and `InputContentPart` types.
+See `crates/contracts/src/runtime/message.rs` for `Message`, `ContentPart`, `Controls`, and `InputContentPart` types.
 
 Key design points:
 - Messages stored as events with types `input.message`, `output.message.completed`. Tool calls embedded in `output.message.completed` via `ContentPart::ToolCall`. Tool results from `tool.completed` events.
@@ -233,7 +233,7 @@ User can send another message to continue the conversation.
 
 ### Capability
 
-Modular functionality that can be enabled on Agents. See `crates/core/src/capability_types.rs` for `CapabilityStatus`, `AgentCapabilityConfig`, and `MountPoint` types. See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`.
+Modular functionality that can be enabled on Agents. See `crates/contracts/src/runtime/capability_types.rs` for `CapabilityStatus`, `AgentCapabilityConfig`, and `MountPoint` types. See `crates/contracts/src/runtime/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`.
 
 See `knowledge/execution/capabilities.md` for the full capabilities specification.
 

@@ -7,7 +7,9 @@
 //! are the parts a live test cannot pin down without spending a real request
 //! per case, and the parts that break when either side of the mapping moves.
 
-use everruns_core::{DecisionAnswer, DecisionQuestion, DecisionRequest, DecisionsService};
+use everruns_contracts::runtime::{
+    DecisionAnswer, DecisionQuestion, DecisionRequest, DecisionsService,
+};
 use everruns_integrations_typesafe::{TypeSafeAI, TypeSafeAIClient};
 use serde_json::json;
 use wiremock::matchers::method;

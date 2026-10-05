@@ -641,7 +641,7 @@ Implemented pieces live in the capability and runtime assembly paths:
 - `crates/core/src/builtins/compaction.rs` owns config parsing,
   cost-control model-view masking, observation masking, summarization helpers,
   and compaction metrics types.
-- `crates/core/src/capabilities/mod.rs` exposes the generic
+- `crates/contracts/src/runtime/capabilities/mod.rs` exposes the generic
   `ModelViewProvider` hook so compaction remains capability-owned.
 - `crates/core/src/engine/execution/reason.rs` invokes compaction only when the resolved
   capability config includes `compaction`; without it, context-limit errors are

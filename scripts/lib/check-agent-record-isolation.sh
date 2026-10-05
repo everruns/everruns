@@ -125,8 +125,8 @@ done
 # 5. Store-backed context orchestration must not drift back into the kernel.
 CORE_CONTEXT_FILES=(
   crates/core/src/atoms/reason.rs
-  crates/core/src/command_host.rs
-  crates/core/src/dependency_blocker.rs
+  crates/contracts/src/runtime/command_host.rs
+  crates/contracts/src/runtime/dependency_blocker.rs
   crates/core/src/execution_snapshot.rs
   crates/core/src/runtime_context.rs
 )
@@ -138,7 +138,7 @@ if matches=$(grep -nE "$STORE_ORCHESTRATION_PATTERN" "${CORE_CONTEXT_FILES[@]}" 
 fi
 
 COMMAND_EFFECT_PATTERN='\b(ChatDriver|ProviderConfig|ProviderEndpoint|LlmCallConfig|ImageResolver|ResolvedImage)\b'
-if matches=$(grep -nE "$COMMAND_EFFECT_PATTERN" crates/core/src/command_host.rs 2>/dev/null); then
+if matches=$(grep -nE "$COMMAND_EFFECT_PATTERN" crates/contracts/src/runtime/command_host.rs 2>/dev/null); then
   echo "Concrete provider/image command completion must live in everruns-core host (EVE-905):"
   echo "$matches"
   FAILED=1
