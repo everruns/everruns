@@ -20,12 +20,14 @@
 //! the turn before its next step, and the engine's workers stop when the
 //! engine and its sessions are dropped.
 //!
-//! Not yet served on this backend; each fails the turn with a configuration
-//! error: resuming a turn a process exit interrupted
-//! ([`Session::resume_interrupted_turn`](crate::Session::resume_interrupted_turn)) and
-//! continuing a turn parked on client-side tool results (AG-UI). The memory
-//! store lives as long as the engine, so nothing survives the process yet; a
-//! PostgreSQL store is planned.
+//! Turns parked on client-side tool calls (AG-UI) and turns a process exit
+//! interrupted in their tool calls
+//! ([`Session::resume_interrupted_turn`](crate::Session::resume_interrupted_turn))
+//! continue on this backend exactly as in process; the backend conformance
+//! suite (`tests/backend_conformance/`) runs every scenario on both backends
+//! and requires the same outcome. The memory store lives as long as the
+//! engine, so nothing beyond the session's own log survives the process yet;
+//! a PostgreSQL store is planned.
 //!
 //! # Example
 //!

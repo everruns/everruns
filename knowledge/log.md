@@ -14,6 +14,14 @@
   runtime never sees. Design, contracts and test plan in
   [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
 
+* **The durable backend continues parked and interrupted turns.** Facade
+  sessions on `durable::Backend` now resume turns parked on client-side tool
+  calls and turns a process exit cut off mid-act, with in-process semantics
+  and results, and see parked calls as in process. The cross-backend
+  conformance suite (`crates/everruns/tests/backend_conformance/`) replaces
+  the parity tests and passes on both backends; `TurnBackend` still has no
+  `recover()`. See [Execution Backends](framework/execution-backends.md).
+
 * **Facade sessions can run on the durable backend.** The `everruns`
   `durable` feature (opt-in, experimental) adds `durable::Backend`, selected on
   the engine builder: turn steps run as queued, checkpointed tasks on an

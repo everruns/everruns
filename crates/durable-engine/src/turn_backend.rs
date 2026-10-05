@@ -29,6 +29,10 @@
 //!   completion event recorded (`EndTurn` when it recorded none, which is
 //!   also how a turn parked on client-side tool results ends, as in
 //!   process); a workflow error makes it `success: false`.
+//! - Iterations and tool calls are the checkpoint's, less what a continued
+//!   turn had counted before this run of it (a `TurnBaseline`), and a parked
+//!   turn's checkpoint counts the reason it resumes with, which it has not
+//!   run: the numbers an in-process result reports.
 //! - `Failed`: `Ok` with `success: false` and `TurnStopReason::Error`; the
 //!   driver already recorded the failure in the session log.
 //! - `Cancelled`: `Err(AgentLoopError::Cancelled)`, as the trait requires.
@@ -139,7 +143,28 @@ impl DurableRunner {
         workflow_id: Uuid,
         input: &DurableTurnInput,
     ) -> anyhow::Result<bool> {
-        let input_json = serde_json::to_value(input)?;
+        self.start_workflow_at(
+            workflow_id,
+            format!("input_{}", Uuid::now_v7()),
+            "process_input",
+            serde_json::to_value(input)?,
+        )
+        .await
+    }
+
+    /// Start a new run of `workflow_id` whose first task is `activity_type`
+    /// with `input_json`, and wake the workers. Returns `false`, starting
+    /// nothing, when the workflow still runs a turn.
+    ///
+    /// A turn usually starts at its input step; a turn resumed from the
+    /// session log after a process exit starts at the act it was cut off in.
+    pub(crate) async fn start_workflow_at(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: &str,
+        input_json: serde_json::Value,
+    ) -> anyhow::Result<bool> {
         {
             let mut store = self.store.lock().await;
 
@@ -148,8 +173,8 @@ impl DurableRunner {
                     if let Err(error) = store
                         .enqueue_task(
                             workflow_id,
-                            format!("input_{}", Uuid::now_v7()),
-                            "process_input".to_string(),
+                            activity_id,
+                            activity_type.to_string(),
                             input_json,
                         )
                         .await
@@ -172,14 +197,13 @@ impl DurableRunner {
                         return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
                     }
 
-                    let activity_id = format!("input_{}", Uuid::now_v7());
                     store
                         .start_workflow_with_task(
                             workflow_id,
                             "turn_workflow",
                             input_json,
-                            activity_id.clone(),
-                            "process_input".to_string(),
+                            activity_id,
+                            activity_type.to_string(),
                         )
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to start workflow: {e}"))?;
@@ -187,13 +211,13 @@ impl DurableRunner {
             }
         }
 
-        self.notify_task_available("process_input").await;
+        self.notify_task_available(activity_type).await;
         Ok(true)
     }
 
     /// Continue the turn that parked on client-side tool results, from the
     /// checkpoint it saved, once the resolution `resolution_id` is stored.
-    async fn resume_persisted_resolution(
+    pub(crate) async fn resume_persisted_resolution(
         &self,
         session_id: SessionId,
         resolution_id: Uuid,
@@ -263,11 +287,22 @@ impl DurableRunner {
     /// A ticket that resolves once the session's workflow reaches a
     /// terminal status.
     pub(crate) fn ticket(&self, session_id: SessionId, turn_id: TurnId) -> TurnTicket {
+        self.ticket_after(session_id, turn_id, TurnBaseline::default())
+    }
+
+    /// A ticket for a turn continued from `baseline`: its result counts only
+    /// the steps this run of the turn takes.
+    pub(crate) fn ticket_after(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        baseline: TurnBaseline,
+    ) -> TurnTicket {
         let store = Arc::clone(&self.store);
         TurnTicket::new(
             session_id,
             turn_id,
-            await_workflow(store, session_id.uuid(), turn_id),
+            await_workflow(store, session_id.uuid(), turn_id, baseline),
         )
     }
 }
@@ -406,6 +441,20 @@ pub(crate) async fn latest_completion_output<S: EventLog + ?Sized>(
     }))
 }
 
+/// What a continued turn had already counted when this run of it began.
+///
+/// An in-process turn reports the reasons and tool calls of the run that
+/// returns its result, so a turn continued after parking or a process exit
+/// counts only what it ran since. The checkpoint counts the whole turn; a
+/// ticket subtracts this from it to report the same numbers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct TurnBaseline {
+    /// Reasons the turn ran before this run.
+    pub(crate) iterations: u32,
+    /// Tool calls the checkpoint counts that this run's acts do not run.
+    pub(crate) tool_calls: u32,
+}
+
 /// What a ticket saw when its workflow ended.
 struct EndedWorkflow {
     status: WorkflowStatus,
@@ -421,6 +470,7 @@ async fn await_workflow(
     store: Arc<Mutex<dyn DurableStoreBackend>>,
     workflow_id: Uuid,
     turn_id: TurnId,
+    baseline: TurnBaseline,
 ) -> Result<TurnResult> {
     loop {
         let ended = {
@@ -452,14 +502,18 @@ async fn await_workflow(
             }
         };
         if let Some(ended) = ended {
-            return turn_result(ended, turn_id);
+            return turn_result(ended, turn_id, baseline);
         }
         tokio::time::sleep(TICKET_POLL_INTERVAL).await;
     }
 }
 
 /// Map an ended workflow to the ticket's result; see the module notes.
-fn turn_result(ended: EndedWorkflow, ticket_turn_id: TurnId) -> Result<TurnResult> {
+fn turn_result(
+    ended: EndedWorkflow,
+    ticket_turn_id: TurnId,
+    baseline: TurnBaseline,
+) -> Result<TurnResult> {
     let checkpoint = ended
         .checkpoint
         .and_then(|value| serde_json::from_value::<DurableTurnInput>(value).ok());
@@ -467,9 +521,23 @@ fn turn_result(ended: EndedWorkflow, ticket_turn_id: TurnId) -> Result<TurnResul
         .as_ref()
         .and_then(|checkpoint| checkpoint.turn_id)
         .unwrap_or(ticket_turn_id);
-    let iterations = checkpoint
-        .as_ref()
-        .map_or(0, |checkpoint| checkpoint.iteration as usize);
+    // A parked turn's checkpoint is the state its next reason resumes from,
+    // one iteration past the reasons it ran; only a pause completes the
+    // workflow without a stop reason.
+    let parked = ended.status == WorkflowStatus::Completed
+        && ended.completion.as_ref().is_some_and(|completion| {
+            completion.get("stop_reason").is_none()
+                && completion
+                    .get("waiting_for_tool_results")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+        });
+    let iterations = checkpoint.as_ref().map_or(0, |checkpoint| {
+        checkpoint
+            .iteration
+            .saturating_sub(u32::from(parked))
+            .saturating_sub(baseline.iterations) as usize
+    });
     let failed = |error: Option<String>, stop_reason| TurnResult {
         response: String::new(),
         iterations,
@@ -509,9 +577,11 @@ fn turn_result(ended: EndedWorkflow, ticket_turn_id: TurnId) -> Result<TurnResul
             Ok(TurnResult {
                 response,
                 iterations,
-                tool_calls_count: checkpoint
-                    .as_ref()
-                    .map_or(0, |checkpoint| checkpoint.tool_call_count as usize),
+                tool_calls_count: checkpoint.as_ref().map_or(0, |checkpoint| {
+                    checkpoint
+                        .tool_call_count
+                        .saturating_sub(baseline.tool_calls) as usize
+                }),
                 success: true,
                 error: None,
                 stop_reason,

@@ -15,7 +15,9 @@ tags:
 in-process backend implements it in full; `DurableRunner` in the published
 `everruns-durable-engine` crate implements it for server-persisted input only,
 and `DurableBackend` beside it runs facade sessions behind the `everruns`
-`durable` feature for new messages, steering and cancellation.
+`durable` feature for every framework input: new messages, steering,
+cancellation, parked client-side tool calls and interrupted turns. The
+cross-backend conformance suite passes on both.
 
 ## Problem
 
@@ -58,16 +60,18 @@ durably.
   the rejected input becomes the next turn, the same rule that holds once a
   turn commits to completion.
 - **Unsealed and experimental.** Third-party backends may implement it. It
-  stays experimental, outside [API Stability](api-stability.md)'s promises,
-  until the backend conformance suite passes on the in-process and the durable
-  backend alike.
+  stays experimental, outside [API Stability](api-stability.md)'s promises;
+  the backend conformance suite (below) is the bar a backend meets.
 
-Deliberately absent for now: a separate `resume_after_tool_results(resolution_id)`
+Deliberately absent: a separate `resume_after_tool_results(resolution_id)`
 and a crash `recover()`. The worker resumes from a persisted resolution id the
 in-process path has no store for, so it is a doc-hidden `Persisted` input
-variant instead, which the in-process backend rejects. The in-process runtime
-keeps no queue to recover; `recover()` joins with the facade's durable backend
-if it needs one.
+variant instead, which the in-process backend rejects. A turn a process exit
+cut off is resumed per session from the session log through
+`ResumeInterrupted`, on any backend. The durable memory backend needed no
+`recover()` for it: its queue dies with the process, so the log is all that
+survives. `recover()` joins only with a shared store, for workflows another
+process left behind.
 
 ### The default: in process
 
@@ -150,13 +154,24 @@ platform.
 - **Workers stop with the engine**: when the last backend handle drops, or on
   an explicit shutdown. A step in flight is dropped, as an in-process turn is.
 
-Not yet served on the durable backend, each a configuration error:
-interrupted-turn resumption, client-side tool results (AG-UI parking, whose
-parked calls the session does not see on this backend), and server-persisted
-input. Still to come, in order: the cross-backend conformance suite (grown from
-the parity tests in [`durable_tests.rs`](../../crates/everruns/src/durable_tests.rs),
-which run each scenario on both backends and compare answers, turn shape and
-event types), the turn-backend benchmark, and a PostgreSQL store. PostgreSQL
+- **Continuations reuse both sides' resume logic.** The in-process runtime
+  exposes, doc-hidden, the pieces its own resumes are made of, and the
+  durable engine resumes through paths it already had:
+  - A pause is recorded on the runtime when the driver plans it, so the
+    session sees the parked calls as in process. Client-side tool results
+    are recorded under the parked turn by the runtime, then the workflow
+    continues from the checkpoint it parked with through the runner's
+    tool-resolution resume, the path the server's stored resolutions take.
+  - An interrupted turn is read from the session log by the runtime, which
+    plans the act that reruns its unfinished calls; the backend starts a
+    workflow whose first task is that act, checkpointed with the turn's
+    state, and the driver plans on from there.
+  - A continued turn's result counts only the steps that run took, as in
+    process: the ticket subtracts what the turn had counted before.
+
+Not served on the durable backend: server-persisted input, a configuration
+error. Still to come, in order: the turn-backend benchmark and a PostgreSQL
+store. PostgreSQL
 needs more than a store constructor: workers sharing a queue across processes
 would claim tasks for sessions another process attached, so it waits on a
 route from a task's session to the process (or runtime factory) that can run
@@ -187,9 +202,15 @@ workflows that fit them; turns do not use them. The option is recorded in
 - Every facade turn, including steering, cancellation, parked client-side
   tool calls and interrupted-turn resumption, runs through `TurnBackend`, with
   existing session tests unchanged.
-- A conformance suite runs the same scenarios (single turn, tool loop,
-  steering versus next turn, cancel, park and resume, kill mid-act then
-  recover) on every backend and requires identical event sequences.
+- The conformance suite,
+  [`tests/backend_conformance/`](../../crates/everruns/tests/backend_conformance/main.rs)
+  in the facade, runs the same scenarios (single turn, tool loop, steering
+  versus next turn, cancel then next turn, park on a client-side call and
+  resume with its result, a turn cut off mid-act then resumed from the log)
+  on every backend and requires identical answers, turn shapes, notes and
+  persisted event sequences. Park and resume runs both through a session's
+  AG-UI runs and directly on the seam, where the resumed turn's result is
+  visible. It passes on the in-process and the durable memory backend.
 - Core's default build stays wasm-safe: the seam spawns nothing.
 - The facade's default build compiles no durable engine; durable execution
   is the opt-in `durable` feature.

@@ -70,8 +70,6 @@ mod default_workspace;
 /// backend conformance suite passes on every backend.
 #[cfg(feature = "durable")]
 pub mod durable;
-#[cfg(all(test, feature = "durable"))]
-mod durable_tests;
 mod engine;
 mod events;
 mod harness;

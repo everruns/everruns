@@ -13,8 +13,8 @@ use crate::core::InputMessage;
 use crate::core::turn::TurnStopReason;
 use crate::durable_backend::DurableBackend;
 use crate::host::{
-    AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnSteering,
-    TurnTicket,
+    AcceptedTurnInput, InProcessRuntime, PersistedTurn, TurnBackend, TurnInput, TurnRequest,
+    TurnSteering, TurnTicket,
 };
 
 async fn runtime(sim: LlmSimConfig) -> (InProcessRuntime, SessionId) {
@@ -179,22 +179,45 @@ async fn cancel_drops_the_step_and_ends_the_ticket() {
 }
 
 #[tokio::test]
-async fn unsupported_inputs_and_a_second_turn_are_rejected() {
+async fn unsupported_and_empty_inputs_and_a_second_turn_are_rejected() {
     let (runtime, session_id) =
         runtime(LlmSimConfig::fixed("eventually").with_response_delay(Duration::from_secs(30)))
             .await;
     let backend = DurableBackend::memory(1);
     let session = backend.attach(session_id, runtime);
-    for input in [
-        TurnInput::ResumeInterrupted,
-        TurnInput::ToolResults(Vec::new()),
-    ] {
-        let error = session
-            .start_turn(TurnRequest::new(session_id, TurnId::new(), input))
-            .await
-            .expect_err("not served yet");
-        assert!(matches!(error, AgentLoopError::Configuration(_)), "{error}");
-    }
+    let persisted = TurnInput::Persisted(Box::new(PersistedTurn::ToolResolution {
+        resolution_id: uuid::Uuid::now_v7(),
+    }));
+    let error = session
+        .start_turn(TurnRequest::new(session_id, TurnId::new(), persisted))
+        .await
+        .expect_err("server-persisted input is the runner's");
+    assert!(matches!(error, AgentLoopError::Configuration(_)), "{error}");
+
+    // Continuations fail as in process when there is nothing to continue.
+    let error = session
+        .start_turn(TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::ToolResults(Vec::new()),
+        ))
+        .await
+        .expect_err("nothing is parked");
+    assert!(
+        error
+            .to_string()
+            .contains("no turn waiting for tool results"),
+        "{error}"
+    );
+    let error = session
+        .start_turn(TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::ResumeInterrupted,
+        ))
+        .await
+        .expect_err("nothing is interrupted");
+    assert!(error.to_string().contains("no turn interrupted"), "{error}");
     assert!(!session.is_running(session_id).await);
 
     let _first = session
