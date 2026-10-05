@@ -312,6 +312,75 @@ async fn an_external_worker_is_killed_when_the_policy_stops_it() {
     assert_eq!(outcome.workers[0].status, WorkerStatus::Stopped);
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_verifier_that_finishes_mid_reading_is_recorded_not_escalated() {
+    // A worker's record flips to finished before its `Finished` signal is
+    // absorbed. A reading that straddles that gap must still count the
+    // verifier as on the floor, or the policy sees "verification started,
+    // nothing active, nothing completed" and escalates, dropping the result.
+    let workspace = tempfile::tempdir().unwrap();
+    let verifying = |state: &Value| {
+        state
+            .get("active_workers")
+            .and_then(Value::as_array)
+            .is_some_and(|workers| {
+                workers
+                    .iter()
+                    .any(|worker| worker["worker_kind"] == "verifier")
+            })
+    };
+    let verified = |state: &Value| {
+        state
+            .get("verification_results")
+            .and_then(Value::as_array)
+            .is_some_and(|results| results.iter().any(|result| result["passed"] == true))
+    };
+    let foreman = answering(move |state| {
+        if verifying(state) {
+            // Hold the reading open until the verifier's turn has resolved.
+            std::thread::sleep(Duration::from_millis(1_500));
+            return Ok(healthy());
+        }
+        let done = if verified(state) { 0.99 } else { 0.5 };
+        Ok(Assessment {
+            implementation_complete: 0.95,
+            needs_verification: 0.95,
+            ready_to_finish: done,
+            requirements_satisfied: done,
+            tests_sufficient: done,
+            ..healthy()
+        })
+    });
+    let crew = Crew::external(
+        stand_in("true"),
+        "simulated",
+        crate::agent::verifier(
+            Model::simulated_with_config(
+                LlmSimConfig::fixed("Checked.").with_response_delay(Duration::from_millis(500)),
+            ),
+            workspace.path(),
+        )
+        .unwrap(),
+    );
+
+    let outcome = Factory::new(
+        "Do the thing.",
+        workspace.path(),
+        crew,
+        foreman,
+        Config {
+            max_workers: 2,
+            ..brisk()
+        },
+    )
+    .run()
+    .await;
+
+    assert_eq!(outcome.status, Status::Finished, "{:?}", outcome.failures);
+    assert_eq!(outcome.verification.len(), 1);
+    assert!(outcome.verification[0].passed);
+}
+
 #[test]
 fn remaining_time_shrinks_and_never_goes_negative() {
     let budget = Duration::from_secs(30);
