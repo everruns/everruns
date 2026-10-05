@@ -66,9 +66,6 @@ Legacy upload options below remain available through `create --file`.
 - `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--harness <id|name>] [--tag <t>]`, create from CLI flags. `--harness` (`-H`) accepts a harness id (`harness_<32-hex>`) or a name (e.g. `conversation`); a strict id is sent as `harness_id`, anything else as `harness_name`. Omitting it inherits the organization's configured default (Conversation for a new organization). On the `--file` path the harness comes from the definition's `harness_id` / `harness_name` key instead.
 - `update --file <path> [--initial-files-dir <dir>] [--writable]`, send file to server import API; TOML is normalized client-side, and `./agent.toml` is used automatically when `--file` is omitted, no inline update flags are present, and no positional `<id>` is provided. Requires `id:` in the definition for upsert. `--initial-files-dir` and definition `initial_files` work the same as in create.
 - `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--harness <id|name>] [--tag <t>]`, update from CLI flags. `--harness` (`-H`) uses the same id-vs-name detection as create.
-- `list`
-- `get <id>`
-- `delete <id>` (soft archive)
 
 #### Legacy Initial Files Hidden Path Policy
 
@@ -97,47 +94,8 @@ Session management.
     - `--budget-limit usd:10 --budget-soft-limit usd:8`, $10 hard, $8 soft pause
     - `--budget-limit tokens:2000000`, 2M token limit
     - `--budget-limit usd:10 --budget-limit tokens:2000000`, both limits, whichever hits first
-- `list`
-- `get <id>`
 - `watch <id>`, stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
 - `export <id> [-o <path>] [--format jsonl|atif]`, export session messages to a file (`-o`/`--output`) or stdout. `--format` defaults to `jsonl` (one message per line); `atif` emits an ATIF trajectory.
-
-### `everruns triggers`
-
-Manage schedule triggers scoped to an agent with `--agent <id>`.
-
-- `list`, list the agent's active triggers. Text output renders common cron schedules as a human-readable cadence with timezone; JSON and YAML retain the API response.
-- `create --cron <expression> --message <text> [--timezone <iana>] [--session-mode shared-session|session-per-invocation] [--disabled]`
-- `update <trigger-id> [--cron <expression>] [--message <text>] [--timezone <iana>] [--session-mode shared-session|session-per-invocation]`
-- `enable <trigger-id>`
-- `disable <trigger-id>`
-- `run-now <trigger-id>`, fire one invocation immediately.
-
-Examples:
-
-```bash
-everruns triggers --agent agent_... create \
-  --cron '30 * * * *' \
-  --timezone America/Chicago \
-  --session-mode session-per-invocation \
-  --message 'Prepare the hourly report'
-everruns triggers --agent agent_... list
-everruns triggers --agent agent_... run-now trg_...
-```
-
-### `everruns participants`
-
-Manage participants scoped to a session with `--session <id>`.
-
-- `list`, list active and past participants, including host/member role and leave status.
-- `add --agent <agent-id>` (alias: `invite`), invite an agent as a member.
-- `remove <participant-id>`, mark an active member as having left. The session host cannot be removed.
-
-```bash
-everruns participants --session session_... add --agent agent_...
-everruns participants --session session_... list
-everruns participants --session session_... remove part_...
-```
 
 ### `everruns chat`
 
@@ -146,13 +104,6 @@ Send message and poll for response.
 - `chat --session <id> "<message>" [--timeout <s>] [--no-stream]`
 - Polls `/v1/sessions/{id}/events` every 500ms until `turn.completed` or timeout
 - No timeout by default (waits indefinitely); use `--timeout <s>` to set a limit
-
-### `everruns capabilities`
-
-List platform capabilities.
-
-- `capabilities [--status available|coming_soon|all]`
-- `list [--status available|coming_soon|all]`
 
 ### `everruns connections`
 
@@ -165,6 +116,18 @@ Manage per-provider API-key connections (e.g. `daytona`, `brave_search`, `browse
 ### `everruns files`
 
 Session filesystem operations, sync, push, pull, list. See [Files](#files) section below.
+
+### Contract commands
+
+Every other command (`agents list`, `agents versions rollback`, `agents triggers ...`,
+`sessions participants ...`, `capabilities`, `plugins`, `skills`, `knowledge-bases`, and the
+rest) is mounted from the shared command contract, resolved by the same mapper agents use
+(`everruns_cli_contract::Mapper`), and sent to `POST /v1/commands/{wire_name}`. See
+[command-tree.md](../execution/command-tree.md). A hand-written command exists only where
+the work is local: login, file sync, streaming, and reading or writing local agent
+packages. A contract spelling the CLI hand-writes is not mounted. Output is the command's
+JSON (or YAML). `@path` values for text and JSON flags are read from local files; `@@`
+escapes a literal `@`. Spellings that differed from the contract were dropped, not aliased.
 
 ---
 

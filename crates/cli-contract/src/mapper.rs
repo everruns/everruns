@@ -97,6 +97,11 @@ impl Mapper {
         self.contracts.get(wire_name)
     }
 
+    /// Every command this mapper resolves to, by wire name.
+    pub fn contracts(&self) -> impl Iterator<Item = &ContractCommand> {
+        self.contracts.values()
+    }
+
     /// Resolve argv, the words after the root token.
     pub fn resolve<S: AsRef<str>>(&self, argv: &[S]) -> Resolution {
         let args: Vec<String> = argv.iter().map(|arg| arg.as_ref().to_string()).collect();

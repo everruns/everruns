@@ -68,15 +68,12 @@ export EVERRUNS_API_KEY=evr_pat_...   # or run `everruns login`
 |---|---|
 | `login`, `logout`, `status` | Sign in, sign out, show the current user and organization |
 | `orgs` | `list` organizations, `select` the active one |
-| `agents` | `create`, `list`, `get`, `update`, `delete` |
-| `sessions` | `create`, `list`, `get`, `watch`, `export` |
+| `agents` | `create`, `update`, `import`, `export`, `validate`, `diff`, plus the platform commands |
+| `sessions` | `create`, `watch`, `export`, plus the platform commands |
 | `chat` | Send a message and stream the response |
-| `triggers` | Manage an agent's schedule triggers: `list`, `create`, `update`, `enable`, `disable`, `run-now` |
-| `participants` | `list`, `add`, `remove` agents in a session |
 | `files` | Sync files between a local folder and a session |
 | `connections` | `set`, `list`, `remove` your provider API keys |
-| `capabilities` | List capabilities |
-| `plugins`, `skills`, `knowledge-bases` | See [Agent composition](#agent-composition) |
+| Every other platform command | See [Platform commands](#platform-commands) |
 
 ### Agents
 
@@ -143,33 +140,23 @@ everruns agents list -o yaml
 
 `--quiet` suppresses headers and prints only the essential identifier, useful for capturing IDs in shell variables.
 
-## Agent composition
+## Platform commands
 
-Discover and manage the plugins, skills, and knowledge bases available to agents:
+Every other command comes from the same command contract that agents use in their shell and through MCP `execute`, so the spelling, flags and validation are identical everywhere. Run `everruns --help`, `everruns <noun> --help` or `everruns <noun> <verb> --help` to browse them.
 
 ```bash
-# Plugins
-everruns plugins list
-everruns plugins get <plugin-id>
-everruns plugins install <marketplace-id> <plugin-name>
-everruns plugins uninstall <plugin-id>
+everruns agents versions list --agent agent_...
+everruns agents triggers list --agent-id agent_...
+everruns sessions participants add --session-id session_... --kind agent --agent-id agent_...
+everruns capabilities list --search web
 
-# Skills
-everruns skills list
-everruns skills get <skill-id>
-everruns skills create ./SKILL.md
-everruns skills delete <skill-id>
-
-# Knowledge bases
-everruns knowledge-bases list
-everruns knowledge-bases get <knowledge-base-id>
-everruns knowledge-bases create "Product docs" --description "Published product documentation"
-everruns knowledge-bases delete <knowledge-base-id>
+# Plugins, skills and knowledge bases
+everruns plugins install --marketplace-id <marketplace-id> --plugin-name <plugin-name>
+everruns skills create --skill-md @./SKILL.md
+everruns knowledge-bases create --name "Product docs" --description "Published product documentation"
 ```
 
-Resource identifiers are URL-encoded before requests are sent. Use the global `--output json` or `--output yaml` option for machine-readable discovery output.
-
-Skill creation reads the supplied Markdown file and sends its contents to Everruns. Knowledge document ingestion and assigning composition resources to an agent are not yet exposed by the CLI.
+These commands print the command's JSON output (YAML with `-o yaml`). A text or JSON flag written `@path` is read from that local file, as in `--skill-md @./SKILL.md`; write `@@` for a value that really starts with `@`.
 
 ## See also
 
