@@ -32,6 +32,10 @@ pub struct ServerPaymentAuthority {
     encryption: Option<Arc<EncryptionService>>,
     org_id: i64,
     agent_id: Option<AgentId>,
+    /// The persisted input that caused this execution. Its server-recorded
+    /// invocation is the only provenance that can prove an interactive,
+    /// user-initiated turn (EVE-1187).
+    input_message_id: Option<uuid::Uuid>,
     feature_flag_policy: crate::records::FeatureFlagPolicy,
 }
 
@@ -47,8 +51,15 @@ impl ServerPaymentAuthority {
             encryption,
             org_id,
             agent_id,
+            input_message_id: None,
             feature_flag_policy: crate::records::FeatureFlagPolicy::current(),
         }
+    }
+
+    /// Scope wallet resolution to the input that caused this execution.
+    pub fn bound_to_input_message(mut self, input_message_id: uuid::Uuid) -> Self {
+        self.input_message_id = Some(input_message_id);
+        self
     }
 }
 
@@ -60,6 +71,12 @@ struct SelectedPolicy {
 
 #[async_trait]
 impl PaymentAuthority for ServerPaymentAuthority {
+    fn for_execution(&self, input_message_id: uuid::Uuid) -> Option<Arc<dyn PaymentAuthority>> {
+        Some(Arc::new(
+            self.clone().bound_to_input_message(input_message_id),
+        ))
+    }
+
     async fn execute_machine_payment(
         &self,
         session_id: SessionId,
@@ -221,6 +238,33 @@ struct X402PaymentRequirements {
 }
 
 impl ServerPaymentAuthority {
+    /// The human user who interactively initiated the bound input, if any.
+    ///
+    /// THREAT[TM-AGENT-022]: an unattended turn (schedule, agent trigger, app
+    /// channel, health check, eval) must not inherit the session owner's
+    /// wallet. The only proof of an interactive, user-initiated turn is the
+    /// management user `MessageService` records on the input's runtime
+    /// invocation when an authenticated user sends it directly; every other
+    /// ingress records none. The lookup is keyed by this session, so an input
+    /// from another session proves nothing. No binding, no row, or no
+    /// management user all fail closed: no user wallet is a candidate.
+    /// Turns an interactive turn starts in other sessions through platform
+    /// tools carry that same proven user, while an unattended turn cannot
+    /// start them (platform tools require the same management user).
+    async fn interactive_initiator(&self, session_id: SessionId) -> Result<Option<uuid::Uuid>> {
+        let Some(input_message_id) = self.input_message_id else {
+            return Ok(None);
+        };
+        self.db
+            .runtime_invocation_management_user(session_id, input_message_id)
+            .await
+            .map_err(|error| {
+                AgentLoopError::store(format!(
+                    "Failed to resolve payment turn provenance: {error}"
+                ))
+            })
+    }
+
     async fn select_policy(
         &self,
         session_id: SessionId,
@@ -257,12 +301,13 @@ impl ServerPaymentAuthority {
                 })?,
             None => None,
         };
+        let initiating_user_id = self.interactive_initiator(session_id).await?;
         let candidates = subject_candidates(
             session_id,
             agent_id,
             agent_public_id,
             session.virtual_user_id,
-            session.resolved_owner_user_id,
+            initiating_user_id,
             channel_public_id,
         );
         let mut policies = Vec::new();
@@ -293,8 +338,8 @@ impl ServerPaymentAuthority {
             }
             // THREAT[TM-AGENT-022]: Prompt-injected agents could try to spend from any wallet.
             // Mitigation: every paid capability request must match an active policy for the
-            // session, agent, virtual user, user, or organization plus capability, host,
-            // rail, and per-request limit before a payment is signed.
+            // session, agent, virtual user, interactive initiating user, or organization plus
+            // capability, host, rail, and per-request limit before a payment is signed.
             if !candidates
                 .iter()
                 .any(|(kind, id)| policy.subject_type == *kind && policy.subject_id == *id)
@@ -557,7 +602,7 @@ fn subject_candidates(
     agent_id: Option<AgentId>,
     agent_public_id: Option<String>,
     virtual_user_id: Option<everruns_contracts::typed_id::VirtualUserId>,
-    user_id: Option<uuid::Uuid>,
+    initiating_user_id: Option<uuid::Uuid>,
     channel_public_id: Option<String>,
 ) -> Vec<(&'static str, String)> {
     let mut candidates = vec![
@@ -579,7 +624,10 @@ fn subject_candidates(
         candidates.push(("virtual_user", virtual_user_id.to_string()));
         candidates.push(("virtual_user", virtual_user_id.uuid().to_string()));
     }
-    if let Some(user_id) = user_id {
+    // Only the proven interactive initiator (see `interactive_initiator`), never
+    // the session's resolved owner: unattended work must not spend a human's
+    // wallet (EVE-1187).
+    if let Some(user_id) = initiating_user_id {
         candidates.push(("user", user_id.to_string()));
     }
     candidates
@@ -798,6 +846,10 @@ fn request_hash(request: &MachinePaymentRequest) -> String {
     }
     hex::encode(hasher.finalize())
 }
+
+#[cfg(test)]
+#[path = "authority_wallet_tests.rs"]
+mod wallet_tests;
 
 #[cfg(test)]
 mod tests {

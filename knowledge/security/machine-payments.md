@@ -95,6 +95,9 @@ Resolution is explicit and conservative:
 
 1. Use the session's `agent_identity_id` wallet if an active policy grants it.
 2. Use the initiating user's wallet only for interactive user-initiated turns.
+   The proof is the management user the control plane recorded on the turn's
+   input when an authenticated user sent it; the authority is bound to that
+   input per tool call. Missing or unproven provenance means no user wallet.
 3. Use an organization/operator wallet when delegated to the agent/app/session.
 4. If multiple eligible wallets match, use capability config preference.
 5. If still ambiguous, fail and ask the user/admin to choose a wallet.
