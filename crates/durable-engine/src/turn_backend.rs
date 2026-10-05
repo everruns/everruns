@@ -8,8 +8,9 @@
 //! - Only [`TurnInput::Persisted`] is served: the server persists the message
 //!   or the tool resolution before it starts the turn, and the turn task
 //!   reads it from the session store. Unpersisted input (`Message`,
-//!   `ToolResults`) and `ResumeInterrupted` fail with a configuration error
-//!   until the facade's durable backend persists them itself.
+//!   `ToolResults`) and `ResumeInterrupted` fail with a configuration error;
+//!   a framework session's messages go through
+//!   [`DurableBackend`](crate::DurableBackend), which persists them itself.
 //! - A persisted message for a session whose workflow still runs joins that
 //!   turn as a `USER_MESSAGE` signal, the server's steering, instead of
 //!   failing as the trait describes for a second turn. The returned ticket
@@ -103,8 +104,43 @@ impl DurableRunner {
             final_answer_preview: None,
         };
         let workflow_id = session_id.uuid();
-        let input_json = serde_json::to_value(&input)?;
-        let notify_activity = {
+        if !self.start_workflow(workflow_id, &input).await? {
+            let signal = WorkflowSignal::new(
+                crate::durable_turn::USER_MESSAGE,
+                serde_json::json!({
+                    "input_message_id": input_message_id.to_string(),
+                    "org_id": org_id,
+                    "harness_id": harness_id.to_string(),
+                    "agent_id": agent_id.map(|id| id.to_string()),
+                }),
+            );
+            if let Err(error) = self
+                .store
+                .lock()
+                .await
+                .send_signal(workflow_id, signal)
+                .await
+            {
+                warn!(
+                    session_id = %session_id,
+                    %error,
+                    "failed to send steering signal"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// Start a new run of `workflow_id` whose first task is the input step
+    /// of `input`, and wake the workers. Returns `false`, starting nothing,
+    /// when the workflow still runs a turn.
+    pub(crate) async fn start_workflow(
+        &self,
+        workflow_id: Uuid,
+        input: &DurableTurnInput,
+    ) -> anyhow::Result<bool> {
+        let input_json = serde_json::to_value(input)?;
+        {
             let mut store = self.store.lock().await;
 
             match store.try_claim_workflow_for_new_turn(workflow_id).await {
@@ -128,27 +164,8 @@ impl DurableRunner {
                             .await;
                         return Err(anyhow::anyhow!("Failed to enqueue task: {error}"));
                     }
-                    Some("process_input")
                 }
-                Ok(false) => {
-                    let signal = WorkflowSignal::new(
-                        crate::durable_turn::USER_MESSAGE,
-                        serde_json::json!({
-                            "input_message_id": input_message_id.to_string(),
-                            "org_id": org_id,
-                            "harness_id": harness_id.to_string(),
-                            "agent_id": agent_id.map(|id| id.to_string()),
-                        }),
-                    );
-                    if let Err(error) = store.send_signal(workflow_id, signal).await {
-                        warn!(
-                            session_id = %session_id,
-                            %error,
-                            "failed to send steering signal"
-                        );
-                    }
-                    None
-                }
+                Ok(false) => return Ok(false),
                 Err(error) => {
                     let err = error.to_string();
                     if !err.contains("not found") && !err.contains("NOT_FOUND") {
@@ -166,17 +183,12 @@ impl DurableRunner {
                         )
                         .await
                         .map_err(|e| anyhow::anyhow!("Failed to start workflow: {e}"))?;
-
-                    Some("process_input")
                 }
             }
-        };
-
-        if let Some(activity_type) = notify_activity {
-            self.notify_task_available(activity_type).await;
         }
 
-        Ok(())
+        self.notify_task_available("process_input").await;
+        Ok(true)
     }
 
     /// Continue the turn that parked on client-side tool results, from the
@@ -250,7 +262,7 @@ impl DurableRunner {
 
     /// A ticket that resolves once the session's workflow reaches a
     /// terminal status.
-    fn ticket(&self, session_id: SessionId, turn_id: TurnId) -> TurnTicket {
+    pub(crate) fn ticket(&self, session_id: SessionId, turn_id: TurnId) -> TurnTicket {
         let store = Arc::clone(&self.store);
         TurnTicket::new(
             session_id,

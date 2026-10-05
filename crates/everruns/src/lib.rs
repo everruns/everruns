@@ -66,6 +66,12 @@ mod context;
 /// Stability: alpha — may change without a major bump; see [`stability`].
 pub mod decisions;
 mod default_workspace;
+/// Stability: experimental — outside the [`stability`] promises until the
+/// backend conformance suite passes on every backend.
+#[cfg(feature = "durable")]
+pub mod durable;
+#[cfg(all(test, feature = "durable"))]
+mod durable_tests;
 mod engine;
 mod events;
 mod harness;

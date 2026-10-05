@@ -2342,6 +2342,7 @@ dependencies = [
  "everruns-core",
  "everruns-drivers",
  "everruns-durable",
+ "everruns-durable-engine",
  "everruns-integrations-bashkit",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-filesystem",
@@ -2690,6 +2691,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-util",
  "tracing",
  "uuid",
 ]

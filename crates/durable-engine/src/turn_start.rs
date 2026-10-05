@@ -18,7 +18,7 @@ use crate::durable_runner::DurableTurnInput;
 use crate::engine::{InputAtomInput, ReasonInput, TurnPlan};
 use crate::host::{
     advance_host_execution, execute_input_activity as runtime_execute_input_activity,
-    execute_reason_activity as runtime_execute_reason_activity,
+    execute_reason_activity_with_prompt_messages as runtime_execute_reason_activity_with_prompt_messages,
 };
 use crate::task_heartbeat::CancelSignals;
 use crate::turn_driver::TurnTaskHost;
@@ -163,7 +163,21 @@ async fn run_reason<H: TurnTaskHost>(
         "Executing reason activity"
     );
     let reason_input = reason_input(input, input.turn_id.unwrap_or_default());
-    let result = runtime_execute_reason_activity(&host, input.org_id, reason_input).await;
+    // The prompt messages `execute_reason_activity` would pick (the turn's
+    // input on its first iteration), then any steering the host delivers at
+    // this boundary, as the in-process turn loop orders them.
+    let mut prompt_message_ids: Vec<_> = (input.iteration <= 1)
+        .then_some(input.input_message_id)
+        .into_iter()
+        .collect();
+    prompt_message_ids.extend(hosts.before_reason(input).await?);
+    let result = runtime_execute_reason_activity_with_prompt_messages(
+        &host,
+        input.org_id,
+        reason_input,
+        prompt_message_ids,
+    )
+    .await;
     hosts.phase_finished(&host).await;
     let result = result?;
 

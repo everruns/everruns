@@ -14,8 +14,8 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::host::{
-    AcceptedTurnInput, InProcessBackend, InProcessRuntime, TurnBackend, TurnInput, TurnRequest,
-    TurnResult, TurnSteering, TurnSteeringPushError, TurnTicket,
+    AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnResult,
+    TurnSteering, TurnSteeringPushError, TurnTicket,
 };
 use everruns_core::turn::TurnStopReason;
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
@@ -651,8 +651,8 @@ struct SessionActor {
     harness: Option<Harness>,
     environment: Option<everruns_core::host::Environment>,
     runtime: Option<InProcessRuntime>,
-    /// Runs the turns, built with `runtime`. In process until the builder
-    /// can select a durable backend.
+    /// Runs the turns, built with `runtime`: in process, or on the durable
+    /// backend the engine's builder selected.
     backend: Option<Arc<dyn TurnBackend>>,
     agent_started: bool,
     deferred: VecDeque<Command>,
@@ -1129,7 +1129,7 @@ impl SessionActor {
                     self.hook_state.clone(),
                 )
                 .await?;
-            self.backend = Some(Arc::new(InProcessBackend::new(runtime.clone())));
+            self.backend = Some(self.execution.turn_backend(&runtime));
             self.runtime = Some(runtime);
         }
         Ok(())

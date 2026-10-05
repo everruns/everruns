@@ -4,9 +4,12 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use super::AcceptedTurnInput;
-#[cfg(doc)]
-use super::InProcessRuntime;
+use everruns_contracts::error::Result;
+use everruns_contracts::typed_id::{MessageId, SessionId};
+
+use super::{AcceptedTurnInput, InProcessRuntime};
+use crate::event_emitter::EventEmitter;
+use crate::events::{EventContext, EventRequest, InputMessageData};
 
 /// Concurrency-safe ingress for messages sent while an in-process turn runs.
 ///
@@ -76,13 +79,22 @@ impl TurnSteering {
         Ok(())
     }
 
-    pub(super) fn drain(&self) -> Vec<AcceptedTurnInput> {
+    /// Take every input accepted so far, leaving the ingress open.
+    ///
+    /// A host calls this at a reason boundary, before the reason runs, to
+    /// deliver steering into that reason. Durable backends drive their own
+    /// boundaries, so this is public for them as well.
+    pub fn drain(&self) -> Vec<AcceptedTurnInput> {
         let mut state = self.state.lock().expect("turn steering lock poisoned");
         state.inputs.drain(..).collect()
     }
 
     /// Drain accepted input, or close the ingress when there is none.
-    pub(super) fn drain_or_close(&self) -> Vec<AcceptedTurnInput> {
+    ///
+    /// The one atomic decision a turn makes when it would otherwise finish:
+    /// continue with the drained input, or commit to completion so every
+    /// later push is rejected and belongs to the next turn.
+    pub fn drain_or_close(&self) -> Vec<AcceptedTurnInput> {
         let mut state = self.state.lock().expect("turn steering lock poisoned");
         if state.inputs.is_empty() {
             state.open = false;
@@ -105,5 +117,33 @@ impl TurnSteering {
 impl Default for TurnSteering {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl InProcessRuntime {
+    /// Persist one accepted input as the session's canonical `input.message`
+    /// event, exactly as a turn does when the input starts it or steers it at
+    /// a reason boundary. Returns the message's id.
+    ///
+    /// Unlike [`append_accepted_inputs`](Self::append_accepted_inputs), this
+    /// runs no `user_prompt_submit` hook: the caller passes the id to the next
+    /// reason as a prompt message, which applies the hooks there. A durable
+    /// backend that drives this runtime's turn steps from its own queue uses
+    /// it to persist input the way this runtime's own turns do.
+    pub async fn persist_accepted_input(
+        &self,
+        session_id: SessionId,
+        input: AcceptedTurnInput,
+    ) -> Result<MessageId> {
+        let message = input.into_message();
+        let message_id = message.id;
+        self.event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                EventContext::empty(),
+                InputMessageData::new(message),
+            ))
+            .await?;
+        Ok(message_id)
     }
 }
