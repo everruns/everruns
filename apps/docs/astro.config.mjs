@@ -303,6 +303,7 @@ export default defineConfig({
                   items: [
                     { label: "Architecture", slug: "explanation/architecture" },
                     { label: "Physical Architecture", slug: "advanced/physical-architecture" },
+                    { label: "Command Path", slug: "advanced/command-path" },
                   ],
                 },
                 {
