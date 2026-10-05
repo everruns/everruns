@@ -29,8 +29,7 @@ use crate::api::common::{AllowedAction, ErrorResponse};
 // ============================================================================
 
 /// Stable, lower-snake-case category for a command failure. The token set is
-/// part of the public MCP contract (see `knowledge/foundations/domains.md` "Structured
-/// dispatch errors"); do not rename or drop tokens without a spec update.
+/// part of the public MCP contract; do not rename or drop tokens without a spec update.
 #[derive(Debug, thiserror::Error)]
 pub enum CommandErrorKind {
     #[error("{0}")]
@@ -62,7 +61,7 @@ pub(crate) mod transport_error_test_support;
 /// adapter (`From<CommandError> for (StatusCode, Json<ErrorResponse>)`)
 /// propagates every extension. MCP `execute` keeps emitting
 /// `<kind>: <message>` for bashkit compatibility; surfacing extensions over
-/// MCP is a planned additive extension (see `knowledge/foundations/domains.md`).
+/// MCP is a planned additive extension.
 #[derive(Debug)]
 pub struct CommandError {
     pub kind: CommandErrorKind,
@@ -132,7 +131,7 @@ impl CommandError {
     }
 
     /// Build a NotFound with the supplied message verbatim. Use when the
-    /// "<resource> not found" template isn't a fit (e.g. dispatch told us
+    /// `"<resource> not found"` template isn't a fit (e.g. dispatch told us
     /// "Unknown command: foo").
     pub fn not_found_msg(message: impl Into<String>) -> Self {
         CommandErrorKind::NotFound(message.into()).into()
@@ -433,9 +432,9 @@ pub struct Ctx {
     pub fallback_harness_name: Option<String>,
     /// Outbound HTTP boundary for sanctioned egress (e.g. plugin sync from GitHub or a URL).
     pub egress_service: Option<Arc<dyn EgressService>>,
-    /// System utility LLM for internal analysis (knowledge/operations/utility-llm.md).
+    /// System utility LLM for internal analysis.
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
-    /// Agent health check service (knowledge/evaluation/agent-checks.md, tier-3).
+    /// Agent health check service.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// MCP event trigger subscriptions; `None` on surfaces that cannot subscribe.
     pub mcp_event_triggers: Option<Arc<crate::domains::agent_triggers::McpEventTriggers>>,

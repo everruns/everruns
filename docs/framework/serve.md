@@ -84,12 +84,12 @@ default credential chain whenever `AWS_REGION` is set.
 
 | Example | Shows |
 | --- | --- |
-| [`examples/serve/hello`](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
-| [`examples/serve/revenue-analyst`](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals and the Bashkit sandbox. |
-| [`examples/serve/ag-ui`](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
-| [`examples/serve/agentcore`](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore) | The same kind of app packaged for Amazon Bedrock AgentCore Runtime. |
-| [`examples/serve/agentcore-workspace`](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore-workspace) | An AgentCore workspace agent with a shell in the microVM and an approval. |
-| [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over A2A: a served `researcher`, and an `everruns` agent that delegates to it. |
+| [Hello app](https://github.com/everruns/everruns/tree/main/examples/serve/hello) | The smallest app: one agent, one tool, one eval. |
+| [Revenue Analyst](https://github.com/everruns/everruns/tree/main/examples/serve/revenue-analyst) | A tool with approvals, a skill, Slack, a schedule, MCP and typed connections, a subagent, evals and the Bashkit sandbox. |
+| [AG-UI app](https://github.com/everruns/everruns/tree/main/examples/serve/ag-ui) | An agent streamed to `@ag-ui/client` and CopilotKit, with an approval as an interrupt. |
+| [AgentCore app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore) | The same kind of app packaged for Amazon Bedrock AgentCore Runtime. |
+| [AgentCore workspace app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore-workspace) | An AgentCore workspace agent with a shell in the microVM and an approval. |
+| [A2A example](https://github.com/everruns/everruns/tree/main/examples/serve/a2a) | Two agents over A2A: a served `researcher`, and an `everruns` agent that delegates to it. |
 
 ## Project layout
 
@@ -222,7 +222,7 @@ continues. Requests need the `A2A-Version: 1.0` header. A pending approval or
 `ask_user` question keeps the task `working` until the routes above answer it.
 The agent card lists each agent's endpoint under `a2a`.
 [Framework A2A](/framework/a2a/) covers serving and calling A2A agents, and
-[`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a)
+[A2A example](https://github.com/everruns/everruns/tree/main/examples/serve/a2a)
 shows a served agent and a second agent that delegates to it.
 
 Sessions survive a restart: the binary rebuilds each agent and resumes the
@@ -267,7 +267,7 @@ and a request journal so a lost container is restored and its interrupted turn
 replayed. See [Serve on celld](/framework/serve-celld/).
 
 The full guide, wire reference and hosting contract live next to the crate in
-[`crates/serve/docs`](https://github.com/everruns/everruns/tree/main/crates/serve/docs).
+[serve reference guides](https://github.com/everruns/everruns/tree/main/crates/serve/docs).
 
 ## File-based agents
 

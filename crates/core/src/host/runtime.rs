@@ -80,7 +80,7 @@ const HASH_INPUT_CAP_BYTES: usize = 128;
 /// Derive an internal `i64` org id from the public `org_<32hex>` form on a
 /// [`ExecutionSession`].
 ///
-/// Round-trip with [`everruns_core::org_public_id_from_internal`]: when the
+/// Round-trip with [`crate::org_public_id_from_internal`]: when the
 /// public id was produced by that helper (i.e. the upper bits are zero and
 /// the value fits in a positive `i64`), this returns the original internal
 /// id unchanged. Other values are mapped into `[2, i64::MAX]` by hashing the
@@ -331,7 +331,7 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Set the auth provider used to acquire credentials for scoped MCP
-    /// servers (knowledge/integrations/runtime-mcp.md D3). Defaults to no credentials, suitable
+    /// servers. Defaults to no credentials, suitable
     /// for unauthenticated servers or servers carrying literal auth headers.
     #[cfg(feature = "mcp")]
     pub fn mcp_auth_provider(mut self, provider: Arc<dyn crate::mcp::McpAuthProvider>) -> Self {
@@ -1106,7 +1106,7 @@ impl InProcessRuntime {
     /// The input message is appended as the canonical `input.message` event;
     /// [`EventHistory`] derives the read projection from that one write. The
     /// turn then runs `input -> reason -> act` as planned step-by-step by
-    /// [`everruns_core::engine`] — the same planner the durable worker drives.
+    /// [`crate::engine`] — the same planner the durable worker drives.
     pub async fn run_turn(
         &self,
         session_id: SessionId,

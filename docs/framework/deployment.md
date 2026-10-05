@@ -94,7 +94,7 @@ process exits. See [Observability](/framework/observability/).
 
 A multi-stage build keeps the toolchain out of the runtime image. This follows
 the Dockerfile in
-[`examples/serve/agentcore`](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore):
+[AgentCore app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore):
 
 ```dockerfile
 FROM rust:1-bookworm AS build

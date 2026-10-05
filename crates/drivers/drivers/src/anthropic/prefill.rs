@@ -1,5 +1,4 @@
-//! Assistant-prefill guard, split out of `driver.rs` to keep that file under
-//! its size ratchet.
+//! Assistant-prefill guard.
 
 use everruns_contracts::driver_registry::{Message, MessageRole};
 use everruns_contracts::error::{AgentLoopError, Result};

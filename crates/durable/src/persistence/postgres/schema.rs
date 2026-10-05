@@ -1,11 +1,10 @@
 //! Standalone PostgreSQL schema for [`PostgresWorkflowEventStore`].
 //!
-//! Decision: the crate ships its own idempotent schema
-//! (`crates/durable/schema/postgres.sql`) so a crates.io user can create the
-//! durable tables without the Everruns server's migrations. The server keeps
-//! its own versioned migrations; `tests/schema_drift_test.rs` proves the two
-//! produce the same durable tables, and running this schema against a
-//! server-migrated database is a no-op.
+//! The crate ships an [idempotent PostgreSQL schema](https://github.com/everruns/everruns/blob/main/crates/durable/schema/postgres.sql)
+//! so applications can create durable tables without the Everruns server's
+//! migrations. [`PostgresWorkflowEventStore::SCHEMA_SQL`] exposes the same SQL
+//! for custom migration tools. Running it against a server-migrated database
+//! is a no-op.
 
 use sqlx::PgPool;
 

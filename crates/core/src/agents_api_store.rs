@@ -5,7 +5,6 @@
 //! cursor, provider-to-local id correlations, and the input and tool-result
 //! outboxes. A worker writes it ahead of every provider call and every local
 //! effect, so a replacement worker can reconcile instead of repeating work.
-//! Design: `knowledge/execution/openai-agents-api-runtime.md`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;

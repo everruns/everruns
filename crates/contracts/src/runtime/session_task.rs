@@ -53,7 +53,7 @@ pub const TASK_KIND_BACKGROUND_TOOL: &str = "background_tool";
 /// until the linked schedule is exhausted (one-shot) or `cancel_task` is called.
 pub const TASK_KIND_MONITOR: &str = "monitor";
 
-/// Generate a new task ID (`task_` prefix per knowledge/foundations/id-schema.md).
+/// Generate a new task ID (`task_` prefix).
 pub fn generate_task_id() -> String {
     format!("task_{}", uuid::Uuid::now_v7().simple())
 }

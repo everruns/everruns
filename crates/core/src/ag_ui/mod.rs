@@ -3,7 +3,7 @@
 //! the [Everruns](https://everruns.com) ecosystem.
 //!
 //! AG-UI is the event protocol between an agent and the application that
-//! renders it: the application posts a [`RunAgentInput`], the agent answers
+//! renders it: the application posts a [`RunAgentInput`](crate::ag_ui::RunAgentInput), the agent answers
 //! with a stream of [`Event`]s (usually over SSE).
 //!
 //! ```
@@ -34,9 +34,9 @@
 //! # Modules
 //!
 //! - The wire types, at this module’s root (feature `ag-ui`).
-//! - [`consumer`]: the consumer side of the protocol. It decodes a
+//! - [`consumer`](crate::ag_ui::consumer): the consumer side of the protocol. It decodes a
 //!   producer's events, enforces the 1.0 sequencing rules and assembles a
-//!   [`consumer::RunResult`]; [`ResumeBuilder`] answers interrupts.
+//!   [`consumer::RunResult`](crate::ag_ui::consumer::RunResult); [`ResumeBuilder`](crate::ag_ui::ResumeBuilder) answers interrupts.
 //! - `client` (feature `ag-ui-client`): an HTTP client that runs an AG-UI agent
 //!   over SSE and feeds the consumer.
 //! - `projection` (feature `ag-ui-projection`): Everruns runtime events as an AG-UI run.

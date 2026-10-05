@@ -16,7 +16,7 @@
 //! - System prompt sections use XML tags for clear boundaries between components.
 //!   This follows Anthropic's recommendation for multi-component prompts and reduces
 //!   misattribution between capability instructions, user-provided AGENTS.md, and the
-//!   agent's base system prompt. See knowledge/project/xml-prompt-formatting.md for rationale.
+//!   agent's base system prompt.
 //!
 //! Each capability is in its own file with collocated tools.
 
@@ -247,7 +247,7 @@ impl CollectedModelViewProviders {
 /// True when an available capability contributes compaction policy in this set.
 ///
 /// Infinity context defers token-budget eviction to compaction when both are
-/// enabled (see knowledge/runtime-resources/infinity-context.md) so that compaction's summary — not a
+/// enabled so that compaction's summary — not a
 /// bare "hidden" notice — covers trimmed history.
 pub(crate) fn compaction_is_enabled(
     capability_configs: &[AgentCapabilityConfig],

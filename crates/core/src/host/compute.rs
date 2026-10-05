@@ -14,8 +14,6 @@
 //! field records what is already true. It becomes a choice only for a real
 //! machine, where the same box can run a command wide open or under a kernel
 //! policy.
-//!
-//! See `knowledge/harnesses/sandbox-templates.md`.
 
 use std::fmt;
 use std::sync::Arc;

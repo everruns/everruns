@@ -2,7 +2,7 @@
 //! its runner on, and how a shared PostgreSQL queue routes a task to the
 //! process that can run it.
 //!
-//! Decisions (see `knowledge/framework/execution-backends.md`):
+//! Execution behavior:
 //! - **A task runs where its session is attached.** A framework turn step
 //!   needs the session's `InProcessRuntime`, which lives only in the process
 //!   that attached the session, so a worker of another process sharing the

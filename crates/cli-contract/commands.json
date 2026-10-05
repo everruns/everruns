@@ -8186,7 +8186,7 @@
         "long": "overrides",
         "kind": "json",
         "required": false,
-        "help": "Request to fork a session (knowledge/runtime-resources/forking-sessions.md)."
+        "help": "Request to fork a session."
       }
     ],
     "examples": [

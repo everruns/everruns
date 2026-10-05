@@ -576,9 +576,9 @@ pub async fn provider_config(
 /// the callback to the provider, org, and the PKCE verifier this browser
 /// generated, so a forged callback cannot inject an attacker's credential.
 ///
-/// THREAT[TM-API-021]: this binding plus the `provider.manage` re-check in the
-/// callback is the CSRF/forgery mitigation; do not relax it without updating
-/// `knowledge/security/threat-model.md`.
+// THREAT[TM-API-021]: this binding plus the `provider.manage` re-check in the
+// callback is the CSRF/forgery mitigation; do not relax it without updating
+// `knowledge/security/threat-model.md`.
 #[derive(Debug, Serialize, Deserialize)]
 struct PendingProviderOAuth {
     /// CSRF token echoed via the callback URL and matched here.

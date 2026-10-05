@@ -12,7 +12,7 @@
 //! When no session exists, each call opens a one-shot guarded CDP browser.
 //!
 //! Decision (EVE-1189): every browser a tool drives is guarded, so Everruns
-//! performs and checks each request it makes (`browser_egress.rs`). The REST
+//! performs and checks each request it makes. The REST
 //! endpoints (`/screenshot`, `/content`, `/scrape`, `/function`) run browsers
 //! with direct network access and remain only as a fallback for Browserless
 //! cloud tokens that cannot open CDP sessions (`session_tools::acquire_browser`);

@@ -14,7 +14,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 /// Advisory severity. There is deliberately no `error`: checks never gate
-/// save/publish (knowledge/evaluation/agent-checks.md, Non-Goals).
+/// save/publish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingSeverity {

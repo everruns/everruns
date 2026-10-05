@@ -1,7 +1,7 @@
-//! Knowledge Index Syncout pipeline. See knowledge/runtime-resources/knowledge-indexes.md.
+//! Knowledge Index Syncout pipeline.
 //!
 //! Mirrors the source-backed Memory sync worker
-//! (`crates/server/src/domains/memory/source_sync.rs`): a background poll task
+//! pipeline: a background poll task
 //! claims the next pending index, shallow-clones the configured GitHub source,
 //! enumerates text documents, chunks + embeds them, persists documents + chunks
 //! to Postgres (`complete_knowledge_index_sync`), and writes vectors into the
@@ -211,7 +211,7 @@ impl KnowledgeIndexSyncService {
     }
 
     /// Replace a namespace's vectors with the freshly embedded records. A full
-    /// re-sync always reconciles the projection (knowledge/runtime-resources/knowledge-indexes.md).
+    /// re-sync always reconciles the projection.
     async fn write_vectors(&self, namespace: &str, records: Vec<VectorRecord>) -> Result<()> {
         self.vector_store.delete_namespace(namespace).await?;
         if !records.is_empty() {
@@ -780,7 +780,7 @@ fn relative_path_string(relative: &Path) -> Result<String> {
 }
 
 /// Text/markdown/code documents are indexed; everything else is skipped.
-/// PDF/Office extraction is deferred (knowledge/runtime-resources/knowledge-indexes.md phase 6).
+/// PDF/Office extraction is deferred.
 fn is_text_document(path: &Path) -> bool {
     const TEXT_EXTENSIONS: &[&str] = &[
         "md",

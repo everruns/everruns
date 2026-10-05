@@ -7,10 +7,9 @@
 //! rotation, and an identity that is not the bot the user invited.
 //!
 //! These tools act as the endpoint's own bot instead. They carry no credential:
-//! each one names an action and hands it to the [`SlackActionInvoker`] seam,
+//! each one names an action and hands it to the [`SlackActionInvoker`](crate::slack_action::SlackActionInvoker) seam,
 //! which the control plane implements. See
-//! [`crate::slack_action`] for why the action travels and the token does not,
-//! and `knowledge/integrations/slack-agent-actions.md` for the design.
+//! [`crate::slack_action`] for why the action travels and the token does not.
 //!
 //! The Slack MCP server stays supported for anything exotic. This removes the
 //! second credential for the common cases; it does not replace MCP.

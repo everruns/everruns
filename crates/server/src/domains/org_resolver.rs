@@ -83,8 +83,7 @@ pub async fn resolve_resource_org(db: &StorageBackend, id: &str) -> Result<Optio
 /// caller's currently active org. It enforces `is_organization_member` and
 /// returns `None` for any failure mode (unknown id, unknown prefix, empty
 /// id, non-member, vanished org row) so callers cannot distinguish them —
-/// preserving the org-enumeration guarantee documented in
-/// knowledge/security/multitenancy.md (THREAT[TM-TENANT-010]).
+/// preserving the org-enumeration guarantee.
 ///
 /// Returns `(org_public_id, org_name)` on success, `None` otherwise.
 /// Used by both `GET /v1/resolve-org` and the `resolve_org` domain command.

@@ -37,7 +37,7 @@ pub struct AgentPreview {
     pub initial_files: Vec<InitialFile>,
     pub system_prompt: String,
     pub tools: Vec<ToolDefinition>,
-    /// Advisory tier-1 findings about the previewed config (knowledge/evaluation/agent-checks.md).
+    /// Advisory tier-1 findings about the previewed config.
     pub findings: Vec<super::checks::Finding>,
 }
 

@@ -1,4 +1,4 @@
-//! CircuitBreakers implementation (see `store.rs` for the trait contract).
+//! Implementation of [`crate::CircuitBreakers`].
 
 use super::*;
 

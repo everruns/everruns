@@ -354,7 +354,7 @@ pub struct ImportScore {
     pub na: bool,
 }
 
-/// Result of an ATIF trajectory import (knowledge/evaluation/atif-adoption.md): eval cases
+/// Result of an ATIF trajectory import: eval cases
 /// created/updated from imported trajectories, upserted by case name.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AtifImportReport {

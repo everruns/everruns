@@ -76,8 +76,7 @@ impl Database {
         Ok(row)
     }
 
-    /// Look up the owning org for an app by its public_id. See
-    /// knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
+    /// Look up the owning org for an app by its public_id.
     pub async fn get_app_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let row: Option<(i64,)> =
             sqlx::query_as("SELECT org_id FROM apps WHERE public_id = $1 LIMIT 1")

@@ -5,10 +5,10 @@
 //! - Centralize string catalogs here so backend-authored copy stays externalized
 //!   as we add more locales.
 //! - Allowed locale and timezone lists are the single source of truth for the
-//!   backend. The UI mirrors these in `apps/ui/src/lib/locale-data.ts`.
+//!   backend. The UI mirrors these lists.
 
 /// Allowed BCP 47 locale tags. Russia excluded per policy.
-/// UI mirror: `apps/ui/src/lib/locale-data.ts` LOCALE_OPTIONS.
+// UI mirror: apps/ui/src/lib/locale-data.ts LOCALE_OPTIONS.
 pub const ALLOWED_LOCALES: &[&str] = &[
     "af-ZA", "am-ET", "ar-AE", "ar-EG", "ar-SA", "az-AZ", "be-BY", "bg-BG", "bn-BD", "bn-IN",
     "bs-BA", "ca-ES", "cs-CZ", "cy-GB", "da-DK", "de-AT", "de-CH", "de-DE", "el-GR", "en", "en-AU",
@@ -23,7 +23,7 @@ pub const ALLOWED_LOCALES: &[&str] = &[
 ];
 
 /// Allowed IANA timezone names. Russia-specific zones excluded per policy.
-/// UI mirror: `apps/ui/src/lib/locale-data.ts` TIMEZONE_OPTIONS.
+// UI mirror: apps/ui/src/lib/locale-data.ts TIMEZONE_OPTIONS.
 pub const ALLOWED_TIMEZONES: &[&str] = &[
     "UTC",
     "Africa/Abidjan",

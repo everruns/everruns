@@ -38,8 +38,7 @@ impl Database {
         Ok(row)
     }
 
-    /// Look up the owning org for a skill by its public_id. See
-    /// knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
+    /// Look up the owning org for a skill by its public_id.
     pub async fn get_skill_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let row: Option<(i64,)> =
             sqlx::query_as("SELECT org_id FROM skills WHERE public_id = $1 LIMIT 1")
@@ -256,8 +255,7 @@ impl Database {
     // Images
     // ============================================
 
-    /// Fill image `data`/`thumbnail_data` from the object store when offloaded
-    /// (knowledge/runtime-resources/object-storage.md). No-op for the inline backend.
+    /// Fill image `data`/`thumbnail_data` from the object store when offloaded. No-op for the inline backend.
     async fn materialize_image_data(&self, row: &mut ImageRow) -> Result<()> {
         let Some(blob) = self.blob_store() else {
             return Ok(());

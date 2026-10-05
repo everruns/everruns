@@ -1103,8 +1103,7 @@ async fn cancel_a2a_session_turn(
     Ok(())
 }
 
-/// `message/stream` / `SendStreamingMessage`. THREAT[TM-A2A-011] lives in
-/// `stream.rs`; auth and the method gate already ran.
+/// `message/stream` / `SendStreamingMessage`; auth and the method gate already ran.
 async fn handle_message_stream(
     state: &ChannelA2aState,
     auth: AuthorizedA2a,

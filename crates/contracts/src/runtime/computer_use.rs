@@ -34,7 +34,7 @@
 //! risk). The capability prompt says so, the tool declares itself
 //! `open_world` so interactive approval gates treat it as outward-facing.
 //! Approval itself is by soft approval only: no per-call hard gate (EVE-1133
-//! decision). See `knowledge/execution/computer-use.md`.
+//! decision).
 
 use std::fmt;
 

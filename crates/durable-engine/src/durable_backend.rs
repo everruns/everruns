@@ -1,7 +1,7 @@
 //! [`DurableBackend`]: a framework application's turns as queued,
 //! checkpointed steps, driven by workers inside the application's process.
 //!
-//! Decisions (see `knowledge/framework/execution-backends.md`):
+//! Execution behavior:
 //! - The backend owns its durable store and a pool of in-process workers.
 //!   Each worker claims a turn task and hands it to a [`TurnTaskDriver`] whose
 //!   host is the [`InProcessRuntime`] the session attached, so a durable turn

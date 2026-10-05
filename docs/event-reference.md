@@ -3,7 +3,7 @@ title: Event Reference
 description: "All Everruns event types, with schemas and SSE examples for the common ones: input, output, tool, lifecycle, and error events."
 ---
 
-This page lists every event type in the Everruns event protocol and documents the schema of the most common ones. Types without a section below are listed in the table with a short description; the authoritative list is the event type constants in `crates/contracts/src/runtime/events/mod.rs`.
+This page lists every event type in the Everruns event protocol and documents the schema of the most common ones. Types without a section below are listed in the table with a short description.
 
 ## All event types
 

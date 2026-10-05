@@ -211,7 +211,7 @@ impl OpenResponsesProtocolChatDriver {
     }
 
     /// Run long calls in OpenAI background mode, resumable after a dropped
-    /// connection (see `background.rs` for the policy).
+    /// connection.
     pub fn with_background_mode(mut self, enabled: bool) -> Self {
         self.background_mode = enabled;
         self
@@ -219,8 +219,8 @@ impl OpenResponsesProtocolChatDriver {
 
     /// Declare that the endpoint implements OpenAI's Responses WebSocket mode.
     /// Calls then opt in with the
-    /// [`OPENAI_WEBSOCKET_OPTION`](crate::OPENAI_WEBSOCKET_OPTION) driver
-    /// option; SSE stays the default and the fallback (see `websocket.rs`).
+    /// [`OPENAI_WEBSOCKET_OPTION`] driver
+    /// option; SSE stays the default and the fallback.
     pub fn with_websocket_support(mut self, supported: bool) -> Self {
         self.websocket.supported = supported;
         if !supported {

@@ -131,8 +131,8 @@ Use `#[everruns::tool(name = "…", description = "…")]` to override metadata,
 or `#[tool(rename = "…")]` on a parameter to change its model-facing name.
 Functions must be async, non-generic, and have plain named parameters.
 
-The published `everruns-macros` package is an implementation crate. Its source
-lives at `crates/macros`, but applications should use the re-exported
+The published `everruns-macros` package is an implementation crate.
+Applications should use the re-exported
 `everruns::tool` macro and should not depend on `everruns-macros` directly.
 
 ### Dynamic handlers

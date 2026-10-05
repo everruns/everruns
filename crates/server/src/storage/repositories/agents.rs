@@ -200,8 +200,7 @@ impl Database {
     }
 
     /// Look up the owning org for an agent by its public_id, without scoping
-    /// to a caller-supplied org. Used exclusively by the cross-org resolver
-    /// (see knowledge/security/multitenancy.md). Callers MUST gate the result on user
+    /// to a caller-supplied org. Used exclusively by the cross-org resolver. Callers MUST gate the result on user
     /// membership before revealing it — this method does NOT.
     pub async fn get_agent_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let row: Option<(i64,)> =

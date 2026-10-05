@@ -582,7 +582,7 @@ impl<T, E: std::fmt::Display> StoreResultExt<T> for std::result::Result<T, E> {
 
 /// Typed classification of a `SessionFileSystem` failure.
 ///
-/// The file-system tools (`integrations/filesystem/src/lib.rs`) decide
+/// The file-system tools decide
 /// whether a failure is a *tool error* (surfaced to the agent verbatim — bad
 /// input it can correct) or an *internal error* (logged, generic copy). They
 /// previously made that call with `msg.contains("readonly")` / `"is a
@@ -645,8 +645,7 @@ impl FileSystemError {
 ///
 /// Prefers a typed [`FileSystemError`] in the error chain; falls back to the
 /// legacy substring heuristics (the single remaining place they live) so
-/// untyped implementors keep their current routing. Behavior is identical to
-/// the previous inline `msg.contains(...)` checks in `file_system.rs`:
+/// untyped implementors keep their current routing.
 /// "readonly" and "is a directory" mark client-correctable write failures,
 /// "not found" / "not a directory" mark client-correctable read failures, and
 /// "not empty" / "recursive" mark client-correctable delete failures.

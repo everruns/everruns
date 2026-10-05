@@ -817,7 +817,7 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) -> Jo
 /// Spawn seeding as a background task using an explicit platform definition.
 ///
 /// When `encryption` is available and env-key materialization is enabled for
-/// this deployment grade (see [`materialize_env_provider_keys_allowed`]), the
+/// this deployment grade (when environment provider keys may be materialized), the
 /// default org's provider rows are seeded with the `DEFAULT_*_API_KEY` env
 /// values so single-tenant/dev execution can resolve them via the fail-closed
 /// DB path. Multitenant deployments leave this disabled and never spend

@@ -50,7 +50,7 @@ export interface paths {
     put?: never;
     /**
      * POST /v1/agents/analyze - Run advisory checks against an agent shape
-     * @description Runs built-in rules plus on-demand LLM analysis (knowledge/evaluation/agent-checks.md)
+     * @description Runs built-in rules plus on-demand LLM analysis
      *     and returns merged advisory findings. Requires the system utility LLM
      *     service to be configured.
      */
@@ -2557,7 +2557,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). See knowledge/runtime-resources/okf-adoption.md. */
+    /** @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). */
     get: operations["export_okf"];
     put?: never;
     post?: never;
@@ -2576,7 +2576,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. See knowledge/runtime-resources/okf-adoption.md. */
+    /** @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. */
     post: operations["import_okf"];
     delete?: never;
     options?: never;
@@ -4081,7 +4081,7 @@ export interface paths {
      * @description Default (`format=jsonl`): all materialized messages (user, agent) as
      *     newline-delimited JSON, one complete JSON object per line; delta events are
      *     excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
-     *     folded from the session's event log (see `knowledge/evaluation/atif-adoption.md`); image
+     *     folded from the session's event log; image
      *     content parts are exported as ATIF multimodal ContentParts. When an image
      *     cannot be materialized (an inline image with neither a URL nor bytes) it is
      *     flattened to an `"[image]"` marker and the response carries an
@@ -5664,7 +5664,7 @@ export interface components {
     };
     /** @description Response from on-demand agent analysis (built-in rules + LLM checkers) */
     AgentAnalysisResponse: {
-      /** @description Advisory findings, built-in and LLM-sourced (knowledge/evaluation/agent-checks.md) */
+      /** @description Advisory findings, built-in and LLM-sourced */
       findings: components["schemas"]["Finding"][];
     };
     /**
@@ -6025,7 +6025,7 @@ export interface components {
     AgentPreviewResponse: {
       /** @description Session features from effective capabilities and their dependencies. */
       features: string[];
-      /** @description Advisory findings from built-in checks (knowledge/evaluation/agent-checks.md) */
+      /** @description Advisory findings from built-in checks */
       findings: components["schemas"]["Finding"][];
       /** @description Effective starter files after merging the harness and agent. */
       initial_files: components["schemas"]["InitialFile"][];
@@ -6265,8 +6265,7 @@ export interface components {
      *       prose.
      *
      *     The shape is intentionally identical across both contexts; the closed
-     *     `rel` vocabulary documented in `knowledge/execution/api-conventions.md` distinguishes
-     *     them.
+     *     `rel` vocabulary distinguishes them.
      */
     AllowedAction: {
       /**
@@ -6296,8 +6295,7 @@ export interface components {
        */
       operation_id?: string | null;
       /**
-       * @description Link relation describing the action. Closed vocabulary documented
-       *     in `knowledge/execution/api-conventions.md` — examples: `self`, `cancel`, `pause`,
+       * @description Link relation describing the action. Examples: `self`, `cancel`, `pause`,
        *     `resume`, `events`, `retry`, `retry-later`, `unarchive`,
        *     `get-existing`, `delete`, `update`.
        */
@@ -6878,7 +6876,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under https://dev.everruns.com/capabilities/ when public docs exist.
+       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -7135,9 +7133,8 @@ export interface components {
      *     express "published App, disabled channel" and forced publishing a whole App —
      *     and therefore every sibling channel on it — to make one endpoint reachable.
      *
-     *     Liveness is not this value alone; see `channel_liveness` in
-     *     `crates/server/src/api/channel_ingress.rs` for the agent-level terms, which are
-     *     folded in at resolution time rather than stored here.
+     *     Liveness also depends on agent-level conditions, which are folded in at
+     *     resolution time rather than stored here.
      * @example live
      * @enum {string}
      */
@@ -9494,9 +9491,8 @@ export interface components {
      *     express "published App, disabled channel" and forced publishing a whole App —
      *     and therefore every sibling channel on it — to make one endpoint reachable.
      *
-     *     Liveness is not this value alone; see `channel_liveness` in
-     *     `crates/server/src/api/channel_ingress.rs` for the agent-level terms, which are
-     *     folded in at resolution time rather than stored here.
+     *     Liveness also depends on agent-level conditions, which are folded in at
+     *     resolution time rather than stored here.
      * @example live
      * @enum {string}
      */
@@ -9545,7 +9541,7 @@ export interface components {
      *     every error response includes `title` and `status`, and may include
      *     `detail`, `code`, `allowed_actions`, `retry_after_seconds`, `instance`,
      *     and `type`. The content type is rewritten to `application/problem+json`
-     *     by [`problem_json_content_type`].
+     *     with the `application/problem+json` content type.
      */
     ErrorResponse: {
       /** @description Recovery actions the caller can take next. */
@@ -10180,7 +10176,7 @@ export interface components {
     };
     /**
      * @description Advisory severity. There is deliberately no `error`: checks never gate
-     *     save/publish (knowledge/evaluation/agent-checks.md, Non-Goals).
+     *     save/publish.
      * @enum {string}
      */
     FindingSeverity: "warning" | "info" | "suggestion";
@@ -10208,7 +10204,7 @@ export interface components {
       name: string;
     };
     /**
-     * @description Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is
+     * @description Request to fork a session. Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
      *     to "{parent title} (fork)" when omitted.
      */
@@ -11448,7 +11444,7 @@ export interface components {
      *     agent's current resolved config differs from the config that run was
      *     executed against. Returned by the latest-run endpoint so the agent editor
      *     can show prior results on mount without triggering a new run, and surface a
-     *     "config changed since last run" hint. See knowledge/evaluation/agent-checks.md and EVE-588.
+     *     "config changed since last run" hint.
      */
     LatestHealthCheckRun: {
       /**
@@ -11940,7 +11936,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under https://dev.everruns.com/capabilities/ when public docs exist.
+         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -14126,8 +14122,6 @@ export interface components {
      *     execute path. Serialized into the MCP `structuredContent` field on
      *     error responses so the legacy `content[0].text` channel stays
      *     backward-compatible; new SDKs prefer the typed envelope.
-     *
-     *     See `knowledge/integrations/mcp.md` for the error contract.
      */
     McpExecuteError: {
       /** @description Broad-strokes recovery category. */
@@ -15727,7 +15721,7 @@ export interface components {
          */
         description: string;
         /**
-         * @description Slug under https://dev.everruns.com/capabilities/ when public docs exist.
+         * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
          * @example session_file_system
          */
         docs_slug?: string | null;
@@ -16532,7 +16526,7 @@ export interface components {
     PromptCacheStrategy: "auto" | "explicit";
     /**
      * @description LLM Provider entity (API keys never exposed)
-     *     Note: This is the entity struct, separate from the Provider trait in llm.rs
+     *     This is the persisted provider entity, separate from the runtime provider trait.
      */
     Provider: {
       /** @description Whether an API key is configured. The key itself is never returned. */
@@ -18169,7 +18163,7 @@ export interface components {
       signal_type: string;
     };
     /**
-     * @description A typed service a provider driver can offer (see knowledge/foundations/providers.md).
+     * @description A typed service a provider driver can offer.
      *
      *     Drivers declare supported services in code; catalog models persist their
      *     selected service. One provider account composes typed chat, decision and
@@ -19443,7 +19437,7 @@ export interface components {
      *     The single shared type across every citation capability: a text span linked
      *     to a source. Producers agree only on this render contract — each capability
      *     keeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps
-     *     into this envelope at emit time. See `knowledge/runtime-resources/citations.md`.
+     *     into this envelope at emit time.
      */
     TextAnnotation: {
       /**
@@ -19477,8 +19471,7 @@ export interface components {
       /**
        * @description Claim-level citations attached to spans of `text`.
        *
-       *     The narrow render contract shared by all citation capabilities (see
-       *     `knowledge/runtime-resources/citations.md`). Empty for non-cited text, so the wire shape of
+       *     The narrow render contract shared by all citation capabilities. Empty for non-cited text, so the wire shape of
        *     existing messages is unchanged.
        */
       annotations?: components["schemas"]["TextAnnotation"][];
@@ -21760,7 +21753,7 @@ export interface components {
        */
       description: string;
       /**
-       * @description Slug under https://dev.everruns.com/capabilities/ when public docs exist.
+       * @description Slug under the [capability documentation](https://docs.everruns.com/capabilities/) when public docs exist.
        * @example session_file_system
        */
       docs_slug?: string | null;
@@ -36606,7 +36599,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Server-Sent Events stream. Each SSE message has the wire shape `event: <type>\nid: <event_id>\ndata: <json>\n\n`, where `<type>` is one of the event types in the `EventData` catalog (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), `<event_id>` is the event cursor (`event_{32-hex}` format, usable as `since_id` on reconnect), and `<json>` is the body schema below — a serialized `Event` whose `data` field carries the event-type-specific payload defined in `EventData`. Lifecycle framing events (`connected`, `disconnecting`) use the same SSE shape but carry a minimal JSON object in `data` rather than a full `Event`. See `knowledge/execution/api-streaming.md` for the SSE convention. */
+      /** @description Server-Sent Events stream. Each SSE message has the wire shape `event: <type>\nid: <event_id>\ndata: <json>\n\n`, where `<type>` is one of the event types in the `EventData` catalog (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), `<event_id>` is the event cursor (`event_{32-hex}` format, usable as `since_id` on reconnect), and `<json>` is the body schema below — a serialized `Event` whose `data` field carries the event-type-specific payload defined in `EventData`. Lifecycle framing events (`connected`, `disconnecting`) use the same SSE shape but carry a minimal JSON object in `data` rather than a full `Event`. */
       200: {
         headers: {
           [name: string]: unknown;

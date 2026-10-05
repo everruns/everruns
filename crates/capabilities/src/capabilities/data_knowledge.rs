@@ -9,7 +9,7 @@
 //! tree of markdown files with YAML frontmatter, navigated via `index.md`
 //! files. Concept documents added under `tables/`, `business/`, and `queries/`
 //! should carry frontmatter with at least a `type` field, so the same content
-//! is portable to any OKF consumer. See knowledge/runtime-resources/okf-adoption.md.
+//! is portable to any OKF consumer.
 
 use super::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,

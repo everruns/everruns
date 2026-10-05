@@ -132,8 +132,7 @@ pub trait SessionFileSystem: Send + Sync {
     ///
     /// Implementations compile the content pattern once before scanning and
     /// return an error for invalid regex. Basename-only globs match at any
-    /// depth. Non-glob path filters retain legacy substring matching; see
-    /// `knowledge/runtime-resources/file-store.md`.
+    /// depth. Non-glob path filters retain legacy substring matching.
     async fn grep_files(
         &self,
         session_id: SessionId,
@@ -200,7 +199,7 @@ impl crate::runtime::ToolContext {
     /// at paths the runtime chooses (`/.agent-runs/{run_id}`,
     /// `/.tasks/{task_id}`).
     ///
-    /// Uses the host's [`RuntimeArtifactFileSystem`](crate::runtime::session_files::RuntimeArtifactFileSystem)
+    /// Uses the host's [`RuntimeArtifactFileSystem`]
     /// when installed, re-keyed to the attached workspace and mount-resolved the
     /// same way the engine prepares `file_store` for tool execution; otherwise
     /// `file_store`. Never pass a model-chosen path to this store.
@@ -226,7 +225,7 @@ impl crate::runtime::ToolContext {
 /// session's `workspace_id`, and all downstream capability/tool access then
 /// addresses the attached workspace rather than the session's own keyspace. For
 /// the default 1:1 session the key equals the session id, so the wrapper is a
-/// transparent pass-through. See `knowledge/runtime-resources/workspace.md`.
+/// transparent pass-through.
 pub struct WorkspaceScopedFileSystem {
     inner: Arc<dyn SessionFileSystem>,
     key: SessionId,

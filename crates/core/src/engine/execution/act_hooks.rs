@@ -491,8 +491,6 @@ const FORM_ELICITATION_NUDGE_LEAD_SECONDS: i64 = 60;
 /// Hook that turns an MCP server's form mode elicitation into an `ask_user`
 /// question set the person answers in the usual card.
 ///
-/// Spec: knowledge/integrations/mcp-form-elicitation.md.
-///
 /// Decision: the call is appended to `client_tool_calls` instead of being
 /// emitted here, so it rides the `ask_user` pause exactly: `ClientSideToolHook`
 /// emits it, the planner gates the pause on the `ask_user` hint, and a client
@@ -553,8 +551,6 @@ impl PostActHook for FormElicitationHook {
 // ============================================================================
 
 /// Hook that parks the turn when a hard approval gate deferred a call.
-///
-/// Spec: knowledge/execution/tool-approval.md.
 ///
 /// The `tool_approval` capability answers a gated call it has no decision for
 /// with a structured `tool_approval_required` result instead of running it.

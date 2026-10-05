@@ -21,8 +21,6 @@
 //! Bounds keep the newest entries: at most [`MAX_SEED_ENTRIES`] entries and
 //! [`MAX_SEED_BYTES`] of transcript, each text truncated to
 //! [`MAX_ENTRY_TEXT_BYTES`]. Older entries are counted, not sent.
-//!
-//! Design: `knowledge/execution/openai-agents-api-runtime.md#portability`.
 
 use std::collections::HashMap;
 

@@ -47,7 +47,7 @@ cargo run -p everruns-framework-support-agent -- --interactive
 
 ## Build the agent
 
-The definition lives in `src/agent.rs`; `main.rs` only handles input and runs the session. The prompt and documentation corpus live under `src/resources/`. Tools retrieve evidence; Opus decides what to search, read, and explain.
+Tools retrieve evidence; Opus decides what to search, read, and explain.
 
 ```rust ignore
 pub fn build(provider: impl Into<everruns::Provider>) -> Result<Agent, BuildError> {
@@ -65,7 +65,7 @@ pub fn build(provider: impl Into<everruns::Provider>) -> Result<Agent, BuildErro
 
 ## Send, observe, and wait
 
-The Framework interaction stays small in `main.rs`. The shared demo helper subscribes before sending, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. Use `session.send_and_wait(&question).await?` when a live tool timeline is unnecessary.
+The shared demo helper subscribes before sending, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. Use `session.send_and_wait(&question).await?` when a live tool timeline is unnecessary.
 
 ```rust ignore
 // ANTHROPIC_API_KEY, declared by the Anthropic driver itself.
@@ -112,8 +112,4 @@ Replace the bundled pages with a versioned documentation index while retaining s
 
 ## Boundaries
 
-The corpus is a five-page snapshot from 2026-09-08, not a live search of docs.everruns.com. Provenance is recorded in `src/resources/docs/README.md`, and the snapshot can lag current APIs.
-
-## Source map
-
-`src/main.rs`: input and session execution; `src/agent.rs`: agent definition; `src/tools.rs`: bounded documentation retrieval; `src/resources/`: prompt and documentation corpus; `demo/`: live VHS recording, transcript, and recording script. `examples/demo-support` handles shared terminal presentation.
+The corpus is a five-page snapshot from 2026-09-08, not a live search of docs.everruns.com. Provenance is recorded in the [corpus README](https://github.com/everruns/everruns/blob/main/examples/everruns-support-agent/src/resources/docs/README.md), and the snapshot can lag current APIs.

@@ -1,8 +1,8 @@
 //! Anonymous-user seeding and AUTH_MODE transition cleanup.
 //!
-//! Kept out of `seed.rs` so that oversized-file ratchet can keep shrinking
-//! the orchestration module while mode-transition security stays next to the
-//! anonymous identity it protects.
+// Kept out of `seed.rs` so that oversized-file ratchet can keep shrinking
+// the orchestration module while mode-transition security stays next to the
+// anonymous identity it protects.
 
 use super::{SeedAuthContext, SeedResult, seed_admin_user, seed_default_organization};
 use crate::auth::config::AuthMode;

@@ -7,7 +7,7 @@
 //!
 //! Decision: this is a local copy of `everruns_core::database_failure`, not a
 //! dependency on it. `everruns-durable` is a generic engine with no `everruns-*`
-//! dependencies (`scripts/check-durable-isolation.sh`), but its log output must
+//! dependencies, but its log output must
 //! stay byte-identical to what core emits (same messages, same `subsystem`,
 //! `db_failure` and `error` fields) because dashboards and alerts key on them.
 //! The `matches_the_shared_core_classifier` test pins the two together.

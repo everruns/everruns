@@ -3,9 +3,8 @@
 //! Connecting an agent to Slack asks for four values copied out of Slack by
 //! hand. Three of them can be obtained programmatically: `apps.manifest.create`
 //! returns the signing secret and client credentials, and the OAuth install
-//! returns the bot token and workspace id. `knowledge/integrations/slack-one-click-install.md`
-//! records the live PoC that established this, including that the create call
-//! accepts the manifest we already generate, whole.
+//! returns the bot token and workspace id. The create call accepts the
+//! generated manifest.
 //!
 //! Why this is a seam rather than an implementation. Creating apps requires a
 //! Slack *app configuration token* for the workspace the app will live in,

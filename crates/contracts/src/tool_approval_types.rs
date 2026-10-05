@@ -1,7 +1,7 @@
 //! Wire types for a tool call parked on a hard approval gate, as it crosses
 //! from the `tool_approval` capability to the engine and the answer API.
 //!
-//! Spec: knowledge/execution/tool-approval.md. Re-exported from
+//! Re-exported from
 //! [`crate::tool_types`], next to the elicitation equivalents: the builtins
 //! crate produces the payload, the engine parks the turn on it, and the server
 //! answers it, and none of the three depends on another.

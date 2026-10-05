@@ -88,8 +88,7 @@ impl SessionService {
     /// while the App was created by a real user. Without this override, the
     /// session would be owned by `system-owner` and shared-session reuse via
     /// `find_app_session_by_tags_and_owner(.. app.owner_principal_id ..)` would
-    /// fail to match it. See `knowledge/integrations/app-invocation-channels.md` and EVE-A2A
-    /// follow-up.
+    /// fail to match it.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_from_app(
         &self,

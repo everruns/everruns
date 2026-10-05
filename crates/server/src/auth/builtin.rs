@@ -36,7 +36,7 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// Built-in authentication backend (JWT + password + OAuth + personal access tokens).
 /// This is the default for OSS deployments.
 ///
-/// HARNESS-SEED SAFETY NET (see also `knowledge/security/authentication.md`):
+/// HARNESS-SEED SAFETY NET:
 /// When default-org auto-join is enabled, `register` and `oauth_callback`
 /// add new users to `DEFAULT_ORG_ID`.
 /// Startup [`crate::seed::prepare_seed_task`] provisions that org's identities

@@ -175,7 +175,7 @@ impl From<&str> for EvalRunStatus {
 /// `Internal` runs are executed by everruns (sessions spawned per case).
 /// `External` runs are ingested already-complete from an external eval system
 /// (e.g. Mira) via the import API; everruns hosts and visualizes them but never
-/// executes them. See knowledge/evaluation/evals.md.
+/// executes them.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum EvalRunSource {
@@ -317,7 +317,7 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
-    /// Citation faithfulness: the answer's citations (see `knowledge/runtime-resources/citations.md`)
+    /// Citation faithfulness: the answer's citations
     /// must cover the claim and be verified as supported. Scored from the
     /// `TextAnnotation`s on the final message — pair with the
     /// `citation_verification` capability so verdicts are present.
@@ -337,7 +337,7 @@ pub enum Scorer {
     },
     /// Citation faithfulness judged by an LLM: each cited claim/source pair is
     /// graded by a model, so the eval works even without the
-    /// `citation_verification` capability. See `knowledge/runtime-resources/citations.md`.
+    /// `citation_verification` capability.
     CitationJudged {
         /// Rubric override; a citation-faithfulness rubric is used when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]

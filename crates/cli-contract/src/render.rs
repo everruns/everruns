@@ -1,6 +1,6 @@
 //! A stable text rendering of a clap tree.
 //!
-//! Two guards read this. A golden snapshot in `crates/cli` pins the contract
+//! Two guards read this. A golden snapshot pins the CLI contract
 //! humans already type, so a refactor that re-spells a flag fails rather than
 //! ships. A drift check pins the agent-facing tree to the same rendering, so
 //! the two surfaces cannot diverge without a test saying so.

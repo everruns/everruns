@@ -726,7 +726,7 @@ impl ModelService {
         Ok(())
     }
 
-    /// Mirrors the UI rule (apps/ui/src/lib/model-capabilities.ts): an embedding
+    /// Mirrors the UI rule: an embedding
     /// model is the one kind a chat cannot use.
     fn row_is_chat_model(
         capabilities: &sqlx::types::JsonValue,

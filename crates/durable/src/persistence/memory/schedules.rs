@@ -1,4 +1,4 @@
-//! Schedules implementation (see `store.rs` for the trait contract).
+//! Implementation of [`crate::Schedules`].
 
 use super::*;
 

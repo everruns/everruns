@@ -1,13 +1,12 @@
 //! Knowledge Base capability (EVE-423)
 //!
-//! Binds an agent or harness to one or more org-scoped Knowledge Bases. See
-//! `knowledge/runtime-resources/knowledge-bases.md` for the durable design.
+//! Binds an agent or harness to one or more org-scoped Knowledge Bases.
 //!
 //! This module registers the capability, validates the structural shape of its
 //! config (`bases[]`: `kb_`-prefixed Knowledge Base IDs; `kinds[]` from a fixed
 //! enum), and provides the agent-facing `search_knowledge` tool. Org scoping of
 //! the bound bases is enforced by the `KnowledgeStore` implementation at search
-//! time (cross-org ids are silently skipped). See knowledge/runtime-resources/okf-adoption.md.
+//! time (cross-org ids are silently skipped).
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -21,9 +20,9 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 /// Stable string id for the knowledge base capability.
 pub const KNOWLEDGE_BASE_CAPABILITY_ID: &str = "knowledge_base";
 
-/// Allowed entry kinds. Must stay in sync with the SQL CHECK constraint in
-/// `crates/server/migrations/032_knowledge_bases.sql` and with
-/// `crates/server/src/domains/knowledge_bases::ENTRY_KINDS`.
+/// Allowed knowledge entry kinds.
+// Must match crates/server/migrations/032_knowledge_bases.sql and
+// crates/server/src/domains/knowledge_bases::ENTRY_KINDS.
 const ENTRY_KINDS: &[&str] = &["note", "table", "business", "query", "runbook"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -74,7 +73,7 @@ fn is_valid_kb_id(s: &str) -> bool {
 
 /// Agent-facing tool that searches the bound Knowledge Bases. Holds the
 /// capability's config (which `bases` to search, default `kinds`), populated at
-/// collection time via `tools_with_config`. See knowledge/runtime-resources/okf-adoption.md.
+/// collection time via `tools_with_config`.
 pub struct SearchKnowledgeTool {
     config: KnowledgeBaseConfig,
 }

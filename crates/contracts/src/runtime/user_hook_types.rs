@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 /// The lifecycle point at which a hook fires.
 ///
-/// Six events. See `knowledge/runtime-resources/user-hooks.md` for semantics and wire payload.
+/// Six events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HookEvent {

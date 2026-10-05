@@ -31,7 +31,7 @@
 //! # }
 //! ```
 //!
-//! [`chat_completion_stream`]: crate::driver_registry::LlmDriver::chat_completion_stream
+//! [`chat_completion_stream`]: crate::driver_registry::ChatDriver::chat_completion_stream
 
 use std::time::{Duration, Instant};
 

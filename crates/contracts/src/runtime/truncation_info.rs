@@ -52,7 +52,7 @@ impl TruncationReason {
 
 /// Structured truncation metadata for reading-tool responses.
 ///
-/// Every reading tool (see `knowledge/execution/tool-execution.md`) must attach this block
+/// Every reading tool must attach this block
 /// to its response so LLM callers can:
 /// 1. Detect partial output without regex-matching human markers.
 /// 2. Know *why* the cut happened (size / line / row / budget / item cap).

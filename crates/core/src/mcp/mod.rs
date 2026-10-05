@@ -9,7 +9,7 @@
 //!
 //! The module owns the JSON-RPC client (HTTP over injected egress, and optional
 //! stdio behind the separate `mcp-stdio` feature), credential acquisition
-//! ([`McpAuthProvider`]), result mapping, and tool execution ([`McpExecutor`],
+//! ([`McpAuthProvider`](crate::mcp::McpAuthProvider)), result mapping, and tool execution ([`McpExecutor`](crate::mcp::McpExecutor),
 //! which implements
 //! `everruns_core::McpToolInvoker` so MCP tools register as regular `Tool`s).
 //! Wire types and tool-name helpers live in `everruns-core` and are reused

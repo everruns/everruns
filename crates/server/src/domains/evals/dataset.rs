@@ -24,7 +24,7 @@ pub enum DatasetFormat {
     Sft,
     /// One complete ATIF (Agent Trajectory Interchange Format) trajectory per
     /// line, folded from the case session's event log, with reward and case
-    /// identity in root `extra`. See `knowledge/evaluation/atif-adoption.md`.
+    /// identity in root `extra`.
     Atif,
 }
 

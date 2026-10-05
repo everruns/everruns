@@ -1,5 +1,4 @@
-//! A2A push-notification configs (A2A 1.0 §3.1.7). See
-//! `knowledge/integrations/a2a-channel.md`.
+//! A2A push-notification configs (A2A 1.0 §3.1.7).
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::SessionId;

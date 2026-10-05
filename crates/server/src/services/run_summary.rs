@@ -38,7 +38,7 @@ use crate::storage::StorageBackend;
 
 /// Event types that end a run. A session has no terminal *status* — it returns
 /// to `idle` either way — so the terminal turn is the signal, matching how
-/// `last_turn_status` is derived in `118_session_source_and_last_turn.sql`.
+/// `last_turn_status` is derived by the database.
 pub const TERMINAL_TURN_EVENTS: &[&str] = &["turn.completed", "turn.failed", "turn.cancelled"];
 
 /// How many trailing events to digest. Event histories are unbounded and

@@ -1507,7 +1507,7 @@ pub struct WorkspaceRow {
 pub struct CreateWorkspaceRow {
     /// Optional explicit UUID. When None, the DB DEFAULT (uuidv7) is used.
     /// Sessions creating their default workspace pass their own id here so
-    /// `workspace.id == session.id` (see knowledge/runtime-resources/workspace.md, Decision 3).
+    /// `workspace.id == session.id`.
     pub id: Option<Uuid>,
     pub public_id: String,
     pub name: String,
@@ -1617,7 +1617,6 @@ pub struct KnowledgeEntryRow {
     pub kind: String,
     pub tags: Vec<String>,
     /// Optional OKF `resource` URI identifying the underlying asset.
-    /// See knowledge/runtime-resources/okf-adoption.md.
     #[sqlx(default)]
     pub resource: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -1732,8 +1731,7 @@ pub struct KnowledgeIndexChunkRow {
 }
 
 /// A chunk joined with its owning document's citation metadata, used to
-/// hydrate `search_index` results from Postgres. See knowledge/runtime-resources/knowledge-indexes.md
-/// ("Retrieval and citations").
+/// hydrate `search_index` results from Postgres.
 #[derive(Debug, Clone)]
 pub struct KnowledgeIndexChunkWithDocument {
     /// Chunk `public_id` (`kchk_…`). The stable citation id.
@@ -3182,7 +3180,7 @@ pub struct UpdateEvalRunDatasetRow {
     pub error_message: Option<String>,
 }
 
-/// Org-configurable agent check rule (knowledge/evaluation/agent-checks.md, phase 4).
+/// Org-configurable agent check rule.
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentCheckRuleRow {
     pub id: Uuid,

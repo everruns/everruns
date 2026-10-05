@@ -1,8 +1,8 @@
 //! Conversion between `prost_types` JSON values and `serde_json`.
 //!
-//! Split out of `lib.rs` (EVE-1024): a self-contained pair of mappings with no
-//! dependency on the rest of the crate, and `lib.rs` is on the file-size
-//! ratchet.
+// Split out of `lib.rs` (EVE-1024): a self-contained pair of mappings with no
+// dependency on the rest of the crate, and `lib.rs` is on the file-size
+// ratchet.
 
 use prost_types::{ListValue, Struct, Value, value::Kind};
 

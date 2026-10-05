@@ -1,5 +1,4 @@
-//! Request layout rules that keep an Anthropic conversation append-only,
-//! split out of `driver.rs` to keep that file under its size ratchet.
+//! Request layout rules that keep an Anthropic conversation append-only.
 //!
 //! Claude Opus 5.5 and Fable 5.1 bind every thinking block to the conversation
 //! prefix that produced it: the top-level `system`, the tools, and every earlier

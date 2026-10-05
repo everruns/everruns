@@ -16,8 +16,7 @@ Agents compose capabilities; enable only what you need.
 ## Capability Reference
 
 Every capability a production deployment offers, with the number of tools it
-adds by default. The table is checked against the capability registry in CI
-(`scripts/check_docs_catalogs.py`). Rows marked **dev-only** are registered only
+adds by default. Rows marked **dev-only** are registered only
 at the `dev` deployment grade. A `FEATURE_*` variable identifies a
 [rollout grade override](/sre/environment-variables/#feature-rollout-grades);
 organisation enrolment also applies before assigning or using gated capabilities.

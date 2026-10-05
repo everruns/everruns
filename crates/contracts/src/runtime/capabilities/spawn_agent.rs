@@ -16,7 +16,7 @@
 //! - System prompt sections use XML tags for clear boundaries between components.
 //!   This follows Anthropic's recommendation for multi-component prompts and reduces
 //!   misattribution between capability instructions, user-provided AGENTS.md, and the
-//!   agent's base system prompt. See knowledge/project/xml-prompt-formatting.md for rationale.
+//!   agent's base system prompt.
 //!
 //! Each capability is in its own file with collocated tools.
 

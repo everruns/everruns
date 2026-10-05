@@ -47,7 +47,7 @@ cargo run -p everruns-support-agent -- --interactive
 
 ## Build the agent
 
-The agent definition lives in `src/agent.rs`; `main.rs` only handles input and runs the session. The prompt and bundled data live under `src/resources/`. Tools supply evidence; the model chooses how to use it.
+Tools supply evidence; the model chooses how to use it.
 
 ```rust ignore
 pub fn build(provider: impl Into<Provider>) -> Result<Agent, BuildError> {
@@ -65,7 +65,7 @@ pub fn build(provider: impl Into<Provider>) -> Result<Agent, BuildError> {
 
 ## Send, observe, and wait
 
-The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
+The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
 ```rust ignore
 // OPENAI_API_KEY, declared by the OpenAI driver itself.
@@ -81,7 +81,7 @@ This engine is in-memory. It does not demonstrate durable session storage; the E
 
 ## How the tools work
 
-`lookup_customer` reads one of three fictional records from `src/resources/customers.json`. It returns facts, not a prewritten recommendation. `read_support_policy` returns the recovery rules from `src/resources/policy.md`. The model combines the two; no tool disables MFA or changes a real account.
+`lookup_customer` reads one of three fictional customer records. It returns facts, not a prewritten recommendation. `read_support_policy` returns the bundled recovery rules. The model combines the two; no tool disables MFA or changes a real account.
 
 ## Validate the behavior
 
@@ -113,7 +113,3 @@ Replace the fixture lookup with your authorized customer-data service. Keep poli
 ## Boundaries
 
 All customers, policy rules, and support.example.com URLs are fictional. This is a read-only support exercise, not a live help desk.
-
-## Source map
-
-`src/main.rs`: input and session execution; `src/agent.rs`: agent definition; `src/tools.rs`: bounded account lookup and policy tool; `src/resources/`: prompt and bundled support data; `demo/`: live VHS recording, transcript, and recording script. `examples/demo-support` handles shared terminal presentation.

@@ -1,6 +1,5 @@
 //! Inbound MCP Events subscription state for `mcp_event` agent triggers
-//! (EVE-1121). See `knowledge/integrations/mcp-events.md` and
-//! `domains::agent_triggers::mcp_event`.
+//! (EVE-1121).
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::TriggerId;

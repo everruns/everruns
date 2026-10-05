@@ -170,7 +170,7 @@ fn is_false(value: &bool) -> bool {
 // ActAtom
 // ============================================================================
 
-/// Atom that executes a batch of tool calls via the [`tool_scheduler`]
+/// Atom that schedules and executes a batch of tool calls.
 ///
 /// This atom:
 /// 1. Emits act.started event
@@ -269,7 +269,7 @@ where
     }
 
     /// Replace the complete runtime-owned service snapshot used for every
-    /// per-call [`ToolContext`]. Production hosts should prefer this over
+    /// per-call [`ToolContext`](crate::ToolContext). Production hosts should prefer this over
     /// assembling individual services on the atom.
     pub fn with_context_services(
         mut self,
@@ -453,7 +453,7 @@ where
 
     /// Add capability-contributed pre-tool-use hooks. Pre-hooks fire before
     /// each tool call and can mutate or block it; see
-    /// `act_hooks::PreToolUseHook` and `knowledge/runtime-resources/user-hooks.md`.
+    /// `act_hooks::PreToolUseHook`.
     pub fn with_pre_tool_hooks(mut self, hooks: Vec<Arc<dyn act_hooks::PreToolUseHook>>) -> Self {
         self.pre_tool_hooks.extend(hooks);
         self

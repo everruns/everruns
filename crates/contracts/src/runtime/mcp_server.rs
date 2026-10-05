@@ -21,7 +21,7 @@ pub enum McpServerTransportType {
     Http,
     /// Local-process transport over stdio. Only usable by single-tenant
     /// runtime/CLI hosts (e.g. the example coding CLI); the hosted product
-    /// rejects it during scoped-config validation (see knowledge/integrations/runtime-mcp.md).
+    /// rejects it during scoped-config validation.
     Stdio,
 }
 
@@ -814,8 +814,6 @@ pub enum McpErrorCategory {
 /// execute path. Serialized into the MCP `structuredContent` field on
 /// error responses so the legacy `content[0].text` channel stays
 /// backward-compatible; new SDKs prefer the typed envelope.
-///
-/// See `knowledge/integrations/mcp.md` for the error contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct McpExecuteError {

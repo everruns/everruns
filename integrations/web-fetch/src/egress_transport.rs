@@ -1,14 +1,14 @@
 //! Egress-backed HTTP transport for the `web_fetch` capability.
 //!
-//! Implements `knowledge/operations/egress.md` migration step 3 via fetchkit's transport
-//! injection (fetchkit >= 0.4): [`EgressHttpTransport`] implements
+//! Routes fetchkit HTTP requests through the host egress boundary.
+//! [`EgressHttpTransport`] implements
 //! `fetchkit::HttpTransport` over the host `EgressService`, so fetchkit keeps
 //! its entire pipeline — specialized fetchers (GitHub, Wikipedia, arXiv, ...),
 //! DNS policy (resolve-then-check producing pinned addresses, TM-API-008),
 //! manual per-hop redirect validation, body caps, bot-auth signing, HTML
 //! conversion, and file saving — while every HTTP hop crosses the egress
 //! boundary, where the per-request `NetworkAccessList` and the deployment-wide
-//! system allowlist are enforced (`knowledge/operations/system-allowlist.md`).
+//! system allowlist are enforced.
 //!
 //! fetchkit issues one transport call per redirect hop, so egress policy
 //! applies to redirect targets too (TM-SSRF-010 stays in fetchkit; the egress
@@ -31,8 +31,7 @@ use std::sync::Arc;
 pub(crate) struct EgressHttpTransport {
     egress: Arc<dyn EgressService>,
     /// Merged harness/agent/session access list, enforced at the egress
-    /// boundary for every hop — the final enforcement point per
-    /// `knowledge/operations/egress.md`. `web_fetch` pre-checks the initial URL itself for
+    /// boundary for every hop. `web_fetch` pre-checks the initial URL itself for
     /// clearer user-facing errors.
     network_access: Option<NetworkAccessList>,
 }

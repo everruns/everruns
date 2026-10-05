@@ -56,7 +56,7 @@ pub enum Permission {
     OrgPlaygroundImpersonate,
     /// View marketplaces and installed plugins (read-only)
     OrgPluginsView,
-    /// Register marketplaces and install/uninstall plugins (admin-gated per knowledge/integrations/plugins.md)
+    /// Register marketplaces and install/uninstall plugins (admin-gated)
     OrgPluginsManage,
     /// CRUD on sessions
     OrgSessionsManage,

@@ -1,8 +1,8 @@
 //! Helpers shared by the `WorkerService` handlers in this module tree.
 //!
-//! These were file-local to `worker_service_impl.rs` before the handlers were
-//! split out by domain; they are crate-visible now because every handler module
-//! needs them, not because anything outside `grpc_service` should call them.
+// These were file-local to `worker_service_impl.rs` before the handlers were
+// split out by domain; they are crate-visible now because every handler module
+// needs them, not because anything outside `grpc_service` should call them.
 
 use crate::domains::common::CommandErrorKind;
 use crate::grpc_service::*;
@@ -22,7 +22,7 @@ pub(crate) const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 =
 /// Log an internal failure server-side and return a client-safe `Status`.
 ///
 /// THREAT[TM-API-005]: worker gRPC `Status` messages cross the server/worker trust
-/// boundary, and `grpc_status_to_error` in `crates/worker` copies `status.message()`
+/// boundary, and the worker's `grpc_status_to_error` copies `status.message()`
 /// verbatim into runtime errors — from there they reach worker logs, durable workflow
 /// failure records, and session error surfaces. Only the fixed `context` string may
 /// travel; sqlx text, Postgres index names, and source paths stay in the server log.
@@ -289,12 +289,12 @@ mod tests {
     /// the handful of call sites. The needles are assembled with `concat!` so this
     /// test's own source is not an offender.
     ///
-    /// This walks the whole `grpc_service` tree rather than naming files. When the
-    /// handlers were split out of `worker_service_impl.rs` the previous
-    /// `include_str!` of that one file would still have compiled against the
-    /// delegation layer left behind, passing while covering none of the handlers
-    /// that actually build a `Status`. A guard that enumerates its own inputs is a
-    /// guard a refactor can walk out from under.
+    // This walks the whole `grpc_service` tree rather than naming files. When the
+    // handlers were split out of `worker_service_impl.rs` the previous
+    // `include_str!` of that one file would still have compiled against the
+    // delegation layer left behind, passing while covering none of the handlers
+    // that actually build a `Status`. A guard that enumerates its own inputs is a
+    // guard a refactor can walk out from under.
     #[test]
     fn internal_statuses_never_carry_source_errors() {
         let call = concat!("Status", "::internal(");

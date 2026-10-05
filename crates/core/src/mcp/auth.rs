@@ -1,4 +1,4 @@
-//! Pluggable MCP credential acquisition (knowledge/integrations/runtime-mcp.md D3).
+//! Pluggable MCP credential acquisition.
 //!
 //! The current control-plane OAuth flow is browser/redirect based. Runtime
 //! hosts are often CLI, so credential acquisition is an injectable trait: the
@@ -40,8 +40,7 @@ impl McpCredential {
 
 /// Identity of the logical server a provider is resolving credentials for.
 ///
-/// Providers receive only this — never a host's connection-resolver internals
-/// (knowledge/integrations/runtime-mcp.md, security considerations).
+/// Providers receive only this — never a host's connection-resolver internals.
 pub struct McpAuthRequest<'a> {
     pub server_name: &'a str,
     pub auth_mode: McpServerAuthMode,

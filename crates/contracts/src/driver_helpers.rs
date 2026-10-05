@@ -54,7 +54,7 @@ const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 /// so a hostname that passed validation can later DNS-rebind to a private or
 /// cloud-metadata address at request time. These streaming/request drivers hold
 /// a `reqwest::Client` directly rather than routing each call through
-/// [`crate::EgressService`], so we enforce the same DNS-pinning contract
+/// the host egress service, so we enforce the same DNS-pinning contract
 /// (TM-API-013, TM-TOOL-018) inside the client itself: every resolved address is
 /// checked against [`is_blocked_ip`] and the connection is refused if any
 /// resolved IP is private/internal. Combined with redirects disabled, this keeps
@@ -345,7 +345,7 @@ pub const GEMINI_NOT_FOUND_PATTERNS: &[&str] = &["not_found", "model"];
 /// implementations (Fireworks, OpenRouter, MAI/Foundry):
 /// 1. send the (already authenticated) request,
 /// 2. on a non-success status, drain the body to allow connection reuse and
-///    return [`models_api_status_error`] — unless the status is in
+///    return [`crate::openai_protocol::models_api_status_error`] — unless the status is in
 ///    `none_on_statuses`, in which case discovery is treated as unsupported and
 ///    `Ok(None)` is returned,
 /// 3. deserialize the body into the provider-specific response type `T`,
@@ -450,7 +450,7 @@ const PROTECTED_REQUEST_HEADERS: &[&str] = &[
 /// Matching is case-insensitive and an extra header *replaces* the existing
 /// value in place rather than appending a second copy, so
 /// `LlmCallConfig::extra_headers` is an override channel, not an append-only
-/// one. Connection-level headers ([`PROTECTED_REQUEST_HEADERS`]) and entries
+/// one. Connection-level headers and entries
 /// with an empty name are dropped with a warning.
 pub fn merge_request_headers(
     base: Vec<(String, String)>,

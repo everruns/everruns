@@ -40,8 +40,8 @@ pub struct CompiledPlugin {
 
 /// Compile a `PluginFileSet` into a `CompiledPlugin`.
 ///
-/// Maps each plugin component to the corresponding capability contribution per
-/// the component-mapping table in `knowledge/integrations/plugins.md`. Errors are returned when
+/// Maps each plugin component to the corresponding capability contribution.
+/// Errors are returned when
 /// compilation cannot produce a valid `DeclarativeCapabilityDefinition`.
 pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String> {
     let (manifest, mut warnings) = file_set.manifest()?;
@@ -280,7 +280,7 @@ fn validate_agent_plugins_name(name: &str) -> Result<String, String> {
 /// Render agent files into a combined system prompt.
 ///
 /// Each `.md` file under `agents/` (or the manifest-overridden path) is
-/// rendered as a named `<agent>` XML section per knowledge/project/xml-prompt-formatting.md.
+/// rendered as a named `<agent>` XML section.
 fn compile_agents(
     file_set: &PluginFileSet,
     manifest: &PluginManifest,

@@ -107,7 +107,7 @@ pub struct WorkspaceFileService {
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
     /// Live routing for server-managed Memory mounts: reads and writes under
     /// `/memory/...` resolve against `memory_files` per call instead of against
-    /// a copy taken at session creation. See `memory_mounts.rs`.
+    /// a copy taken at session creation.
     ///
     /// Not optional, because a service that silently skipped it would write a
     /// shared note into one session's private files and lose it.

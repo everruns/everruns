@@ -116,7 +116,7 @@ impl Dispatcher {
 
 /// AppStates implement this to expose `state.dispatcher(&org)` in handlers.
 ///
-/// Use the [`impl_dispatchable!`] macro for the typical AppState shape: an
+/// Use the `impl_dispatchable!` macro for the typical AppState shape: an
 /// inherent `ctx(&self, &ResolvedOrg) -> Ctx` method plus an `auth: AuthState`
 /// field.
 pub trait Dispatchable {

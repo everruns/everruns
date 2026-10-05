@@ -3,7 +3,7 @@ title: Generic Harness (deprecated)
 description: The default harness, bundling core capabilities for general-purpose agent sessions.
 ---
 
-The **Generic** harness is deprecated. Existing agents, sessions and child harnesses retain its legacy behavior. Choose [Conversation](/built-ins/harnesses/conversation/) for dialogue, [Worker Base](/built-ins/harnesses/worker-base/) for files and bash, or [Worker](/built-ins/harnesses/worker/) for skills and delegation. Generic is not an alias for Worker. It configures 25 capabilities (source: `generic_capabilities()` in `crates/contracts/src/capability/presets.rs`). Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
+The **Generic** harness is deprecated. Existing agents, sessions and child harnesses retain its legacy behavior. Choose [Conversation](/built-ins/harnesses/conversation/) for dialogue, [Worker Base](/built-ins/harnesses/worker-base/) for files and bash, or [Worker](/built-ins/harnesses/worker/) for skills and delegation. Generic is not an alias for Worker. It configures 25 capabilities. Together they cover file operations, command execution, web access, memory, budgeting, context management, durable tool output, citations, and runtime safeguards.
 
 ## Legacy use
 

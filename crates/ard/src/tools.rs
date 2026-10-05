@@ -1,7 +1,7 @@
 //! `resource_discovery` tools: `discover_resources`, `attach_resource`,
 //! `list_attached_resources`.
 //!
-//! Security posture (see SPEC.md / threat-model):
+//! Security posture:
 //! - Registry allowlist: the model selects a configured `registry_id`; raw URLs
 //!   are never accepted from the model.
 //! - Trust gate: `trustManifest` domain↔URN binding + `require_trust`

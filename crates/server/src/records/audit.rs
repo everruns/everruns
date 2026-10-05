@@ -156,7 +156,7 @@ impl fmt::Display for ManagementAction {
 ///
 /// `#[non_exhaustive]` so a new audit action stays a patch bump: at 0.x the minor is the breaking
 /// slot, so adding a variant to an exhaustive public enum republishes the whole dependant cone and
-/// hard-breaks every external `match`. See knowledge/project/release-process.md.
+/// hard-breaks every external `match`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AgentAction {

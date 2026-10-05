@@ -86,7 +86,7 @@ organization has configured.
 | stdio MCP servers | Not supported. The Platform connects only to remote MCP servers |
 | `OpenAI::from_env()` and other `from_env` credentials | Provider keys set in the organization's settings and stored encrypted. Drivers do not read them through `from_env` on the server |
 
-[`examples/client_side_tools.sh`](https://github.com/everruns/everruns/blob/main/examples/client_side_tools.sh)
+[Client-side tools example](https://github.com/everruns/everruns/blob/main/examples/client_side_tools.sh)
 shows the client-side tool loop over the API.
 
 ## What does not transfer

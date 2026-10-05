@@ -11,7 +11,7 @@ pub const MID_CONVERSATION_SYSTEM_PARAMETER: &str = "mid_conversation_system";
 /// Model-profile parameter for message expiry.
 pub const CLEAR_AT_PARAMETER: &str = "clear_at";
 
-/// A typed service a provider driver can offer (see knowledge/foundations/providers.md).
+/// A typed service a provider driver can offer.
 ///
 /// Drivers declare supported services in code; catalog models persist their
 /// selected service. One provider account composes typed chat, decision and
@@ -368,7 +368,7 @@ pub enum ModelVendor {
 
 impl ModelVendor {
     /// Stable lowercase slug, the first segment of a model-profile key
-    /// (`"{vendor}/{canonical_id}"`, see knowledge/foundations/providers.md). Matches the
+    /// (`"{vendor}/{canonical_id}"`). Matches the
     /// serde `lowercase` representation.
     pub fn slug(&self) -> &'static str {
         match self {

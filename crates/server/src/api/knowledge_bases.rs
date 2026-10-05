@@ -159,7 +159,7 @@ pub async fn delete_kb(
 
 #[utoipa::path(
     description = "Import an Open Knowledge Format (OKF) bundle into a knowledge base. \
-Idempotent: re-importing converges entries without duplicates. See knowledge/runtime-resources/okf-adoption.md.",
+Idempotent: re-importing converges entries without duplicates.",
     post,
     path = "/v1/knowledge-bases/{kb_id}/okf_import",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),
@@ -186,7 +186,7 @@ pub async fn import_okf(
 
 #[utoipa::path(
     description = "Export a knowledge base as an Open Knowledge Format (OKF) bundle \
-(a gzipped tarball of markdown files with YAML frontmatter). See knowledge/runtime-resources/okf-adoption.md.",
+(a gzipped tarball of markdown files with YAML frontmatter).",
     get,
     path = "/v1/knowledge-bases/{kb_id}/okf_export",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),

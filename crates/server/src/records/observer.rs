@@ -125,7 +125,7 @@ impl ObserverMatch {
 // ============================================
 
 /// What slice of the trace a scorer grades. Phase 1 implements `turn` only;
-/// `session` and `tool` scopes are specced in knowledge/evaluation/online-evals.md.
+/// `session` and `tool` scopes are reserved for future use.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ObserverScope {

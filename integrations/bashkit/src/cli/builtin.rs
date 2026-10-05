@@ -13,7 +13,7 @@ use everruns_cli_contract::tree::Parsed;
 /// whole difference, and it is what lets this path parse properly: the tree is
 /// walked directly to resolve a leaf, and everything after the leaf goes to
 /// the leaf's own [`clap::Command`], compiled from the schema the command
-/// already publishes. See [`args`] for what that buys over hand-parsing.
+/// already publishes. Schema-derived parsing keeps CLI arguments aligned with tool inputs.
 ///
 /// Help splits along the same line. Nodes and the root are the tree's to
 /// render, because their content *is* the tree. A leaf's help is clap's,
@@ -548,7 +548,7 @@ mod tests {
     }
 
     /// Schemas name fields in snake_case because they are generated from Rust
-    /// structs. A CLI caller reasonably types kebab, and `crates/cli` spells
+    /// structs. A CLI caller reasonably types kebab, and the platform CLI spells
     /// it that way, so both reach the same parameter.
     #[tokio::test]
     async fn a_flag_answers_to_both_snake_case_and_kebab_case() {
@@ -637,7 +637,7 @@ mod tests {
         assert!(!out.contains("\"ran\""), "help must not run it: {out}");
     }
 
-    /// The workspace links clap with its default features for `crates/cli`,
+    /// The workspace links clap with its default features for the platform CLI,
     /// and cargo unifies that across the build, so colour is on unless a
     /// command says otherwise. Escape bytes in a tool result are noise the
     /// model pays for and reads past.

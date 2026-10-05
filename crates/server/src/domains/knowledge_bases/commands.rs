@@ -465,8 +465,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeBase>() }
 // ============================================
 
 /// Resolve a KB's internal UUID. If `require_active` is true, archived KBs
-/// reject the call so write paths honor the lifecycle contract from
-/// `knowledge/foundations/models.md` (archived = read-only).
+/// reject the call: archived knowledge bases are read-only.
 pub(super) async fn resolve_kb_internal_id(
     ctx: &Ctx,
     kb_id: &str,

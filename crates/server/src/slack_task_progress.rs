@@ -19,7 +19,7 @@
 //!
 //! # Nothing to say, nothing posted
 //!
-//! An agent that simply answers spawns no tasks, so [`TaskProgress::is_empty`]
+//! An agent that simply answers spawns no tasks, so `TaskProgress::is_empty`
 //! stays true and no status message is ever created. A thread only gains one
 //! when there is fan-out to report.
 

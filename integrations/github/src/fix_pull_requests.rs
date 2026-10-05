@@ -11,7 +11,7 @@
 //!   branch is returned instead of failing or opening another.
 //! - The branch push itself happens in the sandbox with git and needs the
 //!   App's `Contents: write` permission, which agent Apps do not request by
-//!   default (`crates/server/src/github_apps.rs`). Without it the push fails
+//!   default. Without it the push fails
 //!   and no pull request can be opened.
 
 use async_trait::async_trait;

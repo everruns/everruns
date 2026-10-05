@@ -43,7 +43,7 @@ pub struct CapabilityService {
     registry: CapabilityRegistry,
     mcp_service: McpServerService,
     db: Arc<StorageBackend>,
-    /// Cache: org_id -> Vec<Skill>
+    /// Cache: `org_id -> Vec<Skill>`
     skill_list_cache: Cache<i64, Arc<Vec<Skill>>>,
 }
 
@@ -76,7 +76,7 @@ impl CapabilityService {
     }
 
     /// Replace the embedded `McpServerService` so outbound MCP traffic flows
-    /// through the platform's shared egress boundary (spec: `knowledge/operations/egress.md`).
+    /// through the platform's shared egress boundary.
     pub fn with_mcp_egress_service(
         mut self,
         egress_service: Arc<dyn everruns_core::EgressService>,

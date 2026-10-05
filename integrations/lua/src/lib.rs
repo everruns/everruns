@@ -350,7 +350,7 @@ impl Tool for LuaTool {
 ///
 /// This is the single source of truth shared by two call sites so they can
 /// never drift apart: the engine's code-mode exposure
-/// ([`gated_code_mode_tools`]) and the `lua_code_mode` capability's
+/// (`gated_code_mode_tools`) and the `lua_code_mode` capability's
 /// tool-definition filter (which *hides* exactly this set from the model). If
 /// the two used different predicates a tool could be hidden from the model yet
 /// not re-exposed in Lua — an unreachable tool.

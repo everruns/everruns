@@ -1,7 +1,7 @@
 //! A2UI Component Definitions
 //!
 //! Static catalog of components the agent may emit. Each component maps to a
-//! React component in the UI renderer (apps/ui/src/components/chat/a2ui-renderer.tsx)
+//! React component in the UI renderer
 //! and exposes a set of typed props.
 //!
 //! The prompt generator turns these definitions into textual signatures that

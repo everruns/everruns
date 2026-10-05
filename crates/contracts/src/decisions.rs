@@ -86,7 +86,6 @@ impl DecisionQuestion {
 /// that grows: `model` was added after the first release and broke every
 /// struct-literal construction to do it. Build one with [`Self::new`] and the
 /// builder methods, which is what every in-tree call site already does.
-/// See `knowledge/framework/api-stability.md`.
 #[derive(Debug, Clone, Default)]
 #[non_exhaustive]
 pub struct DecisionRequest {

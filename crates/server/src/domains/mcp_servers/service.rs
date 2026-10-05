@@ -893,7 +893,7 @@ pub struct McpServerResolved {
 
 /// Fetch tools from an MCP server using JSON-RPC over HTTP. Delegates to the
 /// shared `everruns-mcp` client so SSRF validation and SSE/JSON handling are
-/// not duplicated (knowledge/integrations/runtime-mcp.md D5).
+/// not duplicated.
 pub(crate) async fn fetch_mcp_tools(
     egress_service: &dyn EgressService,
     url: &str,

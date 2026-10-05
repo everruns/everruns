@@ -1,6 +1,6 @@
 //! `events/list`, `events/subscribe`, `events/unsubscribe` (MCP Events draft,
 //! EVE-1121). The service owns validation, verification and delivery; this
-//! module maps JSON-RPC to it. See `knowledge/integrations/mcp-events.md`.
+//! module maps JSON-RPC to it.
 
 use serde_json::{Value, json};
 

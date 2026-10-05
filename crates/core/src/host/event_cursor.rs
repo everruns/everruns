@@ -1,4 +1,4 @@
-//! Cursor constructors for [`EventReader`](crate::host::EventReader) implementations
+//! Cursor constructors for [`EventReader`](crate::host::EventReader)(crate::host::EventReader) implementations
 //! that live outside this crate.
 
 use everruns_contracts::typed_id::SessionId;
@@ -8,8 +8,8 @@ use crate::host::events::{EventCursor, EventLogError};
 impl EventCursor {
     /// Continue a pinned snapshot after `after_sequence`.
     ///
-    /// The form an out-of-crate [`EventReader`] uses to hand back `next_cursor`
-    /// while paging a stable snapshot (see [`EventPage`]).
+    /// The form an out-of-crate [`EventReader`](crate::host::EventReader) uses to hand back `next_cursor`
+    /// while paging a stable snapshot (see [`EventPage`](crate::host::EventPage)).
     pub fn after_snapshot(
         session_id: SessionId,
         after_sequence: i32,

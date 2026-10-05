@@ -1,18 +1,18 @@
-//! Snapshot of the hosted capability catalog for the public docs.
-//!
-//! Decision: the docs catalog (`docs/capabilities/index.md`) used to be
-//! hand-written and drifted from the registry. This test writes the registry
-//! the server serves (`oss_capability_registry_for_grade`, the same call
-//! `crates/server/src/platform.rs` makes) to `docs/api/capability-catalog.json`
-//! and fails when the committed file differs. `scripts/test-docs-catalogs.sh`
-//! then checks the docs pages against that file without compiling Rust, so a
-//! docs-only edit is checked too.
-//!
-//! The snapshot runs inside the server so registry composition and rollout
-//! policy use its actual dependencies, with no duplicated feature list.
-//!
-//! Regenerate with:
-//! `UPDATE_DOCS_CATALOG=1 cargo test -p everruns-server docs_catalog`
+// Snapshot of the hosted capability catalog for the public docs.
+//
+// Decision: the docs catalog (`docs/capabilities/index.md`) used to be
+// hand-written and drifted from the registry. This test writes the registry
+// the server serves (`oss_capability_registry_for_grade`, the same call
+// `crates/server/src/platform.rs` makes) to `docs/api/capability-catalog.json`
+// and fails when the committed file differs. `scripts/test-docs-catalogs.sh`
+// then checks the docs pages against that file without compiling Rust, so a
+// docs-only edit is checked too.
+//
+// The snapshot runs inside the server so registry composition and rollout
+// policy use its actual dependencies, with no duplicated feature list.
+//
+// Regenerate with:
+// `UPDATE_DOCS_CATALOG=1 cargo test -p everruns-server docs_catalog`
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
