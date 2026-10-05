@@ -158,6 +158,16 @@ everruns knowledge-bases create --name "Product docs" --description "Published p
 
 These commands print the command's JSON output (YAML with `-o yaml`). A text or JSON flag written `@path` is read from that local file, as in `--skill-md @./SKILL.md`; write `@@` for a value that really starts with `@`.
 
+### Retries
+
+Platform commands are safe to retry. The CLI retries a dropped connection or a gateway error itself, and the server runs a create or update at most once for the same request. A script that re-runs a whole command can get the same guarantee by setting a key it reuses for that one command:
+
+```bash
+EVERRUNS_IDEMPOTENCY_KEY="nightly-agent-$(date +%F)" everruns agents create --name nightly --system-prompt @./prompt.md
+```
+
+A repeat with the same key returns the first result. Reusing a key for a different request is an error, so use one key per command.
+
 ## See also
 
 - [Automate with the CLI](/how-to/automate-with-the-cli/): `jq`, quiet mode, scripting patterns.

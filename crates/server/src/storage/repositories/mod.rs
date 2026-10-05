@@ -20,6 +20,7 @@ mod a2a_push_configs;
 mod advisory_locks;
 mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
+mod command_idempotency;
 mod declarative_capabilities;
 mod evals;
 mod events;

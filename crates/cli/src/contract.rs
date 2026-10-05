@@ -170,7 +170,11 @@ pub async fn execute(client: &ApiClient<'_>, wire_name: &str, params: Value) -> 
         "metadata": { "client": concat!("everruns-cli/", env!("CARGO_PKG_VERSION")) },
     });
     let response = client
-        .post(&format!("/v1/commands/{wire_name}"), Some(&body))
+        .post_command(
+            &format!("/v1/commands/{wire_name}"),
+            &body,
+            &idempotency_key(),
+        )
         .await?;
     if let Some(warnings) = response.get("warnings").and_then(Value::as_array) {
         for warning in warnings.iter().filter_map(Value::as_str) {
@@ -178,6 +182,16 @@ pub async fn execute(client: &ApiClient<'_>, wire_name: &str, params: Value) -> 
         }
     }
     Ok(response.get("output").cloned().unwrap_or(Value::Null))
+}
+
+/// The key that makes one invocation's command safe to retry: the caller's
+/// `EVERRUNS_IDEMPOTENCY_KEY` when a script re-runs the CLI and wants the
+/// server to recognize the repeat, otherwise a fresh one per invocation.
+fn idempotency_key() -> String {
+    std::env::var("EVERRUNS_IDEMPOTENCY_KEY")
+        .ok()
+        .filter(|key| !key.is_empty())
+        .unwrap_or_else(|| format!("cli-{}", uuid::Uuid::new_v4().simple()))
 }
 
 /// Replace `@path` values with the named file's contents.
