@@ -7601,7 +7601,7 @@
         "long": "initial-files",
         "kind": "json",
         "required": false,
-        "help": "Session-level initial files (additive to agent initial_files). Files with matching paths over..."
+        "help": "Starting files for a new file tree (additive to agent/harness files). Matching paths override..."
       },
       {
         "field": "locale",
