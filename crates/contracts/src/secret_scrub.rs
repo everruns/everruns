@@ -10,6 +10,34 @@ use regex::Regex;
 /// Placeholder that replaces a scrubbed credential.
 pub const REDACTED: &str = "[REDACTED]";
 
+/// Key fragments (lowercased, `-`/`_` removed) that mark a JSON field as
+/// carrying a credential. `contains` matching covers compound names like
+/// `openai_api_key`, `client_secret`, or `x-api-key`.
+pub const CREDENTIAL_KEY_FRAGMENTS: [&str; 10] = [
+    "apikey",
+    "accesskey",
+    "secretkey",
+    "privatekey",
+    "secret",
+    "password",
+    "passwd",
+    "credential",
+    "authorization",
+    "cookie",
+];
+
+/// Whether a JSON field named `key` holds a credential, whatever its value
+/// looks like.
+pub fn is_credential_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
+    // `token` only as a suffix: `access_token` / `refreshToken` are
+    // credentials, while token *counts* (`max_tokens`, `input_tokens`) are not.
+    normalized.ends_with("token")
+        || CREDENTIAL_KEY_FRAGMENTS
+            .iter()
+            .any(|fragment| normalized.contains(fragment))
+}
+
 /// High-signal credential patterns. Deliberately conservative to avoid
 /// mangling legitimate content.
 #[expect(
@@ -71,6 +99,26 @@ pub fn scrub_secrets_in_value(value: &mut serde_json::Value) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn credential_keys_match_compound_names_but_not_token_counts() {
+        for key in [
+            "api_key",
+            "X-Api-Key",
+            "client_secret",
+            "Authorization",
+            "Set-Cookie",
+            "access_token",
+            "refreshToken",
+            "db_password",
+            "aws_credentials",
+        ] {
+            assert!(is_credential_key(key), "{key}");
+        }
+        for key in ["max_tokens", "input_tokens", "url", "command", "author"] {
+            assert!(!is_credential_key(key), "{key}");
+        }
+    }
 
     #[test]
     fn scrubs_provider_keys() {

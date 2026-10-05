@@ -420,20 +420,6 @@ impl ToolCompletedData {
 /// Placeholder for a value withheld from `executed_arguments`.
 const REDACTED_ARGUMENT: &str = crate::secret_scrub::REDACTED;
 
-/// Key fragments (lowercased, `-`/`_` removed) that mark a credential value.
-const CREDENTIAL_KEY_FRAGMENTS: [&str; 10] = [
-    "apikey",
-    "accesskey",
-    "secretkey",
-    "privatekey",
-    "secret",
-    "password",
-    "passwd",
-    "credential",
-    "authorization",
-    "cookie",
-];
-
 /// THREAT[TM-HOOK-007]: copy of `value` with credential-named fields replaced
 /// (value patterns are scrubbed separately by `secret_scrub`), so recording
 /// what a hook rewrote does not publish what the hook injected.
@@ -443,7 +429,7 @@ fn redact_credential_fields(value: &serde_json::Value) -> serde_json::Value {
             object
                 .iter()
                 .map(|(key, item)| {
-                    let item = if is_credential_key(key) {
+                    let item = if crate::secret_scrub::is_credential_key(key) {
                         serde_json::Value::String(REDACTED_ARGUMENT.to_string())
                     } else {
                         redact_credential_fields(item)
@@ -457,15 +443,6 @@ fn redact_credential_fields(value: &serde_json::Value) -> serde_json::Value {
         }
         other => other.clone(),
     }
-}
-
-fn is_credential_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
-    // `token` only as a suffix: `access_token` is a credential, `max_tokens` is not.
-    normalized.ends_with("token")
-        || CREDENTIAL_KEY_FRAGMENTS
-            .iter()
-            .any(|fragment| normalized.contains(fragment))
 }
 
 /// Data for tool.progress event.
