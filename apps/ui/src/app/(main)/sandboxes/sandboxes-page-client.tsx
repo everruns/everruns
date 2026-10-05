@@ -184,7 +184,7 @@ export default function SandboxesPageClient() {
               setSearch(event.target.value);
               setPage(0);
             }}
-            placeholder="Search by session, agent, provider or provider id"
+            placeholder="Search sessions, agents, provider ids"
             className="min-w-64 flex-1"
           />
           <Select

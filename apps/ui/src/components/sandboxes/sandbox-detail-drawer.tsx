@@ -42,6 +42,13 @@ const TARGET_LABELS: Record<string, string> = {
   host: "This machine",
 };
 
+// What the Sandbox is being driven toward, in the same words as its state.
+const DESIRED_LABELS: Record<string, string> = {
+  ready: "Running",
+  paused: "Paused",
+  deleted: "Deleted",
+};
+
 function spanSeconds(span: SandboxStateSpan): number {
   return Math.max(
     0,
@@ -88,7 +95,7 @@ function History({ history }: { history: SandboxStateSpan[] }) {
 function Facts({ detail }: { detail: SandboxFleetDetail }) {
   const rows: Array<[string, React.ReactNode]> = [
     ["State", <SandboxStateBadge key="s" state={detail.state} />],
-    ["Wants", detail.desired_state],
+    ["Wants", DESIRED_LABELS[detail.desired_state] ?? detail.desired_state],
     ["Provider", providerLabel(detail.provider)],
     [
       "Target",
