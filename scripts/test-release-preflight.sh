@@ -155,6 +155,21 @@ require(mixed == [f"crate-c tagged at {SHA_B[:9]}, not the release commit {SHA_A
         f"a crate released from another commit must fail (0.34.1): {mixed}")
 untagged = preflight.audit_provenance("0.5.0", CRATES, {"crate/crate-a/v0.5.0": SHA_A})
 require(untagged == ["crate-b has no crate/crate-b/v0.5.0 release tag"], f"an untagged crate must fail: {untagged}")
+# A crate that joined the publish set after the version was cut waits for the
+# next version (durable-engine after 0.41.0); a tagged one failed to publish.
+registry({"crate-a": {"versions": ["0.5.0"]}})
+pending = preflight.pending_first_release("0.5.0", CRATES, preflight.Registry(), both)
+require(pending == [], f"a tagged never-published crate is a failed publish, not pending: {pending}")
+pending = preflight.pending_first_release(
+    "0.5.0", CRATES, preflight.Registry(), {"crate/crate-a/v0.5.0": SHA_A}
+)
+require(pending == ["crate-b"], f"an untagged never-published crate must wait: {pending}")
+registry({"crate-a": {"versions": ["0.5.0"]}, "crate-b": {"versions": ["0.4.0"]}})
+pending = preflight.pending_first_release(
+    "0.5.0", CRATES, preflight.Registry(), {"crate/crate-a/v0.5.0": SHA_A}
+)
+require(pending == [], f"a crate already on crates.io is never pending: {pending}")
+
 tags_path = tmp / "tags.json"
 tags_path.write_text(json.dumps({"tags": both}))
 os.environ["RELEASE_PREFLIGHT_TAGS_FIXTURE"] = str(tags_path)
