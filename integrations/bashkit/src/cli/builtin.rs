@@ -1,6 +1,7 @@
 //! The bash-tool adapter: a builtin that receives raw argv and walks the tree.
 
 use super::*;
+use everruns_cli_contract::tree::Parsed;
 
 // ============================================================================
 // Bash-tool adapter
@@ -20,12 +21,21 @@ use super::*;
 /// what they are then held to are one artifact.
 pub struct CliBuiltin {
     source: Arc<dyn CliCommandSource>,
-    tree: CliTree,
+    tree: Arc<CliTree>,
 }
 
 impl CliBuiltin {
     pub fn new(source: Arc<dyn CliCommandSource>) -> Self {
-        let tree = CliTree::from_source(source.as_ref());
+        let tree = source
+            .shared_tree()
+            .unwrap_or_else(|| Arc::new(tree_from_source(source.as_ref())));
+        Self { source, tree }
+    }
+
+    /// Serve `source` over a tree built once elsewhere. Building a tree
+    /// compiles a parser per command, which a host that installs the builtin
+    /// on every execution should pay once, not per call.
+    pub fn with_tree(source: Arc<dyn CliCommandSource>, tree: Arc<CliTree>) -> Self {
         Self { source, tree }
     }
 
@@ -33,134 +43,14 @@ impl CliBuiltin {
         &self.tree
     }
 
-    /// Resolve argv into either a command to run or help to print.
-    fn plan(&self, args: &[String]) -> CliPlan {
-        let wants_help = args.iter().any(|arg| arg == "--help" || arg == "-h");
-
-        let mut path: Vec<String> = Vec::new();
-        let mut rest = args.len();
-        for (index, arg) in args.iter().enumerate() {
-            if arg.starts_with('-') {
-                rest = index;
-                break;
-            }
-            path.push(arg.clone());
-            if self.tree.leaf(&path.join(" ")).is_some() {
-                rest = index + 1;
-                break;
-            }
-            rest = index + 1;
-        }
-
-        let spelling = path.join(" ");
-
-        // A resolved leaf handles its own `--help`, so the flag rides along
-        // with the rest of argv rather than being intercepted here. Help still
-        // beats execution: clap renders it and parses nothing.
-        if let Some(leaf) = self.tree.leaf(&spelling) {
-            return CliPlan::Run {
-                spelling,
-                wire_name: leaf.command.clone(),
-                args: args[rest.min(args.len())..].to_vec(),
-            };
-        }
-        if wants_help {
-            // No leaf: the caller is asking what exists under a node, which is
-            // the tree's question to answer. It must still fail when the path
-            // is not real, or a typo renders as a working help page.
-            let (path, unknown) = split_at_unknown(&self.tree, &spelling);
-            return CliPlan::Help { path, unknown };
-        }
-        if spelling.is_empty() || self.tree.is_node(&spelling) {
-            return CliPlan::Help {
-                path: spelling,
-                unknown: None,
-            };
-        }
-
-        let (path, unknown) = split_at_unknown(&self.tree, &spelling);
-        CliPlan::Help { path, unknown }
-    }
-
     /// Render help, or run the command and return its output.
     pub async fn run(&self, args: &[String]) -> Result<String, String> {
-        match self.plan(args) {
-            CliPlan::Help { path, unknown } => render_help(&self.tree, &path, unknown.as_deref()),
-            CliPlan::Run {
-                spelling,
-                wire_name,
-                args,
-            } => {
-                let leaf = self
-                    .tree
-                    .leaf(&spelling)
-                    .ok_or_else(|| format!("unknown command `{spelling}`"))?;
-                let parser = leaf
-                    .parser
-                    .clone()
-                    .name(format!("{} {spelling}", self.tree.root()));
-                let argv =
-                    std::iter::once(parser.get_name().to_string()).chain(args.iter().cloned());
-
-                match parser.clone().try_get_matches_from(argv) {
-                    Ok(matches) => self.source.dispatch(&wire_name, matches).await,
-                    // `--help` is a clap response, not a failure: it printed
-                    // what the caller asked for and ran nothing.
-                    Err(error) if is_display(&error) => Ok(error.render().to_string()),
-                    Err(error) => Err(error.render().to_string()),
-                }
-            }
+        match self.tree.parse(args) {
+            Parsed::Output(text) => Ok(text),
+            Parsed::Error(text) => Err(text),
+            Parsed::Run { wire_name, matches } => self.source.dispatch(&wire_name, matches).await,
         }
     }
-}
-
-/// Whether a clap error is a rendered response rather than a rejection.
-fn is_display(error: &clap::Error) -> bool {
-    use clap::error::ErrorKind;
-    matches!(
-        error.kind(),
-        ErrorKind::DisplayHelp
-            | ErrorKind::DisplayVersion
-            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
-    )
-}
-
-enum CliPlan {
-    Help {
-        path: String,
-        unknown: Option<String>,
-    },
-    Run {
-        /// Tree spelling the caller typed, for usage and errors.
-        spelling: String,
-        wire_name: String,
-        args: Vec<String>,
-    },
-}
-
-/// Split a typed path into the deepest prefix the tree knows and the first
-/// segment that does not resolve under it.
-///
-/// Walking forward matters. Collapsing to the nearest known ancestor and
-/// blaming whatever word was left over reports the *last* token, so
-/// `gadgets resize thing 4` becomes "unknown command `4`" when `gadgets` is
-/// the word that does not exist. The first unresolvable segment is the one
-/// the caller got wrong; everything after it was never reachable.
-pub(super) fn split_at_unknown(tree: &CliTree, path: &str) -> (String, Option<String>) {
-    let mut known: Vec<&str> = Vec::new();
-
-    for segment in path.split(' ').filter(|segment| !segment.is_empty()) {
-        let mut candidate = known.clone();
-        candidate.push(segment);
-        let joined = candidate.join(" ");
-        if tree.is_node(&joined) || tree.leaf(&joined).is_some() {
-            known = candidate;
-        } else {
-            return (known.join(" "), Some(segment.to_string()));
-        }
-    }
-
-    (known.join(" "), None)
 }
 
 /// Host-supplied command source, carried on `ToolContext` extensions.
@@ -186,6 +76,13 @@ impl EverrunsBuiltin {
     pub fn new(source: Arc<dyn CliCommandSource>) -> Self {
         Self {
             inner: CliBuiltin::new(source),
+        }
+    }
+
+    /// See [`CliBuiltin::with_tree`].
+    pub fn with_tree(source: Arc<dyn CliCommandSource>, tree: Arc<CliTree>) -> Self {
+        Self {
+            inner: CliBuiltin::with_tree(source, tree),
         }
     }
 
@@ -535,21 +432,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_rewriter_follows_the_hosts_root() {
-        let tree = CliTree::from_source(&BrandedSource);
-        assert_eq!(rewrite("acme invoices send", &tree), "send_invoice");
-        // The default token is just another word to a host that renamed it.
-        assert_eq!(
-            rewrite("everruns invoices send", &tree),
-            "everruns invoices send"
-        );
-    }
-
-    #[tokio::test]
     async fn the_default_root_is_unchanged() {
-        let tree = CliTree::from_source(&TestSource);
-        assert_eq!(tree.root(), "everruns");
-        assert_eq!(rewrite("everruns widgets list", &tree), "list_widgets");
+        assert_eq!(tree_from_source(&TestSource).root(), "everruns");
+        assert_eq!(tree_from_source(&BrandedSource).root(), "acme");
     }
 
     #[tokio::test]
