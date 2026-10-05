@@ -67,7 +67,7 @@ fn optional_u32(
 }
 
 /// Registry tags: `[registry/]name[:tag][@digest]`, no whitespace or shell metacharacters.
-fn validate_image_tag(tag: &str) -> Result<(), ToolExecutionResult> {
+pub(crate) fn validate_image_tag(tag: &str) -> Result<(), ToolExecutionResult> {
     let ok = !tag.is_empty()
         && tag.len() <= 256
         && tag

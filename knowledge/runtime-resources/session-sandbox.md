@@ -120,6 +120,15 @@ Daytona is the first implementation and lives in:
 
 `integrations/daytona/src/session_sandbox_provider.rs`
 
+Modal (`crates/integrations/src/modal/session_sandbox.rs`, provider `modal`) is
+the second. Modal has no stop/start, so pause snapshots the filesystem into a
+Modal image and terminates the sandbox, and resume boots a new sandbox from that
+image: the external id changes on every resume. A sandbox Modal ended without a
+pause reports `Lost` unless an earlier pause left a snapshot. It keeps no
+Everruns recovery volume, so Sandbox Templates allow only `provider_snapshot`
+durability for it, and it is offered only at development grade while the
+integration is experimental. See [Modal Sandboxes](../integrations/modal.md).
+
 ### Daytona recovery
 
 The coding harness keeps the live worktree on Daytona's writable local filesystem at

@@ -2781,6 +2781,7 @@ dependencies = [
  "everruns-core",
  "futures",
  "hyper-util",
+ "inventory",
  "prost",
  "protox",
  "serde",

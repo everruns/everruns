@@ -77,6 +77,12 @@ Modal caches built images per workspace, so the first sandbox from a new image t
 2. Start a server listening on `0.0.0.0` at that port
 3. Call `modal_tunnel_urls` to get the public HTTPS URL
 
+## Sandbox Templates
+
+On deployments that offer it, Modal is also a **managed** target in Sandbox Templates. Pick **Modal** under **Runs in** and choose the runtime (VM or gVisor), an image, CPU cores, memory and a workspace path (default `/workspace`). The agent then uses the standard sandbox tools instead of the `modal_*` tools, and Everruns manages the sandbox for the session.
+
+When the session goes idle, Everruns snapshots the sandbox filesystem and terminates the sandbox. The next command boots a new sandbox from that snapshot, so files survive but running processes do not. Recovery for Modal templates is `provider_snapshot`.
+
 ## Lifecycle
 
 Sandboxes run until the agent terminates them, their `timeout_seconds` or idle timeout passes, or the session's lease on them expires. Everruns terminates leased sandboxes when the lease expires, so an abandoned session does not keep one running. Modal bills running sandboxes per second; see [Modal pricing](https://modal.com/pricing).

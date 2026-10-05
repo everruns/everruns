@@ -1473,6 +1473,7 @@ Modal sandboxes are remote Linux VMs (default) or gVisor containers driven over 
 | TM-MODAL-004 | Shell injection through file paths | Medium | `modal_write_file` passes the path as a positional argument to a fixed `sh -c` script and the content over stdin; `modal_read_file` runs `cat --` with an argv path, not a shell string | MITIGATED |
 | TM-MODAL-005 | Sandbox not terminated, resource leak and spend | Medium | Every sandbox has a Modal-side lifetime (default 1 hour, max 24 hours), a 30-minute Everruns lease refreshed on use, and lease cleanup that terminates it; a failed state save terminates the just-created sandbox | MITIGATED |
 | TM-MODAL-006 | Full-network sandbox misuse and public tunnels | High | Capability is high-risk and Admin-gated via capability assignment policy; exposed ports are public HTTPS URLs by Modal design and the docs say so; residual network exposure depends on the user's Modal workspace | **CALLER RISK** |
+| TM-MODAL-007 | Sandbox Template redirects the managed provider to another endpoint | High | Template validation allowlists Modal options (no endpoint or test keys); the provider reads `_test_server_url` only when built with the `test-util` feature, which shipped builds never enable | MITIGATED |
 
 ## 19. Client-Side Tools (TM-CLIENT)
 

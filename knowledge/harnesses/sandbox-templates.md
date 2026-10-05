@@ -78,7 +78,7 @@ Everruns uses it for **where code runs**, and answers that question by which
 capability the harness enables. Bashkit, `container_sandbox`, Daytona, and E2B
 are four independent capabilities with four tool families and four state
 formats. `SessionSandboxProvider` (`crates/contracts/src/session_sandbox.rs`) is
-the provider-neutral managed-target SPI; Daytona is its first implementation. Containment is not
+the provider-neutral managed-target SPI; Daytona and Modal implement it. Containment is not
 a field anywhere: it is whatever the chosen capability happens to give, so
 Bashkit is default-deny by construction while a Daytona VM is wide open inside
 itself.
@@ -166,7 +166,7 @@ profile confirms rather than assumes it:
 | Target | Implied | Choice available |
 |---|---|---|
 | bashkit | isolated, network default-deny | none, fixed by the target |
-| daytona, e2b, container | isolated | egress policy only |
+| daytona, modal, e2b, container | isolated | egress policy only |
 | host, machine | none | `native` kernel policy, later |
 
 Naming note: `sandbox` is the plainer wire name for this field, and it makes the
