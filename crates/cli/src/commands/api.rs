@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use reqwest::Method;
 use serde_json::Value;
 
+#[derive(Clone)]
 pub struct ApiClient<'a> {
     api_url: &'a str,
     api_key: &'a str,
@@ -27,17 +28,23 @@ impl<'a> ApiClient<'a> {
         self.send(Method::POST, path, body).await
     }
 
-    async fn send(&self, method: Method, path: &str, body: Option<&Value>) -> Result<Value> {
+    /// An authenticated request to `path` under the API URL, for callers that
+    /// need the raw response (a stream, a file).
+    pub fn request(&self, method: Method, path: &str) -> reqwest::RequestBuilder {
         let url = format!("{}{}", self.api_url.trim_end_matches('/'), path);
-        let mut request = self
+        let request = self
             .http
-            .request(method.clone(), &url)
+            .request(method, &url)
             .header("Authorization", format!("Bearer {}", self.api_key));
-
         let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
-        if let Some(org_id) = self.org_id.or(env_org.as_deref()) {
-            request = request.header("X-Org-Id", org_id);
+        match self.org_id.or(env_org.as_deref()) {
+            Some(org_id) => request.header("X-Org-Id", org_id),
+            None => request,
         }
+    }
+
+    async fn send(&self, method: Method, path: &str, body: Option<&Value>) -> Result<Value> {
+        let mut request = self.request(method.clone(), path);
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -59,4 +66,16 @@ impl<'a> ApiClient<'a> {
             .await
             .with_context(|| format!("Failed to parse response from {method} {path}"))
     }
+}
+
+/// `path` with `query` appended, each value percent-encoded.
+pub fn with_query(path: &str, query: &[(&str, &str)]) -> String {
+    if query.is_empty() {
+        return path.to_string();
+    }
+    let pairs: Vec<String> = query
+        .iter()
+        .map(|(key, value)| format!("{key}={}", urlencoding::encode(value)))
+        .collect();
+    format!("{path}?{}", pairs.join("&"))
 }

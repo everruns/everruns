@@ -255,9 +255,22 @@ else
 fi
 
 # ========================================
-# Test: Chat (skip - SDK/server pagination compatibility issue with events endpoint)
+# Test: Chat
 # ========================================
-log_test "chat (SKIPPED - SDK pagination compatibility with events)"
+# --no-stream sends the message and returns: a full turn needs an LLM key,
+# which this job does not have.
+log_test "chat --no-stream"
+CHAT_OUTPUT=$("$CLI" --api-url "$API_URL" chat "Hello from the CLI e2e" --session "$SESSION_ID" --no-stream 2>&1) || {
+  log_fail "chat --no-stream failed"
+  echo "$CHAT_OUTPUT"
+}
+EVENTS_OUTPUT=$("$CLI" --api-url "$API_URL" sessions events list --session-id "$SESSION_ID" --output json 2>&1)
+if echo "$EVENTS_OUTPUT" | jq -e '[.data[] | select(.type == "input.message")] | length >= 1' > /dev/null 2>&1; then
+  log_pass "chat --no-stream recorded the message"
+else
+  log_fail "chat --no-stream did not record an input.message event"
+  echo "$EVENTS_OUTPUT"
+fi
 
 # ========================================
 # Test: Delete agent (cleanup)

@@ -3,18 +3,19 @@
 //
 // Design Decision: Use clap derive for ergonomic argument parsing.
 // Design Decision: Support text/json output formats for scripting.
-// Design Decision: Use everruns-sdk for API client.
+// Design Decision: No SDK. Platform commands go through the shared contract
+// mapper and POST /v1/commands; the rest is plain HTTP (see contract.rs).
 // Design Decision: Credential file (platform config dir/everruns/credentials.json) with env var override.
 
 mod auth;
 mod browser;
 mod commands;
 mod contract;
+mod events;
 mod output;
 mod user_dirs;
 
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
-use everruns_sdk::Everruns;
 
 #[derive(Parser)]
 #[command(name = "everruns")]
@@ -197,12 +198,7 @@ async fn main() -> anyhow::Result<()> {
     let api_url = creds.api_url;
     let org_id = creds.org_id;
 
-    // Build SDK client
-    let client = if let Some(org_id) = org_id.as_deref() {
-        Everruns::with_base_url_and_org_id(&api_key, &api_url, org_id)?
-    } else {
-        Everruns::with_base_url(&api_key, &api_url)?
-    };
+    let client = commands::api::ApiClient::new(&api_url, &api_key, org_id.as_deref());
 
     // Each arm's future is boxed rather than awaited inline. Without it every
     // command's state machine is inlined into main's, which the optimizer then
@@ -213,7 +209,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Agents { command } => {
             Box::pin(commands::agents::run(
                 command,
-                &client,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
@@ -225,7 +220,6 @@ async fn main() -> anyhow::Result<()> {
         Commands::Connections { command } => {
             Box::pin(commands::connections::run(
                 command,
-                &client,
                 &api_url,
                 &api_key,
                 output_format,
@@ -236,10 +230,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Sessions { command } => {
             Box::pin(commands::sessions::run(
                 command,
-                &client,
-                &api_url,
-                &api_key,
-                org_id.as_deref(),
+                client,
                 output_format,
                 cli.quiet,
             ))
@@ -263,7 +254,7 @@ async fn main() -> anyhow::Result<()> {
             no_stream,
         } => {
             Box::pin(commands::chat::run(
-                &client,
+                client,
                 output_format,
                 cli.quiet,
                 message,
@@ -656,6 +647,33 @@ mod tests {
         } else {
             panic!("Expected Files command");
         }
+    }
+
+    /// Regression: export's file flag used to share the global `--output`
+    /// id, so the format default ("text") became the file path.
+    #[test]
+    fn sessions_export_writes_stdout_unless_out_is_given() {
+        let cli = Cli::try_parse_from(["everruns", "sessions", "export", "ses_1"]).unwrap();
+        let Commands::Sessions {
+            command: commands::sessions::SessionsCommand::Export { out, .. },
+        } = cli.command
+        else {
+            panic!("expected sessions export");
+        };
+        assert_eq!(out, None);
+
+        let cli = Cli::try_parse_from([
+            "everruns", "-o", "json", "sessions", "export", "ses_1", "--out", "a.jsonl",
+        ])
+        .unwrap();
+        assert_eq!(cli.output, "json");
+        let Commands::Sessions {
+            command: commands::sessions::SessionsCommand::Export { out, .. },
+        } = cli.command
+        else {
+            panic!("expected sessions export");
+        };
+        assert_eq!(out.as_deref(), Some("a.jsonl"));
     }
 
     #[test]

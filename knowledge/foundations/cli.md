@@ -10,7 +10,7 @@ tags:
 
 ## Overview
 
-`everruns`, command-line interface for the Everruns platform. Manages agents, sessions, chat, and file sync.
+`everruns`, command-line interface for the Everruns platform. Manages agents, sessions, chat, and file sync. It has no SDK dependency: platform commands go through the shared contract and `POST /v1/commands`, the rest is plain HTTP.
 
 **Crate:** `crates/cli/`
 
@@ -95,14 +95,14 @@ Session management.
     - `--budget-limit tokens:2000000`, 2M token limit
     - `--budget-limit usd:10 --budget-limit tokens:2000000`, both limits, whichever hits first
 - `watch <id>`, stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
-- `export <id> [-o <path>] [--format jsonl|atif]`, export session messages to a file (`-o`/`--output`) or stdout. `--format` defaults to `jsonl` (one message per line); `atif` emits an ATIF trajectory.
+- `export <id> [--out <path>] [--format jsonl|atif]`, export session messages to a file (`--out`) or stdout. Not `-o`: that is the global output-format flag. `--format` defaults to `jsonl` (one message per line); `atif` emits an ATIF trajectory.
 
 ### `everruns chat`
 
 Send message and poll for response.
 
 - `chat --session <id> "<message>" [--timeout <s>] [--no-stream]`
-- Polls `/v1/sessions/{id}/events` every 500ms until `turn.completed` or timeout
+- Snapshots the latest event id, posts the message, then follows `GET /v1/sessions/{id}/sse` from that id (deltas excluded) until `turn.completed`, `turn.failed` or timeout. The stream reconnects with `since_id` and backoff; see `crates/cli/src/events.rs`.
 - No timeout by default (waits indefinitely); use `--timeout <s>` to set a limit
 
 ### `everruns connections`

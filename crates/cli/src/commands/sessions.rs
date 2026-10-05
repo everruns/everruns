@@ -1,10 +1,11 @@
 // Session management commands
 
+use crate::commands::api::{ApiClient, with_query};
+use crate::contract;
+use crate::events::EventStream;
 use crate::output::{OutputFormat, print_field};
 use anyhow::{Context, Result};
 use clap::{Subcommand, ValueEnum};
-use everruns_sdk::{CreateBudgetRequest, Everruns};
-use futures::StreamExt;
 use std::collections::HashMap;
 
 #[derive(Subcommand)]
@@ -100,9 +101,11 @@ pub enum SessionsCommand {
         /// Session ID (e.g. session_xxx)
         session: String,
 
-        /// Output file path (defaults to stdout)
-        #[arg(long, short)]
-        output: Option<String>,
+        /// File to write (defaults to stdout). Not `-o/--output`: that is the
+        /// global output-format flag, and sharing its id made clap fill this
+        /// with the format's default, so every export wrote a file named `text`.
+        #[arg(long)]
+        out: Option<String>,
 
         /// Export format: `jsonl` (one message per line, default) or `atif`
         /// (a single ATIF trajectory JSON document)
@@ -132,10 +135,7 @@ impl ExportFormat {
 
 pub async fn run(
     command: SessionsCommand,
-    client: &Everruns,
-    api_url: &str,
-    api_key: &str,
-    org_id: Option<&str>,
+    client: ApiClient<'_>,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -160,10 +160,7 @@ pub async fn run(
             budget_soft_limits,
         } => {
             create(
-                client,
-                api_url,
-                api_key,
-                org_id,
+                &client,
                 output,
                 quiet,
                 harness,
@@ -189,23 +186,15 @@ pub async fn run(
         SessionsCommand::Watch { session } => watch(client, output, session).await,
         SessionsCommand::Export {
             session,
-            output: file_path,
+            out: file_path,
             format,
-        } => {
-            export(
-                client, api_url, api_key, org_id, output, quiet, session, file_path, format,
-            )
-            .await
-        }
+        } => export(&client, output, quiet, session, file_path, format).await,
     }
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn create(
-    client: &Everruns,
-    api_url: &str,
-    api_key: &str,
-    org_id: Option<&str>,
+    client: &ApiClient<'_>,
     output: OutputFormat,
     quiet: bool,
     harness: Option<String>,
@@ -245,7 +234,7 @@ async fn create(
         max_iterations,
     })?;
 
-    let session = create_session_raw(api_url, api_key, org_id, &body).await?;
+    let session = contract::execute(client, "create_session", body).await?;
     let session_id = session
         .get("id")
         .and_then(|id| id.as_str())
@@ -254,30 +243,39 @@ async fn create(
 
     // Store secrets after session creation
     if !secrets.is_empty() {
-        client
-            .sessions()
-            .set_secrets(&session_id, &secrets)
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to store {} secrets for session {}",
-                    secrets.len(),
-                    session_id
-                )
-            })?;
+        contract::execute(
+            client,
+            "batch_set_session_secrets",
+            serde_json::json!({ "session_id": session_id, "secrets": secrets }),
+        )
+        .await
+        .with_context(|| {
+            format!(
+                "Failed to store {} secrets for session {}",
+                secrets.len(),
+                session_id
+            )
+        })?;
     }
 
     // Create budgets after session creation
     let mut created_budgets = Vec::new();
     for spec in &budget_specs {
-        let mut req = CreateBudgetRequest::new("session", &session_id, &spec.currency, spec.limit);
+        let mut params = serde_json::json!({
+            "subject_type": "session",
+            "subject_id": session_id,
+            "currency": spec.currency,
+            "limit": spec.limit,
+        });
         if let Some(soft) = spec.soft_limit {
-            req = req.soft_limit(soft);
+            params["soft_limit"] = serde_json::json!(soft);
         }
-        let budget = client.budgets().create(req).await.with_context(|| {
-            format!("Session {} created but budget creation failed", session_id)
-        })?;
-        created_budgets.push(serde_json::to_value(&budget)?);
+        let budget = contract::execute(client, "create_budget", params)
+            .await
+            .with_context(|| {
+                format!("Session {} created but budget creation failed", session_id)
+            })?;
+        created_budgets.push(budget);
     }
 
     if output.is_text() {
@@ -506,35 +504,6 @@ fn parse_hints(
     Ok(hints)
 }
 
-async fn create_session_raw(
-    api_url: &str,
-    api_key: &str,
-    org_id: Option<&str>,
-    body: &serde_json::Value,
-) -> Result<serde_json::Value> {
-    let http = reqwest::Client::new();
-    let mut req = http
-        .post(format!("{}/v1/sessions", api_url.trim_end_matches('/')))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(body);
-    let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
-    if let Some(org) = org_id.or(env_org.as_deref()) {
-        req = req.header("X-Org-Id", org);
-    }
-
-    let resp = req.send().await.context("Failed to create session")?;
-    let status = resp.status();
-    if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        anyhow::bail!("Create session failed ({}): {}", status, body);
-    }
-
-    resp.json()
-        .await
-        .context("Failed to parse create session response")
-}
-
 fn value_as_status(value: &serde_json::Value) -> Option<String> {
     value.as_str().map(ToOwned::to_owned).or_else(|| {
         value
@@ -646,21 +615,23 @@ fn parse_secrets(raw: &[String]) -> Result<HashMap<String, String>> {
     Ok(map)
 }
 
-async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {
+async fn watch(client: ApiClient<'_>, output: OutputFormat, session_id: String) -> Result<()> {
     // Verify session exists
-    let session = client
-        .sessions()
-        .get(&session_id)
-        .await
-        .map_err(|e| anyhow::anyhow!("Session not found: {} ({})", session_id, e))?;
+    let session = contract::execute(
+        &client,
+        "get_session",
+        serde_json::json!({ "session_id": session_id }),
+    )
+    .await
+    .map_err(|e| anyhow::anyhow!("Session not found: {} ({})", session_id, e))?;
 
     if output.is_text() {
-        let title = session.title.as_deref().unwrap_or("(untitled)");
+        let title = session["title"].as_str().unwrap_or("(untitled)");
         eprintln!("Watching session {} [{}]", session_id, title);
         eprintln!("Press Ctrl+C to stop\n");
     }
 
-    let mut stream = client.events().stream(&session_id);
+    let mut stream = EventStream::new(client, &session_id, None);
     // Tracks whether this stream has produced task.* lifecycle events, so the
     // legacy subagent.* fallback rendering can switch off (see format_event_text).
     let mut saw_task_events = false;
@@ -679,14 +650,7 @@ async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> R
                         if output.is_text() {
                             format_event_text(&event.event_type, &event.data, &event.ts, &mut saw_task_events);
                         } else {
-                            let event_json = serde_json::json!({
-                                "id": event.id,
-                                "type": event.event_type,
-                                "ts": event.ts,
-                                "session_id": event.session_id,
-                                "data": event.data,
-                            });
-                            output.print_value(&event_json);
+                            output.print_value(&event.to_json());
                         }
                     }
                     Some(Err(e)) => {
@@ -897,27 +861,16 @@ fn truncate_str(s: &str, max: usize) -> String {
 
 #[allow(clippy::too_many_arguments)]
 async fn export(
-    client: &Everruns,
-    api_url: &str,
-    api_key: &str,
-    org_id: Option<&str>,
+    client: &ApiClient<'_>,
     output: OutputFormat,
     quiet: bool,
     session_id: String,
     file_path: Option<String>,
     format: ExportFormat,
 ) -> Result<()> {
-    // JSONL stays on the SDK path (unchanged default). ATIF isn't exposed by
-    // the SDK's `export()` yet, so hit the export endpoint directly with the
-    // `format` query parameter. See EVE-685.
-    let body = match format {
-        ExportFormat::Jsonl => client
-            .sessions()
-            .export(&session_id)
-            .await
-            .context("Failed to export session")?,
-        ExportFormat::Atif => export_raw(api_url, api_key, org_id, &session_id, format).await?,
-    };
+    // The export is a document to write to disk, not a JSON value, so it is
+    // read from the endpoint directly rather than through a command.
+    let body = export_raw(client, &session_id, format).await?;
 
     if let Some(path) = file_path {
         std::fs::write(&path, &body).with_context(|| format!("Failed to write to {}", path))?;
@@ -944,32 +897,23 @@ async fn export(
     Ok(())
 }
 
-/// Fetch a session export directly from `GET /v1/sessions/{id}/export` with an
-/// explicit `format`, for formats the SDK client does not yet expose.
+/// Fetch a session export from `GET /v1/sessions/{id}/export` in `format`.
 async fn export_raw(
-    api_url: &str,
-    api_key: &str,
-    org_id: Option<&str>,
+    client: &ApiClient<'_>,
     session_id: &str,
     format: ExportFormat,
 ) -> Result<String> {
-    let http = reqwest::Client::new();
-    // `format` is a fixed enum-derived token (`jsonl`/`atif`), so it is safe to
-    // interpolate directly into the query string.
-    let mut req = http
-        .get(format!(
-            "{}/v1/sessions/{}/export?format={}",
-            api_url.trim_end_matches('/'),
-            session_id,
-            format.as_query_value(),
-        ))
-        .header("Authorization", format!("Bearer {}", api_key));
-    let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
-    if let Some(org) = org_id.or(env_org.as_deref()) {
-        req = req.header("X-Org-Id", org);
-    }
-
-    let resp = req.send().await.context("Failed to export session")?;
+    let resp = client
+        .request(
+            reqwest::Method::GET,
+            &with_query(
+                &format!("/v1/sessions/{}/export", urlencoding::encode(session_id)),
+                &[("format", format.as_query_value())],
+            ),
+        )
+        .send()
+        .await
+        .context("Failed to export session")?;
     let status = resp.status();
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();

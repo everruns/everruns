@@ -23,12 +23,11 @@ everruns-cli-contract.workspace = true
 # CLI
 clap.workspace = true
 
-# Everruns SDK
-everruns-sdk.workspace = true
 everruns-contracts = { workspace = true, default-features = false, features = ["tls-aws-lc-rs"] }
 
-# HTTP client (for endpoints not yet in SDK)
+# HTTP client and the session event stream
 reqwest.workspace = true
+eventsource-stream.workspace = true
 
 # Async runtime
 tokio.workspace = true
