@@ -36,16 +36,39 @@ const DEFAULT_WRITE_DENY_COMPONENTS: &[&str] = &[
 ];
 
 /// Workspace roots the runtime writes its own records under: delegated-run
-/// records (`/.agent-runs/{run_id}`) and structured task results
-/// (`/.tasks/{task_id}`). See `WorkspacePolicy::runtime_artifacts`.
-const RUNTIME_ARTIFACT_ROOTS: &[&str] = &[".agent-runs", ".tasks"];
+/// records (`/.agent-runs/{run_id}`), structured task results
+/// (`/.tasks/{task_id}`), and background-run artifacts
+/// (`/.background/{run_id}`). See `WorkspacePolicy::runtime_artifacts`.
+///
+/// Decision (EVE-1165): the `read_only` and `read_write` presets make these
+/// roots readable but never writable by the model. Wake messages point the
+/// model at `result_path`s under them, and only the runtime's confined store
+/// may create them, so the model can read results but not forge them. The
+/// allowance names exact root components; credentials below a root stay
+/// protected, and traversal is rejected before matching.
+const RUNTIME_ARTIFACT_ROOTS: &[&str] = &[".agent-runs", ".tasks", ".background"];
+
+fn runtime_artifact_roots() -> impl Iterator<Item = PolicyPath> {
+    RUNTIME_ARTIFACT_ROOTS
+        .iter()
+        .map(|root| PolicyPath(vec![(*root).to_string()]))
+}
+
+/// The framework-managed `.agents` tree plus the runtime artifact roots: the
+/// hidden scopes the presets may read but never write.
+fn preset_read_only_hidden_scopes() -> Vec<PolicyPath> {
+    std::iter::once(PolicyPath(vec![".agents".to_string()]))
+        .chain(runtime_artifact_roots())
+        .collect()
+}
 
 /// A validated, composable workspace access policy.
 ///
 /// [`Default`] is intentionally read-only: ordinary non-hidden files are
 /// readable throughout `/workspace`, while writes, hidden paths (except the
-/// framework-managed `.agents` tree), and common credential locations are
-/// denied. Use [`WorkspacePolicy::builder`] for
+/// framework-managed `.agents` tree and the runtime artifact roots
+/// `.agent-runs`, `.tasks`, and `.background`), and common credential
+/// locations are denied. Use [`WorkspacePolicy::builder`] for
 /// narrower scopes or [`WorkspacePolicy::read_write`] for an explicit opt-in
 /// to ordinary writes.
 ///
@@ -119,16 +142,20 @@ impl WorkspacePolicy {
     ///
     /// Ordinary files are readable, writes are denied, and hidden or common
     /// sensitive paths are inaccessible. The framework-managed `.agents` tree
-    /// remains readable so configured skills and instructions continue to work.
+    /// remains readable so configured skills and instructions continue to work,
+    /// and so do the runtime artifact roots, so the model can read the results
+    /// the runtime records for it.
     pub fn read_only() -> Self {
         Self {
             layers: vec![PolicyLayer {
                 read: vec![PolicyPath::root()],
                 write: Vec::new(),
                 deny_read: Vec::new(),
-                deny_write: Vec::new(),
+                // No write scope exists; the deny keeps the readable hidden
+                // scopes read-only even if this layer is ever widened.
+                deny_write: preset_read_only_hidden_scopes(),
                 deny_write_components: Vec::new(),
-                hidden: vec![PolicyPath(vec![".agents".to_string()])],
+                hidden: preset_read_only_hidden_scopes(),
                 sensitive: Vec::new(),
                 recursive_delete: false,
             }],
@@ -139,20 +166,22 @@ impl WorkspacePolicy {
     ///
     /// This is an explicit opt-in. Hidden and common sensitive paths remain
     /// denied, common dependency/build directory names remain non-writable at
-    /// every depth, and recursive directory deletion remains disabled. Build a
-    /// custom policy to choose different component restrictions.
+    /// every depth, and recursive directory deletion remains disabled. The
+    /// `.agents` tree and the runtime artifact roots are readable, not
+    /// writable. Build a custom policy to choose different component
+    /// restrictions.
     pub fn read_write() -> Self {
         Self {
             layers: vec![PolicyLayer {
                 read: vec![PolicyPath::root()],
                 write: vec![PolicyPath::root()],
                 deny_read: Vec::new(),
-                deny_write: vec![PolicyPath(vec![".agents".to_string()])],
+                deny_write: preset_read_only_hidden_scopes(),
                 deny_write_components: DEFAULT_WRITE_DENY_COMPONENTS
                     .iter()
                     .map(|component| (*component).to_string())
                     .collect(),
-                hidden: vec![PolicyPath(vec![".agents".to_string()])],
+                hidden: preset_read_only_hidden_scopes(),
                 sensitive: Vec::new(),
                 recursive_delete: false,
             }],
@@ -162,18 +191,13 @@ impl WorkspacePolicy {
     /// Policy for the store the runtime persists its own artifacts through
     /// (see [`crate::session_files::RuntimeArtifactFileSystem`]).
     ///
-    /// Read and write, including the hidden component, under `/.agent-runs`
-    /// and `/.tasks` only; everything else, the rest of the
+    /// Read and write, including the hidden component, under `/.agent-runs`,
+    /// `/.tasks`, and `/.background` only; everything else, the rest of the
     /// workspace included, stays denied. It is defense in depth for a store
-    /// that only runtime code with runtime-chosen paths holds, and grants
-    /// nothing to the model-facing store.
+    /// that only runtime code with runtime-chosen paths holds. The model-facing
+    /// presets grant read, never write, on the same roots.
     pub fn runtime_artifacts() -> Self {
-        let roots = || {
-            RUNTIME_ARTIFACT_ROOTS
-                .iter()
-                .map(|root| PolicyPath(vec![(*root).to_string()]))
-                .collect::<Vec<_>>()
-        };
+        let roots = || runtime_artifact_roots().collect::<Vec<_>>();
         Self {
             layers: vec![PolicyLayer {
                 read: roots(),
@@ -813,9 +837,57 @@ mod tests {
         ] {
             assert!(!policy.permits_write(path), "{path}");
         }
-        // The model-facing default is untouched: artifact roots stay denied.
+        assert!(policy.permits_write("/.background/bg_1/output.log"));
+        // The model-facing default reads the roots but cannot write them.
         let default = WorkspacePolicy::default();
         assert!(!default.permits_write("/.agent-runs/run_1/result.json"));
-        assert!(!default.permits_read("/.tasks/task_1/result.json"));
+        assert!(default.permits_read("/.tasks/task_1/result.json"));
+    }
+
+    /// EVE-1165: the model reads the results the runtime writes for it
+    /// (`result_path` in wake messages), but its own file tools can never
+    /// create or overwrite them, and the allowance reaches nothing else hidden.
+    #[test]
+    fn presets_grant_read_only_access_to_runtime_artifact_roots() {
+        for policy in [WorkspacePolicy::read_only(), WorkspacePolicy::read_write()] {
+            for root in ["/.agent-runs", "/.tasks", "/.background"] {
+                for path in [
+                    root.to_string(),
+                    format!("{root}/run_1/result.json"),
+                    format!("/workspace{root}/run_1/output.log"),
+                ] {
+                    assert!(policy.permits_read(&path), "read: {path}");
+                    assert!(policy.permits_read_traversal(&path), "traverse: {path}");
+                    assert!(!policy.permits_write(&path), "write: {path}");
+                    assert!(policy.check_write(&path).is_err(), "check_write: {path}");
+                }
+                // Case variants are distinct paths on case-sensitive providers:
+                // the allow stays exact, the write deny folds case.
+                let upper = format!("{}/run_1/result.json", root.to_ascii_uppercase());
+                assert!(!policy.permits_read(&upper), "read: {upper}");
+                assert!(!policy.permits_write(&upper), "write: {upper}");
+            }
+            for path in [
+                // Traversal out of an artifact root is rejected before matching.
+                "/.agent-runs/../.ssh/id_rsa",
+                "/.tasks/../.env",
+                "/.background/./../.git/config",
+                // Credentials stay protected even inside an artifact root.
+                "/.agent-runs/run_1/.env",
+                "/.tasks/task_1/.git/config",
+                "/.background/bg_1/.ssh/id_rsa",
+                // Lookalike hidden roots are not artifact roots.
+                "/.agent-runs-secret/x",
+                "/.tasksx/result.json",
+                "/.config/app.toml",
+            ] {
+                assert!(!policy.permits_read(path), "read: {path}");
+                assert!(!policy.permits_write(path), "write: {path}");
+            }
+        }
+        // A custom policy starts deny-by-default; the presets' allowance is
+        // not implied.
+        let custom = WorkspacePolicy::builder().allow_read("/").build().unwrap();
+        assert!(!custom.permits_read("/.agent-runs/run_1/result.json"));
     }
 }

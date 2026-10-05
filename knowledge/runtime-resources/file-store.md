@@ -547,6 +547,10 @@ hidden paths, sensitive paths, and recursive deletes. Applications opt into
 writes and protected paths with explicit scopes. The broad read-write
 convenience retains component-level denies for common dependency and build
 directories; custom policies can configure their own component restrictions.
+Both presets keep the runtime artifact roots (`/.agent-runs`, `/.tasks`,
+`/.background`) readable but never writable: wake messages point the model at a
+`result_path` there, and only the host's confined runtime artifact store writes
+those records, so the model can read a result but not forge one.
 Denies win, and composition is an intersection so adding a layer cannot broaden
 access. See the source for the API contract rather than duplicating its methods
 here.

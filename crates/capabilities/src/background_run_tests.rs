@@ -310,6 +310,97 @@ async fn test_spawn_background_executes_and_signals_session() {
     );
 }
 
+/// EVE-1165: under the read-only default the model-facing store denies every
+/// write, so run artifacts land through the host's runtime artifact store, and
+/// the model can read (not write) the `result_path` the wake message names.
+#[tokio::test]
+async fn test_spawn_background_writes_artifacts_under_read_only_policy() {
+    use everruns_core::WorkspacePolicy;
+    use everruns_core::host::PolicyFileStore;
+    use everruns_core::session_files::RuntimeArtifactFileSystem;
+
+    let session_id = SessionId::new();
+    let backing = Arc::new(TestFileStore::default());
+    let model_store: Arc<dyn SessionFileSystem> = Arc::new(PolicyFileStore::new(
+        backing.clone(),
+        WorkspacePolicy::read_only(),
+    ));
+    let artifacts: Arc<dyn SessionFileSystem> = Arc::new(PolicyFileStore::new(
+        backing.clone(),
+        WorkspacePolicy::runtime_artifacts(),
+    ));
+    let platform_store = Arc::new(TestSubagentDelegate::default());
+    let task_registry = Arc::new(InMemoryTaskRegistry::default());
+    let tool_registry = ToolRegistry::builder()
+        .tool(SpawnBackgroundTool)
+        .tool(TestBackgroundTool)
+        .build();
+
+    let mut context =
+        ToolContext::with_stores(session_id, model_store.clone(), Arc::new(NoopStorageStore))
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_nested_tool_policy(allow_all_policy())
+            .with_subagent_delegate(platform_store.clone())
+            .with_session_task_registry(task_registry.clone());
+    context
+        .extensions
+        .insert(Arc::new(RuntimeArtifactFileSystem(artifacts)));
+
+    let result = SpawnBackgroundTool
+        .execute_with_context(
+            json!({
+                "tool": "test_background",
+                "args": { "summary": "Background complete" }
+            }),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(value) = result else {
+        panic!("spawn_background should succeed, got {result:?}");
+    };
+    let run_id = value["run_id"].as_str().unwrap().to_string();
+    let task_id = value["task_id"].as_str().unwrap().to_string();
+
+    tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        loop {
+            if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                && task.state == everruns_core::session_task::SessionTaskState::Succeeded
+            {
+                break task;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("background run should complete");
+
+    let messages = platform_store.sent_messages.lock().unwrap().clone();
+    let result_path = format!("/.background/{run_id}/result.json");
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains(&result_path)),
+        "wake message names the result path: {messages:?}"
+    );
+    for path in [result_path, format!("/.background/{run_id}/output.log")] {
+        assert!(
+            model_store
+                .read_file(session_id, &path)
+                .await
+                .expect("the model may read run artifacts")
+                .is_some(),
+            "missing {path}"
+        );
+        assert!(
+            model_store
+                .write_file(session_id, &path, "forged", "text")
+                .await
+                .is_err(),
+            "the model must not write {path}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn test_spawn_background_persists_failure_artifacts() {
     let session_id = SessionId::new();
