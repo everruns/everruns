@@ -215,6 +215,27 @@ export interface paths {
     patch: operations["update_agent"];
     trace?: never;
   };
+  "/v1/agents/{agent_id}/avatar": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * PUT /v1/agents/{agent_id}/avatar - Upload the agent's avatar
+     * @description Upload an avatar for an agent as multipart field `file` (PNG, JPEG, GIF or WebP, at least 64x64, at most 10 MB). The image is center-cropped to a square and pre-rendered as square and circular PNG presets. Replaces any previous avatar, whose URLs stop resolving. Also sets the icon of the agent's one-click Slack apps.
+     */
+    put: operations["upload_agent_avatar"];
+    post?: never;
+    /** DELETE /v1/agents/{agent_id}/avatar - Remove the agent's avatar */
+    delete: operations["delete_agent_avatar"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/channels": {
     parameters: {
       query?: never;
@@ -992,6 +1013,26 @@ export interface paths {
     put?: never;
     /** @description Invoke a webhook channel for a published App. The body is forwarded to the agent as a message. */
     post: operations["invoke_webhook_legacy"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/avatars/{avatar_id}/{variant}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * GET /v1/avatars/{avatar_id}/{variant} - Avatar image
+     * @description Public, immutable avatar image. `variant` is `square-{size}.png` or `circle-{size}.png` for a size in the avatar's `sizes`, or `source.png` for the uploaded square crop.
+     */
+    get: operations["get_avatar_variant"];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -5416,6 +5457,7 @@ export interface components {
        * @example 2026-05-26T00:00:00Z
        */
       archived_at?: string | null;
+      avatar?: components["schemas"]["AgentAvatar"] | null;
       /**
        * @description Capabilities enabled for this agent with per-agent configuration.
        *     Capabilities add tools and system prompt modifications.
@@ -5572,6 +5614,42 @@ export interface components {
     AgentAnalysisResponse: {
       /** @description Advisory findings, built-in and LLM-sourced (knowledge/evaluation/agent-checks.md) */
       findings: components["schemas"]["Finding"][];
+    };
+    /**
+     * @description An agent's avatar, pre-rendered as square and circular PNG presets.
+     *
+     *     URLs are relative to the API base URL, public, and immutable: a new upload
+     *     gets a new `id`, so they can be cached forever. Any size in `sizes` can be
+     *     substituted into a URL, e.g. `/v1/avatars/{id}/circle-64.png`; the uploaded
+     *     square crop is at `/v1/avatars/{id}/source.png`.
+     */
+    AgentAvatar: {
+      /**
+       * @description Circular avatar (transparent corners), 256 px.
+       * @example /v1/avatars/avatar_01933b5a000070008000000000000001/circle-256.png
+       */
+      circle_url: string;
+      /**
+       * @description Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+       * @example avatar_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description Edge lengths, in pixels, available for both shapes.
+       * @example [
+       *       32,
+       *       64,
+       *       128,
+       *       256,
+       *       512
+       *     ]
+       */
+      sizes: number[];
+      /**
+       * @description Square avatar, 256 px.
+       * @example /v1/avatars/avatar_01933b5a000070008000000000000001/square-256.png
+       */
+      url: string;
     };
     /**
      * @description Per-agent capability configuration
@@ -11823,6 +11901,7 @@ export interface components {
          * @example 2026-05-26T00:00:00Z
          */
         archived_at?: string | null;
+        avatar?: components["schemas"]["AgentAvatar"] | null;
         /**
          * @description Capabilities enabled for this agent with per-agent configuration.
          *     Capabilities add tools and system prompt modifications.
@@ -21222,6 +21301,7 @@ export interface components {
        * @example 2026-05-26T00:00:00Z
        */
       archived_at?: string | null;
+      avatar?: components["schemas"]["AgentAvatar"] | null;
       /**
        * @description Capabilities enabled for this agent with per-agent configuration.
        *     Capabilities add tools and system prompt modifications.
@@ -23587,6 +23667,100 @@ export interface operations {
       };
     };
   };
+  upload_agent_avatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description Multipart form with a `file` field */
+    requestBody?: {
+      content: {
+        "multipart/form-data": unknown;
+      };
+    };
+    responses: {
+      /** @description Avatar stored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentAvatar"];
+        };
+      };
+      /** @description Missing or invalid image */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not allowed to manage this agent */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_avatar: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Avatar removed (or there was none) */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not allowed to manage this agent */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
   list_agent_channels: {
     parameters: {
       query?: never;
@@ -25920,6 +26094,38 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
         };
+      };
+    };
+  };
+  get_avatar_variant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Avatar ID (avatar_...) */
+        avatar_id: string;
+        /** @description e.g. square-128.png, circle-64.png, source.png */
+        variant: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description PNG image */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "image/png": unknown;
+        };
+      };
+      /** @description Unknown avatar or variant */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };
