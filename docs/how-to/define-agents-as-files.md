@@ -170,7 +170,10 @@ curl "$EVERRUNS_API_URL/v1/agents/triage/export?format=zip" \
 
 `POST /v1/agents/validate` and `POST /v1/agents/diff` accept the same bytes or an
 envelope `{ "content": "…", "format": "toml", "target": "triage" }`.
-Validation returns `valid` and field-addressed `diagnostics`. Diff requires
+Validation returns `valid`, field-addressed `diagnostics`, and an authored
+`preview` when parsing succeeds, even if a destination dependency is missing.
+The preview contains file sizes, permissions and digests, without asset bodies
+or resolved credentials. Diff requires
 `target` and returns `changed` and `changes`. Export formats are `markdown`
 (default), `toml`, `yaml`, `json` and `zip`.
 

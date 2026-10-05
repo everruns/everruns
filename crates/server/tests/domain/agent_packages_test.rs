@@ -86,14 +86,14 @@ async fn validation_and_dependency_failure_never_create_an_agent() {
     let mut value = definition("invalid-package");
     value["capabilities"] = json!(["missing-capability"]);
     let body = json!({"content":value.to_string(),"format":"json"});
-    assert_eq!(
-        server
-            .post("/v1/agents/validate", &body)
-            .await
-            .assert_success()
-            .json_value()["valid"],
-        false
-    );
+    let validation = server
+        .post("/v1/agents/validate", &body)
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(validation["valid"], false);
+    assert_eq!(validation["preview"]["name"], "invalid-package");
+    assert_eq!(validation["preview"]["instructions"], "Read the runbook.");
     server
         .post("/v1/agents/import", &body)
         .await
