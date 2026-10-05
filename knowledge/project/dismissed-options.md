@@ -179,3 +179,27 @@ does not touch.
 
 **Revisit if**: the public API surface shrinks enough that per-CGU bookkeeping becomes
 the dominant term, or a profile is added whose builds are not latency-sensitive.
+
+## Durable turns as replayed `Workflow`s
+
+**Status**: Dismissed
+
+**What it was**: Running each agent turn on the durable backend as an
+`everruns-durable` `Workflow` whose state is rebuilt by replaying its event
+history, with input, reason and act as its activities.
+
+**Why considered**: `everruns-durable` already ships `Workflow`, `Activity` and
+`WorkflowExecutor`, so a replayed turn would reuse a generic engine feature
+instead of the turn-specific queue driver.
+
+**Why dismissed**: The turn's state machine (`TurnExecution`) is already
+serializable, so a per-step checkpoint stores what replay would recompute.
+Replay would need the planning logic restated as deterministic workflow code, a
+second planner beside `everruns_core::engine`. And a session's history keeps
+growing, so resuming one step would replay ever more events. The durable
+backend keeps queue plus per-step checkpoint; see
+[Execution Backends](../framework/execution-backends.md).
+
+**Revisit if**: turns need workflow-only features, such as durable timers or
+child workflows, that the checkpoint driver cannot provide without
+reimplementing them.

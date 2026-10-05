@@ -573,7 +573,7 @@ impl Agent {
         self.plugin_warnings.clone()
     }
 
-    async fn build_runtime_with_backends(
+    pub(crate) async fn build_runtime_with_backends(
         &self,
         mut backends: HostBackends,
         session_id: SessionId,

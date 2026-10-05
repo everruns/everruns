@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-05
+
+* **Turns run through one execution backend seam.** Core's host defines the
+  experimental `TurnBackend`; the facade session actor runs every turn through
+  its in-process default with no behavior change. `everruns-durable-engine` is
+  planned as the published durable backend, keeping queue plus per-step
+  checkpoint rather than `Workflow` replay. See
+  [Execution Backends](framework/execution-backends.md),
+  [Crate Layout](project/crate-layout.md) and
+  [Dismissed Options](project/dismissed-options.md).
+
 ## 2026-10-04
 
 * **Decision models share provider authentication.** Direct TypeSafe and OpenRouter use the same neutral System One contract. Tenant models retain service/profile identity, support an explicit decision default, and bind Jev through host credential, egress, budget and usage boundaries. Utility guardrails remain deployment-owned. See [Decision Service](operations/decisions-service.md).
