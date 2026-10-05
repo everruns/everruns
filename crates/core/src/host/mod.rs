@@ -57,6 +57,7 @@ mod runtime_context;
 mod runtime_host;
 mod session_file_system_factory;
 pub mod session_services;
+mod turn_backend;
 mod turn_strategy;
 mod turn_tool_context;
 mod workspace;
@@ -142,6 +143,7 @@ pub use session_services::{
     is_internal_session_kv_key, is_internal_session_secret_name, session_title_updated_event,
     update_session_title_with_event,
 };
+pub use turn_backend::{InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnTicket};
 pub use turn_strategy::advance_host_execution;
 #[deprecated(note = "use WorkspaceBackend")]
 pub use workspace::WorkspaceBackend as WorkspaceProvider;

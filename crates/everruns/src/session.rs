@@ -14,7 +14,8 @@ use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::host::{
-    AcceptedTurnInput, InProcessRuntime, TurnResult, TurnSteering, TurnSteeringPushError,
+    AcceptedTurnInput, InProcessBackend, InProcessRuntime, TurnBackend, TurnInput, TurnRequest,
+    TurnResult, TurnSteering, TurnSteeringPushError, TurnTicket,
 };
 use everruns_core::turn::TurnStopReason;
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
@@ -27,6 +28,8 @@ use crate::hooks::{
 use crate::observers::ObserverDispatcher;
 use crate::{Agent, Harness, SessionEnvironmentError};
 
+#[cfg(test)]
+mod backend_tests;
 mod interrupted;
 
 pub use interrupted::InterruptedTurn;
@@ -648,6 +651,9 @@ struct SessionActor {
     harness: Option<Harness>,
     environment: Option<everruns_core::host::Environment>,
     runtime: Option<InProcessRuntime>,
+    /// Runs the turns, built with `runtime`. In process until the builder
+    /// can select a durable backend.
+    backend: Option<Arc<dyn TurnBackend>>,
     agent_started: bool,
     deferred: VecDeque<Command>,
     parked_calls: watch::Sender<Option<everruns_core::host::ParkedToolCalls>>,
@@ -664,6 +670,7 @@ impl SessionActor {
             harness: inner.harness.get().cloned(),
             environment: inner.environment.get().cloned(),
             runtime: None,
+            backend: None,
             agent_started: false,
             deferred: VecDeque::new(),
             parked_calls: inner.parked_calls.clone(),
@@ -948,34 +955,27 @@ impl SessionActor {
         commands: &mut mpsc::Receiver<Command>,
     ) -> bool {
         let runtime = self.runtime.as_ref().expect("runtime built above").clone();
+        let backend = self
+            .backend
+            .clone()
+            .expect("backend built with the runtime");
         // The turn this drives parks anew or not at all.
         self.parked_calls.send_replace(None);
         let (outcome, cancelled) = {
-            let mut run: std::pin::Pin<
-                Box<
-                    dyn Future<
-                            Output = everruns_contracts::error::Result<
-                                everruns_core::host::TurnResult,
-                            >,
-                        > + Send
-                        + '_,
-                >,
-            > = match entry {
-                TurnEntry::Input(input) => Box::pin(runtime.run_steerable_turn(
-                    self.session_id,
-                    *input,
-                    turn_id,
-                    steering.clone(),
-                )),
-                TurnEntry::Interrupted => {
-                    Box::pin(runtime.resume_interrupted_turn(self.session_id, steering.clone()))
-                }
+            let input = match entry {
+                TurnEntry::Input(input) => TurnInput::Message(input),
+                TurnEntry::Interrupted => TurnInput::ResumeInterrupted,
                 #[cfg(feature = "ag-ui")]
-                TurnEntry::Resume(results) => Box::pin(runtime.resume_steerable_turn(
-                    self.session_id,
-                    results,
-                    steering.clone(),
-                )),
+                TurnEntry::Resume(results) => TurnInput::ToolResults(results),
+            };
+            let request =
+                TurnRequest::new(self.session_id, turn_id, input).with_steering(steering.clone());
+            // A turn that cannot start fails like one that fails at once.
+            let mut run = match backend.start_turn(request).await {
+                Ok(ticket) => ticket,
+                Err(error) => {
+                    TurnTicket::new(self.session_id, turn_id, std::future::ready(Err(error)))
+                }
             };
             let mut cancelled = false;
             let outcome = loop {
@@ -1038,6 +1038,11 @@ impl SessionActor {
                                 let _ = response.send(true);
                                 self.hook_state.take_failures();
                                 cancelled = true;
+                                // The turn takes no further step; `run` drops
+                                // it before finalization records the cancel.
+                                if let Err(error) = backend.cancel(self.session_id).await {
+                                    tracing::warn!(error = %error, "turn backend failed to cancel a turn");
+                                }
                                 break Some(Ok(Turn::cancelled(turn_id)));
                             }
                             let _ = response.send(false);
@@ -1108,23 +1113,24 @@ impl SessionActor {
                 .map_err(|error| {
                     everruns_contracts::error::AgentLoopError::store(error.to_string())
                 })?;
-            self.runtime = Some(
-                self.agent
-                    .build_runtime_with_event_sink(
-                        self.execution
-                            .backends()
-                            .await
-                            .map_err(crate::agent::BackendInitError::into_agent_loop)?
-                            .host
-                            .clone(),
-                        self.session_id,
-                        self.environment.clone(),
-                        self.harness.as_ref(),
-                        self.event_bus.clone(),
-                        self.hook_state.clone(),
-                    )
-                    .await?,
-            );
+            let runtime = self
+                .agent
+                .build_runtime_with_event_sink(
+                    self.execution
+                        .backends()
+                        .await
+                        .map_err(crate::agent::BackendInitError::into_agent_loop)?
+                        .host
+                        .clone(),
+                    self.session_id,
+                    self.environment.clone(),
+                    self.harness.as_ref(),
+                    self.event_bus.clone(),
+                    self.hook_state.clone(),
+                )
+                .await?;
+            self.backend = Some(Arc::new(InProcessBackend::new(runtime.clone())));
+            self.runtime = Some(runtime);
         }
         Ok(())
     }

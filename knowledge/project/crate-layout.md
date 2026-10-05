@@ -26,7 +26,7 @@ boundary, or a selectable integration, and for nothing else.
 
 ## Success Bars
 
-- Published crates drop from 52 to about 37, with no capability removed.
+- Published crates drop from 52 to about 38, with no capability removed.
 - Control-plane records (agent, harness, session rows, organizations, billing, audit)
   exist only in `crates/server/`.
 - Only the server and `everruns-durable` open a database connection.
@@ -46,7 +46,7 @@ layer, never upward.
 | | `everruns-serve` (+ `-macros`, `-build`, `-agentcore`, `-celld`) | serving one app as a service | yes |
 | | yolop | terminal coding agent, own repository | own repo |
 | Entry crates | `everruns` | the Framework facade; its features pick drivers, integrations, and capabilities, and it owns the default "batteries" wiring | yes |
-| | `everruns-durable-engine` | runs core turns on durable workflows; the worker's only path into core | no |
+| | `everruns-durable-engine` | the durable execution backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's only path into core | yes (planned) |
 | Building blocks | `everruns-core` | engine, host runtime, builtins, MCP, A2A, AG-UI | yes |
 | | `everruns-capabilities` | hosted capabilities (subagents, session tasks, background runs, knowledge, container sandbox) | yes |
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
@@ -99,6 +99,19 @@ schemas and shared query callbacks, but open SQLite handles through durable's AP
 [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) also keeps
 durable generic and prevents worker dependencies from bypassing the private entry.
 
+### Turns run through one backend seam
+
+Core's host owns `TurnBackend`
+([source](../../crates/core/src/host/turn_backend.rs)), the one interface through
+which a host starts, cancels, and observes a session's turns. The facade's session
+actor runs every turn through it, on the in-process default today.
+`everruns-durable-engine` is the durable implementation: published so an
+application can choose it from the facade, it must therefore carry nothing
+private to the platform. The gRPC stores and runner constructors, `tonic`, and
+`everruns-internal-protocol` move to the worker, which then runs the shared turn
+driver over its gRPC store. Why queue plus per-step checkpoint rather than
+`Workflow` replay is recorded in [Execution Backends](../framework/execution-backends.md).
+
 ### Core stays wasm-safe by default
 
 Folding the engine, host, builtins, and protocol crates into `everruns-core` must not
@@ -127,7 +140,7 @@ and drivers through contract traits and registries, and ships with none attached
 | `everruns-platform` agent, harness, session, org, app, audit, payment, reporting, email, Slack, feature flags, eval, budget, triggers | `crates/server/` | move; neutral Slack action identity lives in contracts and is re-exported by internal protocol (avoids a published-to-private dependency) |
 | `everruns-engine`, `everruns-host`, `everruns-builtins`, `everruns-mcp`, `everruns-ag-ui` | `everruns-core` features | merge, shim |
 | A2A protocol client inside `everruns-platform`'s `a2a_delegation` capability | `everruns-core` `a2a` feature, beside MCP | move; the delegation capability stays in `everruns-capabilities` and calls it |
-| the worker's direct core, engine, and durable wiring | `everruns-durable-engine` | new, unpublished |
+| the worker's direct core, engine, and durable wiring | `everruns-durable-engine` | new; published once it is the durable backend |
 
 ## Migration Order
 
@@ -158,6 +171,11 @@ published name can land in any release.
    release is fully published; canonical feature modules retain every capability.
 7. **Migrate yolop in one batch** onto `everruns-contracts`, `everruns-core`, and
    `everruns-capabilities`. Yolop is pinned to 0.33.0 and moves once, not per step.
+8. **Publish the durable backend.** Add the `TurnBackend` seam to core and route the
+   facade through its in-process default. Move the gRPC stores and constructors out of
+   `everruns-durable-engine` into the worker and ban `tonic` and the internal protocol
+   there; move the worker's turn driver in; implement `TurnBackend` on the durable
+   runner; then add the crate to the publish set and the facade's `durable` feature.
 
 The isolation guards in [`scripts/lib/`](../../scripts/lib/) name today's crates, so
 each step updates the ones it touches in the same change: provider isolation (step 2),
