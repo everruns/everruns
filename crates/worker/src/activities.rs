@@ -73,13 +73,12 @@ pub async fn input_activity(
         "Executing input_activity"
     );
 
-    runtime_execute_input_activity(
-        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client(grpc_client)),
-        org_id,
-        input,
-    )
-    .await
-    .context("InputAtom execution failed")
+    let host = WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client(grpc_client));
+    let result = runtime_execute_input_activity(&host, org_id, input).await;
+    // The turn's start events are stored in the background; store them
+    // before anything the next step emits.
+    host.flush_events().await;
+    result.context("InputAtom execution failed")
 }
 
 /// Call the LLM model for reasoning using ReasonAtom
