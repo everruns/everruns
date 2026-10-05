@@ -1,12 +1,14 @@
 //! The backend conformance suite: the same scenarios on every turn backend.
 //!
-//! Each scenario runs once on the in-process backend (the default) and once on
-//! the durable memory backend (`durable::Backend::memory`), and the two must
-//! observe the same outcome: the turns' answers and shape (stop reason,
+//! Each scenario runs once on the in-process backend (the default), once on
+//! the durable memory backend (`durable::Backend::memory`) and, when
+//! `DATABASE_URL` names a test database, once on the durable PostgreSQL
+//! backend (`durable::Backend::postgres`), and all must observe the same
+//! outcome: the turns' answers and shape (stop reason,
 //! iterations, tool calls), the session's persisted event types in order, and
 //! whatever the scenario notes on the way (send dispositions, parked calls,
 //! AG-UI event types). `TurnBackend` stays experimental until this suite
-//! passes on both (see `knowledge/framework/execution-backends.md`).
+//! passes on every backend (see `knowledge/framework/execution-backends.md`).
 //!
 //! Scenarios:
 //! - `turns`: a single turn, a tool loop, steering into the running turn
@@ -20,6 +22,8 @@
 //! encodes it; none is compared loosely.
 //!
 //! Run with: `cargo test -p everruns --features durable,ag-ui --test backend_conformance`
+//! (`DATABASE_URL=postgres://... ` in front adds the PostgreSQL backend; the
+//! durable schema is applied to it, idempotently).
 
 mod interrupted;
 mod parked;

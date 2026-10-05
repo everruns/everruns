@@ -24,7 +24,7 @@ use everruns_llmsim::LlmSimRuntimeExt;
 use futures::StreamExt;
 use serde_json::{Value, json};
 
-use crate::support::{BACKENDS, BackendKind, Observed, has_event, run_on};
+use crate::support::{BackendKind, Observed, backends, has_event, postgres_store, run_on};
 
 /// Calls the client-side `confirm` tool, then answers.
 fn confirming_model() -> LlmSimConfig {
@@ -106,6 +106,17 @@ fn summarize(events: &[Event]) -> String {
     format!("{types:?} text={text:?} finished={finished}")
 }
 
+/// Wait for the session's next `session.idled`, the end of its turn.
+async fn until_idle(events: &mut everruns::EventStream) {
+    loop {
+        match events.recv().await {
+            Ok(Some(event)) if event.event_type() == "session.idled" => return,
+            Ok(Some(_)) => {}
+            other => panic!("the session idles, got {other:?}"),
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_session_parks_on_a_client_call_and_its_result_resumes_the_turn() {
     let outcome = run_on(
@@ -123,6 +134,7 @@ async fn a_session_parks_on_a_client_call_and_its_result_resumes_the_turn() {
                 run_input("run-1", vec![Message::user("m1", "Deploy the service.")]),
             )
             .await;
+            let mut events = session.events();
             let resumed = run(
                 &session,
                 run_input(
@@ -134,6 +146,11 @@ async fn a_session_parks_on_a_client_call_and_its_result_resumes_the_turn() {
                 ),
             )
             .await;
+            // The run ends at the turn's answer; the turn ends one planning
+            // step later. Dropping the session in between drops that step on
+            // every backend (in process it is merely too quick to lose), so
+            // wait for the turn's end as a caller that keeps its session does.
+            until_idle(&mut events).await;
             Observed::default()
                 .note(summarize(&parked))
                 .note(summarize(&resumed))
@@ -191,7 +208,7 @@ async fn client_tool_runtime() -> (InProcessRuntime, SessionId) {
 }
 
 /// A backend over `runtime`, and what keeps it running.
-fn seam_backend(
+async fn seam_backend(
     kind: BackendKind,
     runtime: &InProcessRuntime,
     session_id: SessionId,
@@ -200,6 +217,11 @@ fn seam_backend(
         BackendKind::InProcess => (Arc::new(InProcessBackend::new(runtime.clone())), None),
         BackendKind::DurableMemory => {
             let durable = DurableBackend::memory(2);
+            let session = durable.attach(session_id, runtime.clone());
+            (Arc::new(session), Some(durable))
+        }
+        BackendKind::DurablePostgres => {
+            let durable = DurableBackend::postgres(postgres_store().await, 2);
             let session = durable.attach(session_id, runtime.clone());
             (Arc::new(session), Some(durable))
         }
@@ -221,9 +243,9 @@ fn shape(result: &TurnResult) -> Value {
 #[tokio::test]
 async fn a_backend_parks_a_turn_and_tool_results_resume_it() {
     let mut outcomes = Vec::new();
-    for kind in BACKENDS {
+    for kind in backends() {
         let (runtime, session_id) = client_tool_runtime().await;
-        let (backend, _durable) = seam_backend(kind, &runtime, session_id);
+        let (backend, _durable) = seam_backend(kind, &runtime, session_id).await;
         let finish = |ticket: TurnTicket| async move {
             tokio::time::timeout(Duration::from_secs(10), ticket)
                 .await

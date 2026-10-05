@@ -28,6 +28,12 @@ cargo add everruns-durable-engine
   turn, cancel it, and ask whether a session runs one. Starting a turn creates
   or claims the session's workflow and enqueues its first step before it
   returns; the `TurnTicket` it hands back resolves when the workflow ends.
+- `DurableBackend`, which runs a framework application's turns with workers in
+  its own process, each step on the session's `InProcessRuntime`:
+  `DurableBackend::memory` over an in-memory store, `DurableBackend::postgres`
+  over a PostgreSQL store several processes may share, each claiming only its
+  own sessions' steps. The `everruns` facade selects it with its `durable`
+  feature.
 - `TurnTaskDriver`, which runs one claimed turn task against any `TaskStore`:
   cancellation check, heartbeat, the step, completion or failure, then the next
   step's enqueue or the workflow's completion. A `TurnTaskHost` supplies the

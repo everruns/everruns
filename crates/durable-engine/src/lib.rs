@@ -15,9 +15,11 @@
 //!   it starts, cancels and observes a session's turns. Starting a turn creates
 //!   or claims the session's workflow and enqueues its first step before it
 //!   returns; the ticket resolves when the workflow ends.
-//! - [`DurableBackend`] runs a framework application's turns: it owns an
-//!   in-memory durable store and in-process workers that drive each step on
-//!   the session's own `InProcessRuntime`. [`DurableBackend::attach`] gives a
+//! - [`DurableBackend`] runs a framework application's turns: in-process
+//!   workers drive each step on the session's own `InProcessRuntime`, over an
+//!   in-memory store ([`DurableBackend::memory`]) or a PostgreSQL one
+//!   ([`DurableBackend::postgres`]) that several processes may share, each
+//!   claiming only its own sessions' steps. [`DurableBackend::attach`] gives a
 //!   session its [`TurnBackend`](everruns_core::host::TurnBackend). The
 //!   `everruns` facade selects it with its `durable` feature.
 //! - [`TurnTaskDriver`] runs one claimed turn task against any
@@ -103,7 +105,10 @@
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
+mod backend_store;
 pub mod durable_backend;
+#[cfg(test)]
+mod durable_backend_postgres_tests;
 #[cfg(test)]
 mod durable_backend_tests;
 pub mod durable_execution;

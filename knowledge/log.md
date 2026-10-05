@@ -2,6 +2,16 @@
 
 ## 2026-10-05
 
+* **The durable framework backend runs on PostgreSQL.**
+  `durable::Backend::postgres(store)` runs facade turns on a shared
+  `everruns-durable` PostgreSQL store. Each backend instance claims only the
+  steps it routed to itself (its own key in the activity type, no schema
+  change), since a step needs a runtime only the attaching engine has; a
+  session attached again ends the workflow a gone process left running for it,
+  and an interrupted turn continues from the session log as on every backend.
+  The conformance suite passes on it with `DATABASE_URL` set. See
+  [Execution Backends](framework/execution-backends.md#postgresql).
+
 * **Durable turn tickets wake on completion.** A `DurableRunner` ticket over
   the memory store waits on a workflow-end signal the store fires at every
   terminal status write, with a 1 s poll as the fallback, instead of a 50 ms

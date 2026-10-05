@@ -15,9 +15,10 @@ tags:
 in-process backend implements it in full; `DurableRunner` in the published
 `everruns-durable-engine` crate implements it for server-persisted input only,
 and `DurableBackend` beside it runs facade sessions behind the `everruns`
-`durable` feature for every framework input: new messages, steering,
-cancellation, parked client-side tool calls and interrupted turns. The
-cross-backend conformance suite passes on both.
+`durable` feature, over an in-memory or a PostgreSQL store, for every
+framework input: new messages, steering, cancellation, parked client-side
+tool calls and interrupted turns. The cross-backend conformance suite passes
+on all three.
 
 ## Problem
 
@@ -68,10 +69,12 @@ and a crash `recover()`. The worker resumes from a persisted resolution id the
 in-process path has no store for, so it is a doc-hidden `Persisted` input
 variant instead, which the in-process backend rejects. A turn a process exit
 cut off is resumed per session from the session log through
-`ResumeInterrupted`, on any backend. The durable memory backend needed no
+`ResumeInterrupted`, on any backend. The durable memory backend needs no
 `recover()` for it: its queue dies with the process, so the log is all that
-survives. `recover()` joins only with a shared store, for workflows another
-process left behind.
+survives. The PostgreSQL one does not either: what a dead process leaves in
+the shared store is ended per session when the session is attached again
+(see [PostgreSQL](#postgresql) below), and the turn continues from the log the
+same way.
 
 ### The default: in process
 
@@ -136,8 +139,8 @@ The `everruns` facade's opt-in `durable` feature adds
 engine builder; without it an engine runs in process, and the default build
 never compiles the durable engine. The generic part is
 [`DurableBackend`](../../crates/durable-engine/src/durable_backend.rs) in
-durable-engine: it owns an in-memory durable store and a pool of in-process
-workers, each handing claimed turn tasks to a `TurnTaskDriver` whose host is
+durable-engine: it owns a durable store (in memory, or PostgreSQL; see
+below) and a pool of in-process workers, each handing claimed turn tasks to a `TurnTaskDriver` whose host is
 the runtime the session attached. The facade only wires the builder and
 attaches each session's runtime; the workflow id is the session id, as on the
 platform.
@@ -177,10 +180,50 @@ platform.
     process: the ticket subtracts what the turn had counted before.
 
 Not served on the durable backend: server-persisted input, a configuration
-error. Still to come: a PostgreSQL store. PostgreSQL needs more than a store constructor: workers sharing a queue across processes
-would claim tasks for sessions another process attached, so it waits on a
-route from a task's session to the process (or runtime factory) that can run
-it, and on `recover()` for workflows a crashed process left behind.
+error.
+
+### PostgreSQL
+
+`durable::Backend::postgres(store)` runs the same backend over
+`everruns-durable`'s PostgreSQL store
+(`PostgresWorkflowEventStore::connect` connects and applies its schema, so a
+framework user never touches the driver). The queue is then shared, by other
+engines and processes, which raises two questions the memory store never did.
+
+- **Routing: a step runs where its session is attached.** A step needs the
+  session's `InProcessRuntime`, which lives only in the engine that opened
+  the session, so a worker of another process cannot run it; claiming it
+  would fail it. Each PostgreSQL backend instance therefore gets a routing
+  key of its own and tags every task it enqueues with it in the activity type
+  (`reason@<key>`), and its workers claim only tagged types. The durable claim
+  already filters by activity type, so this needs no schema change; the
+  backend's store wrapper strips the tag before the driver sees a task
+  ([`backend_store.rs`](../../crates/durable-engine/src/backend_store.rs)).
+  The key is one per backend instance, not configurable: a key shared by
+  processes would hand one process a step only another one can run. Sharing
+  it becomes useful only once any process can build a session's runtime from
+  configuration (a runtime factory), which the framework does not have.
+- **Recovery: per session, from the log.** A process that dies leaves its
+  sessions' workflows running in the store, with a step claimed by a worker
+  that is gone; nothing ever claims it again, and the workflow would refuse
+  the session's next turn. So the first turn a freshly attached session starts
+  (after `Engine::resume`, in a new process or a new engine) first ends any
+  workflow left running for it: it fails the claimed steps without retry and
+  cancels the workflow. The turn then starts as it would in process; a turn
+  cut off in its tool calls continues through `ResumeInterrupted` from the
+  session log, which therefore has to outlive the process too. Nothing
+  replays the dead process's queue: its checkpoint holds no more than the
+  log does, and the session actor that would own a replayed turn is gone.
+  Two live engines attaching the same session is a misuse either way; the
+  second ends the first's turn.
+- **Tickets still wake on the workflow's end.** Every workflow a routed
+  backend starts ends in its own process (driver completion, task failure,
+  cancellation, recovery), so the backend's store wrappers fire a local
+  end signal at those status writes, as the memory store does, instead of
+  the 50 ms poll.
+- Idle workers poll every 500 ms instead of 50 ms: every task routed to a
+  backend is enqueued in its process, which wakes a worker, so the poll only
+  catches a retry's backoff.
 
 ### Benchmark
 
@@ -191,11 +234,14 @@ call, reason), at 1, 16 and 64 concurrent slots of short sessions, reporting
 per-turn `send_and_wait` p50/p99 and turns per second. It lives in the facade
 because it needs both backends and `Engine`; durable-engine depending back on
 the facade would build a second copy of itself. The durable PostgreSQL store
-is not a framework backend yet, so it is not measured.
+is measured only in a full run with `DATABASE_URL` set; the smoke never
+needs a database.
 
 Baseline, a 4-core cloud container (one full run,
 [`turn_backends_baseline.jsonl`](../../crates/everruns/benches/turn_backends_baseline.jsonl);
-durable rows at 4 workers, 16 workers within noise except where shown):
+durable rows at 4 workers, 16 workers within noise except where shown;
+the PostgreSQL rows from a later run against PostgreSQL 16 on the same
+host):
 
 | Scenario | Backend | c1 p50 ms | c1 turns/s | c16 turns/s | c64 turns/s | c64 p99 ms |
 |---|---|---:|---:|---:|---:|---:|
@@ -203,13 +249,21 @@ durable rows at 4 workers, 16 workers within noise except where shown):
 | text | durable memory | 2.3 | 436 | 864 (1019 at w16) | 894 (952 at w16) | 81 |
 | tool | in process | 5.0 | 198 | 338 | 351 | 258 |
 | tool | durable memory | 5.7 | 172 | 280 (300 at w16) | 282 (255 at w16) | 302 |
+| text | durable PostgreSQL | 16.4 | 59 | 183 | 181 | 407 |
+| tool | durable PostgreSQL | 38.4 | 26 | 89 (105 at w16) | 90 | 906 |
 
 - **A durable turn costs ~0.4 ms (text) to ~0.8 ms (tool) over in process
   for one session**: the queue, checkpoints and wakeups. Before tickets woke
   on the workflow's end they polled every 50 ms, and that poll was almost all
   of the durable latency: c1 p50 was 51.6 ms text and 51.5 ms tool (19
   turns/s), and c16 throughput 302 and 263 turns/s.
-- **Under load both backends are CPU-bound** and close: at c16 and c64
+- **On PostgreSQL a turn costs a database round trip per store write**
+  (local PostgreSQL 16 on the same host): ~16 ms text and ~38 ms tool for
+  one session, and throughput levels off near 180 text and 90-105 tool
+  turns/s whatever the worker count, because the runner serializes its store
+  calls behind one lock and the pool holds ten connections. Real model
+  latency dwarfs both; neither is tuned yet.
+- **Under load the in-process and memory backends are CPU-bound** and close: at c16 and c64
   durable throughput is ~70-90% of in process.
 - **Turn cost grows with session history on both backends**, which is why
   the bench keeps sessions to five turns: over a 100-turn session an
@@ -259,7 +313,8 @@ workflows that fit them; turns do not use them. The option is recorded in
   on every backend and requires identical answers, turn shapes, notes and
   persisted event sequences. Park and resume runs both through a session's
   AG-UI runs and directly on the seam, where the resumed turn's result is
-  visible. It passes on the in-process and the durable memory backend.
+  visible. It passes on the in-process, the durable memory and, with
+  `DATABASE_URL` set, the durable PostgreSQL backend.
 - Core's default build stays wasm-safe: the seam spawns nothing.
 - The facade's default build compiles no durable engine; durable execution
   is the opt-in `durable` feature.

@@ -47,16 +47,25 @@
 //!     state, so the driver runs it and plans on from there.
 //!   - The ticket of a continued turn counts only the steps this run takes,
 //!     as an in-process result does.
-//! - No `recover()`: the memory store dies with the process, so a turn a
-//!   process exit cut off survives only in the session log, which
-//!   `ResumeInterrupted` resumes from. A shared store needs a
-//!   session-to-runtime route this backend does not have yet.
+//! - On PostgreSQL ([`DurableBackend::postgres`]) the queue is shared with
+//!   other processes, so each backend claims only the tasks it routed to
+//!   itself (see `backend_store`).
+//! - Recovery is per session, from the session log, on every store. A turn a
+//!   process exit cut off continues through `ResumeInterrupted`, as in
+//!   process; nothing replays the dead process's queue. The memory store
+//!   dies with its process. On PostgreSQL, the dead process's workflow for
+//!   the session is still running in the shared store, its step claimed by a
+//!   worker that is gone, and would block the session's next turn; so the
+//!   first turn a freshly attached session starts first ends any workflow
+//!   another backend left running for it ([`LEFT_BEHIND`]), failing its
+//!   claimed tasks and cancelling it. Only then does the turn start, the
+//!   same way it would in process.
 //! - Not served: `Persisted`, the server's stored input, with a configuration
 //!   error.
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -70,13 +79,19 @@ use everruns_core::host::{
     AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnSteering,
     TurnTicket, in_process_internal_org_id,
 };
-use everruns_durable::{ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo};
+use everruns_durable::{
+    ClaimedTask, InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, TaskFilter,
+    TaskQueue, TaskStatus, WorkerInfo,
+};
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
-use crate::durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput};
+use crate::backend_store::{BackendTaskStore, RoutedDurableStore, Routing};
+use crate::durable_runner::{
+    DirectDurableStore, DurableRunner, DurableTaskNotifier, DurableTurnInput,
+};
 use crate::task_heartbeat::CancelSignals;
 use crate::task_store::TaskStore;
 use crate::turn_backend::TurnBaseline;
@@ -86,14 +101,26 @@ use crate::turn_driver::{TurnTaskDriver, TurnTaskHost, act_task_input};
 /// the queue again.
 pub const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
+/// How long an idle worker on a PostgreSQL backend waits before it polls the
+/// queue again. Every task routed to this backend is enqueued in this
+/// process, which wakes a worker, and a worker that finished a step claims
+/// again at once, so the poll only catches a retry's backoff; it is long so
+/// idle workers do not query the database twenty times a second.
+pub const POSTGRES_WORKER_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Why a session's workflow is ended when it was left running by a backend
+/// that no longer runs it; see the module notes.
+pub const LEFT_BEHIND: &str = "Left running by a durable backend that no longer runs it";
+
 /// How often a worker heartbeats the task it runs, as the platform worker.
 const TASK_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 
 /// The activities a turn is made of.
 const TURN_ACTIVITIES: [&str; 3] = ["process_input", "reason", "act"];
 
-/// Runs turns as queued, checkpointed steps on an in-memory durable store,
-/// with a pool of workers in this process.
+/// Runs turns as queued, checkpointed steps on a durable store (in memory, or
+/// PostgreSQL shared with other processes), with a pool of workers in this
+/// process.
 ///
 /// **Experimental**, with [`TurnBackend`].
 ///
@@ -155,12 +182,16 @@ impl Drop for Owner {
 }
 
 struct Shared {
-    store: Arc<InMemoryWorkflowEventStore>,
+    store: Arc<BackendTaskStore>,
+    /// The PostgreSQL store other backends share, for ending the workflows
+    /// they left behind; `None` for a store this backend owns.
+    shared_store: Option<PostgresWorkflowEventStore>,
     runner: DurableRunner,
     sessions: Mutex<HashMap<SessionId, Arc<SessionSlot>>>,
     wake: Arc<Notify>,
     shutdown: CancellationToken,
     worker_count: usize,
+    poll_interval: Duration,
     workers: Mutex<Option<Vec<JoinHandle<()>>>>,
     running_workers: Arc<AtomicUsize>,
 }
@@ -187,15 +218,87 @@ impl DurableBackend {
         let wake = Arc::new(Notify::new());
         let runner = DurableRunner::new_with_shared_store(store.clone())
             .with_task_notifier(Arc::new(WakeWorkers(wake.clone())));
+        Self::new(
+            BackendTaskStore::owned(store),
+            None,
+            runner,
+            wake,
+            workers,
+            WORKER_POLL_INTERVAL,
+        )
+    }
+
+    /// A backend over a PostgreSQL durable store, run by `workers`
+    /// in-process workers (at least one).
+    ///
+    /// Every step is queued and checkpointed in the database, so the queue
+    /// can be shared: several backends, in one process or many, may use the
+    /// same database. Each claims only the steps of the sessions attached to
+    /// it, so a step always runs where its session's runtime lives. A session
+    /// that comes back after its process exited (attached again, here or in
+    /// a new process) first ends whatever workflow the old backend left
+    /// running for it; a turn cut off in its tool calls then continues from
+    /// the session log with [`TurnInput::ResumeInterrupted`], as in process.
+    ///
+    /// The store must carry `everruns-durable`'s schema
+    /// ([`PostgresWorkflowEventStore::connect`] applies it).
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use everruns_durable_engine::DurableBackend;
+    /// use everruns_durable_engine::durable::PostgresWorkflowEventStore;
+    /// use everruns_durable_engine::host::InProcessRuntime;
+    /// # use everruns_contracts::typed_id::SessionId;
+    ///
+    /// # async fn run(runtime: InProcessRuntime, session_id: SessionId)
+    /// # -> Result<(), Box<dyn std::error::Error>> {
+    /// let store = PostgresWorkflowEventStore::connect("postgres://localhost/my_app").await?;
+    /// let backend = DurableBackend::postgres(store, 4);
+    /// let session = backend.attach(session_id, runtime);
+    /// // `session` is the session's `TurnBackend`, as on the memory store.
+    /// # let _ = session;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn postgres(store: PostgresWorkflowEventStore, workers: usize) -> Self {
+        let routing = Routing::unique();
+        let wake = Arc::new(Notify::new());
+        let runner = DurableRunner::from_store(RoutedDurableStore::new(
+            DirectDurableStore::new(store.pool().clone()),
+            routing.clone(),
+        ))
+        .with_task_notifier(Arc::new(WakeWorkers(wake.clone())));
+        debug!(routing_key = routing.key(), "durable PostgreSQL backend");
+        Self::new(
+            BackendTaskStore::routed(Arc::new(store.clone()), routing),
+            Some(store),
+            runner,
+            wake,
+            workers,
+            POSTGRES_WORKER_POLL_INTERVAL,
+        )
+    }
+
+    fn new(
+        store: BackendTaskStore,
+        shared_store: Option<PostgresWorkflowEventStore>,
+        runner: DurableRunner,
+        wake: Arc<Notify>,
+        workers: usize,
+        poll_interval: Duration,
+    ) -> Self {
         let shutdown = CancellationToken::new();
         Self {
             shared: Arc::new(Shared {
-                store,
+                store: Arc::new(store),
+                shared_store,
                 runner,
                 sessions: Mutex::default(),
                 wake,
                 shutdown: shutdown.clone(),
                 worker_count: workers.max(1),
+                poll_interval,
                 workers: Mutex::new(None),
                 running_workers: Arc::default(),
             }),
@@ -276,6 +379,7 @@ impl Shared {
                 tokio::spawn(run_worker(
                     Arc::downgrade(self),
                     worker_id,
+                    self.poll_interval,
                     self.wake.clone(),
                     self.shutdown.clone(),
                     self.running_workers.clone(),
@@ -306,6 +410,7 @@ impl Drop for WorkerExit {
 async fn run_worker(
     shared: std::sync::Weak<Shared>,
     worker_id: String,
+    poll_interval: Duration,
     wake: Arc<Notify>,
     shutdown: CancellationToken,
     running: Arc<AtomicUsize>,
@@ -336,14 +441,14 @@ async fn run_worker(
                 tokio::select! {
                     () = shutdown.cancelled() => break,
                     () = wake.notified() => {}
-                    () = tokio::time::sleep(WORKER_POLL_INTERVAL) => {}
+                    () = tokio::time::sleep(poll_interval) => {}
                 }
             }
             Err(error) => {
                 warn!(%worker_id, %error, "durable backend worker failed to claim a task");
                 tokio::select! {
                     () = shutdown.cancelled() => break,
-                    () = tokio::time::sleep(WORKER_POLL_INTERVAL) => {}
+                    () = tokio::time::sleep(poll_interval) => {}
                 }
             }
         }
@@ -413,6 +518,9 @@ struct SessionSlot {
     runtime: InProcessRuntime,
     turn: Mutex<SlotTurn>,
     step: tokio::sync::Mutex<()>,
+    /// Whether this attachment already ended any workflow another backend
+    /// left running for the session; see the module notes.
+    recovered: AtomicBool,
 }
 
 /// The session's current turn, as its steps need it.
@@ -437,6 +545,7 @@ impl SessionSlot {
                 pending_prompt_messages: Vec::new(),
             }),
             step: tokio::sync::Mutex::new(()),
+            recovered: AtomicBool::new(false),
         }
     }
 
@@ -618,6 +727,50 @@ fn store_error(error: anyhow::Error) -> AgentLoopError {
 }
 
 impl DurableSessionBackend {
+    /// On a shared store, end the workflow another backend left running for
+    /// this session, once per attachment: fail the steps its gone workers
+    /// still hold, then cancel it, so the session's next turn can start. See
+    /// the module notes.
+    async fn recover_left_behind(&self, session_id: SessionId) -> Result<()> {
+        let Some(store) = &self.shared.shared_store else {
+            return Ok(());
+        };
+        if self.slot.recovered.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        if self.shared.runner.is_running(session_id).await {
+            let claimed = store
+                .list_tasks(
+                    TaskFilter {
+                        status: Some(TaskStatus::Claimed),
+                        workflow_id: Some(session_id.uuid()),
+                        ..TaskFilter::default()
+                    },
+                    Pagination::default(),
+                )
+                .await
+                .map_err(|error| store_error(error.into()))?;
+            for task in claimed {
+                // Not retryable: the step goes to the dead-letter queue
+                // instead of back to a queue no worker of this key claims
+                // from. A step that is no longer claimed was failed already.
+                if let Err(error) = store
+                    .fail_task_with_retry(task.id, LEFT_BEHIND, false)
+                    .await
+                {
+                    debug!(task_id = %task.id, %error, "left-behind step already ended");
+                }
+            }
+            self.shared
+                .runner
+                .cancel_workflow(session_id, LEFT_BEHIND)
+                .await?;
+            warn!(%session_id, "ended a durable turn workflow another backend left running");
+        }
+        self.slot.recovered.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
     /// Make `steering` the session's current turn's, with a fresh cancel.
     fn begin_turn(&self, steering: TurnSteering) {
         *self.slot.turn() = SlotTurn {
@@ -773,6 +926,7 @@ impl TurnBackend for DurableSessionBackend {
         if matches!(input, TurnInput::Persisted(_)) {
             return Err(unsupported_input(&input));
         }
+        self.recover_left_behind(session_id).await?;
         if self.shared.runner.is_running(session_id).await {
             return Err(already_running(session_id));
         }

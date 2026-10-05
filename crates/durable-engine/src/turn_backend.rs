@@ -297,6 +297,45 @@ impl DurableRunner {
         Ok(())
     }
 
+    /// Drop the session workflow's pending tasks and mark it cancelled with
+    /// `message`; whether it was still running. The body of
+    /// [`TurnBackend::cancel`], which a backend also uses to end a workflow
+    /// another process left behind.
+    pub(crate) async fn cancel_workflow(
+        &self,
+        session_id: SessionId,
+        message: &str,
+    ) -> Result<bool> {
+        let workflow_id = session_id.uuid();
+        let mut store = self.store.lock().await;
+        let was_running = matches!(
+            store.get_workflow_status(workflow_id).await,
+            Ok((status, _, _)) if !status.is_terminal()
+        );
+        store.cancel_pending_tasks(workflow_id).await.map_err(|e| {
+            AgentLoopError::store(format!("Failed to cancel pending workflow tasks: {e}"))
+        })?;
+        let message = message.to_string();
+        let output = DurableTurnOutput {
+            session_id,
+            success: false,
+            error: Some(message.clone()),
+            stop_reason: TurnStopReason::Cancelled,
+        };
+        let output = serde_json::to_value(output)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode turn output: {e}")))?;
+        store
+            .update_workflow_status(
+                workflow_id,
+                WorkflowStatus::Cancelled,
+                Some(output),
+                Some(message),
+            )
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to cancel workflow: {e}")))?;
+        Ok(was_running)
+    }
+
     /// A ticket that resolves once the session's workflow reaches a
     /// terminal status.
     pub(crate) fn ticket(&self, session_id: SessionId, turn_id: TurnId) -> TurnTicket {
@@ -373,34 +412,8 @@ impl TurnBackend for DurableRunner {
     /// the server's cancel always did; the returned flag says whether it was
     /// still running.
     async fn cancel(&self, session_id: SessionId) -> Result<bool> {
-        let workflow_id = session_id.uuid();
-        let mut store = self.store.lock().await;
-        let was_running = matches!(
-            store.get_workflow_status(workflow_id).await,
-            Ok((status, _, _)) if !status.is_terminal()
-        );
-        store.cancel_pending_tasks(workflow_id).await.map_err(|e| {
-            AgentLoopError::store(format!("Failed to cancel pending workflow tasks: {e}"))
-        })?;
-        let message = "User requested cancellation".to_string();
-        let output = DurableTurnOutput {
-            session_id,
-            success: false,
-            error: Some(message.clone()),
-            stop_reason: TurnStopReason::Cancelled,
-        };
-        let output = serde_json::to_value(output)
-            .map_err(|e| AgentLoopError::store(format!("Failed to encode turn output: {e}")))?;
-        store
-            .update_workflow_status(
-                workflow_id,
-                WorkflowStatus::Cancelled,
-                Some(output),
-                Some(message),
-            )
+        self.cancel_workflow(session_id, "User requested cancellation")
             .await
-            .map_err(|e| AgentLoopError::store(format!("Failed to cancel workflow: {e}")))?;
-        Ok(was_running)
     }
 
     async fn is_running(&self, session_id: SessionId) -> bool {
