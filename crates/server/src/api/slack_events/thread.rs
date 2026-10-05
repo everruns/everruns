@@ -1,9 +1,6 @@
-//! Thread backfill: paging replies, injecting context, and posting back.
+//! Thread backfill: paging replies and injecting context.
 
-use crate::records::SlackReplyMode;
 use everruns_core::channel::ThreadContext;
-
-use crate::storage::StorageBackend;
 
 use super::*;
 
@@ -389,90 +386,4 @@ pub(crate) fn should_skip_thread_reply(
     }
 
     false
-}
-
-/// Whether an event row was triggered by the given input message.
-///
-/// The polling loop in [`wait_and_post_response`] sees every event on the
-/// session, including ones from a previous or concurrent turn; this decides
-/// which of those the bot should act on (post to Slack, stop polling on
-/// completion/failure). Events with no `input_message_id` in their context
-/// (or a different one) never match — only an exact match to our turn's
-/// input message id does.
-pub(crate) fn event_belongs_to_input_message(
-    context: &serde_json::Value,
-    our_input_message_id: &str,
-) -> bool {
-    context.get("input_message_id").and_then(|v| v.as_str()) == Some(our_input_message_id)
-}
-
-/// Wait for the agent turn to complete and stream responses to Slack.
-///
-/// Posts each `output.message.completed` text to Slack as it arrives, giving
-/// users real-time progress during multi-step turns (Reason→Act cycles).
-/// Filtering by `input_message_id` ensures we only see events from our turn.
-/// Stops polling when `turn.completed` or `turn.failed` fires.
-pub(crate) async fn wait_and_post_response(
-    db: &StorageBackend,
-    session_id: uuid::Uuid,
-    input_message_id: everruns_contracts::typed_id::MessageId,
-    bot_token: &str,
-    channel: &str,
-    thread_ts: &str,
-    reply_mode: SlackReplyMode,
-) -> anyhow::Result<()> {
-    use everruns_contracts::typed_id::{EventId, SessionId};
-
-    let session_id_typed = SessionId::from_uuid(session_id);
-    let input_msg_str = input_message_id.to_string();
-
-    // Poll for events (max 120 seconds)
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
-    let mut since_id: Option<EventId> = None;
-    let empty: Vec<String> = vec![];
-
-    loop {
-        if tokio::time::Instant::now() > deadline {
-            tracing::warn!(session_id = %session_id, "Timed out waiting for agent response");
-            break;
-        }
-
-        let events = db
-            .list_events(session_id_typed, None, since_id, &empty, &empty, None, None)
-            .await?;
-
-        for event_row in &events {
-            since_id = Some(event_row.id);
-
-            // Only consider events triggered by our input message
-            let is_our_turn = event_belongs_to_input_message(&event_row.context, &input_msg_str);
-
-            // Post each assistant message to Slack as it arrives. This gives
-            // users progress visibility during multi-step agent turns (e.g.
-            // "Let me search for that..." before tool execution).
-            if is_our_turn
-                && let Some(text) = crate::slack_delivery::extract_delivery_text(
-                    &event_row.event_type,
-                    reply_mode,
-                    &event_row.data,
-                )
-            {
-                post_to_slack(bot_token, channel, thread_ts, &text).await?;
-            }
-
-            // Stop polling once the turn ends
-            if event_row.event_type == "turn.completed" && is_our_turn {
-                return Ok(());
-            }
-
-            if event_row.event_type == "turn.failed" && is_our_turn {
-                tracing::warn!(session_id = %session_id, "Turn failed");
-                return Ok(());
-            }
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-
-    Ok(())
 }

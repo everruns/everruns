@@ -121,7 +121,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **Terminal-state notice** | A turn ending without a delivered reply posts exactly one status line with a session link (see Adapter Lifecycle). |
 | **Streaming (optional)** | Implement `ChannelStreamDelivery` and return it from `ChannelDeliveryAdapter::streaming()`. A platform without progressive delivery returns `None` and keeps discrete posting — the capability is probed, not required. One stream per output message, closed on every terminal state. |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
-| **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
+| **Wakeup without a listener** | The same dispatcher polls its active sessions when no PostgreSQL event listener runs (NATS delivery, or no listener URL). There is no separate deadline-bound fallback: one delivery path keeps terminal notices, streaming, and approvals on every backend. |
 
 ## Code Organization
 
@@ -158,7 +158,7 @@ Reference implementation. See [`crates/server/specs/slack-integration.md`](../..
 - Replies rendered as bounded `markdown` blocks, split past Slack's per-block limit, stamped with session/message `metadata`
 - Thread context (participants + current view) persisted per session, rendered by the `channel_context` capability
 - Startup recovery: re-registers active sessions with `slack:*` tags
-- DEV_MODE: falls back to 120s polling
+- No PostgreSQL event listener (NATS deployments): the dispatcher polls active sessions, see [`wake.rs`](../../crates/server/src/slack_delivery/wake.rs)
 
 ### Future Platforms
 

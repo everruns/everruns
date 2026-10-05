@@ -883,23 +883,18 @@ impl ServerAppBuilder {
             core_deps.auth.clone(),
             core_deps.event_delivery.clone(),
         );
-        // Slack delivery dispatcher: event-driven message posting (replaces 120s polling).
-        // Must be created before events_state takes ownership of event_broadcaster.
-        let slack_dispatcher = if let Some(ref broadcaster) = event_broadcaster {
-            let rx = broadcaster.subscribe();
-            let dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
-                db.clone(),
-                rx,
-                auth_config.frontend_url.clone(),
-            );
-            tracing::info!("Slack delivery dispatcher started (event-driven)");
-            Some(dispatcher)
-        } else {
-            tracing::info!(
-                "Slack delivery dispatcher not available (DEV_MODE), using polling fallback"
-            );
-            None
+        // Slack delivery dispatcher, always on: without the PostgreSQL listener
+        // (NATS deployments) it polls active sessions (EVERRUNS-2B). Must be
+        // created before events_state takes ownership of event_broadcaster.
+        let slack_wake = match event_broadcaster {
+            Some(ref broadcaster) => broadcaster.subscribe().into(),
+            None => crate::slack_delivery::DeliveryWake::Poll,
         };
+        let slack_dispatcher = crate::slack_delivery::SlackDeliveryDispatcher::start(
+            db.clone(),
+            slack_wake,
+            auth_config.frontend_url.clone(),
+        );
 
         let events_state = api::events::AppState {
             db: db.clone(),
@@ -1133,7 +1128,7 @@ impl ServerAppBuilder {
             db.clone(),
             encryption.clone(),
             runner.clone(),
-            slack_dispatcher.clone(),
+            Some(slack_dispatcher.clone()),
             notifications_enabled,
             event_delivery.clone(),
             auth_config.base_url.clone(),
@@ -2338,8 +2333,8 @@ impl ServerAppBuilder {
         }
 
         // -- Slack delivery recovery (re-register active Slack sessions after restart) --
-        if let Some(ref dispatcher) = slack_dispatcher {
-            let dispatcher = dispatcher.clone();
+        {
+            let dispatcher = slack_dispatcher.clone();
             let recovery_enc = encryption.clone();
             supervisor.track(
                 "slack_delivery_recovery",
