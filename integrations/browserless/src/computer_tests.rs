@@ -2,8 +2,8 @@ use super::*;
 use crate::test_chromium::{connect_guarded, launch_chromium};
 use base64::Engine;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::capabilities::Capability;
-use everruns_core::network_access::NetworkAccessList;
+use everruns_contracts::runtime::capabilities::Capability;
+use everruns_contracts::runtime::network_access::NetworkAccessList;
 
 // ---------------------------------------------------------------------------
 // Pure mapping

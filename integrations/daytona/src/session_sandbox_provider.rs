@@ -8,7 +8,7 @@ use everruns_contracts::session_sandbox::{
 };
 use everruns_contracts::tools::ToolExecutionResult;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::exec_tool_result::ExecToolResultPayload;
+use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
@@ -892,7 +892,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         };
         touch_sandbox_lease(context, &lease_state, instance.display_name.clone()).await?;
 
-        let (content, encoding) = everruns_core::SessionFile::encode_content(&bytes);
+        let (content, encoding) = everruns_contracts::runtime::SessionFile::encode_content(&bytes);
         Ok(SessionSandboxReadFileResponse {
             path: path.to_string(),
             content,

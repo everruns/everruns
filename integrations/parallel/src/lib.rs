@@ -10,7 +10,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::capabilities::Capability;
+//! use everruns_contracts::runtime::capabilities::Capability;
 //! use everruns_integrations_parallel::ParallelCapability;
 //!
 //! let capability = ParallelCapability;
@@ -29,10 +29,10 @@ pub mod connection;
 pub mod payments;
 
 use everruns_contracts::connector::ConnectorPlugin;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
-use everruns_core::{
+use everruns_contracts::runtime::{
     CapabilityMcpServer, CapabilityMcpServers, McpServerActsAs, McpServerAuthMode, ScopedMcpServer,
 };
 use serde_json::{Value, json};
@@ -325,7 +325,7 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
 mod tests {
     use super::*;
     use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
-    use everruns_core::capabilities::{Capability, collect_capability_mcp_servers};
+    use everruns_contracts::runtime::capabilities::{Capability, collect_capability_mcp_servers};
     use serde_json::json;
 
     #[test]
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn collection_merges_contributed_mcp_servers() {
-        let mut registry = everruns_core::CapabilityRegistry::new();
+        let mut registry = everruns_contracts::runtime::CapabilityRegistry::new();
         registry.register(ParallelCapability);
         let configs = vec![AgentCapabilityConfig::new(PARALLEL_CAPABILITY_ID)];
 

@@ -29,7 +29,7 @@ use crate::hook_executor::{
     BashExecOutput, BashHookDispatcher, ExecutorOpts, HOOK_PAYLOAD_DIR, HOOK_PAYLOAD_WORKSPACE_DIR,
     HookPayload, payload_filename, standard_hook_env,
 };
-use everruns_core::session_files::SessionFileSystem;
+use everruns_contracts::runtime::session_files::SessionFileSystem;
 
 /// Trimmed-down ExecutionLimits for hook commands. Hooks are short,
 /// side-effect-y scripts, not agent-authored programs: keep the
@@ -222,7 +222,7 @@ mod tests {
     use crate::typed_id::SessionId;
     use crate::user_hook_types::{HookEvent, HookId, HookOutcome};
     use chrono::Utc;
-    use everruns_core::session_files::SessionFileSystem;
+    use everruns_contracts::runtime::session_files::SessionFileSystem;
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -602,10 +602,10 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn end_to_end_audit_log_hook_writes_workspace_file() {
-        use crate::hook_adapter::PostToolUseHookAdapter;
+        use everruns_core::hook_adapter::PostToolUseHookAdapter;
         use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
         use crate::user_hook_types::{ExecutorSpec, HookEvent, HookSource, OnError, UserHookSpec};
-        use everruns_core::tool_hooks::PostToolExecHook;
+        use everruns_contracts::runtime::tool_hooks::PostToolExecHook;
 
         let mock = Arc::new(MockFileStore::default());
         let store: Arc<dyn SessionFileSystem> = mock.clone();
@@ -732,12 +732,12 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn end_to_end_pre_tool_use_blocks_destructive_bash() {
-        use crate::hook_adapter::PreToolUseHookAdapter;
+        use everruns_core::hook_adapter::PreToolUseHookAdapter;
         use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
         use crate::user_hook_types::{
             ExecutorSpec, HookEvent, HookMatcher, HookSource, OnError, UserHookSpec,
         };
-        use everruns_core::tool_hooks::{PreToolUseDecision, PreToolUseHook};
+        use everruns_contracts::runtime::tool_hooks::{PreToolUseDecision, PreToolUseHook};
 
         let mock = Arc::new(MockFileStore::default());
         let store: Arc<dyn SessionFileSystem> = mock.clone();

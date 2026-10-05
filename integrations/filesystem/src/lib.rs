@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::Capability;
+//! use everruns_contracts::runtime::Capability;
 //! use everruns_integrations_filesystem::FileSystemCapability;
 //!
 //! assert_eq!(FileSystemCapability.id(), "session_file_system");
@@ -35,12 +35,12 @@ use everruns_contracts::error::AgentLoopError;
 #[cfg(test)]
 use everruns_contracts::typed_id;
 use everruns_contracts::{ToolResultImage, error, tool_types};
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
 };
-use everruns_core::session_files::SessionFileSystem;
-use everruns_core::tool_context::{ToolContext, ToolContextService};
-use everruns_core::*;
+use everruns_contracts::runtime::session_files::SessionFileSystem;
+use everruns_contracts::runtime::tool_context::{ToolContext, ToolContextService};
+use everruns_contracts::runtime::*;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;
@@ -2473,7 +2473,7 @@ mod tests {
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use crate::typed_id::SessionId;
     use chrono::Utc;
-    use everruns_core::session_files::SessionFileSystem;
+    use everruns_contracts::runtime::session_files::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;

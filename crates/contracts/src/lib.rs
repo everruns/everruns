@@ -15,6 +15,11 @@
 //! ```
 
 /// Capability identity, configuration, and code-defined authoring.
+// Lets moved runtime code and its doctests name this crate by its package name.
+extern crate self as everruns_contracts;
+
+#[cfg(feature = "runtime")]
+pub mod runtime;
 pub mod capability;
 /// Model profile metadata and the offline registry, keyed by provider wire ID.
 pub mod model_profile_data;

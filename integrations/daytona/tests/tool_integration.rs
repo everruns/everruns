@@ -11,9 +11,9 @@
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::{LeasedResourceId, SessionId};
-use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
-use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{
+use everruns_contracts::runtime::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::{
     connection_services::UserConnectionResolver, session_services::KeyInfo,
     session_services::LeasedResourceStore, session_services::SecretInfo,
     session_services::SessionStorageStore, tool_context::ToolContext,
@@ -251,7 +251,7 @@ async fn setup_context_with_sandbox(
 
 fn get_tool(name: &str) -> Box<dyn Tool> {
     let cap = everruns_integrations_daytona::DaytonaCapability;
-    use everruns_core::capabilities::Capability;
+    use everruns_contracts::runtime::capabilities::Capability;
     // Use tools_with_config to include opt-in tools like daytona_api_call
     cap.tools_with_config(&json!({"enable_api_calling": true}))
         .into_iter()

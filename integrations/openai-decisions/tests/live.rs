@@ -6,7 +6,7 @@
 #![cfg(feature = "live-tests")]
 #![allow(clippy::expect_used)]
 
-use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
+use everruns_contracts::runtime::{DecisionQuestion, DecisionRequest, DecisionsService};
 use everruns_integrations_openai_decisions::OpenAIDecisions;
 
 #[tokio::test]

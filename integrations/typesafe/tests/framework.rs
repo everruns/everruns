@@ -2,7 +2,7 @@
 //! The published integration executes through the ordinary Framework facade.
 
 use everruns::IntoCapability;
-use everruns_core::Capability;
+use everruns_contracts::runtime::Capability;
 use everruns_integrations_typesafe::{Jev, JevCapability, TypeSafeAIClient};
 use serde_json::json;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::method};

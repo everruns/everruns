@@ -7,7 +7,7 @@ use everruns_contracts::capability::{
 use serde_json::Value;
 
 use crate::{BraveSearchCapability, client::BraveSearchClient, search::SearchInput};
-use everruns_core::Capability;
+use everruns_contracts::runtime::Capability;
 
 /// Brave Search for `AgentBuilder::capability`.
 ///

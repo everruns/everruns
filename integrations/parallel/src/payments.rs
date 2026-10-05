@@ -9,15 +9,15 @@
 
 use async_trait::async_trait;
 use everruns_contracts::tool_types::ToolHints;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
-use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_narration::{
+use everruns_contracts::runtime::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_narration::{
     generic_phrase, labeled_phrase, safe_arg_str, truncate, url_display,
 };
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -102,9 +102,9 @@ impl Tool for ParallelSearchTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let query = safe_arg_str(&tool_call.arguments, &["query", "q", "objective"])
             .map(|value| truncate(value, 48));
@@ -197,9 +197,9 @@ impl Tool for ParallelExtractTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // The schema arg `urls` is an array; fall back to its first element
         // (also accept a scalar `url` alias). Rendered via url_display so any
@@ -312,9 +312,9 @@ impl Tool for ParallelTaskTool {
     fn narrate(
         &self,
         _tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(generic_phrase(
             "Running Parallel task",
@@ -406,9 +406,9 @@ impl Tool for ParallelTaskStatusTool {
     fn narrate(
         &self,
         _tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // Bare: the run id is not user-friendly.
         Some(generic_phrase(
@@ -555,7 +555,7 @@ mod tests {
     // ========================================================================
 
     use everruns_contracts::tool_types::ToolCall;
-    use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    use everruns_contracts::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 
     fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
         let call = ToolCall {

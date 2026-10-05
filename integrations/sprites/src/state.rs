@@ -2,9 +2,9 @@
 //!
 //! Decision: Embrace persistence — SpriteState includes the public HTTP URL
 
-use everruns_core::UpsertLeasedResource;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::ToolExecutionResult;
+use everruns_contracts::runtime::UpsertLeasedResource;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::ToolExecutionResult;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

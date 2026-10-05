@@ -19,8 +19,7 @@ categories = ["api-bindings", "development-tools"]
 readme = "README.md"
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false }
-everruns-core.workspace = true
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
 
 # HTTP client for DuckDuckGo API
 reqwest.workspace = true

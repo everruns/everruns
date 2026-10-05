@@ -73,9 +73,6 @@ tracing-opentelemetry
 tracing-subscriber
 tree-sitter
 tree-sitter-bash
-tree-sitter-python
-tree-sitter-rust
-tree-sitter-typescript
 url
 utoipa
 uuid
@@ -107,9 +104,6 @@ tracing-opentelemetry
 tracing-subscriber
 tree-sitter
 tree-sitter-bash
-tree-sitter-python
-tree-sitter-rust
-tree-sitter-typescript
 utoipa
 zip'
 if [ "$OPTIONAL" != "$EXPECTED_OPTIONAL" ]; then

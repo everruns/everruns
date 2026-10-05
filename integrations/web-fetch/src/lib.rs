@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::Capability;
+//! use everruns_contracts::runtime::Capability;
 //! use everruns_integrations_web_fetch::WebFetchCapability;
 //!
 //! assert_eq!(WebFetchCapability::new(None).id(), "web_fetch");
@@ -25,12 +25,12 @@ use base64::Engine as _;
 #[cfg(test)]
 use everruns_contracts::error;
 use everruns_contracts::{tool_types, typed_id};
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
 };
-use everruns_core::session_files::SessionFileSystem;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::*;
+use everruns_contracts::runtime::session_files::SessionFileSystem;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::*;
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
 use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;

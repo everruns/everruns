@@ -1,11 +1,11 @@
 //! Tool implementations for Sprites operations.
 
 use everruns_contracts::tool_types::ToolHints;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_output_sanitizer::{
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -199,12 +199,12 @@ impl Tool for SpritesExecTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sprites");
-        Some(everruns_core::tool_narration::narrate_shell_exec(
+        Some(everruns_contracts::runtime::tool_narration::narrate_shell_exec(
             &tool_call.arguments,
             fallback,
             phase,
@@ -236,7 +236,7 @@ impl Tool for SpritesExecTool {
                     "type": "integer",
                     "description": "Timeout in milliseconds (optional, default: 120000)"
                 },
-                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
+                "output": everruns_contracts::runtime::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["sprite_name", "command"],
             "additionalProperties": false
@@ -297,7 +297,7 @@ impl Tool for SpritesExecTool {
                 if let Err(e) = touch_sprite_lease(context, &state, None).await {
                     return e;
                 }
-                use everruns_core::tool_output_sanitizer::{
+                use everruns_contracts::runtime::tool_output_sanitizer::{
                     clean_exec_output, output_verbosity_budget, priority_aware_truncate,
                     resolve_auto_mode,
                 };
@@ -974,7 +974,7 @@ impl Tool for SpritesServiceUrlTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::capabilities::Capability;
+    use everruns_contracts::runtime::capabilities::Capability;
 
     fn get_tool(name: &str) -> Box<dyn Tool> {
         let cap = crate::SpritesCapability;

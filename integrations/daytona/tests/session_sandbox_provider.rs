@@ -8,7 +8,7 @@ use everruns_contracts::session_sandbox::{
     create_session_sandbox_provider,
 };
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::{
+use everruns_contracts::runtime::{
     connection_services::UserConnectionResolver, session_services::KeyInfo,
     session_services::SecretInfo, session_services::SessionStorageStore, tool_context::ToolContext,
 };
@@ -705,7 +705,7 @@ async fn daytona_provider_resume_stays_within_single_poll_budget_on_transition_t
         .unwrap_err();
 
     assert_eq!(get_count.load(Ordering::SeqCst), 20);
-    let everruns_core::tools::ToolExecutionResult::ToolError(message) = err else {
+    let everruns_contracts::runtime::tools::ToolExecutionResult::ToolError(message) = err else {
         panic!("expected tool error");
     };
     assert!(
@@ -931,7 +931,7 @@ async fn daytona_provider_exec_timeout_resets_session_and_next_command_succeeds(
         )
         .await
         .unwrap_err();
-    let everruns_core::tools::ToolExecutionResult::ToolError(message) = timeout_err else {
+    let everruns_contracts::runtime::tools::ToolExecutionResult::ToolError(message) = timeout_err else {
         panic!("Expected ToolError timeout, got {timeout_err:?}");
     };
     assert!(message.contains("Command timed out after"));

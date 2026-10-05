@@ -15,7 +15,7 @@
 // https://openrouter.ai/docs/guides/features/server-tools.
 
 use async_trait::async_trait;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
 };
 use everruns_drivers::openrouter::options::{

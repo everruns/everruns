@@ -10,8 +10,8 @@
 //! the same predicate directly. Patterns are escaped from the access list; they
 //! never interpolate raw policy text into a regular expression.
 
-use everruns_core::network_access::NetworkAccessList;
-use everruns_core::tools::ToolExecutionResult;
+use everruns_contracts::runtime::network_access::NetworkAccessList;
+use everruns_contracts::runtime::tools::ToolExecutionResult;
 use serde_json::Value;
 use url::Url;
 

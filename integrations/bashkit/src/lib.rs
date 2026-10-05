@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::Capability;
+//! use everruns_contracts::runtime::Capability;
 //! use everruns_integrations_bashkit::BashkitShellCapability;
 //!
 //! assert_eq!(BashkitShellCapability.id(), "bashkit_shell");
@@ -41,12 +41,12 @@ use bashkit::{
 #[cfg(test)]
 use everruns_contracts::error;
 use everruns_contracts::{tool_types, typed_id};
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
-use everruns_core::session_files::SessionFileSystem;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::*;
+use everruns_contracts::runtime::session_files::SessionFileSystem;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::*;
 pub use hook_dispatch::BashkitShellHookDispatcher;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -801,7 +801,7 @@ impl BackgroundExecutableTool for BashTool {
 /// promise a surface it cannot serve, nor one the harness withheld.
 fn install_cli_tree(
     builder: BashBuilder,
-    context: &everruns_core::tool_context::ToolContext,
+    context: &everruns_contracts::runtime::tool_context::ToolContext,
 ) -> BashBuilder {
     if let Some(handle) = context
         .extensions
@@ -1421,7 +1421,7 @@ mod tests {
     use crate::session_file::FileInfo;
     use crate::typed_id::SessionId;
     use crate::{FileStat, GrepMatch};
-    use everruns_core::session_files::SessionFileSystem;
+    use everruns_contracts::runtime::session_files::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -1885,7 +1885,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::tools::Tool for SpelledTool {
+    impl everruns_contracts::runtime::tools::Tool for SpelledTool {
         fn name(&self) -> &str {
             "execute"
         }
@@ -1913,8 +1913,8 @@ mod tests {
                 None => ToolExecutionResult::Success(Value::String(format!("ran: {line}"))),
             }
         }
-        fn cli_spelling(&self) -> Option<everruns_core::tools::CliSpelling> {
-            Some(everruns_core::tools::CliSpelling::new(
+        fn cli_spelling(&self) -> Option<everruns_contracts::runtime::tools::CliSpelling> {
+            Some(everruns_contracts::runtime::tools::CliSpelling::new(
                 "everruns", "commands",
             ))
         }
@@ -1925,7 +1925,7 @@ mod tests {
     ) -> (ToolContext, Arc<std::sync::Mutex<Vec<String>>>) {
         let (mut context, _) = create_context_with_mock_store();
         let received = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let mut registry = everruns_core::tools::ToolRegistry::new();
+        let mut registry = everruns_contracts::runtime::tools::ToolRegistry::new();
         registry.register(SpelledTool {
             received: received.clone(),
             fail_with,

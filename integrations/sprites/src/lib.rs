@@ -19,11 +19,11 @@ pub mod state;
 mod tools;
 
 use everruns_contracts::connector::ConnectorPlugin;
-use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::LEASED_RESOURCES_FEATURE;
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::tools::Tool;
+use everruns_contracts::runtime::tools::Tool;
 
 use std::sync::LazyLock;
 
@@ -74,7 +74,7 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
         "Sprites are persistent Firecracker Linux VMs. Create or select a sprite before sprite-scoped operations; data survives idle/sleep, checkpoints can protect risky changes, services should listen on port 8080 for the public URL, and deleting avoids storage charges. Working directory is `/home/sprite`.",
     );
-    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt.push_str(everruns_contracts::runtime::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
 });
 
@@ -157,7 +157,7 @@ impl Capability for SpritesCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::capabilities::CapabilityStatus;
+    use everruns_contracts::runtime::capabilities::CapabilityStatus;
 
     // Host reserves this prefix from secret_store but cannot import the
     // constant (crate layering). Pin them so a rename cannot reopen forgery.
@@ -212,7 +212,7 @@ mod tests {
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = SpritesCapability;
-        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+        let ctx = everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
             everruns_contracts::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();

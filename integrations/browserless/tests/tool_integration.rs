@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{connection_services::UserConnectionResolver, tool_context::ToolContext};
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::{connection_services::UserConnectionResolver, tool_context::ToolContext};
 use serde_json::json;
 use std::sync::Arc;
 use wiremock::matchers::{method, path};
@@ -55,7 +55,7 @@ fn no_token_resolver() -> Arc<dyn UserConnectionResolver> {
 
 fn get_tool(name: &str) -> Box<dyn Tool> {
     let cap = everruns_integrations_browserless::BrowserlessCapability;
-    use everruns_core::capabilities::Capability;
+    use everruns_contracts::runtime::capabilities::Capability;
     cap.tools()
         .into_iter()
         .find(|t| t.name() == name)

@@ -14,7 +14,7 @@
 //! only this crate's own dev-dependency enables. Shipped builds always use
 //! the real endpoints, so nothing at runtime can send the API key elsewhere.
 
-use everruns_core::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_context::ToolContext;
 
 use crate::client::DaytonaClient;
 

@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use everruns_contracts::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
-use everruns_core::{McpToolsListRequest, McpToolsListResponse};
+use everruns_contracts::runtime::{McpToolsListRequest, McpToolsListResponse};
 
 use crate::{PARALLEL_MCP_URL, PARALLEL_PROVIDER_ID};
 

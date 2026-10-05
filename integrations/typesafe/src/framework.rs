@@ -6,7 +6,7 @@ use everruns_contracts::capability::{
 };
 use serde_json::Value;
 
-use everruns_core::Capability;
+use everruns_contracts::runtime::Capability;
 
 use crate::client::TypeSafeAIClient;
 
@@ -17,7 +17,7 @@ use crate::{JevCapability, evaluate, evaluate::EvaluateInput};
 /// The client retains the credential privately; it never enters capability
 /// config or metadata. Cloned agents reuse the HTTP connection pool.
 pub struct Jev {
-    service: std::sync::Arc<dyn everruns_core::DecisionsService>,
+    service: std::sync::Arc<dyn everruns_contracts::runtime::DecisionsService>,
     model: everruns_contracts::ModelSpec,
 }
 

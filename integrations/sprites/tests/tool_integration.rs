@@ -7,8 +7,8 @@
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::typed_id::SessionId;
-use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::{
     connection_services::UserConnectionResolver, session_services::KeyInfo,
     session_services::SecretInfo, session_services::SessionStorageStore, tool_context::ToolContext,
 };
@@ -139,7 +139,7 @@ async fn setup_context_with_sprite(
 
 fn get_tool(name: &str) -> Box<dyn Tool> {
     let cap = everruns_integrations_sprites::SpritesCapability;
-    use everruns_core::capabilities::Capability;
+    use everruns_contracts::runtime::capabilities::Capability;
     cap.tools()
         .into_iter()
         .find(|t| t.name() == name)

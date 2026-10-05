@@ -1,4 +1,4 @@
-use everruns_core::resource_names::{UniqueResourceName, unique_resource_name};
+use everruns_contracts::runtime::resource_names::{UniqueResourceName, unique_resource_name};
 use serde_json::{Value, json};
 
 use crate::client::DaytonaClient;

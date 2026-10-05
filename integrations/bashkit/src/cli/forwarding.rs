@@ -27,8 +27,8 @@ use super::*;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::{CliSpelling, Tool, ToolExecutionResult};
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::{CliSpelling, Tool, ToolExecutionResult};
 
 /// How many forwarded invocations one shell execution may make.
 ///

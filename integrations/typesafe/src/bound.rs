@@ -1,8 +1,8 @@
 //! Tenant model execution reuses host credential, egress and usage boundaries.
 use crate::evaluate::{EvaluateInput, build_evaluation};
-use everruns_core::connection_services::DecisionModelBinding;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::{
+use everruns_contracts::runtime::connection_services::DecisionModelBinding;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::{
     DecisionAnswer, DecisionQuestion, DecisionRequest, EgressRequest, EgressRequestKind,
     EventRequest, LlmGenerationData, TokenUsage,
 };
@@ -216,7 +216,7 @@ pub(crate) fn decision_request(
     Ok(request)
 }
 pub(crate) fn render_outcome(
-    outcome: everruns_core::DecisionOutcome,
+    outcome: everruns_contracts::runtime::DecisionOutcome,
     request: &DecisionRequest,
 ) -> Result<Value, String> {
     let mut answers = serde_json::Map::new();
@@ -264,9 +264,9 @@ async fn record_usage(
     requested: &str,
     value: Option<&Value>,
     success: bool,
-    emitter: &std::sync::Arc<dyn everruns_core::EventEmitter>,
+    emitter: &std::sync::Arc<dyn everruns_contracts::runtime::EventEmitter>,
     session_id: everruns_contracts::typed_id::SessionId,
-    event_context: everruns_core::EventContext,
+    event_context: everruns_contracts::runtime::EventContext,
 ) -> Result<(), String> {
     let value = value.unwrap_or(&Value::Null);
     let input = value["usage"]["input_tokens"]
@@ -317,7 +317,7 @@ async fn record_usage(
         generation
             .metadata
             .cost_components
-            .push(everruns_core::LlmCostComponent {
+            .push(everruns_contracts::runtime::LlmCostComponent {
                 kind: "model_tokens".into(),
                 name: requested.into(),
                 quantity: None,

@@ -28,7 +28,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use everruns_contracts::capability::json_schema_for;
 use everruns_contracts::capability::schemars::JsonSchema;
-use everruns_core::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_context::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 

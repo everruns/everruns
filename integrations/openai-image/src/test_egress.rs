@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use everruns_core::host::DirectEgressService;
-use everruns_core::{
+use everruns_contracts::runtime::{
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
 };
 use std::net::{IpAddr, SocketAddr};

@@ -1,8 +1,8 @@
 //! Tool implementations for Brave Search operations.
 
 use everruns_contracts::tool_types::ToolHints;
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -65,11 +65,11 @@ impl Tool for BraveWebSearchTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_search_web(
+        Some(everruns_contracts::runtime::tool_narration::narrate_search_web(
             &tool_call.arguments,
             phase,
             locale,
@@ -148,7 +148,7 @@ mod tests {
 
     use everruns_contracts::error::Result;
     use everruns_contracts::typed_id::SessionId;
-    use everruns_core::{
+    use everruns_contracts::runtime::{
         connection_services::UserConnectionResolver, session_services::KeyInfo,
         session_services::SecretInfo, session_services::SessionStorageStore,
     };

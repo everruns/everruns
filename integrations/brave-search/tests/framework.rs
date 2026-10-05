@@ -2,7 +2,7 @@
 //! The published integration executes through the ordinary Framework facade.
 
 use everruns::{Agent, ContentPart, Engine, IntoCapability, LlmSimConfig, Model};
-use everruns_core::Capability;
+use everruns_contracts::runtime::Capability;
 use everruns_integrations_brave_search::{
     BraveSearch, BraveSearchCapability, client::BraveSearchClient,
 };

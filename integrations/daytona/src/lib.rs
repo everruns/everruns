@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::capabilities::Capability;
+//! use everruns_contracts::runtime::capabilities::Capability;
 //! use everruns_integrations_daytona::DaytonaCapability;
 //!
 //! let capability = DaytonaCapability;
@@ -38,12 +38,12 @@ pub mod state;
 pub mod tools;
 
 use everruns_contracts::connector::ConnectorPlugin;
-use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::LEASED_RESOURCES_FEATURE;
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, MountDirectoryBuilder,
     MountPoint, RiskLevel, SystemPromptContext,
 };
-use everruns_core::tools::Tool;
+use everruns_contracts::runtime::tools::Tool;
 
 use connection::DaytonaConnector;
 use session_sandbox_provider::DaytonaSessionSandboxProvider;
@@ -125,7 +125,7 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
 
 Workspace is `/home/daytona`. Clone repos under `/home/daytona/owner/repo`; connected GitHub accounts authenticate private clones. Configure sandbox git credentials before push/pull/fetch and refresh them if they expire."#,
     );
-    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt.push_str(everruns_contracts::runtime::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
 });
 
@@ -193,16 +193,16 @@ impl SandboxFleetTool {
     async fn translate_id(
         &self,
         arguments: &mut serde_json::Value,
-        context: &everruns_core::tool_context::ToolContext,
-    ) -> Result<(), everruns_core::tools::ToolExecutionResult> {
+        context: &everruns_contracts::runtime::tool_context::ToolContext,
+    ) -> Result<(), everruns_contracts::runtime::tools::ToolExecutionResult> {
         let Some(logical_id) = arguments.get("sandbox_id").and_then(|value| value.as_str()) else {
-            return Err(everruns_core::tools::ToolExecutionResult::tool_error(
+            return Err(everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
                 "sandbox_id is required",
             ));
         };
         let Some(registry) = &context.session_resource_registry else {
             return Err(
-                everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                everruns_contracts::runtime::tools::ToolExecutionResult::internal_error_msg(
                     "Session resource registry is unavailable",
                 ),
             );
@@ -213,14 +213,14 @@ impl SandboxFleetTool {
         let entry = registry
             .get(context.session_id, logical_id)
             .await
-            .map_err(everruns_core::tools::ToolExecutionResult::internal_error)?
+            .map_err(everruns_contracts::runtime::tools::ToolExecutionResult::internal_error)?
             .filter(|entry| {
                 entry.kind == "sandbox"
                     && entry.metadata.get("role").and_then(|v| v.as_str()) == Some("resource")
                     && entry.metadata.get("provider").and_then(|v| v.as_str()) == Some("daytona")
             })
             .ok_or_else(|| {
-                everruns_core::tools::ToolExecutionResult::tool_error(
+                everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
                     "Sandbox was not created by this Session",
                 )
             })?;
@@ -229,7 +229,7 @@ impl SandboxFleetTool {
             .get("provider_external_id")
             .and_then(|value| value.as_str())
             .ok_or_else(|| {
-                everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                everruns_contracts::runtime::tools::ToolExecutionResult::internal_error_msg(
                     "Sandbox provider binding is missing",
                 )
             })?;
@@ -292,15 +292,15 @@ impl Tool for SandboxFleetTool {
 
     fn required_context_services(
         &self,
-    ) -> &'static [everruns_core::tool_context::ToolContextService] {
-        &[everruns_core::tool_context::ToolContextService::SessionResourceRegistry]
+    ) -> &'static [everruns_contracts::runtime::tool_context::ToolContextService] {
+        &[everruns_contracts::runtime::tool_context::ToolContextService::SessionResourceRegistry]
     }
 
     async fn execute(
         &self,
         _arguments: serde_json::Value,
-    ) -> everruns_core::tools::ToolExecutionResult {
-        everruns_core::tools::ToolExecutionResult::tool_error(
+    ) -> everruns_contracts::runtime::tools::ToolExecutionResult {
+        everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
             "sandbox_fleet tools require Session context",
         )
     }
@@ -308,17 +308,17 @@ impl Tool for SandboxFleetTool {
     async fn execute_with_context(
         &self,
         mut arguments: serde_json::Value,
-        context: &everruns_core::tool_context::ToolContext,
-    ) -> everruns_core::tools::ToolExecutionResult {
+        context: &everruns_contracts::runtime::tool_context::ToolContext,
+    ) -> everruns_contracts::runtime::tools::ToolExecutionResult {
         if matches!(self.operation, FleetOperation::List) {
             let Some(registry) = &context.session_resource_registry else {
-                return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                return everruns_contracts::runtime::tools::ToolExecutionResult::internal_error_msg(
                     "Session resource registry is unavailable",
                 );
             };
             return match registry.list(context.session_id, None).await {
                 Ok(entries) => {
-                    everruns_core::tools::ToolExecutionResult::success(serde_json::json!({
+                    everruns_contracts::runtime::tools::ToolExecutionResult::success(serde_json::json!({
                         "sandboxes": entries.into_iter().filter(|entry| entry.kind == "sandbox" && entry.metadata.get("role").and_then(|v| v.as_str()) == Some("resource")).map(|entry| serde_json::json!({
                             "sandbox_id": entry.resource_id,
                             "name": entry.display_name,
@@ -327,19 +327,19 @@ impl Tool for SandboxFleetTool {
                         })).collect::<Vec<_>>()
                     }))
                 }
-                Err(error) => everruns_core::tools::ToolExecutionResult::internal_error(error),
+                Err(error) => everruns_contracts::runtime::tools::ToolExecutionResult::internal_error(error),
             };
         }
 
         if matches!(self.operation, FleetOperation::Inspect) {
             let Some(logical_id) = arguments.get("sandbox_id").and_then(|value| value.as_str())
             else {
-                return everruns_core::tools::ToolExecutionResult::tool_error(
+                return everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
                     "sandbox_id is required",
                 );
             };
             let Some(registry) = &context.session_resource_registry else {
-                return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                return everruns_contracts::runtime::tools::ToolExecutionResult::internal_error_msg(
                     "Session resource registry is unavailable",
                 );
             };
@@ -349,17 +349,17 @@ impl Tool for SandboxFleetTool {
                         && entry.metadata.get("role").and_then(|value| value.as_str())
                             == Some("resource") =>
                 {
-                    everruns_core::tools::ToolExecutionResult::success(serde_json::json!({
+                    everruns_contracts::runtime::tools::ToolExecutionResult::success(serde_json::json!({
                         "sandbox_id": entry.resource_id,
                         "name": entry.display_name,
                         "status": entry.status.to_string(),
                         "provider": entry.metadata.get("provider").cloned().unwrap_or(serde_json::Value::Null),
                     }))
                 }
-                Ok(_) => everruns_core::tools::ToolExecutionResult::tool_error(
+                Ok(_) => everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
                     "Sandbox was not created by this Session",
                 ),
-                Err(error) => everruns_core::tools::ToolExecutionResult::internal_error(error),
+                Err(error) => everruns_contracts::runtime::tools::ToolExecutionResult::internal_error(error),
             };
         }
 
@@ -377,7 +377,7 @@ impl Tool for SandboxFleetTool {
         };
         let result = inner.execute_with_context(arguments, context).await;
         if !matches!(self.operation, FleetOperation::Create) {
-            if let everruns_core::tools::ToolExecutionResult::Success(mut value) = result {
+            if let everruns_contracts::runtime::tools::ToolExecutionResult::Success(mut value) = result {
                 if let Some(logical_id) = logical_id {
                     if value.get("sandbox_id").is_some() {
                         value["sandbox_id"] = serde_json::json!(logical_id.clone());
@@ -390,16 +390,16 @@ impl Tool for SandboxFleetTool {
                             .update_status(
                                 context.session_id,
                                 &logical_id,
-                                everruns_core::session_resource::SessionResourceStatus::Released,
+                                everruns_contracts::runtime::session_resource::SessionResourceStatus::Released,
                             )
                             .await;
                     }
                 }
-                return everruns_core::tools::ToolExecutionResult::Success(value);
+                return everruns_contracts::runtime::tools::ToolExecutionResult::Success(value);
             }
             return result;
         }
-        let everruns_core::tools::ToolExecutionResult::Success(mut value) = result else {
+        let everruns_contracts::runtime::tools::ToolExecutionResult::Success(mut value) = result else {
             return result;
         };
         let Some(external_id) = value
@@ -407,7 +407,7 @@ impl Tool for SandboxFleetTool {
             .and_then(|id| id.as_str())
             .map(str::to_string)
         else {
-            return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+            return everruns_contracts::runtime::tools::ToolExecutionResult::internal_error_msg(
                 "Sandbox provider returned no id",
             );
         };
@@ -420,21 +420,21 @@ impl Tool for SandboxFleetTool {
         let Some(registry) = &context.session_resource_registry else {
             unreachable!()
         };
-        if let Err(error) = registry.register(everruns_core::session_resource::RegisterSessionResource {
+        if let Err(error) = registry.register(everruns_contracts::runtime::session_resource::RegisterSessionResource {
             session_id: context.session_id,
             resource_id: logical_id.clone(),
             kind: "sandbox".into(),
             display_name,
-            status: everruns_core::session_resource::SessionResourceStatus::Active,
+            status: everruns_contracts::runtime::session_resource::SessionResourceStatus::Active,
             metadata: serde_json::json!({"role":"resource","provider":"daytona","provider_external_id":external_id}),
         }).await {
-            return everruns_core::tools::ToolExecutionResult::internal_error(error);
+            return everruns_contracts::runtime::tools::ToolExecutionResult::internal_error(error);
         }
         value["sandbox_id"] = serde_json::json!(logical_id);
         if let Some(object) = value.as_object_mut() {
             object.remove("requested_name");
         }
-        everruns_core::tools::ToolExecutionResult::Success(value)
+        everruns_contracts::runtime::tools::ToolExecutionResult::Success(value)
     }
 }
 
@@ -697,11 +697,11 @@ mod tests {
     use chrono::Utc;
     use everruns_contracts::error::Result as AgentResult;
     use everruns_contracts::typed_id::SessionId;
-    use everruns_core::capabilities::CapabilityStatus;
-    use everruns_core::session_resource::{
+    use everruns_contracts::runtime::capabilities::CapabilityStatus;
+    use everruns_contracts::runtime::session_resource::{
         RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
     };
-    use everruns_core::session_services::SessionResourceRegistry;
+    use everruns_contracts::runtime::session_services::SessionResourceRegistry;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
 
@@ -856,7 +856,7 @@ mod tests {
             })
             .await
             .unwrap();
-        let context = everruns_core::tool_context::ToolContext::new(caller)
+        let context = everruns_contracts::runtime::tool_context::ToolContext::new(caller)
             .with_session_resource_registry(registry);
 
         let result = SandboxFleetTool::inspect()
@@ -864,7 +864,7 @@ mod tests {
             .await;
 
         assert!(
-            matches!(result, everruns_core::tools::ToolExecutionResult::ToolError(message) if message.contains("not created by this Session"))
+            matches!(result, everruns_contracts::runtime::tools::ToolExecutionResult::ToolError(message) if message.contains("not created by this Session"))
         );
     }
 

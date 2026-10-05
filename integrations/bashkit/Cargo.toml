@@ -17,8 +17,7 @@ categories = ["development-tools", "asynchronous"]
 default = []
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false }
-everruns-core.workspace = true
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
 async-trait.workspace = true
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
@@ -37,6 +36,8 @@ url = "2"
 [dev-dependencies]
 anyhow.workspace = true
 chrono.workspace = true
+# Engine hook adapters drive the end-to-end hook tests.
+everruns-core.workspace = true
 regex.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 uuid.workspace = true

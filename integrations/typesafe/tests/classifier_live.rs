@@ -14,7 +14,7 @@
 
 #![cfg(feature = "live-tests")]
 
-use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
+use everruns_contracts::runtime::{DecisionQuestion, DecisionRequest, DecisionsService};
 use everruns_integrations_typesafe::TypeSafeAI;
 
 fn service() -> TypeSafeAI {

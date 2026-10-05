@@ -24,14 +24,14 @@
 //! ```
 
 use everruns_contracts::tool_types::ToolHints;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_output_sanitizer::{
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -105,7 +105,7 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
         "This session has one lazily-started Docker container with host networking. Calls reuse the same container; default working directory is `/workspace`, files persist for the session, and stopping removes/resets it. Check exit codes and clean up when done.",
     );
-    prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
+    prompt.push_str(everruns_contracts::runtime::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
 });
 
@@ -380,12 +380,12 @@ impl Tool for DockerExecTool {
     fn narrate(
         &self,
         tool_call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Docker");
-        Some(everruns_core::tool_narration::narrate_shell_exec(
+        Some(everruns_contracts::runtime::tool_narration::narrate_shell_exec(
             &tool_call.arguments,
             fallback,
             phase,
@@ -422,7 +422,7 @@ impl Tool for DockerExecTool {
                         "working_dir": { "type": "string" }
                     }
                 },
-                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
+                "output": everruns_contracts::runtime::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["command"],
             "additionalProperties": false
@@ -504,7 +504,7 @@ impl Tool for DockerExecTool {
         let stdout_raw = String::from_utf8_lossy(&output.stdout);
         let stderr_raw = String::from_utf8_lossy(&output.stderr);
 
-        use everruns_core::tool_output_sanitizer::{
+        use everruns_contracts::runtime::tool_output_sanitizer::{
             clean_exec_output, output_verbosity_budget, priority_aware_truncate, resolve_auto_mode,
         };
         let clean_stdout = clean_exec_output(&stdout_raw);
@@ -1125,7 +1125,7 @@ mod tests {
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = DockerContainerCapability;
-        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+        let ctx = everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
             everruns_contracts::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();

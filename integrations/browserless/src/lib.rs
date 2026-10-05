@@ -28,12 +28,12 @@ mod validation;
 
 use everruns_contracts::connector::ConnectorPlugin;
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
-use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::LEASED_RESOURCES_FEATURE;
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::tool_narration::ToolNarrationPhase;
-use everruns_core::tools::Tool;
+use everruns_contracts::runtime::tool_narration::ToolNarrationPhase;
+use everruns_contracts::runtime::tools::Tool;
 
 use connection::BrowserlessConnector;
 
@@ -175,7 +175,7 @@ impl Capability for BrowserlessCapability {
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let url = tool_call
             .arguments
@@ -184,7 +184,7 @@ impl Capability for BrowserlessCapability {
             .map(|u| u.trim())
             .filter(|u| !u.is_empty())
             // host+path only — never expose scheme, userinfo, query, or fragment.
-            .map(everruns_core::tool_narration::url_display);
+            .map(everruns_contracts::runtime::tool_narration::url_display);
 
         let (started, completed, failed, target) = match tool_call.name.as_str() {
             "browserless_open_browser" => (
@@ -272,7 +272,7 @@ impl Capability for BrowserlessCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::capabilities::CapabilityStatus;
+    use everruns_contracts::runtime::capabilities::CapabilityStatus;
 
     #[test]
     fn test_capability_metadata() {
@@ -299,7 +299,7 @@ mod tests {
                 &call,
                 ToolNarrationPhase::Started,
                 None,
-                everruns_core::tool_narration::ToolNarrationContext::default()
+                everruns_contracts::runtime::tool_narration::ToolNarrationContext::default()
             ),
             Some("Navigating to example.com/page".to_string())
         );
@@ -309,7 +309,7 @@ mod tests {
                 &call,
                 ToolNarrationPhase::Completed,
                 None,
-                everruns_core::tool_narration::ToolNarrationContext::default()
+                everruns_contracts::runtime::tool_narration::ToolNarrationContext::default()
             ),
             Some("Navigated to example.com/page".to_string())
         );
@@ -325,7 +325,7 @@ mod tests {
                 &screenshot,
                 ToolNarrationPhase::Completed,
                 None,
-                everruns_core::tool_narration::ToolNarrationContext::default()
+                everruns_contracts::runtime::tool_narration::ToolNarrationContext::default()
             ),
             Some("Took screenshot".to_string())
         );
@@ -342,7 +342,7 @@ mod tests {
                 &other,
                 ToolNarrationPhase::Started,
                 None,
-                everruns_core::tool_narration::ToolNarrationContext::default()
+                everruns_contracts::runtime::tool_narration::ToolNarrationContext::default()
             ),
             None
         );
@@ -409,7 +409,7 @@ mod tests {
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = BrowserlessCapability;
-        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+        let ctx = everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
             everruns_contracts::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();

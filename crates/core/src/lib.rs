@@ -65,40 +65,40 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 // Runtime types (tool definitions, capability types)
-pub mod annotation_hook;
-mod capability_mcp_server;
-pub mod capability_types;
+pub use everruns_contracts::runtime::annotation_hook;
+pub use everruns_contracts::runtime::capability_mcp_server;
+pub use everruns_contracts::runtime::capability_types;
 pub mod tool_fingerprint;
 use everruns_contracts::tool_types;
 
 // User-defined hooks (see knowledge/runtime-resources/user-hooks.md)
 pub mod hook_adapter;
-pub mod hook_executor;
+pub use everruns_contracts::runtime::hook_executor;
 pub mod lifecycle_hooks;
-pub mod user_hook_types;
+pub use everruns_contracts::runtime::user_hook_types;
 
 // Deployment configuration
 pub mod decision_driver;
-pub mod decisions;
-pub mod deployment;
-pub mod egress;
-pub mod exec_tool_result;
-pub mod execution_context;
+pub use everruns_contracts::runtime::decisions;
+pub use everruns_contracts::runtime::deployment;
+pub use everruns_contracts::runtime::egress;
+pub use everruns_contracts::runtime::exec_tool_result;
+pub use everruns_contracts::runtime::execution_context;
 pub mod execution_snapshot;
-pub mod utility_llm;
+pub use everruns_contracts::runtime::utility_llm;
 
 // Execution feature decisions (EVE-878): the org/product feature-flag records
 // and management logic (`FeatureFlags`, `FeatureFlagMap`, the API catalog, org
 // opt-in resolution) moved to the `crates/server/src/records/`. Core keeps only
 // the resolved registration-time decisions consumed by the capability
 // registry builders.
-pub mod execution_features;
-pub mod feature_flag_grade;
-pub mod localization;
+pub use everruns_contracts::runtime::execution_features;
+pub use everruns_contracts::runtime::feature_flag_grade;
+pub use everruns_contracts::runtime::localization;
 
 // Telemetry conventions (neutral gen-ai span metadata contracts)
 pub mod telemetry;
-pub mod tool_narration;
+pub use everruns_contracts::runtime::tool_narration;
 
 // Event listeners (pluggable observability backends)
 pub mod event_listeners;
@@ -121,30 +121,30 @@ pub mod database_failure;
 use everruns_contracts::typed_id;
 
 // Budget types (budgets, ledger, rules, actions)
-pub mod background;
-pub mod budget;
+pub use everruns_contracts::runtime::background;
+pub use everruns_contracts::runtime::budget;
 
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
-pub mod agent_definition;
+pub use everruns_contracts::runtime::agent_definition;
 // Authored packages belong with portable definitions, not in another publish slot.
 #[cfg(feature = "agent-package")]
 pub mod agent_package;
 pub mod ard_attachment;
-pub mod capability_dto;
+pub use everruns_contracts::runtime::capability_dto;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
 // enums) moved to the `crates/server/src/records/` — they are product
 // management/reporting records that never participate in a turn.
-pub mod events;
-pub mod finalized_tool_calls;
-pub mod harness_definition;
-pub mod leased_resource;
-pub mod mcp_proxy;
-pub mod mcp_server;
+pub use everruns_contracts::runtime::events;
+pub use everruns_contracts::runtime::finalized_tool_calls;
+pub use everruns_contracts::runtime::harness_definition;
+pub use everruns_contracts::runtime::leased_resource;
+pub use everruns_contracts::runtime::mcp_proxy;
+pub use everruns_contracts::runtime::mcp_server;
 use everruns_contracts::model_profiles;
-pub mod mount_fs;
-pub mod network_access;
+pub use everruns_contracts::runtime::mount_fs;
+pub use everruns_contracts::runtime::network_access;
 // EVE-879: the OAuth 2.1 protocol client moved to the MCP adapter crate — MCP
 // login/refresh is its only consumer, and the kernel carries no token-exchange
 // plumbing.
@@ -152,32 +152,32 @@ pub mod network_access;
 // configuration, match rules and their lifecycle enums) moved to the
 // `crates/server/src/records/` — online scoring watches completed turns from the
 // hosted control plane and never participates in a turn.
-pub mod organization;
-pub mod payment;
-pub mod principal;
+pub use everruns_contracts::runtime::organization;
+pub use everruns_contracts::runtime::payment;
+pub use everruns_contracts::runtime::principal;
 use everruns_contracts::model_spec;
 use everruns_contracts::provider;
 use everruns_contracts::runtime_provider;
-pub mod session;
-pub mod session_file;
-pub mod session_path;
-pub mod session_resource;
-pub mod session_schedule;
-pub mod session_task;
-pub mod skill;
-pub mod system_allowlist;
+pub use everruns_contracts::runtime::session;
+pub use everruns_contracts::runtime::session_file;
+pub use everruns_contracts::runtime::session_path;
+pub use everruns_contracts::runtime::session_resource;
+pub use everruns_contracts::runtime::session_schedule;
+pub use everruns_contracts::runtime::session_task;
+pub use everruns_contracts::runtime::skill;
+pub use everruns_contracts::runtime::system_allowlist;
 pub mod task_observer;
 pub mod wake_queue;
 pub mod workspace_policy;
 pub mod workspace_roots;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
-pub mod channel;
+pub use everruns_contracts::runtime::channel;
 
 // Permissions model (policies, rules, caller context)
-pub mod channel_messaging;
+pub use everruns_contracts::runtime::channel_messaging;
 pub mod permissions;
-pub mod resource_names;
+pub use everruns_contracts::runtime::resource_names;
 
 // URL validation for SSRF prevention (shared utility)
 
@@ -187,60 +187,59 @@ pub mod plugins;
 
 /// Durable orchestration state for the opt-in OpenAI Agents API backend.
 pub mod agents_api_store;
-pub mod capabilities;
-pub mod command;
-pub mod command_host;
+pub use everruns_contracts::runtime::capabilities;
+pub use everruns_contracts::runtime::command;
+pub use everruns_contracts::runtime::command_host;
 pub mod compaction_checkpoint;
-pub mod compaction_policy;
-pub mod computer_use;
+pub use everruns_contracts::runtime::compaction_policy;
+pub use everruns_contracts::runtime::computer_use;
 pub mod config;
-pub mod config_layer;
+pub use everruns_contracts::runtime::config_layer;
 pub mod context_report;
-pub mod dependency_blocker;
+pub use everruns_contracts::runtime::dependency_blocker;
 /// Shared lease and persistence contracts for native asynchronous tools.
 pub mod native_async_store;
 use everruns_contracts::driver_registry;
 use everruns_contracts::error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
-pub mod llm_error_hook;
+pub use everruns_contracts::runtime::llm_error_hook;
 // Adapters from core domain types to provider driver types. Lives on the core
 // side to keep the crate dependency one-directional (core -> everruns-contracts).
 pub mod llm_conversions;
-pub mod message;
-pub mod message_filter;
-pub mod message_retriever;
+pub use everruns_contracts::runtime::message;
+pub use everruns_contracts::runtime::message_filter;
+pub use everruns_contracts::runtime::message_retriever;
 mod tool_call_integrity;
 pub use tool_call_integrity::{
     retain_complete_llm_tool_exchanges, retain_complete_llm_tool_exchanges_for_request,
     retain_complete_message_tool_exchanges,
 };
-pub mod connection_services;
-pub mod delegation_services;
+pub use everruns_contracts::runtime::connection_services;
+pub use everruns_contracts::runtime::delegation_services;
 pub mod durability;
-pub mod event_emitter;
-pub mod execution_loading;
+pub use everruns_contracts::runtime::event_emitter;
+pub use everruns_contracts::runtime::execution_loading;
 pub mod file_services;
-pub mod image_services;
-pub mod outline;
-pub mod output_guardrail;
+pub use everruns_contracts::runtime::image_services;
+pub use everruns_contracts::runtime::outline;
+pub use everruns_contracts::runtime::output_guardrail;
 pub mod path_identity;
 pub mod provider_resolution;
-pub mod resource_ownership;
-pub mod runtime_agent;
+pub use everruns_contracts::runtime::resource_ownership;
+pub use everruns_contracts::runtime::runtime_agent;
 pub mod runtime_context;
-pub mod session_files;
-pub mod session_services;
+pub use everruns_contracts::runtime::session_files;
+pub use everruns_contracts::runtime::session_services;
 /// Narrow child-session delegation contract: core owns the host-neutral
 /// interface and a host adapter supplies the implementation.
-pub mod subagent_delegation;
-pub mod tool_context;
-pub mod tool_execution;
-pub mod tool_hooks;
-pub mod tool_output_sanitizer;
-pub mod tools;
-pub mod truncation_info;
-use everruns_contracts::user_facing_error;
+pub use everruns_contracts::runtime::subagent_delegation;
+pub use everruns_contracts::runtime::tool_context;
+pub use everruns_contracts::runtime::tool_execution;
+pub use everruns_contracts::runtime::tool_hooks;
+pub use everruns_contracts::runtime::tool_output_sanitizer;
+pub use everruns_contracts::runtime::tools;
+pub use everruns_contracts::runtime::truncation_info;
 
 // Private doubles for collocated unit tests. Public application backends live
 // in everruns_core::host; reusable deterministic fixtures live in test-support.
@@ -269,7 +268,8 @@ pub use durability::{
     DurableToolResultStore, PartialStreamState, PartialStreamStore, StreamHeartbeater,
     StreamProgress, ToolCallClaimResult,
 };
-pub(crate) use error::{AgentLoopError, Result};
+#[cfg(test)]
+pub(crate) use error::Result;
 pub use event_emitter::EventEmitter;
 pub use execution_loading::{HarnessStore, SessionStore};
 pub use execution_snapshot::{ResolvedExecutionSnapshot, SnapshotMcpServer};
@@ -302,7 +302,6 @@ pub use session_services::{
 };
 pub use tool_context::{ReasoningEffortHandle, ToolContext};
 pub use tool_execution::{OutboundToolRateLimiter, ToolExecutor};
-pub(crate) use user_facing_error::ErrorDisclosure;
 pub use workspace_policy::{WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError};
 pub use workspace_roots::{
     ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,
@@ -369,9 +368,9 @@ pub use utility_llm::{
 };
 
 // Private provider-contract imports used by kernel implementation modules.
-pub(crate) use driver_registry::{
-    LlmCallConfig, LlmResponse, LlmResponseStream, ProviderOpaqueContext,
-};
+pub(crate) use driver_registry::ProviderOpaqueContext;
+#[cfg(test)]
+pub(crate) use driver_registry::{LlmCallConfig, LlmResponseStream};
 
 // Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses
 // protocol drivers live in everruns-contracts and the focused provider crates.
@@ -424,7 +423,6 @@ pub use compaction_checkpoint::{
 
 pub use execution_context::ExecutionContext;
 
-pub(crate) use tool_types::ToolDefinition;
 #[cfg(test)]
 pub(crate) use tool_types::{BuiltinTool, ToolCall};
 
@@ -583,7 +581,7 @@ pub use deployment::DeploymentGrade;
 pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
 pub use feature_flag_grade::FeatureFlagGrade;
 
-mod sandbox_context;
+pub use everruns_contracts::runtime::sandbox_context;
 
 /// AG-UI wire values, event projection, and optional HTTP client.
 #[cfg(feature = "ag-ui")]

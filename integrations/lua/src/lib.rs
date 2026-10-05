@@ -11,16 +11,16 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::Capability;
+//! use everruns_contracts::runtime::Capability;
 //! use everruns_integrations_lua::LuaCapability;
 //!
 //! assert_eq!(LuaCapability.id(), "lua");
 //! ```
 
-use everruns_core::capabilities::{
+use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
-use everruns_core::*;
+use everruns_contracts::runtime::*;
 use std::result::Result;
 
 mod code_mode;
@@ -34,8 +34,8 @@ pub use code_mode::{LUA_CODE_MODE_CAPABILITY_ID, LuaCodeModeCapability};
 #[cfg(test)]
 use everruns_contracts::error;
 use everruns_contracts::{tool_types, typed_id};
-use everruns_core::session_files::SessionFileSystem;
-use everruns_core::tool_context::ToolContext;
+use everruns_contracts::runtime::session_files::SessionFileSystem;
+use everruns_contracts::runtime::tool_context::ToolContext;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
@@ -1484,7 +1484,7 @@ mod tests {
         async fn http_fails_closed_when_injected_egress_is_disabled() {
             let mut ctx = ToolContext::new(SessionId::new());
             ctx.file_store = Some(Arc::new(EmptyFileStore));
-            ctx.egress_service = Some(Arc::new(everruns_core::DisabledEgressService));
+            ctx.egress_service = Some(Arc::new(everruns_contracts::runtime::DisabledEgressService));
             ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
                 "127.0.0.1",
             ]));

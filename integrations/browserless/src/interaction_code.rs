@@ -211,7 +211,7 @@ pub(crate) fn build_interaction_code_with_policy(
 mod tests {
     use super::*;
     use crate::validation::transport_reject_patterns;
-    use everruns_core::network_access::NetworkAccessList;
+    use everruns_contracts::runtime::network_access::NetworkAccessList;
     use serde_json::json;
 
     #[test]

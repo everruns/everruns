@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use eventsource_stream::Eventsource;
-use everruns_core::network_access::NetworkAccessList;
-use everruns_core::{
+use everruns_contracts::runtime::network_access::NetworkAccessList;
+use everruns_contracts::runtime::{
     EgressByteStream, EgressError, EgressRequest, EgressRequestKind, EgressService,
 };
 use futures::{StreamExt, future::Future};
@@ -482,7 +482,7 @@ where
 mod tests {
     use super::*;
     use crate::test_egress::{BLOCKED_ANSWERS, LoopbackTestEgress, rebinding_egress};
-    use everruns_core::network_access::NetworkAccessList;
+    use everruns_contracts::runtime::network_access::NetworkAccessList;
     use wiremock::matchers::{any, body_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

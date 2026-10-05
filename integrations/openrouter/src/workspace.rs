@@ -20,7 +20,7 @@ use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::egress::{EgressError, EgressRequest, EgressRequestKind};
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
-use everruns_core::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_context::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -457,8 +457,8 @@ mod tests {
     use crate::egress::{EgressResponse, EgressService, EgressStreamResponse};
     use crate::error::Result as CoreResult;
     use crate::network_access::NetworkAccessList;
-    use everruns_core::connection_services::ProviderCredentialStore;
-    use everruns_core::connection_services::ProviderCredentials;
+    use everruns_contracts::runtime::connection_services::ProviderCredentialStore;
+    use everruns_contracts::runtime::connection_services::ProviderCredentials;
     use std::sync::{Arc, Mutex};
 
     struct StaticCredentialStore;
