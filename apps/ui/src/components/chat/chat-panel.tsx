@@ -123,6 +123,8 @@ export interface ChatPanelProps {
    * a task subscription, and only the Chats thread surface wants it.
    */
   showRunCards?: boolean;
+  /** Playground keeps the full log visible while retaining the chat composer. */
+  collapseWorkLog?: boolean;
   /** Icon name for the Platform Chat intro card (harness icon set). */
   platformIcon?: string | null;
   /** Markdown intro; the intro box renders while the transcript is empty. */
@@ -136,6 +138,7 @@ export function ChatPanel({
   replyToLabel,
   onDraftSubmit,
   showRunCards = false,
+  collapseWorkLog = true,
   showParticipants = true,
   platformIcon,
   platformIntro,
@@ -657,6 +660,7 @@ export function ChatPanel({
         <div className="flex min-h-0 flex-1 flex-col">
           <SessionTranscript
             showRunCards={showRunCards}
+            collapseWorkLog={collapseWorkLog}
             emptyState={
               showNoIntelligence ? (
                 <NoIntelligenceMessage canManage={intelligence.canManage} />

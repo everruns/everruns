@@ -93,7 +93,7 @@ components/
    - Message markdown, tool activity, and todo progress must read as one transcript system
    - Tool rows should stay inline with the surrounding message rhythm
    - Do not nest bordered tool/todo cards inside another transcript card unless the content requires a dedicated viewport
-   - Turn work logs are for multi-iteration or tool/action work, not direct one-iteration answers; they should remain expanded while work is active and collapse to a compact "Worked for ..." affordance once the final answer is available
+   - Platform Chat and Chats fold multi-iteration or tool/action work into a compact "Working / Worked for ..." affordance; direct one-iteration answers need no work log. Playground (testing) and Sessions (debugging) show all loaded work entries inline in transcript order, without turn folds or work-entry pagination. Completed activity groups remain visible on these surfaces.
    - Work logs may show safe narration from reason summaries and tool/act headlines, but must not expose raw hidden thinking content
 
 ## Usage

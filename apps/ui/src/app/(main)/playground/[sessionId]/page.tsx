@@ -120,6 +120,7 @@ function Conversation({ id }: { id: string }) {
             <ChatPanel
               replyToLabel={counterpart}
               showRunCards
+              collapseWorkLog={false}
               showParticipants={false}
               platformIntro={agent?.intro_markdown}
               platformStarters={agent?.starters ?? []}
