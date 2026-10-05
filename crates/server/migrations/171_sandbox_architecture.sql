@@ -1,4 +1,4 @@
--- Reusable Environment configuration, immutable revisions, and Sandbox roles.
+-- Reusable Environment configuration, immutable revisions, and durable Sandbox roles.
 
 CREATE TABLE execution_environments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
