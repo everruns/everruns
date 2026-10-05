@@ -1,0 +1,48 @@
+%% Source of truth for command-path.svg
+graph LR
+    subgraph Callers
+        UI["UI · SDKs<br/>REST over /v1"]
+        Person["Person<br/>in a terminal"]
+        MCPC["MCP client<br/>ChatGPT, Claude, ..."]
+        subgraph Worker["worker process"]
+            AgentTools["Agent, tools<br/>platform capability"]
+            AgentShell["Agent, shell<br/>bash in its session"]
+            WorkerSelf["Worker itself<br/>session db, files"]
+        end
+    end
+
+    REST["REST handlers<br/>api/*"]
+    CLI["everruns CLI<br/>MAPPER · hand-written -> REST"]
+    MCP["/mcp endpoint<br/>execute · query · discover"]
+    PlatformTools["platform tools<br/>gRPC · Execute"]
+    Builtin["everruns builtin<br/>MAPPER · gRPC · Run(name, params)"]
+    Transport["command transport<br/>gRPC · ExecuteCommand"]
+
+    Dispatcher["Dispatcher<br/>builds the typed command"]
+    Commands["POST /v1/commands<br/>by name · Idempotency-Key"]
+    Toolset["Scripted toolset<br/>MAPPER · bashkit · flat names · query refuses mutations"]
+    GrpcHandlers["Worker gRPC handlers<br/>session and org re-checked<br/>Run: same toolset gate<br/>ExecuteCommand: internal"]
+
+    ByName["Dispatch by name<br/>DISPATCH_TABLE<br/>params -> typed command"]
+    Run["Command::run<br/>policy check · tracing · metrics"]
+    Execute["Command::execute<br/>domain queries -> PostgreSQL"]
+
+    Registry["Command registry<br/>name, schema, method + path, policy, dispatch fn"]
+    Contract["commands.json<br/>crates/cli-contract<br/>generated from the registry, grammar for every MAPPER"]
+
+    UI --> REST --> Dispatcher
+    Person --> CLI --> Commands
+    CLI -->|hand-written commands| REST
+    MCPC --> MCP --> Toolset
+    AgentTools --> PlatformTools --> Toolset
+    AgentShell --> Builtin --> GrpcHandlers
+    WorkerSelf --> Transport --> GrpcHandlers
+
+    Dispatcher -->|typed command, no name lookup| Run
+    Commands --> ByName
+    Toolset --> ByName
+    GrpcHandlers --> ByName
+    ByName --> Run --> Execute
+
+    Registry -.->|every command registers| Execute
+    Registry -.->|generates| Contract

@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 510" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .label-inv { font-size: 13px; fill: #FFFFFF; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .sublabel-inv { font-size: 11px; fill: #D4D8E2; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+    .tag { font-size: 8px; fill: #FFFFFF; font-weight: 600; letter-spacing: 0.06em; }
+  </style>
+  <rect width="800" height="510" fill="#FFFFFF"/>
+  <text x="78" y="32" text-anchor="middle" class="header-text">CALLERS</text>
+  <text x="249" y="32" text-anchor="middle" class="header-text">ENTRY POINTS</text>
+  <text x="455" y="32" text-anchor="middle" class="header-text">SERVER</text>
+  <text x="680" y="32" text-anchor="middle" class="header-text">COMMAND PATH</text>
+  <rect x="8" y="222" width="334" height="194" fill="#FFFFFF" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="14" y="408" class="mono">worker process</text>
+  <rect x="16" y="50" width="124" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="78.0" y="68.0" text-anchor="middle" class="label">UI · SDKs</text>
+  <text x="78.0" y="84.0" text-anchor="middle" class="sublabel">REST over /v1</text>
+  <rect x="16" y="110" width="124" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="78.0" y="128.0" text-anchor="middle" class="label">Person</text>
+  <text x="78.0" y="144.0" text-anchor="middle" class="sublabel">in a terminal</text>
+  <rect x="16" y="170" width="124" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="78.0" y="188.0" text-anchor="middle" class="label">MCP client</text>
+  <text x="78.0" y="204.0" text-anchor="middle" class="sublabel">ChatGPT, Claude, …</text>
+  <rect x="16" y="230" width="124" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="78.0" y="248.0" text-anchor="middle" class="label">Agent, tools</text>
+  <text x="78.0" y="264.0" text-anchor="middle" class="sublabel">platform capability</text>
+  <rect x="16" y="290" width="124" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="78.0" y="308.0" text-anchor="middle" class="label">Agent, shell</text>
+  <text x="78.0" y="324.0" text-anchor="middle" class="sublabel">bash in its session</text>
+  <rect x="16" y="350" width="124" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="78.0" y="368.0" text-anchor="middle" class="label">Worker itself</text>
+  <text x="78.0" y="384.0" text-anchor="middle" class="sublabel">session db, files</text>
+  <rect x="164" y="50" width="170" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="249.0" y="68.0" text-anchor="middle" class="label">REST handlers</text>
+  <text x="249.0" y="84.0" text-anchor="middle" class="mono">api/*</text>
+  <rect x="164" y="110" width="170" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="249.0" y="128.0" text-anchor="middle" class="label">everruns CLI</text>
+  <text x="249.0" y="144.0" text-anchor="middle" class="sublabel">hand-written → REST</text>
+  <rect x="290" y="99" width="44" height="11" fill="#0A1636"/>
+  <text x="312" y="107" text-anchor="middle" class="tag">MAPPER</text>
+  <rect x="164" y="170" width="170" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="249.0" y="188.0" text-anchor="middle" class="label">/mcp endpoint</text>
+  <text x="249.0" y="204.0" text-anchor="middle" class="sublabel">execute · query · discover</text>
+  <rect x="164" y="230" width="170" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="249.0" y="248.0" text-anchor="middle" class="label">platform tools</text>
+  <text x="249.0" y="264.0" text-anchor="middle" class="sublabel">gRPC · Execute</text>
+  <rect x="164" y="290" width="170" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="249.0" y="308.0" text-anchor="middle" class="label">everruns builtin</text>
+  <text x="249.0" y="324.0" text-anchor="middle" class="sublabel">gRPC · Run(name, params)</text>
+  <rect x="290" y="279" width="44" height="11" fill="#0A1636"/>
+  <text x="312" y="287" text-anchor="middle" class="tag">MAPPER</text>
+  <rect x="164" y="350" width="170" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="249.0" y="368.0" text-anchor="middle" class="label">command transport</text>
+  <text x="249.0" y="384.0" text-anchor="middle" class="sublabel">gRPC · ExecuteCommand</text>
+  <rect x="360" y="50" width="190" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="455.0" y="68.0" text-anchor="middle" class="label">Dispatcher</text>
+  <text x="455.0" y="84.0" text-anchor="middle" class="sublabel">builds the typed command</text>
+  <rect x="360" y="110" width="190" height="44" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="455.0" y="128.0" text-anchor="middle" class="label">POST /v1/commands</text>
+  <text x="455.0" y="144.0" text-anchor="middle" class="sublabel">by name · Idempotency-Key</text>
+  <rect x="360" y="170" width="190" height="104" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="455.0" y="202.0" text-anchor="middle" class="label">Scripted toolset</text>
+  <text x="455.0" y="218.0" text-anchor="middle" class="sublabel">bashkit interpreter</text>
+  <text x="455.0" y="234.0" text-anchor="middle" class="sublabel">everruns builtin, flat names</text>
+  <text x="455.0" y="250.0" text-anchor="middle" class="sublabel">query refuses mutations</text>
+  <rect x="506" y="159" width="44" height="11" fill="#0A1636"/>
+  <text x="528" y="167" text-anchor="middle" class="tag">MAPPER</text>
+  <rect x="360" y="290" width="190" height="104" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="455.0" y="322.0" text-anchor="middle" class="label">Worker gRPC handlers</text>
+  <text x="455.0" y="338.0" text-anchor="middle" class="sublabel">session and org re-checked</text>
+  <text x="455.0" y="354.0" text-anchor="middle" class="sublabel">Run: same toolset gate</text>
+  <text x="455.0" y="370.0" text-anchor="middle" class="sublabel">ExecuteCommand: internal</text>
+  <rect x="580" y="150" width="200" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="680.0" y="178.0" text-anchor="middle" class="label">Dispatch by name</text>
+  <text x="680.0" y="194.0" text-anchor="middle" class="mono">DISPATCH_TABLE</text>
+  <text x="680.0" y="210.0" text-anchor="middle" class="sublabel">params → typed command</text>
+  <rect x="580" y="255" width="200" height="60" fill="#0A1636" stroke="#0A1636" stroke-width="1"/>
+  <text x="680.0" y="281.0" text-anchor="middle" class="label-inv">Command::run</text>
+  <text x="680.0" y="297.0" text-anchor="middle" class="sublabel-inv">policy check · tracing · metrics</text>
+  <rect x="580" y="340" width="200" height="54" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="680.0" y="363.0" text-anchor="middle" class="label">Command::execute</text>
+  <text x="680.0" y="379.0" text-anchor="middle" class="sublabel">domain queries → PostgreSQL</text>
+  <rect x="164" y="428" width="170" height="70" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="249.0" y="446" text-anchor="middle" class="label">commands.json</text>
+  <text x="249.0" y="462" text-anchor="middle" class="mono">crates/cli-contract</text>
+  <text x="249.0" y="477" text-anchor="middle" class="sublabel">generated from the registry,</text>
+  <text x="249.0" y="491" text-anchor="middle" class="sublabel">grammar for every MAPPER</text>
+  <rect x="360" y="428" width="420" height="70" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="570.0" y="448.0" text-anchor="middle" class="label">Command registry</text>
+  <text x="570.0" y="464.0" text-anchor="middle" class="sublabel">each command registers name, schema, method + path,</text>
+  <text x="570.0" y="480.0" text-anchor="middle" class="sublabel">policy and dispatch fn, via inventory::submit!</text>
+  <polyline points="140,72 156,72" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="156,68 164,72 156,76" fill="#0A1636"/>
+  <polyline points="140,132 156,132" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="156,128 164,132 156,136" fill="#0A1636"/>
+  <polyline points="140,192 156,192" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="156,188 164,192 156,196" fill="#0A1636"/>
+  <polyline points="140,252 156,252" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="156,248 164,252 156,256" fill="#0A1636"/>
+  <polyline points="140,312 156,312" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="156,308 164,312 156,316" fill="#0A1636"/>
+  <polyline points="140,372 156,372" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="156,368 164,372 156,376" fill="#0A1636"/>
+  <polyline points="334,72 352,72" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="352,68 360,72 352,76" fill="#0A1636"/>
+  <polyline points="334,132 352,132" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="352,128 360,132 352,136" fill="#0A1636"/>
+  <polyline points="334,192 352,192" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="352,188 360,192 352,196" fill="#0A1636"/>
+  <polyline points="334,312 352,312" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="352,308 360,312 352,316" fill="#0A1636"/>
+  <polyline points="334,252 352,252" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="352,248 360,252 352,256" fill="#0A1636"/>
+  <polyline points="334,372 352,372" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="352,368 360,372 352,376" fill="#0A1636"/>
+  <polyline points="249,110 249,102" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="245,102 249,94 253,102" fill="#0A1636"/>
+  <polyline points="550,72 790,72 790,285 788,285" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="788,281 780,285 788,289" fill="#0A1636"/>
+  <text x="600" y="66" class="arrow-label">typed command, no name lookup</text>
+  <polyline points="550,132 680,132 680,142" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="676,142 680,150 684,142" fill="#0A1636"/>
+  <polyline points="550,190 572,190" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="572,186 580,190 572,194" fill="#0A1636"/>
+  <polyline points="550,330 566,330 566,215 572,215" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="572,211 580,215 572,219" fill="#0A1636"/>
+  <polyline points="680,230 680,247" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="676,247 680,255 684,247" fill="#0A1636"/>
+  <polyline points="680,315 680,332" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="676,332 680,340 684,332" fill="#0A1636"/>
+  <line x1="680" y1="428" x2="680" y2="394" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="674" y="416" text-anchor="end" class="mono">every command registers</text>
+  <line x1="360" y1="460" x2="334" y2="460" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+</svg>
