@@ -524,8 +524,8 @@ mod tests {
 
     use super::*;
     use crate::durable::{
-        ActivityOptions, ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome,
-        WorkflowError, WorkflowStatus,
+        ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome, WorkflowError,
+        WorkflowStatus,
     };
     use std::sync::atomic::AtomicBool;
 
@@ -635,9 +635,9 @@ mod tests {
                         activity_id: format!("unknown_{}", Uuid::now_v7()),
                         activity_type: "unknown".to_string(),
                         input: serde_json::json!({}),
-                        options: ActivityOptions::default(),
                         attempt: 1,
                         max_attempts: 1,
+                        ..Default::default()
                     })
                     .collect())
             }

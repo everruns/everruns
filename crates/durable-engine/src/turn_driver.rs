@@ -811,9 +811,9 @@ mod tests {
             activity_id: "act-1".into(),
             activity_type: "act".into(),
             input: serde_json::json!({}),
-            options: ActivityOptions::default(),
             attempt: 1,
             max_attempts: 1,
+            ..Default::default()
         };
         let drained = store
             .complete_task_and_drain(&task, "w", serde_json::json!({}), Some("user_message"))

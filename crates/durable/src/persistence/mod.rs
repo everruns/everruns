@@ -20,7 +20,7 @@ pub use store::{
     CapacitySnapshot, CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow,
     DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, DEFAULT_NO_PROGRESS_SEAL_THRESHOLD,
     DEFAULT_SNAPSHOT_INTERVAL, DeadLetters, DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin,
-    EventLog, HeartbeatResponse, Pagination, ReclaimResult, ScheduleExecutionFilter,
+    EventLog, HeartbeatResponse, Pagination, ReclaimResult, RunStart, ScheduleExecutionFilter,
     ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
     ScheduleTargetType, SchedulerInstanceInfo, Schedules, SealedTaskInfo, SignalStore, StoreError,
     SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue, TaskStatus,

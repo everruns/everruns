@@ -28,7 +28,7 @@ use super::db_failure::store_failure;
 use super::store::{
     CapacitySnapshot, CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow,
     DeadLetters, DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, EventLog, HeartbeatResponse,
-    Pagination, ReclaimResult, ScheduleExecutionFilter, ScheduleExecutionRow,
+    Pagination, ReclaimResult, RunStart, ScheduleExecutionFilter, ScheduleExecutionRow,
     ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType,
     SchedulerInstanceInfo, Schedules, SealedTaskInfo, SignalStore, StoreError, SystemHealth,
     TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext,
@@ -136,54 +136,13 @@ impl PostgresWorkflowEventStore {
         input: serde_json::Value,
         task: TaskDefinition,
     ) -> Result<Uuid, StoreError> {
-        let task_id = Uuid::now_v7();
-        let workflow_input = sanitize_json_null_bytes(input.clone());
-        let task_input = sanitize_json_null_bytes(task.input.clone());
-        let options_json = serde_json::to_value(&task.options)
-            .map(sanitize_json_null_bytes)
-            .map_err(|e| StoreError::Serialization(e.to_string()))?;
-
-        let workflow_started = WorkflowEvent::started(workflow_input.clone());
-        let activity_scheduled = WorkflowEvent::ActivityScheduled {
-            activity_id: task.activity_id.clone(),
-            activity_type: task.activity_type.clone(),
-            input: task_input.clone(),
-            options: task.options.clone(),
-        };
-        let workflow_started_data = serde_json::to_value(&workflow_started)
-            .map(sanitize_json_null_bytes)
-            .map_err(|e| StoreError::Serialization(e.to_string()))?;
-        let activity_scheduled_data = serde_json::to_value(&activity_scheduled)
-            .map(sanitize_json_null_bytes)
-            .map_err(|e| StoreError::Serialization(e.to_string()))?;
-
         let mut tx = self
             .pool
             .begin()
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
-        let inserted_workflow_id = sqlx::query_scalar::<_, Uuid>(
-            r#"
-            INSERT INTO durable_workflow_instances (
-                id, workflow_type, status, input, started_at
-            )
-            VALUES ($1, $2, 'running', $3, NOW())
-            ON CONFLICT (id) DO NOTHING
-            RETURNING id
-            "#,
-        )
-        .bind(workflow_id)
-        .bind(workflow_type)
-        .bind(&workflow_input)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| {
-            error!("Failed to create started workflow: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
-
-        if inserted_workflow_id.is_none() {
+        if !insert_started_workflow(&mut tx, workflow_id, workflow_type, input, &task).await? {
             tx.rollback().await.ok();
             let existing_task_id = self.existing_initial_task_id(workflow_id).await?;
             debug!(
@@ -194,54 +153,7 @@ impl PostgresWorkflowEventStore {
             return Ok(existing_task_id);
         }
 
-        sqlx::query(
-            r#"
-            INSERT INTO durable_workflow_events (
-                workflow_id, sequence_num, event_type, event_data
-            )
-            VALUES
-                ($1, 0, 'workflow_started', $2),
-                ($1, 1, 'activity_scheduled', $3)
-            "#,
-        )
-        .bind(workflow_id)
-        .bind(&workflow_started_data)
-        .bind(&activity_scheduled_data)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            error!("Failed to write initial workflow events: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
-
-        sqlx::query(
-            r#"
-            INSERT INTO durable_task_queue (
-                id, workflow_id, activity_id, activity_type, input, options,
-                max_attempts, priority, visible_at,
-                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11)
-            "#,
-        )
-        .bind(task_id)
-        .bind(workflow_id)
-        .bind(&task.activity_id)
-        .bind(&task.activity_type)
-        .bind(&task_input)
-        .bind(&options_json)
-        .bind(task.options.retry_policy.max_attempts as i32)
-        .bind(task.options.priority)
-        .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
-        .bind(task.options.start_to_close_timeout.as_millis() as i64)
-        .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
-        .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            error!("Failed to enqueue initial workflow task: {}", e);
-            StoreError::Database(e.to_string())
-        })?;
+        let task_id = insert_workflow_task(&mut tx, workflow_id, &task).await?;
 
         tx.commit().await.map_err(|e| {
             error!("Failed to commit initial workflow start: {}", e);
@@ -256,6 +168,123 @@ impl PostgresWorkflowEventStore {
         );
         Ok(task_id)
     }
+}
+
+/// Insert `workflow_id` as Running with its `WorkflowStarted` and
+/// `ActivityScheduled` events. Returns false, writing nothing, when the
+/// workflow already exists.
+async fn insert_started_workflow(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workflow_id: Uuid,
+    workflow_type: &str,
+    input: serde_json::Value,
+    task: &TaskDefinition,
+) -> Result<bool, StoreError> {
+    let workflow_input = sanitize_json_null_bytes(input);
+    let workflow_started = WorkflowEvent::started(workflow_input.clone());
+    let activity_scheduled = WorkflowEvent::ActivityScheduled {
+        activity_id: task.activity_id.clone(),
+        activity_type: task.activity_type.clone(),
+        input: sanitize_json_null_bytes(task.input.clone()),
+        options: task.options.clone(),
+    };
+    let workflow_started_data = serde_json::to_value(&workflow_started)
+        .map(sanitize_json_null_bytes)
+        .map_err(|e| StoreError::Serialization(e.to_string()))?;
+    let activity_scheduled_data = serde_json::to_value(&activity_scheduled)
+        .map(sanitize_json_null_bytes)
+        .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+    let inserted_workflow_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO durable_workflow_instances (
+            id, workflow_type, status, input, started_at
+        )
+        VALUES ($1, $2, 'running', $3, NOW())
+        ON CONFLICT (id) DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(workflow_id)
+    .bind(workflow_type)
+    .bind(&workflow_input)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(|e| {
+        error!("Failed to create started workflow: {}", e);
+        StoreError::Database(e.to_string())
+    })?;
+
+    if inserted_workflow_id.is_none() {
+        return Ok(false);
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO durable_workflow_events (
+            workflow_id, sequence_num, event_type, event_data
+        )
+        VALUES
+            ($1, 0, 'workflow_started', $2),
+            ($1, 1, 'activity_scheduled', $3)
+        "#,
+    )
+    .bind(workflow_id)
+    .bind(&workflow_started_data)
+    .bind(&activity_scheduled_data)
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| {
+        error!("Failed to write initial workflow events: {}", e);
+        StoreError::Database(e.to_string())
+    })?;
+
+    Ok(true)
+}
+
+/// Insert `task` as a pending task of `workflow_id`, with no pending-cap check
+/// (callers use it right after creating or resetting the workflow).
+async fn insert_workflow_task(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    workflow_id: Uuid,
+    task: &TaskDefinition,
+) -> Result<Uuid, StoreError> {
+    let task_id = Uuid::now_v7();
+    let task_input = sanitize_json_null_bytes(task.input.clone());
+    let options_json = serde_json::to_value(&task.options)
+        .map(sanitize_json_null_bytes)
+        .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO durable_task_queue (
+            id, workflow_id, activity_id, activity_type, input, options,
+            max_attempts, priority, visible_at,
+            schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11)
+        "#,
+    )
+    .bind(task_id)
+    .bind(workflow_id)
+    .bind(&task.activity_id)
+    .bind(&task.activity_type)
+    .bind(&task_input)
+    .bind(&options_json)
+    .bind(task.options.retry_policy.max_attempts as i32)
+    .bind(task.options.priority)
+    .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
+    .bind(task.options.start_to_close_timeout.as_millis() as i64)
+    .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
+    .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
+    .execute(&mut **tx)
+    .await
+    .map_err(|e| {
+        error!("Failed to enqueue initial workflow task: {}", e);
+        StoreError::Database(e.to_string())
+    })?;
+
+    Ok(task_id)
 }
 
 // Helper functions

@@ -188,6 +188,8 @@ The first hand-off of a turn is gone: the `process_input` task runs the input st
 
 Two smaller costs sat on every turn. The server's database pools pinged each idle connection before handing it out, which doubled the round trips of every query outside a transaction. They now ping only connections idle for 30 s or more (`crates/server/src/storage/repositories/mod.rs`). And the first text delta waited a full 100 ms batch after the model's first token, because the batch clock started with the stream; the first token now goes out at once (`crates/core/src/engine/execution/reason.rs`). In the UI, the streaming typewriter reveals each chunk over about one batch (`apps/ui/src/components/streaming-message.tsx`) instead of at a fixed rate that left the text several hundred milliseconds behind the model.
 
+Starting a turn is one store call, `EventLog::start_run_with_task` (`crates/durable/src/persistence/store.rs`): it creates the session's workflow or starts a new run of it and enqueues `process_input` in one transaction, or reports the run as active so the send becomes a steering signal. Before, `DurableRunner` made that decision in three or four calls under a process-wide mutex, so every send in a server process queued behind every other, and a failure between the claim and the enqueue left a session Running with no task. Now the runner holds no lock; the store's row lock elects one winner per session. The task claim also returns each task's workflow status from the same statement, so the control plane no longer reads it once per claimed task.
+
 Operational contract:
 
 - NATS is the preferred backend when configured

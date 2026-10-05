@@ -220,11 +220,8 @@ impl WorkerServiceImpl {
 
         let mut proto_tasks = Vec::with_capacity(tasks.len());
         for t in tasks {
-            // Best effort: on a failed read the worker checks status itself.
-            let workflow_status = match t.workflow_id {
-                Some(workflow_id) => store.get_workflow_status(workflow_id).await.ok(),
-                None => None,
-            };
+            // The claim reads the workflow status in the same statement.
+            let workflow_status = t.workflow_status;
             proto_tasks.push(proto::DurableClaimedTask {
                 id: Some(uuid_to_proto_uuid(t.id)),
                 workflow_id: t.workflow_id.map(uuid_to_proto_uuid),

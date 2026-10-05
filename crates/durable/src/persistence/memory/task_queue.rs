@@ -74,6 +74,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
                         options: task.definition.options.clone(),
                         attempt: task.attempt,
                         max_attempts: task.definition.options.retry_policy.max_attempts,
+                        workflow_status: None,
                     }
                 })
                 .expect("claimable ids come from the table");
@@ -82,9 +83,14 @@ impl TaskQueue for InMemoryWorkflowEventStore {
         drop(tasks);
 
         // PostgreSQL records ActivityStarted on the first attempt only (EVE-639).
+        // The workflow status rides along with the claim, as in PostgreSQL.
         let mut workflows = self.workflows.write();
-        for task in claimed.iter().filter(|t| t.attempt == 1) {
-            if let Some(wf) = task.workflow_id.and_then(|id| workflows.get_mut(&id)) {
+        for task in claimed.iter_mut() {
+            let Some(wf) = task.workflow_id.and_then(|id| workflows.get_mut(&id)) else {
+                continue;
+            };
+            task.workflow_status = Some(wf.status);
+            if task.attempt == 1 {
                 wf.events.push(WorkflowEvent::ActivityStarted {
                     activity_id: task.activity_id.clone(),
                     attempt: task.attempt,

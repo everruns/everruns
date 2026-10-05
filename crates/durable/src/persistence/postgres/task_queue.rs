@@ -211,9 +211,11 @@ impl TaskQueue for PostgresWorkflowEventStore {
                 RETURNING t.id, t.workflow_id, t.activity_id, t.activity_type,
                           t.input, t.options, t.attempt, t.max_attempts
             )
-            SELECT id, workflow_id, activity_id, activity_type,
-                   input, options, attempt, max_attempts
-            FROM updated
+            SELECT u.id, u.workflow_id, u.activity_id, u.activity_type,
+                   u.input, u.options, u.attempt, u.max_attempts,
+                   w.status AS workflow_status
+            FROM updated u
+            LEFT JOIN durable_workflow_instances w ON w.id = u.workflow_id
             "#,
         )
         .bind(activity_types)
@@ -249,6 +251,11 @@ impl TaskQueue for PostgresWorkflowEventStore {
                 options,
                 attempt: attempt as u32,
                 max_attempts: row.get::<i32, _>("max_attempts") as u32,
+                workflow_status: row
+                    .get::<Option<String>, _>("workflow_status")
+                    .as_deref()
+                    .map(parse_workflow_status)
+                    .transpose()?,
             });
 
             if attempt == 1
