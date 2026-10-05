@@ -9,6 +9,17 @@ use serde_json::json;
 
 use crate::support::{Observed, agent_with, has_event, run_on};
 
+/// Poll the session's history until an event of `event_type` is persisted.
+async fn wait_for_event(session: &everruns::Session, event_type: &str) {
+    loop {
+        let events = session.events_after(0).await.expect("history reads");
+        if events.iter().any(|event| event.event_type() == event_type) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+}
+
 fn delayed(response: &str, delay: Duration) -> Model {
     Model::simulated_with_config(LlmSimConfig::fixed(response).with_response_delay(delay))
 }
@@ -78,7 +89,9 @@ async fn steering_joins_the_running_turn_and_a_later_send_starts_the_next() {
         || (agent_with(delayed("Sure.", Duration::from_millis(300))), ()),
         |_, session, ()| async move {
             let first = session.send("hi").await.expect("send");
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            // Steer only once the turn reasons: a fixed sleep let a slow
+            // backend (PostgreSQL on CI) take the steer as initial input.
+            wait_for_event(&session, "reason.started").await;
             let steered = session.send("and this").await.expect("steer");
             let same_turn = steered.turn_id == first.turn_id;
             let first_turn = first.wait().await.expect("turn");
