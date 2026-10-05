@@ -25,6 +25,7 @@ use crate::task_store::TaskStore;
 use crate::turn_start;
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_contracts::typed_id::MessageId;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
@@ -58,6 +59,43 @@ pub trait TurnTaskHost: Clone + Send + Sync + 'static {
     /// used, so effects the host buffered (events) land first.
     async fn phase_finished(&self, host: &Self::Host) {
         let _ = host;
+    }
+
+    /// Steering: deliver input that joined the running turn, before a reason
+    /// step runs. Returns the ids of the messages it persisted, which cross
+    /// the `user_prompt_submit` boundary with that reason (after the turn's
+    /// own input on its first iteration).
+    ///
+    /// The default delivers nothing: the platform worker's steering arrives
+    /// as persisted messages plus `USER_MESSAGE` wake signals instead.
+    async fn before_reason(&self, input: &DurableTurnInput) -> Result<Vec<MessageId>> {
+        let _ = input;
+        Ok(Vec::new())
+    }
+
+    /// Steering: called once a reason step completed, before the turn's next
+    /// step is planned, with the `USER_MESSAGE` wakes this boundary already
+    /// drained. Returns how many further user messages joined the turn; they
+    /// count with the wakes when the engine decides whether the turn
+    /// continues. `input` is the turn state the reason ran from.
+    ///
+    /// The default adds none.
+    async fn after_reason(
+        &self,
+        input: &DurableTurnInput,
+        reason: &ReasonResult,
+        drained_wakes: usize,
+    ) -> Result<usize> {
+        let _ = (input, reason, drained_wakes);
+        Ok(0)
+    }
+
+    /// Called with the turn's next step once the engine planned it, before
+    /// the driver enqueues that step or ends the workflow. A host that
+    /// accepts mid-turn input closes its ingress here when the turn ends.
+    async fn turn_planned(&self, checkpoint: &DurableTurnInput, plan: &TurnPlan) -> Result<()> {
+        let _ = (checkpoint, plan);
+        Ok(())
     }
 
     /// Run a claimed task whose activity type is not a turn step
@@ -419,12 +457,19 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
     // is picked up by that reason (it re-reads full history); consuming the
     // signal here is what governs turn continuation and, being destructive,
     // gives exactly-once delivery — see `drains_wake_signals_after`.
-    let pending_user_message_count = match drained {
+    let mut pending_user_message_count = match drained {
         Some(count) => count,
         None => {
             count_drained_wakes(store, workflow_id, completed_activity, reason_final_answer).await?
         }
     };
+    if completed_activity == "reason" {
+        let reason: ReasonResult = serde_json::from_value(output.clone())
+            .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
+        pending_user_message_count += hosts
+            .after_reason(input, &reason, pending_user_message_count)
+            .await?;
+    }
 
     if completed_activity == "act" && pending_user_message_count > 0 {
         debug!(
@@ -444,6 +489,7 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
     )
     .await?;
     let checkpoint = execution.checkpoint();
+    hosts.turn_planned(&checkpoint, &plan).await?;
     match plan {
         TurnPlan::ScheduleReason(_) => {
             enqueue_reason_task(store, workflow_id, &checkpoint).await?;

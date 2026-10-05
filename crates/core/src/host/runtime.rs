@@ -1139,14 +1139,7 @@ impl InProcessRuntime {
 
         // The canonical input envelope is the only write. EventHistory rebuilds
         // the message projection from this accepted append.
-        let input_message = input.into_message();
-        self.event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                EventContext::empty(),
-                InputMessageData::new(input_message.clone()),
-            ))
-            .await?;
+        let input_message_id = self.persist_accepted_input(session_id, input).await?;
 
         let org_id = in_process_internal_org_id(&snapshot.organization_id);
 
@@ -1160,7 +1153,7 @@ impl InProcessRuntime {
             session_id,
             harness_id: snapshot.harness_id,
             agent_id: snapshot.agent_id,
-            input_message_id: input_message.id,
+            input_message_id,
             turn_id: None,
             previous_response_id: None,
             iteration: 1,
@@ -1175,7 +1168,7 @@ impl InProcessRuntime {
         };
 
         let base_context = |exec: bool| {
-            let context = ExecutionContext::new(session_id, turn_id, input_message.id)
+            let context = ExecutionContext::new(session_id, turn_id, input_message_id)
                 .with_workspace_id(snapshot.workspace_id);
             if exec { context.next_exec() } else { context }
         };
@@ -1210,7 +1203,7 @@ impl InProcessRuntime {
                 session_id,
                 org_id,
                 turn_id,
-                input_message_id: input_message.id,
+                input_message_id,
                 harness_id: snapshot.harness_id,
                 agent_id: snapshot.agent_id,
                 workspace_id: snapshot.workspace_id,
@@ -1438,15 +1431,7 @@ impl InProcessRuntime {
     ) -> Result<Vec<MessageId>> {
         let mut message_ids = Vec::with_capacity(inputs.len());
         for input in inputs {
-            let message = input.into_message();
-            message_ids.push(message.id);
-            self.event_emitter
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::empty(),
-                    InputMessageData::new(message),
-                ))
-                .await?;
+            message_ids.push(self.persist_accepted_input(session_id, input).await?);
         }
         Ok(message_ids)
     }
@@ -1738,7 +1723,11 @@ impl InProcessRuntime {
     /// Project the canonical resolved execution snapshot for a session
     /// (EVE-872). This is the same platform projection the hosted workers
     /// apply, so Framework and hosted execution consume one execution value.
-    async fn resolved_execution_snapshot(
+    ///
+    /// Public so a durable backend driving this runtime's turn steps routes a
+    /// turn (organization, harness, agent) exactly as this runtime's own turns
+    /// do, without loading the history a full turn resolution reads.
+    pub async fn resolved_execution_snapshot(
         &self,
         session_id: SessionId,
     ) -> Result<ResolvedExecutionSnapshot> {

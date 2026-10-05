@@ -14,6 +14,14 @@
   runtime never sees. Design, contracts and test plan in
   [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
 
+* **Facade sessions can run on the durable backend.** The `everruns`
+  `durable` feature (opt-in, experimental) adds `durable::Backend`, selected on
+  the engine builder: turn steps run as queued, checkpointed tasks on an
+  in-memory store, driven by in-process workers over the session's runtime,
+  with in-process steering and cancellation semantics. PostgreSQL waits on
+  session routing across processes. See
+  [Execution Backends](framework/execution-backends.md).
+
 * **Integrations ship against contracts alone.** The runtime SPI (capability,
   tool, tool context, session, message, event) moved from core into
   `everruns_contracts::runtime` behind a `runtime` feature; core re-exports each

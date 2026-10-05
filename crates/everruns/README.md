@@ -247,6 +247,7 @@ opt-in.
 | `a2a` | Outbound Agent2Agent delegation; includes `local` |
 | `ag-ui` | Serve a session to AG-UI 1.0 clients (CopilotKit, `@ag-ui/client`) with `Session::ag_ui` |
 | `ag-ui-axum` | `ag-ui` plus `AgUiHandler`, a ready-made axum route with an authorizer, thread resolution and SSE framing |
+| `durable` | Experimental: run an `Engine`'s turns as queued, checkpointed steps on in-process workers with `durable::Backend` |
 
 Combine features as needed:
 

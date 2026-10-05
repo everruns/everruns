@@ -15,6 +15,11 @@
 //!   it starts, cancels and observes a session's turns. Starting a turn creates
 //!   or claims the session's workflow and enqueues its first step before it
 //!   returns; the ticket resolves when the workflow ends.
+//! - [`DurableBackend`] runs a framework application's turns: it owns an
+//!   in-memory durable store and in-process workers that drive each step on
+//!   the session's own `InProcessRuntime`. [`DurableBackend::attach`] gives a
+//!   session its [`TurnBackend`](everruns_core::host::TurnBackend). The
+//!   `everruns` facade selects it with its `durable` feature.
 //! - [`TurnTaskDriver`] runs one claimed turn task against any
 //!   [`TaskStore`](task_store::TaskStore); a [`TurnTaskHost`] supplies the
 //!   runtime host each step runs on.
@@ -98,6 +103,9 @@
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
 
+pub mod durable_backend;
+#[cfg(test)]
+mod durable_backend_tests;
 pub mod durable_execution;
 pub mod durable_runner;
 pub mod durable_turn;
@@ -119,6 +127,7 @@ pub use everruns_core as core;
 pub use everruns_core::{engine, host};
 pub use everruns_durable as durable;
 
+pub use durable_backend::{DurableBackend, DurableSessionBackend};
 pub use durable_execution::DurableExecution;
 pub use durable_runner::{
     DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTaskNotifier, DurableTurnInput,
