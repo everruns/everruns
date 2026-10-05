@@ -1,9 +1,10 @@
 //! Runtime-owned artifacts under a model-facing workspace policy.
 //!
-//! Delegation writes run records (`/.agent-runs`) and structured task results
-//! (`/.tasks`) on the session's behalf. These tests pin that a restrictive
-//! policy keeps applying to the model-facing store while those writes go
-//! through the runtime's confined artifact store.
+//! Delegation writes run records (`/.agent-runs`), structured task results
+//! (`/.tasks`), and background-run artifacts (`/.background`) on the session's
+//! behalf. These tests pin that a restrictive policy keeps applying to the
+//! model-facing store while those writes go through the runtime's confined
+//! artifact store, and that the model can read, never write, what lands there.
 
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::typed_id::{HarnessId, SessionId};
@@ -67,6 +68,7 @@ async fn read_only_policy_keeps_runtime_artifact_writes_off_the_model_store() {
     for path in [
         "/.agent-runs/run_1/result.json",
         "/.tasks/task_1/result.json",
+        "/.background/bg_1/result.json",
     ] {
         assert!(
             model_store
@@ -86,6 +88,39 @@ async fn read_only_policy_keeps_runtime_artifact_writes_off_the_model_store() {
                 .unwrap()
                 .is_some(),
             "runtime must read back `{path}`"
+        );
+        // EVE-1165: wake messages point the model at these `result_path`s, so
+        // the model-facing store reads them, but still cannot overwrite them.
+        assert!(
+            model_store
+                .read_file(session_id, path)
+                .await
+                .unwrap_or_else(|error| panic!("model read of `{path}` denied: {error}"))
+                .is_some(),
+            "the model must read `{path}`"
+        );
+        assert!(
+            model_store
+                .write_file(session_id, path, "forged", "utf-8")
+                .await
+                .is_err(),
+            "the model must not overwrite `{path}`"
+        );
+    }
+    // The read allowance names the roots exactly: traversal out of one, or a
+    // credential stored beneath one, stays denied.
+    artifacts
+        .write_file(session_id, "/.agent-runs/run_1/.env", "SECRET=1", "utf-8")
+        .await
+        .ok();
+    for path in [
+        "/.agent-runs/../.env",
+        "/.agent-runs/run_1/.env",
+        "/.config/app.toml",
+    ] {
+        assert!(
+            model_store.read_file(session_id, path).await.is_err(),
+            "the model must not read `{path}`"
         );
     }
     for path in ["/notes.md", "/.agents/AGENTS.md", "/.env", "/.ssh/id_rsa"] {

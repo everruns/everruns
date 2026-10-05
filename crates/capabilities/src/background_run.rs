@@ -547,7 +547,7 @@ impl Tool for SpawnBackgroundTool {
                 "Session task registry not available in this context. Background runs require task tracking.",
             );
         };
-        if context.file_store.is_none() {
+        if context.runtime_artifact_file_store().is_none() {
             return ToolExecutionResult::tool_error(
                 "Session file store not available in this context. spawn_background requires artifact persistence.",
             );
@@ -945,7 +945,10 @@ impl SessionBackgroundSink {
     }
 
     async fn write_text_file(&self, path: &str, content: &str) -> Result<()> {
-        let file_store = self.context.file_store.as_ref().ok_or_else(|| {
+        // Runtime-owned record: see `ToolContext::runtime_artifact_file_store`.
+        // The model reads these artifacts but its workspace policy never lets
+        // it write them (EVE-1165).
+        let file_store = self.context.runtime_artifact_file_store().ok_or_else(|| {
             anyhow::anyhow!(
                 "background run {} cannot persist artifact {} because no session file store is configured",
                 self.run_id,
@@ -1174,7 +1177,7 @@ fn is_canceled_outcome(
 /// paths are generated so old partial artifacts do not conflict.
 ///
 /// Returns an error (→ reaper falls back to orphaned-fail) when:
-/// - `context.file_store` or `context.session_task_registry` is absent
+/// - `context.runtime_artifact_file_store()` or `context.session_task_registry` is absent
 /// - `spec["tool"]` is absent or empty
 /// - the tool is not in the built-in default registry
 /// - the tool does not implement `BackgroundExecutable`
@@ -1186,7 +1189,7 @@ pub async fn reattach_background_run(
 ) -> everruns_contracts::error::Result<()> {
     // Fail fast before spawning a tokio task so the reaper can fall back to
     // orphaned-fail rather than leaving the task stuck in Running forever.
-    if context.file_store.is_none() {
+    if context.runtime_artifact_file_store().is_none() {
         return Err(AgentLoopError::tool(
             "file store not available; cannot re-attach background run",
         ));

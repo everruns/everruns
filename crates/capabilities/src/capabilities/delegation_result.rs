@@ -194,7 +194,19 @@ impl Tool for ReportResultTool {
                 "report_result requires session_task_registry context",
             );
         };
-        let Some(file_store) = self.file_store.as_ref().or(context.file_store.as_ref()) else {
+        // Runtime-owned record (EVE-1165): prefer the host's confined artifact
+        // store so a read-only model-facing policy cannot block the write. Use
+        // it unscoped: the write targets the parent's workspace key below, not
+        // this child session's workspace.
+        let artifacts = context
+            .extensions
+            .get::<everruns_core::session_files::RuntimeArtifactFileSystem>()
+            .map(|artifacts| artifacts.0.clone());
+        let Some(file_store) = artifacts
+            .as_ref()
+            .or(self.file_store.as_ref())
+            .or(context.file_store.as_ref())
+        else {
             return ToolExecutionResult::tool_error("report_result requires file_store context");
         };
 
@@ -570,5 +582,97 @@ mod tests {
             panic!("expected tool error");
         };
         assert!(error.contains("result_schema must be a JSON Schema object"));
+    }
+
+    /// EVE-1165: under the read-only default the act-phase store denies the
+    /// write, so `report_result` records through the host's runtime artifact
+    /// store, keyed to the parent's workspace, and the parent model can then
+    /// read (but not overwrite) the result it was pointed at.
+    #[tokio::test]
+    async fn report_result_writes_through_runtime_artifact_store_under_read_only_policy() {
+        use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
+        use everruns_core::WorkspacePolicy;
+        use everruns_core::host::{InMemorySessionFileStore, PolicyFileStore};
+        use everruns_core::session_files::RuntimeArtifactFileSystem;
+        use everruns_core::session_task::{
+            CreateSessionTask, SessionTaskRegistry, SessionTaskState, TASK_KIND_SUBAGENT,
+            TaskLinks, TaskWakePolicy,
+        };
+
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let backing = Arc::new(InMemorySessionFileStore::new());
+        let model_store: Arc<dyn SessionFileSystem> = Arc::new(PolicyFileStore::new(
+            backing.clone(),
+            WorkspacePolicy::read_only(),
+        ));
+        let artifacts: Arc<dyn SessionFileSystem> = Arc::new(PolicyFileStore::new(
+            backing,
+            WorkspacePolicy::runtime_artifacts(),
+        ));
+        let parent_session_id = SessionId::new();
+        let parent_workspace_id = WorkspaceId::new();
+        let parent_key = SessionId::from_uuid(parent_workspace_id.uuid());
+        let child_session_id = SessionId::new();
+        let schema = json!({
+            "type": "object",
+            "properties": {"answer": {"type": "string"}},
+            "required": ["answer"]
+        });
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: parent_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Runner".to_string(),
+                spec: json!({ RESULT_SCHEMA_SPEC_KEY: schema.clone() }),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(child_session_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        // The act phase hands the tool the model-facing (policy-wrapped) store.
+        let tool = ReportResultTool::new(
+            parent_session_id,
+            parent_workspace_id,
+            child_session_id,
+            task.id.clone(),
+            schema,
+        )
+        .with_file_store(model_store.clone());
+        let mut context = ToolContext::new(child_session_id);
+        context.session_task_registry = Some(registry);
+        context
+            .extensions
+            .insert(Arc::new(RuntimeArtifactFileSystem(artifacts)));
+
+        let result = tool
+            .execute_with_context(json!({"answer": "done"}), &context)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        let path = value["result_path"].as_str().unwrap().to_string();
+
+        let file = model_store
+            .read_file(parent_key, &path)
+            .await
+            .expect("the model may read its task result")
+            .expect("result file under the parent's workspace");
+        assert_eq!(
+            serde_json::from_str::<Value>(file.content.as_deref().unwrap()).unwrap(),
+            json!({"answer": "done"})
+        );
+        assert!(
+            model_store
+                .write_file(parent_key, &path, "{}", "utf-8")
+                .await
+                .is_err(),
+            "the model must not overwrite its task result"
+        );
     }
 }
