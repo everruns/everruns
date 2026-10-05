@@ -111,6 +111,24 @@ pub fn contracts() -> &'static [ContractCommand] {
     })
 }
 
+/// The contract one caller can use: commands the surfaces expose and whose
+/// feature is enabled for them. `GET /v1/commands` serves this, so a client
+/// learns the grammar from the server it is talking to.
+pub fn contracts_for(
+    feature_flags: &crate::records::FeatureFlags,
+) -> Vec<&'static ContractCommand> {
+    let enabled: std::collections::BTreeSet<&str> = inventory::iter::<CommandDescriptor>
+        .into_iter()
+        .map(|desc| (desc.meta)())
+        .filter(|meta| super::catalog::is_exposed(meta) && meta.is_enabled(feature_flags))
+        .map(|meta| meta.name)
+        .collect();
+    contracts()
+        .iter()
+        .filter(|contract| enabled.contains(contract.wire_name.as_str()))
+        .collect()
+}
+
 /// One routed command's contract, by its wire name.
 #[cfg_attr(
     not(test),
@@ -356,6 +374,31 @@ mod tests {
              the_checked_in_contract_matches_inventory`, then check what moved: \
              everruns-cli mounts this file, so a change here changes what people type."
         );
+    }
+
+    /// No command's spelling is also a group of other commands.
+    ///
+    /// clap cannot have `harnesses delete` be both a command and the parent of
+    /// `harnesses delete destroy`: the group wins, and the leaf silently
+    /// disappears from every surface that mounts the tree. Derived routes hit
+    /// this whenever a REST action path extends a resource path, so the guard
+    /// is structural rather than per command.
+    #[test]
+    fn no_command_is_also_a_group() {
+        let spellings: std::collections::BTreeSet<String> =
+            contracts().iter().map(|c| c.spelling()).collect();
+        let shadowed: Vec<String> = contracts()
+            .iter()
+            .filter_map(|contract| {
+                (1..contract.path.len() + 1).find_map(|depth| {
+                    let prefix = contract.path[..depth].join(" ");
+                    spellings
+                        .contains(&prefix)
+                        .then(|| format!("`{prefix}` is shadowed by `{}`", contract.spelling()))
+                })
+            })
+            .collect();
+        assert!(shadowed.is_empty(), "{shadowed:#?}");
     }
 
     /// Every routed command compiles into a parser, against the schemas the

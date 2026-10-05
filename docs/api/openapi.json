@@ -5163,6 +5163,109 @@
         }
       }
     },
+    "/v1/commands": {
+      "get": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "GET /v1/commands - List the command contract",
+        "operationId": "list_commands",
+        "responses": {
+          "200": {
+            "description": "Commands the caller can dispatch",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandCatalog"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/commands/{name}": {
+      "post": {
+        "tags": [
+          "commands"
+        ],
+        "summary": "POST /v1/commands/{name} - Run one command",
+        "operationId": "execute_command",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Command wire name, e.g. create_agent",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Command output",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or params",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown command or resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/connection-providers": {
       "get": {
         "tags": [
@@ -23689,6 +23792,135 @@
             "type": "string",
             "description": "Tool call ID (correlates with the tool call from tool.call_requested event)",
             "example": "toolu_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "CommandCatalog": {
+        "type": "object",
+        "description": "The command contract available to the caller.",
+        "required": [
+          "api_version",
+          "commands"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "string",
+            "description": "Contract version; a client built for another version should not guess.",
+            "example": "v1"
+          },
+          "commands": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CommandEntry"
+            },
+            "description": "Every command the caller can dispatch."
+          }
+        }
+      },
+      "CommandEntry": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "The `everruns-cli-contract` shape: wire name, noun path, verb,\narguments, examples."
+          },
+          {
+            "type": "object",
+            "required": [
+              "api_version",
+              "schema_hash",
+              "read_only"
+            ],
+            "properties": {
+              "api_version": {
+                "type": "string",
+                "description": "Contract version this command is served under.",
+                "example": "v1"
+              },
+              "read_only": {
+                "type": "boolean",
+                "description": "Whether the command only reads."
+              },
+              "schema_hash": {
+                "type": "string",
+                "description": "Fingerprint of the command's contract and parameter schema. A client\nechoes it on dispatch to learn when the command changed under it.",
+                "example": "3f1c9a0b5d2e4f6a"
+              }
+            }
+          }
+        ],
+        "description": "One command in the catalog: its command-line contract plus what a client\nneeds to call it safely."
+      },
+      "CommandRequest": {
+        "type": "object",
+        "description": "A command invocation.",
+        "properties": {
+          "api_version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Contract version the client was built for. Defaults to the current one.",
+            "example": "v1"
+          },
+          "metadata": {
+            "type": "object",
+            "description": "Opaque client annotations (for example the client name and version),\nrecorded on the request trace. Never interpreted by the command.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "params": {
+            "type": "object",
+            "description": "The command's params, keyed by field name as the contract lists it."
+          },
+          "schema_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`schema_hash` from the catalog the client was built against. A mismatch\nadds a warning to the response; it does not fail the call."
+          }
+        },
+        "additionalProperties": false
+      },
+      "CommandResponse": {
+        "type": "object",
+        "description": "A command's result.",
+        "required": [
+          "command",
+          "api_version",
+          "schema_hash",
+          "output",
+          "warnings"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "string",
+            "description": "Contract version the command ran under.",
+            "example": "v1"
+          },
+          "command": {
+            "type": "string",
+            "description": "Wire name of the command that ran.",
+            "example": "create_agent"
+          },
+          "output": {
+            "type": "object",
+            "description": "The command's output."
+          },
+          "schema_hash": {
+            "type": "string",
+            "description": "The command's current `schema_hash`."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Non-fatal notices, such as a stale `schema_hash`."
           }
         }
       },
@@ -51890,6 +52122,10 @@
     {
       "name": "reporting",
       "description": "Org-scoped semantic reporting endpoints"
+    },
+    {
+      "name": "commands",
+      "description": "Generic command dispatch over the shared command contract"
     },
     {
       "name": "task-webhooks",

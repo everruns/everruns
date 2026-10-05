@@ -426,6 +426,19 @@ impl Command for DestroyVirtualUser {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        // Declared, not derived: the REST path `.../{id}/delete` would derive
+        // `virtual-users delete destroy`, turning the `delete` leaf
+        // into a group and making it unreachable from the command line.
+        const ROUTE: CliRoute = CliRoute::new(&["virtual-users"], "destroy")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Permanently remove a virtual user",
+                "everruns virtual-users destroy vu_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&VIRTUAL_USER_DANGEROUS)
     }

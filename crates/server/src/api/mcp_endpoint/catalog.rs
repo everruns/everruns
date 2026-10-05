@@ -754,6 +754,46 @@ fn make_inventory_callback(
     }
 }
 
+/// Dispatch one command by wire name with JSON params.
+///
+/// The scripted callback's pipeline without the shell around it: the same
+/// exposure rule, parameter normalization, `Command::run` and output
+/// decoration, so `POST /v1/commands/{name}` answers exactly what `execute`
+/// would. Errors stay typed so each transport maps them its own way.
+pub(crate) async fn dispatch_named(
+    name: &str,
+    mut params: serde_json::Value,
+    ctx: &CatalogContext,
+) -> Result<serde_json::Value, CommandError> {
+    let desc = inventory::iter::<crate::domains::common::CommandDescriptor>
+        .into_iter()
+        .find(|desc| {
+            let meta = (desc.meta)();
+            meta.name == name && exposed_to_scripting(&meta)
+        })
+        .ok_or_else(|| CommandError::not_found_msg(format!("Unknown command: {name}")))?;
+    if params.is_null() {
+        params = serde_json::json!({});
+    }
+    if !params.is_object() {
+        return Err(CommandError::bad_request(
+            "Command params must be a JSON object",
+        ));
+    }
+    let schema = (desc.param_schema)();
+    normalize_and_validate_params(&schema, &mut params).map_err(CommandError::bad_request)?;
+    coerce_json_text_params(&schema, &mut params).map_err(CommandError::bad_request)?;
+    let result = (desc.dispatch)(params, &ctx.to_domain_ctx()).await?;
+    let decorated = decorate_command_output(&result, &ctx.link_builder)
+        .map_err(|error| CommandError::internal(anyhow::anyhow!(error)))?;
+    Ok(serde_json::from_str(&decorated).unwrap_or(serde_json::Value::String(decorated)))
+}
+
+/// Whether a wire name is reachable through the command surfaces at all.
+pub(crate) fn is_exposed(meta: &crate::domains::common::CommandMeta) -> bool {
+    exposed_to_scripting(meta)
+}
+
 fn decorate_command_output(
     result: &str,
     link_builder: &crate::api::common::UrlBuilder,

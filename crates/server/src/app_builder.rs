@@ -1396,8 +1396,7 @@ impl ServerAppBuilder {
             format!("{mcp_root_url}/.well-known/oauth-protected-resource/mcp");
         // Canonical MCP resource (`{root}/mcp`) that MCP OAuth tokens are bound
         // to (RFC 8707). Must match the `aud` minted in `mcp_oauth.rs` so the
-        // audience check in `validate_mcp_token` accepts real MCP tokens
-        // (TM-MCP-006).
+        // audience check in `validate_mcp_token` accepts real MCP tokens (TM-MCP-006).
         let mcp_resource = format!("{mcp_root_url}/mcp");
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
@@ -1560,6 +1559,7 @@ impl ServerAppBuilder {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))
+            .merge(api::command_dispatch::routes(mcp_endpoint_state.clone()))
             .merge(api::slack_events::routes(slack_state.clone()))
             .merge(api::slack_install::routes(
                 api::slack_install::SlackInstallState::new(

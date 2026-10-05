@@ -1290,6 +1290,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/commands": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/commands - List the command contract */
+    get: operations["list_commands"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/commands/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/commands/{name} - Run one command */
+    post: operations["execute_command"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/connection-providers": {
     parameters: {
       query?: never;
@@ -7088,6 +7122,76 @@ export interface components {
        * @example toolu_01933b5a00007000800000000000001
        */
       tool_call_id: string;
+    };
+    /** @description The command contract available to the caller. */
+    CommandCatalog: {
+      /**
+       * @description Contract version; a client built for another version should not guess.
+       * @example v1
+       */
+      api_version: string;
+      /** @description Every command the caller can dispatch. */
+      commands: components["schemas"]["CommandEntry"][];
+    };
+    /**
+     * @description One command in the catalog: its command-line contract plus what a client
+     *     needs to call it safely.
+     */
+    CommandEntry: Record<string, unknown> & {
+      /**
+       * @description Contract version this command is served under.
+       * @example v1
+       */
+      api_version: string;
+      /** @description Whether the command only reads. */
+      read_only: boolean;
+      /**
+       * @description Fingerprint of the command's contract and parameter schema. A client
+       *     echoes it on dispatch to learn when the command changed under it.
+       * @example 3f1c9a0b5d2e4f6a
+       */
+      schema_hash: string;
+    };
+    /** @description A command invocation. */
+    CommandRequest: {
+      /**
+       * @description Contract version the client was built for. Defaults to the current one.
+       * @example v1
+       */
+      api_version?: string | null;
+      /**
+       * @description Opaque client annotations (for example the client name and version),
+       *     recorded on the request trace. Never interpreted by the command.
+       */
+      metadata?: {
+        [key: string]: string;
+      };
+      /** @description The command's params, keyed by field name as the contract lists it. */
+      params?: Record<string, unknown>;
+      /**
+       * @description `schema_hash` from the catalog the client was built against. A mismatch
+       *     adds a warning to the response; it does not fail the call.
+       */
+      schema_hash?: string | null;
+    };
+    /** @description A command's result. */
+    CommandResponse: {
+      /**
+       * @description Contract version the command ran under.
+       * @example v1
+       */
+      api_version: string;
+      /**
+       * @description Wire name of the command that ran.
+       * @example create_agent
+       */
+      command: string;
+      /** @description The command's output. */
+      output: Record<string, unknown>;
+      /** @description The command's current `schema_hash`. */
+      schema_hash: string;
+      /** @description Non-fatal notices, such as a stale `schema_hash`. */
+      warnings: string[];
     };
     /** @description Request to create a commit */
     CommitRequest: {
@@ -26704,6 +26808,89 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_commands: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Commands the caller can dispatch */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommandCatalog"];
+        };
+      };
+      /** @description Unauthorized */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  execute_command: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Command wire name, e.g. create_agent */
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CommandRequest"];
+      };
+    };
+    responses: {
+      /** @description Command output */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["CommandResponse"];
+        };
+      };
+      /** @description Invalid request or params */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Unknown command or resource */
+      404: {
         headers: {
           [name: string]: unknown;
         };
