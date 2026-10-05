@@ -74,7 +74,7 @@ if leaked=$(echo "$engine_tree" | grep -E '^(tonic[a-z0-9-]* |everruns-internal-
   exit 1
 fi
 
-# Worker composition enters the engine through the private durable-engine.
+# Worker composition enters the engine through durable-engine.
 # `everruns-core` is allowed in the manifest only to select worker-only core
 # features (MCP, telemetry, ...); source still goes through durable-engine.
 if matches=$(awk '
@@ -92,9 +92,7 @@ if matches=$(rg -n 'everruns_(core|engine|host|builtins|mcp|ag_ui|durable)::' cr
   echo "$matches"
   exit 1
 fi
-if ! grep -q '^publish = false$' crates/durable-engine/Cargo.toml; then
-  echo "everruns-durable-engine is a private process entry point, not a published library"
-  exit 1
-fi
+# durable-engine is published (.github/crates-publish-set.txt owns that), so
+# being transport-free above is what keeps it shippable as a framework backend.
 
-echo "Durable isolation guard passed: durable remains generic; durable-engine is transport-free; worker uses the private durable-engine entry."
+echo "Durable isolation guard passed: durable remains generic; durable-engine is transport-free; worker enters the engine through durable-engine."

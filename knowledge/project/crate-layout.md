@@ -46,7 +46,7 @@ layer, never upward.
 | | `everruns-serve` (+ `-macros`, `-build`, `-agentcore`, `-celld`) | serving one app as a service | yes |
 | | yolop | terminal coding agent, own repository | own repo |
 | Entry crates | `everruns` | the Framework facade; its features pick drivers, integrations, and capabilities, and it owns the default "batteries" wiring | yes |
-| | `everruns-durable-engine` | the durable execution backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's only path into core | yes (planned) |
+| | `everruns-durable-engine` | the durable execution backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's only path into core | yes (experimental) |
 | Building blocks | `everruns-core` | engine, host runtime, builtins, MCP, A2A, AG-UI | yes |
 | | `everruns-capabilities` | hosted capabilities (subagents, session tasks, background runs, knowledge, container sandbox) | yes |
 | | `everruns-drivers` (+ `everruns-llmsim`) | model drivers, one feature per vendor | yes |
@@ -97,7 +97,7 @@ including optional and renamed edges. Contracts' optional typed-id codecs are th
 only exception and cannot construct a connection. Embedded hosts keep their own
 schemas and shared query callbacks, but open SQLite handles through durable's API.
 [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) also keeps
-durable generic and prevents worker dependencies from bypassing the private entry.
+durable generic and prevents worker dependencies from bypassing durable-engine.
 
 ### Turns run through one backend seam
 
@@ -158,7 +158,7 @@ and drivers through contract traits and registries, and ships with none attached
 | `everruns-platform` agent, harness, session, org, app, audit, payment, reporting, email, Slack, feature flags, eval, budget, triggers | `crates/server/` | move; neutral Slack action identity lives in contracts and is re-exported by internal protocol (avoids a published-to-private dependency) |
 | `everruns-engine`, `everruns-host`, `everruns-builtins`, `everruns-mcp`, `everruns-ag-ui` | `everruns-core` features | merge, shim |
 | A2A protocol client inside `everruns-platform`'s `a2a_delegation` capability | `everruns-core` `a2a` feature, beside MCP | move; the delegation capability stays in `everruns-capabilities` and calls it |
-| the worker's direct core, engine, and durable wiring | `everruns-durable-engine` | new; published once it is the durable backend |
+| the worker's direct core, engine, and durable wiring | `everruns-durable-engine` | new; published as the experimental durable backend |
 
 ## Migration Order
 
@@ -194,6 +194,8 @@ published name can land in any release.
    `everruns-durable-engine` into the worker and ban `tonic` and the internal protocol
    there; move the worker's turn driver in; implement `TurnBackend` on the durable
    runner; then add the crate to the publish set and the facade's `durable` feature.
+   The crate is in the publish set from the release after 0.41.0, its first crates.io
+   name; the facade feature is still to come.
 
 The isolation guards in [`scripts/lib/`](../../scripts/lib/) name today's crates, so
 each step updates the ones it touches in the same change: provider isolation (step 2),

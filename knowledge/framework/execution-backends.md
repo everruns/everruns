@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Execution Backends"
-description: "Why turns run through one experimental TurnBackend seam, why the in-process runtime is its default, and why the planned durable backend keeps queue plus per-step checkpoint instead of Workflow replay."
+description: "Why turns run through one experimental TurnBackend seam, why the in-process runtime is its default, and why the durable backend keeps queue plus per-step checkpoint instead of Workflow replay."
 tags:
   - everruns
   - framework
@@ -12,8 +12,8 @@ tags:
 # Execution Backends
 
 **Status: experimental.** The seam exists and the facade runs on it. The
-in-process backend implements it in full; the server's `DurableRunner`
-implements it for server-persisted input only.
+in-process backend implements it in full; `DurableRunner` in the published
+`everruns-durable-engine` crate implements it for server-persisted input only.
 
 ## Problem
 
@@ -76,13 +76,14 @@ the turn mid-step. Routing the session actor through the seam therefore changed
 no concurrency and no observable behavior. Choosing another backend is not yet
 part of the facade builder.
 
-### The planned durable backend
+### The durable backend
 
-`everruns-durable-engine` becomes a published crate (see
-[Crate Layout](../project/crate-layout.md)) whose `DurableBackend` implements
-`TurnBackend` over `everruns-durable`'s memory or PostgreSQL store, behind an
-`everruns` feature. It drives the facade's own runtime, so no second adapter is
-needed, and the platform's worker becomes one more user of the same driver.
+`everruns-durable-engine` is a published crate (see
+[Crate Layout](../project/crate-layout.md)), experimental like the seam, whose
+runner implements `TurnBackend` over `everruns-durable`'s memory or PostgreSQL
+store. Still planned: an `everruns` feature that selects it for a facade
+session. It drives the facade's own runtime, so no second adapter is needed,
+and the platform's worker becomes one more user of the same driver.
 
 The crate already carries no transport: the worker owns the gRPC stores, the
 gRPC runner constructors, `tonic`, and `everruns-internal-protocol`, and plugs

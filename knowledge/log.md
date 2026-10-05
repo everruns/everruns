@@ -8,6 +8,13 @@
   module at its old path. The provider isolation guard now rejects a normal or
   build edge from any integration to core. See [Crate Layout](project/crate-layout.md).
 
+* **The durable backend is a published crate.** `everruns-durable-engine`
+  (`DurableRunner` as an experimental `TurnBackend`, `TurnTaskDriver`, the
+  in-memory and Postgres-direct stores) joins the crates.io publish set; the
+  worker keeps the gRPC transport. See
+  [Crate Layout](project/crate-layout.md) and
+  [Execution Backends](framework/execution-backends.md).
+
 * **Turns run through one execution backend seam.** Core's host defines the
   experimental `TurnBackend`; the facade session actor runs every turn through
   its in-process default with no behavior change. `everruns-durable-engine` is
