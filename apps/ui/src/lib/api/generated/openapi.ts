@@ -243,7 +243,9 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent. */
     get: operations["get_avatar_preset_selection"];
+    /** Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons. */
     put: operations["select_avatar_preset"];
     post?: never;
     delete?: never;
@@ -1059,6 +1061,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes. */
     get: operations["get_avatar_preset_variant"];
     put?: never;
     post?: never;
@@ -6550,15 +6553,39 @@ export interface components {
      * @enum {string}
      */
     AppStatus: "draft" | "published" | "archived" | "deleted";
+    /** @description Presentation and search metadata for one curated agent avatar. */
     AvatarPreset: {
+      /** @description Short description of the preset's appearance. */
       description: string;
+      /**
+       * @description Visual family used to filter the catalog.
+       * @example Familiars
+       */
       family: string;
+      /**
+       * @description Stable catalog ID used to select this preset.
+       * @example familiars-patch
+       */
       id: string;
+      /** @description Search terms covering the preset's appearance and suggested uses. */
       keywords: string[];
+      /**
+       * @description Display name of the character or design.
+       * @example Patch
+       */
       name: string;
+      /**
+       * @description Suggested agent role for this design.
+       * @example Developer
+       */
       role: string;
     };
+    /** @description The curated preset currently assigned to an agent, if any. */
     AvatarPresetSelection: {
+      /**
+       * @description Catalog ID, or null when the agent has an upload or no avatar.
+       * @example familiars-patch
+       */
       preset_id?: string | null;
     };
     BTreeMap: {
@@ -18103,7 +18130,12 @@ export interface components {
       /** @description When the secret was last updated */
       updated_at: string;
     };
+    /** @description Select a curated avatar by its stable catalog ID. */
     SelectAvatarPreset: {
+      /**
+       * @description Stable ID returned by the public avatar preset catalog.
+       * @example familiars-patch
+       */
       preset_id: string;
     };
     /** @description Request to send a signal to a workflow */

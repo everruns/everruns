@@ -4,13 +4,24 @@ use serde::Serialize;
 use std::sync::{LazyLock, OnceLock};
 use utoipa::ToSchema;
 
+/// Presentation and search metadata for one curated agent avatar.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AvatarPreset {
+    /// Stable catalog ID used to select this preset.
+    #[schema(example = "familiars-patch")]
     pub id: &'static str,
+    /// Display name of the character or design.
+    #[schema(example = "Patch")]
     pub name: &'static str,
+    /// Visual family used to filter the catalog.
+    #[schema(example = "Familiars")]
     pub family: &'static str,
+    /// Suggested agent role for this design.
+    #[schema(example = "Developer")]
     pub role: &'static str,
+    /// Short description of the preset's appearance.
     pub description: &'static str,
+    /// Search terms covering the preset's appearance and suggested uses.
     pub keywords: Vec<&'static str>,
 }
 pub struct PresetAsset {

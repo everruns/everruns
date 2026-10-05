@@ -41,14 +41,20 @@ use crate::records::AgentAvatar;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+/// Select a curated avatar by its stable catalog ID.
 #[derive(Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SelectAvatarPreset {
+    /// Stable ID returned by the public avatar preset catalog.
+    #[schema(example = "familiars-patch")]
     pub preset_id: String,
 }
 
+/// The curated preset currently assigned to an agent, if any.
 #[derive(Serialize, ToSchema)]
 pub struct AvatarPresetSelection {
+    /// Catalog ID, or null when the agent has an upload or no avatar.
+    #[schema(example = "familiars-patch")]
     pub preset_id: Option<String>,
 }
 
@@ -217,6 +223,7 @@ pub async fn list_avatar_presets() -> Json<Vec<AvatarPreset>> {
     Json(PRESETS.iter().map(|p| p.metadata.clone()).collect())
 }
 
+/// Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes.
 #[utoipa::path(get, path = "/v1/avatar-presets/{preset_id}/{variant}",
     params(("preset_id" = String, Path), ("variant" = String, Path)),
     responses((status = 200, content_type = "image/png"), (status = 404)), security(()), tag = "agents")]
@@ -251,6 +258,7 @@ pub async fn get_avatar_preset_variant(Path((id, variant)): Path<(String, String
     }
 }
 
+/// Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.
 #[utoipa::path(put, path = "/v1/agents/{agent_id}/avatar/preset",
     params(("agent_id" = String, Path)), request_body = SelectAvatarPreset,
     responses((status = 200, body = AgentAvatar), (status = 400, body = ErrorResponse), (status = 403, body = ErrorResponse), (status = 404, body = ErrorResponse)), tag = "agents")]
@@ -279,6 +287,7 @@ pub async fn select_avatar_preset(
     .await
 }
 
+/// Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.
 #[utoipa::path(get, path = "/v1/agents/{agent_id}/avatar/preset", params(("agent_id" = String, Path)),
     responses((status = 200, body = AvatarPresetSelection), (status = 403, body = ErrorResponse), (status = 404, body = ErrorResponse)), tag = "agents")]
 pub async fn get_avatar_preset_selection(

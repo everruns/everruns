@@ -939,6 +939,7 @@
         "tags": [
           "agents"
         ],
+        "summary": "Return the agent's current curated preset ID, or null for a custom upload or no avatar. Requires permission to manage the agent.",
         "operationId": "get_avatar_preset_selection",
         "parameters": [
           {
@@ -984,6 +985,7 @@
         "tags": [
           "agents"
         ],
+        "summary": "Replace an agent's avatar with a curated preset, storing fresh immutable image URLs and updating its Slack app icons.",
         "operationId": "select_avatar_preset",
         "parameters": [
           {
@@ -4305,6 +4307,7 @@
         "tags": [
           "agents"
         ],
+        "summary": "Retrieve a public PNG preview of a curated preset using the agent avatar sizes and shapes.",
         "operationId": "get_avatar_preset_variant",
         "parameters": [
           {
@@ -22873,6 +22876,7 @@
       },
       "AvatarPreset": {
         "type": "object",
+        "description": "Presentation and search metadata for one curated agent avatar.",
         "required": [
           "id",
           "name",
@@ -22883,36 +22887,49 @@
         ],
         "properties": {
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Short description of the preset's appearance."
           },
           "family": {
-            "type": "string"
+            "type": "string",
+            "description": "Visual family used to filter the catalog.",
+            "example": "Familiars"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable catalog ID used to select this preset.",
+            "example": "familiars-patch"
           },
           "keywords": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Search terms covering the preset's appearance and suggested uses."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name of the character or design.",
+            "example": "Patch"
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "description": "Suggested agent role for this design.",
+            "example": "Developer"
           }
         }
       },
       "AvatarPresetSelection": {
         "type": "object",
+        "description": "The curated preset currently assigned to an agent, if any.",
         "properties": {
           "preset_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Catalog ID, or null when the agent has an upload or no avatar.",
+            "example": "familiars-patch"
           }
         }
       },
@@ -43389,12 +43406,15 @@
       },
       "SelectAvatarPreset": {
         "type": "object",
+        "description": "Select a curated avatar by its stable catalog ID.",
         "required": [
           "preset_id"
         ],
         "properties": {
           "preset_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable ID returned by the public avatar preset catalog.",
+            "example": "familiars-patch"
           }
         },
         "additionalProperties": false
