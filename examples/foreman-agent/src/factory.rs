@@ -208,10 +208,11 @@ impl Factory {
             self.stop_active(&mut state).await;
         }
 
-        // Do not report a terminal outcome while a cancelled worker is still live.
+        // Do not report a terminal outcome while a cancelled worker is still
+        // live, or while a finished worker's result is still in the inbox.
         self.stop_active(&mut state).await;
         let settled = tokio::time::timeout(Duration::from_secs(3), async {
-            while active_id(&lock(&state.workers)).is_some() {
+            while !state.unsettled.is_empty() {
                 if let Some(signal) = inbox.recv().await {
                     self.absorb(&mut state, signal);
                 }
@@ -319,6 +320,7 @@ impl Factory {
             self.watcher.worker_finished(worker);
         }
         state.handles.remove(&worker_id);
+        state.unsettled.retain(|id| *id != worker_id);
         true
     }
 
@@ -448,6 +450,9 @@ impl Factory {
         let record = WorkerRecord::new(&id, kind, state.retries + 1, self.config.output_limit);
         self.watcher.worker_started(&record);
         lock(&state.workers).push(record);
+        // Before anything can send its `Finished`, so absorbing it always
+        // finds the id to clear.
+        state.unsettled.push(id.clone());
         note(&state.events, format!("{id} started ({})", kind.label()));
 
         let mission = match kind {
@@ -540,6 +545,12 @@ struct State {
     workers: Arc<Mutex<Vec<WorkerRecord>>>,
     events: Arc<Mutex<VecDeque<String>>>,
     handles: HashMap<String, Stop>,
+    /// Workers started whose `Finished` signal has not been absorbed yet,
+    /// oldest first. The pump marks a record finished *before* it sends that
+    /// signal, so the record alone says "nothing active" while the result
+    /// (a verifier's verdict, a coder's failure) is still in the inbox. The
+    /// policy decides on this instead, so it never acts on that gap.
+    unsettled: Vec<String>,
 }
 
 impl State {
@@ -560,16 +571,16 @@ impl State {
             workers: Arc::new(Mutex::new(Vec::new())),
             events: Arc::new(Mutex::new(VecDeque::new())),
             handles: HashMap::new(),
+            unsettled: Vec::new(),
         }
     }
 
     /// The lifecycle facts the policy is allowed to see.
     fn floor(&self) -> Floor {
-        let workers = lock(&self.workers);
         Floor {
             iteration: self.iteration,
-            active_worker: active_id(&workers),
-            workers_started: workers.len(),
+            active_worker: self.unsettled.first().cloned(),
+            workers_started: lock(&self.workers).len(),
             retries: self.retries,
             verification_started: self.verification_started,
             verification_completed: self.verification_completed,
