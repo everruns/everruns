@@ -14,19 +14,19 @@ agents check-rules upsert	--category --enabled! --kind! --match-mode --message -
 agents copy	--id <id>
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --tag/-t... --writable
 agents credentials create	--agent-id --description --label! --mcp-server-name! --parameter-name! --tool-name!
-agents delete	<agent_id>!
+agents delete	--id <id>
 agents destroy	--id <id>
 agents diff	--against --target <file>!
 agents export	--format --out <agent>!
 agents exposures resume	--agent <agent_id>
 agents exposures suspend	--agent <agent_id>
-agents get	<agent_id>!
+agents get	--id <id>
 agents health-checks get	--agent-id! --run-id!
 agents health-checks latest get	--agent-id!
 agents health-checks list	--agent-id!
 agents health-checks trigger	--agent-id!
 agents import	--content --format --target <file>
-agents list	
+agents list	--include-archived --limit --offset --search
 agents preview	--capabilities --harness-id --initial-files --mcp-servers --system-prompt --tools
 agents triggers create	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-type
 agents triggers delete	--agent-id! --trigger-id!
@@ -62,7 +62,7 @@ capabilities declarative update	--definition --id! --status
 capabilities get	--id!
 capabilities guardrails dry-run dry	--config! --stage! --text! --tool-name
 capabilities guardrails examples list	
-capabilities list	--status
+capabilities list	--include-retired --limit --offset --search
 chat	--no-stream --session/-s! --timeout <message>!
 connections list	
 connections remove	<provider>!
@@ -123,15 +123,15 @@ health-issues list	--channel-id --limit --offset
 health-issues snooze	--issue-id!
 images get	--id!
 images list	--limit --offset
-knowledge-bases create	--description --embedding-model-id <name>!
-knowledge-bases delete	<id>!
+knowledge-bases create	--description --embedding-model-id --name!
+knowledge-bases delete	--kb-id!
 knowledge-bases entries create	--body! --kb-id! --kind --resource --tags... --title!
 knowledge-bases entries delete	--entry-id! --kb-id!
 knowledge-bases entries get	--entry-id! --kb-id!
 knowledge-bases entries list	--kb-id! --kind --search
 knowledge-bases entries update	--body --entry-id! --kb-id! --kind --resource --tags... --title
-knowledge-bases get	<id>!
-knowledge-bases list	
+knowledge-bases get	--kb-id!
+knowledge-bases list	--include-archived --search
 knowledge-bases okf-import import	--bundle-base64 --files --kb-id! --prune
 knowledge-bases update	--description --embedding-model-id --kb-id! --name
 knowledge-indexes create	--description --embedding-model-id! --name! --source-config --source-type
@@ -175,9 +175,6 @@ orgs get	--org!
 orgs list	
 orgs resolve	--id!
 orgs select	
-participants add	--agent!
-participants list	
-participants remove	<participant>!
 payments accounts create	--label! --metadata --owner-id! --owner-type! --private-key --public-address --rail!
 payments accounts disable	--payment-account-id!
 payments accounts get	--payment-account-id!
@@ -196,11 +193,11 @@ plugin-marketplaces list	--search
 plugin-marketplaces plugins get	--id!
 plugin-marketplaces sync	--id!
 plugin-marketplaces update	--id! --name --status
-plugins get	<id>!
-plugins install	<marketplace_id>! <plugin_name>!
-plugins list	
+plugins get	--id!
+plugins install	--marketplace-id! --plugin-name!
+plugins list	--search
 plugins patch	--id! --mcp-server-identities --status
-plugins uninstall	<id>!
+plugins uninstall	--id!
 plugins update	--id!
 providers check-credentials check	--api-key! --base-url --provider-type!
 providers create	--api-key --base-url --name! --provider-type! --request-options --trace
@@ -252,8 +249,8 @@ sessions fs delete	--path! --recursive --session-id!
 sessions fs get	--path! --recursive --session-id!
 sessions fs list	--recursive --session-id!
 sessions fs update	--content --encoding --expected-content --expected-encoding --is-readonly --path! --session-id!
-sessions get	<session>!
-sessions list	
+sessions get	--session <session_id>
+sessions list	--agent-id --archived-only --created-after --created-before --include-archived --limit --mine --offset --order --playground-user-id --search --side-chats-only --source --status
 sessions messages create	--addressed-participant-id --controls --external-actor --message! --metadata --request-id --session-id! --tags...
 sessions messages list	--limit --session-id!
 sessions participants add	--agent-id --kind! --role --session!
@@ -284,22 +281,16 @@ sessions unpin	--session <session_id>
 sessions update	--goal --locale --session --tags... --title --virtual-user-id <session_id>
 sessions watch	<session>!
 skills content	--id <id>
-skills create	<path>!
-skills delete	<id>!
+skills create	--skill-md!
+skills delete	--id <id>
 skills destroy	--id <id>
-skills get	<id>!
-skills list	
+skills get	--id <id>
+skills list	--include-archived --search
 skills update	--id --skill-md --status <id>
 skills usage	
 status	
 system health	
 tasks list	--created-after --kind --limit --root-session-id --state
-triggers create	--cron! --disabled --message! --session-mode --timezone
-triggers disable	<trigger>!
-triggers enable	<trigger>!
-triggers list	
-triggers run-now	<trigger>!
-triggers update	--cron --message --session-mode --timezone <trigger>!
 user connections list	--provider
 user connections providers list	--search
 users list	--search

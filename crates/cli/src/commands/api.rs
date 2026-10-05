@@ -27,14 +27,6 @@ impl<'a> ApiClient<'a> {
         self.send(Method::POST, path, body).await
     }
 
-    pub async fn patch(&self, path: &str, body: &Value) -> Result<Value> {
-        self.send(Method::PATCH, path, Some(body)).await
-    }
-
-    pub async fn delete(&self, path: &str) -> Result<Value> {
-        self.send(Method::DELETE, path, None).await
-    }
-
     async fn send(&self, method: Method, path: &str, body: Option<&Value>) -> Result<Value> {
         let url = format!("{}{}", self.api_url.trim_end_matches('/'), path);
         let mut request = self

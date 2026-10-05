@@ -1,6 +1,6 @@
 // Session management commands
 
-use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
+use crate::output::{OutputFormat, print_field};
 use anyhow::{Context, Result};
 use clap::{Subcommand, ValueEnum};
 use everruns_sdk::{CreateBudgetRequest, Everruns};
@@ -87,15 +87,6 @@ pub enum SessionsCommand {
         /// Must pair with a --budget-limit of the same currency.
         #[arg(long = "budget-soft-limit", value_name = "[CURRENCY:]LIMIT")]
         budget_soft_limits: Vec<String>,
-    },
-
-    /// List sessions
-    List,
-
-    /// Get session by ID
-    Get {
-        /// Session ID (e.g. ses_xxx)
-        session: String,
     },
 
     /// Watch session events in real time
@@ -195,8 +186,6 @@ pub async fn run(
             )
             .await
         }
-        SessionsCommand::List => list(client, output).await,
-        SessionsCommand::Get { session } => get(client, output, session).await,
         SessionsCommand::Watch { session } => watch(client, output, session).await,
         SessionsCommand::Export {
             session,
@@ -655,80 +644,6 @@ fn parse_secrets(raw: &[String]) -> Result<HashMap<String, String>> {
         map.insert(key.to_string(), value.to_string());
     }
     Ok(map)
-}
-
-async fn list(client: &Everruns, output: OutputFormat) -> Result<()> {
-    let response = client.sessions().list().await?;
-
-    if output.is_text() {
-        if response.data.is_empty() {
-            println!("No sessions found");
-            return Ok(());
-        }
-
-        print_table_header(&[("ID", 36), ("TITLE", 25), ("STATUS", 10), ("CREATED", 20)]);
-
-        for session in &response.data {
-            let title = session.title.as_deref().unwrap_or("-");
-            let status = format!("{:?}", session.status).to_lowercase();
-            print_table_row(&[
-                (&session.id, 36),
-                (title, 25),
-                (&status, 10),
-                (&session.created_at, 20),
-            ]);
-        }
-    } else {
-        // Convert to JSON for non-text output
-        let data: Vec<serde_json::Value> = response
-            .data
-            .iter()
-            .map(|s| {
-                serde_json::json!({
-                    "id": s.id,
-                    "organization_id": s.organization_id,
-                    "agent_id": s.agent_id,
-                    "title": s.title,
-                    "tags": s.tags,
-                    "model_id": s.model_id,
-                    "status": format!("{:?}", s.status).to_lowercase(),
-                    "created_at": s.created_at,
-                    "updated_at": s.updated_at,
-                })
-            })
-            .collect();
-        output.print_value(&serde_json::json!({ "data": data }));
-    }
-
-    Ok(())
-}
-
-async fn get(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {
-    let session = client
-        .sessions()
-        .get(&session_id)
-        .await
-        .map_err(|e| anyhow::anyhow!("Session not found: {} ({})", session_id, e))?;
-
-    if output.is_text() {
-        print_field("ID", &session.id);
-        if let Some(agent_id) = &session.agent_id {
-            print_field("Agent", agent_id);
-        }
-        let status = format!("{:?}", session.status).to_lowercase();
-        print_field("Status", &status);
-        if let Some(title) = &session.title {
-            print_field("Title", title);
-        }
-        if !session.tags.is_empty() {
-            print_field("Tags", &session.tags.join(", "));
-        }
-        print_field("Created", &session.created_at);
-    } else {
-        output.print_value(&session);
-    }
-
-    Ok(())
 }
 
 async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {

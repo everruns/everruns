@@ -78,56 +78,10 @@ pub enum Commands {
         command: commands::connections::ConnectionsCommand,
     },
 
-    /// Manage capabilities
-    Capabilities {
-        /// Filter by status
-        #[arg(long, default_value = "available", value_parser = ["available", "coming_soon", "all"])]
-        status: String,
-
-        #[command(subcommand)]
-        command: Option<CapabilitiesCommand>,
-    },
-
-    /// Discover plugins
-    Plugins {
-        #[command(subcommand)]
-        command: commands::plugins::PluginsCommands,
-    },
-
-    /// Manage skills
-    Skills {
-        #[command(subcommand)]
-        command: commands::skills::SkillsCommands,
-    },
-
-    /// Manage knowledge bases
-    KnowledgeBases {
-        #[command(subcommand)]
-        command: commands::knowledge_bases::KnowledgeBasesCommands,
-    },
-
     /// Manage sessions
     Sessions {
         #[command(subcommand)]
         command: commands::sessions::SessionsCommand,
-    },
-
-    /// Manage an agent's schedule triggers
-    Triggers {
-        /// Agent ID that owns the triggers
-        #[arg(long)]
-        agent: String,
-        #[command(subcommand)]
-        command: commands::triggers::TriggersCommand,
-    },
-
-    /// Manage a session's participants
-    Participants {
-        /// Session ID that owns the participants
-        #[arg(long)]
-        session: String,
-        #[command(subcommand)]
-        command: commands::participants::ParticipantsCommand,
     },
 
     /// File sync and management
@@ -161,16 +115,6 @@ pub enum OrgsCommand {
     Select,
 }
 
-#[derive(Subcommand)]
-pub enum CapabilitiesCommand {
-    /// List available capabilities
-    List {
-        /// Filter by status
-        #[arg(long, default_value = "available", value_parser = ["available", "coming_soon", "all"])]
-        status: String,
-    },
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     everruns_contracts::install_default_crypto_provider();
@@ -188,24 +132,24 @@ async fn main() -> anyhow::Result<()> {
             .unwrap_or("text"),
     );
 
-    if contract_is_selected(&matches) {
+    // A contract command is decided before credentials are resolved, so a
+    // hand-written command that needs none (`login`, `status`) is not made to
+    // produce one.
+    if let Some((contract, leaf)) = contract::selected(&matches) {
         let creds = auth::resolve_credentials(
             matches.get_one::<String>("api_key").map(String::as_str),
             matches.get_one::<String>("api_url").map(String::as_str),
             matches.get_one::<String>("profile").map(String::as_str),
         )?;
-        if let Some(result) = contract::dispatch(
-            &root,
-            &matches,
+        return Box::pin(contract::dispatch(
+            contract,
+            leaf,
             &creds.api_url,
             &creds.api_key,
             creds.org_id.as_deref(),
             output_format,
-        )
-        .await
-        {
-            return result;
-        }
+        ))
+        .await;
     }
 
     let cli = Cli::from_arg_matches(&matches)?;
@@ -289,71 +233,10 @@ async fn main() -> anyhow::Result<()> {
             ))
             .await
         }
-        Commands::Capabilities { status, command } => {
-            let status = match &command {
-                Some(CapabilitiesCommand::List { status }) => status.clone(),
-                None => status,
-            };
-            Box::pin(commands::capabilities::run(&client, output_format, &status)).await
-        }
-        Commands::Plugins { command } => {
-            Box::pin(commands::plugins::run(
-                command,
-                &api_url,
-                &api_key,
-                org_id.as_deref(),
-                output_format,
-            ))
-            .await
-        }
-        Commands::Skills { command } => {
-            Box::pin(commands::skills::run(
-                command,
-                &api_url,
-                &api_key,
-                org_id.as_deref(),
-                output_format,
-            ))
-            .await
-        }
-        Commands::KnowledgeBases { command } => {
-            Box::pin(commands::knowledge_bases::run(
-                command,
-                &api_url,
-                &api_key,
-                org_id.as_deref(),
-                output_format,
-            ))
-            .await
-        }
         Commands::Sessions { command } => {
             Box::pin(commands::sessions::run(
                 command,
                 &client,
-                &api_url,
-                &api_key,
-                org_id.as_deref(),
-                output_format,
-                cli.quiet,
-            ))
-            .await
-        }
-        Commands::Triggers { agent, command } => {
-            Box::pin(commands::triggers::run(
-                command,
-                agent,
-                &api_url,
-                &api_key,
-                org_id.as_deref(),
-                output_format,
-                cli.quiet,
-            ))
-            .await
-        }
-        Commands::Participants { session, command } => {
-            Box::pin(commands::participants::run(
-                command,
-                session,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
@@ -401,28 +284,6 @@ async fn main() -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use clap::CommandFactory;
-
-    #[test]
-    fn test_cli_parse_agents_list() {
-        let cli = Cli::try_parse_from(["everruns", "agents", "list"]).unwrap();
-        assert!(matches!(cli.command, Commands::Agents { .. }));
-        assert_eq!(cli.output, "text");
-        assert!(!cli.quiet);
-    }
-
-    #[test]
-    fn test_cli_parse_agents_get() {
-        let cli = Cli::try_parse_from(["everruns", "agents", "get", "agt_123"]).unwrap();
-        if let Commands::Agents { command } = cli.command {
-            if let commands::agents::AgentsCommand::Get { agent_id } = command {
-                assert_eq!(agent_id, "agt_123");
-            } else {
-                panic!("Expected Get command");
-            }
-        } else {
-            panic!("Expected Agents command");
-        }
-    }
 
     #[test]
     fn test_cli_parse_sessions_create() {
@@ -544,82 +405,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parse_triggers_create() {
-        let cli = Cli::try_parse_from([
-            "everruns",
-            "triggers",
-            "--agent",
-            "agent_abc",
-            "create",
-            "--cron",
-            "30 * * * *",
-            "--timezone",
-            "America/Chicago",
-            "--session-mode",
-            "session-per-invocation",
-            "--message",
-            "Prepare report",
-        ])
-        .unwrap();
-        if let Commands::Triggers { agent, command } = cli.command {
-            assert_eq!(agent, "agent_abc");
-            assert!(matches!(
-                command,
-                commands::triggers::TriggersCommand::Create {
-                    session_mode: commands::triggers::SessionMode::SessionPerInvocation,
-                    ..
-                }
-            ));
-        } else {
-            panic!("Expected Triggers command");
-        }
-    }
-
-    #[test]
-    fn test_cli_parse_trigger_run_now() {
-        let cli = Cli::try_parse_from([
-            "everruns",
-            "triggers",
-            "--agent",
-            "agent_abc",
-            "run-now",
-            "trg_abc",
-        ])
-        .unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::Triggers {
-                command: commands::triggers::TriggersCommand::RunNow { .. },
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn test_cli_parse_participants_add() {
-        let cli = Cli::try_parse_from([
-            "everruns",
-            "participants",
-            "--session",
-            "session_abc",
-            "add",
-            "--agent",
-            "agent_guest",
-        ])
-        .unwrap();
-        if let Commands::Participants { session, command } = cli.command {
-            assert_eq!(session, "session_abc");
-            assert!(matches!(
-                command,
-                commands::participants::ParticipantsCommand::Add { agent }
-                    if agent == "agent_guest"
-            ));
-        } else {
-            panic!("Expected Participants command");
-        }
-    }
-
-    #[test]
     fn test_cli_parse_sessions_create_new_fields() {
         let cli = Cli::try_parse_from([
             "everruns",
@@ -733,71 +518,20 @@ mod tests {
 
     #[test]
     fn test_cli_parse_output_format() {
-        let cli = Cli::try_parse_from(["everruns", "-o", "json", "agents", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["everruns", "-o", "json", "status"]).unwrap();
         assert_eq!(cli.output, "json");
 
-        let cli = Cli::try_parse_from(["everruns", "-o", "yaml", "agents", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["everruns", "-o", "yaml", "status"]).unwrap();
         assert_eq!(cli.output, "yaml");
     }
 
     #[test]
     fn test_cli_parse_quiet_flag() {
-        let cli = Cli::try_parse_from(["everruns", "-q", "agents", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["everruns", "-q", "status"]).unwrap();
         assert!(cli.quiet);
 
-        let cli = Cli::try_parse_from(["everruns", "--quiet", "agents", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["everruns", "--quiet", "status"]).unwrap();
         assert!(cli.quiet);
-    }
-
-    #[test]
-    fn test_cli_parse_capabilities_bare() {
-        let cli = Cli::try_parse_from(["everruns", "capabilities"]).unwrap();
-        if let Commands::Capabilities { command, status } = cli.command {
-            assert_eq!(status, "available");
-            assert!(command.is_none()); // bare defaults to list with available
-        } else {
-            panic!("Expected Capabilities command");
-        }
-    }
-
-    #[test]
-    fn test_cli_parse_capabilities_bare_status() {
-        let cli = Cli::try_parse_from(["everruns", "capabilities", "--status", "all"]).unwrap();
-        if let Commands::Capabilities { command, status } = cli.command {
-            assert!(command.is_none());
-            assert_eq!(status, "all");
-        } else {
-            panic!("Expected Capabilities command");
-        }
-    }
-
-    #[test]
-    fn test_cli_parse_capabilities_list() {
-        let cli = Cli::try_parse_from(["everruns", "capabilities", "list"]).unwrap();
-        if let Commands::Capabilities {
-            status: _,
-            command: Some(CapabilitiesCommand::List { status }),
-        } = cli.command
-        {
-            assert_eq!(status, "available"); // default
-        } else {
-            panic!("Expected Capabilities List command");
-        }
-    }
-
-    #[test]
-    fn test_cli_parse_capabilities_list_status() {
-        let cli =
-            Cli::try_parse_from(["everruns", "capabilities", "list", "--status", "all"]).unwrap();
-        if let Commands::Capabilities {
-            status: _,
-            command: Some(CapabilitiesCommand::List { status }),
-        } = cli.command
-        {
-            assert_eq!(status, "all");
-        } else {
-            panic!("Expected Capabilities List command");
-        }
     }
 
     #[test]
@@ -926,7 +660,7 @@ mod tests {
 
     #[test]
     fn test_cli_invalid_output_format() {
-        let result = Cli::try_parse_from(["everruns", "-o", "invalid", "agents", "list"]);
+        let result = Cli::try_parse_from(["everruns", "-o", "invalid", "status"]);
         assert!(result.is_err());
     }
 
@@ -1027,17 +761,6 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_parse_connections_list() {
-        let cli = Cli::try_parse_from(["everruns", "connections", "list"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::Connections {
-                command: commands::connections::ConnectionsCommand::List
-            }
-        ));
-    }
-
-    #[test]
     fn test_cli_parse_connections_remove() {
         let cli = Cli::try_parse_from(["everruns", "connections", "remove", "daytona"]).unwrap();
         if let Commands::Connections { command } = cli.command {
@@ -1122,82 +845,6 @@ mod tests {
         let result = Cli::try_parse_from(["everruns", "connections", "set"]);
         assert!(result.is_err(), "provider arg is required");
     }
-    #[test]
-    fn parses_plugin_lifecycle_commands() {
-        use crate::commands::plugins::PluginsCommands;
-
-        let cli = Cli::try_parse_from([
-            "everruns",
-            "plugins",
-            "install",
-            "marketplace-id",
-            "plugin-name",
-        ])
-        .unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::Plugins {
-                command: PluginsCommands::Install { marketplace_id, plugin_name }
-            } if marketplace_id == "marketplace-id" && plugin_name == "plugin-name"
-        ));
-
-        let cli = Cli::try_parse_from(["everruns", "plugins", "uninstall", "plugin-id"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::Plugins { command: PluginsCommands::Uninstall { id } } if id == "plugin-id"
-        ));
-    }
-
-    #[test]
-    fn parses_skill_lifecycle_commands() {
-        use crate::commands::skills::SkillsCommands;
-        let cli =
-            Cli::try_parse_from(["everruns", "skills", "create", "skills/demo/SKILL.md"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::Skills { command: SkillsCommands::Create { path } }
-                if path == std::path::Path::new("skills/demo/SKILL.md")
-        ));
-
-        let cli = Cli::try_parse_from(["everruns", "skills", "delete", "skill-id"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::Skills { command: SkillsCommands::Delete { id } } if id == "skill-id"
-        ));
-    }
-
-    #[test]
-    fn parses_knowledge_base_lifecycle_commands() {
-        use crate::commands::knowledge_bases::KnowledgeBasesCommands;
-
-        let cli = Cli::try_parse_from([
-            "everruns",
-            "knowledge-bases",
-            "create",
-            "Runbooks",
-            "--description",
-            "Operations guides",
-            "--embedding-model-id",
-            "model-id",
-        ])
-        .unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::KnowledgeBases {
-                command: KnowledgeBasesCommands::Create {
-                    name,
-                    description: Some(description),
-                    embedding_model_id: Some(embedding_model_id),
-                }
-            } if name == "Runbooks" && description == "Operations guides" && embedding_model_id == "model-id"
-        ));
-
-        let cli = Cli::try_parse_from(["everruns", "knowledge-bases", "delete", "kb-id"]).unwrap();
-        assert!(matches!(
-            cli.command,
-            Commands::KnowledgeBases { command: KnowledgeBasesCommands::Delete { id } } if id == "kb-id"
-        ));
-    }
 }
 
 #[cfg(test)]
@@ -1238,33 +885,4 @@ mod contract_golden {
             );
         }
     }
-}
-
-/// Whether the caller typed a command the CLI does not hand-write.
-///
-/// Checked before credentials are resolved so a hand-written command that needs
-/// none — `login`, `status` — is not made to produce one.
-fn contract_is_selected(matches: &clap::ArgMatches) -> bool {
-    let mut node = matches;
-    let mut path = Vec::new();
-    while let Some((name, child)) = node.subcommand() {
-        path.push(name.to_string());
-        node = child;
-    }
-    let Some((verb, nouns)) = path.split_last() else {
-        return false;
-    };
-    everruns_cli_contract::commands()
-        .iter()
-        .any(|contract| contract.path == nouns && &contract.verb == verb)
-        && Cli::command()
-            .find_subcommand(nouns.first().map(String::as_str).unwrap_or(verb))
-            .and_then(|node| {
-                nouns
-                    .iter()
-                    .skip(1)
-                    .try_fold(node, |node, segment| node.find_subcommand(segment))
-            })
-            .map(|node| node.find_subcommand(verb).is_none())
-            .unwrap_or(true)
 }

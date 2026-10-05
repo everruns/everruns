@@ -21,7 +21,7 @@
 // `TM-FS-009` in `knowledge/security/threat-model.md`.
 
 use super::sessions::is_prefixed_id;
-use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
+use crate::output::{OutputFormat, print_field};
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use everruns_core::agent_package::{ALLOWED_DOT_ENTRIES, DENIED_DOT_ENTRIES};
@@ -152,21 +152,6 @@ pub enum AgentsCommand {
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
-    },
-
-    /// List all agents
-    List,
-
-    /// Get agent by ID
-    Get {
-        /// Agent ID (e.g. agt_xxx)
-        agent_id: String,
-    },
-
-    /// Archive an agent (soft delete)
-    Delete {
-        /// Agent ID (e.g. agt_xxx)
-        agent_id: String,
     },
 }
 
@@ -313,9 +298,6 @@ pub async fn run(
                 .await
             }
         }
-        AgentsCommand::List => list(client, output).await,
-        AgentsCommand::Get { agent_id } => get(client, output, agent_id).await,
-        AgentsCommand::Delete { agent_id } => delete(client, output, quiet, agent_id).await,
     }
 }
 
@@ -1120,91 +1102,6 @@ async fn update_from_flags(
         }
     } else {
         output.print_value(&agent);
-    }
-
-    Ok(())
-}
-
-async fn list(client: &Everruns, output: OutputFormat) -> Result<()> {
-    let response = client.agents().list().await?;
-
-    if output.is_text() {
-        if response.data.is_empty() {
-            println!("No agents found");
-            return Ok(());
-        }
-
-        print_table_header(&[("ID", 36), ("NAME", 20), ("STATUS", 8)]);
-
-        for agent in &response.data {
-            let status = format!("{:?}", agent.status).to_lowercase();
-            print_table_row(&[(&agent.id, 36), (&agent.name, 20), (&status, 8)]);
-        }
-    } else {
-        let data: Vec<serde_json::Value> = response
-            .data
-            .iter()
-            .map(|a| {
-                serde_json::json!({
-                    "id": a.id,
-                    "name": a.name,
-                    "description": a.description,
-                    "system_prompt": a.system_prompt,
-                    "default_model_id": a.default_model_id,
-                    "tags": a.tags,
-                    "status": format!("{:?}", a.status).to_lowercase(),
-                    "created_at": a.created_at,
-                    "updated_at": a.updated_at,
-                })
-            })
-            .collect();
-        output.print_value(&serde_json::json!({ "data": data }));
-    }
-
-    Ok(())
-}
-
-async fn get(client: &Everruns, output: OutputFormat, agent_id: String) -> Result<()> {
-    let agent = client
-        .agents()
-        .get(&agent_id)
-        .await
-        .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
-
-    if output.is_text() {
-        print_field("ID", &agent.id);
-        print_field("Name", &agent.name);
-        print_field("Status", &format!("{:?}", agent.status).to_lowercase());
-        if let Some(desc) = &agent.description {
-            print_field("Description", desc);
-        }
-        if !agent.tags.is_empty() {
-            print_field("Tags", &agent.tags.join(", "));
-        }
-        print_field("Created", &agent.created_at);
-    } else {
-        output.print_value(&agent);
-    }
-
-    Ok(())
-}
-
-async fn delete(
-    client: &Everruns,
-    output: OutputFormat,
-    quiet: bool,
-    agent_id: String,
-) -> Result<()> {
-    client
-        .agents()
-        .delete(&agent_id)
-        .await
-        .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
-
-    if output.is_text() && !quiet {
-        println!("Archived agent: {}", agent_id);
-    } else if !output.is_text() {
-        output.print_value(&serde_json::json!({ "id": agent_id, "status": "archived" }));
     }
 
     Ok(())
