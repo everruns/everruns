@@ -515,6 +515,8 @@ Emitted when individual tool execution completes.
 | `result` | ContentPart[]? | Result content |
 | `error` | string? | Error message |
 | `duration_ms` | integer? | Duration |
+| `executed_arguments` | JSON? | Arguments the tool actually ran with. Present only when a `pre_tool_use` hook rewrote the arguments the model sent (those stay on `tool.started`). Values under credential-named keys such as `password`, `access_token`, or `Authorization` read `[REDACTED]`. Larger than 8 KiB serialized, it is a truncated JSON string. |
+| `executed_arguments_truncated` | boolean? | `true` when `executed_arguments` is truncated |
 
 ```json
 {

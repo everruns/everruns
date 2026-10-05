@@ -348,6 +348,8 @@ Two sources feed the chain, in this order:
 
 Policy gates decide on the call that executes, not the call the model wrote (EVE-1184). A hook marked as a policy gate (`PolicyGate` in `crates/contracts/src/runtime/tool_hooks.rs`; tool approval and `tool_use` guardrails) runs after every transforming hook regardless of declaration order, so a later hook cannot rewrite an approved call into one nobody approved. Approval requests therefore show, and fingerprint, the rewritten arguments. If a gate itself rewrites the call, every gate decides again on the new arguments; a chain that does not settle fails closed. See `run_pre_tool_use_hooks` in `crates/core/src/engine/execution/act_hooks.rs`.
 
+The event log records what ran as well as what the model asked for (EVE-1209). `tool.started` carries the model-authored call. When pre-tool hooks rewrote the arguments of a call that then ran, `tool.completed` also carries the executed arguments, bounded by the same preview budget as the approval card (`preview_tool_arguments` in `crates/contracts/src/tool_approval_types.rs`), with credential-named fields withheld because a hook may inject a credential the model never saw. Calls nobody rewrote, and blocked or deferred calls, leave the event unchanged. See `ToolCompletedData` in `crates/contracts/src/runtime/events/tool_data.rs`.
+
 Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/core/src/host/host.rs` (`load_execution_capabilities`).
 
 ### PostToolExecHook (per-tool hooks)

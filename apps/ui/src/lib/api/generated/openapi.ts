@@ -19596,6 +19596,17 @@ export interface components {
       duration_ms?: number | null;
       /** @description Error message if failed */
       error?: string | null;
+      /**
+       * @description Arguments the tool actually ran with, present only when `pre_tool_use`
+       *     hooks rewrote the model-authored arguments (which `tool.started`
+       *     carries). Values under credential-named keys (`password`, `*_token`,
+       *     `authorization`, ...) read `[REDACTED]`. Bounded like the approval
+       *     preview: past the budget this is a truncated JSON string and
+       *     `executed_arguments_truncated` is set.
+       */
+      executed_arguments?: unknown;
+      /** @description True when `executed_arguments` is a truncated preview. */
+      executed_arguments_truncated?: boolean;
       /** @description Human-readable narration for timeline rendering */
       narration?: string | null;
       /** @description Result content (for successful calls) */

@@ -884,7 +884,7 @@ pub use crate::form_elicitation_types::{
 };
 pub use crate::tool_approval_types::{
     APPROVE_TOOL_CALL_TOOL, TOOL_APPROVAL_CALL_ID_PREFIX, TOOL_APPROVAL_REQUIRED_CODE,
-    ToolApprovalRequired,
+    TOOL_ARGUMENTS_PREVIEW_BYTES, ToolApprovalRequired, preview_tool_arguments,
 };
 
 /// Name of the client-side tool an agent uses to ask a structured question.

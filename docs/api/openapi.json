@@ -46073,6 +46073,13 @@
             ],
             "description": "Error message if failed"
           },
+          "executed_arguments": {
+            "description": "Arguments the tool actually ran with, present only when `pre_tool_use`\nhooks rewrote the model-authored arguments (which `tool.started`\ncarries). Values under credential-named keys (`password`, `*_token`,\n`authorization`, ...) read `[REDACTED]`. Bounded like the approval\npreview: past the budget this is a truncated JSON string and\n`executed_arguments_truncated` is set."
+          },
+          "executed_arguments_truncated": {
+            "type": "boolean",
+            "description": "True when `executed_arguments` is a truncated preview."
+          },
           "narration": {
             "type": [
               "string",

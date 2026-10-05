@@ -164,7 +164,7 @@ pub use runtime_provider::{
 };
 pub use tool_approval_types::{
     APPROVE_TOOL_CALL_TOOL, TOOL_APPROVAL_CALL_ID_PREFIX, TOOL_APPROVAL_REQUIRED_CODE,
-    ToolApprovalRequired,
+    TOOL_ARGUMENTS_PREVIEW_BYTES, ToolApprovalRequired, preview_tool_arguments,
 };
 pub use tool_types::{
     ASK_USER_TOOL_NAME, BuiltinTool, CONFIRM_URL_ELICITATION_TOOL, ClientSideTool,

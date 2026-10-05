@@ -289,6 +289,19 @@ pub struct ToolCompletedData {
     /// Human-readable narration for timeline rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration: Option<String>,
+
+    /// Arguments the tool actually ran with, present only when `pre_tool_use`
+    /// hooks rewrote the model-authored arguments (which `tool.started`
+    /// carries). Values under credential-named keys (`password`, `*_token`,
+    /// `authorization`, ...) read `[REDACTED]`. Bounded like the approval
+    /// preview: past the budget this is a truncated JSON string and
+    /// `executed_arguments_truncated` is set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executed_arguments: Option<serde_json::Value>,
+
+    /// True when `executed_arguments` is a truncated preview.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub executed_arguments_truncated: bool,
 }
 
 impl ToolCompletedData {
@@ -312,6 +325,8 @@ impl ToolCompletedData {
             capability_id: None,
             capability_name: None,
             narration: None,
+            executed_arguments: None,
+            executed_arguments_truncated: false,
         }
     }
 
@@ -336,6 +351,8 @@ impl ToolCompletedData {
             capability_id: None,
             capability_name: None,
             narration: None,
+            executed_arguments: None,
+            executed_arguments_truncated: false,
         }
     }
 
@@ -361,6 +378,28 @@ impl ToolCompletedData {
         self
     }
 
+    /// Record the arguments the tool ran with, when hooks changed them.
+    ///
+    /// `authored` is what the model asked for, `executed` what was invoked.
+    /// Equal arguments leave the event unchanged, so the field only appears
+    /// when a hook rewrote the call. Values under credential-named keys are
+    /// withheld: a hook may inject a credential the model never saw, and the
+    /// event log is readable by everyone who can read the session.
+    pub fn with_executed_arguments(
+        mut self,
+        authored: &serde_json::Value,
+        executed: &serde_json::Value,
+    ) -> Self {
+        if authored != executed {
+            let redacted = redact_credential_fields(executed);
+            let (preview, truncated) =
+                crate::tool_approval_types::preview_tool_arguments(&redacted);
+            self.executed_arguments = Some(preview);
+            self.executed_arguments_truncated = truncated;
+        }
+        self
+    }
+
     /// Set reporting attribution on this event data.
     pub fn with_capability_attribution(
         mut self,
@@ -371,6 +410,56 @@ impl ToolCompletedData {
         self.capability_name = capability_name;
         self
     }
+}
+
+/// Placeholder for a value withheld from `executed_arguments`.
+const REDACTED_ARGUMENT: &str = "[REDACTED]";
+
+/// Key fragments (lowercased, `-`/`_` removed) that mark a credential value.
+const CREDENTIAL_KEY_FRAGMENTS: [&str; 10] = [
+    "apikey",
+    "accesskey",
+    "secretkey",
+    "privatekey",
+    "secret",
+    "password",
+    "passwd",
+    "credential",
+    "authorization",
+    "cookie",
+];
+
+/// THREAT[TM-HOOK-007]: copy of `value` with credential-named fields replaced,
+/// so recording what a hook rewrote does not publish what the hook injected.
+fn redact_credential_fields(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(object) => serde_json::Value::Object(
+            object
+                .iter()
+                .map(|(key, item)| {
+                    let item = if is_credential_key(key) {
+                        serde_json::Value::String(REDACTED_ARGUMENT.to_string())
+                    } else {
+                        redact_credential_fields(item)
+                    };
+                    (key.clone(), item)
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(redact_credential_fields).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+fn is_credential_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
+    // `token` only as a suffix: `access_token` is a credential, `max_tokens` is not.
+    normalized.ends_with("token")
+        || CREDENTIAL_KEY_FRAGMENTS
+            .iter()
+            .any(|fragment| normalized.contains(fragment))
 }
 
 /// Data for tool.progress event.
@@ -584,3 +673,47 @@ impl ToolCallRequestedData {
 // ============================================================================
 // LLM Event Data Types
 // ============================================================================
+
+#[cfg(test)]
+mod executed_arguments_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn completed() -> ToolCompletedData {
+        ToolCompletedData::success("call_1".into(), "http".into(), Vec::new(), None)
+    }
+
+    #[test]
+    fn unchanged_arguments_are_not_recorded() {
+        let args = json!({ "url": "https://example.com" });
+        let data = completed().with_executed_arguments(&args, &args);
+        assert_eq!(data.executed_arguments, None);
+        let wire = serde_json::to_value(&data).unwrap();
+        assert!(wire.get("executed_arguments").is_none());
+        assert!(wire.get("executed_arguments_truncated").is_none());
+    }
+
+    #[test]
+    fn hook_injected_credentials_are_withheld() {
+        let authored = json!({ "url": "https://example.com", "max_tokens": 5 });
+        let executed = json!({
+            "url": "https://example.com",
+            "max_tokens": 5,
+            "headers": { "Authorization": "Bearer abc", "X-Api-Key": "k" },
+            "auth": [{ "access_token": "t", "client_secret": "s" }],
+            "password": "p",
+        });
+        let data = completed().with_executed_arguments(&authored, &executed);
+        assert_eq!(
+            data.executed_arguments,
+            Some(json!({
+                "url": "https://example.com",
+                "max_tokens": 5,
+                "headers": { "Authorization": "[REDACTED]", "X-Api-Key": "[REDACTED]" },
+                "auth": [{ "access_token": "[REDACTED]", "client_secret": "[REDACTED]" }],
+                "password": "[REDACTED]",
+            }))
+        );
+        assert!(!data.executed_arguments_truncated);
+    }
+}
