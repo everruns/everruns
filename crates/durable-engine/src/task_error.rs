@@ -11,14 +11,14 @@ use serde_json::Value;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct TaskFailureSummary {
-    pub(crate) session_id: Option<String>,
-    pub(crate) tool_identifiers: Vec<String>,
-    pub(crate) error_chain: String,
-    pub(crate) persisted_message: String,
+pub struct TaskFailureSummary {
+    pub session_id: Option<String>,
+    pub tool_identifiers: Vec<String>,
+    pub error_chain: String,
+    pub persisted_message: String,
 }
 
-pub(crate) fn summarize_task_failure(
+pub fn summarize_task_failure(
     task_id: Uuid,
     workflow_id: Option<Uuid>,
     activity_type: &str,
@@ -59,13 +59,13 @@ pub(crate) fn summarize_task_failure(
     }
 }
 
-pub(crate) fn user_facing_failure(error: &str) -> UserFacingError {
+pub fn user_facing_failure(error: &str) -> UserFacingError {
     let error_chain = error.split("error_chain=").nth(1).unwrap_or(error).trim();
     classify_runtime_error_message(error_chain, &UserFacingErrorContext::default())
 }
 
 /// Preserve typed retry semantics through anyhow's activity error boundary.
-pub(crate) fn is_non_retryable_task_error(error: &Error) -> bool {
+pub fn is_non_retryable_task_error(error: &Error) -> bool {
     error.chain().any(|cause| {
         cause
             .downcast_ref::<AgentLoopError>()
@@ -74,7 +74,7 @@ pub(crate) fn is_non_retryable_task_error(error: &Error) -> bool {
 }
 
 #[cfg(test)]
-pub(crate) fn user_facing_failure_message(error: &str) -> String {
+pub fn user_facing_failure_message(error: &str) -> String {
     user_facing_failure(error).fallback_message()
 }
 

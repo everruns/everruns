@@ -18,5 +18,10 @@ tokio.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
+[dev-dependencies]
+# Deterministic provider for the driver's end-to-end test over the in-process
+# runtime host (`turn_driver_tests`).
+everruns-llmsim = { workspace = true, features = ["host"] }
+
 [lints]
 workspace = true
