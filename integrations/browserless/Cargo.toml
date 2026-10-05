@@ -20,7 +20,8 @@ documentation = "https://docs.rs/everruns-integrations-browserless"
 
 [dependencies]
 everruns-core.workspace = true
-everruns-contracts.workspace = true
+# `http`: SsrfGuardResolver for the browser egress boundary (EVE-1189)
+everruns-contracts = { workspace = true, features = ["http"] }
 
 # HTTP client for Browserless REST API
 reqwest.workspace = true
@@ -43,8 +44,10 @@ tokio.workspace = true
 chrono.workspace = true
 tracing.workspace = true
 
-# Base64 encoding for screenshot data
+# Base64 encoding for screenshot data and relayed browser responses
 base64.workspace = true
+# Decode a relayed response a server compressed despite `identity`
+flate2.workspace = true
 
 # Normalize HTTP prefix patterns the same way NetworkAccessList does.
 url = "2"

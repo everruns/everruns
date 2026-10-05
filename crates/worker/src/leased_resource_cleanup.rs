@@ -393,14 +393,12 @@ async fn cleanup_browserless(
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| anyhow!("Browserless leased resource missing metadata.ws_endpoint"))?;
 
-    let reconnect_url = everruns_integrations_browserless::state::BrowserSessionState {
-        ws_endpoint: ws_endpoint.to_string(),
-        created_at: String::new(),
-        last_active_at: String::new(),
-    }
-    .reconnect_url(token);
+    let reconnect_url =
+        everruns_integrations_browserless::state::BrowserSessionState::new(ws_endpoint.to_string())
+            .reconnect_url(token);
 
-    match everruns_integrations_browserless::cdp::CdpSession::connect(&reconnect_url).await {
+    match everruns_integrations_browserless::cdp::CdpSession::connect_to_close(&reconnect_url).await
+    {
         Ok(session) => {
             session.disconnect().await;
         }

@@ -1,11 +1,9 @@
 use super::*;
+use crate::test_chromium::{connect_guarded, launch_chromium};
 use base64::Engine;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::capabilities::Capability;
 use everruns_core::network_access::NetworkAccessList;
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::{Child, Command};
 
 // ---------------------------------------------------------------------------
 // Pure mapping
@@ -124,101 +122,6 @@ async fn without_a_browserless_connection_the_tool_says_how_to_connect() {
 // Real browser: the CDP action layer against a local headless Chromium
 // ---------------------------------------------------------------------------
 
-/// A local Chromium to drive, if this machine has one. CI runners ship Google
-/// Chrome; cloud agent containers ship Playwright's Chromium.
-fn chromium_binary() -> Option<String> {
-    if let Ok(path) = std::env::var("CHROMIUM_PATH")
-        && !path.is_empty()
-    {
-        return Some(path);
-    }
-    let fixed = [
-        "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-    ];
-    if let Some(path) = fixed.iter().find(|p| std::path::Path::new(p).exists()) {
-        return Some((*path).to_string());
-    }
-    // Any Playwright chromium build.
-    std::fs::read_dir("/opt/pw-browsers")
-        .ok()?
-        .flatten()
-        .map(|entry| entry.path().join("chrome-linux/chrome"))
-        .find(|path| path.exists())
-        .map(|path| path.to_string_lossy().into_owned())
-}
-
-struct LocalChromium {
-    child: Child,
-    ws_url: String,
-    _profile: tempdir::Profile,
-}
-
-mod tempdir {
-    /// A throwaway profile directory, removed on drop.
-    pub struct Profile(pub std::path::PathBuf);
-
-    impl Profile {
-        pub fn new() -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "everruns-computer-use-{}",
-                everruns_contracts::typed_id::SessionId::new()
-            ));
-            std::fs::create_dir_all(&dir).expect("create profile dir");
-            Self(dir)
-        }
-    }
-
-    impl Drop for Profile {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-}
-
-async fn launch_chromium() -> Option<LocalChromium> {
-    let binary = chromium_binary()?;
-    let profile = tempdir::Profile::new();
-    let mut child = Command::new(&binary)
-        .args([
-            "--headless=new",
-            "--no-sandbox",
-            "--disable-gpu",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--remote-debugging-port=0",
-            "about:blank",
-        ])
-        .arg(format!("--user-data-dir={}", profile.0.display()))
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .ok()?;
-    let stderr = child.stderr.take()?;
-    let mut lines = BufReader::new(stderr).lines();
-    let ws_url = tokio::time::timeout(Duration::from_secs(20), async {
-        while let Ok(Some(line)) = lines.next_line().await {
-            if let Some(url) = line.strip_prefix("DevTools listening on ") {
-                return Some(url.trim().to_string());
-            }
-        }
-        None
-    })
-    .await
-    .ok()??;
-    // Keep draining stderr so Chromium never blocks on a full pipe.
-    tokio::spawn(async move { while let Ok(Some(_)) = lines.next_line().await {} });
-    Some(LocalChromium {
-        child,
-        ws_url,
-        _profile: profile,
-    })
-}
-
 const FORM_PAGE: &str = r#"<!doctype html>
 <html><body style="margin:0;font:16px sans-serif;height:3000px">
 <form id="f" style="padding:20px">
@@ -274,19 +177,7 @@ async fn fills_and_submits_a_form_on_a_real_browser() {
         eprintln!("skipping: no local Chromium found (set CHROMIUM_PATH to run)");
         return;
     };
-    // Test builds use a 1s CDP connect timeout; a freshly started Chromium on
-    // a loaded CI runner can take longer to accept the socket, so retry.
-    let mut session = None;
-    for _ in 0..20 {
-        match CdpSession::connect(&browser.ws_url).await {
-            Ok(connected) => {
-                session = Some(connected);
-                break;
-            }
-            Err(_) => tokio::time::sleep(Duration::from_millis(250)).await,
-        }
-    }
-    let session = session.expect("connect to local Chromium over CDP");
+    let session = connect_guarded(&browser, BrowserEgress::new(None)).await;
     let size = DisplaySize {
         width: 800,
         height: 600,

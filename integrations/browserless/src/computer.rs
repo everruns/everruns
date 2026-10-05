@@ -43,6 +43,7 @@ use everruns_core::tool_hooks::PreToolUseHook;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use tracing::warn;
 
+use crate::browser_egress::BrowserEgress;
 use crate::cdp::{CdpSession, DEFAULT_RECONNECT_TIMEOUT_MS};
 use crate::session_tools::{register_session_endpoint, try_get_cdp_session};
 use crate::state::get_api_token;
@@ -435,24 +436,15 @@ impl ComputerBackend for BrowserlessComputerBackend {
         display: DisplaySize,
     ) -> Result<Box<dyn ComputerSession>, ToolExecutionResult> {
         let api_token = get_api_token(context).await?;
-        let mut session = match try_get_cdp_session(context).await {
+        let session = match try_get_cdp_session(context).await {
             Some(session) => session,
             None => {
                 let ws_url = crate::browser_session_url(&crate::browserless_ws_base(), &api_token);
-                CdpSession::connect(&ws_url)
+                CdpSession::connect(&ws_url, BrowserEgress::for_context(context), None)
                     .await
                     .map_err(ToolExecutionResult::tool_error)?
             }
         };
-        if let Some(access) = context
-            .network_access
-            .as_ref()
-            .filter(|access| !access.is_empty())
-            && let Err(error) = session.arm_request_policy(access).await
-        {
-            session.disconnect().await;
-            return Err(ToolExecutionResult::tool_error(error));
-        }
         let cursor = load_cursor(context).await;
         match CdpDisplay::attach(session, display, cursor).await {
             Ok(display) => Ok(Box::new(BrowserlessComputerSession {
@@ -508,7 +500,10 @@ impl ComputerSession for BrowserlessComputerSession {
         let mut session = display.into_session();
         match session.reconnect(DEFAULT_RECONNECT_TIMEOUT_MS).await {
             Ok(endpoint) => {
-                if let Err(e) = register_session_endpoint(&context, endpoint).await {
+                let browser_context_id = session.browser_context_id().to_string();
+                if let Err(e) =
+                    register_session_endpoint(&context, endpoint, &browser_context_id).await
+                {
                     warn!("computer_use: failed to persist the browser session: {e:?}");
                 }
             }

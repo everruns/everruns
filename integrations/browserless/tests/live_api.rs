@@ -8,6 +8,7 @@
 
 #![cfg(feature = "browserless-live-tests")]
 
+use everruns_integrations_browserless::browser_egress::BrowserEgress;
 use everruns_integrations_browserless::cdp::CdpSession;
 use everruns_integrations_browserless::client::BrowserlessClient;
 
@@ -99,7 +100,7 @@ async fn live_cdp_session_connect_attaches_page_target() {
     let token = api_token();
     let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
-    let session = CdpSession::connect(&ws_url)
+    let session = CdpSession::connect(&ws_url, BrowserEgress::new(None), None)
         .await
         .expect("CDP connect should succeed");
 
@@ -120,7 +121,7 @@ async fn live_cdp_session_navigate_and_screenshot() {
     let token = api_token();
     let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
-    let mut session = CdpSession::connect(&ws_url)
+    let mut session = CdpSession::connect(&ws_url, BrowserEgress::new(None), None)
         .await
         .expect("CDP connect should succeed");
 
@@ -169,7 +170,7 @@ async fn live_cdp_session_reconnect() {
     let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
     // Open session, navigate, reconnect, disconnect
-    let mut session = CdpSession::connect(&ws_url)
+    let mut session = CdpSession::connect(&ws_url, BrowserEgress::new(None), None)
         .await
         .expect("CDP connect should succeed");
 
@@ -184,6 +185,7 @@ async fn live_cdp_session_reconnect() {
         .await
         .expect("Reconnect should succeed");
 
+    let context_id = session.browser_context_id().to_string();
     session.disconnect().await;
 
     // Reconnect using the returned endpoint
@@ -193,9 +195,10 @@ async fn live_cdp_session_reconnect() {
         format!("{new_endpoint}?token={token}")
     };
 
-    let mut session2 = CdpSession::connect(&reconnect_url)
-        .await
-        .expect("Reconnect should succeed");
+    let mut session2 =
+        CdpSession::connect(&reconnect_url, BrowserEgress::new(None), Some(&context_id))
+            .await
+            .expect("Reconnect should succeed");
 
     // The page should still be at example.com
     let title = session2
@@ -216,7 +219,7 @@ async fn live_cdp_session_interact() {
     let token = api_token();
     let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
-    let mut session = CdpSession::connect(&ws_url)
+    let mut session = CdpSession::connect(&ws_url, BrowserEgress::new(None), None)
         .await
         .expect("CDP connect should succeed");
 
@@ -281,7 +284,7 @@ async fn live_no_resources_leaked_cdp() {
     let token = api_token();
     let ws_url = format!("wss://production-sfo.browserless.io/chromium?token={token}");
 
-    let mut session = CdpSession::connect(&ws_url)
+    let mut session = CdpSession::connect(&ws_url, BrowserEgress::new(None), None)
         .await
         .expect("CDP connect should succeed");
 
@@ -302,7 +305,7 @@ async fn live_no_resources_leaked_cdp() {
 
     // Try to reconnect — should fail because the browser was destroyed
     let reconnect_url = format!("{new_endpoint}?token={token}");
-    let result = CdpSession::connect(&reconnect_url).await;
+    let result = CdpSession::connect_to_close(&reconnect_url).await;
     assert!(
         result.is_err(),
         "Should fail to reconnect after timeout — browser was cleaned up"
@@ -313,7 +316,7 @@ async fn live_no_resources_leaked_cdp() {
 // Computer use (EVE-1119): the `computer` tool on a real Browserless browser
 // ============================================================================
 
-mod computer_use {
+pub(crate) mod computer_use {
     use super::api_token;
     use async_trait::async_trait;
     use everruns_contracts::error::Result;
@@ -374,7 +377,7 @@ mod computer_use {
         }
     }
 
-    fn context() -> ToolContext {
+    pub(super) fn context() -> ToolContext {
         ToolContext::new(SessionId::new())
             .with_storage_store_arc(Arc::new(MemoryStore::default()))
             .with_connection_resolver(Arc::new(Token(api_token())))
@@ -484,5 +487,104 @@ mod computer_use {
         );
 
         close(&ctx).await;
+    }
+}
+
+// ============================================================================
+// Network guard (EVE-1189): pages load through Everruns on real Browserless
+// ============================================================================
+
+mod network_guard {
+    use super::computer_use::context;
+    use everruns_core::capabilities::Capability;
+    use everruns_core::tools::{Tool, ToolExecutionResult};
+    use everruns_integrations_browserless::BrowserlessCapability;
+    use serde_json::json;
+
+    /// A public URL that answers 302 to a private address. Browserless cloud
+    /// itself drops the connection when a page touches a loopback or metadata
+    /// URL, so a private RFC 1918 target is what shows the Everruns guard.
+    const REDIRECT_TO_PRIVATE: &str =
+        "https://httpbin.org/redirect-to?url=http%3A%2F%2F10.0.0.5%2Fadmin";
+
+    fn tool(name: &str) -> Box<dyn Tool> {
+        BrowserlessCapability
+            .tools()
+            .into_iter()
+            .find(|t| t.name() == name)
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn live_one_shot_tools_load_public_pages_through_everruns() {
+        let ctx = context();
+        let result = tool("browserless_content")
+            .execute_with_context(json!({"url": "https://example.com"}), &ctx)
+            .await;
+        let ToolExecutionResult::Success(value) = &result else {
+            panic!("expected content, got {result:?}");
+        };
+        assert_eq!(value["session"], "one_shot");
+        assert!(
+            value["content"]
+                .as_str()
+                .unwrap()
+                .contains("Example Domain")
+        );
+
+        let result = tool("browserless_scrape")
+            .execute_with_context(
+                json!({"url": "https://example.com", "elements": [{"selector": "title"}]}),
+                &ctx,
+            )
+            .await;
+        let ToolExecutionResult::Success(value) = &result else {
+            panic!("expected scrape data, got {result:?}");
+        };
+        assert_eq!(
+            value["data"]["data"][0]["results"][0]["text"],
+            "Example Domain"
+        );
+    }
+
+    #[tokio::test]
+    async fn live_redirect_to_private_address_is_blocked_on_one_shot_and_persistent_browsers() {
+        let ctx = context();
+        for name in ["browserless_content", "browserless_screenshot"] {
+            let result = tool(name)
+                .execute_with_context(json!({"url": REDIRECT_TO_PRIVATE}), &ctx)
+                .await;
+            let rendered = format!("{result:?}");
+            assert!(
+                matches!(result, ToolExecutionResult::ToolError(_)),
+                "{name}: {rendered}"
+            );
+            assert!(
+                rendered.contains("ERR_BLOCKED_BY_CLIENT"),
+                "{name}: {rendered}"
+            );
+        }
+
+        let opened = tool("browserless_open_browser")
+            .execute_with_context(json!({"url": "https://example.com"}), &ctx)
+            .await;
+        assert!(opened.is_success(), "{opened:?}");
+        let result = tool("browserless_navigate")
+            .execute_with_context(json!({"url": REDIRECT_TO_PRIVATE}), &ctx)
+            .await;
+        let rendered = format!("{result:?}");
+        assert!(rendered.contains("ERR_BLOCKED_BY_CLIENT"), "{rendered}");
+        // The persistent page is still usable for allowed sites.
+        let result = tool("browserless_navigate")
+            .execute_with_context(json!({"url": "https://example.com"}), &ctx)
+            .await;
+        let ToolExecutionResult::Success(value) = &result else {
+            panic!("expected page info, got {result:?}");
+        };
+        assert_eq!(value["title"], "Example Domain");
+        assert_eq!(value["session"], "cdp");
+        tool("browserless_close_browser")
+            .execute_with_context(json!({}), &ctx)
+            .await;
     }
 }

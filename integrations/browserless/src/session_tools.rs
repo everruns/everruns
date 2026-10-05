@@ -15,10 +15,11 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use tracing::{debug, warn};
 
-use crate::cdp::{CdpSession, DEFAULT_RECONNECT_TIMEOUT_MS};
+use crate::browser_egress::BrowserEgress;
+use crate::cdp::{CdpSession, DEFAULT_RECONNECT_TIMEOUT_MS, is_cdp_refused};
 use crate::state::{
     BrowserSessionState, browser_session_external_id, delete_browser_session, delete_cookies,
-    get_api_token, get_browser_session, save_browser_session,
+    get_api_token, get_browser_session, load_cookies, save_browser_session, save_cookies,
 };
 use crate::validation::validate_browserless_navigation;
 
@@ -169,17 +170,14 @@ impl Tool for BrowserlessOpenBrowserTool {
         // Check if there's already an active session
         if let Ok(Some(existing)) = get_browser_session(context).await {
             if let Ok(url) = existing.validated_reconnect_url(&api_token) {
-                match CdpSession::connect(&url).await {
+                match CdpSession::connect(
+                    &url,
+                    BrowserEgress::for_context(context),
+                    existing.browser_context_id.as_deref(),
+                )
+                .await
+                {
                     Ok(mut session) => {
-                        if let Some(access) = context
-                            .network_access
-                            .as_ref()
-                            .filter(|access| !access.is_empty())
-                            && let Err(error) = session.arm_request_policy(access).await
-                        {
-                            session.disconnect().await;
-                            return ToolExecutionResult::tool_error(error);
-                        }
                         let landing_blocked = session
                             .reset_if_landing_blocked(context.network_access.as_ref())
                             .await
@@ -196,6 +194,8 @@ impl Tool for BrowserlessOpenBrowserTool {
                             Ok(new_endpoint) => {
                                 let mut state = existing;
                                 state.ws_endpoint = new_endpoint;
+                                state.browser_context_id =
+                                    Some(session.browser_context_id().to_string());
                                 state.last_active_at = chrono::Utc::now().to_rfc3339();
                                 if let Err(e) = save_browser_session(context, &state).await {
                                     warn!("Failed to update session state: {e:?}");
@@ -240,10 +240,11 @@ impl Tool for BrowserlessOpenBrowserTool {
 
         let ws_url = crate::browser_session_url(&crate::browserless_ws_base(), &api_token);
 
-        let mut session = match CdpSession::connect(&ws_url).await {
-            Ok(s) => s,
-            Err(e) => return ToolExecutionResult::tool_error(e),
-        };
+        let mut session =
+            match CdpSession::connect(&ws_url, BrowserEgress::for_context(context), None).await {
+                Ok(s) => s,
+                Err(e) => return ToolExecutionResult::tool_error(e),
+            };
 
         // Navigate to initial URL if provided
         if let Some(url) = arguments
@@ -251,15 +252,6 @@ impl Tool for BrowserlessOpenBrowserTool {
             .and_then(|v| v.as_str())
             .filter(|u| !u.is_empty())
         {
-            if let Some(access) = context
-                .network_access
-                .as_ref()
-                .filter(|access| !access.is_empty())
-                && let Err(error) = session.arm_request_policy(access).await
-            {
-                session.disconnect().await;
-                return ToolExecutionResult::tool_error(error);
-            }
             // Emit progress with host only to avoid leaking query params/tokens
             let host = url
                 .split("//")
@@ -320,8 +312,9 @@ impl Tool for BrowserlessOpenBrowserTool {
             }
         };
 
-        // Save state (only WS endpoint, no token)
-        let state = BrowserSessionState::new(ws_endpoint);
+        // Save state (WS endpoint and guarded context id, no token)
+        let mut state = BrowserSessionState::new(ws_endpoint);
+        state.browser_context_id = Some(session.browser_context_id().to_string());
         if let Err(e) = save_browser_session(context, &state).await {
             session.disconnect().await;
             return e;
@@ -412,7 +405,7 @@ impl Tool for BrowserlessCloseBrowserTool {
 
         // Reconnect and close (don't call reconnect — browser will be destroyed)
         match session_state.validated_reconnect_url(&api_token) {
-            Ok(url) => match CdpSession::connect(&url).await {
+            Ok(url) => match CdpSession::connect_to_close(&url).await {
                 Ok(session) => {
                     session.disconnect().await;
                     debug!("Browser session closed (disconnected without reconnect)");
@@ -467,13 +460,130 @@ pub async fn try_get_cdp_session(context: &ToolContext) -> Option<CdpSession> {
         }
     };
 
-    match CdpSession::connect(&url).await {
+    match CdpSession::connect(
+        &url,
+        BrowserEgress::for_context(context),
+        state.browser_context_id.as_deref(),
+    )
+    .await
+    {
         Ok(session) => Some(session),
         Err(e) => {
             debug!("CDP reconnect failed (session may have expired): {e}");
             let _ = delete_browser_session(context).await;
             None
         }
+    }
+}
+
+/// A guarded browser one tool call drives.
+///
+/// `persistent` is the session's `browserless_open_browser` browser, kept
+/// alive after the call. Otherwise it is a one-shot browser Browserless
+/// destroys when this connection closes, which replaces the REST endpoints
+/// whose browsers had direct network access (EVE-1189).
+pub struct ToolBrowser {
+    session: CdpSession,
+    persistent: bool,
+}
+
+/// How a tool reaches a browser for one call.
+pub enum Acquired {
+    Browser(ToolBrowser),
+    /// Browserless cloud refused CDP for this token; the REST endpoints run
+    /// the call in Browserless' own network without the Everruns guard.
+    RestFallback(String),
+}
+
+impl std::ops::Deref for ToolBrowser {
+    type Target = CdpSession;
+
+    fn deref(&self) -> &CdpSession {
+        &self.session
+    }
+}
+
+impl std::ops::DerefMut for ToolBrowser {
+    fn deref_mut(&mut self) -> &mut CdpSession {
+        &mut self.session
+    }
+}
+
+impl ToolBrowser {
+    /// `"cdp"` for the persistent browser, `"one_shot"` otherwise.
+    pub fn mode(&self) -> &'static str {
+        if self.persistent { "cdp" } else { "one_shot" }
+    }
+
+    /// Persist a one-shot browser's cookies for the next call. The persistent
+    /// browser keeps its own cookie jar.
+    pub async fn save_cookies_if_one_shot(&mut self, context: &ToolContext) {
+        if self.persistent {
+            return;
+        }
+        match self.session.context_cookies().await {
+            Ok(cookies) => {
+                if let Err(e) = save_cookies(context, &cookies).await {
+                    debug!("Failed to persist cookies: {e}");
+                }
+            }
+            Err(e) => debug!("Failed to read browser cookies: {e}"),
+        }
+    }
+
+    /// Keep the persistent browser alive, then disconnect. A one-shot browser
+    /// is destroyed by the disconnect.
+    pub async fn release(mut self, context: &ToolContext) {
+        if self.persistent {
+            keep_session_alive(context, &mut self.session).await;
+        }
+        self.session.disconnect().await;
+    }
+}
+
+/// THREAT[TM-TOOL-015][TM-TOOL-056]: Unguarded REST is used only when
+/// Browserless cloud refuses CDP for the token. Cloud browsers run on
+/// Browserless infrastructure, outside Everruns and operator networks. A
+/// self-hosted Browserless (`BROWSERLESS_API_BASE` on another host) never
+/// falls back, because its browser sits inside the operator's network.
+fn unguarded_rest_allowed() -> bool {
+    reqwest::Url::parse(&crate::browserless_api_base())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| host.ends_with(".browserless.io"))
+}
+
+/// The session's persistent browser, or a one-shot guarded browser.
+///
+/// Stored cookies are seeded into a one-shot browser, matching the REST path.
+pub async fn acquire_browser(context: &ToolContext) -> Result<Acquired, ToolExecutionResult> {
+    if let Some(session) = try_get_cdp_session(context).await {
+        return Ok(Acquired::Browser(ToolBrowser {
+            session,
+            persistent: true,
+        }));
+    }
+
+    let api_token = get_api_token(context).await?;
+    let ws_url = crate::browser_session_url(&crate::browserless_ws_base(), &api_token);
+    match CdpSession::connect(&ws_url, BrowserEgress::for_context(context), None).await {
+        Ok(mut session) => {
+            let cookies = load_cookies(context).await;
+            if let Err(e) = session.set_context_cookies(&cookies).await {
+                debug!("Failed to seed stored cookies: {e}");
+            }
+            Ok(Acquired::Browser(ToolBrowser {
+                session,
+                persistent: false,
+            }))
+        }
+        Err(e) if is_cdp_refused(&e) && unguarded_rest_allowed() => {
+            debug!("Browserless refused CDP for this token; using REST endpoints");
+            Ok(Acquired::RestFallback(api_token))
+        }
+        Err(e) => Err(ToolExecutionResult::tool_error(format!(
+            "Could not open a guarded Browserless browser: {e}"
+        ))),
     }
 }
 
@@ -484,6 +594,7 @@ pub async fn keep_session_alive(context: &ToolContext, session: &mut CdpSession)
         Ok(new_endpoint) => {
             if let Ok(Some(mut state)) = get_browser_session(context).await {
                 state.ws_endpoint = new_endpoint;
+                state.browser_context_id = Some(session.browser_context_id().to_string());
                 state.last_active_at = chrono::Utc::now().to_rfc3339();
                 let _ = save_browser_session(context, &state).await;
                 let _ = upsert_browser_session_lease(context, &state).await;
@@ -503,8 +614,9 @@ pub async fn keep_session_alive(context: &ToolContext, session: &mut CdpSession)
 pub async fn register_session_endpoint(
     context: &ToolContext,
     ws_endpoint: String,
+    browser_context_id: &str,
 ) -> Result<(), ToolExecutionResult> {
-    let state = match get_browser_session(context).await {
+    let mut state = match get_browser_session(context).await {
         Ok(Some(mut state)) => {
             state.ws_endpoint = ws_endpoint;
             state.last_active_at = chrono::Utc::now().to_rfc3339();
@@ -512,6 +624,7 @@ pub async fn register_session_endpoint(
         }
         _ => BrowserSessionState::new(ws_endpoint),
     };
+    state.browser_context_id = Some(browser_context_id.to_string());
     save_browser_session(context, &state).await?;
     upsert_browser_session_lease(context, &state).await
 }

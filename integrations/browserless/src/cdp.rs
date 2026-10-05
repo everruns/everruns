@@ -6,18 +6,24 @@
 //! Decision: 60s default reconnect timeout. Covers LLM thinking time between tool calls.
 //! Decision: Browserless v2 connects at the browser root. Attach to a page target on every
 //!   WebSocket connect, and route page-scoped domains (`Page.*`, `Runtime.*`, `Input.*`,
-//!   `Emulation.*`)
-//!   through that attached target session.
+//!   `Emulation.*`, `Fetch.*`) through that attached target session.
+//! Decision (EVE-1189): pages only ever live in a guarded browser context whose proxy is
+//!   dead, and every request they make is paused by `Fetch` and performed by
+//!   [`BrowserEgress`]. A background reader answers paused requests while commands wait,
+//!   so a page keeps loading during waits and long commands. See `browser_egress.rs`.
 
 use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
+use tokio::sync::oneshot;
+use tokio::task::JoinSet;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::http::Response;
@@ -27,8 +33,12 @@ use tokio_tungstenite::{
 };
 use tracing::debug;
 
-use crate::validation::{browser_request_allowed, validate_browserless_navigation};
+use crate::validation::validate_browserless_navigation;
 use everruns_core::network_access::NetworkAccessList;
+
+use crate::browser_egress::{
+    BrowserEgress, DEAD_PROXY_BYPASS_LIST, DEAD_PROXY_SERVER, PausedAnswer,
+};
 
 /// Timeout for the initial CDP WebSocket connection handshake.
 #[cfg(not(test))]
@@ -47,29 +57,61 @@ pub const DEFAULT_RECONNECT_TIMEOUT_MS: u64 = 60_000;
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type WsSink = SplitSink<WsStream, Message>;
 type WsSource = SplitStream<WsStream>;
+type SharedSink = Arc<tokio::sync::Mutex<WsSink>>;
+type PendingCommands = Arc<std::sync::Mutex<HashMap<u64, oneshot::Sender<Value>>>>;
 
 // ============================================================================
 // CdpSession — a single CDP connection to a Browserless browser
 // ============================================================================
 
 pub struct CdpSession {
-    sink: WsSink,
-    source: WsSource,
-    next_id: u32,
+    sink: SharedSink,
+    pending: PendingCommands,
+    /// Why the reader stopped, reported to commands that were still waiting.
+    closed: Arc<std::sync::Mutex<Option<String>>>,
+    next_id: Arc<AtomicU64>,
+    reader: tokio::task::JoinHandle<()>,
     page_target_id: String,
     page_session_id: String,
-    /// Session ACL installed by [`Self::arm_request_policy`]. While set, paused
-    /// Fetch requests are failed unless the static policy and the ACL allow them.
-    request_policy: Option<NetworkAccessList>,
+    browser_context_id: String,
+}
+
+impl Drop for CdpSession {
+    fn drop(&mut self) {
+        // The reader owns in-flight relayed requests; stop them with the session.
+        self.reader.abort();
+    }
 }
 
 impl CdpSession {
-    /// Connect to a Browserless WebSocket endpoint.
+    /// Connect to a Browserless WebSocket endpoint and attach to a guarded page.
     ///
     /// `ws_url` should be a full WebSocket URL, e.g.:
     ///   `wss://production-sfo.browserless.io/chromium?token=TOKEN` (new session)
     ///   or a reconnect endpoint returned by `Browserless.reconnect`.
-    pub async fn connect(ws_url: &str) -> Result<Self, String> {
+    ///
+    /// `browser_context_id` names the guarded context a persistent browser
+    /// already uses; its page is reattached so cookies and page state survive.
+    /// Without it, or when that context is gone, a new guarded context is
+    /// created. A page outside a guarded context is never attached.
+    pub async fn connect(
+        ws_url: &str,
+        egress: Arc<BrowserEgress>,
+        browser_context_id: Option<&str>,
+    ) -> Result<Self, String> {
+        let mut session = Self::open_socket(ws_url, Some(egress)).await?;
+        session.attach_guarded_page(browser_context_id).await?;
+        Ok(session)
+    }
+
+    /// Connect only to end a persistent browser: disconnecting without
+    /// `Browserless.reconnect` destroys it. No page is attached, so nothing
+    /// can be navigated through this session.
+    pub async fn connect_to_close(ws_url: &str) -> Result<Self, String> {
+        Self::open_socket(ws_url, None).await
+    }
+
+    async fn open_socket(ws_url: &str, egress: Option<Arc<BrowserEgress>>) -> Result<Self, String> {
         // THREAT[TM-TOOL-017]: Redact token from log output to avoid leaking credentials
         let redacted = if let Some(idx) = ws_url.find("token=") {
             format!("{}token=<REDACTED>", &ws_url[..idx])
@@ -95,20 +137,33 @@ impl CdpSession {
                 })?;
 
         let (sink, source) = ws_stream.split();
-        let mut session = Self {
-            sink,
+        let sink: SharedSink = Arc::new(tokio::sync::Mutex::new(sink));
+        let pending: PendingCommands = Arc::default();
+        let closed = Arc::new(std::sync::Mutex::new(None));
+        let next_id = Arc::new(AtomicU64::new(1));
+        let reader = tokio::spawn(read_loop(
             source,
-            next_id: 1,
+            ReaderShared {
+                sink: sink.clone(),
+                pending: pending.clone(),
+                closed: closed.clone(),
+                next_id: next_id.clone(),
+                egress,
+            },
+        ));
+        Ok(Self {
+            sink,
+            pending,
+            closed,
+            next_id,
+            reader,
             page_target_id: String::new(),
             page_session_id: String::new(),
-            request_policy: None,
-        };
-        session.attach_page_target().await?;
-        Ok(session)
+            browser_context_id: String::new(),
+        })
     }
 
     /// Send a CDP command and wait for the response with the matching ID.
-    /// Events (messages without an `id` field) are silently skipped.
     pub async fn send_command(&mut self, method: &str, params: Value) -> Result<Value, String> {
         if command_requires_page_session(method) {
             return self.send_page_command(method, params).await;
@@ -124,6 +179,11 @@ impl CdpSession {
         &self.page_session_id
     }
 
+    /// The guarded browser context the attached page lives in.
+    pub fn browser_context_id(&self) -> &str {
+        &self.browser_context_id
+    }
+
     async fn send_page_command(&mut self, method: &str, params: Value) -> Result<Value, String> {
         self.send_command_with_session(method, params, Some(self.page_session_id.clone()))
             .await
@@ -133,201 +193,82 @@ impl CdpSession {
         self.send_command_with_session(method, params, None).await
     }
 
-    /// Pause every browser request and fail the ones the session ACL rejects.
-    ///
-    /// THREAT[TM-TOOL-053]: `Page.navigate` only names the first URL. Redirects
-    /// and requests the page discovers are separate network requests. Fetch
-    /// pauses them before they are sent; this session fails the paused request
-    /// unless the static SSRF check and the session access list both allow it.
-    /// Failing to arm is fail-closed: callers must not navigate after an error.
-    pub async fn arm_request_policy(&mut self, access: &NetworkAccessList) -> Result<(), String> {
-        if access.is_empty() {
-            return Ok(());
-        }
-        self.request_policy = Some(access.clone());
-        if let Err(error) = self
-            .send_command(
-                "Fetch.enable",
-                json!({
-                    "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
-                    "handleAuthRequests": false
-                }),
-            )
-            .await
-        {
-            self.request_policy = None;
-            return Err(error);
-        }
-        Ok(())
-    }
-
-    /// After a navigation, send the page back to `about:blank` when it landed
-    /// somewhere the session policy does not allow.
-    pub async fn reset_if_landing_blocked(
-        &mut self,
-        access: Option<&NetworkAccessList>,
-    ) -> Result<(), String> {
-        if access.is_none_or(|access| access.is_empty()) {
-            return Ok(());
-        }
-        let url = self.get_url().await?;
-        if let Err(result) = validate_browserless_navigation(access, &url) {
-            let _ = self.navigate("about:blank").await;
-            return Err(match result {
-                everruns_core::tools::ToolExecutionResult::ToolError(message) => message,
-                other => format!("{other:?}"),
-            });
-        }
-        Ok(())
-    }
-
     async fn send_command_with_session(
         &mut self,
         method: &str,
         params: Value,
         session_id: Option<String>,
     ) -> Result<Value, String> {
-        let id = self.next_id;
-        self.next_id += 1;
-        self.write_command(id, method, params, session_id).await?;
-
-        // Read messages until we find the response with matching id.
-        // Timeout prevents hanging when server accepts but never responds.
-        // Fetch.requestPaused is answered in this loop so a paused redirect
-        // cannot sit unanswered while we wait for the original command.
-        let method_owned = method.to_string();
-        let mut side_ids = HashSet::new();
-        tokio::time::timeout(CDP_COMMAND_TIMEOUT, async {
-            loop {
-                let parsed = self.read_message().await?;
-                if let Some(event_method) = parsed.get("method").and_then(|value| value.as_str()) {
-                    if event_method == "Fetch.requestPaused" {
-                        let side_id = self.answer_paused_request(&parsed).await?;
-                        side_ids.insert(side_id);
-                    } else {
-                        debug!("CDP event (skipped): {event_method}");
-                    }
-                    continue;
-                }
-
-                if let Some(message_id) = parsed.get("id").and_then(|value| value.as_u64()) {
-                    if side_ids.remove(&message_id) {
-                        continue;
-                    }
-                    if message_id == u64::from(id) {
-                        if let Some(error) = parsed.get("error") {
-                            let message = error
-                                .get("message")
-                                .and_then(|value| value.as_str())
-                                .unwrap_or("Unknown CDP error");
-                            return Err(format!("CDP error in {method_owned}: {message}"));
-                        }
-                        return Ok(parsed.get("result").cloned().unwrap_or(json!({})));
-                    }
-                }
-            }
-        })
-        .await
-        .map_err(|_| {
-            format!(
-                "CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"
-            )
-        })?
-    }
-
-    async fn write_command(
-        &mut self,
-        id: u32,
-        method: &str,
-        params: Value,
-        session_id: Option<String>,
-    ) -> Result<(), String> {
-        let mut msg = json!({
-            "id": id,
-            "method": method,
-            "params": params
-        });
-        if let Some(session_id) = session_id {
-            msg["sessionId"] = json!(session_id);
-        }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        self.pending
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(id, tx);
 
         debug!("CDP send: {method} (id={id})");
-        self.sink
-            .send(Message::Text(msg.to_string().into()))
-            .await
-            .map_err(|e| format!("CDP send failed: {e}"))
-    }
+        if let Err(error) = write_command(&self.sink, id, method, params, session_id).await {
+            self.forget(id);
+            return Err(error);
+        }
 
-    async fn read_message(&mut self) -> Result<Value, String> {
-        loop {
-            match self.source.next().await {
-                Some(Ok(Message::Text(text))) => {
-                    return serde_json::from_str(&text)
-                        .map_err(|e| format!("CDP invalid JSON response: {e}"));
-                }
-                Some(Ok(Message::Binary(_)))
-                | Some(Ok(Message::Ping(_)))
-                | Some(Ok(Message::Pong(_)))
-                | Some(Ok(Message::Frame(_))) => continue,
-                Some(Ok(Message::Close(_))) => {
-                    return Err("CDP WebSocket closed unexpectedly".to_string());
-                }
-                Some(Err(e)) => return Err(format!("CDP WebSocket error: {e}")),
-                None => return Err("CDP WebSocket stream ended".to_string()),
+        // Timeout prevents hanging when server accepts but never responds.
+        let response = match tokio::time::timeout(CDP_COMMAND_TIMEOUT, rx).await {
+            Ok(Ok(response)) => response,
+            Ok(Err(_)) => {
+                return Err(self
+                    .closed
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .clone()
+                    .unwrap_or_else(|| "CDP WebSocket stream ended".to_string()));
             }
-        }
-    }
-
-    /// Continue or fail one paused request. Returns the command id so the
-    /// reader can ignore that response without losing the command it is waiting for.
-    async fn answer_paused_request(&mut self, event: &Value) -> Result<u64, String> {
-        let request_id = event
-            .pointer("/params/requestId")
-            .and_then(|value| value.as_str())
-            .unwrap_or("")
-            .to_string();
-        let url = event
-            .pointer("/params/request/url")
-            .and_then(|value| value.as_str())
-            .unwrap_or("");
-        let allowed =
-            !request_id.is_empty() && browser_request_allowed(self.request_policy.as_ref(), url);
-        if !allowed {
-            debug!(
-                "CDP blocked browser request to {}",
-                request_host_for_log(url)
-            );
-        }
-
-        let id = self.next_id;
-        self.next_id += 1;
-        let session_id = event
-            .get("sessionId")
-            .and_then(|value| value.as_str())
-            .map(ToOwned::to_owned)
-            .or_else(|| {
-                if self.page_session_id.is_empty() {
-                    None
-                } else {
-                    Some(self.page_session_id.clone())
-                }
-            });
-        let (method, params) = if allowed {
-            ("Fetch.continueRequest", json!({ "requestId": request_id }))
-        } else {
-            (
-                "Fetch.failRequest",
-                json!({ "requestId": request_id, "errorReason": "BlockedByClient" }),
-            )
+            Err(_) => {
+                self.forget(id);
+                return Err(format!(
+                    "CDP command {method} timed out after {CDP_COMMAND_TIMEOUT:?} waiting for response"
+                ));
+            }
         };
-        self.write_command(id, method, params, session_id).await?;
-        Ok(u64::from(id))
+
+        if let Some(error) = response.get("error") {
+            let msg = error
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown CDP error");
+            return Err(format!("CDP error in {method}: {msg}"));
+        }
+        Ok(response.get("result").cloned().unwrap_or(json!({})))
     }
 
-    async fn attach_page_target(&mut self) -> Result<(), String> {
-        let target_id = match self.find_page_target().await? {
+    fn forget(&self, id: u64) {
+        self.pending
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&id);
+    }
+
+    /// Attach to a page inside a guarded browser context and arm `Fetch`.
+    ///
+    /// THREAT[TM-TOOL-015][TM-TOOL-056]: the context's proxy is dead, so the
+    /// browser has no direct network; `Fetch` hands every request to
+    /// [`BrowserEgress`]. Any failure here fails the connection, so no tool
+    /// ever drives an unguarded page.
+    async fn attach_guarded_page(
+        &mut self,
+        browser_context_id: Option<&str>,
+    ) -> Result<(), String> {
+        let (context_id, existing_page) = match browser_context_id {
+            Some(context_id) => match self.find_page_in_context(context_id).await? {
+                Some(page) => (context_id.to_string(), Some(page)),
+                None if self.context_exists(context_id).await? => (context_id.to_string(), None),
+                None => (self.create_guarded_context().await?, None),
+            },
+            None => (self.create_guarded_context().await?, None),
+        };
+        let target_id = match existing_page {
             Some(target_id) => target_id,
-            None => self.create_blank_page_target().await?,
+            None => self.create_blank_page_target(&context_id).await?,
         };
 
         let result = self
@@ -347,10 +288,52 @@ impl CdpSession {
 
         self.page_target_id = target_id;
         self.page_session_id = session_id.to_string();
+        self.browser_context_id = context_id;
+
+        self.send_page_command(
+            "Fetch.enable",
+            json!({
+                "patterns": [{ "urlPattern": "*", "requestStage": "Request" }],
+                "handleAuthRequests": false
+            }),
+        )
+        .await
+        .map_err(|error| format!("Could not arm the browser network guard: {error}"))?;
         Ok(())
     }
 
-    async fn find_page_target(&mut self) -> Result<Option<String>, String> {
+    /// A browser context whose proxy is dead, so only `Fetch` answers reach it.
+    async fn create_guarded_context(&mut self) -> Result<String, String> {
+        let result = self
+            .send_browser_command(
+                "Target.createBrowserContext",
+                json!({
+                    "proxyServer": DEAD_PROXY_SERVER,
+                    "proxyBypassList": DEAD_PROXY_BYPASS_LIST,
+                    "disposeOnDetach": false
+                }),
+            )
+            .await
+            .map_err(|error| format!("Could not create a guarded browser context: {error}"))?;
+        result
+            .get("browserContextId")
+            .and_then(|value| value.as_str())
+            .filter(|id| !id.is_empty())
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| "Target.createBrowserContext returned no browserContextId".to_string())
+    }
+
+    async fn context_exists(&mut self, context_id: &str) -> Result<bool, String> {
+        let result = self
+            .send_browser_command("Target.getBrowserContexts", json!({}))
+            .await?;
+        Ok(result
+            .get("browserContextIds")
+            .and_then(|value| value.as_array())
+            .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(context_id))))
+    }
+
+    async fn find_page_in_context(&mut self, context_id: &str) -> Result<Option<String>, String> {
         let result = self
             .send_browser_command("Target.getTargets", json!({}))
             .await?;
@@ -359,20 +342,25 @@ impl CdpSession {
             .and_then(|value| value.as_array())
             .ok_or_else(|| "Target.getTargets returned no targetInfos".to_string())?;
 
-        let existing_page = target_infos
+        Ok(target_infos
             .iter()
             .filter(|target| target_is_page(target))
-            .find(|target| !target_is_placeholder_page(target))
-            .or_else(|| target_infos.iter().find(|target| target_is_page(target)));
-
-        Ok(existing_page
+            .find(|target| {
+                target
+                    .get("browserContextId")
+                    .and_then(|value| value.as_str())
+                    == Some(context_id)
+            })
             .and_then(|target| target.get("targetId").and_then(|value| value.as_str()))
             .map(ToOwned::to_owned))
     }
 
-    async fn create_blank_page_target(&mut self) -> Result<String, String> {
+    async fn create_blank_page_target(&mut self, context_id: &str) -> Result<String, String> {
         let result = self
-            .send_browser_command("Target.createTarget", json!({ "url": "about:blank" }))
+            .send_browser_command(
+                "Target.createTarget",
+                json!({ "url": "about:blank", "browserContextId": context_id }),
+            )
             .await?;
 
         result
@@ -384,8 +372,10 @@ impl CdpSession {
 
     /// Disconnect the WebSocket gracefully.
     /// Important: Call `reconnect()` before this if you want the browser to stay alive.
-    pub async fn disconnect(mut self) {
-        let _ = self.sink.close().await;
+    /// Requests still paused are continued by Chrome into the dead proxy and fail.
+    pub async fn disconnect(self) {
+        let _ = self.sink.lock().await.close().await;
+        self.reader.abort();
     }
 
     // ========================================================================
@@ -398,6 +388,16 @@ impl CdpSession {
         let result = self
             .send_command("Page.navigate", json!({ "url": url }))
             .await?;
+        // A navigation the network guard failed (a blocked hop, an address
+        // the DNS guard refused) leaves Chrome's error page. Report it rather
+        // than letting a caller read or screenshot that page.
+        if let Some(error) = result
+            .get("errorText")
+            .and_then(|value| value.as_str())
+            .filter(|error| !error.is_empty())
+        {
+            return Err(format!("navigation failed: {error}"));
+        }
 
         // Wait for page to finish loading
         let _ = self
@@ -731,6 +731,125 @@ impl CdpSession {
             .ok_or_else(|| "Browserless.reconnect returned no endpoint".to_string())
     }
 
+    /// After a navigation, send the page back to `about:blank` when it landed
+    /// somewhere the session policy does not allow.
+    pub async fn reset_if_landing_blocked(
+        &mut self,
+        access: Option<&NetworkAccessList>,
+    ) -> Result<(), String> {
+        if access.is_none_or(|access| access.is_empty()) {
+            return Ok(());
+        }
+        let url = self.get_url().await?;
+        if let Err(result) = validate_browserless_navigation(access, &url) {
+            let _ = self.navigate("about:blank").await;
+            return Err(match result {
+                everruns_core::tools::ToolExecutionResult::ToolError(message) => message,
+                other => format!("{other:?}"),
+            });
+        }
+        Ok(())
+    }
+
+    /// Screenshot one element, matched by CSS selector. Returns base64 PNG.
+    pub async fn screenshot_selector(&mut self, selector: &str) -> Result<String, String> {
+        let selector_js = serde_json::to_string(selector).map_err(|e| e.to_string())?;
+        let rect = self
+            .evaluate(&format!(
+                "(() => {{ const el = document.querySelector({selector_js}); \
+                 if (!el) return null; const r = el.getBoundingClientRect(); \
+                 return {{ x: r.left + window.scrollX, y: r.top + window.scrollY, \
+                 width: r.width, height: r.height }}; }})()"
+            ))
+            .await?;
+        let rect = rect
+            .pointer("/result/value")
+            .filter(|value| value.is_object())
+            .ok_or_else(|| format!("No element matches selector {selector}"))?;
+        let dimension = |key: &str| rect.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+        if dimension("width") <= 0.0 || dimension("height") <= 0.0 {
+            return Err(format!("Element {selector} has no visible area"));
+        }
+        let result = self
+            .send_command(
+                "Page.captureScreenshot",
+                json!({
+                    "format": "png",
+                    "captureBeyondViewport": true,
+                    "clip": {
+                        "x": dimension("x"),
+                        "y": dimension("y"),
+                        "width": dimension("width"),
+                        "height": dimension("height"),
+                        "scale": 1
+                    }
+                }),
+            )
+            .await?;
+        result
+            .get("data")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| "CDP screenshot returned no data".to_string())
+    }
+
+    /// Extract elements by CSS selector, in the shape Browserless `/scrape`
+    /// returns: `{ data: [{ selector, results: [{ text, html, attributes,
+    /// width, height, top, left }] }] }`.
+    pub async fn scrape(&mut self, elements: &[Value]) -> Result<Value, String> {
+        let selectors: Vec<&str> = elements
+            .iter()
+            .filter_map(|element| element.get("selector").and_then(Value::as_str))
+            .collect();
+        let selectors_js = serde_json::to_string(&selectors).map_err(|e| e.to_string())?;
+        let result = self
+            .evaluate(&format!(
+                "JSON.stringify({{ data: {selectors_js}.map(selector => ({{ selector, \
+                 results: Array.from(document.querySelectorAll(selector)).map(el => {{ \
+                 const r = el.getBoundingClientRect(); return {{ \
+                 text: el.innerText ?? el.textContent ?? '', html: el.innerHTML, \
+                 attributes: Array.from(el.attributes).map(a => ({{ name: a.name, value: a.value }})), \
+                 width: r.width, height: r.height, top: r.top, left: r.left }}; }}) }})) }})"
+            ))
+            .await?;
+        let text = result
+            .pointer("/result/value")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "CDP scrape returned no data".to_string())?;
+        serde_json::from_str(text).map_err(|e| format!("Invalid scrape JSON: {e}"))
+    }
+
+    /// Seed the guarded context's cookie jar (Puppeteer/CDP cookie objects).
+    pub async fn set_context_cookies(&mut self, cookies: &[Value]) -> Result<(), String> {
+        let params: Vec<Value> = cookies.iter().filter_map(cookie_param).collect();
+        if params.is_empty() {
+            return Ok(());
+        }
+        let context_id = self.browser_context_id.clone();
+        self.send_browser_command(
+            "Storage.setCookies",
+            json!({ "cookies": params, "browserContextId": context_id }),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    /// Every cookie in the guarded context's jar.
+    pub async fn context_cookies(&mut self) -> Result<Vec<Value>, String> {
+        let context_id = self.browser_context_id.clone();
+        let result = self
+            .send_browser_command(
+                "Storage.getCookies",
+                json!({ "browserContextId": context_id }),
+            )
+            .await?;
+        Ok(result
+            .get("cookies")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default())
+    }
+
     /// Get page metadata (title, URL, headings, links).
     pub async fn get_page_info(&mut self) -> Result<Value, String> {
         let result = self
@@ -760,8 +879,164 @@ impl CdpSession {
 }
 
 // ============================================================================
+// Background reader
+// ============================================================================
+
+struct ReaderShared {
+    sink: SharedSink,
+    pending: PendingCommands,
+    closed: Arc<std::sync::Mutex<Option<String>>>,
+    next_id: Arc<AtomicU64>,
+    /// `None` only for close-only sessions, which attach no page.
+    egress: Option<Arc<BrowserEgress>>,
+}
+
+async fn write_command(
+    sink: &SharedSink,
+    id: u64,
+    method: &str,
+    params: Value,
+    session_id: Option<String>,
+) -> Result<(), String> {
+    let mut msg = json!({
+        "id": id,
+        "method": method,
+        "params": params
+    });
+    if let Some(session_id) = session_id {
+        msg["sessionId"] = json!(session_id);
+    }
+    sink.lock()
+        .await
+        .send(Message::Text(msg.to_string().into()))
+        .await
+        .map_err(|e| format!("CDP send failed: {e}"))
+}
+
+/// Route command responses to their waiters and answer `Fetch.requestPaused`.
+///
+/// Paused requests are relayed concurrently on a `JoinSet` owned by this task,
+/// so aborting the reader (disconnect or drop) cancels them. Answers carry ids
+/// nobody waits for; their responses are dropped here.
+async fn read_loop(mut source: WsSource, shared: ReaderShared) {
+    let mut relays = JoinSet::new();
+    let reason = loop {
+        while relays.try_join_next().is_some() {}
+        let text = match source.next().await {
+            Some(Ok(Message::Text(text))) => text,
+            Some(Ok(Message::Close(_))) => break "CDP WebSocket closed unexpectedly".to_string(),
+            Some(Ok(_)) => continue,
+            Some(Err(e)) => break format!("CDP WebSocket error: {e}"),
+            None => break "CDP WebSocket stream ended".to_string(),
+        };
+        let parsed: Value = match serde_json::from_str(&text) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                debug!("CDP invalid JSON message: {e}");
+                continue;
+            }
+        };
+
+        if let Some(id) = parsed.get("id").and_then(|value| value.as_u64()) {
+            let waiter = shared
+                .pending
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(&id);
+            if let Some(waiter) = waiter {
+                let _ = waiter.send(parsed);
+            }
+            continue;
+        }
+
+        match parsed.get("method").and_then(|value| value.as_str()) {
+            Some("Fetch.requestPaused") => {
+                let sink = shared.sink.clone();
+                let next_id = shared.next_id.clone();
+                let egress = shared.egress.clone();
+                relays.spawn(answer_paused_request(parsed, egress, sink, next_id));
+            }
+            Some(event) => debug!("CDP event (skipped): {event}"),
+            None => {}
+        }
+    };
+
+    *shared
+        .closed
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(reason);
+    // Dropping the waiters wakes every pending command with the reason above.
+    shared
+        .pending
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clear();
+}
+
+async fn answer_paused_request(
+    event: Value,
+    egress: Option<Arc<BrowserEgress>>,
+    sink: SharedSink,
+    next_id: Arc<AtomicU64>,
+) {
+    let params = event.get("params").cloned().unwrap_or(Value::Null);
+    let answer = match egress {
+        Some(egress) => egress.answer(&params).await,
+        // No guard on this connection: never let a request through.
+        None => params
+            .get("requestId")
+            .and_then(|value| value.as_str())
+            .map(PausedAnswer::blocked),
+    };
+    let Some(answer) = answer else {
+        return;
+    };
+    let session_id = event
+        .get("sessionId")
+        .and_then(|value| value.as_str())
+        .map(ToOwned::to_owned);
+    let id = next_id.fetch_add(1, Ordering::Relaxed);
+    if let Err(error) = write_command(&sink, id, answer.method, answer.params, session_id).await {
+        debug!("CDP could not answer a paused request: {error}");
+    }
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
+
+/// Prefix of the error [`map_ws_connect_error`] returns when Browserless
+/// refuses CDP for this token (HTTP 401/403 on the WebSocket upgrade).
+const CDP_REFUSED_PREFIX: &str = "CDP/WebSocket sessions returned HTTP";
+
+/// Whether a connect error means this token cannot open CDP sessions at all.
+pub fn is_cdp_refused(error: &str) -> bool {
+    error.starts_with(CDP_REFUSED_PREFIX)
+}
+
+/// The subset of a stored cookie `Storage.setCookies` accepts.
+fn cookie_param(cookie: &Value) -> Option<Value> {
+    let name = cookie.get("name")?.as_str()?;
+    let value = cookie.get("value")?.as_str()?;
+    let mut param = json!({ "name": name, "value": value });
+    for key in ["domain", "path", "sameSite"] {
+        if let Some(field) = cookie.get(key).and_then(Value::as_str) {
+            param[key] = json!(field);
+        }
+    }
+    for key in ["secure", "httpOnly"] {
+        if let Some(field) = cookie.get(key).and_then(Value::as_bool) {
+            param[key] = json!(field);
+        }
+    }
+    // Session cookies carry `expires: -1`; leave them without an expiry.
+    if let Some(expires) = cookie.get("expires").and_then(Value::as_f64)
+        && expires > 0.0
+    {
+        param["expires"] = json!(expires);
+    }
+    Some(param)
+}
 
 /// Map a tungstenite connection error to a user-friendly string.
 /// Detects 401/403 HTTP responses and returns a specific message telling the
@@ -772,7 +1047,7 @@ fn map_ws_connect_error(e: tokio_tungstenite::tungstenite::Error) -> String {
         let status = resp.status().as_u16();
         if status == 401 || status == 403 {
             return format!(
-                "CDP/WebSocket sessions returned HTTP {status} and are not available \
+                "{CDP_REFUSED_PREFIX} {status} and are not available \
                  with your Browserless token. Use REST-mode tools \
                  (browserless_navigate, browserless_screenshot, browserless_content, \
                  browserless_scrape, browserless_interact) instead."
@@ -950,23 +1225,8 @@ fn command_requires_page_session(method: &str) -> bool {
     })
 }
 
-/// Host only, so a blocked URL's query string is not written to the log.
-fn request_host_for_log(url: &str) -> String {
-    url::Url::parse(url)
-        .ok()
-        .and_then(|parsed| parsed.host_str().map(ToOwned::to_owned))
-        .unwrap_or_else(|| "<unparsed>".to_string())
-}
-
 fn target_is_page(target: &Value) -> bool {
     target.get("type").and_then(|value| value.as_str()) == Some("page")
-}
-
-fn target_is_placeholder_page(target: &Value) -> bool {
-    target
-        .get("url")
-        .and_then(|value| value.as_str())
-        .is_none_or(|url| url.is_empty() || url == "about:blank" || url.starts_with("devtools://"))
 }
 
 // ============================================================================
@@ -999,400 +1259,5 @@ fn element_center_expression(selector: &str) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use tokio::net::TcpListener;
-    use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-    use tokio_tungstenite::accept_async;
-
-    async fn spawn_mock_cdp_server(
-        target_infos: Vec<Value>,
-    ) -> (
-        std::net::SocketAddr,
-        UnboundedReceiver<Value>,
-        tokio::task::JoinHandle<()>,
-    ) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-        let addr = listener.local_addr().expect("addr");
-        let (tx, rx) = unbounded_channel();
-
-        let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.expect("accept");
-            let mut ws = accept_async(stream).await.expect("websocket handshake");
-
-            while let Some(message) = ws.next().await {
-                let text = match message.expect("message") {
-                    Message::Text(text) => text,
-                    Message::Close(_) => break,
-                    _ => continue,
-                };
-                let parsed: Value = serde_json::from_str(&text).expect("valid JSON");
-                tx.send(parsed.clone()).ok();
-
-                let id = parsed
-                    .get("id")
-                    .and_then(|value| value.as_u64())
-                    .expect("command id");
-                let method = parsed
-                    .get("method")
-                    .and_then(|value| value.as_str())
-                    .expect("method");
-
-                let response = match method {
-                    "Target.getTargets" => {
-                        json!({ "id": id, "result": { "targetInfos": target_infos.clone() } })
-                    }
-                    "Target.createTarget" => {
-                        assert_eq!(parsed["params"]["url"], "about:blank");
-                        json!({ "id": id, "result": { "targetId": "created-page-target" } })
-                    }
-                    "Target.attachToTarget" => {
-                        assert_eq!(parsed["params"]["flatten"], true);
-                        let target_id = parsed["params"]["targetId"].as_str().expect("targetId");
-                        let session_id = match target_id {
-                            "existing-page-target" => "existing-page-session",
-                            "created-page-target" => "created-page-session",
-                            other => panic!("unexpected targetId: {other}"),
-                        };
-                        json!({ "id": id, "result": { "sessionId": session_id } })
-                    }
-                    "Page.enable" | "Page.navigate" | "Page.setLifecycleEventsEnabled" => {
-                        match parsed.get("sessionId").and_then(|value| value.as_str()) {
-                            Some(session_id) => {
-                                assert!(
-                                    session_id.ends_with("-page-session"),
-                                    "page commands must use the attached target session, got {session_id}"
-                                );
-                                json!({ "id": id, "result": { "frameId": "frame-1" } })
-                            }
-                            None => json!({
-                                "id": id,
-                                "error": { "message": format!("{method} wasn't found") }
-                            }),
-                        }
-                    }
-                    "Runtime.evaluate" => {
-                        match parsed.get("sessionId").and_then(|value| value.as_str()) {
-                            Some(session_id) => {
-                                assert!(
-                                    session_id.ends_with("-page-session"),
-                                    "Runtime commands must use the attached target session, got {session_id}"
-                                );
-                                json!({ "id": id, "result": { "result": { "type": "undefined" } } })
-                            }
-                            None => json!({
-                                "id": id,
-                                "error": { "message": format!("{method} wasn't found") }
-                            }),
-                        }
-                    }
-                    "Browserless.reconnect" => {
-                        assert!(
-                            parsed.get("sessionId").is_none(),
-                            "browser-wide commands must not carry a page sessionId"
-                        );
-                        json!({
-                            "id": id,
-                            "result": { "browserWSEndpoint": "ws://browserless/reconnect" }
-                        })
-                    }
-                    other => panic!("unexpected method: {other}"),
-                };
-
-                ws.send(Message::Text(response.to_string().into()))
-                    .await
-                    .expect("send response");
-            }
-        });
-
-        (addr, rx, server)
-    }
-
-    fn drain_messages(rx: &mut UnboundedReceiver<Value>) -> Vec<Value> {
-        let mut messages = Vec::new();
-        while let Ok(message) = rx.try_recv() {
-            messages.push(message);
-        }
-        messages
-    }
-
-    #[tokio::test]
-    async fn test_connect_timeout_on_unresponsive_server() {
-        // Spin up a local TCP listener that accepts the connection but never
-        // completes the WebSocket handshake, forcing the client-side timeout
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("failed to bind test listener");
-        let addr = listener.local_addr().expect("failed to get local addr");
-
-        // Accept a single connection and keep it open without responding
-        let _server = tokio::spawn(async move {
-            if let Ok((stream, _peer)) = listener.accept().await {
-                let _ = stream;
-                futures_util::future::pending::<()>().await;
-            }
-        });
-
-        let url = format!("ws://{addr}/unresponsive");
-        let start = std::time::Instant::now();
-        let result = CdpSession::connect(&url).await;
-        let elapsed = start.elapsed();
-
-        assert!(result.is_err(), "connect should fail due to timeout");
-        let err = result.err().unwrap();
-        // Should timeout within ~1s (test timeout), not hang indefinitely
-        assert!(
-            elapsed < Duration::from_secs(5),
-            "connect should timeout, took {elapsed:?}"
-        );
-        // Ensure we exercised the timeout path specifically
-        assert!(
-            err.contains("timed out"),
-            "unexpected error (expected timeout): {err}"
-        );
-    }
-
-    #[test]
-    fn test_key_to_code() {
-        assert_eq!(key_to_code("Enter"), "Enter");
-        assert_eq!(key_to_code("Tab"), "Tab");
-        assert_eq!(key_to_code("Escape"), "Escape");
-        assert_eq!(key_to_code("Space"), "Space");
-        assert_eq!(key_to_code(" "), "Space");
-        assert_eq!(key_to_code("ArrowUp"), "ArrowUp");
-        assert_eq!(key_to_code("SomeOtherKey"), "SomeOtherKey");
-    }
-
-    /// Reproduces the original EVE-188 bug: Browserless returns 400 on the root
-    /// WebSocket path. A mock server that only accepts `/chromium` verifies the
-    /// fix. The root path returns a raw "HTTP/1.1 400 Bad Request" so the
-    /// tungstenite client surfaces an HTTP 400 error.
-    #[tokio::test]
-    async fn test_connect_rejected_on_root_path_accepted_on_chromium() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind");
-        let addr = listener.local_addr().expect("addr");
-
-        // Server: accept one connection, read the HTTP upgrade, reject with 400
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.expect("accept");
-            let mut buf = vec![0u8; 4096];
-            let n = stream.read(&mut buf).await.expect("read");
-            let request = String::from_utf8_lossy(&buf[..n]);
-
-            if request.contains("GET / ") || !request.contains("GET /chromium") {
-                // Reject root path — reproduces the original 400 bug
-                stream
-                    .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
-                    .await
-                    .expect("write 400");
-            }
-            stream.shutdown().await.ok();
-        });
-
-        // Connect to root path — should get 400
-        let result = CdpSession::connect(&format!("ws://{addr}/")).await;
-        assert!(result.is_err(), "root path should be rejected");
-        let err = result.err().expect("should be Err");
-        assert!(err.contains("400"), "error should mention 400: {err}");
-
-        server.await.ok();
-    }
-
-    #[test]
-    fn test_map_ws_connect_error_403_returns_rest_mode_hint() {
-        use tokio_tungstenite::tungstenite::http;
-
-        let resp = http::Response::builder().status(403).body(None).unwrap();
-        let err = tokio_tungstenite::tungstenite::Error::Http(Box::new(resp));
-        let msg = map_ws_connect_error(err);
-        assert!(
-            msg.contains("REST-mode tools"),
-            "403 error should suggest REST-mode tools: {msg}"
-        );
-        assert!(msg.contains("403"), "should mention status code: {msg}");
-    }
-
-    #[test]
-    fn test_map_ws_connect_error_401_returns_rest_mode_hint() {
-        use tokio_tungstenite::tungstenite::http;
-
-        let resp = http::Response::builder().status(401).body(None).unwrap();
-        let err = tokio_tungstenite::tungstenite::Error::Http(Box::new(resp));
-        let msg = map_ws_connect_error(err);
-        assert!(
-            msg.contains("REST-mode tools"),
-            "401 error should suggest REST-mode tools: {msg}"
-        );
-    }
-
-    #[test]
-    fn test_map_ws_connect_error_other_preserves_message() {
-        let err =
-            tokio_tungstenite::tungstenite::Error::Io(std::io::Error::other("connection refused"));
-        let msg = map_ws_connect_error(err);
-        assert!(
-            msg.starts_with("CDP WebSocket connection failed:"),
-            "non-HTTP error should use generic format: {msg}"
-        );
-    }
-
-    /// CdpSession::connect against a server returning 403 should produce the
-    /// REST-mode hint, not a generic error.
-    #[tokio::test]
-    async fn test_connect_403_returns_rest_mode_hint() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind");
-        let addr = listener.local_addr().expect("addr");
-
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.expect("accept");
-            let mut buf = vec![0u8; 4096];
-            let _ = stream.read(&mut buf).await.expect("read");
-            stream
-                .write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n")
-                .await
-                .expect("write 403");
-            stream.shutdown().await.ok();
-        });
-
-        let result = CdpSession::connect(&format!("ws://{addr}/chromium?token=test")).await;
-        assert!(result.is_err());
-        let err = result.err().unwrap();
-        assert!(
-            err.contains("REST-mode tools"),
-            "403 should suggest REST-mode: {err}"
-        );
-
-        server.await.ok();
-    }
-
-    #[tokio::test]
-    async fn test_navigate_attaches_existing_page_target_before_page_commands() {
-        let (addr, mut messages, server) = spawn_mock_cdp_server(vec![json!({
-            "targetId": "existing-page-target",
-            "type": "page",
-            "url": "https://example.com"
-        })])
-        .await;
-
-        let mut session = CdpSession::connect(&format!("ws://{addr}/chromium?token=test"))
-            .await
-            .expect("connect should succeed");
-
-        session
-            .navigate("https://example.com")
-            .await
-            .expect("navigate should succeed after attaching to the page target");
-        let reconnect_url = session
-            .reconnect(5000)
-            .await
-            .expect("reconnect should succeed");
-        assert_eq!(reconnect_url, "ws://browserless/reconnect");
-        session.disconnect().await;
-
-        server.await.expect("server should exit cleanly");
-        let messages = drain_messages(&mut messages);
-        let methods: Vec<&str> = messages
-            .iter()
-            .map(|msg| msg["method"].as_str().expect("method"))
-            .collect();
-        assert_eq!(
-            methods,
-            vec![
-                "Target.getTargets",
-                "Target.attachToTarget",
-                "Page.enable",
-                "Page.navigate",
-                "Page.setLifecycleEventsEnabled",
-                "Runtime.evaluate",
-                "Browserless.reconnect"
-            ]
-        );
-        assert_eq!(messages[1]["params"]["targetId"], "existing-page-target");
-        assert_eq!(messages[2]["sessionId"], "existing-page-session");
-        assert_eq!(messages[3]["sessionId"], "existing-page-session");
-        assert_eq!(messages[4]["sessionId"], "existing-page-session");
-        assert_eq!(messages[5]["sessionId"], "existing-page-session");
-        assert!(
-            messages[6].get("sessionId").is_none(),
-            "Browserless.reconnect must stay on the browser root session"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_connect_creates_blank_page_target_when_browser_has_none() {
-        let (addr, mut messages, server) = spawn_mock_cdp_server(vec![]).await;
-
-        let mut session = CdpSession::connect(&format!("ws://{addr}/chromium?token=test"))
-            .await
-            .expect("connect should succeed");
-
-        session
-            .navigate("https://example.com")
-            .await
-            .expect("navigate should succeed after creating and attaching a blank page target");
-        session.disconnect().await;
-
-        server.await.expect("server should exit cleanly");
-        let messages = drain_messages(&mut messages);
-        let methods: Vec<&str> = messages
-            .iter()
-            .map(|msg| msg["method"].as_str().expect("method"))
-            .collect();
-        assert_eq!(
-            methods[..4],
-            [
-                "Target.getTargets",
-                "Target.createTarget",
-                "Target.attachToTarget",
-                "Page.enable"
-            ]
-        );
-        assert_eq!(messages[1]["params"]["url"], "about:blank");
-        assert_eq!(messages[2]["params"]["targetId"], "created-page-target");
-        assert_eq!(messages[3]["sessionId"], "created-page-session");
-    }
-
-    /// Verify the CDP URL construction uses the /chromium path.
-    #[test]
-    fn test_cdp_url_uses_chromium_path() {
-        for (base, token, expected) in [
-            (
-                "wss://production-sfo.browserless.io",
-                "test_token_123",
-                "wss://production-sfo.browserless.io/chromium?token=test_token_123",
-            ),
-            (
-                "ws://127.0.0.1:3000",
-                "local_token",
-                "ws://127.0.0.1:3000/chromium?token=local_token",
-            ),
-        ] {
-            assert_eq!(crate::browser_session_url(base, token), expected);
-        }
-    }
-
-    #[test]
-    fn test_element_center_expression_scrolls_offscreen_elements_into_view() {
-        let expr = element_center_expression("a[href=\"x\"]");
-        assert!(expr.contains(r#"document.querySelector("a[href=\"x\"]")"#));
-        let scroll = expr.find("scrollIntoView").expect("must scroll into view");
-        let viewport_check = expr.find("window.innerHeight").expect("viewport check");
-        assert!(
-            viewport_check < scroll,
-            "scroll only when the center is outside the viewport"
-        );
-        let last_measure = expr.rfind("c = center()").expect("re-measure");
-        assert!(
-            scroll < last_measure,
-            "coordinates must be measured after scrolling"
-        );
-    }
-}
+#[path = "cdp_tests.rs"]
+mod tests;

@@ -1,15 +1,22 @@
 //! Tool implementations for Browserless browser automation.
 //!
-//! Decision: 5 REST tools + session-aware behavior:
-//!   1. browserless_screenshot - Take screenshot (CDP if session active, REST otherwise)
-//!   2. browserless_content   - Read DOM/HTML (CDP if session active, REST otherwise)
-//!   3. browserless_scrape    - Extract structured data via CSS selectors (REST only)
-//!   4. browserless_interact  - Click, type, navigate (CDP if session active, REST otherwise)
-//!   5. browserless_navigate  - Open URL and get page info (CDP if session active, REST otherwise)
+//! Decision: 5 session-aware tools:
+//!   1. browserless_screenshot - Take screenshot
+//!   2. browserless_content   - Read DOM/HTML
+//!   3. browserless_scrape    - Extract structured data via CSS selectors
+//!   4. browserless_interact  - Click, type, navigate
+//!   5. browserless_navigate  - Open URL and get page info
 //!
 //! When a CDP session is active (via browserless_open_browser), tools navigate within
 //! the persistent browser, preserving login state and cookies across tool calls.
-//! When no session exists, each tool call uses a fresh browser via REST API.
+//! When no session exists, each call opens a one-shot guarded CDP browser.
+//!
+//! Decision (EVE-1189): every browser a tool drives is guarded, so Everruns
+//! performs and checks each request it makes (`browser_egress.rs`). The REST
+//! endpoints (`/screenshot`, `/content`, `/scrape`, `/function`) run browsers
+//! with direct network access and remain only as a fallback for Browserless
+//! cloud tokens that cannot open CDP sessions (`session_tools::acquire_browser`);
+//! there the session ACL travels as Browserless rejection patterns.
 
 use everruns_contracts::ToolResultImage;
 use everruns_contracts::tool_types::ToolHints;
@@ -24,9 +31,9 @@ use tracing::debug;
 use crate::cdp::CdpSession;
 use crate::client::BrowserlessClient;
 use crate::interaction_code::{build_interaction_code_with_policy, request_interception_prelude};
-use crate::session_tools::{keep_session_alive, try_get_cdp_session};
+use crate::session_tools::{Acquired, acquire_browser};
 use crate::state::{
-    build_cookie_injection_code, extract_secret_refs, get_api_token, load_cookies, required_str,
+    build_cookie_injection_code, extract_secret_refs, load_cookies, required_str,
     resolve_step_secrets, save_cookies, substitute_step_secrets,
 };
 #[cfg(test)]
@@ -113,21 +120,14 @@ fn reject_patterns(context: &ToolContext) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Navigate a guarded browser. Every request it makes, redirect hops
+/// included, already passes the session ACL in `BrowserEgress`; the landing
+/// check catches a URL the guard did not see (e.g. a client-side rewrite).
 async fn begin_cdp_navigation(
     context: &ToolContext,
     session: &mut CdpSession,
     url: &str,
 ) -> Result<(), ToolExecutionResult> {
-    if let Some(access) = context
-        .network_access
-        .as_ref()
-        .filter(|access| !access.is_empty())
-    {
-        session
-            .arm_request_policy(access)
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
-    }
     session.navigate(url).await.map_err(|error| {
         ToolExecutionResult::tool_error(format!("CDP navigate failed: {error}"))
     })?;
@@ -225,56 +225,63 @@ impl Tool for BrowserlessScreenshotTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        // Try CDP session first
-        if let Some(mut session) = try_get_cdp_session(context).await {
-            debug!("Using CDP session for screenshot");
-            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
-                keep_session_alive(context, &mut session).await;
-                session.disconnect().await;
-                return e;
-            }
-
-            // Wait for selector if specified
-            if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
-                let _ = session.wait_for_selector(sel, 30000).await;
-            }
-            if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
-                tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
-            }
-
-            let result = session.screenshot(full_page).await;
-            keep_session_alive(context, &mut session).await;
-            session.disconnect().await;
-
-            return match result {
-                Ok(b64) => {
-                    use base64::Engine;
-                    let bytes = match base64::engine::general_purpose::STANDARD.decode(&b64) {
-                        Ok(bytes) => bytes,
-                        Err(e) => {
-                            return ToolExecutionResult::tool_error(format!(
-                                "CDP screenshot returned invalid base64: {e}"
-                            ));
-                        }
-                    };
-                    png_image_result(
-                        json!({
-                            "url": url,
-                            "session": "cdp"
-                        }),
-                        b64,
-                        bytes.len(),
-                    )
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("CDP screenshot failed: {e}")),
-            };
-        }
-
-        // Fallback: REST API
-        let api_token = match get_api_token(context).await {
-            Ok(v) => v,
+        // Guarded CDP browser: the persistent one, else a one-shot (EVE-1189)
+        let acquired = match acquire_browser(context).await {
+            Ok(acquired) => acquired,
             Err(e) => return e,
         };
+        let api_token = match acquired {
+            Acquired::RestFallback(api_token) => api_token,
+            Acquired::Browser(mut session) => {
+                let mode = session.mode();
+                debug!("Using CDP session for screenshot");
+                if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
+                    session.release(context).await;
+                    return e;
+                }
+
+                // Wait for selector if specified
+                if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
+                    let _ = session.wait_for_selector(sel, 30000).await;
+                }
+                if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
+                }
+
+                let result = match arguments.get("selector").and_then(|v| v.as_str()) {
+                    Some(selector) => session.screenshot_selector(selector).await,
+                    None => session.screenshot(full_page).await,
+                };
+                session.release(context).await;
+
+                return match result {
+                    Ok(b64) => {
+                        use base64::Engine;
+                        let bytes = match base64::engine::general_purpose::STANDARD.decode(&b64) {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                return ToolExecutionResult::tool_error(format!(
+                                    "CDP screenshot returned invalid base64: {e}"
+                                ));
+                            }
+                        };
+                        png_image_result(
+                            json!({
+                                "url": url,
+                                "session": mode
+                            }),
+                            b64,
+                            bytes.len(),
+                        )
+                    }
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("CDP screenshot failed: {e}"))
+                    }
+                };
+            }
+        };
+
+        // Fallback: REST API (Browserless cloud refused CDP for this token)
 
         let selector = arguments.get("selector").and_then(|v| v.as_str());
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
@@ -382,49 +389,51 @@ impl Tool for BrowserlessContentTool {
             return e;
         }
 
-        // Try CDP session first
-        if let Some(mut session) = try_get_cdp_session(context).await {
-            debug!("Using CDP session for content");
-            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
-                keep_session_alive(context, &mut session).await;
-                session.disconnect().await;
-                return e;
-            }
-
-            if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
-                let _ = session.wait_for_selector(sel, 30000).await;
-            }
-            if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
-                tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
-            }
-
-            let result = session.get_content().await;
-            keep_session_alive(context, &mut session).await;
-            session.disconnect().await;
-
-            return match result {
-                Ok(html) => {
-                    let len = html.len();
-                    let (content, was_truncated) = truncate_html(html);
-                    let mut response = json!({
-                        "url": url,
-                        "content": content,
-                        "size_bytes": len,
-                        "truncated": was_truncated,
-                        "session": "cdp"
-                    });
-                    attach_content_truncation(&mut response, &content, len, was_truncated);
-                    ToolExecutionResult::Success(response)
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("CDP content failed: {e}")),
-            };
-        }
-
-        // Fallback: REST API
-        let api_token = match get_api_token(context).await {
-            Ok(v) => v,
+        // Guarded CDP browser: the persistent one, else a one-shot (EVE-1189)
+        let acquired = match acquire_browser(context).await {
+            Ok(acquired) => acquired,
             Err(e) => return e,
         };
+        let api_token = match acquired {
+            Acquired::RestFallback(api_token) => api_token,
+            Acquired::Browser(mut session) => {
+                let mode = session.mode();
+                debug!("Using CDP session for content");
+                if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
+                    session.release(context).await;
+                    return e;
+                }
+
+                if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
+                    let _ = session.wait_for_selector(sel, 30000).await;
+                }
+                if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
+                }
+
+                let result = session.get_content().await;
+                session.release(context).await;
+
+                return match result {
+                    Ok(html) => {
+                        let len = html.len();
+                        let (content, was_truncated) = truncate_html(html);
+                        let mut response = json!({
+                            "url": url,
+                            "content": content,
+                            "size_bytes": len,
+                            "truncated": was_truncated,
+                            "session": mode
+                        });
+                        attach_content_truncation(&mut response, &content, len, was_truncated);
+                        ToolExecutionResult::Success(response)
+                    }
+                    Err(e) => ToolExecutionResult::tool_error(format!("CDP content failed: {e}")),
+                };
+            }
+        };
+
+        // Fallback: REST API (Browserless cloud refused CDP for this token)
 
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
@@ -554,14 +563,38 @@ impl Tool for BrowserlessScrapeTool {
             }
         };
 
-        let api_token = match get_api_token(context).await {
-            Ok(v) => v,
-            Err(e) => return e,
-        };
-
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
 
+        let api_token = match acquire_browser(context).await {
+            Err(e) => return e,
+            Ok(Acquired::RestFallback(api_token)) => api_token,
+            Ok(Acquired::Browser(mut session)) => {
+                if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
+                    session.release(context).await;
+                    return e;
+                }
+                if let Some(sel) = wait_for_selector {
+                    let _ = session.wait_for_selector(sel, 30000).await;
+                }
+                if let Some(ms) = wait_for_timeout {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
+                }
+                let mode = session.mode();
+                let result = session.scrape(&elements).await;
+                session.release(context).await;
+                return match result {
+                    Ok(data) => ToolExecutionResult::Success(json!({
+                        "url": url,
+                        "data": data,
+                        "session": mode
+                    })),
+                    Err(e) => ToolExecutionResult::tool_error(format!("CDP scrape failed: {e}")),
+                };
+            }
+        };
+
+        // Fallback: REST API (Browserless cloud refused CDP for this token)
         let stored_cookies = load_cookies(context).await;
         let client = BrowserlessClient::new(api_token);
         let patterns = reject_patterns(context);
@@ -757,201 +790,205 @@ impl Tool for BrowserlessInteractTool {
             should_suppress_interact_content(requested_content, resolved_secrets.len());
         let want_content = requested_content && !suppress_content_for_secrets;
 
-        // Try CDP session first
-        if let Some(mut session) = try_get_cdp_session(context).await {
-            debug!("Using CDP session for interact");
-            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
-                keep_session_alive(context, &mut session).await;
-                session.disconnect().await;
-                return e;
-            }
-
-            // Execute each step via CDP
-            for step in &steps {
-                let action = step
-                    .get("action")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let selector = step.get("selector").and_then(|v| v.as_str());
-                let value = step.get("value").and_then(|v| v.as_str());
-                let key = step.get("key").and_then(|v| v.as_str());
-                let x = step.get("x").and_then(|v| v.as_f64());
-                let y = step.get("y").and_then(|v| v.as_f64());
-                let wait_ms = step.get("wait_ms").and_then(|v| v.as_u64());
-
-                let step_result = match action {
-                    "click" => {
-                        if let Some(sel) = selector {
-                            session.click_selector(sel).await
-                        } else if let (Some(cx), Some(cy)) = (x, y) {
-                            session.click_at(cx, cy).await
-                        } else {
-                            Err("click requires selector or x,y coordinates".to_string())
-                        }
-                    }
-                    "type" => {
-                        if let (Some(sel), Some(text)) = (selector, value) {
-                            session.type_into_selector(sel, text).await
-                        } else {
-                            Err("type requires selector and value".to_string())
-                        }
-                    }
-                    "keyboard" => {
-                        if let Some(k) = key {
-                            session.press_key(k).await
-                        } else {
-                            Err("keyboard requires key".to_string())
-                        }
-                    }
-                    "mouse_move" => {
-                        if let (Some(mx), Some(my)) = (x, y) {
-                            session.mouse_move(mx, my).await
-                        } else {
-                            Err("mouse_move requires x and y".to_string())
-                        }
-                    }
-                    "touch" => {
-                        if let Some(sel) = selector {
-                            session.tap_selector(sel).await
-                        } else {
-                            Err("touch requires selector".to_string())
-                        }
-                    }
-                    "scroll" => {
-                        let dy = step.get("value").and_then(|v| v.as_i64()).unwrap_or(500);
-                        session.scroll(dy).await
-                    }
-                    "wait" => {
-                        let ms = wait_ms.unwrap_or(1000);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms)))
-                            .await;
-                        Ok(())
-                    }
-                    "wait_for_selector" => {
-                        if let Some(sel) = selector {
-                            let timeout = wait_ms.unwrap_or(10000);
-                            session.wait_for_selector(sel, timeout).await
-                        } else {
-                            Err("wait_for_selector requires selector".to_string())
-                        }
-                    }
-                    "navigate" => {
-                        if let Some(nav_url) = value {
-                            begin_cdp_navigation(context, &mut session, nav_url)
-                                .await
-                                .map_err(|error| match error {
-                                    ToolExecutionResult::ToolError(message) => message,
-                                    other => format!("{other:?}"),
-                                })
-                        } else {
-                            Err("navigate requires value (URL)".to_string())
-                        }
-                    }
-                    other => Err(format!("Unknown action: {other}")),
-                };
-
-                if let Err(e) = step_result {
-                    keep_session_alive(context, &mut session).await;
-                    session.disconnect().await;
-                    return ToolExecutionResult::tool_error(format!(
-                        "Interaction step '{action}' failed: {e}"
-                    ));
-                }
-
-                // Per-step wait
-                if action != "wait"
-                    && let Some(ms) = wait_ms
-                {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
-                }
-            }
-
-            // A click or keypress can navigate. The Fetch gate stops the request;
-            // this catches a landing URL the gate did not see.
-            if let Err(e) = session
-                .reset_if_landing_blocked(context.network_access.as_ref())
-                .await
-            {
-                keep_session_alive(context, &mut session).await;
-                session.disconnect().await;
-                return ToolExecutionResult::tool_error(e);
-            }
-
-            // Capture result
-            let title = session.get_title().await.unwrap_or_default();
-            let final_url = session.get_url().await.unwrap_or_default();
-            let mut result = json!({
-                "title": title,
-                "url": final_url,
-                "session": "cdp"
-            });
-            let mut images = Vec::new();
-            if suppress_content_for_secrets {
-                result["content_redacted"] = json!(true);
-                result["content_redaction_reason"] = json!("secrets_used_in_steps");
-            }
-            if want_screenshot {
-                match session.screenshot(true).await {
-                    Ok(b64) => {
-                        use base64::Engine;
-                        let bytes = match base64::engine::general_purpose::STANDARD.decode(&b64) {
-                            Ok(bytes) => bytes,
-                            Err(e) => {
-                                keep_session_alive(context, &mut session).await;
-                                session.disconnect().await;
-                                return ToolExecutionResult::tool_error(format!(
-                                    "CDP screenshot returned invalid base64: {e}"
-                                ));
-                            }
-                        };
-                        result["screenshot_returned"] = json!(true);
-                        result["screenshot_format"] = json!("png");
-                        result["screenshot_size_bytes"] = json!(bytes.len());
-                        images.push(ToolResultImage {
-                            base64: b64,
-                            media_type: "image/png".to_string(),
-                        });
-                    }
-                    Err(e) => {
-                        keep_session_alive(context, &mut session).await;
-                        session.disconnect().await;
-                        return ToolExecutionResult::tool_error(format!(
-                            "CDP screenshot failed: {e}"
-                        ));
-                    }
-                }
-            }
-            if want_content {
-                match session.get_content().await {
-                    Ok(content) => {
-                        let total = content.len();
-                        let (content, was_truncated) = truncate_html(content);
-                        result["content"] = json!(content);
-                        result["truncated"] = json!(was_truncated);
-                        attach_content_truncation(&mut result, &content, total, was_truncated);
-                    }
-                    Err(e) => {
-                        keep_session_alive(context, &mut session).await;
-                        session.disconnect().await;
-                        return ToolExecutionResult::tool_error(format!("CDP content failed: {e}"));
-                    }
-                }
-            }
-
-            keep_session_alive(context, &mut session).await;
-            session.disconnect().await;
-            return if images.is_empty() {
-                ToolExecutionResult::Success(result)
-            } else {
-                ToolExecutionResult::success_with_images(result, images)
-            };
-        }
-
-        // Fallback: REST API
-        let api_token = match get_api_token(context).await {
-            Ok(v) => v,
+        // Guarded CDP browser: the persistent one, else a one-shot (EVE-1189)
+        let acquired = match acquire_browser(context).await {
+            Ok(acquired) => acquired,
             Err(e) => return e,
         };
+        let api_token = match acquired {
+            Acquired::RestFallback(api_token) => api_token,
+            Acquired::Browser(mut session) => {
+                let mode = session.mode();
+                debug!("Using CDP session for interact");
+                if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
+                    session.release(context).await;
+                    return e;
+                }
+
+                // Execute each step via CDP
+                for step in &steps {
+                    let action = step
+                        .get("action")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let selector = step.get("selector").and_then(|v| v.as_str());
+                    let value = step.get("value").and_then(|v| v.as_str());
+                    let key = step.get("key").and_then(|v| v.as_str());
+                    let x = step.get("x").and_then(|v| v.as_f64());
+                    let y = step.get("y").and_then(|v| v.as_f64());
+                    let wait_ms = step.get("wait_ms").and_then(|v| v.as_u64());
+
+                    let step_result = match action {
+                        "click" => {
+                            if let Some(sel) = selector {
+                                session.click_selector(sel).await
+                            } else if let (Some(cx), Some(cy)) = (x, y) {
+                                session.click_at(cx, cy).await
+                            } else {
+                                Err("click requires selector or x,y coordinates".to_string())
+                            }
+                        }
+                        "type" => {
+                            if let (Some(sel), Some(text)) = (selector, value) {
+                                session.type_into_selector(sel, text).await
+                            } else {
+                                Err("type requires selector and value".to_string())
+                            }
+                        }
+                        "keyboard" => {
+                            if let Some(k) = key {
+                                session.press_key(k).await
+                            } else {
+                                Err("keyboard requires key".to_string())
+                            }
+                        }
+                        "mouse_move" => {
+                            if let (Some(mx), Some(my)) = (x, y) {
+                                session.mouse_move(mx, my).await
+                            } else {
+                                Err("mouse_move requires x and y".to_string())
+                            }
+                        }
+                        "touch" => {
+                            if let Some(sel) = selector {
+                                session.tap_selector(sel).await
+                            } else {
+                                Err("touch requires selector".to_string())
+                            }
+                        }
+                        "scroll" => {
+                            let dy = step.get("value").and_then(|v| v.as_i64()).unwrap_or(500);
+                            session.scroll(dy).await
+                        }
+                        "wait" => {
+                            let ms = wait_ms.unwrap_or(1000);
+                            tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms)))
+                                .await;
+                            Ok(())
+                        }
+                        "wait_for_selector" => {
+                            if let Some(sel) = selector {
+                                let timeout = wait_ms.unwrap_or(10000);
+                                session.wait_for_selector(sel, timeout).await
+                            } else {
+                                Err("wait_for_selector requires selector".to_string())
+                            }
+                        }
+                        "navigate" => {
+                            if let Some(nav_url) = value {
+                                begin_cdp_navigation(context, &mut session, nav_url)
+                                    .await
+                                    .map_err(|error| match error {
+                                        ToolExecutionResult::ToolError(message) => message,
+                                        other => format!("{other:?}"),
+                                    })
+                            } else {
+                                Err("navigate requires value (URL)".to_string())
+                            }
+                        }
+                        other => Err(format!("Unknown action: {other}")),
+                    };
+
+                    if let Err(e) = step_result {
+                        session.release(context).await;
+                        return ToolExecutionResult::tool_error(format!(
+                            "Interaction step '{action}' failed: {e}"
+                        ));
+                    }
+
+                    // Per-step wait
+                    if action != "wait"
+                        && let Some(ms) = wait_ms
+                    {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms)))
+                            .await;
+                    }
+                }
+
+                // A click or keypress can navigate. The Fetch gate stops the request;
+                // this catches a landing URL the gate did not see.
+                if let Err(e) = session
+                    .reset_if_landing_blocked(context.network_access.as_ref())
+                    .await
+                {
+                    session.release(context).await;
+                    return ToolExecutionResult::tool_error(e);
+                }
+
+                // Capture result
+                let title = session.get_title().await.unwrap_or_default();
+                let final_url = session.get_url().await.unwrap_or_default();
+                let mut result = json!({
+                    "title": title,
+                    "url": final_url,
+                    "session": mode
+                });
+                let mut images = Vec::new();
+                if suppress_content_for_secrets {
+                    result["content_redacted"] = json!(true);
+                    result["content_redaction_reason"] = json!("secrets_used_in_steps");
+                }
+                if want_screenshot {
+                    match session.screenshot(true).await {
+                        Ok(b64) => {
+                            use base64::Engine;
+                            let bytes = match base64::engine::general_purpose::STANDARD.decode(&b64)
+                            {
+                                Ok(bytes) => bytes,
+                                Err(e) => {
+                                    session.release(context).await;
+                                    return ToolExecutionResult::tool_error(format!(
+                                        "CDP screenshot returned invalid base64: {e}"
+                                    ));
+                                }
+                            };
+                            result["screenshot_returned"] = json!(true);
+                            result["screenshot_format"] = json!("png");
+                            result["screenshot_size_bytes"] = json!(bytes.len());
+                            images.push(ToolResultImage {
+                                base64: b64,
+                                media_type: "image/png".to_string(),
+                            });
+                        }
+                        Err(e) => {
+                            session.release(context).await;
+                            return ToolExecutionResult::tool_error(format!(
+                                "CDP screenshot failed: {e}"
+                            ));
+                        }
+                    }
+                }
+                if want_content {
+                    match session.get_content().await {
+                        Ok(content) => {
+                            let total = content.len();
+                            let (content, was_truncated) = truncate_html(content);
+                            result["content"] = json!(content);
+                            result["truncated"] = json!(was_truncated);
+                            attach_content_truncation(&mut result, &content, total, was_truncated);
+                        }
+                        Err(e) => {
+                            session.release(context).await;
+                            return ToolExecutionResult::tool_error(format!(
+                                "CDP content failed: {e}"
+                            ));
+                        }
+                    }
+                }
+
+                // A one-shot browser carries the session's cookies forward the way
+                // the REST `/function` path does.
+                session.save_cookies_if_one_shot(context).await;
+                session.release(context).await;
+                return if images.is_empty() {
+                    ToolExecutionResult::Success(result)
+                } else {
+                    ToolExecutionResult::success_with_images(result, images)
+                };
+            }
+        };
+
+        // Fallback: REST API (Browserless cloud refused CDP for this token)
 
         let stored_cookies = load_cookies(context).await;
         let patterns = reject_patterns(context);
@@ -1118,40 +1155,44 @@ impl Tool for BrowserlessNavigateTool {
             return e;
         }
 
-        // Try CDP session first
-        if let Some(mut session) = try_get_cdp_session(context).await {
-            debug!("Using CDP session for navigate");
-            if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
-                keep_session_alive(context, &mut session).await;
-                session.disconnect().await;
-                return e;
-            }
-
-            if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
-                let _ = session.wait_for_selector(sel, 30000).await;
-            }
-            if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
-                tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
-            }
-
-            let result = session.get_page_info().await;
-            keep_session_alive(context, &mut session).await;
-            session.disconnect().await;
-
-            return match result {
-                Ok(mut info) => {
-                    info["session"] = json!("cdp");
-                    ToolExecutionResult::Success(info)
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("CDP get_page_info failed: {e}")),
-            };
-        }
-
-        // Fallback: REST API
-        let api_token = match get_api_token(context).await {
-            Ok(v) => v,
+        // Guarded CDP browser: the persistent one, else a one-shot (EVE-1189)
+        let acquired = match acquire_browser(context).await {
+            Ok(acquired) => acquired,
             Err(e) => return e,
         };
+        let api_token = match acquired {
+            Acquired::RestFallback(api_token) => api_token,
+            Acquired::Browser(mut session) => {
+                let mode = session.mode();
+                debug!("Using CDP session for navigate");
+                if let Err(e) = begin_cdp_navigation(context, &mut session, url).await {
+                    session.release(context).await;
+                    return e;
+                }
+
+                if let Some(sel) = arguments.get("wait_for_selector").and_then(|v| v.as_str()) {
+                    let _ = session.wait_for_selector(sel, 30000).await;
+                }
+                if let Some(ms) = arguments.get("wait_for_timeout").and_then(|v| v.as_u64()) {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(cap_wait_ms(ms))).await;
+                }
+
+                let result = session.get_page_info().await;
+                session.release(context).await;
+
+                return match result {
+                    Ok(mut info) => {
+                        info["session"] = json!(mode);
+                        ToolExecutionResult::Success(info)
+                    }
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("CDP get_page_info failed: {e}"))
+                    }
+                };
+            }
+        };
+
+        // Fallback: REST API (Browserless cloud refused CDP for this token)
 
         let wait_for_selector = arguments.get("wait_for_selector").and_then(|v| v.as_str());
         let wait_for_timeout = arguments.get("wait_for_timeout").and_then(|v| v.as_u64());
@@ -1219,402 +1260,5 @@ impl Tool for BrowserlessNavigateTool {
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::validation::validate_interaction_steps;
-    use everruns_core::capabilities::Capability;
-
-    #[test]
-    fn test_validate_url_accepts_public_https_url() {
-        assert!(validate_url("https://example.com").is_ok());
-    }
-
-    #[test]
-    fn test_validate_url_rejects_localhost() {
-        let err = validate_url("http://localhost:3000").unwrap_err();
-        match err {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("blocked"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_validate_url_rejects_private_ip() {
-        let err = validate_url("http://10.0.0.5/admin").unwrap_err();
-        match err {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("blocked"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_validate_url_rejects_cloud_metadata_ip() {
-        let err = validate_url("http://169.254.169.254/latest/meta-data/").unwrap_err();
-        match err {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("blocked"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[test]
-    fn test_validate_interaction_steps_rejects_blocked_navigate_url() {
-        let steps = vec![json!({
-            "action": "navigate",
-            "value": "http://127.0.0.1:8080"
-        })];
-        let err = validate_interaction_steps(None, &steps).unwrap_err();
-        match err {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("blocked"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    fn acl_context(patterns: &[&str], block: bool) -> ToolContext {
-        use everruns_contracts::typed_id::SessionId;
-        use everruns_core::network_access::NetworkAccessList;
-        let mut context = ToolContext::new(SessionId::new());
-        context.network_access = Some(if block {
-            NetworkAccessList::block(patterns.iter().copied())
-        } else {
-            NetworkAccessList::allow_only(patterns.iter().copied())
-        });
-        context
-    }
-
-    async fn tool_error(tool: &dyn Tool, context: &ToolContext, args: Value) -> String {
-        match tool.execute_with_context(args, context).await {
-            ToolExecutionResult::ToolError(message) => message,
-            other => panic!("expected a tool error, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn session_acl_blocks_a_public_host_before_any_request_and_keeps_an_allowed_host() {
-        use crate::session_tools::BrowserlessOpenBrowserTool;
-
-        let allow = acl_context(&["example.com"], false);
-        let block = acl_context(&["evil.test"], true);
-        let open = ToolContext::new(everruns_contracts::typed_id::SessionId::new());
-
-        let cases: Vec<(Box<dyn Tool>, Value, Value)> = vec![
-            (
-                Box::new(BrowserlessScreenshotTool),
-                json!({"url": "https://evil.test/private"}),
-                json!({"url": "https://example.com/"}),
-            ),
-            (
-                Box::new(BrowserlessContentTool),
-                json!({"url": "https://evil.test/private"}),
-                json!({"url": "https://example.com/"}),
-            ),
-            (
-                Box::new(BrowserlessScrapeTool),
-                json!({"url": "https://evil.test/private", "elements": [{"selector": "h1"}]}),
-                json!({"url": "https://example.com/", "elements": [{"selector": "h1"}]}),
-            ),
-            (
-                Box::new(BrowserlessInteractTool),
-                json!({"url": "https://evil.test/private", "steps": [{"action": "wait", "wait_ms": 1}]}),
-                json!({"url": "https://example.com/", "steps": [{"action": "wait", "wait_ms": 1}]}),
-            ),
-            (
-                Box::new(BrowserlessNavigateTool),
-                json!({"url": "https://evil.test/private"}),
-                json!({"url": "https://example.com/"}),
-            ),
-            (
-                Box::new(BrowserlessOpenBrowserTool),
-                json!({"url": "https://evil.test/private"}),
-                json!({"url": "https://example.com/"}),
-            ),
-        ];
-
-        for (tool, denied, allowed) in cases {
-            let name = tool.name().to_string();
-            let denied_message = tool_error(tool.as_ref(), &allow, denied).await;
-            assert!(
-                denied_message.contains("network access"),
-                "{name} should reject the denied host before calling Browserless: {denied_message}"
-            );
-            assert!(
-                !denied_message.contains("API token"),
-                "{name} consulted the connection before the ACL: {denied_message}"
-            );
-
-            let allowed_message = tool_error(tool.as_ref(), &allow, allowed).await;
-            assert!(
-                allowed_message.contains("API token"),
-                "{name} should keep the allowed host usable past the ACL: {allowed_message}"
-            );
-            assert!(
-                !allowed_message.contains("network access"),
-                "{name} blocked an allowed host: {allowed_message}"
-            );
-        }
-
-        // A blocklist denies the named public host and still allows others.
-        let blocked = tool_error(
-            &BrowserlessScreenshotTool,
-            &block,
-            json!({"url": "https://evil.test/"}),
-        )
-        .await;
-        assert!(blocked.contains("network access"), "{blocked}");
-        let not_blocked = tool_error(
-            &BrowserlessScreenshotTool,
-            &block,
-            json!({"url": "https://example.com/"}),
-        )
-        .await;
-        assert!(not_blocked.contains("API token"), "{not_blocked}");
-
-        // No session ACL: a public host is not denied, a private host still is.
-        let public_host = tool_error(
-            &BrowserlessContentTool,
-            &open,
-            json!({"url": "https://evil.test/"}),
-        )
-        .await;
-        assert!(public_host.contains("API token"), "{public_host}");
-        let private_host = tool_error(
-            &BrowserlessContentTool,
-            &open,
-            json!({"url": "http://10.1.2.3/admin"}),
-        )
-        .await;
-        assert!(private_host.contains("blocked"), "{private_host}");
-        assert!(!private_host.contains("API token"), "{private_host}");
-    }
-
-    #[tokio::test]
-    async fn interact_nested_navigate_honors_the_session_acl() {
-        let allow = acl_context(&["example.com"], false);
-        let message = tool_error(
-            &BrowserlessInteractTool,
-            &allow,
-            json!({
-                "url": "https://example.com/",
-                "steps": [{ "action": "navigate", "value": "https://evil.test/next" }]
-            }),
-        )
-        .await;
-        assert!(message.contains("network access"), "{message}");
-        assert!(!message.contains("API token"), "{message}");
-    }
-
-    #[test]
-    fn test_screenshot_tool_metadata() {
-        let tool = BrowserlessScreenshotTool;
-        assert_eq!(tool.name(), "browserless_screenshot");
-        assert!(tool.requires_context());
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("url")));
-        assert_eq!(schema["additionalProperties"], false);
-    }
-
-    #[test]
-    fn test_content_tool_metadata() {
-        let tool = BrowserlessContentTool;
-        assert_eq!(tool.name(), "browserless_content");
-        assert!(tool.requires_context());
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("url")));
-    }
-
-    #[test]
-    fn test_scrape_tool_metadata() {
-        let tool = BrowserlessScrapeTool;
-        assert_eq!(tool.name(), "browserless_scrape");
-        assert!(tool.requires_context());
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("url")));
-        assert!(required.contains(&json!("elements")));
-    }
-
-    #[test]
-    fn test_interact_tool_metadata() {
-        let tool = BrowserlessInteractTool;
-        assert_eq!(tool.name(), "browserless_interact");
-        assert!(tool.requires_context());
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("url")));
-        assert!(required.contains(&json!("steps")));
-    }
-
-    #[test]
-    fn test_navigate_tool_metadata() {
-        let tool = BrowserlessNavigateTool;
-        assert_eq!(tool.name(), "browserless_navigate");
-        assert!(tool.requires_context());
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("url")));
-    }
-
-    #[test]
-    fn test_all_schemas_have_no_additional_properties() {
-        let cap = crate::BrowserlessCapability;
-        for tool in cap.tools() {
-            let schema = tool.parameters_schema();
-            assert_eq!(
-                schema["additionalProperties"],
-                false,
-                "Tool {} should disallow additional properties",
-                tool.name()
-            );
-        }
-    }
-
-    #[test]
-    fn test_should_suppress_interact_content_when_secrets_present() {
-        assert!(should_suppress_interact_content(true, 1));
-        assert!(!should_suppress_interact_content(false, 1));
-        assert!(!should_suppress_interact_content(true, 0));
-    }
-
-    #[tokio::test]
-    async fn test_screenshot_tool_no_context_error() {
-        let tool = BrowserlessScreenshotTool;
-        let result = tool.execute(json!({"url": "https://example.com"})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_content_tool_no_context_error() {
-        let tool = BrowserlessContentTool;
-        let result = tool.execute(json!({"url": "https://example.com"})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    // ============================================================================
-    // EVE-339 — Reading-tool truncation envelope conformance
-    // ============================================================================
-
-    #[test]
-    fn test_truncate_html_under_cap() {
-        let html = "<html><body>short</body></html>".to_string();
-        let (content, was_truncated) = truncate_html(html);
-        assert!(!was_truncated);
-        let mut response = json!({
-            "url": "https://example.com",
-            "content": content.clone(),
-            "size_bytes": 0,
-            "truncated": was_truncated
-        });
-        attach_content_truncation(&mut response, &content, 0, false);
-        everruns_core::truncation_info::assert_conforms("browserless_content", &response);
-        assert_eq!(response["truncation"]["truncated"], false);
-    }
-
-    #[test]
-    fn test_truncate_html_over_cap_emits_without_resume() {
-        // Build a >100 KB HTML source.
-        let huge = "a".repeat(MAX_HTML_BYTES + 5_000);
-        let total = huge.len();
-        let (content, was_truncated) = truncate_html(huge);
-        assert!(was_truncated);
-        let mut response = json!({
-            "url": "https://example.com",
-            "content": content.clone(),
-            "size_bytes": total,
-            "truncated": was_truncated
-        });
-        attach_content_truncation(&mut response, &content, total, true);
-        everruns_core::truncation_info::assert_conforms("browserless_content", &response);
-        assert_eq!(response["truncation"]["truncated"], true);
-        assert_eq!(response["truncation"]["reason"], "size_cap");
-        assert_eq!(response["truncation"]["bytes_total"], total);
-        assert!(
-            response["truncation"].get("next_offset").is_none(),
-            "browserless_content does not support in-place resume"
-        );
-    }
-
-    #[test]
-    fn test_truncate_html_utf8_boundary_safe() {
-        // Build a source whose byte-boundary for truncation would cut a
-        // 4-byte emoji: pad with single-byte chars up to MAX_HTML_BYTES - 2,
-        // then add the emoji. A naive byte-count cut at MAX_HTML_BYTES would
-        // land in the middle of the emoji's bytes; boundary-safe truncation
-        // must exclude the emoji entirely.
-        let mut src = String::new();
-        src.push_str(&"a".repeat(MAX_HTML_BYTES - 2));
-        src.push('🚀');
-        src.push_str(&"z".repeat(100));
-        let total = src.len();
-        let (content, was_truncated) = truncate_html(src);
-        assert!(was_truncated);
-        // Boundary-safe cut: no partial emoji bytes, only the padding 'a's
-        // survive, and the truncation suffix is appended (not any trailing
-        // 'z' from beyond the cap).
-        assert!(content.is_char_boundary(content.len()));
-        assert!(
-            !content.contains('🚀'),
-            "truncated content must not include the straddling emoji"
-        );
-        assert!(!content.contains('z'), "content after cap must not appear");
-        assert!(total > MAX_HTML_BYTES);
-    }
-
-    #[tokio::test]
-    async fn test_scrape_tool_no_context_error() {
-        let tool = BrowserlessScrapeTool;
-        let result = tool
-            .execute(json!({"url": "https://example.com", "elements": []}))
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_interact_tool_no_context_error() {
-        let tool = BrowserlessInteractTool;
-        let result = tool
-            .execute(json!({"url": "https://example.com", "steps": []}))
-            .await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_navigate_tool_no_context_error() {
-        let tool = BrowserlessNavigateTool;
-        let result = tool.execute(json!({"url": "https://example.com"})).await;
-        match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(msg.contains("requires context"));
-            }
-            other => panic!("Expected ToolError, got: {other:?}"),
-        }
-    }
-}
+#[path = "tools_tests.rs"]
+mod tests;

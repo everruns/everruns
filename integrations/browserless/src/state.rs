@@ -58,6 +58,11 @@ pub struct BrowserSessionState {
     pub created_at: String,
     /// Last reconnect time.
     pub last_active_at: String,
+    /// Guarded browser context holding the session's page (EVE-1189). A
+    /// session saved before this field existed has none; its next connect
+    /// moves to a new guarded context rather than reattach an unguarded page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub browser_context_id: Option<String>,
 }
 
 impl BrowserSessionState {
@@ -67,6 +72,7 @@ impl BrowserSessionState {
             ws_endpoint,
             created_at: now.clone(),
             last_active_at: now,
+            browser_context_id: None,
         }
     }
 
