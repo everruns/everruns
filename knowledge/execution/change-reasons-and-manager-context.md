@@ -545,6 +545,41 @@ entity, not only for the ones that exist today.
   sessions carry `agent_revision`, and fork lineage is intact.
 - The pre-migration report counts pinned exposures per org.
 
+## UI
+
+History and manager notes are secondary functions, so they add no tab and no
+always-visible panel. They follow the pattern the agent page already uses for
+version history ([Agent Page](../ui/agent-page.md)): an item in the header
+overflow menu that opens a side sheet.
+
+- **Header overflow menu** on every entity page gains **History** and, for
+  managers only, **Manager notes**. On agents, History replaces the Version
+  history item, and old `?tab=versions` links open the History sheet.
+- **History sheet.** Entries newest first: when, who, the agent session it came
+  through (linked to that chat), surface, and reason. Opening an entry shows
+  its diff against the current state, with secrets shown only as changed or
+  unchanged. **Restore this point** opens a confirm dialog with a required
+  reason and lists any secrets that will not be restored. Empty state: "No
+  changes recorded yet."
+- **Manager notes sheet.** Markdown, view by default, Edit to change it, and
+  Save asks for an optional reason. Empty state explains what notes are for
+  and that the entity itself never sees them.
+- **The one visible hint.** In edit mode only, when the entity has manager
+  notes, the header shows one muted line, "This agent has manager notes",
+  linking to the sheet. Notes exist to be read before a change, and edit mode
+  is the only time that matters; in view mode nothing shows.
+- **Reason field.** Save and delete dialogs get an optional single-line
+  "Reason for this change". Agents are required to give a reason; people are
+  not, so the field never blocks a save.
+- **Shared components.** One `HistorySheet` and one `ManagerNotesSheet` take an
+  entity ref and serve every entity page, so a new kind gets both by adding
+  two menu items.
+
+Testing: a Playwright smoke opens History and Manager notes from the overflow
+menu on the agent page, restores a revision with a reason, and checks that a
+read-only member sees History but not Manager notes. Manual test cases cover
+the edit-mode hint and the secret markers in a provider's diff.
+
 ## Phases
 
 Each phase is one PR-sized change.
@@ -566,8 +601,8 @@ Each phase is one PR-sized change.
    deleted. The Agent Versions concept is retired.
 6. **Enforcement and atomicity.** `reason_required` for agent callers; history
    write inside the mutation transaction with idempotency records.
-7. **UI.** Reason field in save and delete dialogs, a generic History tab and a
-   manager notes panel on entity pages.
+7. **UI.** History and manager notes behind the header overflow menu, an
+   optional reason field in save and delete dialogs (see UI).
 
 ## Open questions
 
