@@ -1292,3 +1292,12 @@ async fn assert_fallback_emits_only_install(
         other => panic!("expected a compacted event, got {other:?}"),
     }
 }
+
+// Regression: the batch clock started with the stream, so the model's first
+// token waited a full batch interval before reaching the client.
+#[test]
+fn first_delta_is_due_at_once_then_batched() {
+    assert!(batch_due(None, 100));
+    assert!(!batch_due(Some(web_time::Instant::now()), 100));
+    assert!(batch_due(Some(web_time::Instant::now()), 0));
+}
