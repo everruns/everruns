@@ -91,9 +91,10 @@ Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats*
 
 #### Avatar
 
-**Branding** starts with the agent's avatar. Upload a PNG, JPEG, GIF, or WebP image (at least
-64×64, at most 10 MB) and it is saved immediately, without **Save changes**. The image is cropped
-to a square and rendered once as square and circular PNG presets of 32, 64, 128, 256, and 512 px.
+**Branding** starts with the agent's avatar. Drop a PNG, JPEG, GIF, or WebP image (at most 10 MB)
+on the avatar, or choose one, then position and zoom the square crop. **Save avatar** uploads it
+right away, without **Save changes**. The server renders the square once as square and circular
+PNG presets of 32, 64, 128, 256, and 512 px.
 The avatar shows on agent cards and the agent page, in the A2A Agent Card (`iconUrl`), on the MCP
 agent card, and as the icon of Slack apps created with one-click setup.
 

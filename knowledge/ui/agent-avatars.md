@@ -32,6 +32,9 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
 - **Square is canonical; the circle is pre-masked.** Surfaces that cannot clip (Slack, A2A
   clients) get the same circle the UI shows. Everything is PNG: Slack rejects WebP, and the circle
   needs alpha.
+- **Crop in the browser, center-crop on the server.** The Branding sheet takes a dropped or chosen
+  file, frames it with `react-easy-crop`, and uploads only the square (PNG, up to 1024 px). The
+  server center-crops whatever arrives, so API uploads need no client step.
 - **Variants live in PostgreSQL.** They are tens of KB each, so `bytea` beats the object store's
   extra pointer rows and GC.
 - **Slack gets it as the app icon.** Each Slack endpoint is its own Slack app, and a manifest cannot
