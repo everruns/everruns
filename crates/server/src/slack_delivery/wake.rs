@@ -7,7 +7,9 @@
 //! to a 120-second polling loop that gave up on longer turns and stayed silent
 //! on failed ones. Polling active sessions from the dispatcher keeps the same
 //! delivery semantics (no deadline, terminal notices, streaming, approvals) on
-//! every backend, and reads PostgreSQL, which every instance shares.
+//! every backend, and reads PostgreSQL, which every instance shares. The one
+//! thing PostgreSQL lacks there is token deltas; `live_deltas.rs` feeds those
+//! from the delivery bus (EVE-1211).
 
 use std::sync::Arc;
 

@@ -18,6 +18,7 @@ use everruns_core::channel::{
     DeliveryContext as ChannelDeliveryContext, DeliveryResult as ChannelDeliveryResult,
     OutboundChannelMessage,
 };
+mod live_deltas;
 mod message_receipts;
 mod recovery_endpoint;
 mod wake;
@@ -231,6 +232,8 @@ pub struct SlackDeliveryDispatcher {
     /// Platform delivery adapter. Every outbound message goes through it, so the
     /// path a second platform inherits is the one Slack actually exercises.
     adapter: Arc<dyn ChannelDeliveryAdapter>,
+    /// Deltas from the delivery bus where PostgreSQL never sees them (EVE-1211).
+    live: live_deltas::LiveDeltas,
 }
 
 impl SlackDeliveryDispatcher {
@@ -257,13 +260,14 @@ impl SlackDeliveryDispatcher {
     ) -> Arc<Self> {
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-        let dispatcher = Arc::new(Self {
+        let dispatcher = Arc::new_cyclic(|weak| Self {
             deliveries: Arc::new(RwLock::new(HashMap::new())),
             active_sessions: Arc::new(RwLock::new(std::collections::HashSet::new())),
             db,
             shutdown_tx,
             frontend_url,
             adapter,
+            live: live_deltas::LiveDeltas::new(weak.clone()),
         });
 
         let (dispatcher_clone, wake) = (dispatcher.clone(), wake.into());
@@ -329,7 +333,9 @@ impl SlackDeliveryDispatcher {
         );
 
         self.active_sessions.write().await.insert(session_id);
-        self.deliveries.write().await.insert(key, ctx);
+        let mut deliveries = self.deliveries.write().await;
+        deliveries.insert(key, ctx);
+        self.live.ensure(session_id);
     }
 
     /// Shutdown the dispatcher.
@@ -389,12 +395,15 @@ impl SlackDeliveryDispatcher {
                 }
             }
         }
+        // Either exit leaves nothing to deliver into.
+        self.live.drop_all();
     }
 
     /// Process new events for a session, delivering messages to Slack.
     async fn process_session_events(&self, session_id: Uuid) {
         let session_id_typed = SessionId::from_uuid(session_id);
         let empty: Vec<String> = vec![];
+        let _live_order = self.live.order(session_id).await;
 
         // Collect keys for this session
         let keys: Vec<DeliveryKey> = {
@@ -473,6 +482,8 @@ impl SlackDeliveryDispatcher {
                 // discrete path below: they are accumulated per output message and
                 // flushed on a cadence Slack can absorb.
                 if streams_supported && ctx.reply_mode == SlackReplyMode::AllMessages {
+                    self.live
+                        .observe(session_id, &event.event_type, &event.data);
                     if event.event_type == events::OUTPUT_MESSAGE_REPLACED
                         && let (Some(message_id), Some(replacement)) = (
                             event.data.get("message_id").and_then(|v| v.as_str()),
@@ -487,24 +498,7 @@ impl SlackDeliveryDispatcher {
                     }
 
                     if event.event_type == "output.message.delta" {
-                        if let (Some(message_id), Some(accumulated)) = (
-                            event.data.get("message_id").and_then(|v| v.as_str()),
-                            event.data.get("accumulated").and_then(|v| v.as_str()),
-                        ) && self.record_delta(&key, &ctx, message_id, accumulated).await
-                        {
-                            // Flush early on a burst so a long answer does not sit
-                            // behind the timer.
-                            let burst = self
-                                .deliveries
-                                .read()
-                                .await
-                                .get(&key)
-                                .and_then(|c| c.streams.get(message_id))
-                                .is_some_and(|s| s.pending().chars().count() >= STREAM_FLUSH_CHARS);
-                            if burst {
-                                self.flush_stream(&key, &ctx, message_id).await;
-                            }
-                        }
+                        self.stream_delta(&key, &ctx, &event.data).await;
                         continue;
                     }
 
@@ -1086,15 +1080,13 @@ impl SlackDeliveryDispatcher {
     /// Remove a delivery registration.
     async fn unregister(&self, key: &DeliveryKey) {
         let session_id = key.session_id;
-        self.deliveries.write().await.remove(key);
-
-        // Check if any other deliveries exist for this session
-        let has_others = self
-            .deliveries
-            .read()
-            .await
-            .keys()
-            .any(|k| k.session_id == session_id);
+        let mut deliveries = self.deliveries.write().await;
+        deliveries.remove(key);
+        let has_others = deliveries.keys().any(|k| k.session_id == session_id);
+        if !has_others {
+            self.live.drop_session(session_id);
+        }
+        drop(deliveries);
 
         if !has_others {
             self.active_sessions.write().await.remove(&session_id);
@@ -1753,6 +1745,8 @@ mod tests {
     use crate::records::agent_channel::DEFAULT_AG_UI_GENERIC_TOOL_TEXT;
     #[path = "concurrency_tests.rs"]
     mod concurrency_tests;
+    #[path = "live_delta_tests.rs"]
+    mod live_delta_tests;
     #[path = "polling_wake_tests.rs"]
     mod polling_wake_tests;
     #[path = "response_text_tests.rs"]
@@ -2663,7 +2657,7 @@ mod tests {
 
         /// What the dispatcher asked the platform to do, in order.
         #[derive(Debug, Clone, PartialEq, Eq)]
-        enum Call {
+        pub(super) enum Call {
             Start,
             Append(String, String),
             Replace(String, String),
@@ -2671,14 +2665,14 @@ mod tests {
             Discrete(String),
         }
 
-        struct RecordingAdapter {
+        pub(super) struct RecordingAdapter {
             calls: Arc<Mutex<Vec<Call>>>,
             /// When false, `start` fails so the fallback path can be exercised.
             can_start: bool,
         }
 
         impl RecordingAdapter {
-            fn new(calls: Arc<Mutex<Vec<Call>>>) -> Self {
+            pub(super) fn new(calls: Arc<Mutex<Vec<Call>>>) -> Self {
                 Self {
                     calls,
                     can_start: true,
@@ -2770,7 +2764,7 @@ mod tests {
             }
         }
 
-        async fn dispatcher_with(
+        pub(super) async fn dispatcher_with(
             db: Arc<StorageBackend>,
             adapter: RecordingAdapter,
         ) -> Arc<SlackDeliveryDispatcher> {
@@ -2854,7 +2848,7 @@ mod tests {
             .await;
         }
 
-        fn recorded(calls: &Arc<Mutex<Vec<Call>>>) -> Vec<Call> {
+        pub(super) fn recorded(calls: &Arc<Mutex<Vec<Call>>>) -> Vec<Call> {
             calls.lock().expect("recorder").clone()
         }
 

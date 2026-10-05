@@ -883,8 +883,7 @@ impl ServerAppBuilder {
             core_deps.event_delivery.clone(),
         );
         // Slack delivery dispatcher, always on: without the PostgreSQL listener
-        // (NATS deployments) it polls active sessions (EVERRUNS-2B). Must be
-        // created before events_state takes ownership of event_broadcaster.
+        // (NATS) it polls sessions (EVERRUNS-2B) and takes bus deltas (EVE-1211).
         let slack_wake = match event_broadcaster {
             Some(ref broadcaster) => broadcaster.subscribe().into(),
             None => crate::slack_delivery::DeliveryWake::Poll,
@@ -894,7 +893,7 @@ impl ServerAppBuilder {
             slack_wake,
             auth_config.frontend_url.clone(),
         );
-
+        slack_dispatcher.feed_live_deltas(&core_deps.event_delivery);
         let events_state = api::events::AppState {
             db: db.clone(),
             session_service: Arc::new(
