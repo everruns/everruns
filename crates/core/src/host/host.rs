@@ -537,17 +537,26 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         turn_id: TurnId,
         input_message_id: MessageId,
     ) -> everruns_contracts::error::Result<()> {
-        let input_content = self
-            .adapter
-            .message_store()
-            .get(self.session_id, input_message_id)
-            .await
-            .ok()
-            .flatten()
-            .map(|message| message.content_to_llm_string());
-
-        self.set_session_status(SessionExecutionState::Active, "turn_started")
-            .await?;
+        // The input read is independent of the status write; run them
+        // together, since each is a store round trip on the turn's path to its
+        // first model call. The agent identity reads the session, so it
+        // follows the write rather than racing it.
+        let input_content = async {
+            self.adapter
+                .message_store()
+                .get(self.session_id, input_message_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|message| message.content_to_llm_string())
+        };
+        let activated = async {
+            self.set_session_status(SessionExecutionState::Active, "turn_started")
+                .await?;
+            Ok::<_, everruns_contracts::error::AgentLoopError>(self.agent_identity().await)
+        };
+        let (input_content, agent) = futures::join!(input_content, activated);
+        let agent = agent?;
 
         self.emit_event(EventRequest::new(
             self.session_id,
@@ -559,7 +568,6 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         ))
         .await?;
 
-        let agent = self.agent_identity().await;
         self.emit_event(EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),

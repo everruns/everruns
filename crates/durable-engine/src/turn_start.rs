@@ -42,9 +42,13 @@ pub(crate) async fn execute_turn_start<H: TurnTaskHost>(
     // Start the reason's setup reads now so they overlap the input.
     let reason_host = reason_host(hosts, input, cancel, turn_id);
 
-    let checkpoint = match plan_first_reason(hosts, input, turn_id).await {
+    let checkpoint = match plan_first_reason(&reason_host, input, turn_id).await {
         Ok(checkpoint) => checkpoint,
-        Err(error) => return (Err(error), input.clone()),
+        Err(error) => {
+            // Store what the input queued before the turn's failure is.
+            hosts.phase_finished(&reason_host).await;
+            return (Err(error), input.clone());
+        }
     };
     let output = run_reason(hosts, reason_host, &checkpoint).await;
     (output, checkpoint)
@@ -56,22 +60,20 @@ fn turn_id_for(input: &DurableTurnInput, task_id: Uuid) -> TurnId {
     input.turn_id.unwrap_or_else(|| TurnId::from_uuid(task_id))
 }
 
-/// Run the input step and plan the reason that follows it.
-async fn plan_first_reason<H: TurnTaskHost>(
-    hosts: &H,
+/// Run the input step and plan the reason that follows it, on the reason's
+/// host: the input's reads share the reason's setup memo, and its lifecycle
+/// events (`session.activated`, `turn.started`) join the same ordered
+/// write-behind queue as `reason.started`, so the model call does not wait
+/// for them to be stored.
+async fn plan_first_reason<Host: crate::host::RuntimeHostAdapter>(
+    host: &Host,
     input: &DurableTurnInput,
     turn_id: TurnId,
 ) -> Result<DurableTurnInput> {
-    let input_output = execute_input_activity(hosts, input, turn_id).await?;
+    let input_output = execute_input_activity(host, input, turn_id).await?;
     let mut execution = crate::DurableExecution::new(input.clone());
-    let plan = advance_host_execution(
-        &hosts.host(),
-        &mut execution,
-        "process_input",
-        &input_output,
-        0,
-    )
-    .await?;
+    let plan =
+        advance_host_execution(host, &mut execution, "process_input", &input_output, 0).await?;
     // The engine always follows the input with a reason.
     anyhow::ensure!(
         matches!(plan, TurnPlan::ScheduleReason(_)),
@@ -81,8 +83,8 @@ async fn plan_first_reason<H: TurnTaskHost>(
 }
 
 /// Execute the input step of a turn.
-async fn execute_input_activity<H: TurnTaskHost>(
-    hosts: &H,
+async fn execute_input_activity<Host: crate::host::RuntimeHostAdapter>(
+    host: &Host,
     input: &DurableTurnInput,
     turn_id: TurnId,
 ) -> Result<serde_json::Value> {
@@ -98,8 +100,7 @@ async fn execute_input_activity<H: TurnTaskHost>(
         exec_id: ExecId::new(),
     };
     let result =
-        runtime_execute_input_activity(&hosts.host(), input.org_id, InputAtomInput { context })
-            .await?;
+        runtime_execute_input_activity(host, input.org_id, InputAtomInput { context }).await?;
 
     // Include turn_id in output for propagation
     let mut output = serde_json::to_value(&result)?;
