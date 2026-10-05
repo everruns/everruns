@@ -20,6 +20,11 @@ use crate::engine::tool_types::{ToolCall, ToolDefinition, ToolResult};
 
 use super::{ActAtom, ExecutionContext, ToolCallResult};
 
+// Every act-phase ToolContext is built here, so the nested-call policy lives
+// beside it (EVE-1186).
+#[path = "act_nested_policy.rs"]
+mod nested_policy;
+
 /// Run the configured pre-tool chain on client-side calls.
 ///
 /// Returns the calls a client may execute (with hook-transformed arguments),
@@ -187,6 +192,9 @@ where
     }
     tool_context.bind_to_turn(event_context.clone());
     tool_context.tool_call_id = Some(tool_call_id.to_string());
+    // THREAT[TM-TOOL-055]: a tool that dispatches a nested call runs it
+    // through this act phase's own chains (EVE-1186).
+    tool_context.nested_tool_policy = Some(nested_policy::for_atom(atom));
 
     let cancellation = tokio_util::sync::CancellationToken::new();
     tool_context.cancellation = Some(cancellation.clone());

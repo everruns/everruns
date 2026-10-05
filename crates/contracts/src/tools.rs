@@ -66,6 +66,15 @@ pub enum ToolExecutionResult {
         /// Relative UI route where the missing grant can be configured.
         setup_url: Option<String>,
     },
+
+    /// A policy gate settled the call without running it; record this outcome
+    /// as is. It is a block, or a deferral whose structured result (a hosted
+    /// approval request) the engine turns into a pause.
+    ///
+    /// For tools that dispatch another tool on the model's behalf
+    /// (`spawn_background`): the nested call's gate outcome reaches the act
+    /// phase exactly as it would for a direct call (EVE-1186).
+    PolicyOutcome(Box<ToolResult>),
 }
 
 impl ToolExecutionResult {
@@ -267,6 +276,10 @@ impl ToolExecutionResult {
                     raw_output: None,
                 }
             }
+            ToolExecutionResult::PolicyOutcome(result) => ToolResult {
+                tool_call_id: tool_call_id.to_string(),
+                ..*result
+            },
         }
     }
 }

@@ -443,7 +443,13 @@ impl std::fmt::Debug for ToolRegistry {
     }
 }
 
-fn validate_tool_arguments(tool: &dyn Tool, tool_call: &ToolCall) -> Result<Option<String>> {
+/// Check a call's execution arguments against the tool's parameters schema.
+///
+/// `Ok(Some(error))` is the model-facing `invalid_tool_arguments` payload; the
+/// registry returns it instead of running the tool. Shared with tools that
+/// dispatch a nested call (`spawn_background`), so a nested call is held to
+/// the target's own schema (EVE-1186).
+pub fn validate_tool_arguments(tool: &dyn Tool, tool_call: &ToolCall) -> Result<Option<String>> {
     let arguments = tool_call.execution_arguments();
     let definition = tool.to_definition();
     let validator = jsonschema::validator_for(definition.parameters()).map_err(|error| {

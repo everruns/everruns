@@ -22,10 +22,12 @@ use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::background::{BackgroundEventSink, BackgroundOutcome, BackgroundProgress};
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry};
+use everruns_core::tool_hooks::NestedToolPolicy;
+use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry, validate_tool_arguments};
 use serde_json::{Value, json};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -233,6 +235,43 @@ spawn_background payload:\n{payload_json}"
     )
 }
 
+/// Run the target call through the turn's pre-tool chain and the target's
+/// own schema, returning the call that may run or the outcome to record.
+///
+/// A refusal is the chain's own outcome, unchanged: a blocked call reads as
+/// it would when called directly, and a deferral (a hosted approval request)
+/// parks the turn for the target call, whose approval a retried
+/// `spawn_background` with the same arguments then finds.
+async fn authorize_target_call(
+    policy: &dyn NestedToolPolicy,
+    tool: &dyn Tool,
+    tool_def: &ToolDefinition,
+    requested: ToolCall,
+    context: &ToolContext,
+) -> std::result::Result<ToolCall, ToolExecutionResult> {
+    let target_name = requested.name.clone();
+    let authorized = policy
+        .authorize(requested, tool_def, context)
+        .await
+        .map_err(|outcome| ToolExecutionResult::PolicyOutcome(Box::new(outcome)))?;
+    // The decision covers this tool; a hook that retargets the call would
+    // run something no gate decided on as that tool.
+    if authorized.name != target_name {
+        return Err(ToolExecutionResult::tool_error(format!(
+            "A pre-tool hook changed the background target from {target_name} to {}; refusing to run it.",
+            authorized.name
+        )));
+    }
+    match validate_tool_arguments(tool, &authorized) {
+        Ok(None) => Ok(authorized),
+        Ok(Some(invalid)) => Err(ToolExecutionResult::tool_error(invalid)),
+        Err(error) => Err(ToolExecutionResult::internal_error(error)),
+    }
+}
+
+/// Text the run's log keeps when a post-tool hook withheld the output.
+const WITHHELD_OUTPUT_LOG: &str = "[output withheld by tool policy]\n";
+
 #[async_trait]
 impl Tool for SpawnBackgroundTool {
     fn narrate(
@@ -322,7 +361,7 @@ impl Tool for SpawnBackgroundTool {
             Some(name) if !name.trim().is_empty() => name.trim(),
             _ => return ToolExecutionResult::tool_error("Missing required parameter: tool"),
         };
-        let tool_args = match arguments.get("args") {
+        let requested_args = match arguments.get("args") {
             Some(args) if args.is_object() => args.clone(),
             _ => {
                 return ToolExecutionResult::tool_error(
@@ -375,6 +414,41 @@ impl Tool for SpawnBackgroundTool {
                     .unwrap_or_else(|| format!("Background {tool_name}"))
             });
 
+        // THREAT[TM-TOOL-055]: the outer call passed the policy chain as
+        // `spawn_background`; the target call has to pass it as itself before
+        // anything is scheduled or run (EVE-1186). Only the authorized call's
+        // arguments go any further, so a later rewrite cannot outlive the
+        // decision.
+        let Some(policy) = context.nested_tool_policy.clone() else {
+            return ToolExecutionResult::tool_error(
+                "spawn_background requires the turn's tool policy and can only run from an agent turn.",
+            );
+        };
+        let target_def = tool.to_definition();
+        let target_call = match authorize_target_call(
+            policy.as_ref(),
+            tool.as_ref(),
+            &target_def,
+            ToolCall {
+                id: context
+                    .tool_call_id
+                    .clone()
+                    .unwrap_or_else(|| self.name().to_string()),
+                name: tool_name.to_string(),
+                arguments: requested_args,
+            },
+            context,
+        )
+        .await
+        {
+            Ok(call) => call,
+            Err(refused) => return refused,
+        };
+        let tool_args = target_call.execution_arguments();
+
+        // A schedule fire re-enters `spawn_background` in a later turn and is
+        // authorized again then; checking here as well means a call the policy
+        // refuses never becomes a schedule or a monitor probe spec.
         if let Some(schedule_request) = schedule_request {
             let Some(schedule_store) = &context.schedule_store else {
                 return ToolExecutionResult::tool_error(
@@ -535,6 +609,8 @@ impl Tool for SpawnBackgroundTool {
         let run_id_for_task = run_id.clone();
         let tool_for_task = tool.clone();
         let tool_name_for_task = tool_name.to_string();
+        let policy_for_task = policy.clone();
+        let target_def_for_task = target_def.clone();
 
         // Clone registry/ids for the cancel-watcher inside the spawned task.
         let cancel_registry = context.session_task_registry.clone();
@@ -629,6 +705,14 @@ impl Tool for SpawnBackgroundTool {
             let finalize_result = if is_canceled_outcome(&outcome) {
                 sink.finalize_canceled().await
             } else {
+                let outcome = sink
+                    .apply_post_tool_policy(
+                        policy_for_task.as_ref(),
+                        &target_call,
+                        &target_def_for_task,
+                        outcome,
+                    )
+                    .await;
                 sink.finalize(outcome).await
             };
             if let Err(err) = finalize_result {
@@ -667,6 +751,8 @@ struct SessionBackgroundState {
     output_log: String,
     output_log_chars: usize,
     output_log_truncated: bool,
+    /// The log as the post-tool chain left it; replaces the streamed log.
+    output_log_override: Option<String>,
 }
 
 const MAX_BACKGROUND_OUTPUT_LOG_CHARS: usize = 256 * 1024;
@@ -787,17 +873,7 @@ impl SessionBackgroundSink {
                 }
             }
             Err(err) => {
-                let message = match err {
-                    ToolExecutionResult::ToolError(msg) => msg,
-                    ToolExecutionResult::InternalError(inner) => inner.message,
-                    ToolExecutionResult::ConnectionRequired { provider, .. } => {
-                        format!("Background tool requires connection setup: {provider}")
-                    }
-                    ToolExecutionResult::Success(_)
-                    | ToolExecutionResult::SuccessWithImages { .. } => {
-                        "Background run ended unexpectedly".to_string()
-                    }
-                };
+                let message = failure_message(err);
                 let output_log = {
                     let state = self.state.lock().await;
                     Self::final_output_log(&state)
@@ -937,6 +1013,90 @@ impl BackgroundEventSink for SessionBackgroundSink {
 }
 
 impl SessionBackgroundSink {
+    /// Run the turn's post-tool chain on the finished run, as for a direct
+    /// call of the target tool (EVE-1186).
+    ///
+    /// Hooks see the run's result, its summary (what the session is told) and
+    /// its output log, and what they leave is what gets persisted and
+    /// signalled: an output guardrail that withholds the result also withholds
+    /// the summary and the log.
+    async fn apply_post_tool_policy(
+        &self,
+        policy: &dyn NestedToolPolicy,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult>,
+    ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+        let streamed_log = {
+            let state = self.state.lock().await;
+            Self::final_output_log(&state)
+        };
+        let failed = outcome.is_err();
+        let mut result = match outcome {
+            Ok(outcome) => ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: Some(json!({ "summary": outcome.summary, "result": outcome.result })),
+                images: None,
+                error: None,
+                connection_required: None,
+                raw_output: Some(outcome.raw_output.unwrap_or(streamed_log)),
+            },
+            Err(err) => {
+                let message = failure_message(err);
+                ToolResult {
+                    tool_call_id: tool_call.id.clone(),
+                    result: Some(json!({ "error": &message })),
+                    images: None,
+                    error: Some(message),
+                    connection_required: None,
+                    raw_output: Some(streamed_log),
+                }
+            }
+        };
+
+        policy
+            .after_exec(tool_call, tool_def, &mut result, &self.context)
+            .await;
+
+        {
+            let mut state = self.state.lock().await;
+            state.output_log_override = Some(
+                result
+                    .raw_output
+                    .take()
+                    .unwrap_or_else(|| WITHHELD_OUTPUT_LOG.to_string()),
+            );
+        }
+
+        let value = result.result.take().unwrap_or(Value::Null);
+        let text = || match &value {
+            Value::String(text) => text.clone(),
+            Value::Null => String::new(),
+            other => other.to_string(),
+        };
+        if failed || result.error.is_some() {
+            let message = result.error.take().unwrap_or_else(text);
+            return Err(ToolExecutionResult::ToolError(message));
+        }
+        match (
+            value.get("summary").and_then(Value::as_str),
+            value.get("result"),
+        ) {
+            (Some(summary), Some(inner)) => Ok(BackgroundOutcome {
+                summary: summary.to_string(),
+                result: inner.clone(),
+                raw_output: None,
+            }),
+            // A hook replaced the whole result (an output guardrail's notice):
+            // that replacement is all anyone gets to see.
+            _ => Ok(BackgroundOutcome {
+                summary: text(),
+                result: value.clone(),
+                raw_output: None,
+            }),
+        }
+    }
+
     fn append_to_output_log(state: &mut SessionBackgroundState, prefix: &str, delta: &str) {
         if state.output_log_chars >= MAX_BACKGROUND_OUTPUT_LOG_CHARS {
             state.output_log_truncated = true;
@@ -960,6 +1120,9 @@ impl SessionBackgroundSink {
     }
 
     fn final_output_log(state: &SessionBackgroundState) -> String {
+        if let Some(log) = &state.output_log_override {
+            return log.clone();
+        }
         if !state.output_log_truncated {
             return state.output_log.clone();
         }
@@ -968,6 +1131,23 @@ impl SessionBackgroundSink {
             "{}\n[system] background output truncated at {} characters\n",
             state.output_log, MAX_BACKGROUND_OUTPUT_LOG_CHARS
         )
+    }
+}
+
+/// What a failed run reports to its result file and the session.
+fn failure_message(err: ToolExecutionResult) -> String {
+    match err {
+        ToolExecutionResult::ToolError(msg) => msg,
+        ToolExecutionResult::InternalError(inner) => inner.message,
+        ToolExecutionResult::ConnectionRequired { provider, .. } => {
+            format!("Background tool requires connection setup: {provider}")
+        }
+        ToolExecutionResult::PolicyOutcome(result) => result
+            .error
+            .unwrap_or_else(|| "Background run was not allowed by policy".to_string()),
+        ToolExecutionResult::Success(_) | ToolExecutionResult::SuccessWithImages { .. } => {
+            "Background run ended unexpectedly".to_string()
+        }
     }
 }
 
@@ -1186,1506 +1366,13 @@ async fn ensure_directory(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use async_trait::async_trait;
-    use everruns_contracts::tool_types::ToolHints;
-    use everruns_contracts::typed_id::HarnessId;
-    use everruns_core::background::BackgroundExecutableTool;
-    use everruns_core::session_file::{FileInfo, FileStat, SessionFile};
-    use everruns_core::session_task::SessionTaskRegistry;
-    use everruns_core::subagent_delegation::SubagentSessionDelegate;
-    use everruns_core::{session_files::SessionFileSystem, session_services::SessionScheduleStore};
-    use everruns_core::{session_services::KeyInfo, session_services::SecretInfo};
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc as StdArc, Mutex};
-
-    #[derive(Default)]
-    struct TestFailingBackgroundTool;
-
-    #[async_trait]
-    impl BackgroundExecutableTool for TestFailingBackgroundTool {
-        async fn execute_background(
-            &self,
-            _arguments: Value,
-            _context: ToolContext,
-            sink: Arc<dyn BackgroundEventSink>,
-        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
-            sink.status("Running failing test")
-                .await
-                .map_err(ToolExecutionResult::internal_error)?;
-            sink.output("stderr", "background failed")
-                .await
-                .map_err(ToolExecutionResult::internal_error)?;
-            Err(ToolExecutionResult::tool_error("boom"))
-        }
-    }
-
-    #[async_trait]
-    impl Tool for TestFailingBackgroundTool {
-        fn name(&self) -> &str {
-            "test_background_fail"
-        }
-
-        fn display_name(&self) -> Option<&str> {
-            Some("Test Background Fail")
-        }
-
-        fn description(&self) -> &str {
-            "failing background test tool"
-        }
-
-        fn parameters_schema(&self) -> Value {
-            json!({
-                "type": "object",
-                "properties": {}
-            })
-        }
-
-        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-            ToolExecutionResult::tool_error("foreground unsupported")
-        }
-
-        fn hints(&self) -> ToolHints {
-            ToolHints::default().with_supports_background(true)
-        }
-
-        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
-            Some(self)
-        }
-    }
-
-    #[derive(Default)]
-    struct TestLargeOutputBackgroundTool;
-
-    #[async_trait]
-    impl BackgroundExecutableTool for TestLargeOutputBackgroundTool {
-        async fn execute_background(
-            &self,
-            _arguments: Value,
-            _context: ToolContext,
-            sink: Arc<dyn BackgroundEventSink>,
-        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
-            let large_chunk = "x".repeat(MAX_BACKGROUND_OUTPUT_LOG_CHARS + 4096);
-            sink.output("stdout", &large_chunk)
-                .await
-                .map_err(ToolExecutionResult::internal_error)?;
-            Ok(BackgroundOutcome {
-                summary: "large output complete".to_string(),
-                result: json!({"ok": true}),
-                raw_output: None,
-            })
-        }
-    }
-
-    #[async_trait]
-    impl Tool for TestLargeOutputBackgroundTool {
-        fn name(&self) -> &str {
-            "test_background_large_output"
-        }
-
-        fn display_name(&self) -> Option<&str> {
-            Some("Test Background Large Output")
-        }
-
-        fn description(&self) -> &str {
-            "background test tool with huge output"
-        }
-
-        fn parameters_schema(&self) -> Value {
-            json!({
-                "type": "object",
-                "properties": {}
-            })
-        }
-
-        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-            ToolExecutionResult::tool_error("foreground unsupported")
-        }
-
-        fn hints(&self) -> ToolHints {
-            ToolHints::default().with_supports_background(true)
-        }
-
-        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
-            Some(self)
-        }
-    }
-
-    struct BlockingBackgroundTool {
-        release: StdArc<AtomicBool>,
-    }
-
-    #[async_trait]
-    impl BackgroundExecutableTool for BlockingBackgroundTool {
-        async fn execute_background(
-            &self,
-            _arguments: Value,
-            _context: ToolContext,
-            sink: Arc<dyn BackgroundEventSink>,
-        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
-            sink.status("Blocking until released")
-                .await
-                .map_err(ToolExecutionResult::internal_error)?;
-            while !self.release.load(Ordering::SeqCst) {
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-            Ok(BackgroundOutcome {
-                summary: "released".to_string(),
-                result: json!({"ok": true}),
-                raw_output: None,
-            })
-        }
-    }
-
-    #[async_trait]
-    impl Tool for BlockingBackgroundTool {
-        fn name(&self) -> &str {
-            "test_background_blocking"
-        }
-
-        fn display_name(&self) -> Option<&str> {
-            Some("Test Background Blocking")
-        }
-
-        fn description(&self) -> &str {
-            "background test tool that waits for test release"
-        }
-
-        fn parameters_schema(&self) -> Value {
-            json!({
-                "type": "object",
-                "properties": {}
-            })
-        }
-
-        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-            ToolExecutionResult::tool_error("foreground unsupported")
-        }
-
-        fn hints(&self) -> ToolHints {
-            ToolHints::default().with_supports_background(true)
-        }
-
-        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
-            Some(self)
-        }
-    }
-
-    /// A background tool that sleeps indefinitely, allowing the test to exercise
-    /// cancel via the cancel-watcher without actually waiting forever.
-    #[derive(Default)]
-    struct SleepingBackgroundTool;
-
-    #[async_trait]
-    impl BackgroundExecutableTool for SleepingBackgroundTool {
-        async fn execute_background(
-            &self,
-            _arguments: Value,
-            _context: ToolContext,
-            sink: Arc<dyn BackgroundEventSink>,
-        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
-            sink.status("Sleeping forever")
-                .await
-                .map_err(ToolExecutionResult::internal_error)?;
-            // Sleep for a very long time; the cancel-watcher will win the select.
-            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
-            Ok(BackgroundOutcome {
-                summary: "should not reach here".to_string(),
-                result: json!({}),
-                raw_output: None,
-            })
-        }
-    }
-
-    #[async_trait]
-    impl Tool for SleepingBackgroundTool {
-        fn name(&self) -> &str {
-            "test_background_sleeping"
-        }
-
-        fn display_name(&self) -> Option<&str> {
-            Some("Test Background Sleeping")
-        }
-
-        fn description(&self) -> &str {
-            "background test tool that sleeps indefinitely"
-        }
-
-        fn parameters_schema(&self) -> Value {
-            json!({
-                "type": "object",
-                "properties": {}
-            })
-        }
-
-        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-            ToolExecutionResult::tool_error("foreground unsupported")
-        }
-
-        fn hints(&self) -> ToolHints {
-            ToolHints::default().with_supports_background(true)
-        }
-
-        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
-            Some(self)
-        }
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_executes_and_signals_session() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let platform_store = Arc::new(TestSubagentDelegate::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestBackgroundTool)
-            .build();
-
-        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
-            .with_tool_registry(Arc::new(tool_registry))
-            .with_subagent_delegate(platform_store.clone())
-            .with_session_task_registry(task_registry.clone());
-
-        let tool = SpawnBackgroundTool;
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background",
-                    "args": { "summary": "Background complete" }
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("spawn_background should succeed");
-        };
-        let run_id = value["run_id"].as_str().unwrap().to_string();
-        let task_id = value["task_id"].as_str().unwrap().to_string();
-
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            loop {
-                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
-                    && task.state == everruns_core::session_task::SessionTaskState::Succeeded
-                {
-                    break task;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .expect("background run should complete");
-        let _ = run_id; // still available in result json
-
-        let messages = platform_store.sent_messages.lock().unwrap().clone();
-        assert_eq!(messages.len(), 1);
-        assert!(messages[0].contains("Background run completed"));
-
-        let log_file = file_store
-            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
-            .await
-            .unwrap()
-            .expect("log file");
-        assert!(
-            log_file
-                .content
-                .as_deref()
-                .unwrap_or_default()
-                .contains("hello from background")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_persists_failure_artifacts() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestFailingBackgroundTool)
-            .build();
-
-        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
-            .with_tool_registry(Arc::new(tool_registry))
-            .with_session_task_registry(task_registry.clone());
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background_fail",
-                    "args": {}
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("spawn_background should succeed");
-        };
-        let run_id = value["run_id"].as_str().unwrap().to_string();
-        let task_id = value["task_id"].as_str().unwrap().to_string();
-
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            loop {
-                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
-                    && task.state == everruns_core::session_task::SessionTaskState::Failed
-                {
-                    break task;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .expect("background run should fail");
-        let _ = run_id;
-
-        let log_file = file_store
-            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
-            .await
-            .unwrap()
-            .expect("log file");
-        assert!(
-            log_file
-                .content
-                .as_deref()
-                .unwrap_or_default()
-                .contains("background failed")
-        );
-
-        let result_file = file_store
-            .read_file(session_id, &format!("/.background/{run_id}/result.json"))
-            .await
-            .unwrap()
-            .expect("result file");
-        let result_json: Value =
-            serde_json::from_str(result_file.content.as_deref().unwrap_or_default())
-                .expect("valid json");
-        assert_eq!(result_json["status"], "failed");
-        assert_eq!(result_json["error"], "boom");
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_rejects_when_session_active_run_limit_reached() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let release = StdArc::new(AtomicBool::new(false));
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(BlockingBackgroundTool {
-                release: release.clone(),
-            })
-            .build();
-
-        let context = ToolContext::with_stores(session_id, file_store, storage_store)
-            .with_tool_registry(Arc::new(tool_registry))
-            .with_session_task_registry(task_registry.clone());
-
-        let mut task_ids = Vec::new();
-        for _ in 0..MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
-            let result = SpawnBackgroundTool
-                .execute_with_context(
-                    json!({
-                        "tool": "test_background_blocking",
-                        "args": {}
-                    }),
-                    &context,
-                )
-                .await;
-
-            let ToolExecutionResult::Success(value) = result else {
-                panic!("background run below the session limit should start");
-            };
-            task_ids.push(value["task_id"].as_str().unwrap().to_string());
-        }
-
-        // Wait for all tasks to be running (semaphore acquired).
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            loop {
-                let running = task_registry
-                    .list(
-                        session_id,
-                        Some(&everruns_core::session_task::SessionTaskFilter {
-                            kind: Some(
-                                everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
-                            ),
-                            state: Some(everruns_core::session_task::SessionTaskState::Running),
-                        }),
-                    )
-                    .await
-                    .unwrap();
-                if running.len() == MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .expect("background runs should become running");
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background_blocking",
-                    "args": {}
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::ToolError(message) = result else {
-            release.store(true, Ordering::SeqCst);
-            panic!("spawn_background should reject once the session limit is reached");
-        };
-        assert!(message.contains("active background runs per session"));
-
-        release.store(true, Ordering::SeqCst);
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            for task_id in task_ids {
-                loop {
-                    if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
-                        && task.state == everruns_core::session_task::SessionTaskState::Succeeded
-                    {
-                        break;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-                }
-            }
-        })
-        .await
-        .expect("blocking background runs should complete after release");
-
-        // The permit drop is enqueued in the spawned task after it marks the
-        // resource Completed, so the cache entry may still exist briefly once
-        // we observe Completed status.  Poll until pruned rather than asserting
-        // immediately to avoid a race.
-        tokio::time::timeout(std::time::Duration::from_secs(1), async {
-            loop {
-                if !has_session_background_permits(session_id) {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-            }
-        })
-        .await
-        .expect("completed background runs should prune their per-session permit cache entry");
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_requires_task_registry() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestBackgroundTool)
-            .build();
-
-        // No task_registry wired — should fail.
-        let context = ToolContext::with_stores(session_id, file_store, storage_store)
-            .with_tool_registry(Arc::new(tool_registry));
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background",
-                    "args": {}
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::ToolError(message) = result else {
-            panic!("spawn_background should reject missing task registry");
-        };
-        assert!(message.contains("Session task registry not available"));
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_requires_file_store() {
-        let session_id = SessionId::new();
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestBackgroundTool)
-            .build();
-
-        // No file_store wired — should fail.
-        let context = ToolContext::with_storage_store(session_id, storage_store)
-            .with_tool_registry(Arc::new(tool_registry))
-            .with_session_task_registry(task_registry);
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background",
-                    "args": {}
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::ToolError(message) = result else {
-            panic!("spawn_background should reject missing file store");
-        };
-        assert!(message.contains("Session file store not available"));
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_caps_output_log_size() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestLargeOutputBackgroundTool)
-            .build();
-
-        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
-            .with_tool_registry(Arc::new(tool_registry))
-            .with_session_task_registry(task_registry.clone());
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background_large_output",
-                    "args": {}
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("spawn_background should succeed");
-        };
-        let run_id = value["run_id"].as_str().unwrap().to_string();
-        let task_id = value["task_id"].as_str().unwrap().to_string();
-
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            loop {
-                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
-                    && task.state == everruns_core::session_task::SessionTaskState::Succeeded
-                {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            }
-        })
-        .await
-        .expect("background run should complete");
-        let _ = run_id;
-
-        let log_content = file_store
-            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
-            .await
-            .unwrap()
-            .expect("log file")
-            .content
-            .unwrap_or_default();
-
-        assert!(log_content.contains("[system] background output truncated"));
-        assert!(log_content.chars().count() <= MAX_BACKGROUND_OUTPUT_LOG_CHARS + 128);
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_can_create_scheduled_monitor() {
-        let session_id = SessionId::new();
-        let schedule_store = Arc::new(TestScheduleStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestBackgroundTool)
-            .build();
-
-        let context = ToolContext::with_storage_store(session_id, storage_store)
-            .with_tool_registry(Arc::new(tool_registry))
-            .with_schedule_store(schedule_store.clone());
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background",
-                    "title": "Watch PR 1319",
-                    "args": { "summary": "Background complete" },
-                    "schedule": {
-                        "cron_expression": "*/10 * * * *",
-                        "timezone": "America/Chicago"
-                    }
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("spawn_background should create a schedule: {result:?}");
-        };
-
-        assert_eq!(value["status"], "scheduled");
-        assert_eq!(value["title"], "Watch PR 1319");
-        assert_eq!(value["cron_expression"], "*/10 * * * *");
-        assert_eq!(value["timezone"], "America/Chicago");
-
-        let schedules = schedule_store.list_schedules(session_id).await.unwrap();
-        assert_eq!(schedules.len(), 1);
-        assert_eq!(
-            schedules[0].cron_expression.as_deref(),
-            Some("*/10 * * * *")
-        );
-        assert!(schedules[0].description.contains("Monitor: Watch PR 1319"));
-        assert!(
-            schedules[0]
-                .description
-                .contains("\"summary\": \"Background complete\"")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_rejects_invalid_scheduled_at() {
-        let session_id = SessionId::new();
-        let storage_store = Arc::new(NoopStorageStore);
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestBackgroundTool)
-            .build();
-        let context = ToolContext::with_storage_store(session_id, storage_store)
-            .with_tool_registry(Arc::new(tool_registry));
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background",
-                    "args": {},
-                    "schedule": {
-                        "scheduled_at": "tomorrow at noon"
-                    }
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::ToolError(message) = result else {
-            panic!("spawn_background should reject invalid scheduled_at");
-        };
-        assert!(message.contains("scheduled_at must be RFC3339"));
-    }
-
-    #[tokio::test]
-    async fn test_spawn_background_rejects_ambiguous_schedule_shape() {
-        let session_id = SessionId::new();
-        let storage_store = Arc::new(NoopStorageStore);
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(TestBackgroundTool)
-            .build();
-        let context = ToolContext::with_storage_store(session_id, storage_store)
-            .with_tool_registry(Arc::new(tool_registry));
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background",
-                    "args": {},
-                    "schedule": {
-                        "cron_expression": "*/10 * * * *",
-                        "scheduled_at": "2026-04-16T15:30:00Z"
-                    }
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::ToolError(message) = result else {
-            panic!("spawn_background should reject ambiguous schedule shape");
-        };
-        assert!(message.contains("must not include both cron_expression and scheduled_at"));
-    }
-
-    /// End-to-end cancel test: spawn a long-sleeping background tool, then call
-    /// `request_cancel` on the task registry, and assert the task ends Canceled.
-    #[tokio::test]
-    async fn test_cancel_background_run_via_task_registry() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-
-        let tool_registry = ToolRegistry::builder()
-            .tool(SpawnBackgroundTool)
-            .tool(SleepingBackgroundTool)
-            .build();
-
-        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
-            .with_tool_registry(Arc::new(tool_registry))
-            .with_session_task_registry(task_registry.clone());
-
-        let result = SpawnBackgroundTool
-            .execute_with_context(
-                json!({
-                    "tool": "test_background_sleeping",
-                    "args": {},
-                    "signal_on_completion": false
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("spawn_background should succeed");
-        };
-        let run_id = value["run_id"].as_str().unwrap().to_string();
-        let task_id = value["task_id"].as_str().unwrap().to_string();
-
-        // Wait until the background task is Running (heartbeat loop started).
-        tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            loop {
-                // Wait for a heartbeat to confirm the watcher is live.
-                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
-                    && task.heartbeat_at.is_some()
-                {
-                    break;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-        })
-        .await
-        .expect("background run should start and send at least one heartbeat");
-
-        // Request cancel.
-        task_registry
-            .request_cancel(session_id, &task_id)
-            .await
-            .expect("request_cancel should succeed");
-
-        // Wait for the task to reach Canceled state.
-        tokio::time::timeout(std::time::Duration::from_secs(10), async {
-            loop {
-                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
-                    && task.state == everruns_core::session_task::SessionTaskState::Canceled
-                {
-                    break task;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-        })
-        .await
-        .expect("background task should reach Canceled state");
-
-        // Verify result.json and output.log were written.
-        let result_file = file_store
-            .read_file(session_id, &format!("/.background/{run_id}/result.json"))
-            .await
-            .unwrap()
-            .expect("result.json should exist");
-        let result_json: Value =
-            serde_json::from_str(result_file.content.as_deref().unwrap_or_default())
-                .expect("valid json");
-        assert_eq!(result_json["status"], "canceled");
-
-        let log_file = file_store
-            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
-            .await
-            .unwrap()
-            .expect("output.log should exist");
-        assert!(
-            log_file
-                .content
-                .as_deref()
-                .unwrap_or_default()
-                .contains("Canceled by request.")
-        );
-    }
-
-    #[tokio::test]
-    async fn reattach_fails_with_missing_file_store() {
-        let session_id = SessionId::new();
-        // Context with no file_store — only session_task_registry is wired.
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let context = everruns_core::tool_context::ToolContext::new(session_id)
-            .with_session_task_registry(task_registry);
-        let task = make_reattach_task(serde_json::json!({
-            "tool": "get_current_time",
-            "arguments": {},
-            "reattachable": true,
-            "signal_on_completion": true,
-        }));
-        let err = reattach_background_run(&task, &context)
-            .await
-            .expect_err("should fail without file store");
-        assert!(
-            err.to_string().contains("file store"),
-            "error should mention file store, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn reattach_fails_with_missing_task_registry() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        // Context has a file_store but no session_task_registry.
-        let context = everruns_core::tool_context::ToolContext::with_stores(
-            session_id,
-            file_store,
-            storage_store,
-        );
-        let task = make_reattach_task(serde_json::json!({
-            "tool": "get_current_time",
-            "arguments": {},
-            "reattachable": true,
-            "signal_on_completion": true,
-        }));
-        let err = reattach_background_run(&task, &context)
-            .await
-            .expect_err("should fail without task registry");
-        assert!(
-            err.to_string().contains("task registry"),
-            "error should mention task registry, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn reattach_fails_with_unknown_tool_name() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let context = everruns_core::tool_context::ToolContext::with_stores(
-            session_id,
-            file_store,
-            storage_store,
-        )
-        .with_session_task_registry(task_registry);
-        // "test_background" is not in ToolRegistry::with_defaults().
-        let task = make_reattach_task(serde_json::json!({
-            "tool": "test_background",
-            "arguments": {},
-            "reattachable": true,
-            "signal_on_completion": true,
-        }));
-        let err = reattach_background_run(&task, &context)
-            .await
-            .expect_err("should fail for unknown tool");
-        assert!(
-            err.to_string().contains("not found in built-in registry"),
-            "error should mention built-in registry, got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn reattach_fails_with_missing_tool_spec_field() {
-        let session_id = SessionId::new();
-        let file_store = Arc::new(TestFileStore::default());
-        let storage_store = Arc::new(NoopStorageStore);
-        let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let context = everruns_core::tool_context::ToolContext::with_stores(
-            session_id,
-            file_store,
-            storage_store,
-        )
-        .with_session_task_registry(task_registry);
-        // Spec has no "tool" field.
-        let task = make_reattach_task(serde_json::json!({ "reattachable": true }));
-        let err = reattach_background_run(&task, &context)
-            .await
-            .expect_err("should fail with missing tool field");
-        assert!(
-            err.to_string().contains("missing 'tool' field"),
-            "error should mention missing tool field, got: {err}"
-        );
-    }
-
-    #[test]
-    fn test_is_canceled_outcome_detects_sentinel() {
-        // The sentinel produced by the cancel-watcher branch.
-        let sentinel: std::result::Result<BackgroundOutcome, ToolExecutionResult> = Err(
-            ToolExecutionResult::ToolError(BACKGROUND_CANCEL_SENTINEL.to_string()),
-        );
-        assert!(is_canceled_outcome(&sentinel));
-    }
-
-    #[test]
-    fn test_is_canceled_outcome_does_not_match_other_errors() {
-        let other_err: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
-            Err(ToolExecutionResult::ToolError("boom".to_string()));
-        assert!(!is_canceled_outcome(&other_err));
-
-        let success: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
-            Ok(BackgroundOutcome {
-                summary: "ok".to_string(),
-                result: json!({"ok": true}),
-                raw_output: None,
-            });
-        assert!(!is_canceled_outcome(&success));
-    }
-
-    #[derive(Default)]
-    struct TestBackgroundTool;
-
-    #[async_trait]
-    impl BackgroundExecutableTool for TestBackgroundTool {
-        async fn execute_background(
-            &self,
-            arguments: Value,
-            _context: ToolContext,
-            sink: Arc<dyn BackgroundEventSink>,
-        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
-            sink.status("Waiting for test result")
-                .await
-                .map_err(ToolExecutionResult::internal_error)?;
-            sink.output("stdout", "hello from background")
-                .await
-                .map_err(ToolExecutionResult::internal_error)?;
-            sink.progress(BackgroundProgress {
-                current: Some(1),
-                total: Some(1),
-                unit: Some("step".to_string()),
-                label: Some("done".to_string()),
-            })
-            .await
-            .map_err(ToolExecutionResult::internal_error)?;
-
-            Ok(BackgroundOutcome {
-                summary: arguments["summary"].as_str().unwrap_or("done").to_string(),
-                result: json!({"ok": true}),
-                raw_output: None,
-            })
-        }
-    }
-
-    #[async_trait]
-    impl Tool for TestBackgroundTool {
-        fn name(&self) -> &str {
-            "test_background"
-        }
-
-        fn display_name(&self) -> Option<&str> {
-            Some("Test Background")
-        }
-
-        fn description(&self) -> &str {
-            "test tool"
-        }
-
-        fn parameters_schema(&self) -> Value {
-            json!({
-                "type": "object",
-                "properties": {
-                    "summary": { "type": "string" }
-                }
-            })
-        }
-
-        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-            ToolExecutionResult::tool_error("foreground unsupported")
-        }
-
-        fn hints(&self) -> ToolHints {
-            ToolHints::default().with_supports_background(true)
-        }
-
-        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
-            Some(self)
-        }
-    }
-
-    #[derive(Default)]
-    struct NoopStorageStore;
-
-    #[async_trait]
-    impl everruns_core::session_services::SessionStorageStore for NoopStorageStore {
-        async fn set_value(
-            &self,
-            _session_id: SessionId,
-            _key: &str,
-            _value: &str,
-        ) -> everruns_contracts::error::Result<()> {
-            Ok(())
-        }
-        async fn get_value(
-            &self,
-            _session_id: SessionId,
-            _key: &str,
-        ) -> everruns_contracts::error::Result<Option<String>> {
-            Ok(None)
-        }
-        async fn delete_value(
-            &self,
-            _session_id: SessionId,
-            _key: &str,
-        ) -> everruns_contracts::error::Result<bool> {
-            Ok(false)
-        }
-        async fn list_keys(
-            &self,
-            _session_id: SessionId,
-        ) -> everruns_contracts::error::Result<Vec<KeyInfo>> {
-            Ok(Vec::new())
-        }
-        async fn set_secret(
-            &self,
-            _session_id: SessionId,
-            _name: &str,
-            _value: &str,
-        ) -> everruns_contracts::error::Result<()> {
-            Ok(())
-        }
-        async fn get_secret(
-            &self,
-            _session_id: SessionId,
-            _name: &str,
-        ) -> everruns_contracts::error::Result<Option<String>> {
-            Ok(None)
-        }
-        async fn delete_secret(
-            &self,
-            _session_id: SessionId,
-            _name: &str,
-        ) -> everruns_contracts::error::Result<bool> {
-            Ok(false)
-        }
-        async fn list_secrets(
-            &self,
-            _session_id: SessionId,
-        ) -> everruns_contracts::error::Result<Vec<SecretInfo>> {
-            Ok(Vec::new())
-        }
-    }
-
-    #[derive(Default)]
-    struct TestFileStore {
-        files: Mutex<HashMap<String, SessionFile>>,
-    }
-
-    #[async_trait]
-    impl everruns_core::session_files::SessionFileSystem for TestFileStore {
-        fn is_mount_resolver(&self) -> bool {
-            false
-        }
-
-        async fn read_file(
-            &self,
-            _session_id: SessionId,
-            path: &str,
-        ) -> everruns_contracts::error::Result<Option<SessionFile>> {
-            Ok(self.files.lock().unwrap().get(path).cloned())
-        }
-
-        async fn write_file(
-            &self,
-            session_id: SessionId,
-            path: &str,
-            content: &str,
-            encoding: &str,
-        ) -> everruns_contracts::error::Result<SessionFile> {
-            let now = chrono::Utc::now();
-            let file = SessionFile {
-                id: uuid::Uuid::now_v7(),
-                session_id: session_id.uuid(),
-                path: path.to_string(),
-                name: FileInfo::name_from_path(path),
-                content: Some(content.to_string()),
-                encoding: encoding.to_string(),
-                is_directory: false,
-                is_readonly: false,
-                size_bytes: content.len() as i64,
-                created_at: now,
-                updated_at: now,
-            };
-            self.files
-                .lock()
-                .unwrap()
-                .insert(path.to_string(), file.clone());
-            Ok(file)
-        }
-
-        async fn delete_file(
-            &self,
-            _session_id: SessionId,
-            _path: &str,
-            _recursive: bool,
-        ) -> everruns_contracts::error::Result<bool> {
-            Ok(false)
-        }
-
-        async fn list_directory(
-            &self,
-            _session_id: SessionId,
-            _path: &str,
-        ) -> everruns_contracts::error::Result<Vec<FileInfo>> {
-            Ok(Vec::new())
-        }
-
-        async fn stat_file(
-            &self,
-            _session_id: SessionId,
-            path: &str,
-        ) -> everruns_contracts::error::Result<Option<FileStat>> {
-            let file = self.files.lock().unwrap().get(path).cloned();
-            Ok(file.map(|entry| FileStat {
-                path: entry.path,
-                name: entry.name,
-                is_directory: entry.is_directory,
-                is_readonly: entry.is_readonly,
-                size_bytes: entry.size_bytes,
-                created_at: entry.created_at,
-                updated_at: entry.updated_at,
-            }))
-        }
-
-        async fn grep_files(
-            &self,
-            _session_id: SessionId,
-            _pattern: &str,
-            _path_pattern: Option<&str>,
-        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_file::GrepMatch>>
-        {
-            Ok(Vec::new())
-        }
-
-        async fn create_directory(
-            &self,
-            session_id: SessionId,
-            path: &str,
-        ) -> everruns_contracts::error::Result<FileInfo> {
-            let now = chrono::Utc::now();
-            let id = uuid::Uuid::now_v7();
-            let dir = SessionFile {
-                id,
-                session_id: session_id.uuid(),
-                path: path.to_string(),
-                name: FileInfo::name_from_path(path),
-                content: None,
-                encoding: "text".to_string(),
-                is_directory: true,
-                is_readonly: false,
-                size_bytes: 0,
-                created_at: now,
-                updated_at: now,
-            };
-            self.files.lock().unwrap().insert(path.to_string(), dir);
-            Ok(FileInfo {
-                id,
-                session_id: session_id.uuid(),
-                path: path.to_string(),
-                name: FileInfo::name_from_path(path),
-                is_directory: true,
-                is_readonly: false,
-                size_bytes: 0,
-                created_at: now,
-                updated_at: now,
-            })
-        }
-    }
-
-    #[derive(Default)]
-    struct TestSubagentDelegate {
-        sent_messages: Mutex<Vec<String>>,
-    }
-
-    #[async_trait]
-    #[async_trait]
-    impl SubagentSessionDelegate for TestSubagentDelegate {
-        async fn get_agent_by_id(
-            &self,
-            _id: everruns_contracts::typed_id::AgentId,
-        ) -> everruns_contracts::error::Result<Option<everruns_core::AgentDefinition>> {
-            Ok(None)
-        }
-        async fn add_agent_session_participant(
-            &self,
-            _session_id: SessionId,
-            _agent_id: everruns_contracts::typed_id::AgentId,
-        ) -> everruns_contracts::error::Result<everruns_contracts::typed_id::SessionParticipantId>
-        {
-            Err(AgentLoopError::tool("test store does not add participants"))
-        }
-        async fn get_harness(
-            &self,
-            _id: HarnessId,
-        ) -> everruns_contracts::error::Result<Option<everruns_core::HarnessDefinition>> {
-            Ok(None)
-        }
-        async fn create_session_with_options(
-            &self,
-            _request: everruns_core::subagent_delegation::PlatformCreateSessionRequest,
-        ) -> everruns_contracts::error::Result<everruns_core::ExecutionSession> {
-            Err(AgentLoopError::tool("test store does not create sessions"))
-        }
-        async fn get_session_by_id(
-            &self,
-            _id: SessionId,
-        ) -> everruns_contracts::error::Result<Option<everruns_core::ExecutionSession>> {
-            Ok(None)
-        }
-        async fn send_message(
-            &self,
-            _session_id: SessionId,
-            content: &str,
-        ) -> everruns_contracts::error::Result<()> {
-            self.sent_messages.lock().unwrap().push(content.to_string());
-            Ok(())
-        }
-        async fn get_messages(
-            &self,
-            _session_id: SessionId,
-            _limit: Option<usize>,
-        ) -> everruns_contracts::error::Result<
-            Vec<everruns_core::subagent_delegation::PlatformMessage>,
-        > {
-            Ok(Vec::new())
-        }
-        async fn wait_for_idle(
-            &self,
-            _session_id: SessionId,
-            _timeout_secs: Option<u64>,
-        ) -> everruns_contracts::error::Result<String> {
-            Ok("idle".to_string())
-        }
-    }
-
-    #[derive(Default)]
-    struct InMemoryTaskRegistry {
-        tasks: Mutex<HashMap<String, everruns_core::session_task::SessionTask>>,
-    }
-
-    #[async_trait]
-    impl everruns_core::session_task::SessionTaskRegistry for InMemoryTaskRegistry {
-        async fn create(
-            &self,
-            input: everruns_core::session_task::CreateSessionTask,
-        ) -> everruns_contracts::error::Result<everruns_core::session_task::SessionTask> {
-            let mut tasks = self.tasks.lock().unwrap();
-            if let Some(id) = &input.id
-                && let Some(existing) = tasks.get(id)
-            {
-                return Ok(existing.clone());
-            }
-            let task = everruns_core::session_task::new_session_task(input, chrono::Utc::now());
-            tasks.insert(task.id.clone(), task.clone());
-            Ok(task)
-        }
-
-        async fn update(
-            &self,
-            _session_id: SessionId,
-            task_id: &str,
-            update: everruns_core::session_task::SessionTaskUpdate,
-        ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>>
-        {
-            let mut tasks = self.tasks.lock().unwrap();
-            let Some(task) = tasks.get_mut(task_id) else {
-                return Ok(None);
-            };
-            everruns_core::session_task::apply_task_update(task, update, chrono::Utc::now());
-            Ok(Some(task.clone()))
-        }
-
-        async fn get(
-            &self,
-            _session_id: SessionId,
-            task_id: &str,
-        ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>>
-        {
-            Ok(self.tasks.lock().unwrap().get(task_id).cloned())
-        }
-
-        async fn list(
-            &self,
-            _session_id: SessionId,
-            filter: Option<&everruns_core::session_task::SessionTaskFilter>,
-        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_task::SessionTask>>
-        {
-            let tasks = self.tasks.lock().unwrap();
-            Ok(tasks
-                .values()
-                .filter(|task| {
-                    filter.is_none_or(|f| {
-                        f.kind.as_deref().is_none_or(|kind| task.kind == kind)
-                            && f.state.is_none_or(|state| task.state == state)
-                    })
-                })
-                .cloned()
-                .collect())
-        }
-
-        async fn request_cancel(
-            &self,
-            _session_id: SessionId,
-            task_id: &str,
-        ) -> everruns_contracts::error::Result<Option<everruns_core::session_task::SessionTask>>
-        {
-            let mut tasks = self.tasks.lock().unwrap();
-            let Some(task) = tasks.get_mut(task_id) else {
-                return Ok(None);
-            };
-            task.cancel_requested_at
-                .get_or_insert_with(chrono::Utc::now);
-            task.updated_at = chrono::Utc::now();
-            Ok(Some(task.clone()))
-        }
-
-        async fn record_message(
-            &self,
-            _session_id: SessionId,
-            task_id: &str,
-            message: everruns_core::session_task::NewTaskMessage,
-        ) -> everruns_contracts::error::Result<everruns_core::session_task::TaskMessage> {
-            let tasks = self.tasks.lock().unwrap();
-            let _task = tasks
-                .get(task_id)
-                .ok_or_else(|| AgentLoopError::tool(format!("no task {task_id}")))?;
-            Ok(everruns_core::session_task::TaskMessage {
-                id: everruns_core::session_task::generate_task_message_id(),
-                task_id: task_id.to_string(),
-                direction: message.direction,
-                content: message.content,
-                in_reply_to: message.in_reply_to,
-                created_at: chrono::Utc::now(),
-            })
-        }
-
-        async fn list_messages(
-            &self,
-            _session_id: SessionId,
-            _task_id: &str,
-            _limit: Option<u32>,
-            _after_id: Option<&str>,
-        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_task::TaskMessage>>
-        {
-            Ok(Vec::new())
-        }
-    }
-
-    #[derive(Default)]
-    struct TestScheduleStore {
-        schedules: Mutex<Vec<everruns_core::session_schedule::SessionSchedule>>,
-    }
-
-    #[async_trait]
-    impl everruns_core::session_services::SessionScheduleStore for TestScheduleStore {
-        async fn create_schedule(
-            &self,
-            session_id: SessionId,
-            description: String,
-            cron_expression: Option<String>,
-            scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
-            timezone: String,
-        ) -> everruns_contracts::error::Result<everruns_core::session_schedule::SessionSchedule>
-        {
-            let schedule = everruns_core::session_schedule::SessionSchedule {
-                id: everruns_contracts::typed_id::ScheduleId::new(),
-                session_id,
-                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                owner: None,
-                effective_owner: None,
-                description,
-                cron_expression: cron_expression.clone(),
-                scheduled_at,
-                timezone,
-                enabled: true,
-                schedule_type: everruns_core::session_schedule::SessionSchedule::derive_type(
-                    &cron_expression,
-                ),
-                next_trigger_at: Some(chrono::Utc::now() + chrono::Duration::minutes(10)),
-                last_triggered_at: None,
-                trigger_count: 0,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            };
-            self.schedules.lock().unwrap().push(schedule.clone());
-            Ok(schedule)
-        }
-
-        async fn cancel_schedule(
-            &self,
-            _session_id: SessionId,
-            schedule_id: everruns_contracts::typed_id::ScheduleId,
-        ) -> everruns_contracts::error::Result<everruns_core::session_schedule::SessionSchedule>
-        {
-            let mut schedules = self.schedules.lock().unwrap();
-            let schedule = schedules
-                .iter_mut()
-                .find(|schedule| schedule.id == schedule_id)
-                .ok_or_else(|| AgentLoopError::tool("Schedule not found".to_string()))?;
-            schedule.enabled = false;
-            Ok(schedule.clone())
-        }
-
-        async fn list_schedules(
-            &self,
-            session_id: SessionId,
-        ) -> everruns_contracts::error::Result<Vec<everruns_core::session_schedule::SessionSchedule>>
-        {
-            Ok(self
-                .schedules
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|schedule| schedule.session_id == session_id)
-                .cloned()
-                .collect())
-        }
-
-        async fn count_active_schedules(
-            &self,
-            session_id: SessionId,
-        ) -> everruns_contracts::error::Result<u32> {
-            Ok(self
-                .schedules
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|schedule| schedule.session_id == session_id && schedule.enabled)
-                .count() as u32)
-        }
-
-        async fn count_active_org_schedules(&self) -> everruns_contracts::error::Result<u32> {
-            // Test store is single-org; count all enabled schedules.
-            Ok(self
-                .schedules
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|schedule| schedule.enabled)
-                .count() as u32)
-        }
-    }
-
-    fn make_reattach_task(spec: serde_json::Value) -> everruns_core::session_task::SessionTask {
-        use everruns_core::session_task::{SessionTaskState, TaskLinks, TaskWakePolicy};
-        everruns_core::session_task::SessionTask {
-            id: "t-reattach".to_string(),
-            session_id: SessionId::new(),
-            root_session_id: None,
-            kind: everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
-            display_name: "Reattach test".to_string(),
-            spec,
-            state: SessionTaskState::Running,
-            state_detail: None,
-            progress: None,
-            input_request: None,
-            cancel_requested_at: None,
-            summary: None,
-            result_path: None,
-            artifacts: vec![],
-            error: None,
-            attempt: 2,
-            worker_id: None,
-            heartbeat_at: None,
-            links: TaskLinks::default(),
-            wake_policy: TaskWakePolicy::Silent,
-            created_at: chrono::Utc::now(),
-            started_at: None,
-            finished_at: None,
-            updated_at: chrono::Utc::now(),
-        }
-    }
-}
+#[path = "background_run_policy_tests.rs"]
+mod policy_tests;
+
+#[cfg(test)]
+#[path = "background_run_test_support.rs"]
+mod test_support;
+
+#[cfg(test)]
+#[path = "background_run_tests.rs"]
+mod tests;
