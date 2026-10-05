@@ -78,6 +78,12 @@ and evaluates the 7-field form (`sec min hour day month weekday year`), so
 5-field input is normalized by prefixing seconds (`0`) and suffixing year (`*`).
 Examples: `0 * * * * * *` (every minute), `0 */30 * * * * *` (every 30 minutes).
 
+A schedule can instead carry a fixed period, `@every <secs>s` (`Cadence::Every`).
+Each trigger is one period after the previous trigger was handled, so a period
+that cron cannot express (90 s, 7 h) keeps its exact length. The scheduler
+evaluates both forms; the platform API still accepts only cron, so periods are
+for schedules the server declares itself.
+
 ## Timezone Semantics
 
 - `schedule.timezone` is authoritative for cron interpretation.
@@ -118,6 +124,16 @@ For the complete request/response schemas (`CreateScheduleRequest`, `ScheduleTar
 The `DurableScheduler` component polls for due schedules on a configurable interval. For each due schedule it: checks `max_concurrent`, creates an execution record, triggers the target (workflow or activity), and updates the execution status. See `crates/durable/src/scheduler/mod.rs` for implementation.
 
 App-owned schedule bindings still execute through the same scheduler machinery, but the app-specific activity contract is specified in [app-invocation-channels.md](../integrations/app-invocation-channels.md).
+
+### System Schedules
+
+Server-owned jobs are declared, not hand-bootstrapped: each is a `ScheduleSpec`
+that `everruns_durable::ensure_schedule` makes true on every start (create when
+missing, reset when drifted, leave alone when matching so `next_trigger_at`
+survives restarts; a replica that loses the unique-name race reports
+`AlreadyExists`). `disable_schedule` turns one off when configuration disables
+its job. The worker-run specs (leased-resource cleanup, session-task reaper)
+live in `crates/server/src/system_schedules.rs`.
 
 ### Multi-Instance Safety
 

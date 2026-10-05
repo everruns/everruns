@@ -537,7 +537,8 @@ impl Schedules for PostgresWorkflowEventStore {
                 COUNT(*) FILTER (WHERE status = 'completed') as successful,
                 COUNT(*) FILTER (WHERE status = 'failed') as failed,
                 COUNT(*) FILTER (WHERE status = 'skipped') as skipped,
-                AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL) as avg_duration
+                -- AVG over an integer column is NUMERIC; cast so it decodes as f64.
+                (AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL))::FLOAT8 as avg_duration
             FROM durable_schedule_executions
             WHERE schedule_id = $1
             "#,

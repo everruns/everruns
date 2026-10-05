@@ -66,6 +66,7 @@ struct ReadmeDoctests;
 pub mod activity;
 #[cfg(feature = "workflows")]
 pub mod engine;
+pub mod maintenance;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
@@ -126,6 +127,9 @@ pub use activity::{Activity, ActivityContext};
 pub use engine::{
     ExecutorConfig, ExecutorError, SYSTEM_ACTIVITY_TYPES, WorkflowExecutor, WorkflowRegistry,
 };
+pub use maintenance::{
+    NoopReapHandler, ReapHandler, ReaperConfig, StaleTaskReaper, reap_stale_tasks,
+};
 pub use persistence::{
     CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
     DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HeartbeatResponse,
@@ -140,7 +144,10 @@ pub use persistence::{
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
 };
-pub use scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
+pub use scheduler::{
+    Cadence, DurableScheduler, EnsureOutcome, ScheduleSpec, SchedulerConfig, SchedulerError,
+    disable_schedule, ensure_schedule, find_schedule,
+};
 pub use update_field::UpdateField;
 #[cfg(feature = "workflows")]
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};

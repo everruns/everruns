@@ -31,10 +31,8 @@ use anyhow::{Context, Result};
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::host::observability::{BraintrustListener, OtelEventListener};
-use everruns_core::{
-    ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, SharedErrorReporter,
-};
-use everruns_durable::{EventLog, PostgresWorkflowEventStore, TaskQueue, WorkflowEventStore};
+use everruns_core::{ErrorReporter, EventListener, NoopErrorReporter, SharedErrorReporter};
+use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_worker::{AgentRunner, TaskWorker, TaskWorkerConfig};
 use serde::Serialize;
 use sqlx::PgPool;
@@ -1901,170 +1899,17 @@ impl ServerAppBuilder {
                 },
             );
 
-            // -- Stale task reclamation --
-            {
-                use std::time::Duration;
-
-                if let Some(pool) = db.pool() {
-                    let pool = pool.clone();
-                    let stale_threshold = Duration::from_secs(30);
-                    let reclaim_interval = Duration::from_secs(10);
-                    let reclaim_error_reporter = error_reporter.clone();
-                    let reclaim_event_service = event_service.clone();
-                    let reclaim_session_service = reclaim_session_service.clone();
-
-                    supervisor.spawn(
-                        "stale_task_reclaim",
-                        RestartPolicy::always_after(Duration::from_secs(5)),
-                        move || {
-                            let pool = pool.clone();
-                            let reclaim_error_reporter = reclaim_error_reporter.clone();
-                            let reclaim_event_service = reclaim_event_service.clone();
-                            let reclaim_session_service = reclaim_session_service.clone();
-
-                            async move {
-                                let store = PostgresWorkflowEventStore::new(pool);
-                                let mut interval = tokio::time::interval(reclaim_interval);
-
-                                tracing::info!(
-                                    stale_threshold_secs = stale_threshold.as_secs(),
-                                    reclaim_interval_secs = reclaim_interval.as_secs(),
-                                    "Started stale task reclamation background task"
-                                );
-
-                                loop {
-                                    interval.tick().await;
-                                    match store.reclaim_stale_tasks(stale_threshold).await {
-                                Ok(result) => {
-                                    if !result.reclaimed_ids.is_empty() {
-                                        tracing::info!(
-                                            count = result.reclaimed_ids.len(),
-                                            task_ids = ?result.reclaimed_ids,
-                                            "Reclaimed stale tasks"
-                                        );
-                                    }
-
-                                    // Notify workflows about dead tasks so they can
-                                    // transition to failed instead of staying stuck.
-                                    for dead in &result.dead_tasks {
-                                        let error_msg = dead.last_error.clone().unwrap_or_else(|| {
-                                            "Worker became unresponsive after exhausting all retry attempts".to_string()
-                                        });
-                                        tracing::info!(
-                                            task_id = %dead.task_id,
-                                            workflow_id = ?dead.workflow_id,
-                                            activity_id = %dead.activity_id,
-                                            "Notifying workflow of dead task"
-                                        );
-                                        everruns_durable::record_activity_failed(
-                                            &store,
-                                            dead.workflow_id,
-                                            dead.activity_id.clone(),
-                                            error_msg.clone(),
-                                            false,
-                                        )
-                                        .await;
-
-                                        if let Some(workflow_id) = dead.workflow_id {
-                                            match store
-                                                .try_fail_workflow(
-                                                    workflow_id,
-                                                    everruns_durable::WorkflowError::new(
-                                                        error_msg.clone(),
-                                                    ),
-                                                )
-                                                .await
-                                            {
-                                                Ok(true) => {
-                                                    everruns_durable::record_workflow_failed(
-                                                        &store,
-                                                        workflow_id,
-                                                        error_msg.clone(),
-                                                    )
-                                                    .await;
-                                                    crate::durable_failure::handle_failed_task(
-                                                        &reclaim_event_service,
-                                                        &reclaim_session_service,
-                                                        dead,
-                                                        &error_msg,
-                                                    )
-                                                    .await;
-                                                }
-                                                Ok(false) => {}
-                                                Err(error) => {
-                                                    tracing::error!(
-                                                        %workflow_id,
-                                                        %error,
-                                                        "Failed to terminalize exhausted workflow"
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Sealed turns (forward-progress guard, EVE-534): the task
-                                    // was marked dead -> DLQ because the turn made no progress
-                                    // across N recoveries. Mark the workflow terminal so no
-                                    // further atoms are scheduled, then surface the seal to the
-                                    // session as a distinct `turn.sealed` event + idle.
-                                    for sealed in &result.sealed_tasks {
-                                        tracing::warn!(
-                                            task_id = %sealed.task_id,
-                                            workflow_id = ?sealed.workflow_id,
-                                            reason = %sealed.reason,
-                                            no_progress_count = sealed.no_progress_count,
-                                            "Sealing non-progressing turn"
-                                        );
-                                        if let Some(wf_id) = sealed.workflow_id {
-                                            let _ = store
-                                                .update_workflow_status(
-                                                    wf_id,
-                                                    everruns_durable::WorkflowStatus::Failed,
-                                                    None,
-                                                    Some(everruns_durable::WorkflowError::new(
-                                                        format!(
-                                                            "turn sealed: no_progress ({} recoveries)",
-                                                            sealed.no_progress_count
-                                                        ),
-                                                    )),
-                                                )
-                                                .await;
-                                        }
-                                        crate::durable_seal::handle_sealed_task(
-                                            &reclaim_event_service,
-                                            &reclaim_session_service,
-                                            sealed,
-                                        )
-                                        .await;
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!("Failed to reclaim stale tasks: {}", e);
-                                    // Detach reporter call so a slow vendor reporter cannot stall
-                                    // the reclamation loop during an upstream outage.
-                                    let reporter = reclaim_error_reporter.clone();
-                                    let err_msg = e.to_string();
-                                    tokio::spawn(async move {
-                                        reporter
-                                            .report(
-                                                ErrorReport::error(
-                                                    "server.stale_task_reclaim",
-                                                    err_msg,
-                                                )
-                                                .with_scope(
-                                                    ErrorScope::new()
-                                                        .with_component("stale_task_reclaim"),
-                                                ),
-                                            )
-                                            .await;
-                                    });
-                                }
-                                    }
-                                }
-                            }
-                        },
-                    );
-                }
+            // -- Stale task reclamation (everruns_durable::maintenance) --
+            if let Some(pool) = db.pool() {
+                crate::durable_reaper::spawn_stale_task_reaper(
+                    &mut supervisor,
+                    pool.clone(),
+                    Arc::new(crate::durable_reaper::TurnReapHandler::new(
+                        event_service.clone(),
+                        reclaim_session_service.clone(),
+                        error_reporter.clone(),
+                    )),
+                );
             }
 
             // -- Model sync --
@@ -2286,22 +2131,7 @@ impl ServerAppBuilder {
 
         // -- Durable task scheduler (both prod and dev) --
         if let Some(store) = background_scheduler_store {
-            if let Err(e) =
-                crate::leased_resource_scheduler::ensure_leased_resource_cleanup_schedule(
-                    store.clone(),
-                )
-                .await
-            {
-                tracing::error!(error = %e, "Failed to bootstrap leased-resource cleanup schedule");
-            }
-            if let Err(e) =
-                crate::session_task_reaper_scheduler::ensure_session_task_reaper_schedule(
-                    store.clone(),
-                )
-                .await
-            {
-                tracing::error!(error = %e, "Failed to bootstrap session-task reaper schedule");
-            }
+            crate::system_schedules::ensure_worker_schedules(&store).await;
             let scheduler = everruns_durable::DurableScheduler::with_defaults(
                 store,
                 format!("scheduler-{}", uuid::Uuid::now_v7()),

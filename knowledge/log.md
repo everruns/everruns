@@ -9,6 +9,14 @@
   runs it. `examples/order_pipeline.rs` is its isolated consumer and runs in
   CI. See [Durable Execution Engine](operations/durable-execution-engine.md#workflow-engine-feature).
 
+* **Stale-task reaping and schedule bootstrap moved into durable.** The
+  reclaim loop and dead/sealed-task terminalization the server ran inline
+  are now `everruns_durable::maintenance`, with a `ReapHandler` for the turn
+  lifecycle, and system schedules are declared once through
+  `ensure_schedule`, which also accepts fixed `@every` periods. See
+  [Durable Execution Engine](operations/durable-execution-engine.md#stale-task-reaping)
+  and [Scheduled Tasks](operations/scheduled-tasks.md#system-schedules).
+
 * **Modal sandboxes, in a new everruns-integrations crate.** The `modal`
   capability runs agent code in Modal VM sandboxes (own kernel) or gVisor
   containers over Modal's gRPC API, with files, snapshots and tunnels.

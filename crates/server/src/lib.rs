@@ -103,6 +103,7 @@ pub mod blob_gc;
 
 // Surface sealed durable turns (forward-progress guard, EVE-534) to sessions.
 pub mod durable_failure;
+pub mod durable_reaper;
 pub mod durable_seal;
 
 // Organization initialization (built-in harnesses, reconciliation)
@@ -114,14 +115,13 @@ pub(crate) mod agent_templates;
 pub mod seed;
 
 // Session schedule poller
-pub mod leased_resource_scheduler;
 pub mod session_scheduler;
 
 // Server-owned session-scoped SQLite implementation.
 pub mod session_sqldb;
 
-// Session-task orphan reconciler schedule seeder
-pub mod session_task_reaper_scheduler;
+// Durable system schedules (leased-resource cleanup, session-task reaper)
+pub mod system_schedules;
 
 // Retained background-task supervision for server-owned control-plane loops
 pub mod supervised_task;

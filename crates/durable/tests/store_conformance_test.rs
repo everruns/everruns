@@ -13,6 +13,7 @@
 //! Every case uses fresh workflow ids and its own activity type, so cases do
 //! not see each other's tasks in a shared database.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use everruns_durable::persistence::{
@@ -31,15 +32,20 @@ use uuid::Uuid;
 trait Harness {
     type Store: WorkflowEventStore;
     fn store(&self) -> &Self::Store;
+    /// The same store behind an `Arc`, for components that own one.
+    fn shared(&self) -> Arc<dyn WorkflowEventStore>;
     async fn expire_claim(&self, task_id: Uuid);
 }
 
-struct MemoryHarness(InMemoryWorkflowEventStore);
+struct MemoryHarness(Arc<InMemoryWorkflowEventStore>);
 
 impl Harness for MemoryHarness {
     type Store = InMemoryWorkflowEventStore;
     fn store(&self) -> &Self::Store {
         &self.0
+    }
+    fn shared(&self) -> Arc<dyn WorkflowEventStore> {
+        self.0.clone()
     }
     async fn expire_claim(&self, task_id: Uuid) {
         self.0.expire_claim(task_id);
@@ -68,6 +74,9 @@ impl Harness for Postgres {
     fn store(&self) -> &Self::Store {
         &self.0
     }
+    fn shared(&self) -> Arc<dyn WorkflowEventStore> {
+        Arc::new(self.0.clone())
+    }
     async fn expire_claim(&self, task_id: Uuid) {
         sqlx::query(
             "UPDATE durable_task_queue SET heartbeat_at = NOW() - INTERVAL '1 hour' WHERE id = $1",
@@ -85,7 +94,7 @@ macro_rules! conformance {
             $(
                 #[tokio::test]
                 async fn $case() {
-                    super::$case(super::MemoryHarness(super::InMemoryWorkflowEventStore::new())).await;
+                    super::$case(super::MemoryHarness(std::sync::Arc::new(super::InMemoryWorkflowEventStore::new()))).await;
                 }
             )*
         }
@@ -133,6 +142,10 @@ conformance!(
     claims_carry_the_workflow_status,
     claimed_enqueue_hands_the_task_to_its_worker,
     claimed_enqueue_falls_back_to_the_queue,
+    ensure_schedule_converges_on_the_spec,
+    concurrent_schedule_ensures_create_one_schedule,
+    a_due_schedule_fires_once_across_schedulers,
+    concurrent_reaps_settle_a_dead_task_once,
 );
 
 // --- helpers ---------------------------------------------------------------
@@ -965,4 +978,186 @@ async fn claimed_enqueue_falls_back_to_the_queue<H: Harness>(h: H) {
         .unwrap();
     assert!(queued.into_claimed().is_none());
     assert!(claim(&h, &w, &ty, 1).await.is_empty());
+}
+
+// --- schedules and maintenance ---------------------------------------------
+
+fn interval_spec(name: &str, activity_type: &str) -> everruns_durable::ScheduleSpec {
+    everruns_durable::ScheduleSpec::activity(
+        name,
+        activity_type,
+        everruns_durable::Cadence::Every(Duration::from_secs(90)),
+        json!({ "batch": 10 }),
+    )
+    .with_description("conformance sweep")
+}
+
+async fn schedules_named<H: Harness>(h: &H, name: &str) -> Vec<everruns_durable::ScheduleRow> {
+    use everruns_durable::Schedules;
+    let mut found = Vec::new();
+    let mut offset = 0;
+    loop {
+        let page = h
+            .store()
+            .list_schedules(
+                everruns_durable::ScheduleFilter::default(),
+                everruns_durable::Pagination { offset, limit: 500 },
+            )
+            .await
+            .expect("list schedules");
+        let len = page.len();
+        found.extend(page.into_iter().filter(|row| row.name == name));
+        if len < 500 {
+            return found;
+        }
+        offset += 500;
+    }
+}
+
+async fn ensure_schedule_converges_on_the_spec<H: Harness>(h: H) {
+    use everruns_durable::{EnsureOutcome, Schedules, UpdateSchedule, ensure_schedule};
+    let name = activity_type();
+    let spec = interval_spec(&name, &activity_type());
+
+    let EnsureOutcome::Created(id) = ensure_schedule(h.store(), &spec).await.expect("create")
+    else {
+        panic!("first ensure creates");
+    };
+    assert_eq!(
+        ensure_schedule(h.store(), &spec).await.expect("again"),
+        EnsureOutcome::Unchanged(id)
+    );
+
+    h.store()
+        .update_schedule(
+            id,
+            UpdateSchedule {
+                enabled: Some(false),
+                cron_expression: Some("0 0 * * * * *".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("drift");
+    assert_eq!(
+        ensure_schedule(h.store(), &spec).await.expect("reset"),
+        EnsureOutcome::Updated(id)
+    );
+    let rows = schedules_named(&h, &name).await;
+    assert_eq!(rows.len(), 1);
+    assert!(spec.matches(&rows[0]), "row: {:?}", rows[0]);
+    assert_eq!(rows[0].cron_expression, "@every 90s");
+}
+
+async fn concurrent_schedule_ensures_create_one_schedule<H: Harness>(h: H) {
+    use everruns_durable::{EnsureOutcome, ensure_schedule};
+    let name = activity_type();
+    let spec = interval_spec(&name, &activity_type());
+
+    let (a, b) = tokio::join!(
+        ensure_schedule(h.store(), &spec),
+        ensure_schedule(h.store(), &spec)
+    );
+    let outcomes = [a.expect("first ensure"), b.expect("second ensure")];
+    let created = outcomes
+        .iter()
+        .filter(|o| matches!(o, EnsureOutcome::Created(_)))
+        .count();
+    assert_eq!(created, 1, "outcomes: {outcomes:?}");
+    assert_eq!(schedules_named(&h, &name).await.len(), 1);
+}
+
+async fn a_due_schedule_fires_once_across_schedulers<H: Harness>(h: H) {
+    use everruns_durable::{CreateScheduleRow, DurableScheduler, ScheduleTargetType, Schedules};
+    let ty = activity_type();
+    let schedule_id = h
+        .store()
+        .create_schedule(CreateScheduleRow {
+            name: ty.clone(),
+            description: None,
+            cron_expression: "@every 600s".into(),
+            timezone: "UTC".into(),
+            target_type: ScheduleTargetType::Activity,
+            target_name: ty.clone(),
+            target_input: json!({}),
+            enabled: true,
+            max_concurrent: Some(1),
+            catch_up_missed: false,
+            max_catch_up: Some(1),
+            retry_policy: None,
+            next_trigger_at: Some(chrono::Utc::now() - chrono::Duration::seconds(1)),
+        })
+        .await
+        .expect("create schedule");
+
+    let first = DurableScheduler::with_defaults(h.shared(), format!("{ty}-a"));
+    let second = DurableScheduler::with_defaults(h.shared(), format!("{ty}-b"));
+    let (a, b) = tokio::join!(
+        first.process_due_schedules(),
+        second.process_due_schedules()
+    );
+    a.expect("first scheduler");
+    b.expect("second scheduler");
+    // A later poll finds nothing due: the next trigger is a period away.
+    first.process_due_schedules().await.expect("re-poll");
+
+    let stats = h
+        .store()
+        .get_schedule_stats(schedule_id)
+        .await
+        .expect("stats");
+    assert_eq!(stats.total_executions, 1);
+    let worker = worker(&h, &ty).await;
+    assert_eq!(
+        claim(&h, &worker, &ty, 10).await.len(),
+        1,
+        "one task enqueued"
+    );
+}
+
+#[derive(Default)]
+struct CountingReaper(std::sync::Mutex<Vec<Uuid>>);
+
+#[async_trait::async_trait]
+impl everruns_durable::ReapHandler for CountingReaper {
+    async fn workflow_failed(&self, dead: &everruns_durable::DeadTaskInfo, _: &str) {
+        self.0.lock().unwrap().push(dead.task_id);
+    }
+}
+
+async fn concurrent_reaps_settle_a_dead_task_once<H: Harness>(h: H) {
+    use everruns_durable::reap_stale_tasks;
+    let ty = activity_type();
+    let worker = worker(&h, &ty).await;
+    let wf = workflow(&h).await;
+    h.store()
+        .update_workflow_status(wf, WorkflowStatus::Running, None, None)
+        .await
+        .expect("run workflow");
+    let task_id = enqueue(
+        &h,
+        with_options(
+            task(Some(wf), &ty, "a"),
+            ActivityOptions::default().with_retry(RetryPolicy::no_retry()),
+        ),
+    )
+    .await;
+    assert_eq!(claim(&h, &worker, &ty, 1).await, vec![task_id]);
+    h.expire_claim(task_id).await;
+
+    let handler = CountingReaper::default();
+    let threshold = Duration::from_secs(60);
+    let (a, b) = tokio::join!(
+        reap_stale_tasks(h.store(), threshold, &handler),
+        reap_stale_tasks(h.store(), threshold, &handler)
+    );
+    a.expect("first reap");
+    b.expect("second reap");
+
+    assert_eq!(*handler.0.lock().unwrap(), vec![task_id]);
+    assert_eq!(status(&h, task_id).await, TaskStatus::Dead);
+    assert_eq!(
+        h.store().get_workflow_status(wf).await.expect("status"),
+        WorkflowStatus::Failed
+    );
 }
