@@ -61,7 +61,7 @@ pub struct OrgInitContext<'a> {
 /// Registered via
 /// [`ServerAppBuilder::org_initializer`](crate::ServerAppBuilder::org_initializer);
 /// zero or more may be registered. When none are registered, default OSS
-/// behavior is unchanged. See `knowledge/foundations/embedding.md`.
+/// behavior is unchanged.
 #[async_trait]
 pub trait OrgInitializer: Send + Sync {
     /// Provision resources for the newly created org. Returning `Err` is handled

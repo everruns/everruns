@@ -65,7 +65,7 @@ pub struct OutputMessageStartedData {
     /// the provider stream reveals a native phase before this event is emitted;
     /// today `output.message.started` is emitted before the LLM call, so this is
     /// generally `None` at start. The authoritative classification remains the
-    /// completed `RuntimeMessage.phase`. See `knowledge/execution/events.md`.
+    /// completed `RuntimeMessage.phase`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
 }
@@ -101,7 +101,7 @@ pub struct OutputMessageDeltaData {
     /// (see `ExecutionPhase::refine_streamed_hint`). Providers without native
     /// mid-stream phase (Anthropic, Gemini, …) leave this `None` until
     /// completion. The authoritative classification remains the completed
-    /// `RuntimeMessage.phase`. See `knowledge/execution/events.md`.
+    /// `RuntimeMessage.phase`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
 }

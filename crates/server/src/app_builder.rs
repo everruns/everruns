@@ -366,7 +366,7 @@ impl ServerAppBuilder {
     ///
     /// Wrappers that integrate Sentry, Datadog, Rollbar, etc. implement
     /// `ErrorReporter` and install it here. OSS never imports vendor SDKs;
-    /// the reporter is the only contact surface. See `knowledge/foundations/embedding.md`.
+    /// the reporter is the only contact surface.
     pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
         self.error_reporter = Some(reporter);
         self
@@ -405,7 +405,7 @@ impl ServerAppBuilder {
     /// OSS `POST /v1/orgs` handler before any row is written, sees the user and requested
     /// name, and a rejection fails creation closed with a UI-facing status/body. Lets
     /// wrappers (e.g. SaaS) gate creation on product policy (verified email, limits)
-    /// without forking the handler. Unset keeps OSS behavior; see foundations/embedding.md.
+    /// without forking the handler. Unset keeps OSS behavior.
     pub fn org_create_policy(
         mut self,
         policy: Arc<dyn api::organizations::OrgCreatePolicy>,
@@ -419,7 +419,7 @@ impl ServerAppBuilder {
     /// provisioned, so a wrapper provisions per-org resources (managed provider, budget,
     /// tenant record) in creation rather than via a reconciler. Initializers run in
     /// registration order; a required one that fails rolls the org back, an optional one
-    /// only logs. None registered keeps OSS behavior; see `knowledge/foundations/embedding.md`.
+    /// only logs. None registered keeps OSS behavior.
     pub fn org_initializer(mut self, initializer: Arc<dyn org_init::OrgInitializer>) -> Self {
         self.org_initializers.push(initializer);
         self

@@ -6,8 +6,7 @@
 //! decides whether the cited source actually supports the claim span, writing a
 //! [`VerificationVerdict`]. Because it is separate from the feeds, any feed
 //! (`citation_retrieval`, a native provider feed, …) can be paired with it, and
-//! evals can hold the feed fixed while varying the verifier. See
-//! `knowledge/runtime-resources/citations.md`.
+//! evals can hold the feed fixed while varying the verifier.
 //!
 //! Two modes:
 //! * `heuristic` (default) — lexical entailment (token overlap between the claim

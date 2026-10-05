@@ -50,15 +50,15 @@ pub struct FeatureFlags {
     pub observers: bool,
     /// Public Chat (isolated, public-facing chat web app + `public_chat`
     /// channel). Experimental. Gates the public endpoints, channel creation,
-    /// the builder UI, and the public web route. See `knowledge/integrations/public-chat.md`.
+    /// the builder UI, and the public web route.
     pub public_chat: bool,
     /// Browser-native WebMCP tools exposed by the authenticated Everruns UI.
     /// Experimental remote-control surface; requires deployment enablement and
-    /// per-org opt-in. See `knowledge/ui/webmcp.md`.
+    /// per-org opt-in.
     pub webmcp: bool,
     /// Outbound MCP Events: `/mcp` clients subscribe to session completion,
     /// failure and input-required webhooks. Experimental and org-opt-in,
-    /// because the spec is a draft. See `knowledge/integrations/mcp-events.md`.
+    /// because the spec is a draft.
     pub mcp_events: bool,
     /// Reports: the usage and cost reporting page, its sidebar entry, and
     /// saved-report search results in the UI. Experimental and org-opt-in, so
@@ -115,7 +115,7 @@ pub struct FeatureFlagDefinition {
     pub label: &'static str,
     /// Short description of what the flag gates.
     pub description: &'static str,
-    /// Default rollout grade; FEATURE_<NAME> overrides this at startup.
+    /// Default rollout grade; `FEATURE_<NAME>` overrides this at startup.
     pub grade: FeatureFlagGrade,
 }
 

@@ -4,7 +4,7 @@
 //! billed before its usage arrived is recorded with zero tokens and
 //! `usage_pending`, and the reconciler
 //! ([`crate::services::agents_api_usage`]) applies the usage once the
-//! provider reports it. See `knowledge/execution/openai-agents-api-runtime.md`.
+//! provider reports it.
 
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;

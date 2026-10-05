@@ -5,26 +5,26 @@
 //!
 //! AG-UI is the event protocol between an agent and the application that
 //! renders it (CopilotKit, `@ag-ui/client`, ...): the application posts a
-//! [`RunAgentInput`] and reads back a stream of [`Event`]s, usually as
+//! [`RunAgentInput`](crate::ag_ui::RunAgentInput) and reads back a stream of [`Event`](crate::ag_ui::Event)s, usually as
 //! server-sent events. [`Session::ag_ui`] answers one such request from any
 //! [`Session`], so a Rust host can mount an AG-UI endpoint on whatever HTTP
 //! server it already runs, without the Everruns server.
 //!
 //! The run is projected by the same state machine the Everruns server and
-//! `serve` use, with the trusted [`ProjectionPolicy`]: assistant text,
+//! `serve` use, with the trusted [`ProjectionPolicy`](crate::ag_ui::ProjectionPolicy): assistant text,
 //! reasoning, and token usage are visible, and failures carry the runtime's
 //! message.
 //!
 //! # Interrupts
 //!
 //! In-process `ask_user` questions and tool approvals are answered by
-//! responders registered on the agent. Register an [`InterruptGate`] as both,
-//! and pass it in [`AgUiOptions::gate`]: a question or approval then ends the
+//! responders registered on the agent. Register an [`InterruptGate`](crate::ag_ui::InterruptGate) as both,
+//! and pass it in [`AgUiOptions::gate`](crate::ag_ui::AgUiOptions::gate): a question or approval then ends the
 //! AG-UI run with the interrupt outcome, the turn stays parked in the
-//! process, and the next run's [`RunAgentInput::resume`] entries answer it
+//! process, and the next run's [`RunAgentInput::resume`](crate::ag_ui::RunAgentInput::resume) entries answer it
 //! and stream the rest of the same turn. A host that already parks these
-//! requests for an API of its own implements [`InterruptSource`] and passes
-//! it in [`AgUiOptions::interrupts`] instead.
+//! requests for an API of its own implements [`InterruptSource`](crate::ag_ui::InterruptSource) and passes
+//! it in [`AgUiOptions::interrupts`](crate::ag_ui::AgUiOptions::interrupts) instead.
 //!
 //! ```
 //! # #[tokio::main]
@@ -66,10 +66,10 @@
 //! `tool` messages that answer its frontend tool calls (below). Earlier
 //! messages, `state` and `forwardedProps` are not read, and neither are
 //! `system` and `developer` messages or `context` unless the host trusts
-//! them (below). The run does not read `threadId`: [`AgUiThreads`] maps
-//! each thread to a session (one per thread, kept in a [`ThreadStore`]), or
+//! them (below). The run does not read `threadId`: [`AgUiThreads`](crate::ag_ui::AgUiThreads) maps
+//! each thread to a session (one per thread, kept in a [`ThreadStore`](crate::ag_ui::ThreadStore)), or
 //! map them yourself. A thread's first run can carry the client's earlier
-//! messages into the new session with [`AgUiOptions::seed_history`].
+//! messages into the new session with [`AgUiOptions::seed_history`](crate::ag_ui::AgUiOptions::seed_history).
 //!
 //! # Frontend tools
 //!
@@ -143,7 +143,7 @@
 //! # Trusted instructions
 //!
 //! A host that owns both ends, or authenticates whoever posts the input, can
-//! let each run carry instructions with [`AgUiOptions::input_instructions`].
+//! let each run carry instructions with [`AgUiOptions::input_instructions`](crate::ag_ui::AgUiOptions::input_instructions).
 //! The run's `system` and `developer` messages, then its `context` entries,
 //! become additional system instructions for that run, after the agent's
 //! own; the next run replaces them with its own (or none). Such messages may

@@ -21,7 +21,7 @@ pub const PLUGIN_VIEW: Policy = Policy {
 };
 
 /// Manage marketplaces and install/update/uninstall plugins.
-/// Admin-gated per knowledge/integrations/plugins.md § Security.
+/// Requires admin permissions.
 pub const PLUGIN_MANAGE: Policy = Policy {
     id: "plugin.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgPluginsManage)],

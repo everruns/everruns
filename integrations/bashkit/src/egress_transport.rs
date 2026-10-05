@@ -1,15 +1,13 @@
 //! Egress-backed HTTP transport for the `bashkit_shell` capability.
 //!
-//! Implements `knowledge/operations/egress.md` migration step 3 for bashkit via its
-//! transport injection (bashkit >= 0.13, `knowledge/security/http-transport.md` there):
+//! Routes Bashkit HTTP requests through the host egress boundary:
 //! [`BashkitEgressTransport`] implements `bashkit::HttpTransport` over the
 //! host `EgressService`, so bashkit keeps its entire HTTP pipeline — URL
 //! allowlist, DNS/private-IP SSRF precheck (resolve-then-check producing
 //! pinned addresses), per-hop redirect validation in curl/wget, credential
 //! injection, bot-auth signing, and response caps — while every HTTP hop
 //! crosses the egress boundary, where the per-request `NetworkAccessList`
-//! and the deployment-wide system allowlist are enforced
-//! (`knowledge/operations/system-allowlist.md`).
+//! and the deployment-wide system allowlist are enforced.
 //!
 //! curl/wget follow redirects manually and re-dispatch each hop, so egress
 //! policy applies to redirect targets too. `pinned_addrs` carries bashkit's
@@ -39,8 +37,7 @@ use std::sync::Arc;
 pub(crate) struct BashkitEgressTransport {
     egress: Arc<dyn EgressService>,
     /// Merged harness/agent/session access list, enforced at the egress
-    /// boundary for every hop — the final enforcement point per
-    /// `knowledge/operations/egress.md`.
+    /// boundary for every hop.
     network_access: Option<NetworkAccessList>,
 }
 

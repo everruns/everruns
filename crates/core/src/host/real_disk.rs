@@ -49,7 +49,7 @@ fn shared_write_guard(root: &Path) -> Arc<tokio::sync::Mutex<()>> {
 /// Paths are interpreted per the session filesystem namespace rules (leading `/`,
 /// optional `/workspace` prefix, `..` rejected anywhere). `session_id` is
 /// accepted on every method but ignored — the store is single-workspace per
-/// process. See `knowledge/runtime-resources/file-store.md` for the multi-tenant upgrade path.
+/// process.
 ///
 /// `is_readonly` flags from `seed_initial_file` are tracked in an in-memory
 /// set (the disk backend has no place to persist them), so writes and

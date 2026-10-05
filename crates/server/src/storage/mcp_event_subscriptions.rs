@@ -1,5 +1,4 @@
 //! Outbound MCP Events webhook subscriptions (EVE-1121).
-//! See `knowledge/integrations/mcp-events.md`.
 
 use chrono::{DateTime, Utc};
 use sqlx::FromRow;

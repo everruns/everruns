@@ -1,8 +1,8 @@
 //! Bringing up storage, the durable event store, and the agent runner.
 //!
-//! Split out of `app_builder.rs` (EVE-1069): that file is on the size
-//! ratchet's debt list, and this is the most self-contained unit in it —
-//! everything here is decided before any router or service exists.
+// Split out of `app_builder.rs` (EVE-1069): that file is on the size
+// ratchet's debt list, and this is the most self-contained unit in it —
+// everything here is decided before any router or service exists.
 
 use anyhow::{Context, Result};
 use std::sync::Arc;

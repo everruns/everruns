@@ -876,7 +876,6 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
 /// Enable outbound HTTP for curl/wget when the per-capability config opted in
 /// AND the execution context provides an egress service.
 ///
-/// Design (knowledge/operations/egress.md migration step 3, bashkit `knowledge/security/http-transport.md`):
 /// bashkit keeps its full HTTP policy pipeline — `allow_all()` retains the
 /// private-IP-blocking SSRF precheck whose resolve-then-check result is
 /// forwarded as pinned addresses — while connectivity is owned by
@@ -894,7 +893,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
 /// Bot-auth request signing mirrors web_fetch: server-wide
 /// `BOT_AUTH_SIGNING_KEY_SEED` (+ optional `BOT_AUTH_AGENT_FQDN`,
 /// `BOT_AUTH_VALIDITY_SECS`) transparently signs every outbound request
-/// before it reaches the transport (bashkit `knowledge/security/request-signing.md`).
+/// before it reaches the transport.
 fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext) -> BashBuilder {
     if !enable_http {
         return builder;
@@ -946,7 +945,7 @@ fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext
 }
 
 /// Read the server-wide bot-auth signing config once (same env contract as
-/// `web_fetch`; see `knowledge/execution/fetchkit.md` "Bot-auth"). Returns a fresh clone per
+/// `web_fetch`). Returns a fresh clone per
 /// call site because `BashBuilder::bot_auth` takes ownership.
 fn bot_auth_config_from_env() -> Option<bashkit::BotAuthConfig> {
     static CONFIG: LazyLock<Option<bashkit::BotAuthConfig>> = LazyLock::new(|| {

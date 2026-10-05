@@ -38,7 +38,7 @@ cargo run -p everruns-coding-review-agent -- "Read the contract and test. Reprod
 
 ## Build the agent
 
-This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
+This builder combines the agent instructions, tools, and model. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
 ```rust ignore
 let agent = Agent::builder()
@@ -54,7 +54,7 @@ let agent = Agent::builder()
 
 ## Send, observe, and wait
 
-The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
+The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
 ```rust ignore
 let engine = Engine::new();
@@ -105,7 +105,3 @@ Replace the fixture with a trusted review checkout and a restricted test selecti
 ## Boundaries
 
 This is one deliberately buggy, trusted fixture—not a general-purpose coding agent. The execution tool takes no shell command or user-supplied path, and cannot edit code. Rust including `rustc` must be installed.
-
-## Source map
-
-`src/main.rs`: agent and session; `src/tools.rs`: file allowlist and fixed regression execution; `src/sample_payment.rs`: buggy implementation; `src/contract.md`: required behavior; `src/regression.rs`: executable reproduction. `examples/demo-support` handles shared terminal presentation; `src/record.sh` and `src/render_demo.py` handle recording.

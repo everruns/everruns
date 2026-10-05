@@ -47,9 +47,8 @@ Where a turn runs is a separate seam: `everruns_core::host::TurnBackend` starts,
 cancels, and observes a session's turns. `InProcessBackend` is the default, and
 the facade's experimental `durable` feature selects the queued, checkpointed
 backend from `everruns-durable-engine`. The trait is public and unsealed but
-experimental. The facade's backend conformance suite
-(`crates/everruns/tests/backend_conformance/`) defines the behavior every
-backend must match.
+experimental. The facade's [backend conformance suite](https://github.com/everruns/everruns/tree/main/crates/everruns/tests/backend_conformance)
+defines the behavior every backend must match.
 
 See [Framework Architecture](/framework/architecture/) for the complete layer
 map and the distinction between immediate and durable execution.

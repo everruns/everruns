@@ -9,8 +9,7 @@
 //! that driver into the host's Reason activity for sessions that selected the
 //! backend. Compiled only with the `openai-agents-api` Cargo feature; selected
 //! only by the `openai_agents_api_runtime` capability, which the platform
-//! strips unless the org has the `openai_agents_api` flag. Design, gaps, and
-//! the recommendation live in `knowledge/execution/openai-agents-api-runtime.md`.
+//! strips unless the org has the `openai_agents_api` flag.
 
 pub mod backend;
 pub mod durable;

@@ -205,7 +205,7 @@ impl From<&str> for MessageContent {
 
 /// A single content part within a message
 ///
-/// `#[non_exhaustive]` for the same reason as [`LlmStreamEvent`]: new content
+/// `#[non_exhaustive]` for the same reason as [`LlmStreamEvent`](crate::driver_registry::LlmStreamEvent): new content
 /// kinds are additive and must not break downstream `match`es.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]

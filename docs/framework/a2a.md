@@ -145,7 +145,7 @@ A2A endpoint, or another vendor's agent.
 
 ## Run the example
 
-[`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a)
+[A2A example](https://github.com/everruns/everruns/tree/main/examples/serve/a2a)
 puts both halves together. `researcher` is a serve app served over A2A, and
 `writer` is an `everruns` agent that delegates research to it and then drafts.
 It runs offline with scripted models, and on OpenAI when `OPENAI_API_KEY` is

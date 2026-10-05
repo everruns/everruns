@@ -325,7 +325,7 @@ impl ProviderResolverService {
     }
 
     /// Service-bound resolution: select a provider connection that serves the
-    /// requested [`ServiceKind`], fail-closed (knowledge/foundations/providers.md).
+    /// requested [`ServiceKind`], fail-closed.
     ///
     /// Selection order:
     /// 1. An explicit `binding` (a provider public id supplied by the consumer,
@@ -336,8 +336,7 @@ impl ProviderResolverService {
     ///
     /// Returns a structured "no provider configured for {service}" error when
     /// nothing matches. Like chat resolution, this never falls back to
-    /// environment-only credentials in tenant paths (the fail-closed key
-    /// contract in knowledge/foundations/llm-drivers.md): a provider row without a usable key
+    /// environment-only credentials in tenant paths: a provider row without a usable key
     /// is skipped, not satisfied from the host environment.
     pub async fn resolve_service(
         &self,

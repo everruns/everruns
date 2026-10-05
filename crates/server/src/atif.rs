@@ -189,7 +189,7 @@ fn assemble_document(
 ///
 /// Folds the raw event log. Used by the whole-session export path; the eval
 /// **dataset** export uses [`build_case_record_from_messages`] instead so its
-/// rows reflect the compaction model view (knowledge/evaluation/dataset-export.md).
+/// rows reflect the compaction model view.
 pub fn build_case_record(
     run: &crate::records::eval::EvalRun,
     result: &crate::records::eval::EvalCaseResult,
@@ -202,8 +202,7 @@ pub fn build_case_record(
 
 /// Build one dataset NDJSON record from the case's **model-view** messages
 /// (post-compaction masking) rather than the raw event log, so training rows
-/// match what the model actually saw (knowledge/evaluation/dataset-export.md, Model-view
-/// faithfulness). Reward and case identity go in root `extra`, same as
+/// match what the model actually saw. Reward and case identity go in root `extra`, same as
 /// [`build_case_record`].
 ///
 /// Model-view messages carry no per-step token usage or turn boundaries, so
@@ -1417,8 +1416,7 @@ fn file_source(part: &ContentPart, redact: bool) -> Option<Value> {
 /// The child session id of a subagent spawn, if this tool result is one.
 ///
 /// The `spawn_agent` tool (subagent target) returns a JSON object carrying
-/// `subagent_id` = the child session id (see
-/// `crates/core/src/capabilities/subagents.rs`); the tool result is emitted as
+/// `subagent_id` = the child session id; the tool result is emitted as
 /// a single text ContentPart holding that JSON. Returns `None` for any other
 /// tool or a result without a `subagent_id`.
 fn subagent_child_session(data: &everruns_core::events::ToolCompletedData) -> Option<String> {
@@ -1442,7 +1440,7 @@ fn subagent_child_session(data: &everruns_core::events::ToolCompletedData) -> Op
 /// child's own ATIF export (a resolvable location per Harbor RFC 0001, which
 /// requires at least one of `trajectory_id`/`trajectory_path`); `session_id` is
 /// informational. The child trajectory is not embedded (see the ToolCompleted
-/// handler and knowledge/evaluation/atif-adoption.md).
+/// handler).
 fn subagent_trajectory_ref(child_session_id: &str) -> Value {
     json!([{
         "trajectory_path": format!("/v1/sessions/{child_session_id}/export?format=atif"),
@@ -1505,8 +1503,7 @@ fn append_omitted_images(extra: &mut Map<String, Value>, omitted: Vec<Value>) {
 // Import (ATIF → eval case drafts)
 // ============================================================================
 
-/// Import body cap (NDJSON or JSON). Sized like other untrusted-import caps
-/// (see knowledge/runtime-resources/okf-adoption.md security notes).
+/// Import body cap (NDJSON or JSON). Sized like other untrusted-import caps.
 pub const MAX_IMPORT_BYTES: usize = 4 * 1024 * 1024;
 /// Max trajectories accepted per import call.
 pub const MAX_IMPORT_TRAJECTORIES: usize = 200;

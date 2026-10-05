@@ -95,8 +95,7 @@ impl Database {
         Ok(row)
     }
 
-    /// Look up the owning org for an MCP server by its public id. See
-    /// knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
+    /// Look up the owning org for an MCP server by its public id.
     pub async fn get_mcp_server_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let Ok(id) = public_id.parse::<McpServerId>() else {
             return Ok(None);

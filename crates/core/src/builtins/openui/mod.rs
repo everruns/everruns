@@ -8,8 +8,7 @@
 //! The UI detects these blocks and renders them using the @openuidev/react-lang
 //! parser and @openuidev/react-ui component library.
 //!
-//! Ref: https://github.com/thesysdev/openui
-//! Ref: knowledge/ui/openui.md
+//! [OpenUI project](https://github.com/thesysdev/openui).
 //!
 //! ```
 //! use everruns_core::builtins::openui::{PromptOptions, default_library, generate_prompt};

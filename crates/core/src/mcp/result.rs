@@ -1,7 +1,6 @@
 //! MCP `tools/call` result → internal `ToolResult` mapping.
 //!
-//! Lifted verbatim from `worker/src/mcp_executor.rs` so behavior is unchanged
-//! and the worker stops carrying its own copy (knowledge/integrations/runtime-mcp.md D1/D5).
+//! Shared result parsing keeps hosted workers and in-process callers aligned.
 
 use crate::{McpContent, McpToolCallResult};
 use everruns_contracts::ToolResultImage;

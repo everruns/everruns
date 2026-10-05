@@ -49,7 +49,7 @@ use std::sync::Arc;
 
 use super::skills::SKILLS_CAPABILITY_ID;
 
-/// Default VFS root for the workspace scope (matches `skills.rs`).
+/// Default VFS root for the workspace scope.
 const DEFAULT_WORKSPACE_ROOT: &str = "/.agents/skills";
 /// Workspace prefix for agent-facing display paths.
 const WORKSPACE_PREFIX: &str = "/workspace";

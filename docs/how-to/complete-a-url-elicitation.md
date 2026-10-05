@@ -181,7 +181,7 @@ capability named, rather than being asked for the value.
 
 ## A runnable version
 
-`examples/mcp-url-elicitation/` in the repository has both halves: a
+The [URL elicitation example](https://github.com/everruns/everruns/tree/main/examples/mcp-url-elicitation) has both halves: a
 dependency-free MCP server that elicits, and a script that walks the flow above
 end to end against your deployment.
 

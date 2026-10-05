@@ -37,7 +37,7 @@
 //! session's state.
 //!
 //! The default is the requester alone, because it is the only policy that is
-//! never surprising. [`ApprovalPolicy`] is where an allowlist or any-member
+//! never surprising. `ApprovalPolicy` is where an allowlist or any-member
 //! setting attaches.
 
 use everruns_contracts::typed_id::SessionId;

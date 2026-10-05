@@ -1,10 +1,10 @@
 //! The session file surface on the command transport.
 //!
-//! Its own file rather than another block in `grpc_adapters.rs`, which is on the
-//! source-size ratchet's debt list and may not grow, and because this mirrors
-//! `grpc_sqldb_adapter`: one `SessionFileSystem` implementation expressed
-//! entirely as `session_files` domain commands, the same ones the HTTP API and
-//! MCP callers use.
+// Its own file rather than another block in `grpc_adapters.rs`, which is on the
+// source-size ratchet's debt list and may not grow, and because this mirrors
+// `grpc_sqldb_adapter`: one `SessionFileSystem` implementation expressed
+// entirely as `session_files` domain commands, the same ones the HTTP API and
+// MCP callers use.
 //!
 //! Before this, the worker reached files through eight bespoke gRPC RPCs that
 //! duplicated those commands' logic server-side. The commands verify session

@@ -1,7 +1,6 @@
 //! Seeding a new session with the history an AG-UI client already holds.
 //!
-//! Decision: the server seeds a new thread from the input's earlier messages
-//! (`crates/server/src/api/ag_ui.rs::seed_history`); the facade does the same
+//! The server seeds a new thread from the input's earlier messages; the facade does the same
 //! so a client that kept the conversation does not lose it when the host did.
 //! Unlike the server, `system` and `developer` messages are never seeded: in
 //! the facade they are instructions only for a trusted host

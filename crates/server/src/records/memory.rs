@@ -21,7 +21,7 @@ use utoipa::ToSchema;
 
 /// Memory lifecycle status.
 ///
-/// Mirrors the building-block lifecycle defined in `knowledge/foundations/models.md`:
+/// Resource lifecycle:
 /// - `active`: assignable to mounts, editable, listed by default.
 /// - `archived`: hidden from default lists, not assignable to new mounts,
 ///   read-only.

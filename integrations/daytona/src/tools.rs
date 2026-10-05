@@ -15,8 +15,8 @@
 //! 3. `daytona_git_credentials` writes one credential entry per trusted
 //!    host so authentication works against every configured server.
 //!
-//! See `integrations/daytona/SPEC.md` (GitHub clone-auth host allowlist) and
-//! `TM-DAYTONA-008` in `knowledge/security/threat-model.md`.
+// See integrations/daytona/SPEC.md (GitHub clone-auth host allowlist) and
+// TM-DAYTONA-008 in knowledge/security/threat-model.md.
 
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::runtime::resource_ownership::{

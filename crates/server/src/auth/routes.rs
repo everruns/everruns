@@ -671,7 +671,7 @@ pub async fn login(
 }
 
 /// Minimum password length enforced on `/v1/auth/register`. Matches the
-/// commitment in `knowledge/security/authentication.md` and the UI's `minLength={8}` on
+/// UI's `minLength={8}` on
 /// the register form (TM-AUTH-004 / EVE-453). UI validation is convenience;
 /// this server-side check is the trust boundary.
 const PASSWORD_MIN_LENGTH: usize = 12;

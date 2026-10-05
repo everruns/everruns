@@ -80,7 +80,7 @@ pub fn get_model_vendor(provider_type: &DriverId, model_id: &str) -> Option<Mode
     crate::model_profile_data::get_model_vendor(provider_type.as_str(), model_id)
 }
 
-/// Stable public profile key: `"{vendor}/{canonical_id}"` (knowledge/foundations/providers.md).
+/// Stable public profile key: `"{vendor}/{canonical_id}"`.
 pub fn get_model_profile_key(provider_type: &DriverId, model_id: &str) -> Option<String> {
     crate::model_profile_data::get_model_profile_key(provider_type.as_str(), model_id)
 }

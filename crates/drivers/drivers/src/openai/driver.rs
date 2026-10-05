@@ -521,8 +521,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// credential schema that declares its own environment variables.
 ///
 /// OpenAI providers also power realtime voice sessions
-/// (knowledge/operations/voice.md) and text embeddings
-/// (knowledge/foundations/providers.md phase 6), so the descriptor declares
+/// and text embeddings, so the descriptor declares
 /// those services alongside Chat.
 pub fn descriptor() -> DriverDescriptor {
     let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {

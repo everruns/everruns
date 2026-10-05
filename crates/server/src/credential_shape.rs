@@ -10,16 +10,14 @@
 //! write rather than redact after it. This is TM-AGENT-016's mechanism arriving
 //! through a new door.
 //!
-//! Deterministic by design. `knowledge/security/secret-leak-guardrails.md`
-//! splits the families: deterministic checks catch known *formats*, model-backed
+//! Deterministic checks catch known *formats*, model-backed
 //! judges catch semantic intent. This runs synchronously on a person's keystroke
 //! path, so a utility-LLM call is the wrong cost, and a known-format match is
 //! the right layer.
 //!
-//! This is the one place the format list lives. Extend [`PREFIX_RULES`] rather
-//! than adding a second list somewhere else. The patterns mirror
-//! `scripts/scan_actions_log_secrets.py`, which scans Actions logs for the same
-//! formats.
+//! This is the one place the format list lives. Extend `PREFIX_RULES` rather
+//! than adding a second list somewhere else. The Actions log scanner uses
+//! the same formats.
 
 use regex::Regex;
 use std::sync::LazyLock;

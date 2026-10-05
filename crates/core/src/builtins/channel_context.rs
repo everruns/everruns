@@ -1,6 +1,6 @@
 //! Channel thread context as leading conversation context.
 //!
-//! A messaging-channel session (Slack today) accumulates a [`ThreadContext`]:
+//! A messaging-channel session (Slack today) accumulates a [`ThreadContext`](crate::channel::ThreadContext):
 //! who has spoken in the thread, and where the user is currently looking. Both
 //! are written by the channel webhook and persisted under a reserved session KV
 //! key; this capability is the read side that puts them in front of the model.

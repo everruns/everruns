@@ -1,4 +1,4 @@
-//! EventLog implementation (see `store.rs` for the trait contract).
+//! Implementation of [`crate::EventLog`].
 
 use super::*;
 

@@ -14,7 +14,7 @@ pub enum ProviderStatus {
 }
 
 /// LLM Provider entity (API keys never exposed)
-/// Note: This is the entity struct, separate from the Provider trait in llm.rs
+/// This is the persisted provider entity, separate from the runtime provider trait.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Provider {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).

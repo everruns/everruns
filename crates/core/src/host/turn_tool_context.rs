@@ -1,7 +1,7 @@
 //! Assembling the per-turn tool context an adapter's services hang off.
 //!
-//! Split out of `host.rs` (EVE / #3709): the file is on the size ratchet's
-//! debt list, and this is the part of it a capability-gated extension touches.
+// Split out of `host.rs` (EVE / #3709): the file is on the size ratchet's
+// debt list, and this is the part of it a capability-gated extension touches.
 
 use crate::tool_context::ToolContextServices;
 use everruns_contracts::CapabilityRef;

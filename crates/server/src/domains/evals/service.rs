@@ -72,7 +72,7 @@ pub const DATASET_EXPORT: Policy = Policy {
 ///
 /// Unlike `EVAL_RUN`, importing creates no sessions — the run is ingested
 /// already-complete — so it requires only eval-management, not session
-/// management. See knowledge/evaluation/evals.md.
+/// management.
 pub const EVAL_IMPORT: Policy = Policy {
     id: "eval.import",
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
@@ -771,7 +771,7 @@ impl EvalService {
     /// Ingest a full external run group (one external run → one EvalRun per
     /// eval, sharing `source.run_id`). Upserts evals/cases by name and stores
     /// fully-scored, completed results. Everruns trusts the external verdicts;
-    /// it never re-grades. See knowledge/evaluation/evals.md.
+    /// it never re-grades.
     pub async fn import_run(
         &self,
         caller: &Caller,
@@ -911,7 +911,7 @@ impl EvalService {
     // Import (ATIF trajectories → eval cases)
     // ============================================
 
-    /// Create/update eval cases from ATIF trajectories (knowledge/evaluation/atif-adoption.md).
+    /// Create/update eval cases from ATIF trajectories.
     ///
     /// Idempotent: the case `name` (derived from the trajectory's
     /// `extra.case_name`/`source_key`/ids) is the natural key — re-importing
@@ -995,7 +995,7 @@ impl EvalService {
 
     /// Mint a read-only share link for a run. Revokes any prior active link so a
     /// run has at most one live share. The raw token is returned once and stored
-    /// only hashed. See knowledge/evaluation/evals.md, knowledge/execution/public-endpoints.md.
+    /// only hashed.
     pub async fn create_run_share(
         &self,
         caller: &Caller,

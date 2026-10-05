@@ -12,8 +12,7 @@
 //! ## How the non-functional requirements are met
 //!
 //! 1. **Capability-extensibility only (tool filtering).** The sole mechanism is
-//!    the existing [`ToolDefinitionHook`] seam (see `knowledge/execution/capabilities.md` →
-//!    Tool definition hooks). No new agent-loop plumbing: the hook runs after
+//!    the existing [`ToolDefinitionHook`] seam. The hook runs after
 //!    the runtime agent has merged its final tool list and simply drops the
 //!    eligible definitions before they reach the model. The *executable*
 //!    `ToolRegistry` is built separately from capability `tools()` and is left
@@ -40,8 +39,8 @@ use crate::tool_types::ToolDefinition;
 pub const LUA_CODE_MODE_CAPABILITY_ID: &str = "lua_code_mode";
 
 /// Behavior contract only (no tool inventory — that lives in the tool schemas
-/// and the `lua` capability's own prompt). Kept to two dense sentences per the
-/// prompt-budget guidance in `knowledge/execution/capabilities.md`.
+/// and the `lua` capability's own prompt). Kept to two concise sentences to
+/// limit prompt overhead.
 const SYSTEM_PROMPT: &str = "Most action tools are intentionally omitted from your direct tool list; \
 to use them, call them from inside the `lua` tool via the `tools.<name>(args)` table, where a single \
 script can chain several calls and process their results in one turn. Prefer one Lua script over a \

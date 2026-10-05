@@ -72,7 +72,3 @@ Integrations connect agents to tools and services. **[Providers](/providers/)**
 connect Everruns to the AI model vendors that run your agents, OpenAI,
 Anthropic, Google Gemini, AWS Bedrock, OpenRouter, and more. See the
 [Providers overview](/providers/) to configure one.
-
-## Adding an integration
-
-New integrations follow a parity checklist (connection provider, tests, live-API coverage, docs, and a threat-model section) before they ship. Daytona is the reference implementation. See the in-repo [`knowledge/integrations/integrations.md`](https://github.com/everruns/everruns/blob/main/knowledge/integrations/integrations.md) for the full contract.

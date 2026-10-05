@@ -6,8 +6,6 @@
 //! containers. This module contributes the `modal` capability (create, exec,
 //! files, snapshots, tunnels) and the `modal` connection provider.
 //!
-//! Design: `knowledge/integrations/modal.md`.
-//!
 //! # Example
 //!
 //! ```

@@ -844,7 +844,7 @@ pub async fn grep_files(
 ///
 /// Deliberately carries no utoipa path annotation. This whole
 /// `/v1/sessions/{session_id}/fs/*` family is delisted from the published spec
-/// (see the note in `openapi.rs`), so the annotation would describe an
+/// so the annotation would describe an
 /// operation `ApiDoc` never registers — which
 /// `openapi_coverage_test::every_utoipa_handler_is_registered_in_apidoc`
 /// rejects. (The guard scans for that attribute as plain text, so naming it

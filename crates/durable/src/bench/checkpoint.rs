@@ -186,7 +186,7 @@ impl CheckpointStore {
         }
     }
 
-    /// Default store location (crates/durable/benches/checkpoints - under source control)
+    /// Default checkpoint directory under source control.
     pub fn default_location() -> Self {
         Self::new("crates/durable/benches/checkpoints")
     }

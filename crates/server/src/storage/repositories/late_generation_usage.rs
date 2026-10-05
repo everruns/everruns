@@ -132,7 +132,7 @@ impl Database {
         .await?)
     }
 
-    /// Best-effort, as for every generation (see knowledge/evaluation/reporting.md).
+    /// Best-effort, as for every generation.
     async fn enqueue_generation_projection(&self, org_id: i64, id: Uuid, version: &str) {
         if let Err(e) = self
             .enqueue_reporting_outbox(

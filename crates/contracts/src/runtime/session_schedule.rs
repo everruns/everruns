@@ -93,8 +93,7 @@ pub enum ScheduleLimitError {
 /// per-session cap, per-org cap, and minimum recurring cron interval. Pass the
 /// recurring `cron_expression` (None for one-shot schedules, which skip the
 /// interval gate). Each fire dispatches a real worker turn, so these bound
-/// operator compute on open-signup deployments (see `knowledge/security/threat-model.md`
-/// TM-SCHED-001).
+/// operator compute on open-signup deployments.
 pub async fn validate_schedule_create_limits<
     T: crate::runtime::session_services::SessionScheduleStore + ?Sized,
 >(

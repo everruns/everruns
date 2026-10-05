@@ -14,7 +14,7 @@
 //! - System prompt sections use XML tags for clear boundaries between components.
 //!   This follows Anthropic's recommendation for multi-component prompts and reduces
 //!   misattribution between capability instructions, user-provided AGENTS.md, and the
-//!   agent's base system prompt. See knowledge/project/xml-prompt-formatting.md for rationale.
+//!   agent's base system prompt.
 //!
 //! Each capability is in its own file with collocated tools.
 
@@ -407,7 +407,7 @@ pub trait Capability: Send + Sync {
     /// Whether this capability is a guardrail — a constraint on agent
     /// behavior (content checks, tool restrictions) rather than a grant of
     /// new abilities. Structural marker for UI sections and catalog
-    /// filtering; carries no runtime semantics. See knowledge/execution/guardrails.md.
+    /// filtering; carries no runtime semantics.
     fn is_guardrail(&self) -> bool {
         false
     }
@@ -934,7 +934,7 @@ pub trait Capability: Send + Sync {
     /// Returns user-defined hook specifications contributed by this capability.
     ///
     /// User hooks are JSON-serializable specs (see
-    /// `crate::runtime::user_hook_types::UserHookSpec` and `knowledge/runtime-resources/user-hooks.md`) that
+    /// `crate::runtime::user_hook_types::UserHookSpec`) that
     /// the `HookAdapterBuilder` validates and turns into per-event
     /// `Arc<dyn …Hook>` adapters during capability collection. Capabilities
     /// that ship reusable hook bundles (formatters, security guards, audit
@@ -996,7 +996,7 @@ pub trait Capability: Send + Sync {
     /// Commands that need the session's assembled context or an out-of-band
     /// LLM call (e.g. `/btw`) use the host facilities on
     /// [`CommandExecutionContext::host`] — see
-    /// [`crate::runtime::command_host::CommandHost`] and knowledge/project/commands.md.
+    /// [`crate::runtime::command_host::CommandHost`].
     async fn execute_command(
         &self,
         request: &ExecuteCommandRequest,
@@ -1075,7 +1075,7 @@ pub trait Capability: Send + Sync {
     /// to the message text (optionally rewriting it first, e.g. to strip inline
     /// citation markers). This is the seam citation capabilities use to turn
     /// retrieved sources into claim-level provenance. See
-    /// [`crate::runtime::annotation_hook`] and `knowledge/runtime-resources/citations.md`.
+    /// [`crate::runtime::annotation_hook`].
     ///
     /// A capability contributes nothing unless a citation feed is configured,
     /// keeping the common (no-citations) case free of work.
@@ -1094,7 +1094,7 @@ pub trait Capability: Send + Sync {
     /// collected set, stamping a [`crate::runtime::message::VerificationVerdict`] on each
     /// citation. Decoupled from the feeds so any feed can be paired with any
     /// verifier. The `citation_verification` capability implements this. See
-    /// [`crate::runtime::annotation_hook::CitationVerifier`] and `knowledge/runtime-resources/citations.md`.
+    /// [`crate::runtime::annotation_hook::CitationVerifier`].
     ///
     /// Default: no verifier.
     fn citation_verifier_with_config(

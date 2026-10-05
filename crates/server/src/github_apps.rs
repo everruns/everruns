@@ -9,7 +9,7 @@
 //! - **Clicks, not copied secrets.** GitHub's App manifest flow returns the
 //!   App's id, private key, client secret and webhook secret to our callback,
 //!   so no one pastes a credential. Mirrors the Slack one-click install
-//!   decision (`knowledge/integrations/slack-one-click-install.md`): one App per
+//!   decision: one App per
 //!   agent keeps a distinct bot identity (`<agent>[bot]`) and needs no operator
 //!   setup on self-hosted deployments.
 //! - **The App row id is in every GitHub-facing URL** (webhook, setup), so
@@ -18,8 +18,6 @@
 //!   (verified with the App's own JWT).
 //! - Browser round trips carry an encrypted, expiring [`SetupState`] bound to
 //!   the user who started the flow, instead of server-side pending rows.
-//!
-//! See `knowledge/integrations/github-apps.md`.
 
 use anyhow::{Context, Result, bail};
 use base64::Engine;

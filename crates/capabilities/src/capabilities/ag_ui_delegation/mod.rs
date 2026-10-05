@@ -5,7 +5,7 @@
 //! agents; the model starts a delegation with `spawn_agent` and
 //! `target = { "type": "external_ag_ui", "id": "<configured id>" }`, and the
 //! generic session-task tools (`wait_task`, `message_task`, `cancel_task`)
-//! drive it from there. See `knowledge/integrations/ag-ui-capability.md`.
+//! drive it from there.
 
 // Decisions:
 // - Mirrors `a2a_delegation`: external agents are listed in the capability

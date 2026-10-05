@@ -1,6 +1,6 @@
 //! Everruns-side network boundary for Browserless browsers (EVE-1189).
 //!
-//! THREAT[TM-TOOL-015][TM-TOOL-056]: A Browserless browser resolves DNS and
+//! `THREAT[TM-TOOL-015][TM-TOOL-056]`: A Browserless browser resolves DNS and
 //! follows redirects on its own. Checking only the URL a tool was given leaves
 //! redirect hops, requests the page discovers, and hostnames that resolve (or
 //! rebind) to private, loopback, link-local, or metadata addresses unchecked.

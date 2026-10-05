@@ -6,9 +6,6 @@
 //! `sessions.trigger_id` (EVE-1138) touched ninety-six of them — and pushed
 //! several files that are already on the size debt list further up it.
 //!
-//! The struct lives here rather than in `models.rs`, which is on that list,
-//! and is re-exported from there so callers are unaffected.
-//!
 //! Every field defaults to its inert value: no agent, no ingress, no workspace,
 //! no blueprint, no capabilities. The one field with no meaningful zero is
 //! `owner_principal_id`; it gets a freshly generated principal id rather than
@@ -21,7 +18,7 @@
 //! these columns are; a column that must be set deliberately should be added
 //! to the *request* types instead, where the compiler still demands it.
 //!
-//! `CreateSessionRequest` in `api/sessions.rs` carries a `Default` for the same
+//! `CreateSessionRequest` carries a `Default` for the same
 //! reason, and it is sound there for a stronger one: every field already has
 //! `#[serde(default)]`, so `Default` is exactly what a `{}` body deserializes
 //! to. That rationale lives here rather than on the struct because utoipa

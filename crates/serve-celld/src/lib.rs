@@ -32,7 +32,7 @@
 //!   once the app has booted, so a restore can never race live state.
 //!
 //! serve boots on the first other request, after the cell had its chance to
-//! restore. The cell itself (JavaScript, in `examples/serve/celld/worker`)
+//! restore. The [JavaScript cell example](https://github.com/everruns/everruns/tree/main/examples/serve/celld/worker)
 //! decides when to snapshot, what to journal and when to replay.
 //!
 //! ```no_run

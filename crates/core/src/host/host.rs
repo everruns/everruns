@@ -320,7 +320,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     /// MCP executor routing `mcp_*` tool calls for this session, if the host
-    /// configures MCP (knowledge/integrations/runtime-mcp.md D4). Default: `None`, so hosts
+    /// configures MCP. Default: `None`, so hosts
     /// without scoped MCP servers keep the plain tool registry unchanged.
     async fn mcp_executor(
         &self,

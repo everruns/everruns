@@ -325,7 +325,7 @@ pub struct AppState {
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     /// System utility LLM for sanctioned internal analysis commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    /// Agent health check service (knowledge/evaluation/agent-checks.md, tier-3), so the
+    /// Agent health check service, so the
     /// health-check commands work over MCP, not just HTTP.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
@@ -1040,7 +1040,7 @@ fn json_result_payload(structured: &Value) -> Value {
 /// that predate the structured envelope keep working; when an envelope
 /// is supplied, also emits `structuredContent` carrying the typed
 /// [`McpExecuteError`] so newer SDKs can branch on a machine-readable
-/// `code`/`category`/`retryable` triple. See `knowledge/integrations/mcp.md`.
+/// `code`/`category`/`retryable` triple.
 fn error_result_payload(message: &str, envelope: Option<&McpExecuteError>) -> Value {
     let mut payload = json!({
         "content": [{ "type": "text", "text": message }],

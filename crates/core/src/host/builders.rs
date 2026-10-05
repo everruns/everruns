@@ -664,7 +664,7 @@ impl SingleSessionBuilder {
         self
     }
 
-    /// Configure session-scoped MCP servers (knowledge/integrations/runtime-mcp.md). Discovered
+    /// Configure session-scoped MCP servers. Discovered
     /// and executed by the runtime alongside built-in tools.
     pub fn session_mcp_servers(mut self, mcp_servers: ScopedMcpServers) -> Self {
         self.session = self.session.mcp_servers(mcp_servers);
@@ -783,9 +783,8 @@ impl SingleSessionBuilder {
     /// Pin the seeded session's id. When unset, the underlying
     /// `SessionBuilder` generates a fresh `SessionId` at build time.
     ///
-    /// Useful for embedders that need the id ahead of build — e.g. the
-    /// `examples/coding-cli` JSONL session log uses `<id>.jsonl` as the
-    /// filename and must open the file before the runtime exists.
+    /// Useful for embedders that need the id ahead of build, such as opening a
+    /// JSONL session log named `<id>.jsonl` before the runtime exists.
     pub fn session_id(mut self, id: SessionId) -> Self {
         self.session = self.session.id(id);
         self

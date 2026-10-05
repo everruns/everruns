@@ -119,9 +119,6 @@ the feature. When migrating a deployment that offered org opt-in with `true`, us
 intentionally enables the feature by default for every organisation. Configure the same
 grades on the API, workers, and UI where they perform registration or ingress gating.
 
-The default grade for each feature is defined in the
-[feature catalog](https://github.com/everruns/everruns/blob/main/crates/platform/src/feature_flags.rs).
-
 ## API_PREFIX
 
 Path prefix for REST API routes.
@@ -335,7 +332,7 @@ DATABASE_UNPOOLED_URL=postgres://app:secret@ep-foo.us-east-1.aws.neon.tech/everr
 Optional backend that offloads workspace-file and image *content bytes* to an
 S3-compatible object store while keeping all metadata in PostgreSQL. Everruns
 remains the proxy for every read/write, no presigned URLs are handed to
-clients or workers. See [knowledge/runtime-resources/object-storage.md](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/object-storage.md).
+clients or workers.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -540,7 +537,7 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 **Production:**
 - Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*`, `/oauth/*`, `/mcp`, and `/.well-known/*` to the API server
 - Disable response buffering for SSE endpoints
-- Example Caddy config: see `local/Caddyfile`
+- [Example Caddy configuration](https://github.com/everruns/everruns/blob/main/local/Caddyfile)
 
 ## Other Server Variables
 

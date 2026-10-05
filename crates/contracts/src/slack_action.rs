@@ -21,7 +21,7 @@
 //! `build_session_tags` stamps on Slack-originated sessions. A session without
 //! that tag — one started from the API, a schedule, or another channel — has no
 //! Slack endpoint to act as, and every action must fail with
-//! [`SlackActionError::NoSlackSession`] rather than falling back to some other
+//! [`SlackActionError::NoSlackSession`](crate::slack_action::SlackActionError::NoSlackSession) rather than falling back to some other
 //! endpoint's credential.
 //!
 //! Resolution deliberately goes through the **endpoint**, not the app: since

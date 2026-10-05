@@ -610,7 +610,7 @@ pub(crate) fn extract_final_assistant_content(
 
 /// Collect the citation annotations on the final assistant message. They ride
 /// inline on the text content parts of the last `output.message.completed`
-/// event (see `knowledge/runtime-resources/citations.md`), so they are already in the fetched events.
+/// event, so they are already in the fetched events.
 pub(crate) fn extract_final_assistant_annotations(
     events: &[crate::storage::models::EventRow],
 ) -> Vec<TextAnnotation> {

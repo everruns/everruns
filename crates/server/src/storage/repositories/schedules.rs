@@ -211,8 +211,7 @@ impl Database {
     /// `next_trigger_at`, and nothing recorded that a row had been picked up. A
     /// second server instance polling in that window saw the same schedules as
     /// still due and fired them again -- duplicate agent turns and duplicate
-    /// model spend. Mirrors the durable scheduler's claim in
-    /// `crates/durable/src/persistence/postgres.rs`.
+    /// model spend. Mirrors the durable scheduler's claim.
     ///
     /// The claim is a lease, not a permanent mark: an instance that dies between
     /// claiming and firing releases its schedules once the lease ages out.

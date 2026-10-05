@@ -5,7 +5,7 @@
 //! [`ContainmentLevel::Native`](crate::host::ContainmentLevel), applied by
 //! [`HostCompute::contained`](crate::host::HostCompute::contained) and by the
 //! [`shell`](crate::host::capabilities::shell) capability: Seatbelt on macOS, Landlock
-//! plus seccomp on Linux, ported from Yolop's `src/exec/sandbox.rs`.
+//! plus seccomp on Linux.
 //!
 //! Two invariants carry over from Yolop and are why this is a boundary rather
 //! than a helper:

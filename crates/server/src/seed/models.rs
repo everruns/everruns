@@ -1,7 +1,7 @@
 //! Built-in LLM model catalogue seeded into the default org's providers.
 //!
-//! Split out of `seed.rs` to keep that file under its size ratchet; the
-//! seeding logic that consumes `SEED_MODELS` stays there.
+// Split out of `seed.rs` to keep that file under its size ratchet; the
+// seeding logic that consumes `SEED_MODELS` stays there.
 
 use super::seed_ids;
 use uuid::Uuid;

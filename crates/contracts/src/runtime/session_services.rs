@@ -178,7 +178,6 @@ pub trait SessionScheduleStore: Send + Sync {
 ///
 /// Capabilities register resources here (sandboxes, subagents, browser sessions).
 /// Agents query it ("what's running?"), infrastructure scans it for cleanup.
-/// See `knowledge/runtime-resources/session-resources.md`.
 #[async_trait]
 pub trait SessionResourceRegistry: Send + Sync {
     /// Register a resource (or update if resource_id already exists for this session).

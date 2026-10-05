@@ -1,21 +1,21 @@
 //! Guided agent templates: agent examples that come with a setup path.
 //!
-//! Decisions:
-//! - A template is an ordinary agent example (`SeedAgent`, adopted through
-//!   `POST /v1/agents/import?from-example={name}`) plus `TemplateSetup`, which
-//!   tells the UI what to walk the user through after adoption: connect the
-//!   agent's own GitHub App, pick a repository, choose settings, create the
-//!   trigger. There is no second catalogue or import path.
-//! - The trigger default is a `CreateAgentTriggerRequest` body with
-//!   `REPOSITORY_PLACEHOLDER` where the picked repository goes. The client
-//!   substitutes it and posts to the normal triggers API, so trigger
-//!   validation stays in one place.
-//! - Settings are booleans that map onto one capability config key. The
-//!   capability enforces them (`github` drops `create_github_pull_request`
-//!   unless `allow_pull_requests` is on), so a setting is never only a line in
-//!   a prompt that untrusted repository content could argue away.
-//! - Templates live here rather than in `seed.rs`, which is at its file-size
-//!   ceiling.
+// Decisions:
+// - A template is an ordinary agent example (`SeedAgent`, adopted through
+//   `POST /v1/agents/import?from-example={name}`) plus `TemplateSetup`, which
+//   tells the UI what to walk the user through after adoption: connect the
+//   agent's own GitHub App, pick a repository, choose settings, create the
+//   trigger. There is no second catalogue or import path.
+// - The trigger default is a `CreateAgentTriggerRequest` body with
+//   `REPOSITORY_PLACEHOLDER` where the picked repository goes. The client
+//   substitutes it and posts to the normal triggers API, so trigger
+//   validation stays in one place.
+// - Settings are booleans that map onto one capability config key. The
+//   capability enforces them (`github` drops `create_github_pull_request`
+//   unless `allow_pull_requests` is on), so a setting is never only a line in
+//   a prompt that untrusted repository content could argue away.
+// - Templates live here rather than in `seed.rs`, which is at its file-size
+//   ceiling.
 
 use crate::seed::{SEED_AGENTS, SeedAgent, SeedCapability};
 use serde_json::{Value, json};

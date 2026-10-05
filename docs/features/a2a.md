@@ -232,7 +232,7 @@ In a [Framework](/framework/) app (full guide: [Framework A2A](/framework/a2a/))
 - To **delegate** to A2A agents, turn on the `a2a` feature of `everruns` and
   add `CapabilityRef::new("a2a_agent_delegation")` with the config above.
 
-The [`examples/serve/a2a`](https://github.com/everruns/everruns/tree/main/examples/serve/a2a)
+The [A2A example](https://github.com/everruns/everruns/tree/main/examples/serve/a2a)
 example does both. A `researcher` agent is served over A2A, and a `writer`
 agent delegates research to it and drafts from its notes. It runs offline by
 default and on OpenAI when `OPENAI_API_KEY` is set:

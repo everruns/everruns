@@ -5,7 +5,7 @@
 //! Mark a [`FunctionTool`](crate::FunctionTool) with
 //! [`needs_approval`](crate::FunctionTool::needs_approval) or
 //! [`always_needs_approval`](crate::FunctionTool::always_needs_approval), then
-//! register a [`ToolApprover`] with
+//! register a [`ToolApprover`](crate::approval::ToolApprover) with
 //! [`AgentBuilder::approver`](crate::AgentBuilder::approver). Before a gated
 //! call runs, the approver receives the [`SessionId`](crate::SessionId), the
 //! [`ToolCall`](crate::ToolCall) (its `id` is the tool call id, its
@@ -14,8 +14,8 @@
 //! can route the request to the right person. The turn waits for the answer.
 //!
 //! A rejected call never runs its handler; the model receives a tool error
-//! saying the call was rejected. [`ApprovalDecision::AllowAlways`] and
-//! [`ApprovalDecision::RejectAlways`] are remembered per session and tool.
+//! saying the call was rejected. [`ApprovalDecision::AllowAlways`](crate::approval::ApprovalDecision::AllowAlways) and
+//! [`ApprovalDecision::RejectAlways`](crate::approval::ApprovalDecision::RejectAlways) are remembered per session and tool.
 
 pub use async_trait::async_trait;
 pub use everruns_core::builtins::{ApprovalDecision, ToolApprover};

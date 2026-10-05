@@ -5,7 +5,7 @@
 //! resolved capabilities include `openai_agents_api_runtime` (which the
 //! platform strips unless the org has the `openai_agents_api` flag), the
 //! turn's model is bound to the official OpenAI API, and the host supplies a
-//! durable [`AgentsApiStore`]. A selected session whose model or host cannot
+//! durable [`AgentsApiStore`](crate::agents_api_store::AgentsApiStore). A selected session whose model or host cannot
 //! serve the backend falls back to the native loop.
 //!
 //! Everruns policy holds at the remote loop's boundaries (EVE-1124): every

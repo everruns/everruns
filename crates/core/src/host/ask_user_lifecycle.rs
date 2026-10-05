@@ -1,6 +1,6 @@
-//! The unattended `ask_user` resolution, split out of `host.rs` to keep that
-//! file under the size ratchet (EVE-1057). It is a method on the same
-//! `RuntimeSessionLifecycle`, in its own impl block.
+// The unattended `ask_user` resolution, split out of `host.rs` to keep that
+// file under the size ratchet (EVE-1057). It is a method on the same
+// `RuntimeSessionLifecycle`, in its own impl block.
 
 use crate::events::{EventContext, EventRequest};
 use everruns_contracts::typed_id::{MessageId, TurnId};

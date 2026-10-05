@@ -1,8 +1,8 @@
 //! Browser security headers served with the UI.
 //!
-//! Split out of `app_builder.rs` (EVE-1047): that file is pinned by the size
-//! ratchet, and this is the most self-contained thing in it — a pure function
-//! over two feature flags, with no dependency on how the app is composed.
+// Split out of `app_builder.rs` (EVE-1047): that file is pinned by the size
+// ratchet, and this is the most self-contained thing in it — a pure function
+// over two feature flags, with no dependency on how the app is composed.
 
 use crate::api;
 

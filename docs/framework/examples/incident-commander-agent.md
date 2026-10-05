@@ -38,7 +38,7 @@ cargo run -p everruns-incident-commander-agent -- "Investigate checkout and expl
 
 ## Build the agent
 
-This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
+This builder combines the agent instructions, tools, and model. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
 ```rust ignore
 let agent = Agent::builder()
@@ -54,7 +54,7 @@ let agent = Agent::builder()
 
 ## Send, observe, and wait
 
-The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
+The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
 ```rust ignore
 let engine = Engine::new();
@@ -102,7 +102,3 @@ Replace each fixture with a read-only monitoring/deployment API scoped to the re
 ## Boundaries
 
 All telemetry is fictional. The log is a real local append-only artifact, ignored by Git; it contains exercise text and does not change production. Filesystem permissions and rotation are the application's responsibility.
-
-## Source map
-
-`src/main.rs`: agent and session; `src/tools.rs`: evidence allowlist and local recording; `src/metrics.txt`, `src/deployments.txt`, `src/logs.txt`, `src/runbook.md`: inspectable incident data. `examples/demo-support` handles shared terminal presentation; `src/record.sh` and `src/render_demo.py` handle recording.

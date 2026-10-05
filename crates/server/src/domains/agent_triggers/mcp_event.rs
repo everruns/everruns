@@ -1,6 +1,5 @@
 //! MCP event triggers: inbound MCP Events (EVE-1121) as an agent trigger
-//! source. See `knowledge/integrations/mcp-events.md` (spec revision pinned
-//! there) and `knowledge/runtime-resources/agent-triggers.md`.
+//! source.
 //!
 //! Design decisions:
 //! - **The agent subscribes as itself.** The trigger names one of the agent's

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Regression tests for literal and shared-README crate documentation."""
+"""Regression tests for crate documentation and public file references."""
 
+import pathlib
+import tempfile
 import unittest
 
-from published_crate_docs import crate_rustdoc
+from published_crate_docs import crate_rustdoc, file_reference_errors
 
 
 class CrateRustdocTests(unittest.TestCase):
@@ -47,6 +49,48 @@ class CrateRustdocTests(unittest.TestCase):
         )
         self.assertFalse(valid)
         self.assertEqual(docs, "")
+
+
+class FileReferenceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = pathlib.Path(self.temp.name)
+        source = self.root / "crates/core/src/events/mod.rs"
+        source.parent.mkdir(parents=True)
+        source.touch()
+
+    def test_event_reference_requires_link(self):
+        for text in [
+            "The event constants are in `crates/core/src/events/mod.rs`.",
+            "Use `events` from `crates/core/src/events/mod.rs`.",
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(file_reference_errors(self.root, text), [
+                    (1, "remove unnecessary source path or link it: crates/core/src/events/mod.rs")
+                ])
+
+    def test_internal_knowledge_references_are_not_public_links(self):
+        self.assertEqual(file_reference_errors(
+            self.root, "See [design](knowledge/framework/execution-backends.md)."
+        ), [(1, "remove internal knowledge references from public prose")])
+
+    def test_links_and_commands_are_allowed(self):
+        text = """See [schema](crates/core/src/events/mod.rs).
+Run `cat crates/core/src/events/mod.rs`.
+```sh
+cat crates/core/src/events/mod.rs
+```
+~~~rust
+// knowledge/framework/execution-backends.md
+~~~
+Create `/workspace/report.md`.
+"""
+        self.assertEqual(file_reference_errors(self.root, text), [])
+
+    def test_diagnostic_lines_follow_fenced_code(self):
+        text = "```sh\ncat crates/core/src/events/mod.rs\n```\ncrates/core/src/events/mod.rs"
+        self.assertEqual(file_reference_errors(self.root, text)[0][0], 4)
 
 
 if __name__ == "__main__":

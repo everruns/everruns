@@ -10,7 +10,7 @@
 //! Each submodule still defines one harness (system prompt, capabilities,
 //! tags, roles). The top-level `built_in_harnesses()` function collects the
 //! always-installed ones into the ordered list consumed by
-//! `oss_built_in_harnesses()` in platform.rs.
+//! `oss_built_in_harnesses()`.
 
 mod base;
 mod bashkit_worker;
@@ -186,8 +186,7 @@ mod tests {
     }
 
     /// The shared floor carries capability references only. Presentation and
-    /// the base system prompt stay platform-side, per
-    /// `knowledge/framework/harnesses.md`.
+    /// the base system prompt stay platform-side.
     #[test]
     fn the_shared_floor_leaves_presentation_to_the_platform() {
         let definition = generic::definition();

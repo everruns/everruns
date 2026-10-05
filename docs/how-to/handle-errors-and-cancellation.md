@@ -104,8 +104,6 @@ Don't retry indefinitely, a turn that fails twice usually fails for a reason (ra
 
 Cancellation is not a failure: `sessions.cancel` produces `turn.cancelled`, which needs no retry.
 
-The code list lives in `crates/contracts/src/user_facing_error.rs`.
-
 ## See also
 
 - [Stream events](/how-to/stream-events/)

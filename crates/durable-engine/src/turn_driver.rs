@@ -10,7 +10,7 @@
 //! Model: queue plus per-step checkpoint. Each turn step (`process_input`,
 //! `reason`, `act`) is a queued task; after it completes, the engine plans
 //! the next step from the `DurableTurnInput` checkpoint and the driver enqueues
-//! it, or completes the workflow. See knowledge/framework/execution-backends.md.
+//! it, or completes the workflow.
 //!
 //! Decision: with [`TurnTaskDriver::chain_steps`], the driver enqueues the
 //! next step already claimed by its own worker and runs it at once, so a

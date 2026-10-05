@@ -103,8 +103,7 @@ impl StorageBackend {
         }
     }
 
-    /// Attach an object-storage blob backend for content offload
-    /// (knowledge/runtime-resources/object-storage.md). Only the PostgreSQL backend offloads content;
+    /// Attach an object-storage blob backend for content offload. Only the PostgreSQL backend offloads content;
     /// the in-memory dev backend always stores bytes inline.
     pub fn with_blob_store(
         self,

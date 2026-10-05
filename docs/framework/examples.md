@@ -89,6 +89,6 @@ cargo run -p everruns --features openai --example github_monitor -- --simulate
 ```
 
 For copyable command details and behavior notes, use the
-[`examples/README.md`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/README.md)
+[example catalog](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/README.md)
 next to the source. Examples that demonstrate low-level host internals remain
 advanced-host examples, not alternative Framework entrypoints.

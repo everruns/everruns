@@ -49,7 +49,6 @@ pub const TURN_FAILED: &str = "turn.failed";
 /// Turn was deliberately sealed (stopped to prevent waste): no forward progress
 /// across repeated crash-reclaims, or work budget exhausted. Distinct from
 /// `turn.completed` (success) and `turn.failed` (error). Carries a `reason`.
-/// See EVE-534 and `knowledge/operations/durable-execution-engine.md`.
 pub const TURN_SEALED: &str = "turn.sealed";
 pub const TURN_CANCELLED: &str = "turn.cancelled";
 

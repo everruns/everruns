@@ -22,9 +22,8 @@ use utoipa::ToSchema;
 /// express "published App, disabled channel" and forced publishing a whole App —
 /// and therefore every sibling channel on it — to make one endpoint reachable.
 ///
-/// Liveness is not this value alone; see `channel_liveness` in
-/// `crates/server/src/api/channel_ingress.rs` for the agent-level terms, which are
-/// folded in at resolution time rather than stored here.
+/// Liveness also depends on agent-level conditions, which are folded in at
+/// resolution time rather than stored here.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[schema(example = "live")]
 #[serde(rename_all = "lowercase")]
@@ -79,17 +78,15 @@ pub enum ChannelType {
     /// Agent2Agent (A2A) protocol channel — JSON-RPC + API key.
     A2a,
     /// Free Communication Protocol channel — text-first HTTP ingress with an
-    /// optional handshake. See `knowledge/integrations/fcp-channel.md` and the upstream FCP
-    /// specification.
+    /// optional handshake.
     Fcp,
     /// App-scoped, execution-only API key over native session routes.
-    /// See `knowledge/integrations/app-api-keys.md`.
     #[serde(rename = "api_endpoint")]
     ApiEndpoint,
     /// Public Chat channel — an isolated, public-facing chat web app bound to a
     /// single App's agent. Anonymous by default, with optional Google sign-in
     /// and Cloudflare Turnstile bot mitigation. Reuses AG-UI streaming and the
-    /// shared channel auth verifier. See `knowledge/integrations/public-chat.md`.
+    /// shared channel auth verifier.
     #[serde(rename = "public_chat")]
     PublicChat,
 }
@@ -507,8 +504,7 @@ pub const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS: u32 = 120;
 
 /// Typed FCP channel configuration.
 ///
-/// FCP is intentionally schema-free at the wire layer (see
-/// `knowledge/integrations/fcp-channel.md`). The fields here only control server-side
+/// FCP is intentionally schema-free at the wire layer. The fields here only control server-side
 /// behavior — handshake content, a single shared bearer token, session
 /// reuse, rate limiting — and never constrain the body the actor sends in.
 ///
@@ -608,8 +604,7 @@ fn default_timezone() -> String {
 /// once at create / regenerate time.
 ///
 /// `message` is the template body. `{{path.to.value}}` placeholders expand
-/// against the incoming A2A request payload and metadata (see
-/// `knowledge/integrations/a2a-channel.md`).
+/// against the incoming A2A request payload and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct A2aChannelConfig {
     /// SHA-256 hex digest of the API key.
@@ -659,8 +654,7 @@ pub struct A2aChannelConfig {
 /// structurally execution-only: it reaches only these app-mounted routes and
 /// has no path to any management API. The plaintext key is **never** stored —
 /// only the SHA-256 hex hash and a non-secret display prefix are persisted, and
-/// the plaintext is returned exactly once at create / regenerate time. See
-/// `knowledge/integrations/app-api-keys.md`.
+/// the plaintext is returned exactly once at create / regenerate time.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ApiChannelConfig {
     /// SHA-256 hex digest of the API key.
@@ -740,7 +734,7 @@ pub struct PublicChatCaptchaConfig {
 /// Parsed from the `channel_config` JSON field on App. Public Chat reuses
 /// AG-UI's streaming semantics and the shared channel auth verifier, and
 /// adds branding and bot-mitigation tailored to a public, link-shareable chat
-/// website. See `knowledge/integrations/public-chat.md`.
+/// website.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PublicChatChannelConfig {
     /// Whether anonymous access is allowed. Anonymous-by-default mirrors AG-UI.

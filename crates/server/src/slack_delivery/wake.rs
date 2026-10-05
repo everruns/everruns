@@ -1,8 +1,7 @@
 //! What tells the Slack delivery dispatcher that a session has new events.
 //!
 //! The PostgreSQL `LISTEN/NOTIFY` broadcaster is the push source, but it is
-//! deliberately not started when NATS carries event delivery (see
-//! `knowledge/operations/production-deployment.md`). Before EVERRUNS-2B that
+//! deliberately not started when NATS carries event delivery. Before EVERRUNS-2B that
 //! left production without a dispatcher at all, and every Slack reply fell back
 //! to a 120-second polling loop that gave up on longer turns and stayed silent
 //! on failed ones. Polling active sessions from the dispatcher keeps the same

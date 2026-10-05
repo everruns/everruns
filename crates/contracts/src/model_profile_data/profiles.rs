@@ -206,7 +206,7 @@ struct ModelDescriptor {
     vendor: ModelVendor,
     /// Provider types (API surfaces) this model is offered under.
     surfaces: &'static [&'static str],
-    /// Which provider service this model belongs to (knowledge/foundations/providers.md).
+    /// Which provider service this model belongs to.
     /// Pickers filter on it: chat pickers never list realtime models.
     service: ServiceKind,
 }
@@ -580,7 +580,7 @@ pub fn get_model_vendor(provider_type: &str, model_id: &str) -> Option<ModelVend
     resolve_descriptor(provider_type, model_id).map(|descriptor| descriptor.vendor)
 }
 
-/// Stable public profile key: `"{vendor}/{canonical_id}"` (knowledge/foundations/providers.md).
+/// Stable public profile key: `"{vendor}/{canonical_id}"`.
 ///
 /// The key identifies the model's identity independent of which provider
 /// serves it: `("anthropic", "claude-sonnet-4-6-20260217")` and a gateway

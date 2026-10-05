@@ -1,4 +1,4 @@
-//! DeadLetters implementation (see `store.rs` for the trait contract).
+//! Implementation of [`crate::DeadLetters`].
 
 use super::*;
 

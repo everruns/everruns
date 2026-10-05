@@ -155,7 +155,7 @@ On Linux the kernel policy is applied by a helper process, selected with the
 does not build a dependency's binaries, so a single-binary host will not find
 one beside it. Such a host routes the arguments into
 `everruns_core::host::containment::worker::run_from_args` from its own `main` and
-selects `reexec_self`. See `examples/host-shell-agent`.
+selects `reexec_self`. See the [Host Shell Agent example](/framework/examples/host-shell-agent/).
 
 ## See Also
 

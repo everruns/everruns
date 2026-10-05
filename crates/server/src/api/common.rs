@@ -152,7 +152,7 @@ pub(crate) use impl_auth_state;
 /// every error response includes `title` and `status`, and may include
 /// `detail`, `code`, `allowed_actions`, `retry_after_seconds`, `instance`,
 /// and `type`. The content type is rewritten to `application/problem+json`
-/// by [`problem_json_content_type`].
+/// with the `application/problem+json` content type.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
     /// RFC 9457 problem type URI. Optional; identifies the problem class.
@@ -200,12 +200,10 @@ pub struct ErrorResponse {
 ///   prose.
 ///
 /// The shape is intentionally identical across both contexts; the closed
-/// `rel` vocabulary documented in `knowledge/execution/api-conventions.md` distinguishes
-/// them.
+/// `rel` vocabulary distinguishes them.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
 pub struct AllowedAction {
-    /// Link relation describing the action. Closed vocabulary documented
-    /// in `knowledge/execution/api-conventions.md` — examples: `self`, `cancel`, `pause`,
+    /// Link relation describing the action. Examples: `self`, `cancel`, `pause`,
     /// `resume`, `events`, `retry`, `retry-later`, `unarchive`,
     /// `get-existing`, `delete`, `update`.
     pub rel: String,
@@ -1117,8 +1115,7 @@ pub trait ResourceUrlable {
     /// is the absolute API base URL from `AuthConfig.base_url` —
     /// **without the `/v1` resource prefix** (e.g.
     /// `https://app.everruns.com/api`, not `…/api/v1`). The resolver is
-    /// responsible for the versioned path. See
-    /// `knowledge/execution/api-conventions.md` for the closed `rel` vocabulary.
+    /// responsible for the versioned path.
     fn allowed_actions(&self, _api_base: &str) -> Vec<AllowedAction> {
         Vec::new()
     }
@@ -1214,7 +1211,7 @@ impl<T: ResourceUrlable + Serialize> ListResponse<T> {
 // also be documented in `knowledge/execution/api-conventions.md`.
 // ---------------------------------------------------------------
 
-/// Hypermedia actions for an `Agent`. See `knowledge/execution/api-conventions.md`.
+/// Hypermedia actions for an `Agent`.
 pub fn agent_allowed_actions(
     id: &str,
     status: &crate::records::AgentStatus,
@@ -1273,7 +1270,7 @@ impl ResourceUrlable for crate::records::Agent {
     }
 }
 
-/// Hypermedia actions for a `Harness`. See `knowledge/execution/api-conventions.md`.
+/// Hypermedia actions for a `Harness`.
 pub fn harness_allowed_actions(
     id: &str,
     status: &crate::records::HarnessStatus,
@@ -1327,7 +1324,7 @@ impl ResourceUrlable for crate::records::Harness {
     }
 }
 
-/// Hypermedia actions for an archival `App`. See `knowledge/execution/api-conventions.md`.
+/// Hypermedia actions for an archival `App`.
 ///
 /// Apps are retired (agent-exposure). Only the read endpoint survives, so `self`
 /// is the only action that resolves — advertising `update`, `runs`, `publish`,
@@ -1506,8 +1503,7 @@ impl ResourceUrlable for crate::records::Session {
     }
     /// Sessions hypermedia: pilot for EVE-493. Delegates to
     /// [`session_allowed_actions`] so the state → action mapping stays
-    /// testable independently of the full `Session` struct. Closed
-    /// `rel` vocabulary documented in `knowledge/execution/api-conventions.md`.
+    /// testable independently of the full `Session` struct.
     fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
         session_allowed_actions(
             &self.id.to_string(),
@@ -1558,7 +1554,7 @@ impl ResourceUrlable for crate::records::McpServer {
     }
 }
 
-/// Hypermedia actions for a `Skill`. See `knowledge/execution/api-conventions.md`.
+/// Hypermedia actions for a `Skill`.
 pub fn skill_allowed_actions(
     id: &str,
     status: &crate::records::SkillStatus,

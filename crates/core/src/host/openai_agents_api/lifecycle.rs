@@ -9,8 +9,6 @@
 //! retried activity error. Transient failures (rate limits, 5xx, network)
 //! stay errors so the durable engine retries them. Messages are written here,
 //! never copied from a provider response body, which can echo part of a key.
-//!
-//! Design: `knowledge/execution/openai-agents-api-runtime.md#session-lifecycle`.
 
 use everruns_contracts::user_facing_error::{codes, is_provider_quota_message};
 

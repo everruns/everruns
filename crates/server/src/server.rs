@@ -22,8 +22,7 @@ pub struct ResourceLimitsConfig {
     pub max_agents_per_org: i64,
     pub max_sessions_per_org: i64,
     /// Max active (enabled) session schedules per org. Enforced worker-side in
-    /// the schedule tools (`crates/core/src/capabilities/session_schedule.rs`,
-    /// `crates/core/src/tools.rs`) from `RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG`,
+    /// the schedule tools from `RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG`,
     /// because session schedules are created on the worker rather than via a
     /// server command. Carried here so the limit lives with its `RESOURCE_LIMIT_*`
     /// siblings and SaaS sets it per plan via `PlanResourceLimits::apply_to_env`.

@@ -18,7 +18,6 @@
 //! Tombstones carry no credentials and failures record a stable code, never a
 //! provider response body. Claims are leases (`next_attempt_at`) taken with
 //! `FOR UPDATE SKIP LOCKED`, so several server replicas share the queue.
-//! Design: `knowledge/execution/openai-agents-api-runtime.md#session-lifecycle`.
 
 use std::sync::Arc;
 use std::time::Duration;

@@ -560,7 +560,7 @@ struct AgentRunRecord {
     last_remote_task_snapshot: Option<Value>,
     #[serde(default)]
     wake_on_completion: bool,
-    /// Session task mirroring this run (knowledge/runtime-resources/session-tasks.md). Absent on
+    /// Session task mirroring this run. Absent on
     /// records that predate the task registry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     task_id: Option<String>,
@@ -704,7 +704,7 @@ async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> 
     Ok(())
 }
 
-/// A2A run status → session task state (knowledge/runtime-resources/session-tasks.md). Rejection is
+/// A2A run status → session task state. Rejection is
 /// an `error.kind` on `failed`, not a state.
 fn task_state_for(status: &AgentRunStatus) -> SessionTaskState {
     match status {

@@ -4,7 +4,7 @@
 //! Vendor drivers live with their vendor (`everruns-integrations-typesafe`
 //! for TypeSafe), and the deployment composes them into a registry from
 //! above, the same direction the TypeSafe service already took: host never
-//! learns a vendor. See `knowledge/operations/decisions-service.md`.
+//! learns a vendor.
 
 mod llm;
 mod registry;

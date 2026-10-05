@@ -533,7 +533,7 @@ pub fn build_session_routing_tag(
 /// Slack's assistant pane is the existing case: a pane is inherently one thread,
 /// so `Conversation` and `Requester` have no meaning there — but rejecting them
 /// at write time would be wrong, since the same exposure also serves channels
-/// where they are legitimate (`knowledge/integrations/slack-modernization.md`).
+/// where they are legitimate.
 ///
 /// Expressing that as one function keeps the pane from being a special case in
 /// the Slack adapter, and gives the next transport somewhere to put the same

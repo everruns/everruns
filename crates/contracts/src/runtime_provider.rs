@@ -1,6 +1,6 @@
 //! Runtime providers: service identity, endpoint, authentication, and wire driver.
 //!
-//! A [`ChatDriver`](crate::driver_registry::ChatDriver) implements a wire
+//! A [`ChatDriver`] implements a wire
 //! protocol. A `Provider` is a configured service that speaks that protocol.
 //! Keeping credentials and endpoints here lets one driver serve any number of
 //! services without adding vendor branches to the runtime.

@@ -9,7 +9,7 @@
 //! [`Agent`](crate::Agent) or a [`Completion`](crate::Completion) uses, asked a
 //! different question.
 //!
-//! [`list`] asks a provider for its catalog:
+//! [`list`](crate::models::list) asks a provider for its catalog:
 //!
 //! ```no_run
 //! use everruns::{Provider, models};

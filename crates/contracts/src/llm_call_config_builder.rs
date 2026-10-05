@@ -1,5 +1,4 @@
-//! Fluent builder for [`LlmCallConfig`], split out of `driver_registry.rs`
-//! (size ratchet); re-exported from there so every existing path works.
+//! Fluent builder for [`LlmCallConfig`].
 
 use crate::driver_registry::{
     CacheDiagnosticsConfig, LlmCallConfig, PromptCacheConfig, ProviderOpaqueContext,
@@ -11,8 +10,7 @@ use std::collections::HashMap;
 /// Builder for LlmCallConfig with fluent API
 ///
 /// Chain methods like `reasoning_effort()`, `temperature()`, etc. and call
-/// `build()` to get the final config. To start from a core `RuntimeAgent`, use
-/// the [runtime agent conversion helper](https://github.com/everruns/everruns/blob/main/crates/core/src/llm_conversions.rs).
+/// `build()` to get the final config.
 pub struct LlmCallConfigBuilder {
     config: LlmCallConfig,
 }

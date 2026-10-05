@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 
 root = pathlib.Path.cwd()
 sys.path.insert(0, str(root / "scripts"))
-from published_crate_docs import crate_rustdoc
+from published_crate_docs import crate_rustdoc, file_reference_errors
 
 metadata = json.loads(subprocess.check_output(
     ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True
@@ -63,6 +63,16 @@ def route_exists(route: str) -> bool:
         )
     )
 
+
+def check_file_references(location: pathlib.Path, text: str) -> None:
+    errors.extend(
+        f"{location.relative_to(root)}:{number}: {message}"
+        for number, message in file_reference_errors(root, text)
+    )
+
+for page in sorted((root / "docs").rglob("*")):
+    if page.suffix in {".md", ".mdx"} or page == root / "docs/api/openapi.json":
+        check_file_references(page, page.read_text())
 
 for package in published:
     if package not in manifests:
@@ -124,6 +134,18 @@ for package in published:
         )
 
     surfaces = [(readme, readme_text)]
+    check_file_references(readme, readme_text)
+    for source in sorted((crate_dir / "src").rglob("*.rs")):
+        if "tests" in source.parts or "test" in source.stem:
+            continue
+        # Preserve line positions for actionable diagnostics; ordinary source
+        # comments keep maintainer references out of generated Rust docs.
+        doc_lines = [
+            re.sub(r"^\s*//[!/] ?", "", line)
+            if re.match(r"^\s*//[!/]", line) else ""
+            for line in source.read_text().splitlines()
+        ]
+        check_file_references(source, "\n".join(doc_lines))
     if has_library:
         surfaces.append((lib, crate_docs))
     for location, text in surfaces:

@@ -1,7 +1,6 @@
 //! Memory capability
 //!
-//! Mounts org-scoped Memories into session workspaces. See `knowledge/runtime-resources/memory.md`
-//! for the durable design.
+//! Mounts org-scoped Memories into session workspaces.
 //!
 //! This module registers the capability and validates the structural shape of
 //! its config (`mounts[]` entries: `mem_`-prefixed Memory IDs, paths under
@@ -56,7 +55,7 @@ impl Capability for MemoryCapability {
     }
 
     /// Read-write shared mounts let one session influence future sessions, so
-    /// classify as Medium risk per `knowledge/security/threat-model.md`.
+    /// classify as Medium risk.
     fn risk_level(&self) -> RiskLevel {
         RiskLevel::Medium
     }
