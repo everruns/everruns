@@ -4,7 +4,7 @@
 // - Server owns auto-start and idle-pause orchestration; providers stay focused
 //   on sandbox operations.
 // - This is intentionally best-effort and in-process for the experimental flag.
-// - Capability config is resolved through the environment domain, which owns
+// - Capability config is resolved through the Sandbox Template domain, which owns
 //   the effective harness + agent + session merge.
 
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
@@ -150,10 +150,10 @@ impl SessionSandboxService {
         &self,
         session_id: SessionId,
     ) -> anyhow::Result<Option<SessionSandboxConfig>> {
-        // Effective capabilities are the environment domain's answer; sharing it
+        // Effective capabilities are the Sandbox Template domain's answer; sharing it
         // keeps "what is this session actually configured with" in one place.
         let Some(capabilities) =
-            crate::domains::environments::queries::effective_session_capabilities(
+            crate::domains::sandbox_templates::queries::effective_session_capabilities(
                 &self.db, session_id,
             )
             .await?

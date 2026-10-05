@@ -1407,300 +1407,6 @@
           ],
           "type": "string"
         },
-        "EnvironmentBootstrap": {
-          "description": "Reproducible initialization pinned with the profile snapshot.",
-          "properties": {
-            "commands": {
-              "description": "Ordered commands replayed when creating or recovering physical compute.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentContainmentLevel": {
-          "enum": [
-            "none",
-            "native",
-            "isolated"
-          ],
-          "type": "string"
-        },
-        "EnvironmentContainmentProfile": {
-          "description": "What commands may touch.",
-          "properties": {
-            "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation",
-              "description": "Whether the runtime may widen containment after Session creation."
-            },
-            "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
-              "description": "Filesystem mutation boundary for command execution."
-            },
-            "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel",
-              "description": "Isolation mechanism the provider must supply."
-            },
-            "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy",
-              "description": "Outbound network access the provider must enforce."
-            }
-          },
-          "required": [
-            "level"
-          ],
-          "type": "object"
-        },
-        "EnvironmentDurability": {
-          "description": "What survives physical compute loss.",
-          "enum": [
-            "checkpointed",
-            "provider_snapshot",
-            "none"
-          ],
-          "type": "string"
-        },
-        "EnvironmentEscalation": {
-          "description": "Who may widen containment after a session starts.",
-          "enum": [
-            "never",
-            "approval",
-            "auto"
-          ],
-          "type": "string"
-        },
-        "EnvironmentFilesystemPolicy": {
-          "description": "Filesystem paths the target permits command execution to mutate.",
-          "properties": {
-            "writable_roots": {
-              "description": "Absolute roots the runtime may mutate; empty means provider default.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentIdleAction": {
-          "enum": [
-            "checkpoint_and_stop",
-            "stop",
-            "keep_running"
-          ],
-          "type": "string"
-        },
-        "EnvironmentLifecycle": {
-          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
-          "properties": {
-            "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction",
-              "description": "Action Everruns requests after the idle interval."
-            },
-            "idle_after_seconds": {
-              "description": "Inactivity interval before applying `idle_action`.",
-              "example": 300,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentNetworkPolicy": {
-          "description": "Outbound network policy the target must actually enforce.",
-          "oneOf": [
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "deny"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "allowed_hosts": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "mode": {
-                  "enum": [
-                    "allowlist"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "allowed_hosts",
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "allow"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            }
-          ]
-        },
-        "EnvironmentPolicyMode": {
-          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
-          "enum": [
-            "fixed",
-            "selectable",
-            "configurable"
-          ],
-          "type": "string"
-        },
-        "EnvironmentProfile": {
-          "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
-          "properties": {
-            "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap",
-              "description": "Reproducible commands run when physical compute is initialized."
-            },
-            "containment": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile",
-                  "description": "Requested isolation policy; resolution supplies an honest target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "durability": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentDurability",
-                  "description": "Requested recovery guarantee; resolution supplies a target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle",
-              "description": "Idle lifecycle policy controlled by Everruns."
-            },
-            "source_revision_id": {
-              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile",
-              "description": "Provider-neutral target plus its concrete adapter binding."
-            }
-          },
-          "required": [
-            "target"
-          ],
-          "type": "object"
-        },
-        "EnvironmentSet": {
-          "description": "Named execution environments offered by an Agent version.",
-          "properties": {
-            "default": {
-              "description": "Profile inherited when session creation does not choose one explicitly.",
-              "example": "primary",
-              "type": "string"
-            },
-            "policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentPolicyMode",
-                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one profile then means `fixed`, while several mean `selectable`."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "profiles": {
-              "additionalProperties": {
-                "$ref": "#/$defs/EnvironmentProfile"
-              },
-              "description": "Human-authored profiles addressable by name at session creation.",
-              "propertyNames": {
-                "type": "string"
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "default"
-          ],
-          "type": "object"
-        },
-        "EnvironmentTargetKind": {
-          "description": "Provider-neutral target class.",
-          "enum": [
-            "host",
-            "machine",
-            "vfs",
-            "container",
-            "managed"
-          ],
-          "type": "string"
-        },
-        "EnvironmentTargetProfile": {
-          "description": "Where commands execute.",
-          "properties": {
-            "connection_id": {
-              "description": "Credential/transport binding for a registered machine target.",
-              "example": "conn_01933b5a000070008000000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind",
-              "description": "Provider-neutral target class."
-            },
-            "options": {
-              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
-              "type": "object"
-            },
-            "provider": {
-              "description": "Concrete adapter for target kinds with more than one implementation.",
-              "example": "daytona",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -1809,6 +1515,300 @@
               "type": "array"
             }
           },
+          "type": "object"
+        },
+        "SandboxBootstrap": {
+          "description": "Reproducible initialization pinned with the specification snapshot.",
+          "properties": {
+            "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxContainmentLevel": {
+          "enum": [
+            "none",
+            "native",
+            "isolated"
+          ],
+          "type": "string"
+        },
+        "SandboxContainmentSpec": {
+          "description": "What commands may touch.",
+          "properties": {
+            "escalation": {
+              "$ref": "#/$defs/SandboxEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
+            },
+            "filesystem": {
+              "$ref": "#/$defs/SandboxFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
+            },
+            "level": {
+              "$ref": "#/$defs/SandboxContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
+            },
+            "network": {
+              "$ref": "#/$defs/SandboxNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
+            }
+          },
+          "required": [
+            "level"
+          ],
+          "type": "object"
+        },
+        "SandboxDurability": {
+          "description": "What survives physical compute loss.",
+          "enum": [
+            "checkpointed",
+            "provider_snapshot",
+            "none"
+          ],
+          "type": "string"
+        },
+        "SandboxEscalation": {
+          "description": "Who may widen containment after a session starts.",
+          "enum": [
+            "never",
+            "approval",
+            "auto"
+          ],
+          "type": "string"
+        },
+        "SandboxFilesystemPolicy": {
+          "description": "Filesystem paths the target permits command execution to mutate.",
+          "properties": {
+            "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxIdleAction": {
+          "enum": [
+            "checkpoint_and_stop",
+            "stop",
+            "keep_running"
+          ],
+          "type": "string"
+        },
+        "SandboxLifecycle": {
+          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
+          "properties": {
+            "idle_action": {
+              "$ref": "#/$defs/SandboxIdleAction",
+              "description": "Action Everruns requests after the idle interval."
+            },
+            "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxNetworkPolicy": {
+          "description": "Outbound network policy the target must actually enforce.",
+          "oneOf": [
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "deny"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "allowed_hosts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mode": {
+                  "enum": [
+                    "allowlist"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "allowed_hosts",
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "allow"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SandboxPolicy": {
+          "description": "Agent policy for selecting the Session's primary Sandbox Template.",
+          "properties": {
+            "default": {
+              "description": "Template binding inherited when Session creation does not choose one.",
+              "example": "primary",
+              "type": "string"
+            },
+            "mode": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxPolicyMode",
+                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one template then means `fixed`, while several mean `selectable`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "templates": {
+              "additionalProperties": {
+                "$ref": "#/$defs/SandboxTemplateSpec"
+              },
+              "description": "Template snapshots addressable by binding name at Session creation.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "default"
+          ],
+          "type": "object"
+        },
+        "SandboxPolicyMode": {
+          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
+          "enum": [
+            "fixed",
+            "selectable",
+            "configurable"
+          ],
+          "type": "string"
+        },
+        "SandboxTargetKind": {
+          "description": "Provider-neutral target class.",
+          "enum": [
+            "host",
+            "machine",
+            "vfs",
+            "container",
+            "managed"
+          ],
+          "type": "string"
+        },
+        "SandboxTargetSpec": {
+          "description": "Where commands execute.",
+          "properties": {
+            "connection_id": {
+              "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/SandboxTargetKind",
+              "description": "Provider-neutral target class."
+            },
+            "options": {
+              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
+              "type": "object"
+            },
+            "provider": {
+              "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "SandboxTemplateSpec": {
+          "description": "Desired Sandbox configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the specification is pinned\nto a Session.",
+          "properties": {
+            "bootstrap": {
+              "$ref": "#/$defs/SandboxBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
+            },
+            "containment": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxContainmentSpec",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "durability": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lifecycle": {
+              "$ref": "#/$defs/SandboxLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
+            },
+            "target": {
+              "$ref": "#/$defs/SandboxTargetSpec",
+              "description": "Provider-neutral target plus its concrete adapter binding."
+            },
+            "template_revision_id": {
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "target"
+          ],
           "type": "object"
         },
         "SideEffectClass": {
@@ -2035,17 +2035,6 @@
             "null"
           ]
         },
-        "environments": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/EnvironmentSet",
-              "description": "Named execution environments this Agent offers. One profile must be\nnamed by `default`; Sessions may inherit it or select another profile."
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "harness_id": {
           "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe organization default is used (Conversation for new organizations).",
           "example": "harness_01933b5a00007000800000000000001",
@@ -2126,6 +2115,17 @@
           "type": [
             "boolean",
             "null"
+          ]
+        },
+        "sandbox_policy": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SandboxPolicy",
+              "description": "Policy for selecting the primary Sandbox Template for new Sessions."
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "service_virtual_user_id": {
@@ -6677,275 +6677,6 @@
           ],
           "type": "string"
         },
-        "EnvironmentBootstrap": {
-          "description": "Reproducible initialization pinned with the profile snapshot.",
-          "properties": {
-            "commands": {
-              "description": "Ordered commands replayed when creating or recovering physical compute.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentContainmentLevel": {
-          "enum": [
-            "none",
-            "native",
-            "isolated"
-          ],
-          "type": "string"
-        },
-        "EnvironmentContainmentProfile": {
-          "description": "What commands may touch.",
-          "properties": {
-            "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation",
-              "description": "Whether the runtime may widen containment after Session creation."
-            },
-            "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
-              "description": "Filesystem mutation boundary for command execution."
-            },
-            "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel",
-              "description": "Isolation mechanism the provider must supply."
-            },
-            "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy",
-              "description": "Outbound network access the provider must enforce."
-            }
-          },
-          "required": [
-            "level"
-          ],
-          "type": "object"
-        },
-        "EnvironmentDurability": {
-          "description": "What survives physical compute loss.",
-          "enum": [
-            "checkpointed",
-            "provider_snapshot",
-            "none"
-          ],
-          "type": "string"
-        },
-        "EnvironmentEscalation": {
-          "description": "Who may widen containment after a session starts.",
-          "enum": [
-            "never",
-            "approval",
-            "auto"
-          ],
-          "type": "string"
-        },
-        "EnvironmentFilesystemPolicy": {
-          "description": "Filesystem paths the target permits command execution to mutate.",
-          "properties": {
-            "writable_roots": {
-              "description": "Absolute roots the runtime may mutate; empty means provider default.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentIdleAction": {
-          "enum": [
-            "checkpoint_and_stop",
-            "stop",
-            "keep_running"
-          ],
-          "type": "string"
-        },
-        "EnvironmentLifecycle": {
-          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
-          "properties": {
-            "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction",
-              "description": "Action Everruns requests after the idle interval."
-            },
-            "idle_after_seconds": {
-              "description": "Inactivity interval before applying `idle_action`.",
-              "example": 300,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentNetworkPolicy": {
-          "description": "Outbound network policy the target must actually enforce.",
-          "oneOf": [
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "deny"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "allowed_hosts": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "mode": {
-                  "enum": [
-                    "allowlist"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "allowed_hosts",
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "allow"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            }
-          ]
-        },
-        "EnvironmentProfile": {
-          "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
-          "properties": {
-            "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap",
-              "description": "Reproducible commands run when physical compute is initialized."
-            },
-            "containment": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile",
-                  "description": "Requested isolation policy; resolution supplies an honest target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "durability": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentDurability",
-                  "description": "Requested recovery guarantee; resolution supplies a target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle",
-              "description": "Idle lifecycle policy controlled by Everruns."
-            },
-            "source_revision_id": {
-              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile",
-              "description": "Provider-neutral target plus its concrete adapter binding."
-            }
-          },
-          "required": [
-            "target"
-          ],
-          "type": "object"
-        },
-        "EnvironmentSelection": {
-          "description": "Session-level selection: use an Agent profile, or provide an inline one.",
-          "oneOf": [
-            {
-              "properties": {
-                "use": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "use"
-              ],
-              "type": "object"
-            },
-            {
-              "$ref": "#/$defs/EnvironmentProfile"
-            }
-          ]
-        },
-        "EnvironmentTargetKind": {
-          "description": "Provider-neutral target class.",
-          "enum": [
-            "host",
-            "machine",
-            "vfs",
-            "container",
-            "managed"
-          ],
-          "type": "string"
-        },
-        "EnvironmentTargetProfile": {
-          "description": "Where commands execute.",
-          "properties": {
-            "connection_id": {
-              "description": "Credential/transport binding for a registered machine target.",
-              "example": "conn_01933b5a000070008000000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind",
-              "description": "Provider-neutral target class."
-            },
-            "options": {
-              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
-              "type": "object"
-            },
-            "provider": {
-              "description": "Concrete adapter for target kinds with more than one implementation.",
-              "example": "daytona",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -7054,6 +6785,275 @@
               "type": "array"
             }
           },
+          "type": "object"
+        },
+        "SandboxBootstrap": {
+          "description": "Reproducible initialization pinned with the specification snapshot.",
+          "properties": {
+            "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxContainmentLevel": {
+          "enum": [
+            "none",
+            "native",
+            "isolated"
+          ],
+          "type": "string"
+        },
+        "SandboxContainmentSpec": {
+          "description": "What commands may touch.",
+          "properties": {
+            "escalation": {
+              "$ref": "#/$defs/SandboxEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
+            },
+            "filesystem": {
+              "$ref": "#/$defs/SandboxFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
+            },
+            "level": {
+              "$ref": "#/$defs/SandboxContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
+            },
+            "network": {
+              "$ref": "#/$defs/SandboxNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
+            }
+          },
+          "required": [
+            "level"
+          ],
+          "type": "object"
+        },
+        "SandboxDurability": {
+          "description": "What survives physical compute loss.",
+          "enum": [
+            "checkpointed",
+            "provider_snapshot",
+            "none"
+          ],
+          "type": "string"
+        },
+        "SandboxEscalation": {
+          "description": "Who may widen containment after a session starts.",
+          "enum": [
+            "never",
+            "approval",
+            "auto"
+          ],
+          "type": "string"
+        },
+        "SandboxFilesystemPolicy": {
+          "description": "Filesystem paths the target permits command execution to mutate.",
+          "properties": {
+            "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxIdleAction": {
+          "enum": [
+            "checkpoint_and_stop",
+            "stop",
+            "keep_running"
+          ],
+          "type": "string"
+        },
+        "SandboxLifecycle": {
+          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
+          "properties": {
+            "idle_action": {
+              "$ref": "#/$defs/SandboxIdleAction",
+              "description": "Action Everruns requests after the idle interval."
+            },
+            "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxNetworkPolicy": {
+          "description": "Outbound network policy the target must actually enforce.",
+          "oneOf": [
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "deny"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "allowed_hosts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mode": {
+                  "enum": [
+                    "allowlist"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "allowed_hosts",
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "allow"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SandboxSelection": {
+          "description": "Session-level selection: use an Agent template binding or provide an inline specification.",
+          "oneOf": [
+            {
+              "properties": {
+                "use": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "use"
+              ],
+              "type": "object"
+            },
+            {
+              "$ref": "#/$defs/SandboxTemplateSpec"
+            }
+          ]
+        },
+        "SandboxTargetKind": {
+          "description": "Provider-neutral target class.",
+          "enum": [
+            "host",
+            "machine",
+            "vfs",
+            "container",
+            "managed"
+          ],
+          "type": "string"
+        },
+        "SandboxTargetSpec": {
+          "description": "Where commands execute.",
+          "properties": {
+            "connection_id": {
+              "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/SandboxTargetKind",
+              "description": "Provider-neutral target class."
+            },
+            "options": {
+              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
+              "type": "object"
+            },
+            "provider": {
+              "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "SandboxTemplateSpec": {
+          "description": "Desired Sandbox configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the specification is pinned\nto a Session.",
+          "properties": {
+            "bootstrap": {
+              "$ref": "#/$defs/SandboxBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
+            },
+            "containment": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxContainmentSpec",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "durability": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lifecycle": {
+              "$ref": "#/$defs/SandboxLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
+            },
+            "target": {
+              "$ref": "#/$defs/SandboxTargetSpec",
+              "description": "Provider-neutral target plus its concrete adapter binding."
+            },
+            "template_revision_id": {
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "target"
+          ],
           "type": "object"
         },
         "SideEffectClass": {
@@ -7272,17 +7272,6 @@
           },
           "type": "array"
         },
-        "environment": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/EnvironmentSelection",
-              "description": "Execution environment for this Session. Omit to inherit the Agent's\ndefault profile, use `{ \"use\": \"name\" }` to select a named profile, or\ninline a profile for a caller-authored one-off environment."
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "goal": {
           "description": "Optional objective for the session. Visible to the agent at system-prompt level.",
           "example": "Investigate the queue latency regression and propose a fix",
@@ -7390,6 +7379,17 @@
           "type": [
             "string",
             "null"
+          ]
+        },
+        "sandbox": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SandboxSelection",
+              "description": "Primary Sandbox for this Session. Omit to inherit the Agent's default\nSandbox Template, use `{ \"use\": \"name\" }` to select a declared binding,\nor inline a specification when the Agent policy permits one-offs."
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "source": {
@@ -10416,29 +10416,6 @@
     "read_only": true
   },
   {
-    "category": "environments",
-    "cli": null,
-    "description": "Inspect where a session's commands run and what they may touch.",
-    "input_schema": {
-      "properties": {
-        "session_id": {
-          "description": "Session's prefixed public identifier.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "session_id"
-      ],
-      "type": "object"
-    },
-    "method": "GET",
-    "name": "get_session_environment",
-    "output_shape": "unknown",
-    "path": "/v1/sessions/{session_id}/environment",
-    "positional_arg": "session_id",
-    "read_only": true
-  },
-  {
     "category": "sessions",
     "cli": "sessions facets",
     "description": "Counts per status, source, and agent plus masthead metrics for the sessions list, over the same filters as list_sessions.",
@@ -10570,9 +10547,9 @@
     "read_only": true
   },
   {
-    "category": "session_sandbox",
+    "category": "sandboxes",
     "cli": null,
-    "description": "Inspect the managed sandbox owned by a session.",
+    "description": "Inspect a Session's primary Sandbox and what it may touch.",
     "input_schema": {
       "properties": {
         "session_id": {
@@ -11707,20 +11684,6 @@
     "read_only": true
   },
   {
-    "category": "environments",
-    "cli": null,
-    "description": "List the environment targets this deployment can offer.",
-    "input_schema": {
-      "default": null
-    },
-    "method": "GET",
-    "name": "list_environment_targets",
-    "output_shape": "unknown",
-    "path": "/v1/environment-targets",
-    "positional_arg": null,
-    "read_only": true
-  },
-  {
     "category": "evals",
     "cli": null,
     "description": "List eval cases.",
@@ -12660,6 +12623,20 @@
     "name": "list_providers",
     "output_shape": "unknown",
     "path": "/v1/providers",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "sandbox-templates",
+    "cli": null,
+    "description": "List the Sandbox targets this deployment can offer.",
+    "input_schema": {
+      "default": null
+    },
+    "method": "GET",
+    "name": "list_sandbox_targets",
+    "output_shape": "unknown",
+    "path": "/v1/sandbox-targets",
     "positional_arg": null,
     "read_only": true
   },
@@ -15775,300 +15752,6 @@
           ],
           "type": "string"
         },
-        "EnvironmentBootstrap": {
-          "description": "Reproducible initialization pinned with the profile snapshot.",
-          "properties": {
-            "commands": {
-              "description": "Ordered commands replayed when creating or recovering physical compute.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentContainmentLevel": {
-          "enum": [
-            "none",
-            "native",
-            "isolated"
-          ],
-          "type": "string"
-        },
-        "EnvironmentContainmentProfile": {
-          "description": "What commands may touch.",
-          "properties": {
-            "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation",
-              "description": "Whether the runtime may widen containment after Session creation."
-            },
-            "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
-              "description": "Filesystem mutation boundary for command execution."
-            },
-            "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel",
-              "description": "Isolation mechanism the provider must supply."
-            },
-            "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy",
-              "description": "Outbound network access the provider must enforce."
-            }
-          },
-          "required": [
-            "level"
-          ],
-          "type": "object"
-        },
-        "EnvironmentDurability": {
-          "description": "What survives physical compute loss.",
-          "enum": [
-            "checkpointed",
-            "provider_snapshot",
-            "none"
-          ],
-          "type": "string"
-        },
-        "EnvironmentEscalation": {
-          "description": "Who may widen containment after a session starts.",
-          "enum": [
-            "never",
-            "approval",
-            "auto"
-          ],
-          "type": "string"
-        },
-        "EnvironmentFilesystemPolicy": {
-          "description": "Filesystem paths the target permits command execution to mutate.",
-          "properties": {
-            "writable_roots": {
-              "description": "Absolute roots the runtime may mutate; empty means provider default.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentIdleAction": {
-          "enum": [
-            "checkpoint_and_stop",
-            "stop",
-            "keep_running"
-          ],
-          "type": "string"
-        },
-        "EnvironmentLifecycle": {
-          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
-          "properties": {
-            "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction",
-              "description": "Action Everruns requests after the idle interval."
-            },
-            "idle_after_seconds": {
-              "description": "Inactivity interval before applying `idle_action`.",
-              "example": 300,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentNetworkPolicy": {
-          "description": "Outbound network policy the target must actually enforce.",
-          "oneOf": [
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "deny"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "allowed_hosts": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "mode": {
-                  "enum": [
-                    "allowlist"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "allowed_hosts",
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "allow"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            }
-          ]
-        },
-        "EnvironmentPolicyMode": {
-          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
-          "enum": [
-            "fixed",
-            "selectable",
-            "configurable"
-          ],
-          "type": "string"
-        },
-        "EnvironmentProfile": {
-          "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
-          "properties": {
-            "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap",
-              "description": "Reproducible commands run when physical compute is initialized."
-            },
-            "containment": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile",
-                  "description": "Requested isolation policy; resolution supplies an honest target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "durability": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentDurability",
-                  "description": "Requested recovery guarantee; resolution supplies a target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle",
-              "description": "Idle lifecycle policy controlled by Everruns."
-            },
-            "source_revision_id": {
-              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile",
-              "description": "Provider-neutral target plus its concrete adapter binding."
-            }
-          },
-          "required": [
-            "target"
-          ],
-          "type": "object"
-        },
-        "EnvironmentSet": {
-          "description": "Named execution environments offered by an Agent version.",
-          "properties": {
-            "default": {
-              "description": "Profile inherited when session creation does not choose one explicitly.",
-              "example": "primary",
-              "type": "string"
-            },
-            "policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentPolicyMode",
-                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one profile then means `fixed`, while several mean `selectable`."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "profiles": {
-              "additionalProperties": {
-                "$ref": "#/$defs/EnvironmentProfile"
-              },
-              "description": "Human-authored profiles addressable by name at session creation.",
-              "propertyNames": {
-                "type": "string"
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "default"
-          ],
-          "type": "object"
-        },
-        "EnvironmentTargetKind": {
-          "description": "Provider-neutral target class.",
-          "enum": [
-            "host",
-            "machine",
-            "vfs",
-            "container",
-            "managed"
-          ],
-          "type": "string"
-        },
-        "EnvironmentTargetProfile": {
-          "description": "Where commands execute.",
-          "properties": {
-            "connection_id": {
-              "description": "Credential/transport binding for a registered machine target.",
-              "example": "conn_01933b5a000070008000000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind",
-              "description": "Provider-neutral target class."
-            },
-            "options": {
-              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
-              "type": "object"
-            },
-            "provider": {
-              "description": "Concrete adapter for target kinds with more than one implementation.",
-              "example": "daytona",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
-        },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
           "properties": {
@@ -16177,6 +15860,300 @@
               "type": "array"
             }
           },
+          "type": "object"
+        },
+        "SandboxBootstrap": {
+          "description": "Reproducible initialization pinned with the specification snapshot.",
+          "properties": {
+            "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxContainmentLevel": {
+          "enum": [
+            "none",
+            "native",
+            "isolated"
+          ],
+          "type": "string"
+        },
+        "SandboxContainmentSpec": {
+          "description": "What commands may touch.",
+          "properties": {
+            "escalation": {
+              "$ref": "#/$defs/SandboxEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
+            },
+            "filesystem": {
+              "$ref": "#/$defs/SandboxFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
+            },
+            "level": {
+              "$ref": "#/$defs/SandboxContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
+            },
+            "network": {
+              "$ref": "#/$defs/SandboxNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
+            }
+          },
+          "required": [
+            "level"
+          ],
+          "type": "object"
+        },
+        "SandboxDurability": {
+          "description": "What survives physical compute loss.",
+          "enum": [
+            "checkpointed",
+            "provider_snapshot",
+            "none"
+          ],
+          "type": "string"
+        },
+        "SandboxEscalation": {
+          "description": "Who may widen containment after a session starts.",
+          "enum": [
+            "never",
+            "approval",
+            "auto"
+          ],
+          "type": "string"
+        },
+        "SandboxFilesystemPolicy": {
+          "description": "Filesystem paths the target permits command execution to mutate.",
+          "properties": {
+            "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxIdleAction": {
+          "enum": [
+            "checkpoint_and_stop",
+            "stop",
+            "keep_running"
+          ],
+          "type": "string"
+        },
+        "SandboxLifecycle": {
+          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
+          "properties": {
+            "idle_action": {
+              "$ref": "#/$defs/SandboxIdleAction",
+              "description": "Action Everruns requests after the idle interval."
+            },
+            "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxNetworkPolicy": {
+          "description": "Outbound network policy the target must actually enforce.",
+          "oneOf": [
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "deny"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "allowed_hosts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mode": {
+                  "enum": [
+                    "allowlist"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "allowed_hosts",
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "allow"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SandboxPolicy": {
+          "description": "Agent policy for selecting the Session's primary Sandbox Template.",
+          "properties": {
+            "default": {
+              "description": "Template binding inherited when Session creation does not choose one.",
+              "example": "primary",
+              "type": "string"
+            },
+            "mode": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxPolicyMode",
+                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one template then means `fixed`, while several mean `selectable`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "templates": {
+              "additionalProperties": {
+                "$ref": "#/$defs/SandboxTemplateSpec"
+              },
+              "description": "Template snapshots addressable by binding name at Session creation.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "default"
+          ],
+          "type": "object"
+        },
+        "SandboxPolicyMode": {
+          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
+          "enum": [
+            "fixed",
+            "selectable",
+            "configurable"
+          ],
+          "type": "string"
+        },
+        "SandboxTargetKind": {
+          "description": "Provider-neutral target class.",
+          "enum": [
+            "host",
+            "machine",
+            "vfs",
+            "container",
+            "managed"
+          ],
+          "type": "string"
+        },
+        "SandboxTargetSpec": {
+          "description": "Where commands execute.",
+          "properties": {
+            "connection_id": {
+              "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/SandboxTargetKind",
+              "description": "Provider-neutral target class."
+            },
+            "options": {
+              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
+              "type": "object"
+            },
+            "provider": {
+              "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "SandboxTemplateSpec": {
+          "description": "Desired Sandbox configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the specification is pinned\nto a Session.",
+          "properties": {
+            "bootstrap": {
+              "$ref": "#/$defs/SandboxBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
+            },
+            "containment": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxContainmentSpec",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "durability": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lifecycle": {
+              "$ref": "#/$defs/SandboxLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
+            },
+            "target": {
+              "$ref": "#/$defs/SandboxTargetSpec",
+              "description": "Provider-neutral target plus its concrete adapter binding."
+            },
+            "template_revision_id": {
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "target"
+          ],
           "type": "object"
         },
         "SideEffectClass": {
@@ -16406,17 +16383,6 @@
                 "null"
               ]
             },
-            "environments": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentSet",
-                  "description": "Replace or clear the Agent's named execution environments."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "harness_id": {
               "description": "Harness ID used as this agent's base execution environment. Omit to leave unchanged.",
               "example": "harness_01933b5a00007000800000000000001",
@@ -16502,6 +16468,17 @@
               "type": [
                 "boolean",
                 "null"
+              ]
+            },
+            "sandbox_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxPolicy",
+                  "description": "Replace or clear the Agent's Sandbox policy."
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "service_virtual_user_id": {
@@ -21062,17 +21039,6 @@
                 "null"
               ]
             },
-            "environments": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentSet",
-                  "description": "Named execution environments this Agent offers. One profile must be\nnamed by `default`; Sessions may inherit it or select another profile."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
             "harness_id": {
               "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe organization default is used (Conversation for new organizations).",
               "example": "harness_01933b5a00007000800000000000001",
@@ -21155,6 +21121,17 @@
                 "null"
               ]
             },
+            "sandbox_policy": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxPolicy",
+                  "description": "Policy for selecting the primary Sandbox Template for new Sessions."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "service_virtual_user_id": {
               "type": [
                 "string",
@@ -21232,300 +21209,6 @@
             "always"
           ],
           "type": "string"
-        },
-        "EnvironmentBootstrap": {
-          "description": "Reproducible initialization pinned with the profile snapshot.",
-          "properties": {
-            "commands": {
-              "description": "Ordered commands replayed when creating or recovering physical compute.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentContainmentLevel": {
-          "enum": [
-            "none",
-            "native",
-            "isolated"
-          ],
-          "type": "string"
-        },
-        "EnvironmentContainmentProfile": {
-          "description": "What commands may touch.",
-          "properties": {
-            "escalation": {
-              "$ref": "#/$defs/EnvironmentEscalation",
-              "description": "Whether the runtime may widen containment after Session creation."
-            },
-            "filesystem": {
-              "$ref": "#/$defs/EnvironmentFilesystemPolicy",
-              "description": "Filesystem mutation boundary for command execution."
-            },
-            "level": {
-              "$ref": "#/$defs/EnvironmentContainmentLevel",
-              "description": "Isolation mechanism the provider must supply."
-            },
-            "network": {
-              "$ref": "#/$defs/EnvironmentNetworkPolicy",
-              "description": "Outbound network access the provider must enforce."
-            }
-          },
-          "required": [
-            "level"
-          ],
-          "type": "object"
-        },
-        "EnvironmentDurability": {
-          "description": "What survives physical compute loss.",
-          "enum": [
-            "checkpointed",
-            "provider_snapshot",
-            "none"
-          ],
-          "type": "string"
-        },
-        "EnvironmentEscalation": {
-          "description": "Who may widen containment after a session starts.",
-          "enum": [
-            "never",
-            "approval",
-            "auto"
-          ],
-          "type": "string"
-        },
-        "EnvironmentFilesystemPolicy": {
-          "description": "Filesystem paths the target permits command execution to mutate.",
-          "properties": {
-            "writable_roots": {
-              "description": "Absolute roots the runtime may mutate; empty means provider default.",
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentIdleAction": {
-          "enum": [
-            "checkpoint_and_stop",
-            "stop",
-            "keep_running"
-          ],
-          "type": "string"
-        },
-        "EnvironmentLifecycle": {
-          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
-          "properties": {
-            "idle_action": {
-              "$ref": "#/$defs/EnvironmentIdleAction",
-              "description": "Action Everruns requests after the idle interval."
-            },
-            "idle_after_seconds": {
-              "description": "Inactivity interval before applying `idle_action`.",
-              "example": 300,
-              "format": "int64",
-              "minimum": 0,
-              "type": "integer"
-            }
-          },
-          "type": "object"
-        },
-        "EnvironmentNetworkPolicy": {
-          "description": "Outbound network policy the target must actually enforce.",
-          "oneOf": [
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "deny"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "allowed_hosts": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "mode": {
-                  "enum": [
-                    "allowlist"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "allowed_hosts",
-                "mode"
-              ],
-              "type": "object"
-            },
-            {
-              "properties": {
-                "mode": {
-                  "enum": [
-                    "allow"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "mode"
-              ],
-              "type": "object"
-            }
-          ]
-        },
-        "EnvironmentPolicyMode": {
-          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
-          "enum": [
-            "fixed",
-            "selectable",
-            "configurable"
-          ],
-          "type": "string"
-        },
-        "EnvironmentProfile": {
-          "description": "Desired environment configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the profile is pinned\nto a Session.",
-          "properties": {
-            "bootstrap": {
-              "$ref": "#/$defs/EnvironmentBootstrap",
-              "description": "Reproducible commands run when physical compute is initialized."
-            },
-            "containment": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentContainmentProfile",
-                  "description": "Requested isolation policy; resolution supplies an honest target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "durability": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentDurability",
-                  "description": "Requested recovery guarantee; resolution supplies a target default."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "lifecycle": {
-              "$ref": "#/$defs/EnvironmentLifecycle",
-              "description": "Idle lifecycle policy controlled by Everruns."
-            },
-            "source_revision_id": {
-              "description": "Immutable reusable Environment revision this profile was copied from.\nThe profile remains a complete snapshot so Agent versions are portable\nand later Environment revisions cannot change an existing version.",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "target": {
-              "$ref": "#/$defs/EnvironmentTargetProfile",
-              "description": "Provider-neutral target plus its concrete adapter binding."
-            }
-          },
-          "required": [
-            "target"
-          ],
-          "type": "object"
-        },
-        "EnvironmentSet": {
-          "description": "Named execution environments offered by an Agent version.",
-          "properties": {
-            "default": {
-              "description": "Profile inherited when session creation does not choose one explicitly.",
-              "example": "primary",
-              "type": "string"
-            },
-            "policy": {
-              "oneOf": [
-                {
-                  "$ref": "#/$defs/EnvironmentPolicyMode",
-                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one profile then means `fixed`, while several mean `selectable`."
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "profiles": {
-              "additionalProperties": {
-                "$ref": "#/$defs/EnvironmentProfile"
-              },
-              "description": "Human-authored profiles addressable by name at session creation.",
-              "propertyNames": {
-                "type": "string"
-              },
-              "type": "object"
-            }
-          },
-          "required": [
-            "default"
-          ],
-          "type": "object"
-        },
-        "EnvironmentTargetKind": {
-          "description": "Provider-neutral target class.",
-          "enum": [
-            "host",
-            "machine",
-            "vfs",
-            "container",
-            "managed"
-          ],
-          "type": "string"
-        },
-        "EnvironmentTargetProfile": {
-          "description": "Where commands execute.",
-          "properties": {
-            "connection_id": {
-              "description": "Credential/transport binding for a registered machine target.",
-              "example": "conn_01933b5a000070008000000000000001",
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "kind": {
-              "$ref": "#/$defs/EnvironmentTargetKind",
-              "description": "Provider-neutral target class."
-            },
-            "options": {
-              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
-              "type": "object"
-            },
-            "provider": {
-              "description": "Concrete adapter for target kinds with more than one implementation.",
-              "example": "daytona",
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          "required": [
-            "kind"
-          ],
-          "type": "object"
         },
         "InitialFile": {
           "description": "Starter file copied into a new session from an agent or harness.",
@@ -21635,6 +21318,300 @@
               "type": "array"
             }
           },
+          "type": "object"
+        },
+        "SandboxBootstrap": {
+          "description": "Reproducible initialization pinned with the specification snapshot.",
+          "properties": {
+            "commands": {
+              "description": "Ordered commands replayed when creating or recovering physical compute.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxContainmentLevel": {
+          "enum": [
+            "none",
+            "native",
+            "isolated"
+          ],
+          "type": "string"
+        },
+        "SandboxContainmentSpec": {
+          "description": "What commands may touch.",
+          "properties": {
+            "escalation": {
+              "$ref": "#/$defs/SandboxEscalation",
+              "description": "Whether the runtime may widen containment after Session creation."
+            },
+            "filesystem": {
+              "$ref": "#/$defs/SandboxFilesystemPolicy",
+              "description": "Filesystem mutation boundary for command execution."
+            },
+            "level": {
+              "$ref": "#/$defs/SandboxContainmentLevel",
+              "description": "Isolation mechanism the provider must supply."
+            },
+            "network": {
+              "$ref": "#/$defs/SandboxNetworkPolicy",
+              "description": "Outbound network access the provider must enforce."
+            }
+          },
+          "required": [
+            "level"
+          ],
+          "type": "object"
+        },
+        "SandboxDurability": {
+          "description": "What survives physical compute loss.",
+          "enum": [
+            "checkpointed",
+            "provider_snapshot",
+            "none"
+          ],
+          "type": "string"
+        },
+        "SandboxEscalation": {
+          "description": "Who may widen containment after a session starts.",
+          "enum": [
+            "never",
+            "approval",
+            "auto"
+          ],
+          "type": "string"
+        },
+        "SandboxFilesystemPolicy": {
+          "description": "Filesystem paths the target permits command execution to mutate.",
+          "properties": {
+            "writable_roots": {
+              "description": "Absolute roots the runtime may mutate; empty means provider default.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxIdleAction": {
+          "enum": [
+            "checkpoint_and_stop",
+            "stop",
+            "keep_running"
+          ],
+          "type": "string"
+        },
+        "SandboxLifecycle": {
+          "description": "Control-plane lifecycle intent. Providers do not own these timers.",
+          "properties": {
+            "idle_action": {
+              "$ref": "#/$defs/SandboxIdleAction",
+              "description": "Action Everruns requests after the idle interval."
+            },
+            "idle_after_seconds": {
+              "description": "Inactivity interval before applying `idle_action`.",
+              "example": 300,
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        },
+        "SandboxNetworkPolicy": {
+          "description": "Outbound network policy the target must actually enforce.",
+          "oneOf": [
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "deny"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "allowed_hosts": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "mode": {
+                  "enum": [
+                    "allowlist"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "allowed_hosts",
+                "mode"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "allow"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "SandboxPolicy": {
+          "description": "Agent policy for selecting the Session's primary Sandbox Template.",
+          "properties": {
+            "default": {
+              "description": "Template binding inherited when Session creation does not choose one.",
+              "example": "primary",
+              "type": "string"
+            },
+            "mode": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxPolicyMode",
+                  "description": "Who may choose the primary Sandbox for a Session. Older rows omit this\nfield; one template then means `fixed`, while several mean `selectable`."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "templates": {
+              "additionalProperties": {
+                "$ref": "#/$defs/SandboxTemplateSpec"
+              },
+              "description": "Template snapshots addressable by binding name at Session creation.",
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "default"
+          ],
+          "type": "object"
+        },
+        "SandboxPolicyMode": {
+          "description": "Agent policy for choosing the Session's one immutable primary Sandbox.",
+          "enum": [
+            "fixed",
+            "selectable",
+            "configurable"
+          ],
+          "type": "string"
+        },
+        "SandboxTargetKind": {
+          "description": "Provider-neutral target class.",
+          "enum": [
+            "host",
+            "machine",
+            "vfs",
+            "container",
+            "managed"
+          ],
+          "type": "string"
+        },
+        "SandboxTargetSpec": {
+          "description": "Where commands execute.",
+          "properties": {
+            "connection_id": {
+              "description": "Credential/transport binding for a registered machine target.",
+              "example": "conn_01933b5a000070008000000000000001",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "$ref": "#/$defs/SandboxTargetKind",
+              "description": "Provider-neutral target class."
+            },
+            "options": {
+              "description": "Provider-owned, non-secret configuration. Credentials are references,\nnever values in this object.",
+              "type": "object"
+            },
+            "provider": {
+              "description": "Concrete adapter for target kinds with more than one implementation.",
+              "example": "daytona",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        "SandboxTemplateSpec": {
+          "description": "Desired Sandbox configuration authored by a human or application.\n\nContainment and durability may be omitted when the target has exactly one\nhonest answer. Resolution fills those fields before the specification is pinned\nto a Session.",
+          "properties": {
+            "bootstrap": {
+              "$ref": "#/$defs/SandboxBootstrap",
+              "description": "Reproducible commands run when physical compute is initialized."
+            },
+            "containment": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxContainmentSpec",
+                  "description": "Requested isolation policy; resolution supplies an honest target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "durability": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/SandboxDurability",
+                  "description": "Requested recovery guarantee; resolution supplies a target default."
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "lifecycle": {
+              "$ref": "#/$defs/SandboxLifecycle",
+              "description": "Idle lifecycle policy controlled by Everruns."
+            },
+            "target": {
+              "$ref": "#/$defs/SandboxTargetSpec",
+              "description": "Provider-neutral target plus its concrete adapter binding."
+            },
+            "template_revision_id": {
+              "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "target"
+          ],
           "type": "object"
         },
         "SideEffectClass": {

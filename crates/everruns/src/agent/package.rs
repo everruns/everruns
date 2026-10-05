@@ -72,10 +72,10 @@ impl AgentBuilder {
         use crate::package::failure;
         let m = package.manifest();
         let files = package.0.files()?;
-        if m.environments.is_some() {
+        if m.sandbox_policy.is_some() {
             return Err(failure(
-                "environments",
-                "bind platform environments through Session::environment explicitly",
+                "sandbox_policy",
+                "bind the hosted Sandbox policy explicitly",
             ));
         }
         let registry = framework_capability_registry(false);

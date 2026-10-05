@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import { SessionEnvironmentPanel } from "@/components/session/session-environment-panel";
+import { SessionSandboxPanel } from "@/components/session/session-sandbox-panel";
 import { api } from "@/lib/api/client";
-import type { SessionEnvironment } from "@/lib/api/environments";
+import type { SessionSandbox } from "@/lib/api/sandbox-templates";
 
 jest.mock("@/lib/api/client", () => ({
   api: { get: jest.fn() },
@@ -10,7 +10,7 @@ jest.mock("@/lib/api/client", () => ({
 
 const mockedGet = api.get as jest.Mock;
 
-function environment(overrides: Partial<SessionEnvironment> = {}): SessionEnvironment {
+function sandbox(overrides: Partial<SessionSandbox> = {}): SessionSandbox {
   return {
     target: { kind: "vfs", provider: "bashkit" },
     containment: { level: "isolated", network: "deny" },
@@ -33,18 +33,18 @@ function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SessionEnvironmentPanel sessionId="session_1" />
+      <SessionSandboxPanel sessionId="session_1" />
     </QueryClientProvider>,
   );
 }
 
-describe("SessionEnvironmentPanel", () => {
+describe("SessionSandboxPanel", () => {
   afterEach(() => {
     mockedGet.mockReset();
   });
 
   it("names the target and its provider", async () => {
-    mockedGet.mockResolvedValue({ data: environment() });
+    mockedGet.mockResolvedValue({ data: sandbox() });
 
     renderPanel();
 
@@ -53,7 +53,7 @@ describe("SessionEnvironmentPanel", () => {
   });
 
   it("says a bashkit session cannot run native processes", async () => {
-    mockedGet.mockResolvedValue({ data: environment() });
+    mockedGet.mockResolvedValue({ data: sandbox() });
 
     renderPanel();
 
@@ -63,9 +63,9 @@ describe("SessionEnvironmentPanel", () => {
     expect(row).toHaveTextContent("no");
   });
 
-  it("marks an uncontained environment rather than dressing it up", async () => {
+  it("marks an uncontained sandbox rather than dressing it up", async () => {
     mockedGet.mockResolvedValue({
-      data: environment({
+      data: sandbox({
         target: { kind: "host" },
         containment: { level: "none", network: "allow" },
         durability: "none",
@@ -90,7 +90,7 @@ describe("SessionEnvironmentPanel", () => {
 
   it("explains a session that runs no commands at all", async () => {
     mockedGet.mockResolvedValue({
-      data: environment({ target: undefined, source_capability: undefined }),
+      data: sandbox({ target: undefined, source_capability: undefined }),
     });
 
     renderPanel();
@@ -103,7 +103,7 @@ describe("SessionEnvironmentPanel", () => {
 
   it("does not warn about containment when nothing runs", async () => {
     mockedGet.mockResolvedValue({
-      data: environment({ target: undefined, source_capability: undefined }),
+      data: sandbox({ target: undefined, source_capability: undefined }),
     });
 
     renderPanel();
@@ -114,7 +114,7 @@ describe("SessionEnvironmentPanel", () => {
     expect(screen.queryByText("Uncontained")).not.toBeInTheDocument();
   });
 
-  it("renders nothing when the environment cannot be read", async () => {
+  it("renders nothing when the sandbox cannot be read", async () => {
     mockedGet.mockRejectedValue(new Error("boom"));
 
     const { container } = renderPanel();

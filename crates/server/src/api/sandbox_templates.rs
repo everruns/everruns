@@ -1,11 +1,11 @@
-// Environment HTTP routes and wire types.
+// Sandbox Template and primary Session Sandbox HTTP routes.
 //
-// An Environment is where a session's commands run plus what they may touch.
-// New sessions return their immutable, resolved profile snapshot. Legacy
+// A Sandbox Template describes where commands run plus what they may touch.
+// New Sessions return their immutable, resolved specification snapshot. Legacy
 // sessions retain a capability-derived compatibility view; `resolved_from`
 // makes the distinction explicit.
 //
-// See knowledge/harnesses/execution-environments.md.
+// See knowledge/harnesses/sandbox-templates.md.
 
 use std::sync::Arc;
 
@@ -15,34 +15,35 @@ use utoipa::ToSchema;
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::environments::commands::{GetSessionEnvironment, ListEnvironmentTargets};
+use crate::domains::sandbox_templates::commands::{GetSessionSandbox, ListSandboxTargets};
 use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
-use everruns_contracts::typed_id::EnvironmentId;
+use everruns_contracts::typed_id::SandboxTemplateId;
 use everruns_core::Caller;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
 
-const MAX_ENVIRONMENT_DESCRIPTION_BYTES: usize = 10 * 1024;
+const MAX_SANDBOX_TEMPLATE_DESCRIPTION_BYTES: usize = 10 * 1024;
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct CreateEnvironmentRequest {
-    /// Stable addressable name used by Agent environment references.
+pub struct CreateSandboxTemplateRequest {
+    /// Stable addressable name used by Agent Sandbox policies.
     #[schema(example = "coding-daytona")]
     pub name: String,
     /// Human-readable name shown in management surfaces.
     #[schema(example = "Coding - Daytona")]
     pub display_name: String,
-    /// Optional explanation of the Environment's intended workload.
+    /// Optional explanation of the Sandbox Template's intended workload.
     #[serde(default)]
     #[schema(example = "Recoverable coding workspace managed by Daytona")]
     pub description: Option<String>,
-    /// Initial immutable execution profile revision.
-    pub profile: crate::records::EnvironmentProfile,
+    /// Initial immutable Sandbox specification revision.
+    #[serde(alias = "profile")]
+    pub spec: crate::records::SandboxTemplateSpec,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct ReviseEnvironmentRequest {
+pub struct ReviseSandboxTemplateRequest {
     /// Replacement display name; omit to preserve the current value.
     #[serde(default)]
     #[schema(example = "Coding - Daytona (large)")]
@@ -51,8 +52,9 @@ pub struct ReviseEnvironmentRequest {
     #[serde(default, deserialize_with = "double_option")]
     #[schema(example = "Larger recoverable workspace for repository builds")]
     pub description: Option<Option<String>>,
-    /// Complete profile stored as the next immutable revision.
-    pub profile: crate::records::EnvironmentProfile,
+    /// Complete specification stored as the next immutable revision.
+    #[serde(alias = "profile")]
+    pub spec: crate::records::SandboxTemplateSpec,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
@@ -65,7 +67,7 @@ where
 
 /// Where a session's commands run.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentTarget {
+pub struct SandboxTarget {
     /// Shape of the target: `host`, `machine`, `vfs`, `container`, `managed`.
     #[schema(example = "managed")]
     pub kind: String,
@@ -81,7 +83,7 @@ pub struct EnvironmentTarget {
 
 /// What commands may touch, and who enforces it.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentContainment {
+pub struct SandboxContainment {
     /// `none`, `native`, or `isolated`.
     #[schema(example = "isolated")]
     pub level: String,
@@ -90,13 +92,13 @@ pub struct EnvironmentContainment {
     pub network: String,
 }
 
-/// What the environment can actually do.
+/// What the Sandbox target can actually do.
 ///
 /// Read this before assuming a shell behaves like Linux. Bashkit reports
 /// `native_processes: false`, which is why a build fails there; the answer is
 /// available before the first turn rather than after a confusing tool error.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentCapabilities {
+pub struct SandboxCapabilities {
     /// Whether commands can spawn operating-system processes.
     pub native_processes: bool,
     /// Whether the runtime can install operating-system packages.
@@ -111,43 +113,42 @@ pub struct EnvironmentCapabilities {
     pub network_enforced: bool,
 }
 
-/// The environment a session is running in.
+/// The primary Sandbox a Session is running in.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SessionEnvironmentResponse {
-    /// Deprecated alias for `sandbox_id` during the Environment-to-Sandbox migration.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
+pub struct SessionSandboxResponse {
     /// Durable logical primary Sandbox id. Absent for legacy capability-derived sessions.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox_id: Option<String>,
-    /// Reusable Environment revision pinned into this Sandbox.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub environment_revision_id: Option<String>,
+    /// Reusable Sandbox Template revision pinned into this Sandbox.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        alias = "environment_revision_id"
+    )]
+    pub sandbox_template_revision_id: Option<String>,
     /// `primary` for the implicit shell/files binding.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<String>,
-    /// Agent profile name selected for this Session (`inline` for one-offs).
+    /// Agent template binding selected for this Session (`inline` for one-offs).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     /// Target, absent when the session has no compute at all and only reads and
     /// writes files. That is a real configuration, not a misconfiguration.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<EnvironmentTarget>,
-    pub containment: EnvironmentContainment,
+    pub target: Option<SandboxTarget>,
+    pub containment: SandboxContainment,
     /// `checkpointed`, `provider_snapshot`, or `none`. Declared per target, so a
     /// session on somebody else's machine is never reported as recoverable.
     pub durability: String,
-    pub capabilities: EnvironmentCapabilities,
+    pub capabilities: SandboxCapabilities,
     /// How this view was produced. `capabilities` means it was derived from the
-    /// session's effective capability set rather than read from a stored
-    /// environment profile.
+    /// Session's effective capability set rather than a stored Sandbox spec.
     pub resolved_from: String,
     /// Capability that supplied the compute, for operators tracing a surprise.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_capability: Option<String>,
-    /// Immutable resolved profile pinned when the Session was created.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile: Option<crate::records::ResolvedEnvironmentProfile>,
+    /// Immutable resolved specification pinned when the Session was created.
+    #[serde(skip_serializing_if = "Option::is_none", alias = "profile")]
+    pub spec: Option<crate::records::ResolvedSandboxSpec>,
     /// Control-plane lifecycle intent and latest observed physical state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub desired_state: Option<String>,
@@ -167,7 +168,7 @@ pub struct SessionEnvironmentResponse {
 
 /// One target this deployment can offer, and what it can do.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentTargetDescriptor {
+pub struct SandboxTargetDescriptor {
     /// Provider-neutral target class.
     pub kind: String,
     /// Concrete provider adapter, when the target class requires one.
@@ -179,18 +180,18 @@ pub struct EnvironmentTargetDescriptor {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     /// Capabilities the deployment can honestly provide for this target.
-    pub capabilities: EnvironmentCapabilities,
+    pub capabilities: SandboxCapabilities,
     /// Containment levels this target supports, weakest first.
     pub containment_levels: Vec<String>,
     /// Recovery guarantee offered by this target.
     pub durability: String,
 }
 
-/// Response body for the `list_environment_targets` operation.
+/// Response body for the `list_sandbox_targets` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct EnvironmentTargetsResponse {
+pub struct SandboxTargetsResponse {
     /// Target descriptors known to this deployment.
-    pub items: Vec<EnvironmentTargetDescriptor>,
+    pub items: Vec<SandboxTargetDescriptor>,
 }
 
 #[derive(Clone)]
@@ -222,7 +223,7 @@ impl AppState {
         )
         .with_session_service(self.session_service.clone())
         // Carry the org-effective flags for capability and policy resolution.
-        // Environments are a core surface, not feature-gated.
+        // Sandbox Templates are a core surface, not feature-gated.
         .with_feature_flags(org.feature_flags.clone())
     }
 }
@@ -232,20 +233,36 @@ impl_auth_state!(AppState);
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route(
-            "/v1/environments",
-            get(list_environments).post(create_environment),
+            "/v1/sandbox-templates",
+            get(list_sandbox_templates).post(create_sandbox_template),
         )
         .route(
-            "/v1/environments/{environment_id}",
-            get(get_environment_definition)
-                .put(revise_environment)
-                .delete(archive_environment),
+            "/v1/sandbox-templates/{sandbox_template_id}",
+            get(get_sandbox_template)
+                .put(revise_sandbox_template)
+                .delete(archive_sandbox_template),
+        )
+        .route(
+            "/v1/sessions/{session_id}/sandbox",
+            get(get_session_sandbox),
+        )
+        .route("/v1/sandbox-targets", get(list_sandbox_targets))
+        // Compatibility aliases for clients released before the resource rename.
+        .route(
+            "/v1/environments",
+            get(list_sandbox_templates).post(create_sandbox_template),
+        )
+        .route(
+            "/v1/environments/{sandbox_template_id}",
+            get(get_sandbox_template)
+                .put(revise_sandbox_template)
+                .delete(archive_sandbox_template),
         )
         .route(
             "/v1/sessions/{session_id}/environment",
-            get(get_session_environment),
+            get(get_session_sandbox),
         )
-        .route("/v1/environment-targets", get(list_environment_targets))
+        .route("/v1/environment-targets", get(list_sandbox_targets))
         .with_state(state)
 }
 
@@ -259,27 +276,27 @@ fn authorize(
         .map_err(|error| ErrorResponse::new(error.to_string()).into_response(StatusCode::FORBIDDEN))
 }
 
-#[utoipa::path(description = "List active reusable Environments available to the organization.", get, path = "/v1/environments", responses((status = 200, body = Vec<crate::records::EnvironmentDefinition>)), tag = "environments")]
-pub async fn list_environments(
+#[utoipa::path(description = "List active reusable Sandbox Templates available to the organization.", get, path = "/v1/sandbox-templates", responses((status = 200, body = Vec<crate::records::SandboxTemplate>)), tag = "sandbox-templates")]
+pub async fn list_sandbox_templates(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> ApiResult<Vec<crate::records::EnvironmentDefinition>> {
+) -> ApiResult<Vec<crate::records::SandboxTemplate>> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_VIEW)?;
     Ok(Json(
         state
             .db
-            .list_environment_definitions(org.org_id, false)
+            .list_sandbox_templates(org.org_id, false)
             .await
-            .log_internal_error_json("list environments")?,
+            .log_internal_error_json("list Sandbox Templates")?,
     ))
 }
 
-#[utoipa::path(description = "Create a reusable Environment and its first immutable revision.", post, path = "/v1/environments", request_body = CreateEnvironmentRequest, responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
-pub async fn create_environment(
+#[utoipa::path(description = "Create a reusable Sandbox Template and its first immutable revision.", post, path = "/v1/sandbox-templates", request_body = CreateSandboxTemplateRequest, responses((status = 200, body = crate::records::SandboxTemplate)), tag = "sandbox-templates")]
+pub async fn create_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Json(request): Json<CreateEnvironmentRequest>,
-) -> ApiResult<crate::records::EnvironmentDefinition> {
+    Json(request): Json<CreateSandboxTemplateRequest>,
+) -> ApiResult<crate::records::SandboxTemplate> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_MANAGE)?;
     crate::records::validate_addressable_name(&request.name).map_err(|error| {
         ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY)
@@ -293,74 +310,74 @@ pub async fn create_environment(
     if request
         .description
         .as_ref()
-        .is_some_and(|description| description.len() > MAX_ENVIRONMENT_DESCRIPTION_BYTES)
+        .is_some_and(|description| description.len() > MAX_SANDBOX_TEMPLATE_DESCRIPTION_BYTES)
     {
         return Err(
             ErrorResponse::new("description must be at most 10240 bytes")
                 .into_response(StatusCode::UNPROCESSABLE_ENTITY),
         );
     }
-    if request.profile.source_revision_id.is_some() {
+    if request.spec.template_revision_id.is_some() {
         return Err(ErrorResponse::new(
-            "Reusable Environment profiles cannot set source_revision_id",
+            "Reusable Sandbox Template specs cannot set template_revision_id",
         )
         .into_response(StatusCode::UNPROCESSABLE_ENTITY));
     }
-    crate::domains::environments::profiles::resolve_profile(&request.profile).map_err(|error| {
-        ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY)
-    })?;
+    crate::domains::sandbox_templates::resolution::resolve_spec(&request.spec).map_err(
+        |error| ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY),
+    )?;
     if state
         .db
-        .list_environment_definitions(org.org_id, false)
+        .list_sandbox_templates(org.org_id, false)
         .await
-        .log_internal_error_json("check environment name")?
+        .log_internal_error_json("check Sandbox Template name")?
         .iter()
-        .any(|environment| environment.name == request.name)
+        .any(|template| template.name == request.name)
     {
         return Err(
-            ErrorResponse::new("An active Environment already uses this name")
+            ErrorResponse::new("An active Sandbox Template already uses this name")
                 .into_response(StatusCode::CONFLICT),
         );
     }
-    let environment = state
+    let template = state
         .db
-        .create_environment_definition(
+        .create_sandbox_template(
             org.org_id,
             &request.name,
             request.display_name.trim(),
             request.description.as_deref(),
-            &request.profile,
+            &request.spec,
             false,
         )
         .await
-        .log_internal_error_json("create environment")?;
-    Ok(Json(environment))
+        .log_internal_error_json("create Sandbox Template")?;
+    Ok(Json(template))
 }
 
-#[utoipa::path(description = "Get one reusable Environment and its current immutable revision.", get, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
-pub async fn get_environment_definition(
+#[utoipa::path(description = "Get one reusable Sandbox Template and its current immutable revision.", get, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = crate::records::SandboxTemplate)), tag = "sandbox-templates")]
+pub async fn get_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(environment_id): Path<EnvironmentId>,
-) -> ApiResult<crate::records::EnvironmentDefinition> {
+    Path(sandbox_template_id): Path<SandboxTemplateId>,
+) -> ApiResult<crate::records::SandboxTemplate> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_VIEW)?;
     Ok(Json(
         state
             .db
-            .get_environment_definition(org.org_id, environment_id)
+            .get_sandbox_template(org.org_id, sandbox_template_id)
             .await
-            .log_internal_error_json("get environment")?
-            .ok_or_not_found_json("Environment")?,
+            .log_internal_error_json("get Sandbox Template")?
+            .ok_or_not_found_json("Sandbox Template")?,
     ))
 }
 
-#[utoipa::path(description = "Create the next immutable revision of a reusable Environment.", put, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), request_body = ReviseEnvironmentRequest, responses((status = 200, body = crate::records::EnvironmentDefinition)), tag = "environments")]
-pub async fn revise_environment(
+#[utoipa::path(description = "Create the next immutable revision of a reusable Sandbox Template.", put, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), request_body = ReviseSandboxTemplateRequest, responses((status = 200, body = crate::records::SandboxTemplate)), tag = "sandbox-templates")]
+pub async fn revise_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(environment_id): Path<EnvironmentId>,
-    Json(request): Json<ReviseEnvironmentRequest>,
-) -> ApiResult<crate::records::EnvironmentDefinition> {
+    Path(sandbox_template_id): Path<SandboxTemplateId>,
+    Json(request): Json<ReviseSandboxTemplateRequest>,
+) -> ApiResult<crate::records::SandboxTemplate> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_MANAGE)?;
     if request
         .display_name
@@ -376,41 +393,41 @@ pub async fn revise_environment(
         .description
         .as_ref()
         .and_then(|description| description.as_ref())
-        .is_some_and(|description| description.len() > MAX_ENVIRONMENT_DESCRIPTION_BYTES)
+        .is_some_and(|description| description.len() > MAX_SANDBOX_TEMPLATE_DESCRIPTION_BYTES)
     {
         return Err(
             ErrorResponse::new("description must be at most 10240 bytes")
                 .into_response(StatusCode::UNPROCESSABLE_ENTITY),
         );
     }
-    if request.profile.source_revision_id.is_some() {
+    if request.spec.template_revision_id.is_some() {
         return Err(ErrorResponse::new(
-            "Reusable Environment profiles cannot set source_revision_id",
+            "Reusable Sandbox Template specs cannot set template_revision_id",
         )
         .into_response(StatusCode::UNPROCESSABLE_ENTITY));
     }
-    crate::domains::environments::profiles::resolve_profile(&request.profile).map_err(|error| {
-        ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY)
-    })?;
+    crate::domains::sandbox_templates::resolution::resolve_spec(&request.spec).map_err(
+        |error| ErrorResponse::new(error).into_response(StatusCode::UNPROCESSABLE_ENTITY),
+    )?;
     let current = state
         .db
-        .get_environment_definition(org.org_id, environment_id)
+        .get_sandbox_template(org.org_id, sandbox_template_id)
         .await
-        .log_internal_error_json("get environment before revision")?
-        .ok_or_not_found_json("Environment")?;
+        .log_internal_error_json("get Sandbox Template before revision")?
+        .ok_or_not_found_json("Sandbox Template")?;
     if current.is_managed || current.status != "active" {
         return Err(
-            ErrorResponse::new("Managed or archived Environments cannot be revised")
+            ErrorResponse::new("Managed or archived Sandbox Templates cannot be revised")
                 .into_response(StatusCode::CONFLICT),
         );
     }
     Ok(Json(
         state
             .db
-            .revise_environment_definition(
+            .revise_sandbox_template(
                 org.org_id,
-                environment_id,
-                &request.profile,
+                sandbox_template_id,
+                &request.spec,
                 request.display_name.as_deref(),
                 request
                     .description
@@ -418,42 +435,42 @@ pub async fn revise_environment(
                     .map(|description| description.as_deref()),
             )
             .await
-            .log_internal_error_json("revise environment")?
-            .ok_or_not_found_json("Environment")?,
+            .log_internal_error_json("revise Sandbox Template")?
+            .ok_or_not_found_json("Sandbox Template")?,
     ))
 }
 
-#[utoipa::path(description = "Archive a user-managed reusable Environment without changing pinned Sessions.", delete, path = "/v1/environments/{environment_id}", params(("environment_id" = String, Path)), responses((status = 200, body = serde_json::Value)), tag = "environments")]
-pub async fn archive_environment(
+#[utoipa::path(description = "Archive a user-managed Sandbox Template without changing pinned Sessions.", delete, path = "/v1/sandbox-templates/{sandbox_template_id}", params(("sandbox_template_id" = String, Path)), responses((status = 200, body = serde_json::Value)), tag = "sandbox-templates")]
+pub async fn archive_sandbox_template(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Path(environment_id): Path<EnvironmentId>,
+    Path(sandbox_template_id): Path<SandboxTemplateId>,
 ) -> ApiResult<serde_json::Value> {
     authorize(&state, &org, &crate::domains::harnesses::HARNESS_MANAGE)?;
     let archived = state
         .db
-        .archive_environment_definition(org.org_id, environment_id)
+        .archive_sandbox_template(org.org_id, sandbox_template_id)
         .await
-        .log_internal_error_json("archive environment")?;
+        .log_internal_error_json("archive Sandbox Template")?;
     if !archived {
-        return Err(ErrorResponse::new("Environment not found or managed")
+        return Err(ErrorResponse::new("Sandbox Template not found or managed")
             .into_response(StatusCode::NOT_FOUND));
     }
     Ok(Json(serde_json::json!({"archived": true})))
 }
 
 #[utoipa::path(
-    description = "Get the environment a session runs in: target, containment, and what it can actually do.",
+    description = "Get the primary Sandbox a Session runs in: template, target, containment, and capabilities.",
     get,
-    path = "/v1/sessions/{session_id}/environment",
+    path = "/v1/sessions/{session_id}/sandbox",
     params(
         ("session_id" = String, Path, description = "Session ID")
     ),
     responses(
         (
             status = 200,
-            description = "Resolved session environment",
-            body = SessionEnvironmentResponse,
+            description = "Resolved primary Session Sandbox",
+            body = SessionSandboxResponse,
             example = json!({
                 "target": { "kind": "vfs", "provider": "bashkit" },
                 "containment": { "level": "isolated", "network": "deny" },
@@ -472,41 +489,41 @@ pub async fn archive_environment(
         ),
         (status = 404, description = "Session not found"),
     ),
-    tag = "environments"
+    tag = "sandboxes"
 )]
-pub async fn get_session_environment(
+pub async fn get_session_sandbox(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> ApiResult<SessionEnvironmentResponse> {
+) -> ApiResult<SessionSandboxResponse> {
     Ok(Json(
-        GetSessionEnvironment { session_id }
+        GetSessionSandbox { session_id }
             .run(&state.ctx(&org))
             .await?,
     ))
 }
 
 #[utoipa::path(
-    description = "List the environment targets this deployment can offer, with the capabilities each one actually has.",
+    description = "List the Sandbox targets this deployment can offer, with the capabilities each one actually has.",
     get,
-    path = "/v1/environment-targets",
+    path = "/v1/sandbox-targets",
     responses(
-        (status = 200, description = "Available environment targets", body = EnvironmentTargetsResponse),
+        (status = 200, description = "Available Sandbox targets", body = SandboxTargetsResponse),
     ),
-    tag = "environments"
+    tag = "sandbox-templates"
 )]
-pub async fn list_environment_targets(
+pub async fn list_sandbox_targets(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> ApiResult<EnvironmentTargetsResponse> {
-    Ok(Json(ListEnvironmentTargets.run(&state.ctx(&org)).await?))
+) -> ApiResult<SandboxTargetsResponse> {
+    Ok(Json(ListSandboxTargets.run(&state.ctx(&org)).await?))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ReviseEnvironmentRequest;
+    use super::ReviseSandboxTemplateRequest;
 
-    fn request(description: &str) -> ReviseEnvironmentRequest {
+    fn request(description: &str) -> ReviseSandboxTemplateRequest {
         serde_json::from_str(&format!(
             r#"{{{description}"profile":{{"target":{{"kind":"vfs","provider":"bashkit"}}}}}}"#
         ))

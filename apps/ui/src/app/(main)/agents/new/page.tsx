@@ -22,7 +22,7 @@ import { HarnessSelect } from "@/components/harness/harness-select";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor } from "@/components/network-access-editor";
-import { EnvironmentProfilesEditor } from "@/components/agents/environment-profiles-editor";
+import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import {
   BackLink,
   PageBreadcrumb,
@@ -43,7 +43,7 @@ import {
 } from "@/lib/form-validation";
 import type {
   AgentCapabilityConfig,
-  EnvironmentSet,
+  SandboxPolicy,
   InitialFile,
   NetworkAccessList,
 } from "@/lib/api/types";
@@ -88,7 +88,7 @@ export default function NewAgentPage() {
   const [selectedCapabilities, setSelectedCapabilities] = useState<AgentCapabilityConfig[]>([]);
   const [initialFiles, setInitialFiles] = useState<InitialFile[]>([]);
   const [networkAccess, setNetworkAccess] = useState<NetworkAccessList>({});
-  const [environments, setEnvironments] = useState<EnvironmentSet | null>(null);
+  const [sandboxPolicy, setSandboxPolicy] = useState<SandboxPolicy | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const fixedBashkitHarness = harnessInheritsFromName(
     formData.harness_id,
@@ -149,7 +149,7 @@ export default function NewAgentPage() {
           networkAccess.allowed?.length || networkAccess.blocked?.length
             ? networkAccess
             : undefined,
-        environments: environments ?? undefined,
+        sandbox_policy: sandboxPolicy ?? undefined,
       });
 
       router.push(`/agents/${agent.id}`);
@@ -165,7 +165,7 @@ export default function NewAgentPage() {
       <PageMasthead
         icon={<Boxes />}
         title="New Agent"
-        description="Define the identity, behavior, Environment, files, and network policy for new sessions."
+        description="Define the identity, behavior, primary sandbox, files, and network policy for new sessions."
         actions={
           <>
             <Button type="submit" form="agent-create-form" disabled={createAgent.isPending}>
@@ -185,7 +185,7 @@ export default function NewAgentPage() {
             { href: "#identity", label: "Identity" },
             { href: "#branding", label: "Branding" },
             { href: "#behavior", label: "Behavior" },
-            { href: "#environments", label: "Environments" },
+            { href: "#sandbox", label: "Sandbox" },
             { href: "#files", label: "Files" },
             { href: "#network", label: "Network" },
           ]}
@@ -354,7 +354,7 @@ export default function NewAgentPage() {
                       onValueChange={(value) => {
                         setFormData((prev) => ({ ...prev, harness_id: value }));
                         if (harnessInheritsFromName(value, harnesses, "bashkit-worker")) {
-                          setEnvironments(null);
+                          setSandboxPolicy(null);
                         }
                         setFieldErrors((prev) => ({ ...prev, harness_id: undefined }));
                       }}
@@ -404,11 +404,11 @@ export default function NewAgentPage() {
               </CardContent>
             </Card>
 
-            <Card id="environments" className="scroll-mt-6">
+            <Card id="sandbox" className="scroll-mt-6">
               <CardHeader>
-                <CardTitle>Environments</CardTitle>
+                <CardTitle>Primary sandbox</CardTitle>
                 <CardDescription>
-                  Choose no Sandbox, a fixed Environment, or advanced Session selection.
+                  Choose no sandbox, one fixed template, or a constrained Session choice.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -420,9 +420,9 @@ export default function NewAgentPage() {
                     </p>
                   </div>
                 ) : (
-                  <EnvironmentProfilesEditor
-                    value={environments}
-                    onChange={setEnvironments}
+                  <SandboxPolicyEditor
+                    value={sandboxPolicy}
+                    onChange={setSandboxPolicy}
                     disabled={createAgent.isPending}
                   />
                 )}

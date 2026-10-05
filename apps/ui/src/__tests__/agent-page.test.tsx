@@ -52,18 +52,14 @@ jest.mock("@/components/agents/agent-version-history", () => ({
 jest.mock("@/components/agents/agent-health-check", () => ({
   AgentHealthCheck: () => <div data-testid="agent-health-check" />,
 }));
-jest.mock("@/components/agents/environment-profiles-editor", () => ({
-  EnvironmentProfilesEditor: ({
-    onChange,
-  }: {
-    onChange: (value: Record<string, unknown>) => void;
-  }) => (
+jest.mock("@/components/agents/sandbox-policy-editor", () => ({
+  SandboxPolicyEditor: ({ onChange }: { onChange: (value: Record<string, unknown>) => void }) => (
     <button
       type="button"
       onClick={() =>
         onChange({
           default: "build",
-          profiles: {
+          templates: {
             build: {
               target: { kind: "managed", provider: "daytona" },
               durability: "checkpointed",
@@ -72,7 +68,7 @@ jest.mock("@/components/agents/environment-profiles-editor", () => ({
         })
       }
     >
-      Add Daytona environment
+      Add Daytona sandbox
     </button>
   ),
 }));
@@ -262,7 +258,7 @@ describe("AgentPage layout", () => {
     expect(more.getByRole("button", { name: /MCP servers\s*2 attached/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Credentials\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Network access\s*Inherited/ })).toBeInTheDocument();
-    expect(more.getByRole("button", { name: /Environments\s*None/ })).toBeInTheDocument();
+    expect(more.getByRole("button", { name: /Primary sandbox\s*None/ })).toBeInTheDocument();
     expect(more.getByRole("button", { name: /Health check\s*Not run/ })).toBeInTheDocument();
     // Status badge in view mode, Test in Playground is the primary action.
     expect(screen.getByText("active")).toBeInTheDocument();
@@ -270,7 +266,7 @@ describe("AgentPage layout", () => {
     expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
   });
 
-  it("shows the fixed Bashkit environment inherited from the Harness", async () => {
+  it("shows the fixed Bashkit sandbox inherited from the Harness", async () => {
     mockUseAgent.mockReturnValue({
       data: { ...mockAgent, harness_id: "harness_bashkit" },
       isLoading: false,
@@ -289,10 +285,10 @@ describe("AgentPage layout", () => {
 
     expect(
       screen.getByRole("button", {
-        name: /Environments\s*Bashkit Virtual Workspace/,
+        name: /Primary sandbox\s*Bashkit Virtual Workspace/,
       }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Environments/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
     expect(
       screen.getByText("Locked by the selected Harness.", { exact: false }),
     ).toBeInTheDocument();
@@ -522,18 +518,18 @@ describe("AgentPage edit mode", () => {
     });
   });
 
-  it("includes environment profiles edited in their sheet", async () => {
+  it("includes sandbox policy edited in their sheet", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: /Environments/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Add Daytona environment" }));
+    fireEvent.click(screen.getByRole("button", { name: /Primary sandbox/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add Daytona sandbox" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();
 
     expect(mockUpdate).toHaveBeenCalledTimes(1);
-    expect(mockUpdate.mock.calls[0][0].request.environments).toEqual({
+    expect(mockUpdate.mock.calls[0][0].request.sandbox_policy).toEqual({
       default: "build",
-      profiles: {
+      templates: {
         build: {
           target: { kind: "managed", provider: "daytona" },
           durability: "checkpointed",

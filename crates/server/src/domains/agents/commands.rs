@@ -2,10 +2,9 @@
 // Request types double as catalog entries and auto-register with inventory.
 
 use super::command_validation::{
-    normalize_capability_refs, reject_environment_override_for_fixed_harness,
-    validate_environment_sources,
+    normalize_capability_refs, reject_sandbox_override_for_fixed_harness,
+    validate_sandbox_template_sources,
 };
-use super::environment as environment_profiles;
 pub(crate) use super::managed::check_harness_assignment;
 use super::managed::{
     check_high_risk_caps, resolve_create_harness_id, resolve_update_harness_id,
@@ -13,6 +12,7 @@ use super::managed::{
 };
 use super::preview::PreviewAgent;
 use super::queries as q;
+use super::sandbox_policy as sandbox_templates;
 use super::types::{
     AgentRow, AgentVersionDiffResponse, CreateAgentRequest, CreateAgentRow,
     CreateAgentVersionRequest, ForkAgentVersionRequest, RollbackAgentVersionRequest,
@@ -127,8 +127,8 @@ impl Command for CreateAgent {
         validate_name("Agent", &req.name)?;
         validate_managed_name(&req.name)?;
         validate_create_limits(&req)?;
-        environment_profiles::validate(req.environments.as_ref())?;
-        validate_environment_sources(ctx, req.environments.as_ref()).await?;
+        sandbox_templates::validate(req.sandbox_policy.as_ref())?;
+        validate_sandbox_template_sources(ctx, req.sandbox_policy.as_ref()).await?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
 
         // Enforce per-org agent cap (excludes soft-deleted) before insert.
@@ -178,7 +178,7 @@ impl Command for CreateAgent {
         };
         let harness_id =
             resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
-        reject_environment_override_for_fixed_harness(ctx, harness_id, req.environments.is_some())
+        reject_sandbox_override_for_fixed_harness(ctx, harness_id, req.sandbox_policy.is_some())
             .await?;
 
         validate_service_account(ctx, req.service_virtual_user_id).await?;
@@ -207,7 +207,7 @@ impl Command for CreateAgent {
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
-                environments: environment_profiles::to_json(req.environments.as_ref()),
+                environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
                 is_built_in: false,
@@ -244,7 +244,7 @@ impl Command for CreateAgent {
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
-                environments: environment_profiles::to_json(req.environments.as_ref()),
+                environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
                 is_built_in: false,
@@ -485,9 +485,9 @@ impl Command for UpdateAgentCmd {
             validate_managed_name(name)?;
         }
         validate_update_limits(&req)?;
-        environment_profiles::validate_update(&req.environments)?;
-        if let everruns_durable::UpdateField::Set(environments) = &req.environments {
-            validate_environment_sources(ctx, Some(environments)).await?;
+        sandbox_templates::validate_update(&req.sandbox_policy)?;
+        if let everruns_durable::UpdateField::Set(environments) = &req.sandbox_policy {
+            validate_sandbox_template_sources(ctx, Some(environments)).await?;
         }
         if matches!(req.status, Some(AgentStatus::Deleted)) {
             return Err(CommandError::forbidden(
@@ -576,17 +576,13 @@ impl Command for UpdateAgentCmd {
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
-        let final_has_environments = match &req.environments {
+        let final_has_environments = match &req.sandbox_policy {
             everruns_durable::UpdateField::Set(_) => true,
             everruns_durable::UpdateField::Clear => false,
             everruns_durable::UpdateField::Unchanged => existing.environments.is_some(),
         };
-        reject_environment_override_for_fixed_harness(
-            ctx,
-            final_harness_id,
-            final_has_environments,
-        )
-        .await?;
+        reject_sandbox_override_for_fixed_harness(ctx, final_harness_id, final_has_environments)
+            .await?;
 
         if let everruns_durable::UpdateField::Set(id) = req.service_virtual_user_id {
             validate_service_account(ctx, Some(id)).await?;
@@ -642,7 +638,7 @@ impl Command for UpdateAgentCmd {
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             parallel_tool_calls: req.parallel_tool_calls.map(Some),
-            environments: environment_profiles::update_to_json(req.environments),
+            environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
         };
         let row = ctx
@@ -834,7 +830,7 @@ impl Command for UpsertAgent {
         validate_name("Agent", &req.name)?;
         validate_managed_name(&req.name)?;
         validate_create_limits(&req)?;
-        environment_profiles::validate(req.environments.as_ref())?;
+        sandbox_templates::validate(req.sandbox_policy.as_ref())?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
 
         let caps = normalize_capability_refs(
@@ -905,7 +901,7 @@ impl Command for UpsertAgent {
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: max_iterations::to_db(req.max_iterations).map_err(classify_anyhow)?,
             parallel_tool_calls: req.parallel_tool_calls,
-            environments: environment_profiles::to_json(req.environments.as_ref()),
+            environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
             network_access: req
                 .network_access
                 .as_ref()
@@ -1020,7 +1016,7 @@ impl Command for CopyAgent {
             harness_name: None,
             tags: source.tags,
             capabilities: source.capabilities,
-            environments: source.environments,
+            sandbox_policy: source.sandbox_policy,
             initial_files: source.initial_files,
             tools: source.tools,
             mcp_servers: source.mcp_servers,
@@ -1818,7 +1814,7 @@ impl Command for ForkAgentVersion {
             harness_name: None,
             tags: fork.tags.clone(),
             capabilities: fork.capabilities.clone(),
-            environments: fork.environments.clone(),
+            sandbox_policy: fork.sandbox_policy.clone(),
             initial_files: fork.initial_files.clone(),
             tools: fork.tools.clone(),
             mcp_servers: fork.mcp_servers.clone(),

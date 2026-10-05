@@ -250,7 +250,7 @@ pub async fn initialize_org_harnesses_with_definitions(
     // Environment resources precede Harness bindings. The managed Bashkit
     // revision is immutable and shared as configuration; every Session still
     // receives its own logical Sandbox and Workspace.
-    db.ensure_managed_bashkit_environment(org_id).await?;
+    db.ensure_managed_bashkit_sandbox_template(org_id).await?;
 
     // Release legacy built-ins that were demoted to example harnesses.
     // We keep the rows (so existing sessions/agents that reference them keep

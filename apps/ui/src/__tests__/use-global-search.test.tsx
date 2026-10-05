@@ -273,7 +273,7 @@ describe("useGlobalSearch", () => {
     ["playground", "/playground"],
     ["approvals", "/approvals"],
     ["exposures", "/exposures"],
-    ["environments", "/environments"],
+    ["sandbox templates", "/sandbox-templates"],
     ["slack", "/settings/slack"],
     ["health", "/settings/health"],
     ["new side chat", "/chats/new"],

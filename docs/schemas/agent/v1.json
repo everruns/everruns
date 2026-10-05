@@ -169,9 +169,6 @@
           ],
           "description": "Human-readable agent label. Defaults to the stable name at the host."
         },
-        "environments": {
-          "description": "Platform-specific environment requirements; other hosts must bind or reject them."
-        },
         "files": {
           "type": "array",
           "items": {
@@ -259,6 +256,9 @@
             "null"
           ],
           "description": "Whether independent tool calls may run concurrently. Omission keeps the host default."
+        },
+        "sandbox_policy": {
+          "description": "Platform-specific Sandbox policy. Other hosts must explicitly bind or\nreject it rather than silently discarding execution requirements."
         },
         "schema_version": {
           "type": "integer",

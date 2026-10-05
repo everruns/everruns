@@ -344,7 +344,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const isActive = agent.status === "active";
   const sessionCount = agent.session_count;
   const displayName = getDisplayName(agent);
-  const fixedEnvironment = harnessInheritsFromName(
+  const fixedSandbox = harnessInheritsFromName(
     draft.fields.harness_id || agent.harness_id,
     harnesses,
     "bashkit-worker",
@@ -386,12 +386,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           : "Inherited",
     },
     {
-      id: "environments",
-      label: "Environments",
+      id: "sandbox",
+      label: "Primary sandbox",
       summary:
-        fixedEnvironment ??
-        (draft.environments
-          ? `${Object.keys(draft.environments.profiles ?? {}).length} · default ${draft.environments.default}`
+        fixedSandbox ??
+        (draft.sandboxPolicy
+          ? `${Object.keys(draft.sandboxPolicy.templates ?? {}).length} · default ${draft.sandboxPolicy.default}`
           : "None"),
     },
     {
@@ -633,7 +633,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         agent={agent}
         draft={draft}
         readOnly={readOnly}
-        fixedEnvironment={fixedEnvironment}
+        fixedSandbox={fixedSandbox}
         onDraftChange={onDraftChange}
       />
 

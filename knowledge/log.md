@@ -80,10 +80,18 @@
 
 ## 2026-10-04
 
+* **Sandbox Template is the hosted configuration resource.** A Sandbox Template
+  has immutable revisions; an Agent version owns `sandbox_policy`; a Session
+  pins one resolved primary Sandbox that can replace physical provider compute.
+  Framework `Environment` remains an internal execution context, not a hosted
+  product resource. Legacy Environment routes, keys, and ID prefixes are
+  input-only compatibility aliases. See [Sandbox Platform Architecture](harnesses/sandbox-abstraction.md)
+  and [Sandbox Templates](harnesses/sandbox-templates.md).
+
 * **Decision models share provider authentication.** Direct TypeSafe and OpenRouter use the same neutral System One contract. Tenant models retain service/profile identity, support an explicit decision default, and bind Jev through host credential, egress, budget and usage boundaries. Utility guardrails remain deployment-owned. See [Decision Service](operations/decisions-service.md).
 
 * **Sandbox platform proposal separates configuration, primary execution, and
-  fleets.** Environment is reusable versioned configuration; a Session owns at
+  fleets.** Sandbox Template is reusable versioned configuration; a Session owns at
   most one recoverable primary Sandbox over a durable Workspace; agent-managed
   Sandboxes are explicit resources. Harnesses may seal execution, with Bashkit
   Worker as the fixed Bashkit child of Worker. See
@@ -133,7 +141,7 @@
 * **Agent testing belongs to Playground.** The Agent masthead opens Playground setup with the
   Agent preselected; personal Chats remain bound to the managed Platform Chat Agent and its fixed
   runtime. Playground owns Agent, harness, virtual-user, and Environment selection. See
-  [Agent Page](ui/agent-page.md) and [Execution Environments](harnesses/execution-environments.md).
+  [Agent Page](ui/agent-page.md) and [Sandbox Templates](harnesses/sandbox-templates.md).
 
 * **Hosted feature enrolment names and defaults.** Internal features require
   platform enrolment; adoption remains organisation opt-in. The seven features
@@ -1006,7 +1014,7 @@
   `Environment` seam is the anchor: it already carries a workspace head and an
   extension point documented for compute. Includes proposed Framework and HTTP
   API shapes. See
-  [Execution Environments](harnesses/execution-environments.md).
+  [Sandbox Templates](harnesses/sandbox-templates.md).
 
 * **One command grammar, several hosts.** Operations reached through the
   scripted MCP surface, a session's shell, and (eventually) the external CLI had

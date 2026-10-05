@@ -195,6 +195,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::SessionIdled(d) => to_json(d),
         EventData::SessionTitleUpdated(d) => to_json(d),
         EventData::SessionModelChanged(d) => to_json(d),
+        EventData::SandboxInstanceLost(d) | EventData::SandboxRecovered(d) => to_json(d),
         EventData::EnvironmentInstanceLost(d) | EventData::EnvironmentRecovered(d) => to_json(d),
         EventData::TaskCreated(d) => to_json(d),
         EventData::TaskUpdated(d) => to_json(d),

@@ -6,7 +6,7 @@
 
 #[cfg(test)]
 mod concurrency_tests;
-mod environment_recovery;
+mod sandbox_recovery;
 #[cfg(test)]
 mod test_provider_files;
 mod workspace_seed;
@@ -60,7 +60,7 @@ pub async fn ensure_session_sandbox_running(
     // Models may issue file and shell calls in parallel. Serialize lifecycle
     // reconciliation per session so physical loss creates one replacement,
     // not one replacement per concurrent tool call.
-    let lifecycle_lock = environment_recovery::lifecycle_lock(context.session_id);
+    let lifecycle_lock = sandbox_recovery::lifecycle_lock(context.session_id);
     let _lifecycle_guard = lifecycle_lock.lock().await;
     let Some(provider) = create_session_sandbox_provider(&config.provider) else {
         return Err(ToolExecutionResult::tool_error(format!(
@@ -86,7 +86,7 @@ pub async fn ensure_session_sandbox_running(
             reconcile_session_sandbox_checkpoint(context, provider.as_ref(), config, &mut state)
                 .await?;
 
-            environment_recovery::resume_if_needed(context, provider.as_ref(), config, &mut state)
+            sandbox_recovery::resume_if_needed(context, provider.as_ref(), config, &mut state)
                 .await?;
 
             workspace_seed::seed_if_pending(context, provider.as_ref(), config, &mut state).await?;

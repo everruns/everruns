@@ -3,43 +3,43 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Container, Loader2 } from "lucide-react";
-import { EnvironmentProfilesEditor } from "@/components/agents/environment-profiles-editor";
+import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageBreadcrumb, PageContainer, PageMain, PageMasthead } from "@/components/layout";
-import { useCreateEnvironment, usePageTitle } from "@/hooks";
-import type { EnvironmentSet } from "@/lib/api/types";
+import { useCreateSandboxTemplate, usePageTitle } from "@/hooks";
+import type { SandboxPolicy } from "@/lib/api/types";
 
-export default function NewEnvironmentPage() {
-  usePageTitle("New Environment", "Environments");
+export default function NewSandboxTemplatePage() {
+  usePageTitle("New Sandbox Template", "Sandbox Templates");
   const router = useRouter();
-  const mutation = useCreateEnvironment();
+  const mutation = useCreateSandboxTemplate();
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
-  const [environment, setEnvironment] = useState<EnvironmentSet | null>(null);
-  const profile = environment?.profiles?.[environment.default];
+  const [sandboxPolicy, setSandboxPolicy] = useState<SandboxPolicy | null>(null);
+  const spec = sandboxPolicy?.templates?.[sandboxPolicy.default];
   const submit = async () => {
-    if (!name || !displayName || !profile) return;
+    if (!name || !displayName || !spec) return;
     const created = await mutation.mutateAsync({
       name,
       display_name: displayName,
       ...(description ? { description } : {}),
-      profile,
+      spec,
     });
-    router.push(`/environments/${created.id}`);
+    router.push(`/sandbox-templates/${created.id}`);
   };
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[{ label: "Environments", href: "/environments" }, { label: "New" }]}
+        items={[{ label: "Sandbox Templates", href: "/sandbox-templates" }, { label: "New" }]}
       />
       <PageMasthead
         icon={<Container />}
-        title="New Environment"
+        title="New Sandbox Template"
         description="Create reusable Sandbox configuration. Saving later creates immutable revisions."
       />
       <PageMain className="max-w-3xl space-y-5">
@@ -81,20 +81,16 @@ export default function NewEnvironmentPage() {
             <CardTitle>Sandbox configuration</CardTitle>
           </CardHeader>
           <CardContent>
-            <EnvironmentProfilesEditor
-              value={environment}
-              onChange={setEnvironment}
-              definitionMode
-            />
+            <SandboxPolicyEditor value={sandboxPolicy} onChange={setSandboxPolicy} definitionMode />
           </CardContent>
         </Card>
         <Button
           variant="accent"
           onClick={submit}
-          disabled={!name || !displayName || !profile || mutation.isPending}
+          disabled={!name || !displayName || !spec || mutation.isPending}
         >
-          {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}Create
-          Environment
+          {mutation.isPending ? <Loader2 className="size-4 animate-spin" /> : null}Create Sandbox
+          Template
         </Button>
         {mutation.error ? (
           <p className="text-sm text-destructive">{mutation.error.message}</p>

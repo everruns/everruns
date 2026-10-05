@@ -1,16 +1,15 @@
 ---
 type: Specification
-title: "Managed Environment Runtime"
-description: "Provider-neutral managed Environment capability, workspace durability, and recovery lifecycle."
+title: "Managed Sandbox Runtime"
+description: "Provider-neutral managed Sandbox capability, workspace durability, and recovery lifecycle."
 tags:
   - everruns
   - runtime-resources
 ---
-# Managed Environment Runtime
+# Managed Sandbox Runtime
 
 `session_sandbox` is the internal runtime capability for a managed, session-owned
-Environment. Environment profiles are the product configuration surface; the
-capability id and legacy `sandbox_*` types remain internal compatibility names.
+Sandbox. Sandbox Templates are the reusable product configuration surface.
 
 ## Goal
 
@@ -24,7 +23,7 @@ server-managed lifecycle:
 - optional one-time init commands
 - provider pluggability (Daytona first)
 
-Managed Environment profiles are available without a separate feature flag.
+Sandbox Templates are available without a separate feature flag.
 PostgreSQL deployments must configure `SECRETS_ENCRYPTION_KEY` so lifecycle
 state and provider connections can be resolved; the canonical local startup
 supplies its stable development key. Daytona execution also requires an
@@ -34,8 +33,8 @@ organization or user Daytona connection.
 
 Capability id: `session_sandbox`
 
-New sessions receive this configuration from their resolved Agent Environment
-profile. Direct capability configuration remains supported for existing data:
+New sessions receive this configuration from their resolved Sandbox Template.
+Direct capability configuration remains supported for existing data:
 
 ```json
 {
@@ -77,7 +76,7 @@ the configured shared volume by name.
 
 ## Tool surface
 
-Stable model-facing tools exposed by every Environment target:
+Stable model-facing tools exposed by every primary Sandbox target:
 
 - `bash`
 - `read_file`
@@ -86,9 +85,10 @@ Stable model-facing tools exposed by every Environment target:
 - `glob`
 - `grep`
 
-The session owns exactly one logical Environment, and provider selection comes
-from the pinned profile. Lifecycle is automatic and available through the
-control-plane Environment API rather than model-facing create/list/status tools.
+The Session owns at most one logical primary Sandbox, and provider selection
+comes from its pinned Sandbox Template spec. Lifecycle is automatic and
+available through the control-plane Sandbox API rather than model-facing
+create/list/status tools.
 
 ## Architecture
 
@@ -98,7 +98,7 @@ control-plane Environment API rather than model-facing create/list/status tools.
 provider interface, response values and provider registration.
 `crates/capabilities/src/session_sandbox.rs` owns lifecycle orchestration and
 state persistence through the runtime store interface. Hosted deployments keep
-logical and physical environment rows in server-owned PostgreSQL storage.
+logical Sandbox and physical instance rows in server-owned PostgreSQL storage.
 
 `crates/capabilities/src/capabilities/session_sandbox.rs` exposes the capability;
 `environment_tools.rs` implements the stable tool vocabulary. Tool execution
@@ -146,8 +146,8 @@ volume id and subpath, verifies and restores the persisted revision into the
 local worktree, updates the disposable provider id, and continues the same
 session. Processes, memory, and interrupted commands are not restored.
 
-The runtime emits `environment.instance_lost` before replacement and
-`environment.recovered` after the new generation is persisted. Their payloads
+The runtime emits `sandbox.instance_lost` before replacement and
+`sandbox.recovered` after the new generation is persisted. Their payloads
 contain only non-secret logical/provider/incarnation identifiers and explicitly
 report `process_state_lost: true`.
 
@@ -195,17 +195,14 @@ Responsibilities:
 - cancel idle pause on `session.activated`
 - schedule idle pause on `session.idled`
 
-Current implementation uses in-process timers. This is acceptable for the
-experimental flag. Durable multi-instance scheduling can replace it later if
-the feature graduates.
+Current implementation uses in-process timers. Durable multi-instance
+scheduling can replace it without changing the Sandbox contract.
 
 ## State and cleanup
 
-Hosted managed-environment state is queryable product state in `sandboxes`,
-`sandbox_instances`, and `sandbox_checkpoints`. These internal table names
-predate the public Environment vocabulary introduced by the execution
-environment surface; they do not create a second product resource. The Daytona
-sandbox id belongs to a disposable incarnation and may change after recovery.
+Hosted managed-Sandbox state is queryable product state in `sandboxes`,
+`sandbox_instances`, and `sandbox_checkpoints`. The Daytona sandbox id belongs
+to a disposable incarnation and may change after recovery.
 
 Framework, remote, and in-memory hosts that do not install the hosted state
 store continue to use the encrypted `session_sandbox` secret as a compatibility
@@ -217,6 +214,6 @@ this through the existing leased-resource store.
 
 ## Non-goals
 
-- multiple managed sandboxes per session
-- public/documentation-site docs before the feature stabilizes
+- more than one implicit primary Sandbox per Session; explicitly addressed
+  resource Sandbox fleets are a separate capability
 - durable distributed idle scheduling in the first experimental version

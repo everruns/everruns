@@ -4,15 +4,13 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::session_sandbox::{
-    GetSessionSandbox, ManageSessionSandbox, SessionSandboxService,
-};
+use crate::domains::session_sandbox::{ManageSessionSandbox, SessionSandboxService};
 use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, State},
-    routing::get,
+    routing::post,
 };
 use everruns_core::Caller;
 use serde::{Deserialize, Serialize};
@@ -52,46 +50,6 @@ pub enum SessionSandboxAction {
     Pause,
     Resume,
     Delete,
-}
-
-/// Response body for the `get_session_sandbox` operation.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct GetSessionSandboxResponse {
-    /// Whether the session's harness opts in to a managed sandbox at all.
-    pub configured: bool,
-    /// Whether a sandbox instance currently exists for this session (within its lease).
-    pub exists: bool,
-    /// Sandbox provider (`daytona`, `e2b`, `docker`, etc.) when one is configured.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
-    /// Current sandbox lifecycle status (`starting`, `ready`, `error`, `released`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_status: Option<SessionSandboxStatusValue>,
-    /// Provider-side sandbox identifier (workspace ID, container ID, etc.).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub external_id: Option<String>,
-    /// Human-readable sandbox label. Safe to render in user-facing messages.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
-    /// Absolute path of the sandbox workspace root (used to scope file operations).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_path: Option<String>,
-    /// Provider-specific metadata (URLs, ports, credentials envelopes).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Object)]
-    pub metadata: Option<serde_json::Value>,
-    /// Timestamp when sandbox initialization finished (RFC 3339); absent while still starting.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub init_completed_at: Option<String>,
-    /// Most recent initialization error message; cleared on successful re-init.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_init_error: Option<String>,
-    /// Timestamp when this sandbox record was created (RFC 3339).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created_at: Option<String>,
-    /// Timestamp when this sandbox record was last updated (RFC 3339).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub updated_at: Option<String>,
 }
 
 /// Request body for the `manage_session_sandbox` operation.
@@ -166,36 +124,8 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route(
-            "/v1/sessions/{session_id}/sandbox",
-            get(get_sandbox).post(manage_sandbox),
-        )
+        .route("/v1/sessions/{session_id}/sandbox", post(manage_sandbox))
         .with_state(state)
-}
-
-#[utoipa::path(
-    description = "Get the current session sandbox status (lease, runtime image, network access).",
-    get,
-    path = "/v1/sessions/{session_id}/sandbox",
-    params(
-        ("session_id" = String, Path, description = "Session ID")
-    ),
-    responses(
-        (status = 200, description = "Managed sandbox status", body = GetSessionSandboxResponse),
-        (status = 404, description = "Session not found"),
-    ),
-    tag = "session-sandbox"
-)]
-pub async fn get_sandbox(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(session_id): Path<String>,
-) -> ApiResult<GetSessionSandboxResponse> {
-    Ok(Json(
-        GetSessionSandbox { session_id }
-            .run(&state.ctx(&org))
-            .await?,
-    ))
 }
 
 #[utoipa::path(

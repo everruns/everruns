@@ -83,7 +83,7 @@ a narrow column on the right holds the settings:
 - **Harness**, **Capabilities** (in precedence order), **Default model**, and **Tags**
 - **Updated**, read-only
 - **More**: one row each for Branding, MCP servers, Credentials, Starter files, Network access,
-  Environments, Token usage, and Health check. Each row shows its current value and opens a side
+  Primary sandbox, Token usage, and Health check. Each row shows its current value and opens a side
   sheet.
 
 Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats**, and
@@ -110,10 +110,10 @@ Header actions:
 - **More actions**: Copy, Export, Version history, and Archive (or Delete, for an archived agent)
 - **Test in Playground**: open Playground setup with this Agent selected
 
-Use **More > Environments** to add named Bashkit or Daytona execution profiles. Then select the
-Agent and Environment when starting a **New Playground chat**. Personal Chats always use the
-managed Platform Chat Agent and do not expose a sandbox selector. See [Environments]
-(/features/environments/) for recovery and lifecycle behavior.
+Use **More > Primary sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
+Agent and Sandbox when starting a **New Playground chat**. Personal Chats always use the
+managed Platform Chat Agent and do not expose a sandbox selector. See [Sandbox Templates]
+(/features/sandbox-templates/) for recovery and lifecycle behavior.
 
 ## Sessions
 

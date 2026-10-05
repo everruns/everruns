@@ -10,7 +10,7 @@ Everruns' managed Bashkit Virtual Workspace.
 |---|---|
 | **Name** | `bashkit-worker` |
 | **Parent** | `worker` |
-| **Environment policy** | Fixed; Agent and session overrides are rejected |
+| **Sandbox policy** | Fixed; Agent and Session overrides are rejected |
 | **Primary Sandbox** | Managed Bashkit Virtual Workspace |
 
 Use Bashkit Worker for support, operations, and general assistants that need a durable virtual
@@ -19,8 +19,8 @@ logical Sandbox and workspace survive replacement of runtime compute.
 
 Choose provider-neutral [Worker](/built-ins/harnesses/worker/) or
 [Worker Base](/built-ins/harnesses/worker-base/) when an Agent must bind a different reusable
-Environment. Add `sandbox_fleet` separately when an Agent should keep its primary workspace while
+Sandbox Template. Add `sandbox_fleet` separately when an Agent should keep its primary workspace while
 creating and operating multiple explicitly addressed resource Sandboxes.
 
-Custom Harnesses may inherit from Bashkit Worker, but they inherit the sealed Environment policy as
+Custom Harnesses may inherit from Bashkit Worker, but they inherit the sealed Sandbox policy as
 well. Renaming the child or changing its capabilities does not make the primary Sandbox overridable.

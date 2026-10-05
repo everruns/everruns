@@ -1,6 +1,6 @@
 ---
 type: Proposal
-title: "Execution environments"
+title: "Sandbox Templates and execution targets"
 description: "Two-axis model separating where an agent's commands run from what those commands may touch, so no-sandbox, Bashkit, Daytona, and a real machine are one contract."
 tags:
   - everruns
@@ -10,15 +10,14 @@ tags:
   - execution
 ---
 
-# Execution environments
+# Sandbox Templates and execution targets
 
-Status: implemented baseline. This document describes the current Environment
-profile API and target/containment implementation. The target product model is
-now [Sandbox Platform Architecture](sandbox-abstraction.md): Environment becomes
-reusable versioned configuration, the live Session resource is named Sandbox,
-Harnesses may seal an Environment binding, and sandbox fleets remain a separate
-resource plane. Until that migration lands, the exact current behavior below is
-authoritative for the existing API and code.
+Status: implemented baseline. This document describes the Sandbox Template API
+and target/containment implementation. The product model is defined by
+[Sandbox Platform Architecture](sandbox-abstraction.md): a Sandbox Template is
+reusable versioned configuration, the live Session resource is a Sandbox,
+Harnesses may seal a template binding, and sandbox fleets remain a separate
+resource plane.
 
 What exists in code today:
 
@@ -37,29 +36,29 @@ What exists in code today:
   the `command`/`commands` argument alias that lets an agent move between it and
   `bashkit_shell`. Behind `everruns-core/host-shell`, and deliberately absent
   from the hosted catalog, see [Where it lives](#where-the-host-shell-lives);
-- Agent-version Environment profiles with named defaults, session-time named or
-  inline selection, strict target-policy validation, and an immutable resolved
-  profile snapshot pinned to the logical Environment;
-- a control-plane surface, `GET /v1/sessions/{id}/environment` and
-  `GET /v1/environment-targets`. New sessions report
-  `resolved_from: "profile"`; pre-profile sessions retain the pessimistic
+- Agent-version Sandbox policies with named template bindings, session-time named
+  or inline selection, strict target-policy validation, and an immutable resolved
+  specification pinned to the logical Sandbox;
+- a control-plane surface, `GET /v1/sessions/{id}/sandbox` and
+  `GET /v1/sandbox-targets`. New sessions report
+  `resolved_from: "spec"`; legacy sessions retain the pessimistic
   capability-derived compatibility view;
-- durable logical Environment state in `sandboxes`, with disposable physical
+- durable logical Sandbox state in `sandboxes`, with disposable physical
   incarnations in `sandbox_instances`, generation fencing, checkpoint lineage,
   and Daytona recovery from an Everruns-owned portable workspace revision;
 - one stable `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`
   vocabulary for Bashkit and managed Daytona targets, with one `/workspace`;
 - initial workspace seeding, checkpoint-before-success for mutations, automatic
-  replacement after provider loss, and `environment.instance_lost` /
-  `environment.recovered` lifecycle events;
+  replacement after provider loss, and `sandbox.instance_lost` /
+  `sandbox.recovered` lifecycle events;
 - one provider-neutral `coding` harness example. The earlier provider-specific
   coding harnesses are reconciliation-only legacy names;
-- the Workspace-tab environment panel in the UI.
+- the Workspace-tab sandbox panel in the UI.
 
 The original `environments` feature gate protected the provisional,
-capability-derived view. Profiles now replace that derivation for new sessions,
-so the gate is being retired rather than becoming a permanent prerequisite for
-the core Environment API. See [Feature Flags](../security/feature-flags.md).
+capability-derived view. Sandbox Templates replace that derivation for new
+Sessions, so the gate is retired rather than a prerequisite for the API. See
+[Feature Flags](../security/feature-flags.md).
 
 Not yet: the machine target and remaining provider ports. The implemented model
 solves the durable logical sandbox for Bashkit and Daytona: one working
@@ -97,7 +96,7 @@ Both are asked for exactly that.
 
 The former `coding-container`, `coding-daytona`, and
 `coding-session-sandbox` harnesses encoded provider choice in behavior. They
-have been replaced by one `coding` example. The Agent's Environment profile now
+have been replaced by one `coding` example. The Agent's Sandbox Template spec now
 selects the target while the shared behavioral prompt and stable tool names stay
 unchanged. The environment half is derived from the facts the target carries —
 see [Deriving the environment preamble](#deriving-the-environment-preamble).
@@ -105,7 +104,7 @@ see [Deriving the environment preamble](#deriving-the-environment-preamble).
 ### Five tool namespaces for the same six operations
 
 Legacy capabilities still define `sandbox_*`, `daytona_*`, and `e2b_*`, but
-Environment profiles expose the same six model-facing tools for the implemented
+Sandbox Template specs expose the same six model-facing tools for the implemented
 Bashkit and Daytona targets. Provider lifecycle operations stay in the control
 plane rather than the model vocabulary.
 
@@ -184,20 +183,18 @@ documents that seam for "process, container, or remote mount" providers that
 must address the same head as the file tools. Compute was left as a future
 extension; this proposal fills it in.
 
-Decision: **Environment** is the resource name on both surfaces. The Framework
-promotes compute and containment from anonymous extensions to named members of
-`Environment`, and the control plane's durable resource, the one
-[Sandbox Abstraction](sandbox-abstraction.md) calls a Sandbox, is renamed to
-Environment and becomes the projection of the same thing. "Sandbox" is retained
-only for the security property, which is what makes `containment: none` sayable
-without contradiction, and `/v1/sessions/{id}/sandbox` becomes
-`/v1/sessions/{id}/environment` with the old route kept as a compatibility
-alias for its deprecation window.
+Decision: the hosted product names reusable configuration **Sandbox Template**
+and a Session's durable logical runtime **Sandbox**. The Framework keeps its
+internal `Environment` execution-context type; that is not a hosted resource.
+`Containment` remains the explicit security property, so `containment: none` is
+sayable without confusing the template, logical Sandbox, and physical instance.
+The canonical control-plane route is `/v1/sessions/{id}/sandbox`; the former
+`/environment` route remains an input compatibility alias during migration.
 
 The durable resource, generations, checkpoints, and reconciliation from
 [Sandbox Abstraction](sandbox-abstraction.md) are unchanged.
 
-### Environment profile
+### Sandbox Template spec
 
 The sandbox profile in [Sandbox Abstraction](sandbox-abstraction.md) gains an
 explicit containment block and an honest durability class:
@@ -282,7 +279,7 @@ Entities, and which of them are rows:
 | `WORKSPACE_HEAD` | existing Framework type | the bytes every tool addresses |
 | `MACHINE` | row | transport and address of a registered box |
 | `CONNECTION` | existing row | the credential, never copied anywhere else |
-| `LEASED_RESOURCE` (`resource_`) | existing row | external-resource cleanup, subordinate to the Environment |
+| `LEASED_RESOURCE` (`resource_`) | existing row | external-resource cleanup, subordinate to the Sandbox |
 
 Four rules the shape encodes:
 
@@ -291,14 +288,14 @@ profile it resolved at session start. Editing the Agent version afterwards
 cannot change the environment a running session is executing in; the next
 session picks up the new one.
 
-**The Environment is durable, its instances are not.** Physical loss increments
+**The Sandbox is durable, its instances are not.** Physical loss increments
 `generation` and creates a new `ENVIRONMENT_INSTANCE`. Every provider call
 carries the generation as a fencing token, so a late reply from a lost
 incarnation cannot overwrite current state. The Session, the conversation, and
 the files survive; RAM, processes, and PTYs do not.
 
 **The filesystem lineage outlives the environment.** `WORKSPACE_HEAD` belongs to
-the Workspace, not to the Environment. That is what lets a replacement
+the Workspace, not to the Sandbox. That is what lets a replacement
 incarnation resume the same files after physical loss, and what lets a second
 session on a different environment bind the same Workspace. For Bashkit the
 working filesystem *is* that head, so a checkpoint is nearly free; for Daytona
@@ -311,7 +308,7 @@ provider state, checkpoint manifest, event, or lease metadata carries a bearer
 credential.
 
 Two consequences worth stating, because they are where the diagram stops being
-symmetric: a `host` or `machine` Environment has instances but no checkpoints,
+symmetric: a `host` or `machine` Sandbox has instances but no checkpoints,
 which is what `durability: none` means; and a `bashkit` Environment has an
 instance row for lifecycle symmetry but no external provider resource, so it
 needs no lease.
@@ -324,7 +321,7 @@ One toolset for every cell of the table: `bash`, `read_file`, `write_file`,
 only as advanced or operations tooling for workflows that genuinely manage
 several environments as data.
 
-Environment facts reach the model as live context, not prompt text. Yolop
+Sandbox facts reach the model as live context, not prompt text. Yolop
 already does this with `<environment_context>`, reporting effective mode and
 network access while keeping the stable prompt free of live values. Everruns
 adopts the same block: target, containment, network, writable roots,
@@ -698,7 +695,7 @@ naming the offending field.
 
 ### Create a session on Bashkit
 
-Before Environment profiles, the request said nothing about where commands
+Before Sandbox Template specs, the request said nothing about where commands
 would run. Bashkit happened because `generic` carried the `bashkit_shell`
 capability:
 
@@ -834,17 +831,17 @@ packages: no
 </environment_context>
 ```
 
-### Session environment
+### Session Sandbox
 
 ```http
-GET /v1/sessions/{session_id}/environment
+GET /v1/sessions/{session_id}/sandbox
 ```
 
 ```json
 {
-  "self_url": "https://api.example/v1/sessions/session_.../environment",
+  "self_url": "https://api.example/v1/sessions/session_.../sandbox",
   "name": "build",
-  "environment_id": "env_...",
+  "sandbox_id": "sandbox_...",
   "target": { "kind": "managed", "provider": "daytona" },
   "containment": { "level": "isolated", "network": { "mode": "allowlist" } },
   "durability": "checkpointed",
@@ -879,7 +876,7 @@ starts, and moving work elsewhere is a new session against the same
 The UI cannot render an honest picker from provider names alone.
 
 ```http
-GET /v1/environment-targets
+GET /v1/sandbox-targets
 ```
 
 ```json
@@ -935,7 +932,7 @@ rows, checkpoints, events, or logs" criterion from
 
 ### Events
 
-`environment.instance_lost` and `environment.recovered` join the session event
+`sandbox.instance_lost` and `sandbox.recovered` join the session event
 stream, so a UI and a durable agent learn about a replaced incarnation the same
 way.
 
@@ -957,7 +954,7 @@ This sequences alongside the existing migration plan rather than restarting it.
 **P0, containment field and capability catalog.** Add the containment block,
 the durability class, and the containment capabilities to the profile; promote
 compute and containment to named members of the Framework's existing
-`Environment`; add `GET /v1/environment-targets`. No new providers. Exit: a
+`Environment`; add `GET /v1/sandbox-targets`. No new providers. Exit: a
 profile can express `host + none` and `daytona + isolated + allowlist`, and
 validation rejects a durable-agent agent pinned to `durability: none`.
 
@@ -1012,7 +1009,7 @@ P1 and P2 are independent of the Daytona durability work in
    inside `everruns-host`, or its own publishable crate that both repositories
    pin, the way Yolop already pins Tuika?~~ Now `everruns_core::host`. See
    [Where the host shell lives](#where-the-host-shell-lives).
-3. Does the Environment row own a workspace head, or reference one the Session
+3. Does the Sandbox row own a workspace head, or reference one the Session
    already bound? The domain model takes the second reading, which is what lets
    a second session on another environment bind the same files.
 

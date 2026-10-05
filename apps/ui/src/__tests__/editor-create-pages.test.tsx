@@ -28,10 +28,10 @@ jest.mock("@/hooks", () => ({
   useHarnesses: () => ({
     data: [{ id: "harness_123", name: "generic", display_name: "Generic" }],
   }),
-  useEnvironments: () => ({ data: [] }),
+  useSandboxTemplates: () => ({ data: [] }),
   useAgentNameAvailability: () => ({ isChecking: false, available: true }),
   useHarnessNameAvailability: () => ({ isChecking: false, available: true }),
-  useEnvironmentTargets: () => ({
+  useSandboxTargets: () => ({
     data: {
       items: [
         {
@@ -110,10 +110,7 @@ describe("create editor layouts", () => {
 
     expect(screen.getByRole("navigation", { name: "Jump to section" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Identity" })).toHaveAttribute("href", "#identity");
-    expect(screen.getByRole("link", { name: "Environments" })).toHaveAttribute(
-      "href",
-      "#environments",
-    );
+    expect(screen.getByRole("link", { name: "Sandbox" })).toHaveAttribute("href", "#sandbox");
     expect(screen.getByRole("link", { name: "Network" })).toHaveAttribute("href", "#network");
 
     fireEvent.change(screen.getByLabelText("Display Name"), {
@@ -137,7 +134,7 @@ describe("create editor layouts", () => {
         name: "support-agent",
         harness_id: "harness_123",
         network_access: { allowed: ["api.example.com"] },
-        environments: expect.objectContaining({ default: "bashkit" }),
+        sandbox_policy: expect.objectContaining({ default: "bashkit" }),
       }),
     );
     expect(push).toHaveBeenCalledWith("/agents/agent_123");

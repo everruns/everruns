@@ -10,21 +10,21 @@ use crate::runtime::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 // Split out of one 5300-line file; every item keeps its visibility, so the module's public surface is unchanged.
 mod compaction_data;
 pub mod correlation;
-mod environment_data;
 mod file_voice_data;
 mod llm_data;
 mod message_data;
 mod reason_data;
+mod sandbox_lifecycle_data;
 mod tool_data;
 mod turn_data;
 mod usage;
 
 pub use compaction_data::*;
-pub use environment_data::*;
 pub use file_voice_data::*;
 pub use llm_data::*;
 pub use message_data::*;
 pub use reason_data::*;
+pub use sandbox_lifecycle_data::*;
 pub use tool_data::*;
 pub use turn_data::*;
 pub use usage::*;
@@ -116,10 +116,14 @@ pub const SESSION_TITLE_UPDATED: &str = "session.title.updated";
 /// leaving readers to infer it from `llm.generation`.
 pub const SESSION_MODEL_CHANGED: &str = "session.model.changed";
 
-// Managed Environment lifecycle events
-/// The current physical Environment instance disappeared and will be replaced.
+// Managed Sandbox lifecycle events
+/// The current physical Sandbox instance disappeared and will be replaced.
+pub const SANDBOX_INSTANCE_LOST: &str = "sandbox.instance_lost";
+/// A managed Sandbox resumed on a replacement physical instance.
+pub const SANDBOX_RECOVERED: &str = "sandbox.recovered";
+/// Legacy event type retained so historical event streams remain queryable.
 pub const ENVIRONMENT_INSTANCE_LOST: &str = "environment.instance_lost";
-/// A managed Environment resumed on a replacement physical instance.
+/// Legacy event type retained so historical event streams remain queryable.
 pub const ENVIRONMENT_RECOVERED: &str = "environment.recovered";
 
 // Schedule events
@@ -199,6 +203,8 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SESSION_IDLED,
     SESSION_TITLE_UPDATED,
     SESSION_MODEL_CHANGED,
+    SANDBOX_INSTANCE_LOST,
+    SANDBOX_RECOVERED,
     ENVIRONMENT_INSTANCE_LOST,
     ENVIRONMENT_RECOVERED,
     SCHEDULE_TRIGGERED,
@@ -649,9 +655,12 @@ pub enum EventData {
     SessionTitleUpdated(SessionTitleUpdatedData),
     SessionModelChanged(SessionModelChangedData),
 
-    // Managed Environment lifecycle events
-    EnvironmentInstanceLost(EnvironmentLifecycleData),
-    EnvironmentRecovered(EnvironmentLifecycleData),
+    // Managed Sandbox lifecycle events
+    SandboxInstanceLost(SandboxLifecycleData),
+    SandboxRecovered(SandboxLifecycleData),
+    // Legacy variants parse historical event streams but are no longer emitted.
+    EnvironmentInstanceLost(SandboxLifecycleData),
+    EnvironmentRecovered(SandboxLifecycleData),
 
     // Session task lifecycle events (full snapshots)
     TaskCreated(SessionTaskEventData),
@@ -874,9 +883,11 @@ event_data_kinds! {
     SessionTitleUpdated(SessionTitleUpdatedData) = SESSION_TITLE_UPDATED,
     SessionModelChanged(SessionModelChangedData) = SESSION_MODEL_CHANGED,
 
-    // Managed Environment lifecycle events
-    EnvironmentInstanceLost(EnvironmentLifecycleData) = ENVIRONMENT_INSTANCE_LOST,
-    EnvironmentRecovered(EnvironmentLifecycleData) = ENVIRONMENT_RECOVERED,
+    // Managed Sandbox lifecycle events
+    SandboxInstanceLost(SandboxLifecycleData) = SANDBOX_INSTANCE_LOST,
+    SandboxRecovered(SandboxLifecycleData) = SANDBOX_RECOVERED,
+    EnvironmentInstanceLost(SandboxLifecycleData) = ENVIRONMENT_INSTANCE_LOST,
+    EnvironmentRecovered(SandboxLifecycleData) = ENVIRONMENT_RECOVERED,
 
     // Context compaction events
     ContextCompacting(ContextCompactingData) = CONTEXT_COMPACTING,

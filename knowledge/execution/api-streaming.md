@@ -103,8 +103,8 @@ Closed `event:` vocabulary on this endpoint:
 | `session.started`               | `Event` (`data` = `SessionStartedData`)                                    |
 | `session.activated`             | `Event` (`data` = `SessionActivatedData`)                                  |
 | `session.idled`                 | `Event` (`data` = `SessionIdledData`)                                      |
-| `environment.instance_lost`     | `Event` (`data` = `EnvironmentLifecycleData`)                              |
-| `environment.recovered`         | `Event` (`data` = `EnvironmentLifecycleData`)                              |
+| `sandbox.instance_lost`     | `Event` (`data` = `SandboxLifecycleData`)                              |
+| `sandbox.recovered`         | `Event` (`data` = `SandboxLifecycleData`)                              |
 | `context.compacting`            | `Event` (`data` = `ContextCompactingData`)                                 |
 | `context.compacted`             | `Event` (`data` = `ContextCompactedData`)                                  |
 | `file.written`                  | `Event` (`data` = `FileWrittenData`)                                       |

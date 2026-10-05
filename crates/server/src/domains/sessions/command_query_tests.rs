@@ -74,7 +74,7 @@ fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
         tags: vec![],
         model_id: None,
         capabilities: vec![],
-        environment: None,
+        sandbox: None,
         tools: vec![],
         mcp_servers: Default::default(),
         system_prompt: None,

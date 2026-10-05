@@ -1,15 +1,14 @@
-//! Environment profile validation, resolution, and runtime capability mapping.
+//! Sandbox Template validation, resolution, and runtime capability mapping.
 
 use crate::records::{
-    EnvironmentContainmentLevel, EnvironmentContainmentProfile, EnvironmentDurability,
-    EnvironmentEscalation, EnvironmentIdleAction, EnvironmentNetworkPolicy, EnvironmentPolicyMode,
-    EnvironmentProfile, EnvironmentSelection, EnvironmentSet, EnvironmentTargetKind,
-    ResolvedEnvironmentProfile,
+    ResolvedSandboxSpec, SandboxContainmentLevel, SandboxContainmentSpec, SandboxDurability,
+    SandboxEscalation, SandboxIdleAction, SandboxNetworkPolicy, SandboxPolicy, SandboxPolicyMode,
+    SandboxSelection, SandboxTargetKind, SandboxTemplateSpec,
 };
 use everruns_contracts::capability::CapabilityRef;
 use serde_json::{Map, Value, json};
 
-const MAX_ENVIRONMENT_PROFILES: usize = 16;
+const MAX_SANDBOX_TEMPLATES: usize = 16;
 const MAX_PROVIDER_OPTIONS_BYTES: usize = 32 * 1024;
 const MAX_BOOTSTRAP_COMMANDS: usize = 32;
 const MAX_BOOTSTRAP_COMMAND_BYTES: usize = 8 * 1024;
@@ -23,128 +22,128 @@ const COMPUTE_CAPABILITY_IDS: &[&str] = &[
     "bashkit_shell",
 ];
 
-/// A Session-pinned profile plus its human-facing source name.
+/// A Session-pinned specification plus its Agent binding name.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ResolvedEnvironmentSelection {
+pub struct ResolvedSandboxSelection {
     pub name: String,
-    pub profile: ResolvedEnvironmentProfile,
+    pub spec: ResolvedSandboxSpec,
 }
 
-pub fn validate_environment_set(set: &EnvironmentSet) -> Result<(), String> {
-    if set.profiles.is_empty() {
-        return Err("environments.profiles must contain at least one profile".to_string());
+pub fn validate_sandbox_policy(set: &SandboxPolicy) -> Result<(), String> {
+    if set.templates.is_empty() {
+        return Err("sandbox_policy.templates must contain at least one template".to_string());
     }
-    if set.profiles.len() > MAX_ENVIRONMENT_PROFILES {
+    if set.templates.len() > MAX_SANDBOX_TEMPLATES {
         return Err(format!(
-            "environments.profiles may contain at most {MAX_ENVIRONMENT_PROFILES} profiles"
+            "sandbox_policy.templates may contain at most {MAX_SANDBOX_TEMPLATES} templates"
         ));
     }
-    if !set.profiles.contains_key(&set.default) {
+    if !set.templates.contains_key(&set.default) {
         return Err(format!(
-            "environments.default '{}' does not name a profile",
+            "sandbox_policy.default '{}' does not name a template binding",
             set.default
         ));
     }
-    if set.effective_policy() == EnvironmentPolicyMode::Fixed && set.profiles.len() != 1 {
-        return Err("a fixed Environment policy must declare exactly one profile".to_string());
+    if set.effective_mode() == SandboxPolicyMode::Fixed && set.templates.len() != 1 {
+        return Err("a fixed Sandbox policy must declare exactly one template".to_string());
     }
 
-    for (name, profile) in &set.profiles {
+    for (name, spec) in &set.templates {
         crate::records::validate_addressable_name(name)
-            .map_err(|error| format!("environment profile '{name}': {error}"))?;
-        resolve_profile(profile)
-            .map_err(|error| format!("environment profile '{name}': {error}"))?;
+            .map_err(|error| format!("Sandbox Template binding '{name}': {error}"))?;
+        resolve_spec(spec)
+            .map_err(|error| format!("Sandbox Template binding '{name}': {error}"))?;
     }
     Ok(())
 }
 
-pub fn resolve_environment_selection(
-    environments: Option<&EnvironmentSet>,
-    selection: Option<&EnvironmentSelection>,
-) -> Result<Option<ResolvedEnvironmentSelection>, String> {
-    if let Some(set) = environments {
-        validate_environment_set(set)?;
-        match (set.effective_policy(), selection) {
-            (EnvironmentPolicyMode::Fixed, Some(_)) => {
+pub fn resolve_sandbox_selection(
+    sandbox_policy: Option<&SandboxPolicy>,
+    selection: Option<&SandboxSelection>,
+) -> Result<Option<ResolvedSandboxSelection>, String> {
+    if let Some(set) = sandbox_policy {
+        validate_sandbox_policy(set)?;
+        match (set.effective_mode(), selection) {
+            (SandboxPolicyMode::Fixed, Some(_)) => {
                 return Err(
-                    "this Agent has a fixed Environment; Session overrides are not allowed"
+                    "this Agent has a fixed Sandbox Template; Session overrides are not allowed"
                         .to_string(),
                 );
             }
-            (EnvironmentPolicyMode::Selectable, Some(EnvironmentSelection::Inline(_))) => {
-                return Err("this Agent only allows selecting a declared Environment".to_string());
+            (SandboxPolicyMode::Selectable, Some(SandboxSelection::Inline(_))) => {
+                return Err(
+                    "this Agent only allows selecting a declared Sandbox Template".to_string(),
+                );
             }
             _ => {}
         }
     } else if selection.is_some() {
-        return Err("this Agent does not allow Session Environment configuration".to_string());
+        return Err("this Agent does not allow Session Sandbox configuration".to_string());
     }
 
-    let (name, profile) = match selection {
-        Some(EnvironmentSelection::Named { r#use }) => {
-            let set = environments.ok_or_else(|| {
-                "environment.use requires the selected Agent version to declare environments"
+    let (name, spec) = match selection {
+        Some(SandboxSelection::Named { r#use }) => {
+            let set = sandbox_policy.ok_or_else(|| {
+                "sandbox.use requires the selected Agent version to declare a sandbox_policy"
                     .to_string()
             })?;
-            validate_environment_set(set)?;
-            let profile = set.profiles.get(r#use).ok_or_else(|| {
+            validate_sandbox_policy(set)?;
+            let spec = set.templates.get(r#use).ok_or_else(|| {
                 format!(
-                    "environment profile '{use_name}' is not declared",
+                    "Sandbox Template binding '{use_name}' is not declared",
                     use_name = r#use
                 )
             })?;
-            (r#use.clone(), profile)
+            (r#use.clone(), spec)
         }
-        Some(EnvironmentSelection::Inline(profile)) => ("inline".to_string(), profile),
+        Some(SandboxSelection::Inline(profile)) => ("inline".to_string(), profile),
         None => {
-            let Some(set) = environments else {
+            let Some(set) = sandbox_policy else {
                 return Ok(None);
             };
-            validate_environment_set(set)?;
-            (set.default.clone(), &set.profiles[&set.default])
+            validate_sandbox_policy(set)?;
+            (set.default.clone(), &set.templates[&set.default])
         }
     };
 
-    let profile = resolve_profile(profile)?;
-    validate_target_available(&profile)?;
-    Ok(Some(ResolvedEnvironmentSelection { name, profile }))
+    let spec = resolve_spec(spec)?;
+    validate_target_available(&spec)?;
+    Ok(Some(ResolvedSandboxSelection { name, spec }))
 }
 
 /// Managed Bashkit VFS used when an execution-capable Harness has no Agent
-/// override. It is a real pinned Environment, not an implicit shell capability.
-pub fn managed_bashkit_profile() -> EnvironmentProfile {
-    EnvironmentProfile {
-        source_revision_id: None,
-        target: crate::records::EnvironmentTargetProfile::vfs("bashkit"),
-        containment: Some(EnvironmentContainmentProfile::isolated()),
-        durability: Some(EnvironmentDurability::Checkpointed),
+/// override. It is a real pinned Sandbox Template, not an implicit shell capability.
+pub fn managed_bashkit_sandbox_spec() -> SandboxTemplateSpec {
+    SandboxTemplateSpec {
+        template_revision_id: None,
+        target: crate::records::SandboxTargetSpec::vfs("bashkit"),
+        containment: Some(SandboxContainmentSpec::isolated()),
+        durability: Some(SandboxDurability::Checkpointed),
         lifecycle: Default::default(),
         bootstrap: Default::default(),
     }
 }
 
-pub fn managed_bashkit_selection() -> ResolvedEnvironmentSelection {
-    ResolvedEnvironmentSelection {
+pub fn managed_bashkit_sandbox_selection() -> ResolvedSandboxSelection {
+    ResolvedSandboxSelection {
         name: "bashkit-virtual-workspace".to_string(),
-        profile: resolve_profile(&managed_bashkit_profile())
-            .expect("managed Bashkit Environment must remain valid"),
+        spec: resolve_spec(&managed_bashkit_sandbox_spec())
+            .expect("managed Bashkit Sandbox Template must remain valid"),
     }
 }
 
-pub fn selection_from_environment(
-    environment: &crate::records::EnvironmentDefinition,
-) -> Result<ResolvedEnvironmentSelection, String> {
-    let mut authored = environment.current_revision.profile.clone();
-    authored.source_revision_id = Some(environment.current_revision.public_id);
-    Ok(ResolvedEnvironmentSelection {
-        name: environment.name.clone(),
-        profile: resolve_profile(&authored)?,
+pub fn selection_from_sandbox_template(
+    template: &crate::records::SandboxTemplate,
+) -> Result<ResolvedSandboxSelection, String> {
+    let mut authored = template.current_revision.spec.clone();
+    authored.template_revision_id = Some(template.current_revision.public_id);
+    Ok(ResolvedSandboxSelection {
+        name: template.name.clone(),
+        spec: resolve_spec(&authored)?,
     })
 }
 
-pub fn resolve_profile(
-    authored: &EnvironmentProfile,
-) -> Result<ResolvedEnvironmentProfile, String> {
+pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpec, String> {
     validate_target_shape(authored)?;
     validate_options(&authored.target.options)?;
     validate_target_options(authored)?;
@@ -161,13 +160,12 @@ pub fn resolve_profile(
     validate_containment(&containment)?;
     validate_target_contract(authored.target.kind, &containment, durability)?;
 
-    if authored.target.kind == EnvironmentTargetKind::Vfs && !authored.bootstrap.commands.is_empty()
-    {
+    if authored.target.kind == SandboxTargetKind::Vfs && !authored.bootstrap.commands.is_empty() {
         return Err("bashkit bootstrap commands are not supported".to_string());
     }
 
     if authored.lifecycle.idle_after_seconds == 0
-        && authored.lifecycle.idle_action != EnvironmentIdleAction::KeepRunning
+        && authored.lifecycle.idle_action != SandboxIdleAction::KeepRunning
     {
         return Err(
             "lifecycle.idle_after_seconds must be at least 1 unless idle_action is keep_running"
@@ -178,8 +176,8 @@ pub fn resolve_profile(
         return Err("lifecycle.idle_after_seconds may not exceed 86400".to_string());
     }
 
-    Ok(ResolvedEnvironmentProfile {
-        source_revision_id: authored.source_revision_id,
+    Ok(ResolvedSandboxSpec {
+        template_revision_id: authored.template_revision_id,
         target: authored.target.clone(),
         containment,
         durability,
@@ -188,14 +186,14 @@ pub fn resolve_profile(
     })
 }
 
-fn validate_target_options(profile: &EnvironmentProfile) -> Result<(), String> {
+fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> {
     let options = profile
         .target
         .options
         .as_object()
         .expect("validate_options established an object");
     match profile.target.kind {
-        EnvironmentTargetKind::Vfs | EnvironmentTargetKind::Host => {
+        SandboxTargetKind::Vfs | SandboxTargetKind::Host => {
             if !options.is_empty() {
                 return Err(format!(
                     "{} target does not accept target.options",
@@ -203,7 +201,7 @@ fn validate_target_options(profile: &EnvironmentProfile) -> Result<(), String> {
                 ));
             }
         }
-        EnvironmentTargetKind::Managed => {
+        SandboxTargetKind::Managed => {
             const ALLOWED: &[&str] = &[
                 "snapshot",
                 "size",
@@ -254,7 +252,7 @@ fn validate_target_options(profile: &EnvironmentProfile) -> Result<(), String> {
                             .to_string(),
                     );
                 }
-                if profile.durability == Some(EnvironmentDurability::Checkpointed)
+                if profile.durability == Some(SandboxDurability::Checkpointed)
                     && !path.starts_with("/home/daytona/")
                 {
                     return Err(
@@ -264,7 +262,7 @@ fn validate_target_options(profile: &EnvironmentProfile) -> Result<(), String> {
                 }
             }
         }
-        EnvironmentTargetKind::Machine | EnvironmentTargetKind::Container => {}
+        SandboxTargetKind::Machine | SandboxTargetKind::Container => {}
     }
     Ok(())
 }
@@ -277,8 +275,8 @@ fn is_normalized_absolute_path(path: &str) -> bool {
         && !path.contains("//")
 }
 
-fn validate_containment(containment: &EnvironmentContainmentProfile) -> Result<(), String> {
-    if containment.escalation != EnvironmentEscalation::Never {
+fn validate_containment(containment: &SandboxContainmentSpec) -> Result<(), String> {
+    if containment.escalation != SandboxEscalation::Never {
         return Err("containment escalation is not enforced yet; use escalation=never".to_string());
     }
     if containment.filesystem.writable_roots.len() > 32 {
@@ -299,7 +297,7 @@ fn validate_containment(containment: &EnvironmentContainmentProfile) -> Result<(
             );
         }
     }
-    if let EnvironmentNetworkPolicy::Allowlist { allowed_hosts } = &containment.network {
+    if let SandboxNetworkPolicy::Allowlist { allowed_hosts } = &containment.network {
         if allowed_hosts.is_empty() || allowed_hosts.len() > 128 {
             return Err("network allowlist must contain between 1 and 128 hosts".to_string());
         }
@@ -316,9 +314,9 @@ fn validate_containment(containment: &EnvironmentContainmentProfile) -> Result<(
 
 /// Replace every legacy compute capability with the one selected by the pinned
 /// profile. Non-compute capabilities keep their original layering and order.
-pub fn apply_environment_to_capabilities(
+pub fn apply_sandbox_to_capabilities(
     capabilities: &[CapabilityRef],
-    environment: Option<&ResolvedEnvironmentProfile>,
+    environment: Option<&ResolvedSandboxSpec>,
 ) -> Vec<CapabilityRef> {
     let Some(environment) = environment else {
         return capabilities.to_vec();
@@ -328,28 +326,28 @@ pub fn apply_environment_to_capabilities(
         .iter()
         .filter(|capability| {
             !(COMPUTE_CAPABILITY_IDS.contains(&capability.id())
-                || environment.target.kind == EnvironmentTargetKind::Managed
+                || environment.target.kind == SandboxTargetKind::Managed
                     && capability.id() == "session_file_system")
         })
         .cloned()
         .collect::<Vec<_>>();
-    result.push(capability_for_environment(environment));
+    result.push(capability_for_sandbox(environment));
     result
 }
 
-pub fn capability_for_environment(profile: &ResolvedEnvironmentProfile) -> CapabilityRef {
+pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
     match profile.target.kind {
-        EnvironmentTargetKind::Vfs => {
+        SandboxTargetKind::Vfs => {
             CapabilityRef::with_config("bashkit_shell", json!({"enable_http": false}))
         }
-        EnvironmentTargetKind::Managed => {
+        SandboxTargetKind::Managed => {
             let mut provider_config = profile
                 .target
                 .options
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
-            if profile.durability == EnvironmentDurability::Checkpointed {
+            if profile.durability == SandboxDurability::Checkpointed {
                 provider_config
                     .entry("workspace_path".to_string())
                     .or_insert_with(|| json!("/home/daytona/workspace"));
@@ -361,32 +359,32 @@ pub fn capability_for_environment(profile: &ResolvedEnvironmentProfile) -> Capab
                     "provider": profile.target.provider,
                     "auto_start": true,
                     "idle_pause_after_seconds": profile.lifecycle.idle_after_seconds.max(1),
-                    "idle_pause_enabled": profile.lifecycle.idle_action != EnvironmentIdleAction::KeepRunning,
+                    "idle_pause_enabled": profile.lifecycle.idle_action != SandboxIdleAction::KeepRunning,
                     "provider_config": Value::Object(provider_config),
                     "init": {"commands": profile.bootstrap.commands},
                 }),
             )
         }
-        EnvironmentTargetKind::Container => {
+        SandboxTargetKind::Container => {
             CapabilityRef::with_config("container_sandbox", profile.target.options.clone())
         }
         // Availability validation rejects these until their control-plane
         // adapters exist, so this branch cannot reach runtime assembly.
-        EnvironmentTargetKind::Host | EnvironmentTargetKind::Machine => {
+        SandboxTargetKind::Host | SandboxTargetKind::Machine => {
             CapabilityRef::with_config("host_shell", json!({}))
         }
     }
 }
 
-fn validate_target_shape(profile: &EnvironmentProfile) -> Result<(), String> {
+fn validate_target_shape(profile: &SandboxTemplateSpec) -> Result<(), String> {
     let target = &profile.target;
     match target.kind {
-        EnvironmentTargetKind::Host => {
+        SandboxTargetKind::Host => {
             if target.provider.is_some() || target.connection_id.is_some() {
                 return Err("host target accepts neither provider nor connection_id".to_string());
             }
         }
-        EnvironmentTargetKind::Machine => {
+        SandboxTargetKind::Machine => {
             if target.connection_id.as_deref().is_none_or(str::is_empty) {
                 return Err("machine target requires connection_id".to_string());
             }
@@ -394,9 +392,9 @@ fn validate_target_shape(profile: &EnvironmentProfile) -> Result<(), String> {
                 return Err("machine target accepts connection_id, not provider".to_string());
             }
         }
-        EnvironmentTargetKind::Vfs => require_provider(target.provider.as_deref(), "bashkit")?,
-        EnvironmentTargetKind::Managed => require_provider(target.provider.as_deref(), "daytona")?,
-        EnvironmentTargetKind::Container => require_provider(target.provider.as_deref(), "docker")?,
+        SandboxTargetKind::Vfs => require_provider(target.provider.as_deref(), "bashkit")?,
+        SandboxTargetKind::Managed => require_provider(target.provider.as_deref(), "daytona")?,
+        SandboxTargetKind::Container => require_provider(target.provider.as_deref(), "docker")?,
     }
     Ok(())
 }
@@ -412,9 +410,9 @@ fn require_provider(actual: Option<&str>, expected: &str) -> Result<(), String> 
 }
 
 fn validate_target_contract(
-    kind: EnvironmentTargetKind,
-    containment: &EnvironmentContainmentProfile,
-    durability: EnvironmentDurability,
+    kind: SandboxTargetKind,
+    containment: &SandboxContainmentSpec,
+    durability: SandboxDurability,
 ) -> Result<(), String> {
     if !containment.filesystem.writable_roots.is_empty() {
         return Err(format!(
@@ -423,44 +421,44 @@ fn validate_target_contract(
         ));
     }
     match kind {
-        EnvironmentTargetKind::Vfs => {
+        SandboxTargetKind::Vfs => {
             require_isolated(containment, kind)?;
-            if containment.network != EnvironmentNetworkPolicy::Deny {
+            if containment.network != SandboxNetworkPolicy::Deny {
                 return Err("bashkit currently supports only network.mode=deny".to_string());
             }
-            if durability != EnvironmentDurability::Checkpointed {
+            if durability != SandboxDurability::Checkpointed {
                 return Err("bashkit durability must be checkpointed".to_string());
             }
         }
-        EnvironmentTargetKind::Managed => {
+        SandboxTargetKind::Managed => {
             require_isolated(containment, kind)?;
-            if containment.network != EnvironmentNetworkPolicy::Allow {
+            if containment.network != SandboxNetworkPolicy::Allow {
                 return Err(
                     "daytona currently supports only network.mode=allow; an unenforced allowlist is rejected"
                         .to_string(),
                 );
             }
-            if durability == EnvironmentDurability::None {
+            if durability == SandboxDurability::None {
                 return Err(
                     "managed target durability must be checkpointed or provider_snapshot"
                         .to_string(),
                 );
             }
         }
-        EnvironmentTargetKind::Container => {
+        SandboxTargetKind::Container => {
             require_isolated(containment, kind)?;
-            if durability != EnvironmentDurability::ProviderSnapshot {
+            if durability != SandboxDurability::ProviderSnapshot {
                 return Err("container durability must be provider_snapshot".to_string());
             }
         }
-        EnvironmentTargetKind::Host | EnvironmentTargetKind::Machine => {
-            if containment.level == EnvironmentContainmentLevel::Isolated {
+        SandboxTargetKind::Host | SandboxTargetKind::Machine => {
+            if containment.level == SandboxContainmentLevel::Isolated {
                 return Err(format!(
                     "{} target cannot enforce isolated containment",
                     kind.as_str()
                 ));
             }
-            if durability != EnvironmentDurability::None {
+            if durability != SandboxDurability::None {
                 return Err(format!("{} target durability must be none", kind.as_str()));
             }
         }
@@ -469,10 +467,10 @@ fn validate_target_contract(
 }
 
 fn require_isolated(
-    containment: &EnvironmentContainmentProfile,
-    kind: EnvironmentTargetKind,
+    containment: &SandboxContainmentSpec,
+    kind: SandboxTargetKind,
 ) -> Result<(), String> {
-    if containment.level != EnvironmentContainmentLevel::Isolated {
+    if containment.level != SandboxContainmentLevel::Isolated {
         return Err(format!(
             "{} target requires containment.level=isolated",
             kind.as_str()
@@ -481,35 +479,33 @@ fn require_isolated(
     Ok(())
 }
 
-fn default_containment(kind: EnvironmentTargetKind) -> EnvironmentContainmentProfile {
+fn default_containment(kind: SandboxTargetKind) -> SandboxContainmentSpec {
     match kind {
-        EnvironmentTargetKind::Host | EnvironmentTargetKind::Machine => {
-            EnvironmentContainmentProfile::uncontained()
+        SandboxTargetKind::Host | SandboxTargetKind::Machine => {
+            SandboxContainmentSpec::uncontained()
         }
-        EnvironmentTargetKind::Managed => EnvironmentContainmentProfile {
-            network: EnvironmentNetworkPolicy::Allow,
-            ..EnvironmentContainmentProfile::isolated()
+        SandboxTargetKind::Managed => SandboxContainmentSpec {
+            network: SandboxNetworkPolicy::Allow,
+            ..SandboxContainmentSpec::isolated()
         },
-        EnvironmentTargetKind::Vfs | EnvironmentTargetKind::Container => {
-            EnvironmentContainmentProfile::isolated()
-        }
+        SandboxTargetKind::Vfs | SandboxTargetKind::Container => SandboxContainmentSpec::isolated(),
     }
 }
 
-fn default_durability(kind: EnvironmentTargetKind) -> EnvironmentDurability {
+fn default_durability(kind: SandboxTargetKind) -> SandboxDurability {
     match kind {
-        EnvironmentTargetKind::Vfs => EnvironmentDurability::Checkpointed,
-        EnvironmentTargetKind::Managed | EnvironmentTargetKind::Container => {
-            EnvironmentDurability::ProviderSnapshot
+        SandboxTargetKind::Vfs => SandboxDurability::Checkpointed,
+        SandboxTargetKind::Managed | SandboxTargetKind::Container => {
+            SandboxDurability::ProviderSnapshot
         }
-        EnvironmentTargetKind::Host | EnvironmentTargetKind::Machine => EnvironmentDurability::None,
+        SandboxTargetKind::Host | SandboxTargetKind::Machine => SandboxDurability::None,
     }
 }
 
-fn validate_target_available(profile: &ResolvedEnvironmentProfile) -> Result<(), String> {
+fn validate_target_available(profile: &ResolvedSandboxSpec) -> Result<(), String> {
     match profile.target.kind {
-        EnvironmentTargetKind::Vfs => Ok(()),
-        EnvironmentTargetKind::Managed
+        SandboxTargetKind::Vfs => Ok(()),
+        SandboxTargetKind::Managed
             if everruns_capabilities::create_session_sandbox_provider(
                 profile.target.provider.as_deref().unwrap_or_default(),
             )
@@ -517,17 +513,17 @@ fn validate_target_available(profile: &ResolvedEnvironmentProfile) -> Result<(),
         {
             Ok(())
         }
-        EnvironmentTargetKind::Managed => Err(format!(
+        SandboxTargetKind::Managed => Err(format!(
             "environment provider '{}' is not registered in this deployment",
             profile.target.provider.as_deref().unwrap_or("unknown")
         )),
-        EnvironmentTargetKind::Host => {
+        SandboxTargetKind::Host => {
             Err("host execution is disabled for this deployment".to_string())
         }
-        EnvironmentTargetKind::Machine => {
+        SandboxTargetKind::Machine => {
             Err("registered machine execution is not implemented yet".to_string())
         }
-        EnvironmentTargetKind::Container => {
+        SandboxTargetKind::Container => {
             Err("container environment profiles are not enabled yet".to_string())
         }
     }
@@ -582,7 +578,7 @@ fn reject_secret_value(value: &Value, path: &str) -> Result<(), String> {
     }
 }
 
-fn validate_bootstrap(profile: &EnvironmentProfile) -> Result<(), String> {
+fn validate_bootstrap(profile: &SandboxTemplateSpec) -> Result<(), String> {
     if profile.bootstrap.commands.len() > MAX_BOOTSTRAP_COMMANDS {
         return Err(format!(
             "bootstrap.commands may contain at most {MAX_BOOTSTRAP_COMMANDS} commands"
@@ -605,44 +601,41 @@ fn validate_bootstrap(profile: &EnvironmentProfile) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::records::{EnvironmentBootstrap, EnvironmentLifecycle, EnvironmentTargetProfile};
+    use crate::records::{SandboxBootstrap, SandboxLifecycle, SandboxTargetSpec};
     use std::collections::BTreeMap;
 
-    fn profile(target: crate::records::EnvironmentTargetProfile) -> EnvironmentProfile {
-        EnvironmentProfile {
-            source_revision_id: None,
+    fn profile(target: crate::records::SandboxTargetSpec) -> SandboxTemplateSpec {
+        SandboxTemplateSpec {
+            template_revision_id: None,
             target,
             containment: None,
             durability: None,
-            lifecycle: EnvironmentLifecycle::default(),
-            bootstrap: EnvironmentBootstrap::default(),
+            lifecycle: SandboxLifecycle::default(),
+            bootstrap: SandboxBootstrap::default(),
         }
     }
 
     #[test]
     fn named_profile_resolves_and_replaces_legacy_compute_capabilities() {
-        let set = EnvironmentSet {
-            policy: None,
+        let set = SandboxPolicy {
+            mode: None,
             default: "scratch".to_string(),
-            profiles: BTreeMap::from([(
+            templates: BTreeMap::from([(
                 "scratch".to_string(),
-                profile(EnvironmentTargetProfile::vfs("bashkit")),
+                profile(SandboxTargetSpec::vfs("bashkit")),
             )]),
         };
-        let selected = resolve_environment_selection(Some(&set), None)
+        let selected = resolve_sandbox_selection(Some(&set), None)
             .unwrap()
             .unwrap();
         assert_eq!(selected.name, "scratch");
-        assert_eq!(
-            selected.profile.durability,
-            EnvironmentDurability::Checkpointed
-        );
+        assert_eq!(selected.spec.durability, SandboxDurability::Checkpointed);
 
         let capabilities = vec![
             CapabilityRef::new("current_time"),
             CapabilityRef::new("daytona"),
         ];
-        let mapped = apply_environment_to_capabilities(&capabilities, Some(&selected.profile));
+        let mapped = apply_sandbox_to_capabilities(&capabilities, Some(&selected.spec));
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
             vec!["current_time", "bashkit_shell"]
@@ -651,54 +644,52 @@ mod tests {
 
     #[test]
     fn fixed_policy_rejects_even_the_default_session_override() {
-        let set = EnvironmentSet {
-            policy: Some(EnvironmentPolicyMode::Fixed),
+        let set = SandboxPolicy {
+            mode: Some(SandboxPolicyMode::Fixed),
             default: "scratch".to_string(),
-            profiles: BTreeMap::from([(
+            templates: BTreeMap::from([(
                 "scratch".to_string(),
-                profile(EnvironmentTargetProfile::vfs("bashkit")),
+                profile(SandboxTargetSpec::vfs("bashkit")),
             )]),
         };
-        let error = resolve_environment_selection(
+        let error = resolve_sandbox_selection(
             Some(&set),
-            Some(&EnvironmentSelection::Named {
+            Some(&SandboxSelection::Named {
                 r#use: "scratch".into(),
             }),
         )
         .unwrap_err();
-        assert!(error.contains("fixed Environment"));
+        assert!(error.contains("fixed Sandbox Template"));
     }
 
     #[test]
     fn selectable_policy_rejects_inline_profiles() {
-        let selected = profile(EnvironmentTargetProfile::vfs("bashkit"));
-        let set = EnvironmentSet {
-            policy: Some(EnvironmentPolicyMode::Selectable),
+        let selected = profile(SandboxTargetSpec::vfs("bashkit"));
+        let set = SandboxPolicy {
+            mode: Some(SandboxPolicyMode::Selectable),
             default: "scratch".to_string(),
-            profiles: BTreeMap::from([("scratch".to_string(), selected.clone())]),
+            templates: BTreeMap::from([("scratch".to_string(), selected.clone())]),
         };
-        let error = resolve_environment_selection(
-            Some(&set),
-            Some(&EnvironmentSelection::Inline(selected)),
-        )
-        .unwrap_err();
-        assert!(error.contains("declared Environment"));
+        let error =
+            resolve_sandbox_selection(Some(&set), Some(&SandboxSelection::Inline(selected)))
+                .unwrap_err();
+        assert!(error.contains("declared Sandbox Template"));
     }
 
     #[test]
     fn fixed_policy_requires_exactly_one_profile() {
-        let selected = profile(EnvironmentTargetProfile::vfs("bashkit"));
-        let set = EnvironmentSet {
-            policy: Some(EnvironmentPolicyMode::Fixed),
+        let selected = profile(SandboxTargetSpec::vfs("bashkit"));
+        let set = SandboxPolicy {
+            mode: Some(SandboxPolicyMode::Fixed),
             default: "one".to_string(),
-            profiles: BTreeMap::from([
+            templates: BTreeMap::from([
                 ("one".to_string(), selected.clone()),
                 ("two".to_string(), selected),
             ]),
         };
 
         assert!(
-            validate_environment_set(&set)
+            validate_sandbox_policy(&set)
                 .unwrap_err()
                 .contains("exactly one")
         );
@@ -706,15 +697,14 @@ mod tests {
 
     #[test]
     fn managed_profile_replaces_the_session_filesystem_tool_surface() {
-        let resolved =
-            resolve_profile(&profile(EnvironmentTargetProfile::managed("daytona"))).unwrap();
+        let resolved = resolve_spec(&profile(SandboxTargetSpec::managed("daytona"))).unwrap();
         let capabilities = vec![
             CapabilityRef::new("session_file_system"),
             CapabilityRef::new("bashkit_shell"),
             CapabilityRef::new("current_time"),
         ];
 
-        let mapped = apply_environment_to_capabilities(&capabilities, Some(&resolved));
+        let mapped = apply_sandbox_to_capabilities(&capabilities, Some(&resolved));
 
         assert_eq!(
             mapped.iter().map(CapabilityRef::id).collect::<Vec<_>>(),
@@ -724,10 +714,10 @@ mod tests {
 
     #[test]
     fn profile_rejects_embedded_credentials() {
-        let mut value = profile(EnvironmentTargetProfile::managed("daytona"));
+        let mut value = profile(SandboxTargetSpec::managed("daytona"));
         value.target.options = json!({"api_key": "do-not-store-me"});
         assert!(
-            resolve_profile(&value)
+            resolve_spec(&value)
                 .unwrap_err()
                 .contains("connection reference")
         );
@@ -735,10 +725,10 @@ mod tests {
 
     #[test]
     fn profile_rejects_provider_endpoint_overrides() {
-        let mut value = profile(EnvironmentTargetProfile::managed("daytona"));
+        let mut value = profile(SandboxTargetSpec::managed("daytona"));
         value.target.options = json!({"api_base": "https://attacker.invalid"});
         assert!(
-            resolve_profile(&value)
+            resolve_spec(&value)
                 .unwrap_err()
                 .contains("not caller-configurable")
         );
@@ -746,10 +736,10 @@ mod tests {
 
     #[test]
     fn checkpointed_daytona_profile_enables_portable_recovery() {
-        let mut value = profile(EnvironmentTargetProfile::managed("daytona"));
-        value.durability = Some(EnvironmentDurability::Checkpointed);
-        let resolved = resolve_profile(&value).unwrap();
-        let capability = capability_for_environment(&resolved);
+        let mut value = profile(SandboxTargetSpec::managed("daytona"));
+        value.durability = Some(SandboxDurability::Checkpointed);
+        let resolved = resolve_spec(&value).unwrap();
+        let capability = capability_for_sandbox(&resolved);
 
         assert_eq!(capability.id(), "session_sandbox");
         assert_eq!(
@@ -764,16 +754,16 @@ mod tests {
 
     #[test]
     fn default_must_name_a_profile() {
-        let set = EnvironmentSet {
-            policy: None,
+        let set = SandboxPolicy {
+            mode: None,
             default: "missing".to_string(),
-            profiles: BTreeMap::from([(
+            templates: BTreeMap::from([(
                 "scratch".to_string(),
-                profile(EnvironmentTargetProfile::vfs("bashkit")),
+                profile(SandboxTargetSpec::vfs("bashkit")),
             )]),
         };
         assert!(
-            validate_environment_set(&set)
+            validate_sandbox_policy(&set)
                 .unwrap_err()
                 .contains("does not name")
         );

@@ -29,7 +29,7 @@ import {
 import { StartersEditor } from "@/components/starters-editor";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor } from "@/components/network-access-editor";
-import { EnvironmentProfilesEditor } from "@/components/agents/environment-profiles-editor";
+import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
@@ -45,7 +45,7 @@ export type AgentSettingsSection =
   | "credentials"
   | "files"
   | "network"
-  | "environments"
+  | "sandbox"
   | "usage"
   | "health"
   | "versions";
@@ -84,9 +84,9 @@ const SECTIONS: Record<
       "Which hosts this agent's sessions can reach through network-capable tools. Narrows the harness policy; sessions can narrow it further.",
     kind: "draft",
   },
-  environments: {
-    title: "Environments",
-    description: "Named execution profiles available when a new chat starts.",
+  sandbox: {
+    title: "Primary sandbox",
+    description: "Sandbox bindings available when a new Playground Session starts.",
     kind: "draft",
     wide: true,
   },
@@ -118,7 +118,7 @@ interface AgentSettingsSheetProps {
   agent: Agent;
   draft: AgentDraft;
   readOnly: boolean;
-  fixedEnvironment?: string;
+  fixedSandbox?: string;
   /** Wraps a draft change so the page enters edit mode. */
   onDraftChange: <T>(apply: (value: T) => void) => (value: T) => void;
 }
@@ -129,7 +129,7 @@ export function AgentSettingsSheet({
   agent,
   draft,
   readOnly,
-  fixedEnvironment,
+  fixedSandbox,
   onDraftChange,
 }: AgentSettingsSheetProps) {
   const meta = section ? SECTIONS[section] : null;
@@ -172,18 +172,18 @@ export function AgentSettingsSheet({
                   description="One pattern per line: example.com, *.example.com, or https://example.com/api/."
                 />
               )}
-              {section === "environments" &&
-                (fixedEnvironment ? (
+              {section === "sandbox" &&
+                (fixedSandbox ? (
                   <div className="border bg-muted/40 p-4 text-sm">
-                    <p className="font-medium">{fixedEnvironment}</p>
+                    <p className="font-medium">{fixedSandbox}</p>
                     <p className="text-muted-foreground">
                       Locked by the selected Harness. Agent and Session overrides are disabled.
                     </p>
                   </div>
                 ) : (
-                  <EnvironmentProfilesEditor
-                    value={draft.environments}
-                    onChange={onDraftChange(draft.setEnvironments)}
+                  <SandboxPolicyEditor
+                    value={draft.sandboxPolicy}
+                    onChange={onDraftChange(draft.setSandboxPolicy)}
                     disabled={readOnly}
                   />
                 ))}

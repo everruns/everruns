@@ -15,19 +15,19 @@ import {
   buildSessionNavigation,
 } from "@/components/session/session-header";
 import { SessionCard } from "@/components/session/session-card";
-import { SessionEnvironmentPanel } from "@/components/session/session-environment-panel";
-import { sessionEnvironmentScenarios } from "@/app/dev/_fixtures/session-environment-fixtures";
+import { SessionSandboxPanel } from "@/components/session/session-sandbox-panel";
+import { sessionSandboxScenarios } from "@/app/dev/_fixtures/session-sandbox-fixtures";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // The panel fetches its own data, so the showcase seeds the cache instead of
 // mocking the client. Same component, same query key, no network.
-function seededClient(sessionId: string, environment: unknown) {
+function seededClient(sessionId: string, sandbox: unknown) {
   // staleTime keeps the seeded value from being refetched against an API this
   // page does not have.
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  client.setQueryData(["session-environment", sessionId], environment);
+  client.setQueryData(["session-sandbox", sessionId], sandbox);
   return client;
 }
 
@@ -97,23 +97,21 @@ export default function DevSessionComponentsPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Environment panel</h2>
+            <h2 className="text-lg font-semibold text-foreground">Sandbox panel</h2>
             <p className="text-sm text-muted-foreground">
-              The Workspace-tab panel, in the four environments a session can actually have. The
+              The Workspace-tab panel, in the four sandbox states a session can actually have. The
               capability rows are the point: they answer &ldquo;can this session run a build?&rdquo;
               before a run proves it cannot.
             </p>
           </div>
 
           <div className="grid gap-3 lg:grid-cols-2">
-            {sessionEnvironmentScenarios.map((scenario) => (
+            {sessionSandboxScenarios.map((scenario) => (
               <div key={scenario.name} className="space-y-2">
                 <p className="text-sm font-medium text-foreground">{scenario.name}</p>
                 <div className="overflow-hidden border border-border/70 bg-background">
-                  <QueryClientProvider
-                    client={seededClient(scenario.sessionId, scenario.environment)}
-                  >
-                    <SessionEnvironmentPanel sessionId={scenario.sessionId} />
+                  <QueryClientProvider client={seededClient(scenario.sessionId, scenario.sandbox)}>
+                    <SessionSandboxPanel sessionId={scenario.sessionId} />
                   </QueryClientProvider>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 ---
 type: Proposal
 title: "Sandbox platform architecture"
-description: "Target architecture separating harness behavior, reusable Environment configuration, recoverable primary Sandboxes, Workspaces, and agent-managed sandbox fleets."
+description: "Target architecture separating harness behavior, reusable Sandbox Template configuration, recoverable primary Sandboxes, Workspaces, and agent-managed sandbox fleets."
 tags:
   - everruns
   - harnesses
@@ -12,9 +12,8 @@ tags:
 
 # Sandbox platform architecture
 
-Status: proposal. This is the target architecture, not the current API contract.
-The existing implementation is documented in
-[Execution Environments](execution-environments.md). It already provides useful
+Status: implemented baseline. The target model and current public contract are
+documented here and in [Sandbox Templates](sandbox-templates.md). The implementation provides
 provider-neutral tools, logical/physical separation, generation fencing,
 checkpoint recovery, and Bashkit and Daytona adapters. This proposal keeps that
 machinery while correcting its product vocabulary, ownership boundaries, and
@@ -26,7 +25,7 @@ Separate five concepts that the current model partially combines:
 
 1. A **Harness** defines reusable agent-loop behavior and the execution
    interfaces that behavior needs.
-2. An **Environment** is reusable, versioned configuration for creating a
+2. A **Sandbox Template** is reusable, versioned configuration for creating a
    sandbox: target, containment, limits, lifecycle, bootstrap, and credential
    references.
 3. A **Workspace** is durable file lineage. It can outlive a Session and every
@@ -37,14 +36,15 @@ Separate five concepts that the current model partially combines:
 5. A **Sandbox Instance** is one disposable physical incarnation supplied by
    Bashkit, Daytona, or another provider.
 
-`Sandbox` names the computer-like resource. `Containment` names the security
-boundary. `Environment` no longer names a live Session resource.
+`Sandbox` names the computer-like resource. `Containment` names its security
+boundary. `Environment` remains a Framework-internal execution context; it is
+not a hosted product resource or live Session resource.
 
 ```mermaid
 flowchart TB
     H["Harness<br/>behavior and required interfaces"]
     A["Agent version<br/>sandbox policy"]
-    E["Environment revision<br/>reusable configuration"]
+    E["Sandbox Template revision<br/>reusable configuration"]
     S["Session<br/>conversation and durable loop"]
     W["Workspace<br/>durable file lineage"]
 
@@ -79,17 +79,17 @@ flowchart TB
 
 ## Invariants
 
-- A Session has at most one primary Sandbox. Its identity and Environment
+- A Session has at most one primary Sandbox. Its identity and Sandbox Template
   snapshot do not change during the Session.
 - The primary Sandbox is the only filesystem and command namespace addressed by
   ordinary `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`.
 - A physical instance may disappear without terminating the Session. Recovery
   creates a new generation and restores the last committed Workspace revision.
-- A Harness- or Agent-fixed Environment cannot be overridden by Session input.
+- A Harness- or Agent-fixed Sandbox Template cannot be overridden by Session input.
 - Additional Sandboxes are explicit resources. Every operation names a logical
   `sandbox_id`; they never silently redirect the primary tools.
 - Credentials stay in Connections and are resolved by the control plane. They
-  are never copied into Environment snapshots, Workspace checkpoints, resource
+  are never copied into Sandbox snapshots, Workspace checkpoints, resource
   metadata, or model-visible provider state.
 - Conversation durability and Sandbox durability are separate. A surviving
   transcript does not imply surviving RAM, processes, PTYs, or uncheckpointed
@@ -101,13 +101,13 @@ The current implementation has the right low-level recovery mechanics but the
 wrong product compression:
 
 - Worker Base directly contains `session_file_system` and `bashkit_shell`.
-- an Agent version embeds a map of named Environment profiles plus a default;
+- an Agent version embeds a map of named Sandbox Template bindings plus a default;
 - Session creation may choose a named profile or submit a caller-authored inline
   profile even when the Agent did not authorize that override mode;
 - selecting a profile rewrites the effective capability list, replacing one
   compute capability with another;
-- the live logical runtime is named Environment even though an Environment is
-  also presented as reusable desired configuration;
+- legacy contracts named the live logical runtime Environment while also using
+  environment for reusable desired configuration;
 - provider tools, the Session resource registry, and leased resources form a
   second path for agents that manage several sandboxes.
 
@@ -145,7 +145,7 @@ constrain the primary execution plane. The execution contract has two
 independent parts:
 
 - `requirement`: `none`, `optional`, or `required`;
-- `binding`: `unbound` or `fixed` to an immutable Environment revision.
+- `binding`: `unbound` or `fixed` to an immutable Sandbox Template revision.
 
 The valid combinations are:
 
@@ -154,7 +154,7 @@ The valid combinations are:
 | `none` | `unbound` | The Harness has no primary execution plane. |
 | `optional` | `unbound` | An Agent may opt into primary execution. |
 | `required` | `unbound` | An Agent must provide a compatible policy, or the platform resolves its documented default. |
-| `required` | `fixed` | Every Session uses the Harness-owned Environment revision. |
+| `required` | `fixed` | Every Session uses the Harness-owned Sandbox Template revision. |
 
 A fixed binding is sealed. Agent configuration, Session creation, and child
 Harnesses cannot replace it. A different fixed runtime must derive from an
@@ -181,7 +181,7 @@ stable name: bashkit-worker
 display name: Bashkit Worker
 parent: Worker
 execution requirement: required
-execution binding: fixed to the managed Bashkit Environment revision
+execution binding: fixed to the managed Bashkit Sandbox Template revision
 ```
 
 Its product description is:
@@ -191,7 +191,7 @@ Its product description is:
 
 The provider name is intentional. Bashkit is part of this Harness's behavioral
 and security contract, not an interchangeable implementation detail. The Agent
-and Session cannot select Daytona or submit inline Environment configuration.
+and Session cannot select Daytona or submit inline Sandbox Template configuration.
 
 Platform Chat's managed Agent migrates from deprecated Generic to Bashkit
 Worker. This preserves its single Bashkit shell while moving it onto the
@@ -200,9 +200,9 @@ Generic-only capability Platform Chat still needs is first made explicit on the
 managed Agent or its dedicated child Harness. Generic remains available only
 for existing explicit bindings during its deprecation window.
 
-## Environment resources
+## Sandbox Template resources
 
-An Environment is an organization-scoped reusable template. It is managed
+A Sandbox Template is an organization-scoped reusable template. It is managed
 independently from Agents and Sessions and has immutable revisions. A revision
 contains:
 
@@ -214,15 +214,15 @@ contains:
 - reproducible bootstrap configuration;
 - references to Connections, never credential values.
 
-An Agent version or fixed Harness references a specific Environment revision.
+An Agent version or fixed Harness references a specific Sandbox Template revision.
 A Session stores both that revision identity and a resolved non-secret snapshot.
-Updating an Environment creates a revision for future Agent versions; it cannot
+Updating a Sandbox Template creates a revision for future Agent versions; it cannot
 silently move an existing Agent version or Session to different compute.
 
-The platform provisions a managed Bashkit Environment named **Bashkit Virtual
+The platform provisions a managed Bashkit Sandbox Template named **Bashkit Virtual
 Workspace**. Bashkit Worker is fixed to its managed revision.
 
-Environment availability is deployment-specific. A stored Daytona Environment
+Sandbox Template availability is deployment-specific. A stored Daytona template
 does not imply that every deployment has a Daytona provider or Connection. The
 control plane validates availability before accepting a policy or creating a
 Session.
@@ -233,14 +233,14 @@ An Agent version owns one explicit policy for its primary Sandbox:
 
 | Policy | Session behavior |
 |---|---|
-| `none` | No primary Sandbox. Environment input is rejected. |
-| `fixed` | Use one Environment revision. Environment input is rejected. |
+| `none` | No primary Sandbox. Sandbox input is rejected. |
+| `fixed` | Use one Sandbox Template revision. Sandbox input is rejected. |
 | `selectable` | Choose from an authored allowlist, with an optional default. |
-| `configurable` | Select an allowed Environment or submit one-off configuration within authored constraints. |
+| `configurable` | Select an allowed Sandbox Template or submit one-off configuration within authored constraints. |
 
 The common path is `none` or `fixed`. `selectable` and `configurable` are
 advanced modes for products that intentionally let callers choose compute.
-They are not represented as several simultaneously attached Environments.
+They are not represented as several simultaneously attached Sandbox Templates.
 
 Valid advanced use cases include:
 
@@ -250,7 +250,7 @@ Valid advanced use cases include:
 - region or compliance choices;
 - deliberate provider comparison.
 
-An Agent does not need multiple Environment profiles merely because it can
+An Agent does not need multiple Sandbox Template bindings merely because it can
 create multiple resource Sandboxes. Fleet management is a separate capability.
 
 ### Resolution and authority
@@ -258,7 +258,7 @@ create multiple resource Sandboxes. Fleet management is a separate capability.
 Resolution is a constraint process, not last-layer-wins overlay:
 
 1. The Harness states whether primary execution is absent, optional, required,
-   or sealed to an Environment revision.
+   or sealed to a Sandbox Template revision.
 2. A sealed Harness binding is final.
 3. An unbound Harness permits the Agent version to declare a compatible policy.
 4. If required execution remains unspecified, the hosted platform may resolve
@@ -269,7 +269,7 @@ Resolution is a constraint process, not last-layer-wins overlay:
 6. Organization and deployment policy may narrow provider, connection, size,
    network, and containment choices at every step.
 
-Supplying an Environment override to a fixed Harness or fixed Agent is an
+Supplying a Sandbox override to a fixed Harness or fixed Agent is an
 error, even when the submitted value is equivalent. Rejecting it preserves
 clear provenance and auditability.
 
@@ -279,17 +279,17 @@ Session creation resolves and pins these values before accepting work:
 
 1. effective Harness and Agent version;
 2. Harness execution constraint and Agent sandbox policy;
-3. Environment revision or validated one-off snapshot;
+3. Sandbox Template revision or validated one-off snapshot;
 4. existing or newly created Workspace;
 5. primary Sandbox identity, when the resolution requires one;
 6. effective tools derived from the resolved execution interfaces.
 
-For coding-style managed Environments, provisioning begins when the Session is
+For coding-style managed Sandbox Templates, provisioning begins when the Session is
 created so the first tool call does not pay the full cold-start cost. An
-Environment may explicitly choose lazy provisioning for workloads where that
+Sandbox Template may explicitly choose lazy provisioning for workloads where that
 tradeoff is preferable.
 
-The Environment choice is immutable after creation. To use another primary
+The Sandbox choice is immutable after creation. To use another primary
 runtime, create or fork a Session against the same Workspace. Files can follow;
 RAM, installed machine state, background processes, open ports, PTYs, and shell
 state do not.
@@ -359,13 +359,13 @@ If recovery is temporarily unavailable, the durable loop reschedules or pauses;
 it does not terminate merely because a provider resource ID disappeared.
 
 Provider-native stop, pause, snapshot, and archive remain optimizations. The
-durability contract is the declared Environment durability, not optimistic
+durability contract is the declared Sandbox durability, not optimistic
 interpretation of a provider state name.
 
 ## Resource Sandboxes and fleets
 
 An agent that needs several sandboxes receives the opt-in `sandbox_fleet`
-capability. It does not receive several primary Environments.
+capability. It does not receive several primary Sandbox Templates.
 
 Resource Sandboxes reuse the same logical Sandbox aggregate, provider drivers,
 instances, checkpoints, generation fencing, and ownership checks as the primary
@@ -421,7 +421,7 @@ not advertise native processes or package installation. Daytona supplies a
 different containment and persistence profile. The model receives the facts of
 the resolved target rather than a generic promise that every sandbox is equal.
 
-Environment configuration separates:
+Sandbox Template configuration separates:
 
 - **target**: where filesystem and commands execute;
 - **containment**: what that execution may touch;
@@ -433,10 +433,10 @@ must be enforced below the tool layer.
 
 ## Product surfaces
 
-### Environment management
+### Sandbox Template management
 
 Organizations can create, inspect, revise, archive, and test reusable
-Environments. The page shows target, provider, containment, durability,
+Sandbox Templates. The page shows target, provider, containment, durability,
 lifecycle, bootstrap, resource limits, Connection health, and deployment
 availability. Secret values are never displayed or embedded.
 
@@ -445,7 +445,7 @@ availability. Secret values are never displayed or embedded.
 The Agent runtime section offers the common choices first:
 
 - No Sandbox;
-- Fixed Environment.
+- Fixed Sandbox Template.
 
 Advanced settings enable caller selection or constrained one-off configuration.
 When the Harness is fixed, the control is read-only and says, for example,
@@ -453,16 +453,16 @@ When the Harness is fixed, the control is read-only and says, for example,
 
 ### Playground
 
-Playground owns Agent testing and Session setup. It shows Environment and
+Playground owns Agent testing and Session setup. It shows Sandbox Template and
 Workspace controls only when the Agent policy permits them. A fixed Agent shows
 the resolved runtime as read-only. Personal Chats remain bound to the managed
-Platform Chat Agent and expose no Harness, Environment, or Sandbox selector.
+Platform Chat Agent and expose no Harness or Sandbox selector.
 
 ### Session
 
 The Session workspace surface shows:
 
-- primary Sandbox status, Environment revision, generation, checkpoint, and
+- primary Sandbox status, Sandbox Template revision, generation, checkpoint, and
   recovery events;
 - the active Workspace and committed revision;
 - separately, resource Sandboxes and other Session resources.
@@ -473,42 +473,42 @@ The primary Sandbox is not presented as one item in an undifferentiated fleet.
 
 ### Deprecate as authoring surfaces
 
-- embedded Agent `EnvironmentSet` maps as the default product model;
-- unconditional inline Environment overrides on Session creation;
-- the live Session resource named Environment;
+- embedded Agent `SandboxPolicy` maps as the default product model;
+- unconditional inline Sandbox overrides on Session creation;
+- the legacy live Session resource name Environment;
 - `bashkit_shell`, `session_sandbox`, `daytona`, `e2b`, and container
   capabilities as ways to select primary execution;
 - provider-prefixed model tools for ordinary one-sandbox execution;
 - separate Session VFS and managed-sandbox filesystem namespaces;
 - provider-specific coding Harnesses;
-- any runtime tool that switches the primary Environment in place.
+- any runtime tool that switches the primary Sandbox in place.
 
 Provider-specific tools may remain temporarily for operations workflows and are
 replaced by the provider-neutral fleet surface when that surface reaches parity.
 
 ### Stored-data migration
 
-- A single Agent Environment profile becomes a fixed Agent policy.
+- A single Agent Sandbox Template spec becomes a fixed Agent policy.
 - Multiple profiles become a selectable policy preserving the old default.
 - An Agent without profiles on Worker Base or Worker resolves the managed
-  Bashkit Environment to preserve today's default behavior.
+  Bashkit Sandbox Template to preserve today's default behavior.
 - Platform Chat moves to Bashkit Worker.
 - Existing Sessions retain their pinned logical state, effective tools,
   Workspace, instances, and checkpoint lineage.
-- The current logical Environment row becomes a Sandbox projection without
+- The current logical Sandbox row becomes a Sandbox projection without
   replacing its identity or recovery history.
 - Existing provider leases remain attached to their current instance and are
   cleaned up through the existing worker.
 
 Compatibility readers may accept legacy profile and capability configuration
-during migration. New writes use Environment resources, Agent sandbox policy,
+during migration. New writes use Sandbox Template resources, Agent sandbox policy,
 and Harness execution binding only.
 
 ## Delivery plan
 
 ### Phase 1: contracts and migration
 
-- add versioned Environment resources and the managed Bashkit Environment;
+- add versioned Sandbox Template resources and the managed Bashkit template;
 - add Harness execution requirement and fixed binding;
 - add Agent sandbox policy and deterministic resolution;
 - define the primary/resource Sandbox role without duplicating lifecycle state;
@@ -517,7 +517,7 @@ and Harness execution binding only.
 ### Phase 2: Bashkit Worker
 
 - provision the managed Bashkit Worker as a child of Worker;
-- bind it to the managed Bashkit Environment revision;
+- bind it to the managed Bashkit Sandbox Template revision;
 - audit Generic-only behavior, make Platform Chat's required opt-ins explicit,
   and then move it to Bashkit Worker;
 - reject Agent and Session overrides under fixed Harnesses;
@@ -525,9 +525,9 @@ and Harness execution binding only.
 
 ### Phase 3: product management
 
-- add Environment management;
+- add Sandbox Template management;
 - replace the multi-profile-first Agent editor with fixed-first sandbox policy;
-- add conditional Environment and Workspace setup to Playground;
+- add conditional Sandbox Template and Workspace setup to Playground;
 - keep personal Chats free of runtime selectors;
 - update Session views to distinguish primary Sandbox from resources.
 
@@ -551,7 +551,7 @@ and Harness execution binding only.
 
 ### Phase 6: compatibility retirement
 
-- stop accepting legacy EnvironmentSet and primary-compute capability writes;
+- stop accepting legacy SandboxPolicy and primary-compute capability writes;
 - remove legacy provider namespaces once no stored references remain;
 - remove temporary route and response aliases;
 - keep durable audit history for retired instances and checkpoints.
@@ -567,7 +567,7 @@ canonical persisted contract must converge.
   Agent or Session override.
 - A Worker Agent fixed to Daytona receives one recoverable primary Sandbox with
   one filesystem shared by shell, file tools, and the Workspace UI.
-- A selectable Agent permits only its authored Environment revisions.
+- A selectable Agent permits only its authored Sandbox Template revisions.
 - A configurable Agent cannot exceed organization or deployment constraints.
 - Physical provider loss replaces the instance and resumes from the last
   committed Workspace revision without changing Session or Sandbox identity.
@@ -589,10 +589,10 @@ canonical persisted contract must converge.
   filesystem and execution share a backend, with separate routing for other
   durable paths.
 - [Claude Managed Agents environments](https://platform.claude.com/docs/en/managed-agents/environments):
-  an Environment is reusable configuration and each Session receives an
+  a Sandbox Template is reusable configuration and each Session receives an
   isolated sandbox.
 - [Claude Managed Agents sessions](https://platform.claude.com/docs/en/managed-agents/sessions):
-  Session creation binds Agent and Environment and begins provisioning.
+  Session creation binds Agent and Sandbox Template and begins provisioning.
 - [Daytona persistence](https://www.daytona.io/docs/en/persistence/): provider
   filesystem, memory, snapshot, and volume guarantees are distinct.
 - [Session Resource Registry](../runtime-resources/session-resources.md):

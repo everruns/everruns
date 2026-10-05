@@ -316,11 +316,13 @@ pub struct Agent {
     #[serde(default)]
     #[schema(value_type = Vec<crate::records::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
-    /// Named execution environments offered by this Agent version. A Session
-    /// pins one resolved profile when it is created; later edits affect only
-    /// new Sessions.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub environments: Option<super::EnvironmentSet>,
+    /// Policy for selecting the primary Sandbox Template for new Sessions.
+    #[serde(
+        default,
+        alias = "environments",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub sandbox_policy: Option<super::SandboxPolicy>,
     /// Starter files copied into each new session for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<InitialFile>,
@@ -512,7 +514,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
-            environments: None,
+            sandbox_policy: None,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
             status: AgentStatus::Active,

@@ -1,22 +1,22 @@
-// Environment panel fixtures.
+// Sandbox panel fixtures.
 //
-// The four environments a session can actually have today, plus the one that
+// The four sandbox states a session can actually have today, plus the one that
 // matters most for review: a real machine, which contains nothing and recovers
 // nothing, and has to look different from the contained ones.
 
-import type { SessionEnvironment } from "@/lib/api/environments";
+import type { SessionSandbox } from "@/lib/api/sandbox-templates";
 
-export interface SessionEnvironmentScenario {
+export interface SessionSandboxScenario {
   name: string;
   sessionId: string;
-  environment: SessionEnvironment;
+  sandbox: SessionSandbox;
 }
 
-export const sessionEnvironmentScenarios: SessionEnvironmentScenario[] = [
+export const sessionSandboxScenarios: SessionSandboxScenario[] = [
   {
     name: "Bashkit — no native binaries",
     sessionId: "session_dev_bashkit",
-    environment: {
+    sandbox: {
       target: { kind: "vfs", provider: "bashkit" },
       containment: { level: "isolated", network: "deny" },
       durability: "checkpointed",
@@ -35,7 +35,7 @@ export const sessionEnvironmentScenarios: SessionEnvironmentScenario[] = [
   {
     name: "Daytona with a recovery volume",
     sessionId: "session_dev_daytona",
-    environment: {
+    sandbox: {
       target: { kind: "managed", provider: "daytona" },
       containment: { level: "isolated", network: "deny" },
       durability: "checkpointed",
@@ -54,7 +54,7 @@ export const sessionEnvironmentScenarios: SessionEnvironmentScenario[] = [
   {
     name: "This machine — uncontained",
     sessionId: "session_dev_host",
-    environment: {
+    sandbox: {
       target: { kind: "host" },
       containment: { level: "none", network: "allow" },
       durability: "none",
@@ -72,7 +72,7 @@ export const sessionEnvironmentScenarios: SessionEnvironmentScenario[] = [
   {
     name: "Files only — no compute",
     sessionId: "session_dev_files",
-    environment: {
+    sandbox: {
       containment: { level: "none", network: "deny" },
       durability: "checkpointed",
       capabilities: {

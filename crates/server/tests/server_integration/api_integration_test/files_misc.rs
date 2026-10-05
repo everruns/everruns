@@ -532,7 +532,7 @@ Content-Type: image/png\r\n\r\n"
 // ============================================
 
 #[tokio::test]
-async fn test_environment_targets_say_why_an_absent_target_is_absent() {
+async fn test_sandbox_targets_say_why_an_absent_target_is_absent() {
     let server = TestServer::in_memory().await;
 
     let targets: Value = server

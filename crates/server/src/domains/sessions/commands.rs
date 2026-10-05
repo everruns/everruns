@@ -290,7 +290,7 @@ impl Command for CreateSession {
                 || !req.tools.is_empty()
                 || !req.mcp_servers.is_empty()
                 || req.virtual_user_id.is_some()
-                || req.environment.is_some())
+                || req.sandbox.is_some())
         {
             return Err(CommandError::bad_request(
                 "Platform Chat uses its managed Agent configuration, fixed runtime, and the current user's identity",

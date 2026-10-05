@@ -27,7 +27,7 @@
 //! belongs here. That stays in the harness prompt, which is what `system_prompt`
 //! is left for.
 //!
-//! See `knowledge/harnesses/execution-environments.md`.
+//! See `knowledge/harnesses/sandbox-templates.md`.
 
 use crate::host::compute::{
     ComputeCapabilities, ComputeKind, Containment, ContainmentLevel, Durability, NetworkPolicy,
