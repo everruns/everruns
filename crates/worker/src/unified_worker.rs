@@ -243,7 +243,7 @@ where
 
         let driver = TurnTaskDriver::new(
             store.clone(),
-            WorkerTurnHost(adapters),
+            WorkerTurnHost::new(adapters),
             config.worker_id.clone(),
             config.heartbeat_interval,
         )

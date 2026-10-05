@@ -5,14 +5,18 @@
 //! `WorkerRuntimeHost` over its adapters, built fresh per step so each step
 //! starts its own setup reads (`phase_reads`) and flushes its own write-behind
 //! events, and runs the activities that are not turn steps: leased-resource
-//! cleanup, the session task reaper and scheduled invocations.
+//! cleanup, the session task reaper and scheduled invocations. The setup
+//! reads of a turn's phases share what earlier phases of the same turn read
+//! on this worker (`turn_reads`), until the turn ends.
 
 use crate::durable::ClaimedTask;
-use crate::engine::{ActInput, ReasonInput};
+use crate::durable_runner::DurableTurnInput;
+use crate::engine::{ActInput, ReasonInput, TurnPlan};
 use crate::phase_reads::PhaseIds;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_heartbeat::CancelSignals;
 use crate::turn_driver::TurnTaskHost;
+use crate::turn_reads::{TurnReads, TurnSlot};
 use crate::worker_adapters::WorkerAdapters;
 use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledChannelInput,
@@ -20,17 +24,41 @@ use crate::{
 };
 use anyhow::Result;
 use async_trait::async_trait;
+use std::sync::Arc;
+use uuid::Uuid;
 
 /// Worker adapters as the turn driver's host source.
 #[derive(Clone)]
-pub struct WorkerTurnHost<A: WorkerAdapters>(pub A);
+pub struct WorkerTurnHost<A: WorkerAdapters> {
+    adapters: A,
+    turns: Arc<TurnReads>,
+}
+
+impl<A: WorkerAdapters> WorkerTurnHost<A> {
+    pub fn new(adapters: A) -> Self {
+        Self {
+            adapters,
+            turns: Arc::default(),
+        }
+    }
+
+    fn turn(
+        &self,
+        org_id: Option<i64>,
+        session_id: Uuid,
+        input_message_id: Uuid,
+    ) -> Option<TurnSlot> {
+        let org_id = org_id?;
+        (!input_message_id.is_nil()).then(|| self.turns.slot(org_id, session_id, input_message_id))
+    }
+}
 
 #[async_trait]
 impl<A: WorkerAdapters> TurnTaskHost for WorkerTurnHost<A> {
     type Host = WorkerRuntimeHost<A>;
 
     fn host(&self) -> Self::Host {
-        WorkerRuntimeHost::new(self.0.clone())
+        WorkerRuntimeHost::new(self.adapters.clone())
     }
 
     /// A reason host with its setup reads already started. The reads depend
@@ -49,13 +77,49 @@ impl<A: WorkerAdapters> TurnTaskHost for WorkerTurnHost<A> {
             );
             metadata
         });
-        WorkerRuntimeHost::with_event_metadata(self.0.clone(), event_metadata)
-            .with_turn_cancellation(cancellation, cancel_requested)
-            .prefetching(PhaseIds::reason(input))
+        let mut host =
+            WorkerRuntimeHost::with_event_metadata(self.adapters.clone(), event_metadata)
+                .with_turn_cancellation(cancellation, cancel_requested);
+        if let Some(turn) = self.turn(
+            Some(input.org_id),
+            input.context.session_id.uuid(),
+            input.context.input_message_id.uuid(),
+        ) {
+            host = host.with_turn_reads(turn);
+        }
+        host.prefetching(PhaseIds::reason(input))
     }
 
     fn act_host(&self, input: &ActInput) -> Self::Host {
-        WorkerRuntimeHost::new(self.0.clone()).prefetching(PhaseIds::act(input))
+        let mut host = WorkerRuntimeHost::new(self.adapters.clone());
+        if let Some(turn) = self.turn(
+            input.org_id,
+            input.context.session_id.uuid(),
+            input.context.input_message_id.uuid(),
+        ) {
+            host = host.with_turn_reads(turn);
+        }
+        host.prefetching(PhaseIds::act(input))
+    }
+
+    /// A turn that completed or paused keeps nothing for its next phase.
+    async fn turn_planned(
+        &self,
+        checkpoint: &DurableTurnInput,
+        plan: &TurnPlan,
+        _output: &serde_json::Value,
+    ) -> Result<()> {
+        if matches!(
+            plan,
+            TurnPlan::Complete { .. } | TurnPlan::WaitForToolResults { .. }
+        ) {
+            self.turns.end(
+                checkpoint.org_id,
+                checkpoint.session_id.uuid(),
+                checkpoint.input_message_id.uuid(),
+            );
+        }
+        Ok(())
     }
 
     async fn phase_finished(&self, host: &Self::Host) {
@@ -63,7 +127,7 @@ impl<A: WorkerAdapters> TurnTaskHost for WorkerTurnHost<A> {
     }
 
     async fn execute_activity(&self, task: &ClaimedTask) -> Result<serde_json::Value> {
-        let adapters = &self.0;
+        let adapters = &self.adapters;
         match task.activity_type.as_str() {
             "leased_resource_cleanup" => {
                 let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
