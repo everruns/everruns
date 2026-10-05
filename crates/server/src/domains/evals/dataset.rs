@@ -5,11 +5,8 @@
 // each case's model-view messages, then calls into here to filter, redact, and
 // serialize one NDJSON record per surviving case.
 
-use std::sync::LazyLock;
-
 use crate::records::eval::{CaseResultStatus, EvalCaseResult, EvalRun};
 use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -99,36 +96,9 @@ const SECRET_KEY_SUBSTRINGS: [&str; 9] = [
     "authorization",
 ];
 
-/// High-signal credential patterns scrubbed from every exported string, always.
-/// Deliberately conservative to avoid mangling legitimate content.
-static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        // OpenAI / Anthropic style keys: sk-..., sk-ant-...
-        r"\bsk-[A-Za-z0-9_-]{16,}\b",
-        // AWS access key id
-        r"\bAKIA[0-9A-Z]{16}\b",
-        // GitHub tokens
-        r"\bgh[pousr]_[A-Za-z0-9]{20,}\b",
-        // Bearer tokens
-        r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}",
-        // key/secret/password/token assignments: api_key=..., "secret": "..."
-        r#"(?i)\b(api[_-]?key|secret|password|passwd|token|access[_-]?key)\b\s*["']?\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{6,}"#,
-    ]
-    .iter()
-    .map(|p| Regex::new(p).expect("valid secret regex"))
-    .collect()
-});
-
-pub(crate) const REDACTED: &str = "[REDACTED]";
-
-/// Scrub credential-looking substrings from a single string.
-pub fn scrub_secrets(input: &str) -> String {
-    let mut out = input.to_string();
-    for re in SECRET_PATTERNS.iter() {
-        out = re.replace_all(&out, REDACTED).into_owned();
-    }
-    out
-}
+// Value patterns live in contracts so the engine scrubs `tool.completed`
+// executed arguments with the same list (EVE-1216).
+pub use everruns_contracts::secret_scrub::{REDACTED, scrub_secrets};
 
 fn is_secret_key(key: &str) -> bool {
     let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
