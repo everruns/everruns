@@ -4,6 +4,10 @@ import { AgentImportDialog } from "@/components/agents/agent-import-dialog";
 import { inspectAgentPackage } from "@/lib/api/agents";
 import type { Agent } from "@/lib/api/types";
 
+jest.mock("@/components/chat/streamdown-message", () => ({
+  StreamdownMessage: ({ children }: { children: string }) => <div>{children}</div>,
+}));
+
 const mutateAsync = jest.fn();
 jest.mock("@/lib/api/agents", () => ({ inspectAgentPackage: jest.fn() }));
 jest.mock("@/hooks/use-agents", () => ({ useImportAgent: () => ({ mutateAsync }) }));
@@ -26,7 +30,11 @@ test("validation errors prevent importing", async () => {
 test("updates validate and show the diff before applying the same file", async () => {
   inspect.mockImplementation(async (_file, operation) =>
     operation === "validate"
-      ? { valid: true, diagnostics: [] }
+      ? {
+          valid: true,
+          diagnostics: [],
+          preview: { name: "triage", instructions: "New", capabilities: {}, files: {} },
+        }
       : { changes: [{ path: "/instructions", before: "Old", after: "New" }] },
   );
   mutateAsync.mockResolvedValue(agent);
@@ -37,7 +45,8 @@ test("updates validate and show the diff before applying the same file", async (
   );
   await waitFor(() => expect(screen.getByLabelText("Import destination")).toBeEnabled());
   fireEvent.change(screen.getByLabelText("Import destination"), { target: { value: "triage" } });
-  expect(await screen.findByText("instructions")).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("tab", { name: "Changes" }));
+  expect(screen.getByText("instructions")).toBeInTheDocument();
   expect(inspect).toHaveBeenCalledWith(file, "validate", "triage");
   expect(inspect).toHaveBeenCalledWith(file, "diff", "triage");
   fireEvent.click(screen.getByRole("button", { name: "Apply changes" }));
@@ -76,10 +85,20 @@ test("new imports preview instructions, destination defaults, root files, skills
   expect(await screen.findByRole("region", { name: "Agent preview" })).toBeInTheDocument();
   expect(screen.getByText("Read the runbook.")).toBeInTheDocument();
   expect(screen.getByText("Destination default model")).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: "Agent" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Source" }));
+  expect(screen.getByRole("button", { name: "Rendered" })).toHaveAttribute("aria-pressed", "true");
+  fireEvent.click(screen.getByRole("tab", { name: "Files" }));
+  expect(screen.queryByRole("region", { name: "Instructions" })).not.toBeInTheDocument();
   expect(screen.getByText("runbook.md")).toBeInTheDocument();
   expect(screen.getByText("11 B · Writable")).toBeInTheDocument();
   expect(screen.getByText("Skills: investigate")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Integrations" }));
   expect(screen.getByText("Disabled for new channels")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Settings" }));
+  expect(screen.getByText("Parallel tool calls")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Import$/ })).toBeEnabled();
   expect(mutateAsync).not.toHaveBeenCalled();
 });
 

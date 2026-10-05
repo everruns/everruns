@@ -22,11 +22,11 @@ Checks legacy Markdown, complete ZIP assets, destination diffs and invalid input
 
 ## Steps
 
-1. Open Agents, select the triage ZIP and wait for validation. Review instructions, model/harness defaults, files and permissions, skill names, MCP servers and channel intent.
+1. Open Agents, select the triage ZIP and wait for validation. Review the Agent header, rendered instructions and Source toggle, and model/harness defaults in the settings column. Open Files to review permissions and skills, Settings for MCP servers, and Integrations for channel intent. Confirm import actions remain visible when scrolling and at a narrow viewport.
 2. Confirm create is the default destination; import and inspect the Instructions pane. Repeat with the legacy Dad Jokes Markdown fixture.
 3. Export Markdown and a complete ZIP, and verify both can be imported again.
 4. Change the instructions in a copy, import it, and select the original agent as the destination.
-5. Inspect Current / Imported instructions and Added / Removed / Updated file changes before applying; confirm changed instructions persist after reload.
+5. Open Changes. Inspect Current / Imported instructions and Added / Removed / Updated file changes before applying; confirm changed instructions persist after reload.
 6. Import a malformed definition and confirm a useful diagnostic appears with Import disabled.
 7. Import a ZIP of the triage folder and inspect its initial files, including the skill script.
 8. Compare that exported ZIP with its agent and confirm no semantic changes.
