@@ -4,8 +4,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::typed_id::SessionId;
 pub use everruns_core::engine::TurnState as DurableTurnInput;
 use everruns_durable::{
     DurableAdmin, EventLog, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, SignalStore,
@@ -15,8 +14,6 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 use uuid::Uuid;
-
-use crate::runner::AgentRunner;
 
 #[async_trait]
 pub trait DurableTaskNotifier: Send + Sync {
@@ -87,6 +84,20 @@ pub trait DurableStoreBackend: Send + Sync {
     async fn send_signal(&mut self, workflow_id: Uuid, signal: WorkflowSignal) -> Result<()>;
 
     async fn get_and_consume_signals(&mut self, workflow_id: Uuid) -> Result<Vec<WorkflowSignal>>;
+
+    /// The output the workflow's latest `WorkflowCompleted` event recorded.
+    ///
+    /// A [`DurableRunner`] turn ticket reads it to fill in the turn's
+    /// response and stop reason. The default returns `None`, for a store
+    /// without a cheap event-log read; the ticket then falls back to the
+    /// turn checkpoint (see [`crate::turn_backend`]).
+    async fn latest_completion_output(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        let _ = workflow_id;
+        Ok(None)
+    }
 }
 
 /// Direct database store for control-plane use.
@@ -264,6 +275,13 @@ impl DurableStoreBackend for DirectDurableStore {
             .await
             .map_err(Into::into)
     }
+
+    async fn latest_completion_output(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        crate::turn_backend::latest_completion_output(&self.store, workflow_id).await
+    }
 }
 
 #[async_trait]
@@ -416,13 +434,23 @@ impl DurableStoreBackend for InMemoryDurableStore {
             .await
             .map_err(Into::into)
     }
+
+    async fn latest_completion_output(
+        &mut self,
+        workflow_id: Uuid,
+    ) -> Result<Option<serde_json::Value>> {
+        crate::turn_backend::latest_completion_output(&*self.store, workflow_id).await
+    }
 }
 
 /// Durable execution engine based runner.
 ///
 /// This runner maps runtime turn state onto the durable engine.
+/// It implements [`TurnBackend`](everruns_core::host::TurnBackend) (see
+/// [`crate::turn_backend`]); its [`AgentRunner`](crate::AgentRunner)
+/// methods are a shim over that implementation.
 pub struct DurableRunner {
-    store: Arc<Mutex<dyn DurableStoreBackend>>,
+    pub(crate) store: Arc<Mutex<dyn DurableStoreBackend>>,
     task_notifier: Option<Arc<dyn DurableTaskNotifier>>,
 }
 
@@ -483,238 +511,18 @@ impl DurableRunner {
         self
     }
 
-    async fn notify_task_available(&self, activity_type: &str) {
+    pub(crate) async fn notify_task_available(&self, activity_type: &str) {
         if let Some(task_notifier) = &self.task_notifier {
             task_notifier.notify_task_available(activity_type).await;
         }
     }
 }
 
-#[async_trait]
-impl AgentRunner for DurableRunner {
-    async fn start_run(
-        &self,
-        org_id: i64,
-        session_id: SessionId,
-        harness_id: HarnessId,
-        agent_id: Option<AgentId>,
-        input_message_id: MessageId,
-        request_id: Option<String>,
-    ) -> Result<()> {
-        info!(
-            org_id,
-            session_id = %session_id,
-            harness_id = %harness_id,
-            ?agent_id,
-            input_message_id = %input_message_id,
-            "starting durable turn workflow"
-        );
-
-        let input = DurableTurnInput {
-            org_id,
-            session_id,
-            harness_id,
-            agent_id,
-            input_message_id,
-            turn_id: None,
-            previous_response_id: None,
-            iteration: 1,
-            request_id,
-            started_at: Some(Utc::now()),
-            cumulative_usage: None,
-            tool_call_count: 0,
-            llm_call_count: 0,
-            time_to_first_token_ms: None,
-            final_message_id: None,
-            final_answer_preview: None,
-        };
-        let workflow_id = session_id.uuid();
-        let input_json = serde_json::to_value(&input)?;
-        let notify_activity = {
-            let mut store = self.store.lock().await;
-
-            match store.try_claim_workflow_for_new_turn(workflow_id).await {
-                Ok(true) => {
-                    if let Err(error) = store
-                        .enqueue_task(
-                            workflow_id,
-                            format!("input_{}", Uuid::now_v7()),
-                            "process_input".to_string(),
-                            input_json,
-                        )
-                        .await
-                    {
-                        let _ = store
-                            .update_workflow_status(
-                                workflow_id,
-                                WorkflowStatus::Completed,
-                                None,
-                                None,
-                            )
-                            .await;
-                        return Err(anyhow::anyhow!("Failed to enqueue task: {error}"));
-                    }
-                    Some("process_input")
-                }
-                Ok(false) => {
-                    let signal = WorkflowSignal::new(
-                        crate::durable_turn::USER_MESSAGE,
-                        serde_json::json!({
-                            "input_message_id": input_message_id.to_string(),
-                            "org_id": org_id,
-                            "harness_id": harness_id.to_string(),
-                            "agent_id": agent_id.map(|id| id.to_string()),
-                        }),
-                    );
-                    if let Err(error) = store.send_signal(workflow_id, signal).await {
-                        tracing::warn!(
-                            session_id = %session_id,
-                            %error,
-                            "failed to send steering signal"
-                        );
-                    }
-                    None
-                }
-                Err(error) => {
-                    let err = error.to_string();
-                    if !err.contains("not found") && !err.contains("NOT_FOUND") {
-                        return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
-                    }
-
-                    let activity_id = format!("input_{}", Uuid::now_v7());
-                    store
-                        .start_workflow_with_task(
-                            workflow_id,
-                            "turn_workflow",
-                            input_json,
-                            activity_id.clone(),
-                            "process_input".to_string(),
-                        )
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to start workflow: {e}"))?;
-
-                    Some("process_input")
-                }
-            }
-        };
-
-        if let Some(activity_type) = notify_activity {
-            self.notify_task_available(activity_type).await;
-        }
-
-        Ok(())
-    }
-
-    async fn resume_after_tool_results(
-        &self,
-        session_id: SessionId,
-        resolution_id: Uuid,
-    ) -> Result<()> {
-        let workflow_id = session_id.uuid();
-        let mut store = self.store.lock().await;
-
-        let (status, result_json, _) = store
-            .get_workflow_status(workflow_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to get workflow status: {e}"))?;
-
-        let saved_value = result_json.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Cannot resume: workflow {workflow_id} has no saved turn input in result"
-            )
-        })?;
-        let turn_input: DurableTurnInput = serde_json::from_value(saved_value)
-            .map_err(|e| anyhow::anyhow!("Failed to parse saved turn input: {e}"))?;
-
-        let input_json = serde_json::to_value(&turn_input)?;
-        match status {
-            WorkflowStatus::Completed => {
-                store
-                    .update_workflow_status(
-                        workflow_id,
-                        WorkflowStatus::Pending,
-                        Some(serde_json::to_value(&turn_input)?),
-                        None,
-                    )
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to reset workflow status: {e}"))?;
-            }
-            WorkflowStatus::Pending | WorkflowStatus::Running => {}
-            _ => {
-                return Err(anyhow::anyhow!(
-                    "Cannot resume workflow {workflow_id} from status {status:?}"
-                ));
-            }
-        }
-
-        if let Err(error) = store
-            .enqueue_task(
-                workflow_id,
-                crate::durable_turn::waiting_turn_resolution_activity_id(resolution_id),
-                "reason".to_string(),
-                input_json,
-            )
-            .await
-        {
-            let _ = store
-                .update_workflow_status(
-                    workflow_id,
-                    WorkflowStatus::Completed,
-                    Some(serde_json::to_value(&turn_input).unwrap_or_default()),
-                    None,
-                )
-                .await;
-            return Err(anyhow::anyhow!("Failed to enqueue reason task: {error}"));
-        }
-        drop(store);
-        self.notify_task_available("reason").await;
-
-        Ok(())
-    }
-
-    async fn cancel_run(&self, session_id: SessionId) -> Result<()> {
-        let workflow_id = session_id.uuid();
-        let mut store = self.store.lock().await;
-        store
-            .cancel_pending_tasks(workflow_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to cancel pending workflow tasks: {e}"))?;
-        let message = "User requested cancellation".to_string();
-        let output = DurableTurnOutput {
-            session_id,
-            success: false,
-            error: Some(message.clone()),
-            stop_reason: everruns_core::turn::TurnStopReason::Cancelled,
-        };
-        store
-            .update_workflow_status(
-                workflow_id,
-                WorkflowStatus::Cancelled,
-                Some(serde_json::to_value(output)?),
-                Some(message),
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to cancel workflow: {e}"))
-    }
-
-    async fn is_running(&self, session_id: SessionId) -> bool {
-        let workflow_id = session_id.uuid();
-        let mut store = self.store.lock().await;
-        match store.get_workflow_status(workflow_id).await {
-            Ok((status, _, _)) => !status.is_terminal(),
-            Err(_) => false,
-        }
-    }
-
-    async fn active_count(&self) -> usize {
-        let mut store = self.store.lock().await;
-        store.count_active_workflows().await.unwrap_or_default()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::AgentRunner;
+    use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId};
     use everruns_durable::WorkerRegistry;
 
     #[derive(Default)]

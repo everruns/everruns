@@ -12,7 +12,9 @@
 //!   not separate methods: in process both continue a turn on the caller's
 //!   behalf exactly as a new message starts one. The worker's
 //!   `resume_after_tool_results(resolution_id)` reads a persisted resolution
-//!   instead, so it joins as its own input variant with the durable backend.
+//!   instead, so it joins as its own input variant with the durable backend:
+//!   the doc-hidden [`TurnInput::Persisted`], which only a durable backend
+//!   serves. [`InProcessBackend`] rejects it.
 //! - Crash recovery (`recover`) is left out: the in-process runtime keeps no
 //!   queue to recover from, and an interrupted turn is already resumed per
 //!   session through [`TurnInput::ResumeInterrupted`].
@@ -30,8 +32,9 @@ use std::task::{Context, Poll};
 
 use async_trait::async_trait;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{SessionId, TurnId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use super::runtime::{AcceptedTurnInput, InProcessRuntime, TurnResult, TurnSteering};
 use crate::events::ToolCompletedData;
@@ -121,6 +124,42 @@ pub enum TurnInput {
     /// Client-side tool results continue the turn that parked on them (see
     /// [`InProcessRuntime::resume_steerable_turn`]).
     ToolResults(Vec<ToolCompletedData>),
+    /// Input the platform server already persisted: a stored message, or a
+    /// stored client-side tool resolution.
+    ///
+    /// Not part of the framework surface: it exists so the server's
+    /// `AgentRunner` can run on a durable backend through this seam. Only a
+    /// durable backend serves it; [`InProcessBackend`] rejects it.
+    #[doc(hidden)]
+    Persisted(Box<PersistedTurn>),
+}
+
+/// What [`TurnInput::Persisted`] carries: a reference to input the platform
+/// server already stored, plus the routing a durable turn needs.
+///
+/// Not part of the framework surface; see [`TurnInput::Persisted`].
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PersistedTurn {
+    /// A stored message starts the turn, or joins the running one as steering.
+    Message {
+        /// The organization the session belongs to.
+        org_id: i64,
+        /// The harness the session runs.
+        harness_id: HarnessId,
+        /// The agent the session runs, when it has one.
+        agent_id: Option<AgentId>,
+        /// The stored message that starts the turn.
+        input_message_id: MessageId,
+        /// The request that caused the turn, for correlation.
+        request_id: Option<String>,
+    },
+    /// A stored client-side tool resolution continues the turn that parked
+    /// waiting for it.
+    ToolResolution {
+        /// The stored resolution's id.
+        resolution_id: Uuid,
+    },
 }
 
 /// A turn to run: which session, under which id, from which input.
@@ -291,6 +330,14 @@ impl Drop for Registration {
     }
 }
 
+/// The in-process runtime has no server store to read persisted input from.
+fn persisted_unsupported() -> AgentLoopError {
+    AgentLoopError::config(
+        "the in-process backend cannot run TurnInput::Persisted; \
+         it reads server-persisted input only a durable backend serves",
+    )
+}
+
 #[async_trait]
 impl TurnBackend for InProcessBackend {
     async fn start_turn(&self, request: TurnRequest) -> Result<TurnTicket> {
@@ -300,6 +347,9 @@ impl TurnBackend for InProcessBackend {
             input,
             steering,
         } = request;
+        if matches!(input, TurnInput::Persisted(_)) {
+            return Err(persisted_unsupported());
+        }
         let cancel = CancellationToken::new();
         let registration = {
             let mut turns = self.turns();
@@ -340,6 +390,7 @@ impl TurnBackend for InProcessBackend {
                         .resume_steerable_turn(session_id, results, steering)
                         .await
                 }
+                TurnInput::Persisted(_) => Err(persisted_unsupported()),
             }
         };
         let completion = async move {

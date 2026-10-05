@@ -9,8 +9,8 @@ use std::time::Duration;
 use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_core::host::{
-    AcceptedTurnInput, HostBackends, InProcessBackend, TurnBackend, TurnInput, TurnRequest,
-    TurnTicket,
+    AcceptedTurnInput, HostBackends, InProcessBackend, PersistedTurn, TurnBackend, TurnInput,
+    TurnRequest, TurnTicket,
 };
 use everruns_core::turn::TurnStopReason;
 
@@ -176,4 +176,29 @@ async fn resuming_without_a_parked_turn_fails_through_the_ticket() {
         result.expect("turn completes").stop_reason,
         TurnStopReason::Cancelled
     );
+}
+
+#[tokio::test]
+async fn server_persisted_input_is_rejected_in_process() {
+    let (backend, session_id) = backend(Model::simulated("Sure.")).await;
+    let error = backend
+        .start_turn(TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::Persisted(Box::new(PersistedTurn::ToolResolution {
+                resolution_id: uuid::Uuid::now_v7(),
+            })),
+        ))
+        .await
+        .expect_err("only a durable backend reads server-persisted input");
+    assert!(matches!(error, AgentLoopError::Configuration(_)), "{error}");
+    assert!(error.to_string().contains("Persisted"), "{error}");
+    assert!(!backend.is_running(session_id).await);
+    assert_eq!(backend.active_count().await, 0);
+
+    // The rejection registered nothing, so the session still takes a turn.
+    start(&backend, session_id, "hi")
+        .await
+        .await
+        .expect("turn completes");
 }

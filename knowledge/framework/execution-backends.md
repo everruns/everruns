@@ -11,8 +11,9 @@ tags:
 
 # Execution Backends
 
-**Status: experimental.** The seam exists and the facade runs on it; only the
-in-process backend implements it so far.
+**Status: experimental.** The seam exists and the facade runs on it. The
+in-process backend implements it in full; the server's `DurableRunner`
+implements it for server-persisted input only.
 
 ## Problem
 
@@ -61,9 +62,10 @@ durably.
 
 Deliberately absent for now: a separate `resume_after_tool_results(resolution_id)`
 and a crash `recover()`. The worker resumes from a persisted resolution id the
-in-process path has no store for, and the in-process runtime keeps no queue to
-recover. Both join with the durable backend, as an input variant and a method,
-once a second implementation needs them.
+in-process path has no store for, so it is a doc-hidden `Persisted` input
+variant instead, which the in-process backend rejects. The in-process runtime
+keeps no queue to recover; `recover()` joins with the facade's durable backend
+if it needs one.
 
 ### The default: in process
 
@@ -96,6 +98,22 @@ and any activities that are not turn steps. The worker keeps only its poll
 loop, registration and configuration, and supplies `WorkerRuntimeHost` plus
 its cleanup, reaper and scheduled activities; a test drives a whole tool turn
 through the driver on the memory store with the in-process runtime as host.
+
+### The server's runner on the seam
+
+[`DurableRunner`](../../crates/durable-engine/src/turn_backend.rs) implements
+`TurnBackend`, and the server's `AgentRunner` is a shim over it until the
+server calls the seam directly. It serves only server-persisted input: a stored
+message (which steers the running workflow, as the server always did, rather
+than failing as a second turn) and a stored tool resolution. Unpersisted
+messages, client-side tool results and interrupted-turn resumption fail until
+the facade's durable backend persists them itself.
+
+The workflow starts before `start_turn` returns, so a dropped ticket changes
+nothing. The ticket polls the workflow status until it ends (polling first; a
+notifier once several processes wait on tickets) and maps the end to a turn
+result: a parked turn reads as a completed one, as in process, and a cancelled
+workflow resolves as cancelled.
 
 ### Queue plus per-step checkpoint, not Workflow replay
 
