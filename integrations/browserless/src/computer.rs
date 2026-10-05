@@ -34,9 +34,9 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 
 use everruns_contracts::runtime::computer_use::{
-    COMPUTER_USE_CAPABILITY_ID, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction, ComputerBackend,
-    ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier, MouseButton,
-    Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
+    COMPUTER_TOOL_NAME, COMPUTER_USE_CAPABILITY_ID, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
+    ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
+    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
 };
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_hooks::PreToolUseHook;
@@ -618,6 +618,13 @@ impl everruns_contracts::runtime::capabilities::Capability for BrowserlessComput
 
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["session_storage"]
+    }
+
+    fn exclusive_group(&self) -> Option<&'static str> {
+        // One display per agent: every computer-use backend provides the
+        // `computer` tool, so enabling two is rejected rather than letting
+        // the last one silently win.
+        Some(COMPUTER_TOOL_NAME)
     }
 
     fn features(&self) -> Vec<&'static str> {

@@ -504,6 +504,41 @@ pub async fn collect_capabilities_with_configs(
     registry: &CapabilityRegistry,
     ctx: &SystemPromptContext,
 ) -> CollectedCapabilities {
+    // Write paths reject capabilities sharing an exclusive group, and
+    // dependency resolution fails on them. Stored config that predates that
+    // check can still reach here through a resolution fallback: drop every
+    // member of the group rather than let the last one's tool silently win.
+    let without_conflicts: Vec<AgentCapabilityConfig>;
+    let capability_configs = match find_exclusive_conflict(
+        &capability_configs
+            .iter()
+            .map(|config| config.capability_id())
+            .collect::<Vec<_>>(),
+        registry,
+    ) {
+        Some(DependencyError::ExclusiveConflict {
+            group,
+            capabilities,
+        }) => {
+            tracing::error!(
+                %group,
+                ?capabilities,
+                "conflicting capabilities enabled together; none of them is applied"
+            );
+            without_conflicts = capability_configs
+                .iter()
+                .filter(|config| {
+                    registry
+                        .get(config.capability_id())
+                        .and_then(|cap| cap.exclusive_group())
+                        != Some(group.as_str())
+                })
+                .cloned()
+                .collect();
+            &without_conflicts[..]
+        }
+        _ => capability_configs,
+    };
     let mut system_prompt_parts: Vec<String> = Vec::new();
     let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut conversation_context_parts: Vec<String> = Vec::new();

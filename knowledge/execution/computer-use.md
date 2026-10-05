@@ -144,7 +144,11 @@ the first screenshot tool the template has, read back as PNG bytes and checked
 against the display size. It is a separate capability, `computer_use_desktop`,
 rather than a backend switch on `computer_use`, because each backend lives in
 its provider's integration crate and neither crate depends on the other. Both
-contribute the `computer` tool, so an agent enables one.
+contribute the `computer` tool, so they declare the same
+`Capability::exclusive_group`: dependency resolution, capability write paths,
+and session creation (across harness, agent, and session layers) reject the
+pair with an error naming both, instead of the last one's tool silently
+winning. Stored config that predates the check applies neither.
 
 - **E2B over Daytona.** The desktop template already carries Xvfb, xdotool and
   a desktop session, and envd's process API takes an argv. Daytona would need a

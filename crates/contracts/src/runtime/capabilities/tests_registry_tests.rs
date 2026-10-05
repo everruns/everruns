@@ -785,6 +785,83 @@ fn test_circular_dependency_error() {
 }
 
 // =========================================================================
+// Exclusive groups (two computer-use backends must not both apply)
+// =========================================================================
+
+struct DisplayCap(&'static str);
+
+impl Capability for DisplayCap {
+    fn id(&self) -> &str {
+        self.0
+    }
+    fn name(&self) -> &str {
+        "Display"
+    }
+    fn description(&self) -> &str {
+        "Provides the computer tool"
+    }
+    fn exclusive_group(&self) -> Option<&'static str> {
+        Some("computer")
+    }
+}
+
+fn display_registry() -> CapabilityRegistry {
+    let mut registry = fixture_registry();
+    registry.register(DisplayCap("display_browser"));
+    registry.register(DisplayCap("display_desktop"));
+    registry
+}
+
+#[test]
+fn exclusive_group_members_cannot_be_resolved_together() {
+    let registry = display_registry();
+    let err = resolve_dependencies(
+        &[
+            "display_browser".to_string(),
+            "current_time".to_string(),
+            "display_desktop".to_string(),
+        ],
+        &registry,
+    )
+    .unwrap_err();
+    assert_eq!(
+        err,
+        DependencyError::ExclusiveConflict {
+            group: "computer".to_string(),
+            capabilities: vec!["display_browser".to_string(), "display_desktop".to_string()],
+        }
+    );
+    let message = err.to_string();
+    assert!(
+        message.contains("'display_browser' and 'display_desktop'")
+            && message.contains("cannot be enabled together"),
+        "{message}"
+    );
+
+    // One member alone, or the same one twice, is fine.
+    assert!(
+        resolve_dependencies(
+            &["display_desktop".to_string(), "display_desktop".to_string()],
+            &registry
+        )
+        .is_ok()
+    );
+    assert!(find_exclusive_conflict(&["display_browser", "current_time"], &registry).is_none());
+}
+
+#[tokio::test]
+async fn collect_drops_every_member_of_a_conflicting_group() {
+    let registry = display_registry();
+    let configs: Vec<AgentCapabilityConfig> =
+        ["current_time", "display_browser", "display_desktop"]
+            .into_iter()
+            .map(|id| AgentCapabilityConfig::new(CapabilityId::new(id)))
+            .collect();
+    let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+    assert_eq!(collected.applied_ids, vec!["current_time".to_string()]);
+}
+
+// =========================================================================
 // Message filter provider tests
 // =========================================================================
 

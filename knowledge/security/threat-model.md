@@ -1791,7 +1791,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate channel-owned native
 | TM-TOOL-045 | No per-server elicitation opt-in | Medium | Per-server `elicitation_policy`, defaulting to URL mode only |
 | TM-TOOL-046 | Hostile `requestedSchema` exhausts the person or the client | Medium | Bound property and enum counts; refuse rather than trim |
 | TM-TOOL-047 | Empty `accept` read as an answer nobody gave | Medium | Decline on unattended, timeout or dismissal; never partial accept |
-| TM-TOOL-048 | On-screen content steers a computer-use agent | High | Input-committing actions and provider safety checks are hard-gated per call (EVE-1133); clicks still rely on the untrusted-screen prompt and opt-in `tool_approval`, so computer use stays experimental |
+| TM-TOOL-048 | On-screen content steers a computer-use agent | High | Soft approval only (EVE-1133, aligned with TM-TOOL-008): the untrusted-screen prompt's stop-and-ask rule plus `open_world` for opt-in `tool_approval`; no per-call hard gate, so computer use stays experimental |
 | ~~TM-AGENT-018~~ | ~~No outbound URL filtering on web_fetch~~ | ~~Medium~~ | Mitigated: `NetworkAccessList` layers + system allowlist enforced at the egress boundary; outbound call audit logging still open |
 
 ### Accepted Risks

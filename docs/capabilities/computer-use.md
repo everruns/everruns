@@ -79,11 +79,11 @@ Screenshots are billed as image tokens. A smaller display, or turning off
   `soft_approval` capability when you want those confirmations recorded, and
   the [`tool_approval`](/capabilities/tool-approval/) capability when a person
   must approve every `computer` call before it runs.
-- **Approval before committing input.** In hosted sessions, a `computer` call
-  that types text, presses Enter, or navigates waits for a person to approve
-  that exact call, and so does a call the provider flags with a safety check.
-  The request appears in the session like any other tool approval. Clicks,
-  scrolling, and screenshots run without asking.
+- **Soft approval, no built-in hard gate.** No `computer` call waits for a
+  person by default, whether it clicks, types, presses Enter, navigates, or
+  carries a provider safety check. Approval rests on the stop-and-ask rule
+  above, recorded with `soft_approval`. Add `tool_approval` when every call
+  must be approved before it runs.
 - **Keep credentials out of reach.** Do not give a computer-use agent a browser
   that is signed in to accounts it should not use.
 - **Egress.** `navigate` refuses private and internal addresses and follows the
@@ -110,5 +110,7 @@ the same configuration as `computer_use`.
 - The desktop has the E2B sandbox's network access, the same as
   `e2b_create_sandbox`. The session's network access list does not apply
   inside it.
-- Enable either `computer_use` or `computer_use_desktop` on an agent, not both:
-  they share the `computer` tool.
+- `computer_use` and `computer_use_desktop` cannot be combined: both provide
+  the `computer` tool. Saving an agent, harness, or session with both, or
+  starting a session whose harness, agent, and session add up to both, fails
+  with an error naming the two capabilities.

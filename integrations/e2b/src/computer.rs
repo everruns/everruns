@@ -41,9 +41,9 @@ use tracing::warn;
 use everruns_contracts::runtime::LEASED_RESOURCES_FEATURE;
 use everruns_contracts::runtime::capabilities::{Capability, CapabilityStatus, RiskLevel};
 use everruns_contracts::runtime::computer_use::{
-    COMPUTER_USE_DISPLAY_KV_PREFIX, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction, ComputerBackend,
-    ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier, MouseButton,
-    Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
+    COMPUTER_TOOL_NAME, COMPUTER_USE_DISPLAY_KV_PREFIX, COMPUTER_USE_SYSTEM_PROMPT, ComputerAction,
+    ComputerBackend, ComputerSession, ComputerTool, ComputerUseConfig, DisplaySize, Modifier,
+    MouseButton, Screenshot, ScrollDirection, parse_key_combo, parse_modifiers,
 };
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_hooks::PreToolUseHook;
@@ -667,8 +667,8 @@ impl Capability for E2BDesktopComputerUseCapability {
         "Let the agent see and operate a full Linux desktop in an E2B sandbox the way a person \
          does: it takes screenshots and clicks, types, scrolls, and presses keys at screen \
          coordinates, in any desktop app. Works with any model that accepts images. The sandbox \
-         has E2B's network access, not the session's network access list. Enable either this or \
-         Computer Use, not both: they share the `computer` tool."
+         has E2B's network access, not the session's network access list. Cannot be combined with \
+         Computer Use: both provide the `computer` tool."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -725,6 +725,13 @@ impl Capability for E2BDesktopComputerUseCapability {
 
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["session_storage"]
+    }
+
+    fn exclusive_group(&self) -> Option<&'static str> {
+        // One display per agent: every computer-use backend provides the
+        // `computer` tool, so enabling two is rejected rather than letting
+        // the last one silently win.
+        Some(COMPUTER_TOOL_NAME)
     }
 
     fn features(&self) -> Vec<&'static str> {
