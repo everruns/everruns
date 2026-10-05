@@ -90,15 +90,7 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
         .sanitize_errors(false);
 
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
-        // THREAT[TM-MCP-002]: MCP `query` must not expose mutating server
-        // tools. Read-only classification is backed by inventory tests.
-        let meta = (desc.meta)();
-        if !exposed_to_scripting(&meta) {
-            continue;
-        }
-        if mode == ToolsetMode::ReadOnly
-            && (!(desc.read_only)() || excluded_from_read_only_query(meta.name))
-        {
+        if !allowed_in(desc, mode) {
             continue;
         }
         let def = command_descriptor_to_def(desc);
@@ -109,52 +101,56 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
         builder = builder.async_tool_fn(def, callback);
     }
 
-    builder = builder.async_tool_fn(help_tool_def(), make_help_callback());
+    // The noun-verb spelling, resolved by the mapper every surface shares.
+    builder = builder.builtin(
+        super::cli_tree::ROOT,
+        Box::new(super::command_line::EverrunsBuiltin {
+            mapper: super::cli_tree::mapper(),
+            ctx,
+            mode,
+        }),
+    );
 
     builder.build()
 }
 
-/// `everruns_help` renders the noun-verb tree. The rewriter emits it for every
-/// help or unresolved invocation, and a caller may run it directly.
-pub(crate) fn help_tool_def() -> ToolDef {
-    ToolDef::new(
-        super::cli_tree::HELP_BUILTIN,
-        "Show commands available under an `everruns` tree path, or the flags of one command.",
-    )
-    .with_schema(serde_json::json!({
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "description": "Tree path, e.g. \"agents\" or \"agents versions list\". Empty lists the top level."
-            },
-            "unknown": {
-                "type": "string",
-                "description": "Reserved for the rewriter: the unrecognized word to report."
-            }
-        },
-        "additionalProperties": false
-    }))
-    .with_category("system")
+/// THREAT[TM-MCP-002]: MCP `query` must not expose mutating server tools.
+/// Read-only classification is backed by inventory tests. One rule for flat
+/// builtins and the `everruns` builtin alike.
+fn allowed_in(desc: &crate::domains::common::CommandDescriptor, mode: ToolsetMode) -> bool {
+    let meta = (desc.meta)();
+    exposed_to_scripting(&meta)
+        && (mode == ToolsetMode::Full
+            || ((desc.read_only)() && !excluded_from_read_only_query(meta.name)))
 }
 
-pub(crate) fn make_help_callback()
--> impl Fn(ToolArgs) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send>>
-+ Send
-+ Sync
-+ 'static {
-    move |args: ToolArgs| {
-        Box::pin(async move {
-            let path = args.param_str("path").unwrap_or_default().to_string();
-            let unknown = args.param_str("unknown").map(ToOwned::to_owned);
-            // A leaf's help is its own parser's, rendered from the contract
-            // both surfaces share. This host cannot reach clap to *parse* —
-            // ScriptedTool consumes argv before a builtin sees it — but help
-            // needs no argv, so a command is described here in exactly the
-            // words `everruns-cli` describes it in.
-            super::cli_tree::render_help(super::cli_tree::tree(), &path, unknown.as_deref())
-        })
-    }
+/// The command a scripted toolset in `mode` may run under `name`.
+pub(crate) fn scripted_descriptor(
+    name: &str,
+    mode: ToolsetMode,
+) -> Option<&'static crate::domains::common::CommandDescriptor> {
+    inventory::iter::<crate::domains::common::CommandDescriptor>
+        .into_iter()
+        .find(|desc| (desc.meta)().name == name && allowed_in(desc, mode))
+}
+
+/// One command through the scripted pipeline, rendered for a shell.
+pub(crate) async fn run_for_shell(
+    desc: &'static crate::domains::common::CommandDescriptor,
+    mut params: serde_json::Value,
+    ctx: &CatalogContext,
+) -> Result<String, String> {
+    // Schema rewriting in `bashkit_inventory_schema` advertises array and
+    // object fields as `string` so bashkit's parser accepts JSON text on the
+    // command line. Translate them back here so the domain dispatcher sees the
+    // structured value it expects.
+    let original_schema = (desc.param_schema)();
+    normalize_and_validate_params(&original_schema, &mut params)?;
+    coerce_json_text_params(&original_schema, &mut params)?;
+    let result = (desc.dispatch)(params, &ctx.to_domain_ctx())
+        .await
+        .map_err(|error| format_dispatch_error(&error))?;
+    decorate_command_output(&result, &ctx.link_builder)
 }
 
 fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -> ToolDef {
@@ -735,22 +731,8 @@ fn make_inventory_callback(
 + Sync
 + 'static {
     move |args: ToolArgs| {
-        let mut params = args.params;
-        let domain_ctx = ctx.to_domain_ctx();
-        let link_builder = ctx.link_builder.clone();
-        Box::pin(async move {
-            // Schema rewriting in `bashkit_inventory_schema` advertises array
-            // and object fields as `string` so bashkit's parser accepts JSON
-            // text on the command line. Translate them back here so the
-            // domain dispatcher sees the structured value it expects.
-            let original_schema = (desc.param_schema)();
-            normalize_and_validate_params(&original_schema, &mut params)?;
-            coerce_json_text_params(&original_schema, &mut params)?;
-            let result = (desc.dispatch)(params, &domain_ctx)
-                .await
-                .map_err(|error| format_dispatch_error(&error))?;
-            decorate_command_output(&result, &link_builder)
-        })
+        let ctx = ctx.clone();
+        Box::pin(async move { run_for_shell(desc, args.params, &ctx).await })
     }
 }
 

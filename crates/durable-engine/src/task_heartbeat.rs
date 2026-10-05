@@ -14,12 +14,12 @@ use tokio::sync::{oneshot, watch};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-use crate::unified_worker::TaskStore;
+use crate::task_store::TaskStore;
 
 /// `(task cancellation, turn cancel)`.
-pub(crate) type CancelSignals = (watch::Receiver<bool>, watch::Receiver<bool>);
+pub type CancelSignals = (watch::Receiver<bool>, watch::Receiver<bool>);
 
-pub(crate) fn spawn_task_heartbeat<S: TaskStore>(
+pub fn spawn_task_heartbeat<S: TaskStore>(
     store: Arc<S>,
     task_id: Uuid,
     worker_id: String,

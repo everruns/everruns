@@ -20,10 +20,8 @@ use crate::host::{
     advance_host_execution, execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
-use crate::phase_reads::PhaseIds;
-use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_heartbeat::CancelSignals;
-use crate::worker_adapters::WorkerAdapters;
+use crate::turn_driver::TurnTaskHost;
 use anyhow::Result;
 use everruns_contracts::typed_id::{ExecId, TurnId};
 use tracing::debug;
@@ -34,21 +32,21 @@ use uuid::Uuid;
 /// Returns the reason's output with the turn state it ran from. That state
 /// carries the turn id once the input succeeded, so a failure in the reason
 /// can still fail the turn by id.
-pub(crate) async fn execute_turn_start<A: WorkerAdapters>(
-    adapters: &A,
+pub(crate) async fn execute_turn_start<H: TurnTaskHost>(
+    hosts: &H,
     input: &DurableTurnInput,
     task_id: Uuid,
     cancel: CancelSignals,
 ) -> (Result<serde_json::Value>, DurableTurnInput) {
     let turn_id = turn_id_for(input, task_id);
     // Start the reason's setup reads now so they overlap the input.
-    let reason_host = reason_host(adapters, input, cancel, turn_id);
+    let reason_host = reason_host(hosts, input, cancel, turn_id);
 
-    let checkpoint = match plan_first_reason(adapters, input, turn_id).await {
+    let checkpoint = match plan_first_reason(hosts, input, turn_id).await {
         Ok(checkpoint) => checkpoint,
         Err(error) => return (Err(error), input.clone()),
     };
-    let output = run_reason(reason_host, &checkpoint).await;
+    let output = run_reason(hosts, reason_host, &checkpoint).await;
     (output, checkpoint)
 }
 
@@ -59,15 +57,15 @@ fn turn_id_for(input: &DurableTurnInput, task_id: Uuid) -> TurnId {
 }
 
 /// Run the input step and plan the reason that follows it.
-async fn plan_first_reason<A: WorkerAdapters>(
-    adapters: &A,
+async fn plan_first_reason<H: TurnTaskHost>(
+    hosts: &H,
     input: &DurableTurnInput,
     turn_id: TurnId,
 ) -> Result<DurableTurnInput> {
-    let input_output = execute_input_activity(adapters, input, turn_id).await?;
+    let input_output = execute_input_activity(hosts, input, turn_id).await?;
     let mut execution = crate::DurableExecution::new(input.clone());
     let plan = advance_host_execution(
-        &WorkerRuntimeHost::new(adapters.clone()),
+        &hosts.host(),
         &mut execution,
         "process_input",
         &input_output,
@@ -83,8 +81,8 @@ async fn plan_first_reason<A: WorkerAdapters>(
 }
 
 /// Execute the input step of a turn.
-async fn execute_input_activity<A: WorkerAdapters>(
-    adapters: &A,
+async fn execute_input_activity<H: TurnTaskHost>(
+    hosts: &H,
     input: &DurableTurnInput,
     turn_id: TurnId,
 ) -> Result<serde_json::Value> {
@@ -99,12 +97,9 @@ async fn execute_input_activity<A: WorkerAdapters>(
         input_message_id: input.input_message_id,
         exec_id: ExecId::new(),
     };
-    let result = runtime_execute_input_activity(
-        &WorkerRuntimeHost::new(adapters.clone()),
-        input.org_id,
-        InputAtomInput { context },
-    )
-    .await?;
+    let result =
+        runtime_execute_input_activity(&hosts.host(), input.org_id, InputAtomInput { context })
+            .await?;
 
     // Include turn_id in output for propagation
     let mut output = serde_json::to_value(&result)?;
@@ -118,34 +113,24 @@ async fn execute_input_activity<A: WorkerAdapters>(
 }
 
 /// Execute a reasoning step (LLM call).
-pub(crate) async fn execute_reason_activity<A: WorkerAdapters>(
-    adapters: &A,
+pub(crate) async fn execute_reason_activity<H: TurnTaskHost>(
+    hosts: &H,
     input: &DurableTurnInput,
     cancel: CancelSignals,
 ) -> Result<serde_json::Value> {
-    let host = reason_host(adapters, input, cancel, input.turn_id.unwrap_or_default());
-    run_reason(host, input).await
+    let host = reason_host(hosts, input, cancel, input.turn_id.unwrap_or_default());
+    run_reason(hosts, host, input).await
 }
 
 /// A reason host with its setup reads already started. The reads depend only
 /// on the session, harness, agent and input message, not on the turn state.
-fn reason_host<A: WorkerAdapters>(
-    adapters: &A,
+fn reason_host<H: TurnTaskHost>(
+    hosts: &H,
     input: &DurableTurnInput,
-    (cancellation, cancel_requested): CancelSignals,
+    cancel: CancelSignals,
     turn_id: TurnId,
-) -> WorkerRuntimeHost<A> {
-    let event_metadata = input.agent_id.map(|agent_id| {
-        let mut metadata = serde_json::Map::new();
-        metadata.insert(
-            "agent_id".to_string(),
-            serde_json::Value::String(agent_id.to_string()),
-        );
-        metadata
-    });
-    WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata)
-        .with_turn_cancellation(cancellation, cancel_requested)
-        .prefetching(PhaseIds::reason(&reason_input(input, turn_id)))
+) -> H::Host {
+    hosts.reason_host(&reason_input(input, turn_id), cancel)
 }
 
 fn reason_input(input: &DurableTurnInput, turn_id: TurnId) -> ReasonInput {
@@ -167,8 +152,9 @@ fn reason_input(input: &DurableTurnInput, turn_id: TurnId) -> ReasonInput {
     }
 }
 
-async fn run_reason<A: WorkerAdapters>(
-    host: WorkerRuntimeHost<A>,
+async fn run_reason<H: TurnTaskHost>(
+    hosts: &H,
+    host: H::Host,
     input: &DurableTurnInput,
 ) -> Result<serde_json::Value> {
     debug!(
@@ -178,7 +164,7 @@ async fn run_reason<A: WorkerAdapters>(
     );
     let reason_input = reason_input(input, input.turn_id.unwrap_or_default());
     let result = runtime_execute_reason_activity(&host, input.org_id, reason_input).await;
-    host.flush_events().await;
+    hosts.phase_finished(&host).await;
     let result = result?;
 
     // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT

@@ -67,20 +67,30 @@ not of help. A tree bounds every help response structurally.
    they carry different policies; a flag that silently escalates authorization
    is the wrong affordance.
 
-## Two adapters, one grammar
+## One mapper, every host
 
-Hosts differ in what they can observe, not in what they mean:
+Argv becomes a command in one place: the `Mapper` in
+[`everruns-cli-contract`](../../crates/cli-contract) (its `CommandTree`
+resolves the words, renders help, and hands the rest of argv to the leaf's
+`clap::Command`; the mapper reads the matches back as the parameters the
+contract declares). Every host passes it argv and gets back the same answer,
+a wire name and params, help text, or an error with usage:
 
-| Host | Why | Adapter |
-|---|---|---|
-| Plain `bash` tool (sessions, Framework applications) | a builtin receives raw argv | walks the tree directly |
-| `ScriptedTool` (`/mcp` endpoint, `platform` capability) | the host parses `--flag` pairs before a builtin runs and never surfaces bare words | rewrites the tree spelling into the flat name at statement boundaries, before the interpreter sees it |
+| Host | What runs after resolution |
+|---|---|
+| Session shell (bash tool) and Framework applications | the host's `CliCommandSource::dispatch` |
+| `ScriptedTool` (`/mcp` `execute`/`query`, `platform` capability) | the scripted pipeline, in process |
+| Worker shell | the platform store, over gRPC |
+| `POST /v1/commands/{name}` | the scripted pipeline, from an HTTP client |
 
-The rewrite is conservative in the same way the positional rewriter is: it
-fires only at statement-start positions, preserves quoted regions and escapes,
-and stops consuming at the first flag-like token. Help wins over execution, so
-`--help` anywhere in a command's flags prints help rather than reaching a
-builtin that has no such flag.
+`ScriptedTool` hosts used to rewrite the tree spelling into flat names at
+statement boundaries before the interpreter ran, because its `ToolDef`
+builtins only see parsed flags. Its raw-argv `builtin` registration removed
+that need: `everruns` is now an ordinary builtin there too, so quoting,
+pipelines and command substitution are the interpreter's, and flags are
+parsed by the contract rather than by bashkit's schema parser. The read-only
+`query` toolset resolves the whole grammar and then refuses a mutating
+command by the same rule that decides which flat builtins it registers.
 
 ## One command line, two surfaces
 
@@ -127,8 +137,8 @@ What this buys over hand-parsing `--flag value` pairs:
 - **A required field is enforced before dispatch**, with usage attached, rather
   than surfacing as a deserialization error from the far side.
 - **A positional is declared, not faked.** `agents get agt_01h9` is an ordinary
-  clap positional, so the statement-boundary pre-rewrite that inserts `--id`
-  before a bare word has nothing to do on this path.
+  clap positional. The positional pre-rewrite that inserts `--id` before a
+  bare word now serves only the flat aliases.
 
 Two conventions are deliberate. A long flag is kebab-case and also answers to
 the parameter's own snake_case name, because schemas are generated from Rust
@@ -160,30 +170,16 @@ documented a `--definition` flag that does not exist, and `sessions stats` and
 `sessions facets` documented a session argument they do not take. An example is
 the line a caller copies, so it has to run.
 
-### What each adapter gets
-
-Raw argv is the whole difference. Where a host surfaces it, the tree resolves a
-leaf and hands the rest of argv to that leaf's parser. Where it does not, the
-`ScriptedTool` host's builtins are `ToolDef`s parsed by bashkit from the same
-schema, and `ToolArgs` carries only the parsed parameters, so clap cannot do the
-parsing there.
-
-Help is different: rendering it needs no argv, so **both** adapters describe a
-command in exactly the same words, from the same parser. Closing the remaining
-parsing gap is an upstream change in
-[`everruns/bashkit`](https://github.com/everruns/bashkit), because the
-filesystem-less shell profile is `pub(crate)` and the path cannot be rebuilt
-here on `Bash::builder()` without giving `execute` a filesystem it is
-deliberately denied.
-
 ## Where commands come from
 
 `CliCommandSource` is the seam between the tree and the host's operations. The
 server backs it with its registered domain-command catalog; a Framework
 application backs it with whatever it owns, with no control plane, database, or
-catalog involved. This is why the contract lives in the bashkit integration
-rather than in the server: a tree that only a server could source would not be
-one grammar across surfaces.
+catalog involved. This is why the tree lives in the contract crate rather than
+in the server: a tree that only a server could source would not be one grammar
+across surfaces. A source over a fixed catalog returns a prebuilt tree from
+`shared_tree`, so the parsers are compiled once per process rather than per
+shell execution.
 
 The seam is deliberately clap-shaped rather than JSON-shaped: a source hands the
 tree a `clap::Command` and gets back the `ArgMatches` clap produced, so the
@@ -191,10 +187,10 @@ bashkit integration never learns what an agent or an invoice is. A host writing
 each command by hand passes a clap derive; the hosted product builds the same
 values from its catalog.
 
-See [`integrations/bashkit/src/cli/mod.rs`](../../integrations/bashkit/src/cli/mod.rs)
-for the tree,
-[`crates/cli-contract`](../../crates/cli-contract) for the grammar and its
-schema-to-clap compilation, `crates/server/src/api/mcp_endpoint/cli_tree.rs` for the
+See [`crates/cli-contract`](../../crates/cli-contract) for the grammar, the
+tree and the mapper,
+[`integrations/bashkit/src/cli/mod.rs`](../../integrations/bashkit/src/cli/mod.rs)
+for the bash builtins, `crates/server/src/api/mcp_endpoint/cli_tree.rs` for the
 inventory-backed source, and
 [`examples/framework-cli-host`](../../examples/framework-cli-host) for a host
 with no server behind it.
@@ -216,11 +212,11 @@ the pointers weakened, not that the surface broke.
 
 ## Status
 
-Implemented for the first tranche: `agents` (including `versions`), `sessions`,
-`skills`, and `mcp-servers`. The remaining catalog categories opt in one at a
-time. The external `everruns` binary still runs its own hand-written commands;
-moving it onto this tree is the step that makes the grammar literally uniform
-across all three surfaces.
+Every routed command has a spelling, and the session shell, the worker shell,
+and the scripted toolset resolve it through the shared mapper. The external
+`everruns` binary still runs its own hand-written commands for a dozen nouns;
+moving it onto the mapper and `POST /v1/commands` is the step that makes the
+grammar literally uniform across every surface.
 
 ## Related
 

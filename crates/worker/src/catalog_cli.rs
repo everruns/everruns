@@ -16,12 +16,14 @@
 //! after a control-plane call. Only a command that actually runs goes over the
 //! wire.
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use async_trait::async_trait;
 use everruns_capabilities::PlatformStore;
+use everruns_cli_contract::Mapper;
+use everruns_cli_contract::mapper::NODE_ABOUT;
 use everruns_integrations_bashkit::cli::{
-    CliCommandSource, CliCommandSourceHandle, CliCommandSpec,
+    CliCommandSource, CliCommandSourceHandle, CliCommandSpec, CliTree,
 };
 
 /// Serves the `everruns` tree from the checked-in contract, dispatching over
@@ -42,11 +44,21 @@ impl CliCommandSource for CatalogCommandSource {
         contract_specs()
     }
 
-    async fn dispatch(&self, wire_name: &str, matches: clap::ArgMatches) -> Result<String, String> {
-        let Some(contract) = everruns_cli_contract::commands()
+    fn node_about(&self) -> Vec<(String, String)> {
+        NODE_ABOUT
             .iter()
-            .find(|contract| contract.wire_name == wire_name)
-        else {
+            .map(|(path, about)| ((*path).to_string(), (*about).to_string()))
+            .collect()
+    }
+
+    /// The shared mapper's tree, so the worker resolves a line exactly as the
+    /// server and the CLI do, and builds it once per process.
+    fn shared_tree(&self) -> Option<Arc<CliTree>> {
+        Some(shared_tree())
+    }
+
+    async fn dispatch(&self, wire_name: &str, matches: clap::ArgMatches) -> Result<String, String> {
+        let Some(contract) = Mapper::everruns().contract(wire_name) else {
             return Err(format!("unknown command `{wire_name}`"));
         };
         let params = everruns_cli_contract::params_from(contract, &matches);
@@ -62,6 +74,12 @@ impl CliCommandSource for CatalogCommandSource {
             .await
             .map_err(|error| error.to_string())
     }
+}
+
+fn shared_tree() -> Arc<CliTree> {
+    static TREE: OnceLock<Arc<CliTree>> = OnceLock::new();
+    TREE.get_or_init(|| Arc::new(Mapper::everruns().tree().clone()))
+        .clone()
 }
 
 /// Every routed command, as the tree's specs. Free of the store so the grammar
@@ -148,6 +166,15 @@ mod tests {
 
     /// The tree is the contract's, so every routed command is spelled here and
     /// the worker needs no round trip to know the grammar.
+    /// The worker serves the shared mapper's tree, node descriptions included,
+    /// so its root help reads as the server's does.
+    #[test]
+    fn the_shell_uses_the_shared_tree() {
+        let tree = shared_tree();
+        assert_eq!(tree.about("agents"), Some(NODE_ABOUT[0].1));
+        assert!(tree.leaf("harnesses destroy").is_some());
+    }
+
     #[test]
     fn the_source_serves_every_routed_command() {
         let specs = contract_specs();

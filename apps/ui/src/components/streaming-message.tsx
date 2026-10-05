@@ -7,7 +7,7 @@
  * indicator and markdown rendering via Streamdown.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { MessageContent } from "@/components/chat/message-content";
 import "./streaming-message.css";
@@ -37,11 +37,15 @@ function countSharedPrefix(a: string[], b: string[]): number {
   return max;
 }
 
-function charactersPerFrame(remaining: number): number {
-  if (remaining > 240) return 10;
-  if (remaining > 120) return 6;
-  if (remaining > 48) return 3;
-  return 1;
+// Frames to reveal whatever has arrived: about one server delta batch
+// (100ms). A fixed per-frame rate kept the display a steady 120-240
+// characters, several hundred milliseconds, behind the model; spreading the
+// backlog over a fixed number of frames still smooths each chunk but never
+// lets the display fall further behind than one batch.
+const CATCH_UP_FRAMES = 6;
+
+function charactersPerFrame(backlog: number): number {
+  return Math.max(1, Math.ceil(backlog / CATCH_UP_FRAMES));
 }
 
 function useSmoothedText(targetText: string, messageId: string): string {
@@ -57,7 +61,12 @@ function useSmoothedText(targetText: string, messageId: string): string {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageId]);
 
+  // Per-frame step for the current backlog, fixed when new text arrives so the
+  // whole backlog lands in `CATCH_UP_FRAMES` frames rather than decaying.
+  const stepRef = useRef(0);
+
   useEffect(() => {
+    stepRef.current = 0;
     setVisibleCharacters((current) => {
       if (targetCharacters.length === 0) return [];
 
@@ -75,7 +84,8 @@ function useSmoothedText(targetText: string, messageId: string): string {
       setVisibleCharacters((current) => {
         const sharedPrefix = countSharedPrefix(current, targetCharacters);
         const remaining = targetCharacters.length - sharedPrefix;
-        const nextLength = sharedPrefix + charactersPerFrame(remaining);
+        if (stepRef.current === 0) stepRef.current = charactersPerFrame(remaining);
+        const nextLength = sharedPrefix + stepRef.current;
         return targetCharacters.slice(0, Math.min(nextLength, targetCharacters.length));
       });
     }, FRAME_MS);

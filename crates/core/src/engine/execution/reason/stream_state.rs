@@ -2,6 +2,14 @@ use crate::engine::driver_registry::{LlmCompletionMetadata, LlmStreamError, LlmS
 use crate::engine::llm_retry::{RetryMetadata, is_transient_stream_error};
 use crate::engine::output_guardrail::{ArmedGuardrail, TrippedGuardrail, evaluate_guardrails};
 use everruns_contracts::reasoning::ReasoningContentPart;
+use web_time::Instant;
+
+/// Whether a batched delta is due. `last` is `None` until the first emit, so
+/// the first token goes out at once instead of waiting a batch interval
+/// measured from the start of the stream.
+pub(super) fn batch_due(last: Option<Instant>, interval_ms: u64) -> bool {
+    last.is_none_or(|at| at.elapsed().as_millis() as u64 >= interval_ms)
+}
 
 /// Whether replaying the current provider attempt can duplicate externally
 /// visible output or tool side effects.

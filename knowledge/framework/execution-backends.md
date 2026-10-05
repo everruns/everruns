@@ -87,6 +87,16 @@ gRPC runner constructors, `tonic`, and `everruns-internal-protocol`, and plugs
 its store in through durable-engine's `DurableStoreBackend` and `TaskStore`
 traits. The durable isolation guard keeps it that way.
 
+The turn driver lives in the crate too:
+[`TurnTaskDriver`](../../crates/durable-engine/src/turn_driver.rs) runs one
+claimed turn task (cancellation check, heartbeat, the step, completion or
+failure, then the next step's enqueue or the workflow's completion) against
+any `TaskStore`. A `TurnTaskHost` supplies the runtime host each step runs on
+and any activities that are not turn steps. The worker keeps only its poll
+loop, registration and configuration, and supplies `WorkerRuntimeHost` plus
+its cleanup, reaper and scheduled activities; a test drives a whole tool turn
+through the driver on the memory store with the in-process runtime as host.
+
 ### Queue plus per-step checkpoint, not Workflow replay
 
 The durable backend keeps today's model: each turn step is a queued task, and

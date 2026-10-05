@@ -33,7 +33,7 @@ jest.mock("@/providers/org-provider", () => ({
   useOrg: () => ({ currentOrg: { public_id: "org-1" } }),
 }));
 
-function fireSse(event: { id: string; type?: string }) {
+function fireSse(event: { id: string; type?: string; sequence?: number }) {
   for (const handler of mockSseListeners["input.message"] ?? []) {
     handler({ data: JSON.stringify({ type: "input.message", ...event }) } as MessageEvent);
   }
@@ -72,10 +72,30 @@ describe("useEvents SSE handling", () => {
   it("resumes from the last received event once one is known", async () => {
     await mountAndConnect();
     act(() => {
-      fireSse({ id: "e1" });
+      fireSse({ id: "e1", sequence: 1 });
     });
 
     // Reconnecting now must resume from e1, not replay the session again.
+    getSseUrl.mockClear();
+    act(() => {
+      for (const handler of mockSseListeners["disconnecting"] ?? []) {
+        handler({ data: JSON.stringify({ retry_ms: 0 }) } as MessageEvent);
+      }
+    });
+
+    await waitFor(() => expect(getSseUrl).toHaveBeenCalledWith("session-1", { sinceId: "e1" }));
+  });
+
+  // Regression: deltas are ephemeral and have no sequence. Resuming from one
+  // matched nothing on the server, so stored events missed during the gap
+  // (such as output.message.completed) were never replayed.
+  it("never resumes from an ephemeral event", async () => {
+    await mountAndConnect();
+    act(() => {
+      fireSse({ id: "e1", sequence: 1 });
+      fireSse({ id: "delta-1" });
+    });
+
     getSseUrl.mockClear();
     act(() => {
       for (const handler of mockSseListeners["disconnecting"] ?? []) {

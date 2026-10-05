@@ -35,6 +35,7 @@ import { WorkLogNarration } from "@/components/chat/work-log-narration";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import {
   getReasoningMultiIterationTurnIds,
+  hasReasoningWorkLogSummary,
   getKnownTurnId,
   isStructuralWorkLogEvent,
   shouldRenderWorkLogEvent,
@@ -111,6 +112,8 @@ interface ChatMessageListProps {
    * be a second, competing centred message.
    */
   emptyState?: ReactNode;
+  /** Fold turn activity for human chat; testing/debugging surfaces show it inline. */
+  collapseWorkLog?: boolean;
 }
 
 interface SetupConnectionArguments {
@@ -203,6 +206,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   participants,
   runsByEventId,
   emptyState,
+  collapseWorkLog = true,
 }: ChatMessageListProps) {
   const { locale, t } = useLocale();
   const { data: providers } = useProviders();
@@ -320,6 +324,9 @@ export const ChatMessageList = memo(function ChatMessageList({
   );
   const isWorkLogEvent = useCallback(
     (event: Event) => {
+      if (!collapseWorkLog) {
+        return isStructuralWorkLogEvent(event) || hasReasoningWorkLogSummary(event);
+      }
       return shouldRenderWorkLogEvent(
         event,
         turnIterationsByTurnId,
@@ -327,7 +334,12 @@ export const ChatMessageList = memo(function ChatMessageList({
         reasoningMultiIterationTurnIds,
       );
     },
-    [reasoningMultiIterationTurnIds, structuralWorkTurnIds, turnIterationsByTurnId],
+    [
+      collapseWorkLog,
+      reasoningMultiIterationTurnIds,
+      structuralWorkTurnIds,
+      turnIterationsByTurnId,
+    ],
   );
   const workLogTurnIds = useMemo(() => {
     const ids = new Set<string>();
@@ -581,6 +593,7 @@ export const ChatMessageList = memo(function ChatMessageList({
     renderBody: (isActive: boolean) => ReactNode,
     extraErrorCount = 0,
   ) => {
+    if (!collapseWorkLog) return <Fragment key={event.id}>{renderBody(false)}</Fragment>;
     const turnId = getKnownTurnId(event);
     const durationMs = turnId ? turnDurationByTurnId.get(turnId) : undefined;
     const isActive = durationMs == null;
@@ -634,6 +647,7 @@ export const ChatMessageList = memo(function ChatMessageList({
             headline={group.headline}
             completedHeadline={group.completedHeadline}
             rows={group.rows}
+            collapsible={collapseWorkLog}
           />
           {interactive}
         </div>
@@ -716,6 +730,8 @@ export const ChatMessageList = memo(function ChatMessageList({
           }
 
           if (isWorkLogEvent(event)) {
+            // Preserve event order and mount every loaded entry in testing/debugging views.
+            if (!collapseWorkLog) return renderWorkLogEventContent(event, true);
             const turnId = getKnownTurnId(event);
             if (turnId) {
               const group = workLogEventsByTurnId.get(turnId) ?? [];

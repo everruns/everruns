@@ -1286,3 +1286,45 @@ describe("ChatPanel placeholder", () => {
     });
   });
 });
+
+describe("ChatPanel work-log presentation", () => {
+  beforeEach(() => {
+    mockSessionContext.chatEvents = [
+      {
+        id: "reason",
+        type: "reason.item",
+        session_id: "session-1",
+        ts: "2026-10-04T12:00:00Z",
+        context: { turn_id: "turn-1" },
+        data: { turn_id: "turn-1", summary: ["Checked configuration"] },
+      },
+      {
+        id: "act",
+        type: "act.started",
+        session_id: "session-1",
+        ts: "2026-10-04T12:00:01Z",
+        context: { turn_id: "turn-1" },
+        data: { headline: "Reading files", tool_calls: [] },
+      },
+    ];
+    mockSessionContext.llmModel = availableDefaultModel;
+    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
+  });
+
+  it("keeps human Chats folded by default", () => {
+    render(<ChatPanel />);
+    expect(screen.getByRole("button", { name: /working/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getAllByText("Checked configuration")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: /working/i }));
+    expect(screen.getAllByText("Checked configuration")).toHaveLength(2);
+  });
+
+  it("shows Playground work directly when folding is disabled", () => {
+    render(<ChatPanel collapseWorkLog={false} />);
+    expect(screen.getByText("Checked configuration")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /working/i })).not.toBeInTheDocument();
+  });
+});

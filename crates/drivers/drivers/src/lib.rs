@@ -1,49 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! Everruns model vendor drivers, one module and one feature per vendor.
-//!
-//! `everruns-drivers` is part of the [Everruns](https://everruns.com)
-//! ecosystem. Each module implements the [`ChatDriver`] contract from
-//! `everruns-contracts` for one vendor and registers it into a
-//! [`DriverRegistry`]. Vendors whose API is OpenAI-compatible wrap one of that
-//! crate's shared protocol drivers and add only identity, credentials, auth,
-//! base URL, and model discovery; vendors with their own wire (Anthropic,
-//! Gemini, Bedrock) carry their request and response types in their module.
-//!
-//! # Features
-//!
-//! Every vendor is behind a feature and none is on by default, so a consumer
-//! compiles and ships only the vendors it serves:
-//!
-//! ```toml
-//! everruns-drivers = { version = "0.35", features = ["openai", "anthropic"] }
-//! ```
-//!
-//! | Feature | Module | Driver | Wire protocol |
-//! | --- | --- | --- | --- |
-//! | `anthropic` | [`anthropic`] | Anthropic Claude | Anthropic Messages |
-//! | `bedrock` | [`bedrock`] | AWS Bedrock | Bedrock Converse |
-//! | `bedrock-default-credentials` | [`bedrock`] | AWS default credential chain for Bedrock | |
-//! | `chatgpt` | [`chatgpt`] | Personal ChatGPT plan | Open-source sign-in and Responses |
-//! | `codex` | [`codex`] | Legacy Codex backend | Stateless Responses and native compaction |
-//! | `cloudflare` | [`cloudflare`] | Cloudflare AI Gateway | OpenAI Chat Completions |
-//! | `fireworks` | [`fireworks`] | Fireworks AI | OpenAI Chat Completions |
-//! | `gemini` | [`gemini`] | Google Gemini | Gemini API |
-//! | `mai` | [`mai`] | Microsoft AI (Foundry) | OpenAI Chat Completions |
-//! | `meta` | [`meta`] | Meta Model API | Open Responses |
-//! | `openai` | [`openai`] | OpenAI and Azure OpenAI | Responses and Chat Completions |
-//! | `openrouter` | [`openrouter`] | OpenRouter | OpenAI Responses-compatible |
-//! | `vercel` | [`vercel`] | Vercel AI Gateway | Open Responses |
-//!
-//! The `everruns` facade re-exports this crate as `everruns::drivers`, and its
-//! vendor features turn on the matching features here.
-//!
-//! # Moved crates
-//!
-//! `everruns-anthropic`, `everruns-bedrock`, `everruns-fireworks`,
-//! `everruns-gemini`, `everruns-mai`, `everruns-meta`, `everruns-openai` and
-//! `everruns-openrouter` are now the modules of the same name here. Replace
-//! the dependency with this crate and the vendor's feature, and
-//! `everruns_openai::X` with `everruns_drivers::openai::X`.
+#![doc = include_str!("../README.md")]
 
 #[cfg(feature = "anthropic")]
 pub mod anthropic;

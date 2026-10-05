@@ -32,13 +32,12 @@ pub mod session_lifecycle;
 pub mod session_task_reaper;
 mod stream_heartbeater;
 mod system_decisions;
-pub mod task_error;
-mod task_heartbeat;
-#[cfg(test)]
-mod task_heartbeat_tests;
+pub use everruns_durable_engine::task_error;
+pub use everruns_durable_engine::task_heartbeat;
 pub use everruns_durable_engine::task_store;
 pub mod task_wakeup;
-mod turn_start;
+pub use everruns_durable_engine::turn_driver;
+pub mod turn_host;
 pub mod unified_worker;
 #[cfg(test)]
 mod unified_worker_test_adapters;

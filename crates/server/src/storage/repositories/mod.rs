@@ -219,6 +219,30 @@ pub struct Database {
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
 }
 
+/// Idle time after which a pooled connection is pinged before reuse.
+const PING_AFTER_IDLE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Pool options shared by the request and background pools.
+///
+/// sqlx pings every idle connection on checkout by default, which doubles the
+/// round trips of every query outside a transaction. With the database a few
+/// milliseconds away that ping was close to half of the send-message path. A
+/// connection that was in use moments ago is almost certainly alive, so only
+/// one idle past `PING_AFTER_IDLE` is checked; a failed ping drops it and the
+/// pool hands out another.
+fn pool_options() -> PgPoolOptions {
+    PgPoolOptions::new()
+        .test_before_acquire(false)
+        .before_acquire(|conn, meta| {
+            Box::pin(async move {
+                if meta.idle_for >= PING_AFTER_IDLE {
+                    sqlx::Connection::ping(conn).await?;
+                }
+                Ok(true)
+            })
+        })
+}
+
 impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self {
@@ -266,7 +290,7 @@ impl Database {
         database_url: &str,
         config: DatabasePoolConfig,
     ) -> Result<Self> {
-        let pool = PgPoolOptions::new()
+        let pool = pool_options()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
             .acquire_timeout(config.acquire_timeout)
@@ -279,7 +303,7 @@ impl Database {
         let background_pool = if config.background_max_connections == 0 {
             pool.clone()
         } else {
-            PgPoolOptions::new()
+            pool_options()
                 .max_connections(config.background_max_connections)
                 .min_connections(1)
                 .acquire_timeout(config.background_acquire_timeout)

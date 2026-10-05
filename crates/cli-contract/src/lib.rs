@@ -258,10 +258,14 @@ fn apply_kind(built: Arg, arg: &ContractArg) -> Arg {
 }
 
 pub mod declare;
+pub mod mapper;
 pub mod render;
 pub mod schema;
+pub mod tree;
 
 pub use declare::{CliArg, CliExample, CliRoute};
+pub use mapper::{Mapper, Resolution};
+pub use tree::{CommandTree, Leaf, Parsed, ROOT};
 
 /// Read what clap parsed back out as the parameter object a command expects.
 ///
