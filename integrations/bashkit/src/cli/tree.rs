@@ -1,4 +1,4 @@
-//! The grammar itself: what a host offers, and the tree built from it.
+//! What a host offers the tree, and the tree built from it.
 
 use super::*;
 
@@ -59,6 +59,16 @@ pub trait CliCommandSource: Send + Sync {
         Vec::new()
     }
 
+    /// A tree built once and shared, for a source whose commands never change.
+    ///
+    /// Building a tree compiles a parser per command, and the shell installs
+    /// the builtin per execution. A source over a fixed catalog returns its
+    /// prebuilt tree here so that cost is paid once per process; the default
+    /// builds from [`specs`](Self::specs) each time.
+    fn shared_tree(&self) -> Option<Arc<CliTree>> {
+        None
+    }
+
     /// Run a command, given the arguments clap parsed for it.
     ///
     /// `ArgMatches` rather than a JSON object, because reading a match back out
@@ -70,127 +80,17 @@ pub trait CliCommandSource: Send + Sync {
     async fn dispatch(&self, wire_name: &str, matches: clap::ArgMatches) -> Result<String, String>;
 }
 
-/// One resolved leaf: the tree spelling and the command it runs.
-#[derive(Debug, Clone)]
-pub struct Leaf {
-    pub command: String,
-    pub description: String,
-    pub path: Vec<String>,
-    pub verb: String,
-    /// The source's parser for this leaf.
-    pub parser: clap::Command,
-}
-
-/// The assembled tree. Nodes are keyed by their full path so lookup is a
-/// single map hit; children are derived for help rendering.
-#[derive(Debug)]
-pub struct CliTree {
-    /// Token that introduces an invocation, from the source that built it.
-    root: String,
-    node_about: BTreeMap<String, String>,
-    /// "agents list" -> leaf
-    leaves: BTreeMap<String, Leaf>,
-    /// "agents" -> ["agents versions", ...] non-leaf child paths
-    nodes: BTreeMap<String, Vec<String>>,
-}
-
-impl Default for CliTree {
-    fn default() -> Self {
-        Self {
-            root: ROOT.to_string(),
-            node_about: BTreeMap::new(),
-            leaves: BTreeMap::new(),
-            nodes: BTreeMap::new(),
-        }
+/// Build the tree for a source's declared commands.
+pub fn tree_from_source(source: &dyn CliCommandSource) -> CliTree {
+    let mut tree = CliTree::new(source.root()).with_node_about(source.node_about());
+    for spec in source.specs() {
+        tree.insert(Leaf {
+            wire_name: spec.wire_name,
+            description: spec.description,
+            path: spec.path,
+            verb: spec.verb,
+            parser: spec.command,
+        });
     }
-}
-
-impl CliTree {
-    /// The token that introduces an invocation in this tree.
-    pub fn root(&self) -> &str {
-        &self.root
-    }
-
-    pub fn leaf(&self, path: &str) -> Option<&Leaf> {
-        self.leaves.get(path)
-    }
-
-    pub fn is_node(&self, path: &str) -> bool {
-        self.nodes.contains_key(path)
-    }
-
-    /// Direct children of a node path, as (last segment, description) pairs.
-    /// The empty path returns the tree's top-level nouns.
-    pub fn children(&self, path: &str) -> Vec<(String, String)> {
-        let prefix = if path.is_empty() {
-            String::new()
-        } else {
-            format!("{path} ")
-        };
-        let mut seen: BTreeMap<String, String> = BTreeMap::new();
-
-        for (spelling, leaf) in &self.leaves {
-            let Some(rest) = spelling.strip_prefix(prefix.as_str()) else {
-                continue;
-            };
-            if path.is_empty() && prefix.is_empty() && spelling.is_empty() {
-                continue;
-            }
-            let mut parts = rest.split(' ');
-            let Some(head) = parts.next() else { continue };
-            if parts.next().is_none() {
-                // Direct leaf child: its own description.
-                seen.insert(head.to_string(), leaf.description.clone());
-            } else {
-                let child_path = if path.is_empty() {
-                    head.to_string()
-                } else {
-                    format!("{path} {head}")
-                };
-                seen.entry(head.to_string()).or_insert_with(|| {
-                    self.about(&child_path)
-                        .map(ToOwned::to_owned)
-                        .unwrap_or_else(|| format!("{head} commands"))
-                });
-            }
-        }
-
-        seen.into_iter().collect()
-    }
-
-    /// Build a tree from a source's declared commands.
-    pub fn from_source(source: &dyn CliCommandSource) -> Self {
-        let mut tree = Self {
-            root: source.root().to_string(),
-            node_about: source.node_about().into_iter().collect(),
-            ..Self::default()
-        };
-        for spec in source.specs() {
-            tree.insert(Leaf {
-                command: spec.wire_name,
-                description: spec.description,
-                path: spec.path,
-                verb: spec.verb,
-                parser: spec.command,
-            });
-        }
-        tree
-    }
-
-    pub(super) fn about(&self, path: &str) -> Option<&str> {
-        self.node_about.get(path).map(String::as_str)
-    }
-
-    fn insert(&mut self, leaf: Leaf) {
-        let mut parts = leaf.path.clone();
-        parts.push(leaf.verb.clone());
-        let spelling = parts.join(" ");
-        // Register every ancestor path as a node so `everruns agents --help`
-        // and `everruns agents versions --help` both resolve.
-        for depth in 1..=leaf.path.len() {
-            let node = leaf.path[..depth].join(" ");
-            self.nodes.entry(node).or_default();
-        }
-        self.leaves.insert(spelling, leaf);
-    }
+    tree
 }

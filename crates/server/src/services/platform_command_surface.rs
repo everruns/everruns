@@ -286,11 +286,10 @@ async fn script(
         .unwrap_or(30_000)
         .min(60_000);
 
-    // Tree spelling first, then the positional fixup: `everruns agents get X`
-    // becomes `get_agent X` and then `get_agent --id X`, so both rewrites
-    // compose instead of each needing to know about the other.
-    let with_tree = cli_tree::rewrite(commands, cli_tree::tree());
-    let rewritten = positional::rewrite(&with_tree, positional::positional_map());
+    // `everruns <noun> <verb>` is a real builtin resolved by the shared
+    // mapper; only the flat names need the positional fixup (`get_agent X`
+    // becomes `get_agent --id X`).
+    let rewritten = positional::rewrite(commands, positional::positional_map());
     let tool = catalog::build_toolset(context, mode);
     let request = bashkit::ToolRequest::new(rewritten);
     let result = tokio::time::timeout(

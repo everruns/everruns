@@ -71,8 +71,8 @@ use super::common::impl_auth_state;
 
 pub(crate) mod catalog;
 pub(crate) mod cli_tree;
+mod command_line;
 pub(crate) mod positional;
-
 // ============================================================================
 // JSON-RPC 2.0 types
 // ============================================================================

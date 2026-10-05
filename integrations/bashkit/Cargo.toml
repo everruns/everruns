@@ -19,6 +19,9 @@ default = []
 [dependencies]
 everruns-contracts = { workspace = true, default-features = false }
 everruns-core.workspace = true
+# The tree, its help and argv resolution are the contract crate's, so every
+# host spells and resolves `everruns ...` identically.
+everruns-cli-contract.workspace = true
 async-trait.workspace = true
 # `default-features = false` drops bashkit's default `ring`; the rest of its
 # default set is restored explicitly so only the crypto backend changes (EVE-924).
