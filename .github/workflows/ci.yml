@@ -408,20 +408,33 @@ jobs:
             # Live API jobs (daytona/browserless/e2b) hit real external
             # services and cost real API budget. Exclude doc-only changes so
             # SPEC.md tweaks don't trigger the full paid matrix on every push
-            # to main. The weekly `integration-live-sweep.yml` backstop still
-            # catches shared-crate regressions that slip past these filters.
+            # to main. Changes to this workflow run all three jobs so their
+            # Doppler wiring proves itself on the merge that changes it.
+            # Daytona also implements the managed Session Sandbox contract, so
+            # changes to that shared contract/recovery path need its live test.
+            # The weekly `integration-live-sweep.yml` remains the backstop for
+            # other shared-crate and dependency regressions.
             daytona:
               - 'integrations/daytona/**'
               - '!integrations/daytona/**/*.md'
+              - 'crates/contracts/src/session_sandbox.rs'
+              - 'crates/contracts/src/sandbox_checkpoint.rs'
+              - 'crates/capabilities/src/session_sandbox.rs'
+              - 'crates/capabilities/src/session_sandbox/**'
+              - 'crates/capabilities/src/sandbox_checkpoint.rs'
+              - 'crates/capabilities/src/sandbox_state.rs'
+              - '.github/workflows/ci.yml'
             cursor:
               - 'integrations/cursor/**'
               - '!integrations/cursor/**/*.md'
             browserless:
               - 'integrations/browserless/**'
               - '!integrations/browserless/**/*.md'
+              - '.github/workflows/ci.yml'
             e2b:
               - 'integrations/e2b/**'
               - '!integrations/e2b/**/*.md'
+              - '.github/workflows/ci.yml'
 
   format:
     name: Format Check
