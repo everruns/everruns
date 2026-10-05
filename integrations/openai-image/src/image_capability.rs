@@ -282,26 +282,28 @@ impl Tool for GenerateImageTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Generating image",
-                "Generated image",
-                "Could not generate image",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Generating image",
+                    "Generated image",
+                    "Could not generate image",
+                ),
+                (
+                    "Генерую зображення",
+                    "Згенерував зображення",
+                    "Не вдалося згенерувати зображення",
+                ),
+                &[],
             ),
-            (
-                "Генерую зображення",
-                "Згенерував зображення",
-                "Не вдалося згенерувати зображення",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -475,22 +477,24 @@ impl Tool for EditImageTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            ("Editing image", "Edited image", "Could not edit image"),
-            (
-                "Редагую зображення",
-                "Відредагував зображення",
-                "Не вдалося відредагувати зображення",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                ("Editing image", "Edited image", "Could not edit image"),
+                (
+                    "Редагую зображення",
+                    "Відредагував зображення",
+                    "Не вдалося відредагувати зображення",
+                ),
+                &["path", "image_id"],
             ),
-            &["path", "image_id"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {

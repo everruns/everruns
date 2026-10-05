@@ -1,6 +1,6 @@
+use everruns_contracts::runtime::capabilities::Capability;
+use everruns_contracts::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 use everruns_contracts::tool_types::ToolCall;
-use everruns_core::capabilities::Capability;
-use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 use everruns_integrations_github::{GitHubCapability, GitHubScoutCapability};
 use serde_json::json;
 

@@ -52,26 +52,28 @@ impl Tool for SpritesCreateSpriteTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Creating sprite",
-                "Created sprite",
-                "Could not create sprite",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Creating sprite",
+                    "Created sprite",
+                    "Could not create sprite",
+                ),
+                (
+                    "Створюю мікровіртуальну машину",
+                    "Створив мікровіртуальну машину",
+                    "Не вдалося створити мікровіртуальну машину",
+                ),
+                &["sprite_name"],
             ),
-            (
-                "Створюю мікровіртуальну машину",
-                "Створив мікровіртуальну машину",
-                "Не вдалося створити мікровіртуальну машину",
-            ),
-            &["sprite_name"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -374,26 +376,28 @@ impl Tool for SpritesReadFileTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Reading sprite file",
-                "Read sprite file",
-                "Could not read sprite file",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading sprite file",
+                    "Read sprite file",
+                    "Could not read sprite file",
+                ),
+                (
+                    "Читаю файл мікровіртуальної машини",
+                    "Прочитав файл мікровіртуальної машини",
+                    "Не вдалося прочитати файл мікровіртуальної машини",
+                ),
+                &["path"],
             ),
-            (
-                "Читаю файл мікровіртуальної машини",
-                "Прочитав файл мікровіртуальної машини",
-                "Не вдалося прочитати файл мікровіртуальної машини",
-            ),
-            &["path"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -499,26 +503,28 @@ impl Tool for SpritesWriteFileTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Writing sprite file",
-                "Wrote sprite file",
-                "Could not write sprite file",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Writing sprite file",
+                    "Wrote sprite file",
+                    "Could not write sprite file",
+                ),
+                (
+                    "Записую файл мікровіртуальної машини",
+                    "Записав файл мікровіртуальної машини",
+                    "Не вдалося записати файл мікровіртуальної машини",
+                ),
+                &["path"],
             ),
-            (
-                "Записую файл мікровіртуальної машини",
-                "Записав файл мікровіртуальної машини",
-                "Не вдалося записати файл мікровіртуальної машини",
-            ),
-            &["path"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -619,26 +625,28 @@ impl Tool for SpritesListSpritesTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Listing sprites",
-                "Listed sprites",
-                "Could not list sprites",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Listing sprites",
+                    "Listed sprites",
+                    "Could not list sprites",
+                ),
+                (
+                    "Перелічую мікровіртуальні машини",
+                    "Перелічив мікровіртуальні машини",
+                    "Не вдалося перелічити мікровіртуальні машини",
+                ),
+                &[],
             ),
-            (
-                "Перелічую мікровіртуальні машини",
-                "Перелічив мікровіртуальні машини",
-                "Не вдалося перелічити мікровіртуальні машини",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -710,26 +718,28 @@ impl Tool for SpritesManageSpriteTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Deleting sprite",
-                "Deleted sprite",
-                "Could not delete sprite",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Deleting sprite",
+                    "Deleted sprite",
+                    "Could not delete sprite",
+                ),
+                (
+                    "Видаляю мікровіртуальну машину",
+                    "Видалив мікровіртуальну машину",
+                    "Не вдалося видалити мікровіртуальну машину",
+                ),
+                &["sprite_name"],
             ),
-            (
-                "Видаляю мікровіртуальну машину",
-                "Видалив мікровіртуальну машину",
-                "Не вдалося видалити мікровіртуальну машину",
-            ),
-            &["sprite_name"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -832,26 +842,28 @@ impl Tool for SpritesCheckpointTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Creating sprite checkpoint",
-                "Created sprite checkpoint",
-                "Could not create sprite checkpoint",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Creating sprite checkpoint",
+                    "Created sprite checkpoint",
+                    "Could not create sprite checkpoint",
+                ),
+                (
+                    "Створюю знімок мікровіртуальної машини",
+                    "Створив знімок мікровіртуальної машини",
+                    "Не вдалося створити знімок мікровіртуальної машини",
+                ),
+                &["sprite_name"],
             ),
-            (
-                "Створюю знімок мікровіртуальної машини",
-                "Створив знімок мікровіртуальної машини",
-                "Не вдалося створити знімок мікровіртуальної машини",
-            ),
-            &["sprite_name"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -939,26 +951,28 @@ impl Tool for SpritesRestoreCheckpointTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Restoring sprite checkpoint",
-                "Restored sprite checkpoint",
-                "Could not restore sprite checkpoint",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Restoring sprite checkpoint",
+                    "Restored sprite checkpoint",
+                    "Could not restore sprite checkpoint",
+                ),
+                (
+                    "Відновлюю знімок мікровіртуальної машини",
+                    "Відновив знімок мікровіртуальної машини",
+                    "Не вдалося відновити знімок мікровіртуальної машини",
+                ),
+                &["checkpoint_id", "sprite_name"],
             ),
-            (
-                "Відновлюю знімок мікровіртуальної машини",
-                "Відновив знімок мікровіртуальної машини",
-                "Не вдалося відновити знімок мікровіртуальної машини",
-            ),
-            &["checkpoint_id", "sprite_name"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -1050,26 +1064,28 @@ impl Tool for SpritesServiceUrlTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Reading sprite service URL",
-                "Read sprite service URL",
-                "Could not read sprite service URL",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading sprite service URL",
+                    "Read sprite service URL",
+                    "Could not read sprite service URL",
+                ),
+                (
+                    "Читаю адресу сервісу мікровіртуальної машини",
+                    "Прочитав адресу сервісу мікровіртуальної машини",
+                    "Не вдалося прочитати адресу сервісу мікровіртуальної машини",
+                ),
+                &["sprite_name"],
             ),
-            (
-                "Читаю адресу сервісу мікровіртуальної машини",
-                "Прочитав адресу сервісу мікровіртуальної машини",
-                "Не вдалося прочитати адресу сервісу мікровіртуальної машини",
-            ),
-            &["sprite_name"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {

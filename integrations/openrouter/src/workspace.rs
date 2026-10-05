@@ -239,26 +239,28 @@ impl Tool for InspectOpenRouterWorkspaceTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Inspecting OpenRouter workspace",
-                "Inspected OpenRouter workspace",
-                "Could not inspect OpenRouter workspace",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Inspecting OpenRouter workspace",
+                    "Inspected OpenRouter workspace",
+                    "Could not inspect OpenRouter workspace",
+                ),
+                (
+                    "Перевіряю робочий простір OpenRouter",
+                    "Перевірив робочий простір OpenRouter",
+                    "Не вдалося перевірити робочий простір OpenRouter",
+                ),
+                &[],
             ),
-            (
-                "Перевіряю робочий простір OpenRouter",
-                "Перевірив робочий простір OpenRouter",
-                "Не вдалося перевірити робочий простір OpenRouter",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -324,26 +326,28 @@ impl Tool for CheckOpenRouterPolicyCompatibilityTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Checking OpenRouter policy compatibility",
-                "Checked OpenRouter policy compatibility",
-                "Could not check OpenRouter policy compatibility",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Checking OpenRouter policy compatibility",
+                    "Checked OpenRouter policy compatibility",
+                    "Could not check OpenRouter policy compatibility",
+                ),
+                (
+                    "Перевіряю сумісність політики OpenRouter",
+                    "Перевірив сумісність політики OpenRouter",
+                    "Не вдалося перевірити сумісність політики OpenRouter",
+                ),
+                &[],
             ),
-            (
-                "Перевіряю сумісність політики OpenRouter",
-                "Перевірив сумісність політики OpenRouter",
-                "Не вдалося перевірити сумісність політики OpenRouter",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {

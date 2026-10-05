@@ -342,26 +342,28 @@ impl Tool for ListOpenRouterCatalogTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Listing OpenRouter models",
-                "Listed OpenRouter models",
-                "Could not list OpenRouter models",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Listing OpenRouter models",
+                    "Listed OpenRouter models",
+                    "Could not list OpenRouter models",
+                ),
+                (
+                    "Перелічую моделі OpenRouter",
+                    "Перелічив моделі OpenRouter",
+                    "Не вдалося перелічити моделі OpenRouter",
+                ),
+                &[],
             ),
-            (
-                "Перелічую моделі OpenRouter",
-                "Перелічив моделі OpenRouter",
-                "Не вдалося перелічити моделі OpenRouter",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -554,22 +556,24 @@ impl Tool for ProbeModelTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            ("Testing model", "Tested model", "Could not test model"),
-            (
-                "Тестую модель",
-                "Протестував модель",
-                "Не вдалося протестувати модель",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                ("Testing model", "Tested model", "Could not test model"),
+                (
+                    "Тестую модель",
+                    "Протестував модель",
+                    "Не вдалося протестувати модель",
+                ),
+                &["model_id"],
             ),
-            &["model_id"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -885,22 +889,24 @@ impl Tool for RankModelsTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            ("Ranking models", "Ranked models", "Could not rank models"),
-            (
-                "Ранжую моделі",
-                "Ранжував моделі",
-                "Не вдалося ранжувати моделі",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                ("Ranking models", "Ranked models", "Could not rank models"),
+                (
+                    "Ранжую моделі",
+                    "Ранжував моделі",
+                    "Не вдалося ранжувати моделі",
+                ),
+                &[],
             ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -962,26 +968,28 @@ impl Tool for ProposeRouterUpdateTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Proposing model router update",
-                "Proposed model router update",
-                "Could not propose model router update",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Proposing model router update",
+                    "Proposed model router update",
+                    "Could not propose model router update",
+                ),
+                (
+                    "Пропоную оновлення маршрутизатора моделей",
+                    "Запропонував оновлення маршрутизатора моделей",
+                    "Не вдалося запропонувати оновлення маршрутизатора моделей",
+                ),
+                &[],
             ),
-            (
-                "Пропоную оновлення маршрутизатора моделей",
-                "Запропонував оновлення маршрутизатора моделей",
-                "Не вдалося запропонувати оновлення маршрутизатора моделей",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {

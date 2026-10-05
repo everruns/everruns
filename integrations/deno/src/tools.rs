@@ -65,26 +65,28 @@ impl Tool for DenoCreateSandboxTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Creating Deno sandbox",
-                "Created Deno sandbox",
-                "Could not create Deno sandbox",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Creating Deno sandbox",
+                    "Created Deno sandbox",
+                    "Could not create Deno sandbox",
+                ),
+                (
+                    "Створюю пісочницю Deno",
+                    "Створив пісочницю Deno",
+                    "Не вдалося створити пісочницю Deno",
+                ),
+                &["title", "template"],
             ),
-            (
-                "Створюю пісочницю Deno",
-                "Створив пісочницю Deno",
-                "Не вдалося створити пісочницю Deno",
-            ),
-            &["title", "template"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -375,26 +377,28 @@ impl Tool for DenoReadFileTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Reading Deno file",
-                "Read Deno file",
-                "Could not read Deno file",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading Deno file",
+                    "Read Deno file",
+                    "Could not read Deno file",
+                ),
+                (
+                    "Читаю файл Deno",
+                    "Прочитав файл Deno",
+                    "Не вдалося прочитати файл Deno",
+                ),
+                &["path"],
             ),
-            (
-                "Читаю файл Deno",
-                "Прочитав файл Deno",
-                "Не вдалося прочитати файл Deno",
-            ),
-            &["path"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -496,26 +500,28 @@ impl Tool for DenoWriteFileTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Writing Deno file",
-                "Wrote Deno file",
-                "Could not write Deno file",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Writing Deno file",
+                    "Wrote Deno file",
+                    "Could not write Deno file",
+                ),
+                (
+                    "Записую файл Deno",
+                    "Записав файл Deno",
+                    "Не вдалося записати файл Deno",
+                ),
+                &["path"],
             ),
-            (
-                "Записую файл Deno",
-                "Записав файл Deno",
-                "Не вдалося записати файл Deno",
-            ),
-            &["path"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -608,26 +614,28 @@ impl Tool for DenoListSandboxesTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Listing Deno sandboxes",
-                "Listed Deno sandboxes",
-                "Could not list Deno sandboxes",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Listing Deno sandboxes",
+                    "Listed Deno sandboxes",
+                    "Could not list Deno sandboxes",
+                ),
+                (
+                    "Перелічую пісочниці Deno",
+                    "Перелічив пісочниці Deno",
+                    "Не вдалося перелічити пісочниці Deno",
+                ),
+                &[],
             ),
-            (
-                "Перелічую пісочниці Deno",
-                "Перелічив пісочниці Deno",
-                "Не вдалося перелічити пісочниці Deno",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -691,9 +699,9 @@ impl Tool for DenoManageSandboxTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let (english, ukrainian) = match call.arguments.get("action").and_then(Value::as_str) {
             Some("delete") => (
@@ -721,14 +729,16 @@ impl Tool for DenoManageSandboxTool {
                 ),
             ),
         };
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            english,
-            ukrainian,
-            &["sandbox_id"],
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                english,
+                ukrainian,
+                &["sandbox_id"],
+            ),
+        )
     }
 
     fn name(&self) -> &str {

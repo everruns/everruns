@@ -9,10 +9,11 @@ use std::sync::LazyLock;
     reason = "constant URL regex is validated by unit tests"
 )]
 static URL: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r#"(?i)https?://[^\s<>)\]\"']+"#).unwrap());
+    LazyLock::new(|| regex::Regex::new(r#"(?i)(?:https?:)?//[^\s<>)\]\"']+"#).unwrap());
 
 /// A bounded, single-line display value. URLs never echo credentials or query strings.
 pub fn narration_detail(value: &str) -> String {
+    // THREAT[TM-OBS-012]: Selected labels can contain credential-bearing URLs.
     let redacted = URL.replace_all(value, |captures: &regex::Captures<'_>| {
         url_display(&captures[0])
     });
@@ -78,6 +79,10 @@ mod tests {
             format!("{}...", "é".repeat(80))
         );
         assert_eq!(narration_detail("a\0b"), "ab");
+        assert_eq!(
+            narration_detail("Visit //user:PRIVATE@example.com/report?token=PRIVATE"),
+            "Visit example.com/report"
+        );
         assert_eq!(
             narration_detail(
                 "[Report](https://user:password@example.com/report?token=PRIVATE#PRIVATE)"

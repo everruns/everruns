@@ -245,9 +245,9 @@ impl Tool for SandboxFleetTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         if let Some(narration) = self
             .inner
@@ -285,14 +285,16 @@ impl Tool for SandboxFleetTool {
             ),
             _ => return None,
         };
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            english,
-            ukrainian,
-            keys,
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                english,
+                ukrainian,
+                keys,
+            ),
+        )
     }
 
     fn name(&self) -> &str {

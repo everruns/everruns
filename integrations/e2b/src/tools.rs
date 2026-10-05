@@ -59,26 +59,28 @@ impl Tool for E2BCreateSandboxTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Creating E2B sandbox",
-                "Created E2B sandbox",
-                "Could not create E2B sandbox",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Creating E2B sandbox",
+                    "Created E2B sandbox",
+                    "Could not create E2B sandbox",
+                ),
+                (
+                    "Створюю пісочницю E2B",
+                    "Створив пісочницю E2B",
+                    "Не вдалося створити пісочницю E2B",
+                ),
+                &["title", "template"],
             ),
-            (
-                "Створюю пісочницю E2B",
-                "Створив пісочницю E2B",
-                "Не вдалося створити пісочницю E2B",
-            ),
-            &["title", "template"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -396,26 +398,28 @@ impl Tool for E2BReadFileTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Reading E2B file",
-                "Read E2B file",
-                "Could not read E2B file",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Reading E2B file",
+                    "Read E2B file",
+                    "Could not read E2B file",
+                ),
+                (
+                    "Читаю файл E2B",
+                    "Прочитав файл E2B",
+                    "Не вдалося прочитати файл E2B",
+                ),
+                &["path"],
             ),
-            (
-                "Читаю файл E2B",
-                "Прочитав файл E2B",
-                "Не вдалося прочитати файл E2B",
-            ),
-            &["path"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -518,26 +522,28 @@ impl Tool for E2BWriteFileTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Writing E2B file",
-                "Wrote E2B file",
-                "Could not write E2B file",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Writing E2B file",
+                    "Wrote E2B file",
+                    "Could not write E2B file",
+                ),
+                (
+                    "Записую файл E2B",
+                    "Записав файл E2B",
+                    "Не вдалося записати файл E2B",
+                ),
+                &["path"],
             ),
-            (
-                "Записую файл E2B",
-                "Записав файл E2B",
-                "Не вдалося записати файл E2B",
-            ),
-            &["path"],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -621,26 +627,28 @@ impl Tool for E2BListSandboxesTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            (
-                "Listing E2B sandboxes",
-                "Listed E2B sandboxes",
-                "Could not list E2B sandboxes",
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                (
+                    "Listing E2B sandboxes",
+                    "Listed E2B sandboxes",
+                    "Could not list E2B sandboxes",
+                ),
+                (
+                    "Перелічую пісочниці E2B",
+                    "Перелічив пісочниці E2B",
+                    "Не вдалося перелічити пісочниці E2B",
+                ),
+                &[],
             ),
-            (
-                "Перелічую пісочниці E2B",
-                "Перелічив пісочниці E2B",
-                "Не вдалося перелічити пісочниці E2B",
-            ),
-            &[],
-        ))
+        )
     }
 
     fn name(&self) -> &str {
@@ -705,9 +713,9 @@ impl Tool for E2BManageSandboxTool {
     fn narrate(
         &self,
         call: &everruns_contracts::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        phase: everruns_contracts::runtime::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let (english, ukrainian) = match call.arguments.get("action").and_then(Value::as_str) {
             Some("pause") => (
@@ -759,14 +767,16 @@ impl Tool for E2BManageSandboxTool {
                 ),
             ),
         };
-        Some(everruns_core::tool_narration::narrate_labeled_action(
-            &call.arguments,
-            phase,
-            locale,
-            english,
-            ukrainian,
-            &["sandbox_id"],
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_labeled_action(
+                &call.arguments,
+                phase,
+                locale,
+                english,
+                ukrainian,
+                &["sandbox_id"],
+            ),
+        )
     }
 
     fn name(&self) -> &str {
