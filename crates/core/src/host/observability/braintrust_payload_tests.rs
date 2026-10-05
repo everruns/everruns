@@ -258,6 +258,8 @@ fn test_is_merge_serialization_tool_events() {
         capability_id: None,
         capability_name: None,
         narration: None,
+        executed_arguments: None,
+        executed_arguments_truncated: false,
     };
     let completed_event = Event::new(
         SessionId::new(),
@@ -614,6 +616,8 @@ fn test_tool_completed_summary_omits_text_preview() {
         capability_id: None,
         capability_name: None,
         narration: None,
+        executed_arguments: None,
+        executed_arguments_truncated: false,
     };
     let event = Event::new(
         SessionId::new(),

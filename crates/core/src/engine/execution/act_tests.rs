@@ -11,7 +11,7 @@ pub(super) struct ArgumentEchoTool;
 
 struct NarratingGrepTool;
 
-struct HumanIntentFixtureHook;
+pub(super) struct HumanIntentFixtureHook;
 
 impl crate::engine::capabilities::ToolCallHook for HumanIntentFixtureHook {
     fn narration(

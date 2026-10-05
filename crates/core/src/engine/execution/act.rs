@@ -1039,10 +1039,10 @@ where
             tool_def.and_then(|d| d.display_name()),
             locale,
         );
-        let capability_attribution = tool_def.and_then(|def| {
-            def.capability_attribution()
-                .map(|(id, name)| (id.to_string(), name.map(str::to_string)))
-        });
+        let (capability_id, capability_name) = tool_def
+            .and_then(|def| def.capability_attribution())
+            .map(|(id, name)| (Some(id.to_string()), name.map(str::to_string)))
+            .unwrap_or_default();
 
         // THREAT[TM-TOOL-009]: enforce the injected per-org outbound tool-call limit.
         // Checked before tool.started so a denied call emits no events and leaves
@@ -1517,18 +1517,24 @@ where
         );
         let _cancel_on_call_end = call_cancellation.drop_guard();
 
-        let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
+        let authored_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
 
         // Run pre-tool-use hooks (capability-contributed). They can mutate the
         // call, block it, or defer it; a blocked or deferred call is not
         // invoked and its result flows through the ordinary completion path.
         let (execution_tool_call, pre_hook_result) = act_hooks::pre_tool_use_outcome(
             &self.pre_tool_hooks,
-            execution_tool_call,
+            authored_tool_call.clone(),
             tool_def,
             &tool_context,
         )
         .await;
+        // EVE-1209: tool.completed records hook-rewritten arguments of a call
+        // that ran. A blocked or deferred call ran nothing, so it records none.
+        let authored_arguments = match pre_hook_result {
+            None => &authored_tool_call.arguments,
+            Some(_) => &execution_tool_call.arguments,
+        };
 
         let result = if let Some(pre_hook_result) = pre_hook_result {
             Ok(pre_hook_result)
@@ -1603,12 +1609,8 @@ where
                     )
                     .with_fingerprints(tool_call_fingerprint.clone(), result_fingerprint)
                     .with_display_name(display_name.clone())
-                    .with_capability_attribution(
-                        capability_attribution.as_ref().map(|(id, _)| id.clone()),
-                        capability_attribution
-                            .as_ref()
-                            .and_then(|(_, name)| name.clone()),
-                    )
+                    .with_capability_attribution(capability_id.clone(), capability_name.clone())
+                    .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
                     .with_narration(Some(self.render_tool_narration(
                         context,
                         Some(tool_def),
@@ -1627,12 +1629,8 @@ where
                     )
                     .with_fingerprints(tool_call_fingerprint.clone(), result_fingerprint)
                     .with_display_name(display_name.clone())
-                    .with_capability_attribution(
-                        capability_attribution.as_ref().map(|(id, _)| id.clone()),
-                        capability_attribution
-                            .as_ref()
-                            .and_then(|(_, name)| name.clone()),
-                    )
+                    .with_capability_attribution(capability_id.clone(), capability_name.clone())
+                    .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
                     .with_narration(Some(self.render_tool_narration(
                         context,
                         Some(tool_def),
@@ -1732,12 +1730,8 @@ where
                             tool_error_fingerprint(&tool_call.name, "error", &error_msg),
                         )
                         .with_display_name(display_name.clone())
-                        .with_capability_attribution(
-                            capability_attribution.as_ref().map(|(id, _)| id.clone()),
-                            capability_attribution
-                                .as_ref()
-                                .and_then(|(_, name)| name.clone()),
-                        )
+                        .with_capability_attribution(capability_id.clone(), capability_name.clone())
+                        .with_executed_arguments(authored_arguments, &execution_tool_call.arguments)
                         .with_narration(Some(self.render_tool_narration(
                             context,
                             Some(tool_def),
@@ -1802,3 +1796,7 @@ mod approval_tests;
 #[cfg(test)]
 #[path = "act_client_policy_tests.rs"]
 mod client_policy_tests;
+
+#[cfg(test)]
+#[path = "act_executed_arguments_tests.rs"]
+mod executed_arguments_tests;

@@ -149,6 +149,8 @@ impl TestRun {
             capability_id: None,
             capability_name: None,
             narration: None,
+            executed_arguments: None,
+            executed_arguments_truncated: false,
         });
     }
 

@@ -213,6 +213,10 @@ an approved call into one nobody approved, and an approval request shows the
 rewritten arguments. A hook that blocks a call means no one is asked to
 approve it.
 
+When a `mutate` decision changes the arguments of a call that then runs,
+the `tool.completed` event records the arguments that ran in
+`executed_arguments`, next to the original call on `tool.started`.
+
 Capabilities other than `user_hooks` can ship hook bundles, see [Hook
 bundles from other capabilities](#hook-bundles-from-other-capabilities).
 To mute a bundled hook, list its `HookId` under

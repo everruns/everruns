@@ -28,11 +28,10 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::builtins::capabilities::{Capability, CapabilityStatus};
-use crate::builtins::tool_approval_durable::preview_arguments;
 use crate::builtins::tool_hooks::{PolicyGate, PreToolUseDecision, PreToolUseHook};
 use crate::builtins::tool_types::{
     TOOL_APPROVAL_REQUIRED_CODE, ToolApprovalRequired, ToolCall, ToolDefinition, ToolPolicy,
-    ToolResult,
+    ToolResult, preview_tool_arguments,
 };
 
 pub use crate::builtins::tool_approval_durable::{
@@ -448,7 +447,7 @@ impl ToolApprovalHook {
                 MAX_APPROVAL_TIMEOUT_SECONDS as i64,
             );
         let expires_at = asked_at + chrono::Duration::seconds(window);
-        let (arguments, arguments_truncated) = preview_arguments(&tool_call.arguments);
+        let (arguments, arguments_truncated) = preview_tool_arguments(&tool_call.arguments);
         let error = format!(
             "`{name}` needs a person's approval before it runs, so it did not run. The request \
              has been sent to them. If they approve, you will be told; then call `{name}` again \

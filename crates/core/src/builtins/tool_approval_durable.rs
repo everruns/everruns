@@ -80,9 +80,6 @@ fn record_consumed_one_off(session_id: SessionId, call_id: &str, fingerprint: &s
     ));
 }
 
-/// Arguments preview budget for the approval card, in serialized bytes.
-pub(crate) const ARGUMENTS_PREVIEW_BYTES: usize = 8 * 1024;
-
 /// Digest of a call's tool name and exact arguments.
 ///
 /// A one-off approval is recorded against it, so it lets through only the call
@@ -120,22 +117,6 @@ pub fn approval_fingerprint(tool_call: &ToolCall) -> String {
         hex.push_str(&format!("{byte:02x}"));
     }
     hex
-}
-
-/// Bounded copy of a call's arguments for a person to review.
-pub(crate) fn preview_arguments(arguments: &serde_json::Value) -> (serde_json::Value, bool) {
-    let serialized = serde_json::to_string(arguments).unwrap_or_default();
-    if serialized.len() <= ARGUMENTS_PREVIEW_BYTES {
-        return (arguments.clone(), false);
-    }
-    let mut end = ARGUMENTS_PREVIEW_BYTES;
-    while end > 0 && !serialized.is_char_boundary(end) {
-        end -= 1;
-    }
-    (
-        serde_json::Value::String(serialized[..end].to_string()),
-        true,
-    )
 }
 
 fn fold_key_part(part: &str) -> String {
@@ -761,16 +742,6 @@ mod tests {
                 always_decision_storage_key("mcp/x y"),
                 "tool_approval/always/mcp_x_y"
             );
-        }
-
-        #[test]
-        fn large_arguments_are_previewed_not_copied() {
-            let big = json!({ "body": "x".repeat(20_000) });
-            let (preview, truncated) = preview_arguments(&big);
-            assert!(truncated);
-            assert!(preview.as_str().unwrap().len() <= ARGUMENTS_PREVIEW_BYTES);
-            let small = json!({ "body": "x" });
-            assert_eq!(preview_arguments(&small), (small, false));
         }
 
         #[test]

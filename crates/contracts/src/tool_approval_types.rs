@@ -22,6 +22,31 @@ pub const APPROVE_TOOL_CALL_TOOL: &str = "approve_tool_call";
 /// id, so a replayed act derives the same request rather than a second one.
 pub const TOOL_APPROVAL_CALL_ID_PREFIX: &str = "tool_approval_";
 
+/// Budget, in serialized bytes, for a copy of a call's arguments that is
+/// recorded for people to read: the approval card and the executed arguments
+/// on `tool.completed`.
+pub const TOOL_ARGUMENTS_PREVIEW_BYTES: usize = 8 * 1024;
+
+/// Bounded copy of a call's arguments for a person to read.
+///
+/// Arguments within [`TOOL_ARGUMENTS_PREVIEW_BYTES`] come back unchanged. Larger
+/// ones come back as their serialized JSON cut at a char boundary, as a string,
+/// with `true` to say so.
+pub fn preview_tool_arguments(arguments: &serde_json::Value) -> (serde_json::Value, bool) {
+    let serialized = serde_json::to_string(arguments).unwrap_or_default();
+    if serialized.len() <= TOOL_ARGUMENTS_PREVIEW_BYTES {
+        return (arguments.clone(), false);
+    }
+    let mut end = TOOL_ARGUMENTS_PREVIEW_BYTES;
+    while end > 0 && !serialized.is_char_boundary(end) {
+        end -= 1;
+    }
+    (
+        serde_json::Value::String(serialized[..end].to_string()),
+        true,
+    )
+}
+
 /// Structured payload of a tool result parked on a hard approval gate.
 ///
 /// Everything a person needs to decide travels here, so the card and the answer
@@ -149,5 +174,15 @@ mod tests {
             ToolApprovalRequired::from_request_call(&call.id, "ask_user", &call.arguments)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn large_arguments_are_previewed_not_copied() {
+        let big = json!({ "body": "é".repeat(20_000) });
+        let (preview, truncated) = preview_tool_arguments(&big);
+        assert!(truncated);
+        assert!(preview.as_str().unwrap().len() <= TOOL_ARGUMENTS_PREVIEW_BYTES);
+        let small = json!({ "body": "x" });
+        assert_eq!(preview_tool_arguments(&small), (small, false));
     }
 }
