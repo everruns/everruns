@@ -1,5 +1,6 @@
 "use client";
 
+import { relativeFilePath } from "@/lib/path-utils";
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -182,7 +183,7 @@ export function FileViewer({ workspaceId, file, onClose, readOnly = false }: Fil
             </Button>
           </div>
         </div>
-        <div className="text-xs text-muted-foreground truncate">{file.path}</div>
+        <div className="text-xs text-muted-foreground truncate">{relativeFilePath(file.path)}</div>
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-hidden">
         {isLoading ? (

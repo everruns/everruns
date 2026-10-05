@@ -5,8 +5,10 @@ description = "Investigate support issues using the bundled runbook."
 capabilities = ["session_file_system", "current_time"]
 max_iterations = 20
 parallel_tool_calls = false
+files = ["runbook.md", "data/**"]
 
-# Defaults: instructions.md, files/ mapped to /, skills/ discovered recursively.
+# Instructions come from instructions.md; skills keep their .agents/skills paths.
+# Only declared ordinary files are packaged, with their root-relative paths.
 # The destination binds its default model and harness when these are omitted.
 [channels.chat]
 type = "ag_ui"

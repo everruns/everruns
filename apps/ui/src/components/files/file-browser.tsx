@@ -1,5 +1,6 @@
 "use client";
 
+import { relativeFilePath } from "@/lib/path-utils";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -147,7 +148,7 @@ export function FileBrowser({
     });
   }, [rootFiles]);
 
-  // Auto-refresh when Workspace tab becomes active (component remounts on tab switch)
+  // Auto-refresh when Files tab becomes active (component remounts on tab switch)
   useEffect(() => {
     refetchRoot();
   }, [refetchRoot]);
@@ -445,7 +446,7 @@ export function FileBrowser({
         ) : !rootFiles?.length ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <File className="size-8 mb-2 opacity-40" />
-            <p className="text-sm">Empty workspace</p>
+            <p className="text-sm">No files yet</p>
             <p className="text-xs mt-1">Create a file or folder to get started</p>
           </div>
         ) : (
@@ -467,7 +468,9 @@ export function FileBrowser({
             <DialogTitle>Create File</DialogTitle>
             <DialogDescription>
               Create a new file in{" "}
-              <code className="text-xs bg-muted px-1 py-0.5">{createPath}</code>
+              <code className="text-xs bg-muted px-1 py-0.5">
+                {relativeFilePath(createPath) || "."}
+              </code>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -504,7 +507,9 @@ export function FileBrowser({
             <DialogTitle>Create Folder</DialogTitle>
             <DialogDescription>
               Create a new folder in{" "}
-              <code className="text-xs bg-muted px-1 py-0.5">{createPath}</code>
+              <code className="text-xs bg-muted px-1 py-0.5">
+                {relativeFilePath(createPath) || "."}
+              </code>
             </DialogDescription>
           </DialogHeader>
           <Input

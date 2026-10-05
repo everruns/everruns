@@ -317,3 +317,13 @@ All under `/v1/sessions/{session_id}/git/`. Unchanged.
 - **Workspace UI**: dedicated listing/detail page, like Memory?
 - **Per-workspace quotas in DB**: enforce `WORKSPACE_FILE_MAX_BYTES` via a
   DB trigger as defense in depth?
+
+## Starting files and attachment
+
+Agent and Harness files seed only a newly-created file lineage. Attaching a
+Session to an existing Workspace preserves current contents and rejects
+request-level starting files before creating the Session. Agent updates do not
+rewrite existing files. The UI labels the current tree Files; runtime working
+directory prefixes remain host details. See the
+[creation boundary](../../crates/server/src/domains/sessions/service/create.rs)
+and [portable path contract](agent-packages.md).

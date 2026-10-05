@@ -51,7 +51,7 @@ Timeline, and exact raw Events ledger while remaining read-only and responsive.
 ## Expected Result
 
 - The base and legacy chat routes redirect to `/sessions/<id>/transcript`.
-- Navigation order is Transcript, Timeline, optional Work, Events, optional Workspace, Cost.
+- Navigation order is Transcript, Timeline, optional Work, Events, optional Files, Cost.
 - Transcript is active by default, has the Transcript page title, fills the recording content area,
   replays completed conversation, and appends live output without a composer or mutation controls.
 - Timeline fills the recording content area without a transcript rail, streams/replays curated

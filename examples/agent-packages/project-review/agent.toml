@@ -1,0 +1,6 @@
+schema_version = 1
+name = "project-review"
+display_name = "Project reviewer"
+instructions_file = "instructions.md"
+capabilities = ["session_file_system"]
+files = ["src/**"]

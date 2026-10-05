@@ -130,7 +130,7 @@ pub async fn parse_input(ctx: &Ctx, input: &PackageInput) -> Result<AgentPackage
                                     std::path::Path::new(&info.path)
                                         .file_name()
                                         .and_then(|name| name.to_str()),
-                                    Some("files" | "skills")
+                                    Some("files" | "skills" | ".agents")
                                 )
                         })
                     {
@@ -169,7 +169,60 @@ async fn read_folder(
     use crate::domains::session_files::{GetWorkspaceFile, types::GetResponse};
     let prefix = format!("{}/", path.trim_end_matches('/'));
     let mut entries = std::collections::BTreeMap::new();
-    let mut total = 0usize;
+    let manifests: Vec<_> = files
+        .iter()
+        .filter(|info| {
+            info.path.strip_prefix(&prefix).is_some_and(|relative| {
+                matches!(
+                    relative,
+                    "agent.toml" | "agent.md" | "agent.yaml" | "agent.yml" | "agent.json"
+                )
+            })
+        })
+        .collect();
+    if manifests.len() != 1 {
+        return Err(CommandError::bad_request(
+            "folder must contain exactly one agent manifest",
+        ));
+    }
+    let manifest_path = &manifests[0].path;
+    let GetResponse::File(manifest_file) = (GetWorkspaceFile {
+        session_id: session.into(),
+        path: manifest_path.clone(),
+        recursive: false,
+    })
+    .run(ctx)
+    .await?
+    else {
+        return Err(CommandError::bad_request("expected agent manifest file"));
+    };
+    let manifest_bytes = SessionFile::decode_content(
+        manifest_file.content.as_deref().unwrap_or_default(),
+        &manifest_file.encoding,
+    )
+    .map_err(|e| CommandError::bad_request(e.to_string()))?;
+    let package = AgentPackage::parse(
+        std::str::from_utf8(&manifest_bytes)
+            .map_err(|e| CommandError::bad_request(e.to_string()))?,
+        Format::from_extension(std::path::Path::new(manifest_path)),
+    )
+    .map_err(package_error)?;
+    let mut selected = package
+        .referenced_paths(
+            files
+                .iter()
+                .filter_map(|info| info.path.strip_prefix(&prefix)),
+        )
+        .map_err(package_error)?;
+    selected.remove(manifest_path.strip_prefix(&prefix).unwrap_or_default());
+    let mut total = manifest_bytes.len();
+    entries.insert(
+        manifest_path
+            .strip_prefix(&prefix)
+            .unwrap_or_default()
+            .to_string(),
+        manifest_bytes,
+    );
     for info in files {
         if info.is_directory {
             continue;
@@ -177,7 +230,7 @@ async fn read_folder(
         let Some(relative) = info.path.strip_prefix(&prefix) else {
             continue;
         };
-        if !everruns_core::agent_package::is_package_asset_path(relative) {
+        if !selected.contains(relative) {
             continue;
         }
         if entries.len() >= everruns_core::agent_package::MAX_FILES + 2

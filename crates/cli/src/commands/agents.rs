@@ -363,7 +363,7 @@ async fn import_from_file(
                 .remove("schema_version");
             payload["harness_id"] = serde_json::json!(id);
         }
-        if writable && let Some(files) = payload["initial_files"].as_array_mut() {
+        if writable && let Some(files) = payload["files"].as_array_mut() {
             for file in files {
                 file["is_readonly"] = serde_json::json!(false);
             }

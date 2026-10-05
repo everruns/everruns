@@ -33,6 +33,14 @@ Live changes use the same publication permission preflight as channel updates.
 Existing activation and credential
 bindings remain destination-owned, and omitted channel bindings survive.
 
+The canonical directory is a definition alongside its declared files. File paths
+stay relative to that directory through export, Agent Files and Session Files;
+provider-specific working-directory prefixes are host details. Canonical skills
+use their runtime-relative location, so skill assets require no path remapping.
+The codec accepts legacy layouts and authoring field aliases on import, while
+new exports use the canonical layout. Explicit empty selection suppresses legacy
+file discovery. Ambiguous automatic skill discovery requires an explicit choice.
+
 Disk loaders read declared roots and conventional companion assets. ZIP is the
 folder transport. Server commands read workspace paths through session file
 commands, never through the server host filesystem. Collection rejects traversal
@@ -54,3 +62,15 @@ serving a real session, and comparing against the result after import. See the
 [Framework tests](../../crates/everruns/tests/facade/package.rs),
 [Platform tests](../../crates/server/tests/domain/agent_packages_test.rs), and
 [serve tests](../../crates/serve/src/wire_tests.rs).
+
+## File lifecycle
+
+An Agent version owns the starting snapshot. Session creation seeds a newly
+created file lineage once; attaching to an existing lineage preserves its current
+files and rejects request-level seeding. Agent import or edits affect future
+sessions. Existing-file updates use the file APIs after an explicit review/diff.
+Forks copy current files; compute recovery restores committed files and does not
+reapply the starting snapshot. The product calls these views Files while the
+existing durable Workspace resource retains its storage identity. See the
+[creation boundary](../../crates/server/src/domains/sessions/service/create.rs)
+and [workspace ownership](workspace.md).

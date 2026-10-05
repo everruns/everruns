@@ -229,3 +229,89 @@ async fn create_session_rejects_archived_workspace() {
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn attachment_preserves_current_files_instead_of_reseeding_agent_templates() {
+    let server = TestServer::in_memory().await;
+    let name = unique("file-template");
+    server
+        .post(
+            "/v1/agents/import",
+            json!({
+                "name": name, "instructions": "Read notes", "harness": "base",
+                "files": [{"path": "notes.txt", "content": "starting notes", "is_readonly": false}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+    let first = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id, "agent_name": name
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let wsp = first["workspace_id"].as_str().unwrap();
+    server
+        .put(
+            &format!("/v1/workspaces/{wsp}/fs/notes.txt"),
+            json!({"content": "current notes"}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let attached = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id, "agent_name": name, "workspace_id": wsp
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let sid = attached["id"].as_str().unwrap();
+    let file = server
+        .get(&format!("/v1/sessions/{sid}/fs/notes.txt"))
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(file["content"], "current notes");
+
+    let count = server
+        .db
+        .count_sessions_for_org(everruns_core::DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    let rejected = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id, "workspace_id": wsp,
+                "initial_files": [{"path":"notes.txt", "content":"overwrite"}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json_value();
+    assert!(
+        rejected.to_string().contains("existing file tree"),
+        "{rejected}"
+    );
+    assert_eq!(
+        server
+            .db
+            .count_sessions_for_org(everruns_core::DEFAULT_ORG_ID)
+            .await
+            .unwrap(),
+        count
+    );
+    let file = server
+        .get(&format!("/v1/workspaces/{wsp}/fs/notes.txt"))
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(file["content"], "current notes");
+}

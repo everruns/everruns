@@ -137,14 +137,14 @@ pub enum File {
     Source(FileSource),
     Inline(InitialFile),
 }
-/// A package-relative file or glob and its workspace destination.
+/// A package-relative file or glob and its working-directory destination.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FileSource {
     /// Relative file path or glob confined to the package directory.
     pub source: String,
-    /// Workspace destination; omitted paths are derived from the package source.
+    /// Working-directory destination; omitted paths preserve the package source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     /// Whether the initial workspace file is read-only. Defaults to true.
@@ -204,10 +204,12 @@ pub struct Manifest {
     )]
     #[cfg_attr(feature = "openapi", schema(value_type = Vec<PackageCapability>))]
     pub capabilities: Vec<CapabilityRef>,
-    /// Embedded initial files or package-relative sources. Folder loading defaults to files/.
+    /// Starting files or package-relative sources. Sources retain their relative paths.
     #[serde(
         default,
         deserialize_with = "files",
+        rename = "files",
+        alias = "initial_files",
         skip_serializing_if = "Vec::is_empty"
     )]
     pub initial_files: Vec<File>,
@@ -358,7 +360,7 @@ fn files<'de, D: serde::Deserializer<'de>>(
                 };
                 if let Some(key) = object.keys().find(|key| !keys.contains(&key.as_str())) {
                     return Err(serde::de::Error::custom(format!(
-                        "unknown initial file field {key}"
+                        "unknown file field {key}"
                     )));
                 }
             }
@@ -402,6 +404,8 @@ pub struct AgentPackage {
     pub legacy_id: Option<AgentId>,
     pub legacy_model_id: Option<ModelId>,
     pub legacy_harness_id: Option<HarnessId>,
+    // Explicit selection (including []) suppresses legacy files/ discovery.
+    pub(super) files_declared: bool,
 }
 
 impl AgentPackage {
@@ -412,6 +416,7 @@ impl AgentPackage {
             legacy_id: None,
             legacy_model_id: None,
             legacy_harness_id: None,
+            files_declared: true,
         };
         package.validate()?;
         Ok(package)
@@ -493,6 +498,7 @@ impl AgentPackage {
         let obj = value
             .as_object_mut()
             .ok_or_else(|| error("manifest", "must be an object"))?;
+        let files_declared = obj.contains_key("files") || obj.contains_key("initial_files");
         let legacy = !obj.contains_key("schema_version");
         let legacy_id = take_id(obj, "id", legacy)?;
         let legacy_model_id = take_id(obj, "default_model_id", legacy)?;
@@ -533,6 +539,7 @@ impl AgentPackage {
             legacy_id,
             legacy_model_id,
             legacy_harness_id,
+            files_declared,
         };
         package.validate()?;
         Ok(package)
@@ -743,7 +750,7 @@ impl AgentPackage {
             }
         }
         if m.initial_files.len() > MAX_FILES {
-            fail("initial_files".into(), "at most 100 files");
+            fail("files".into(), "at most 100 files");
         }
         let mut paths = BTreeSet::new();
         let mut bytes = 0;
@@ -753,18 +760,15 @@ impl AgentPackage {
                     match assets::workspace_path(&file.path) {
                         Ok(path) => {
                             if !paths.insert(path) {
-                                fail(format!("initial_files[{i}].path"), "duplicate destination");
+                                fail(format!("files[{i}].path"), "duplicate destination");
                             }
                         }
                         Err(_) => {
-                            fail(format!("initial_files[{i}].path"), "invalid workspace path")
+                            fail(format!("files[{i}].path"), "invalid working-directory path")
                         }
                     }
                     if !matches!(file.encoding.as_str(), "text" | "base64") {
-                        fail(
-                            format!("initial_files[{i}].encoding"),
-                            "expected text or base64",
-                        );
+                        fail(format!("files[{i}].encoding"), "expected text or base64");
                     }
                     match crate::session_file::SessionFile::decode_content(
                         &file.content,
@@ -782,39 +786,53 @@ impl AgentPackage {
                                         .is_some_and(|skill| skill.name == dir);
                                 if !valid {
                                     fail(
-                                        format!("initial_files[{i}].content"),
+                                        format!("files[{i}].content"),
                                         "invalid SKILL.md or name does not match its directory",
                                     );
                                 }
                             }
                             bytes += content.len();
                             if content.len() > MAX_FILE_BYTES {
-                                fail(format!("initial_files[{i}]"), "exceeds 1 MiB");
+                                fail(format!("files[{i}]"), "exceeds 1 MiB");
                             }
                         }
-                        Err(_) => fail(format!("initial_files[{i}].content"), "invalid base64"),
+                        Err(_) => fail(format!("files[{i}].content"), "invalid base64"),
                     }
                 }
                 File::Pattern(source) => {
                     if !assets::safe_source(source) {
-                        fail(
-                            format!("initial_files[{i}]"),
-                            "source must stay inside the package",
-                        );
+                        fail(format!("files[{i}]"), "source must stay inside the package");
                     }
                 }
                 File::Source(source) => {
                     if !assets::safe_source(&source.source) {
                         fail(
-                            format!("initial_files[{i}].source"),
+                            format!("files[{i}].source"),
                             "source must stay inside the package",
                         );
                     }
                 }
             }
         }
+        for path in &paths {
+            if let Some(skill) = path.strip_prefix("/.agents/skills/") {
+                let dir = skill.split('/').next().unwrap_or_default();
+                if !paths.contains(&format!("/.agents/skills/{dir}/SKILL.md")) {
+                    fail("files".into(), "each skill folder requires SKILL.md");
+                }
+            }
+            if path
+                .match_indices('/')
+                .any(|(i, _)| i > 0 && paths.contains(&path[..i]))
+            {
+                fail(
+                    "files".into(),
+                    "file destinations conflict with a parent file",
+                );
+            }
+        }
         if bytes > MAX_INITIAL_BYTES {
-            fail("initial_files".into(), "decoded content exceeds 5 MiB");
+            fail("files".into(), "decoded content exceeds 5 MiB");
         }
         if diagnostics.is_empty() {
             Ok(())
@@ -849,7 +867,7 @@ impl AgentPackage {
                     Ok(file)
                 }
                 _ => Err(error(
-                    format!("initial_files[{i}]"),
+                    format!("files[{i}]"),
                     "unresolved source; load the folder or ZIP package",
                 )),
             })
@@ -857,8 +875,16 @@ impl AgentPackage {
     }
 
     pub fn to_string(&self, format: Format) -> Result<String> {
-        self.files()?;
-        let mut value = serde_json::to_value(&self.manifest).map_err(|e| error("manifest", e))?;
+        let mut manifest = self.manifest.clone();
+        manifest.initial_files = self
+            .files()?
+            .into_iter()
+            .map(|mut file| {
+                file.path = file.path.trim_start_matches('/').to_string();
+                File::Inline(file)
+            })
+            .collect();
+        let mut value = serde_json::to_value(&manifest).map_err(|e| error("manifest", e))?;
         match format {
             Format::Auto | Format::Markdown => {
                 value
@@ -870,7 +896,7 @@ impl AgentPackage {
             }
             Format::Json => serde_json::to_string_pretty(&value).map_err(|e| error("json", e)),
             Format::Yaml => serde_yaml::to_string(&value).map_err(|e| error("yaml", e)),
-            Format::Toml => toml::to_string_pretty(&self.manifest).map_err(|e| error("toml", e)),
+            Format::Toml => toml::to_string_pretty(&manifest).map_err(|e| error("toml", e)),
         }
     }
 

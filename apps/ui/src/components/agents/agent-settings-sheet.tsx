@@ -1,11 +1,11 @@
 "use client";
 
 // Side sheet behind the agent page's "More" rows (and the Version history
-// overflow item). Large editors (Branding, Starter files) need room a narrow
+// overflow item). Large editors (Branding, Files) need room a narrow
 // column or an accordion cannot give, so each opens here, over the page.
 //
 // Two kinds of section live here and the sheet says which:
-// - Draft sections (Branding, Starter files, Network access) edit the page's
+// - Draft sections (Branding, Files, Network access) edit the page's
 //   draft. A change puts the page into edit mode; nothing saves until the
 //   header's Save changes.
 // - Live sections (MCP servers, Credentials, Version history) manage their own
@@ -71,8 +71,9 @@ const SECTIONS: Record<
     wide: true,
   },
   files: {
-    title: "Starter files",
-    description: "Files copied into each new session for this agent.",
+    title: "Files",
+    description:
+      "Starting files for new sessions. Updating these files does not change existing sessions.",
     kind: "draft",
     wide: true,
   },
@@ -159,7 +160,7 @@ export function AgentSettingsSheet({
                   value={draft.files}
                   onChange={onDraftChange(draft.setFiles)}
                   disabled={readOnly}
-                  description="Files copied into each new session for this agent."
+                  description="Starting files for new sessions. Updating these files does not change existing sessions."
                 />
               )}
               {section === "network" && (

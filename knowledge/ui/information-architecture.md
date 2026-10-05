@@ -79,7 +79,7 @@ simulation never supplies management authority or private end-user connection gr
 memory is excluded from these shared workspaces, including delegated runs. Explicit agent service
 connections retain their existing access rules. The personal Platform Chat harness is unavailable.
 
-The initial experience starts with a fresh workspace. Workspace is a secondary inspection view,
+The initial experience starts with a fresh workspace. Files is a secondary inspection view,
 not a prerequisite for starting a conversation. Realtime voice remains on the personal Chat surface
 until its direct transcript path supports fixed test-subject attribution. A persistent Open session action leads to the same
 recording and its timeline. Archiving is shared. Pinning stays on personal Chats. The library offers
@@ -147,7 +147,7 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   can see it.
 * **A session is a read-only recording.** Session detail inspects, it does not edit. Its default
   Transcript preserves the human-readable conversation; Timeline curates how the run executed;
-  Events remains the exact emitted ledger. Work, Workspace, and Cost appear when applicable to the
+  Events remains the exact emitted ledger. Work, Files, and Cost appear when applicable to the
   recording and its enabled capabilities. Watching any of these views stream live is not editing
   the session. Anything that would
   change the session (composing a message, editing a file, writing a secret, steering or
@@ -157,7 +157,7 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   [`session-header.tsx`](../../apps/ui/src/components/session/session-header.tsx) and
   gated on the session's capability features.
 * **The tab bar is a map of the recording, so tabs carry counts.** Work, Events and
-  Workspace are badged with what is behind them; Timeline (the whole run) and Cost (a
+  Files are badged with what is behind them; Timeline (the whole run) and Cost (a
   single figure already shown in the header) are not. An empty tab renders with no badge
   rather than a `0`, so absence reads as absence. The counts ride on the session payload
   the page already fetches — never a per-tab request — and are served from denormalized

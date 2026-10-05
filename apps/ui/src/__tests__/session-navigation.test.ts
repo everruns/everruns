@@ -33,7 +33,7 @@ describe("buildSessionNavigation", () => {
       "files",
       "cost",
     ]);
-    expect(items.find((item) => item.key === "files")?.label).toBe("Workspace");
+    expect(items.find((item) => item.key === "files")?.label).toBe("Files");
   });
 
   // EVE-868: the tab bar is a map of the recording. Counts come from the

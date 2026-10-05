@@ -5,6 +5,7 @@
  * reuse the session file browser/viewer patterns without requiring a session.
  */
 
+import { relativeFilePath } from "@/lib/path-utils";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   FileTree,
@@ -79,8 +80,8 @@ export function InitialFilesEditor({
   value,
   onChange,
   disabled,
-  title = "Starter Files",
-  description = "Files copied into each new session. Add text files directly or upload binary assets.",
+  title = "Files",
+  description = "Starting files for new sessions. Existing session files are preserved.",
 }: InitialFilesEditorProps) {
   const files = useMemo(() => value ?? [], [value]);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -278,7 +279,7 @@ export function InitialFilesEditor({
                         {getDisplayName(selectedFile.path)}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {selectedFile.path}
+                        {relativeFilePath(selectedFile.path)}
                       </div>
                     </div>
                   </div>
@@ -301,13 +302,14 @@ export function InitialFilesEditor({
                     <Label htmlFor="initial-file-path">Path</Label>
                     <Input
                       id="initial-file-path"
-                      value={selectedFile.path}
+                      value={relativeFilePath(selectedFile.path)}
                       onChange={(event) => updateFile(selectedIndex!, { path: event.target.value })}
                       placeholder="/.agents/skills/my-skill/SKILL.md"
                       disabled={disabled}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Absolute path inside the session workspace. `/workspace/...` is also accepted.
+                      Path relative to the working directory. Leading `/` and `/workspace/` are also
+                      accepted.
                     </p>
                   </div>
 
@@ -641,7 +643,7 @@ function normalizeInitialFilePath(path: string) {
     return "/";
   }
 
-  return path.startsWith("/") ? path : `/${path}`;
+  return `/${relativeFilePath(path)}`;
 }
 
 function getFileSizeBytes(file: InitialFile) {

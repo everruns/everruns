@@ -68,7 +68,7 @@ describe("InitialFilesEditor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Add Text File" }));
 
-    expect(screen.getByDisplayValue("/file-1.txt")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("file-1.txt")).toBeInTheDocument();
     expect(readFilesState()).toEqual([
       {
         path: "/file-1.txt",
@@ -136,7 +136,7 @@ describe("InitialFilesEditor", () => {
 
     fireEvent.click(screen.getByText("logo.png"));
 
-    expect(screen.getByDisplayValue("/logo.png")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("logo.png")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Preview" })).toBeInTheDocument();
   });
 

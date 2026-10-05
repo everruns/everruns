@@ -38,3 +38,14 @@ Checks legacy Markdown, complete ZIP assets, destination diffs and invalid input
 - Simple Markdown remains supported; ZIP preserves complete skills and binary files.
 - Exports contain stable names and Instructions, with no deployment resource IDs or credentials.
 - Declared channels default to disabled; explicit enablement creates drafts, not public ingress.
+
+## Root-relative file contract
+
+After importing the triage ZIP, open Agent → Files. Verify the tree contains
+`runbook.md`, `data/example.csv`, and `.agents/skills/investigate/`, with no
+`files/` wrapper. The Path input shows `runbook.md`. Export the agent as ZIP;
+verify the same relative paths and `files` declarations in `agent.toml`.
+Create a session and open Files. Verify the same tree and relative selected-file
+path. Updating the agent must not rewrite that session's files. Attaching a new
+session to its existing file tree must preserve current contents; request-level
+starting files on attachment must fail before a session is created.
