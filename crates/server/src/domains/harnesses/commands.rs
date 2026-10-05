@@ -710,6 +710,19 @@ impl Command for DestroyHarness {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        // Declared, not derived: the REST path `.../{id}/delete` would derive
+        // `harnesses delete destroy`, turning the `delete` leaf
+        // into a group and making it unreachable from the command line.
+        const ROUTE: CliRoute = CliRoute::new(&["harnesses"], "destroy")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Permanently remove an already-archived harness",
+                "everruns harnesses destroy harness_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
     fn policy() -> Option<&'static Policy> {
         Some(&HARNESS_DANGEROUS)
     }

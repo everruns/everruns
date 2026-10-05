@@ -8475,7 +8475,7 @@
   },
   {
     "category": "capabilities",
-    "cli": null,
+    "cli": "capabilities declarative destroy",
     "description": "Permanently delete an archived declarative capability.",
     "input_schema": {
       "properties": {
@@ -8498,7 +8498,7 @@
   },
   {
     "category": "harnesses",
-    "cli": null,
+    "cli": "harnesses destroy",
     "description": "Permanently delete an archived harness.",
     "input_schema": {
       "description": "Permanently delete an archived harness.",
@@ -8570,7 +8570,7 @@
   },
   {
     "category": "virtual_users",
-    "cli": null,
+    "cli": "virtual-users destroy",
     "description": "Permanently delete a virtual user.",
     "input_schema": {
       "description": "Permanently delete a virtual user.",
@@ -8789,7 +8789,7 @@
   },
   {
     "category": "evals",
-    "cli": null,
+    "cli": "evals import-preflight",
     "description": "Report whether the caller can import eval results.",
     "input_schema": {
       "description": "Preflight: report whether the caller can import (feature enabled + has the\neval-management permission) without failing. No policy gate so any org\nmember can probe; the report just returns `false`.",

@@ -54,7 +54,8 @@ budgets list	--subject-id --subject-type
 budgets top-up top	--amount! --budget-id! --description
 budgets update	--budget-id! --limit --metadata --soft-limit --status
 capabilities create	--definition!
-capabilities declarative delete destroy	--id!
+capabilities declarative delete	--id!
+capabilities declarative destroy	--id <id>
 capabilities declarative get	--id!
 capabilities declarative list	--include-archived --search
 capabilities declarative update	--definition --id! --status
@@ -87,7 +88,8 @@ evals cases update	--artifacts --case-id! --conversation --description --eval-id
 evals create	--description --model-override --name! --tags... --target
 evals delete	--eval-id!
 evals get	--eval-id!
-evals import preflight eval	
+evals import	--evals! --source!
+evals import-preflight	
 evals list	--include-archived --search
 evals runs artifacts export	--eval-id! --run-id!
 evals runs cancel	--eval-id! --run-id!
@@ -109,7 +111,8 @@ files sync	--conflict --delete --dry-run --exclude... --interval --no-gitignore 
 harnesses check-name check	--exclude-id --name!
 harnesses copy	--id!
 harnesses create	--capabilities --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --mcpServers --name! --network-access --parent-harness-id --short-description --starters --system-prompt --tags...
-harnesses delete destroy	--id!
+harnesses delete	--id!
+harnesses destroy	--id <id>
 harnesses get	--id!
 harnesses list	--include-archived --search
 harnesses preview	--capabilities --mcp-servers --parent-harness-id --system-prompt
@@ -301,7 +304,8 @@ user connections list	--provider
 user connections providers list	--search
 users list	--search
 virtual-users create	--avatar-url --description --locale --name! --timezone --usage
-virtual-users delete destroy	--id!
+virtual-users delete	--id!
+virtual-users destroy	--id <id>
 virtual-users get	--id!
 virtual-users list	--include-archived --limit --offset --search --usage
 virtual-users update	--avatar-url --description --id! --locale --name --status --timezone

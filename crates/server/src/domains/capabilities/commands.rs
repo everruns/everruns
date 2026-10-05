@@ -438,6 +438,19 @@ impl Command for DestroyDeclarativeCapability {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        // Declared, not derived: the REST path `.../{id}/delete` would derive
+        // `capabilities declarative delete destroy`, turning the `delete` leaf
+        // into a group and making it unreachable from the command line.
+        const ROUTE: CliRoute = CliRoute::new(&["capabilities", "declarative"], "destroy")
+            .with_args(&[CliArg::new("id").at(1)])
+            .with_examples(&[CliExample::new(
+                "Permanently remove an archived declarative capability",
+                "everruns capabilities declarative destroy cap_01h9",
+            )]);
+        Some(ROUTE)
+    }
+
     fn positional_arg() -> Option<&'static str> {
         Some("id")
     }

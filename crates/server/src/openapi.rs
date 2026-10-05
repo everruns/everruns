@@ -524,6 +524,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::reporting::run_projector,
         // Plugins & plugin marketplaces (EVE-667)
         api::plugins::list_plugins,
+        api::command_dispatch::list_commands,
+        api::command_dispatch::execute_command,
         api::plugins::get_plugin,
         api::plugins::install_plugin,
         api::plugins::uninstall_plugin,
@@ -539,6 +541,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
     ),
     components(
         schemas(
+            api::command_dispatch::CommandCatalog,
+            api::command_dispatch::CommandEntry,
+            api::command_dispatch::CommandRequest,
+            api::command_dispatch::CommandResponse,
             Agent, AgentStatus, crate::records::AgentVersion, crate::records::AgentVersionChangeKind,
             Session, SessionStatus, Event, EventContext, EventData,
             everruns_contracts::typed_id::EventId,
@@ -861,6 +867,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         (name = "skills", description = "Skills registry endpoints"),
         (name = "payments", description = "Machine payment wallet, policy, and attempt endpoints"),
         (name = "reporting", description = "Org-scoped semantic reporting endpoints"),
+        (name = "commands", description = "Generic command dispatch over the shared command contract"),
         (name = "task-webhooks", description = "Outbound HTTP webhooks fired on terminal task transitions"),
     ),
     info(

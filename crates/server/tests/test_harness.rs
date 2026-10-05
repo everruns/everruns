@@ -1128,6 +1128,7 @@ impl TestServer {
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::commands::routes(commands_state))
+            .merge(api::command_dispatch::routes(mcp_endpoint_state.clone()))
             .merge(api::session_files::routes(
                 session_files_state.with_virtual_registry(virtual_registry.clone()),
             ))

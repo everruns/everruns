@@ -2514,8 +2514,7 @@
     "wire_name": "destroy_declarative_capability",
     "path": [
       "capabilities",
-      "declarative",
-      "delete"
+      "declarative"
     ],
     "verb": "destroy",
     "description": "Permanently delete an archived declarative capability.",
@@ -2525,9 +2524,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Permanently remove an archived declarative capability",
+        "command": "everruns capabilities declarative destroy cap_01h9"
       }
     ]
   },
@@ -3518,15 +3524,19 @@
   {
     "wire_name": "eval_import_preflight",
     "path": [
-      "evals",
-      "import",
-      "preflight"
+      "evals"
     ],
-    "verb": "eval",
+    "verb": "import-preflight",
     "description": "Report whether the caller can import eval results.",
     "method": "GET",
     "http_path": "/v1/evals/import/preflight",
-    "args": []
+    "args": [],
+    "examples": [
+      {
+        "intent": "Check whether this caller can import eval results",
+        "command": "everruns evals import-preflight"
+      }
+    ]
   },
   {
     "wire_name": "list_evals",
@@ -4164,8 +4174,7 @@
   {
     "wire_name": "destroy_harness",
     "path": [
-      "harnesses",
-      "delete"
+      "harnesses"
     ],
     "verb": "destroy",
     "description": "Permanently delete an archived harness.",
@@ -4175,9 +4184,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Permanently remove an already-archived harness",
+        "command": "everruns harnesses destroy harness_01h9"
       }
     ]
   },
@@ -10032,8 +10048,7 @@
   {
     "wire_name": "destroy_virtual_user",
     "path": [
-      "virtual-users",
-      "delete"
+      "virtual-users"
     ],
     "verb": "destroy",
     "description": "Permanently delete a virtual user.",
@@ -10043,9 +10058,16 @@
       {
         "field": "id",
         "long": "id",
+        "position": 1,
         "kind": "string",
         "required": true,
         "help": "Prefixed public identifier."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Permanently remove a virtual user",
+        "command": "everruns virtual-users destroy vu_01h9"
       }
     ]
   },

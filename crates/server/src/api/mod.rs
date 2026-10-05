@@ -26,6 +26,7 @@ pub mod channel_ingress;
 pub mod channel_rate_limit;
 pub mod channel_webhooks;
 pub mod chatgpt;
+pub mod command_dispatch;
 pub mod commands;
 pub mod common;
 pub mod dispatch;

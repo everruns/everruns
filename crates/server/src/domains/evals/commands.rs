@@ -204,6 +204,18 @@ impl Command for EvalImportPreflightCmd {
         }
     }
 
+    fn cli() -> Option<CliRoute> {
+        // Declared, not derived: `/v1/evals/import/preflight` would derive
+        // `evals import preflight eval`, turning the `evals import` leaf into a
+        // group and making it unreachable from the command line.
+        const ROUTE: CliRoute =
+            CliRoute::new(&["evals"], "import-preflight").with_examples(&[CliExample::new(
+                "Check whether this caller can import eval results",
+                "everruns evals import-preflight",
+            )]);
+        Some(ROUTE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<EvalImportPreflight, CommandError> {
         let evals_enabled = ctx.feature_flags.evals;
         let can_import = evals_enabled

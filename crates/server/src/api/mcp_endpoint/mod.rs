@@ -1537,7 +1537,7 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
 // ============================================================================
 
 /// Build a CatalogContext for the given org.
-fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogContext {
+pub(crate) fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogContext {
     catalog::CatalogContext {
         domain_ctx: domain_context(Caller::from(org), state)
             .with_feature_flags(org.feature_flags.clone()),
