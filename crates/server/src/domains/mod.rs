@@ -34,6 +34,7 @@ pub mod plugins;
 pub mod providers;
 pub mod reporting;
 pub mod sandbox_templates;
+pub mod sandboxes;
 pub mod schedules;
 pub mod session_commands;
 pub mod session_databases;

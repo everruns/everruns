@@ -7428,6 +7428,258 @@
     "args": []
   },
   {
+    "wire_name": "get_sandbox",
+    "path": [
+      "sandboxes"
+    ],
+    "verb": "get",
+    "description": "Get one Sandbox with its provider resources and full state history.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/{id}",
+    "args": [
+      {
+        "field": "id",
+        "long": "id",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "Logical Sandbox id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See why a Sandbox was rebuilt",
+        "command": "everruns sandboxes get sandbox_01h9"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_sandboxes",
+    "path": [
+      "sandboxes"
+    ],
+    "verb": "list",
+    "description": "List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only Sandboxes of Sessions that ran this Agent."
+      },
+      {
+        "field": "include_in_process",
+        "long": "include-in-process",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include in-process targets (virtual filesystem, host), which have no provider resource."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Page size, 1 to 200."
+      },
+      {
+        "field": "needs_attention",
+        "long": "needs-attention",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only Sandboxes with at least one attention reason."
+      },
+      {
+        "field": "offset",
+        "long": "offset",
+        "kind": "integer",
+        "required": false,
+        "help": "Rows to skip."
+      },
+      {
+        "field": "provider",
+        "long": "provider",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated provider ids, such as `daytona,modal`."
+      },
+      {
+        "field": "sandbox_template_id",
+        "long": "sandbox-template-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only Sandboxes created from this Sandbox Template."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false,
+        "help": "Case-insensitive match on Session title, Agent, provider or provider resource id."
+      },
+      {
+        "field": "state",
+        "long": "state",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de..."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Find Sandboxes that need attention",
+        "command": "everruns sandboxes list --needs-attention true"
+      }
+    ]
+  },
+  {
+    "wire_name": "get_sandbox_fleet_stats",
+    "path": [
+      "sandboxes",
+      "stats"
+    ],
+    "verb": "get",
+    "description": "Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/stats",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only Sandboxes of Sessions that ran this Agent."
+      },
+      {
+        "field": "include_in_process",
+        "long": "include-in-process",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include in-process targets (virtual filesystem, host), which have no provider resource."
+      },
+      {
+        "field": "needs_attention",
+        "long": "needs-attention",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only Sandboxes with at least one attention reason."
+      },
+      {
+        "field": "provider",
+        "long": "provider",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated provider ids, such as `daytona,modal`."
+      },
+      {
+        "field": "sandbox_template_id",
+        "long": "sandbox-template-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only Sandboxes created from this Sandbox Template."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false,
+        "help": "Case-insensitive match on Session title, Agent, provider or provider resource id."
+      },
+      {
+        "field": "state",
+        "long": "state",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de..."
+      }
+    ]
+  },
+  {
+    "wire_name": "get_sandbox_timeline",
+    "path": [
+      "sandboxes",
+      "timeline"
+    ],
+    "verb": "get",
+    "description": "Show when each Sandbox was running, paused or lost over a time window, with how many ran at once.",
+    "method": "GET",
+    "http_path": "/v1/sandboxes/timeline",
+    "args": [
+      {
+        "field": "agent_id",
+        "long": "agent-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only Sandboxes of Sessions that ran this Agent."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "string",
+        "required": false,
+        "help": "Window start (RFC 3339)."
+      },
+      {
+        "field": "include_in_process",
+        "long": "include-in-process",
+        "kind": "boolean",
+        "required": false,
+        "help": "Include in-process targets (virtual filesystem, host), which have no provider resource."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Lanes to return, 1 to 200."
+      },
+      {
+        "field": "needs_attention",
+        "long": "needs-attention",
+        "kind": "boolean",
+        "required": false,
+        "help": "Only Sandboxes with at least one attention reason."
+      },
+      {
+        "field": "provider",
+        "long": "provider",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated provider ids, such as `daytona,modal`."
+      },
+      {
+        "field": "sandbox_template_id",
+        "long": "sandbox-template-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only Sandboxes created from this Sandbox Template."
+      },
+      {
+        "field": "search",
+        "long": "search",
+        "kind": "string",
+        "required": false,
+        "help": "Case-insensitive match on Session title, Agent, provider or provider resource id."
+      },
+      {
+        "field": "state",
+        "long": "state",
+        "kind": "string",
+        "required": false,
+        "help": "Comma-separated states: `running`, `paused`, `lost`, `starting`, `failed`, `not_started`, `de..."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "string",
+        "required": false,
+        "help": "Window end (RFC 3339)."
+      }
+    ]
+  },
+  {
     "wire_name": "archive_session",
     "path": [
       "sessions"

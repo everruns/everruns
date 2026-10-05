@@ -28,6 +28,7 @@ import {
   Radio,
   Server,
   Container,
+  Cpu,
   Settings,
   Shield,
   Telescope,
@@ -95,6 +96,14 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     href: "/sessions",
     icon: MessageSquare,
     keywords: ["recordings", "conversation", "transcript"],
+  },
+  // Live and past compute, read rather than authored, so it sits with
+  // Sessions; the templates that configure it stay under Building.
+  {
+    name: "Sandboxes",
+    href: "/sandboxes",
+    icon: Cpu,
+    keywords: ["compute", "daytona", "modal", "containers", "fleet"],
   },
   { name: "Approvals", href: "/approvals", icon: ShieldCheck, minimumRole: "admin" },
   // "What in this org is reachable from outside right now" is a question

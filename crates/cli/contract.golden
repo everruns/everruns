@@ -221,6 +221,10 @@ reports saved list
 reports saved run	--report-id!
 reports saved update	--report-id! --request!
 sandbox-targets list
+sandboxes get	--id <id>
+sandboxes list	--agent-id --include-in-process --limit --needs-attention --offset --provider --sandbox-template-id --search --state
+sandboxes stats get	--agent-id --include-in-process --needs-attention --provider --sandbox-template-id --search --state
+sandboxes timeline get	--agent-id --from --include-in-process --limit --needs-attention --provider --sandbox-template-id --search --state --to
 sessions archive	--session <session_id>
 sessions budget-check check	--session-id!
 sessions budgets list	--session-id!

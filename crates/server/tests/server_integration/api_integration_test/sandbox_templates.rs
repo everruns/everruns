@@ -180,3 +180,111 @@ async fn legacy_environment_authoring_is_accepted_but_response_is_canonical() {
     assert!(template["current_revision"].get("spec").is_some());
     assert!(template["current_revision"].get("profile").is_none());
 }
+
+/// The fleet endpoints list a Session's managed Sandbox with its owner, roll it
+/// up, and show its lifecycle; in-process Sandboxes stay out by default.
+#[tokio::test]
+async fn sandbox_fleet_lists_rolls_up_and_shows_history() {
+    let server = TestServer::new().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "fleet-agent",
+                "system_prompt": "Test the Sandbox fleet.",
+                "sandbox_policy": {
+                    "mode": "fixed",
+                    "default": "build",
+                    "templates": {
+                        "build": {"target": {"kind": "managed", "provider": "daytona"}, "durability": "checkpointed"}
+                    }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let title = format!("Fleet {}", uuid::Uuid::now_v7());
+    let session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "title": title,
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let pinned: Value = server
+        .get(&format!(
+            "/v1/sessions/{}/sandbox",
+            session["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let sandbox_id = pinned["sandbox_id"].as_str().expect("sandbox id");
+
+    let page: Value = server
+        .get(&format!(
+            "/v1/sandboxes?search={}",
+            title.replace(' ', "%20")
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(page["total"], 1, "{page}");
+    let item = &page["items"][0];
+    assert_eq!(item["id"], sandbox_id);
+    assert_eq!(item["provider"], "daytona");
+    assert_eq!(item["state"], "not_started");
+    assert_eq!(item["session_id"], session["id"]);
+    assert_eq!(item["agent_id"], agent["id"]);
+    assert_eq!(item["agent_name"], "fleet-agent");
+
+    let stats: Value = server
+        .get(&format!(
+            "/v1/sandboxes/stats?search={}",
+            title.replace(' ', "%20")
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(stats["window_days"], 7);
+    assert_eq!(
+        stats["by_state"],
+        json!([{"key": "not_started", "count": 1}])
+    );
+    assert_eq!(stats["created_in_window"], 1);
+
+    let detail: Value = server
+        .get(&format!("/v1/sandboxes/{sandbox_id}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(detail["id"], sandbox_id);
+    assert_eq!(detail["history"][0]["state"], "not_started");
+    assert_eq!(detail["incarnations"], json!([]));
+
+    // Never started, so nothing to draw.
+    let timeline: Value = server
+        .get(&format!(
+            "/v1/sandboxes/timeline?search={}",
+            title.replace(' ', "%20")
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(timeline["lanes"], json!([]));
+
+    server
+        .get("/v1/sandboxes?state=runing")
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+    server
+        .get("/v1/sandboxes/sandbox_01933b5a000070008000000000000099")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}

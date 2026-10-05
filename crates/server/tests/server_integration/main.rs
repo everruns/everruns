@@ -22,5 +22,6 @@ mod platform_chat_starter_test;
 mod platform_chat_upgrade_test;
 mod repository_conformance_test;
 mod repository_integration_test;
+mod sandbox_fleet_test;
 mod sandbox_state_test;
 mod session_row_fixture;
