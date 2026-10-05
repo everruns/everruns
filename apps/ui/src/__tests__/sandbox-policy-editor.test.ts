@@ -20,7 +20,24 @@ const daytona: SandboxTargetDescriptor = {
   durability: "checkpointed",
 };
 
+const modal: SandboxTargetDescriptor = {
+  ...daytona,
+  provider: "modal",
+  capabilities: { ...daytona.capabilities, portable_checkpoint: false },
+  durability: "provider_snapshot",
+};
+
 describe("SandboxPolicyEditor helpers", () => {
+  it("creates a Modal profile that recovers through provider snapshots", () => {
+    expect(createSandboxTemplateSpec(modal)).toEqual({
+      target: { kind: "managed", provider: "modal" },
+      durability: "provider_snapshot",
+      lifecycle: { idle_after_seconds: 180, idle_action: "checkpoint_and_stop" },
+      bootstrap: { commands: [] },
+    });
+    expect(nextSandboxBindingName(modal, {})).toBe("modal");
+  });
+
   it("creates a recoverable profile from the deployment descriptor", () => {
     expect(createSandboxTemplateSpec(daytona)).toEqual({
       target: { kind: "managed", provider: "daytona" },

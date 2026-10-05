@@ -96,8 +96,32 @@ The live tests boot real VM and gVisor sandboxes, check the VM runs its own
 kernel, stream stdin/stdout/stderr, kill on timeout, snapshot and restore,
 open a tunnel, and terminate through a guard even when an assertion fails.
 
+## Managed Sandboxes provider
+
+Modal is also a `managed` Sandbox Template target (provider `modal`), so an
+agent can get the provider-neutral `sandbox_*` tools on a Modal VM instead of
+the `modal_*` tools. The provider maps the lifecycle Modal lacks:
+
+- **Pause** snapshots the filesystem (`SandboxSnapshotFs`) and terminates the
+  sandbox; **resume** boots a new sandbox from the snapshot image, so the
+  external id changes and the old lease is released. Modal terminates
+  asynchronously, so a just-paused sandbox can still report running; the
+  provider state records the pause and resume and status trust it.
+- **Files** go over exec: reads through `base64` (5 MiB cap) so binary content
+  survives, writes through stdin with the path as an argv value.
+- **Durability** is `provider_snapshot` only; template validation rejects
+  `checkpointed`, since nothing portable leaves Modal.
+- **Options** are `image`, `runtime` (`vm` or `gvisor`), `cpu`, `memory_mb`,
+  `workspace_path` (default `/workspace`) and `title`; the server and the
+  provider validate the same ranges.
+- **Gating**: the plugin is linked everywhere, so the server's
+  `managed_provider_offered` offers Modal only at development grade, both in
+  `/v1/sandbox-targets` and when a Session resolves its template.
+
 ## Gaps
 
 - No Modal Volumes, Secrets or custom networking (block/allow lists) yet.
-- No provider-neutral Environment target: the model sees `modal_*` tools.
+- Network for the managed target is `allow` only until egress allowlists are
+  enforced through Modal's network access controls.
+- No memory snapshots: resume restores the filesystem, not running processes.
 - Threats: [TM-MODAL](../security/threat-model.md#18a-modal-sandbox-tm-modal).

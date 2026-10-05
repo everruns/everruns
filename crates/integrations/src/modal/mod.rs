@@ -21,6 +21,7 @@
 
 pub mod client;
 pub mod connection;
+mod session_sandbox;
 pub mod state;
 mod tools;
 mod transport;
@@ -36,6 +37,7 @@ use everruns_contracts::runtime::tools::Tool;
 
 pub use client::{ModalClient, ModalCredentials};
 pub use connection::ModalConnector;
+pub use session_sandbox::ModalSessionSandboxProvider;
 
 /// Generated protobuf types for the trimmed Modal API (`proto/modal/`).
 #[allow(missing_docs, clippy::all, clippy::pedantic)]
@@ -89,6 +91,15 @@ pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
     experimental_only: true,
     factory: || Box::new(ModalConnector),
 }];
+
+// The managed Sandboxes provider (Sandbox Templates `managed` target, provider
+// `modal`). The server offers it only at development grade while the
+// integration is experimental (`sandbox_templates::resolution`).
+inventory::submit! {
+    everruns_contracts::session_sandbox::SessionSandboxProviderPlugin {
+        factory: || Box::new(ModalSessionSandboxProvider),
+    }
+}
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(

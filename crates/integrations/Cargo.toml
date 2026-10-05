@@ -56,6 +56,8 @@ modal = [
     "dep:tonic-prost",
     "dep:tracing",
     "dep:uuid",
+    # Managed Sandboxes provider (Sandbox Templates `managed` target).
+    "dep:inventory",
 ]
 # Live tests against the real Modal API. Requires MODAL_TOKEN_ID and
 # MODAL_TOKEN_SECRET; fails closed when they are missing.
@@ -66,6 +68,7 @@ test-util = []
 
 [dependencies]
 everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
+inventory = { workspace = true, optional = true }
 
 # Per-vendor dependencies, each pulled in only by the features that need it.
 async-trait = { workspace = true, optional = true }
@@ -98,6 +101,10 @@ everruns-core = { workspace = true, default-features = false, features = ["host"
 
 [[test]]
 name = "modal_tools"
+required-features = ["modal", "test-util"]
+
+[[test]]
+name = "modal_session_sandbox"
 required-features = ["modal", "test-util"]
 
 [[test]]

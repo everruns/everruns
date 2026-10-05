@@ -39,6 +39,7 @@ function targetKey(target: Pick<SandboxTargetDescriptor, "kind" | "provider">): 
 function targetLabel(target: Pick<SandboxTargetDescriptor, "kind" | "provider">): string {
   if (target.kind === "vfs" && target.provider === "bashkit") return "Bashkit";
   if (target.kind === "managed" && target.provider === "daytona") return "Daytona";
+  if (target.kind === "managed" && target.provider === "modal") return "Modal";
   return target.provider ? `${target.provider} (${target.kind})` : target.kind;
 }
 
@@ -129,6 +130,96 @@ function TemplateBindingNameInput({
   );
 }
 
+function optionString(options: Record<string, unknown>, key: string): string {
+  const value = options[key];
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+/** Modal fields; the server and provider validate the same ranges. */
+function ModalOptionFields({
+  name,
+  options,
+  disabled,
+  setOption,
+}: {
+  name: string;
+  options: Record<string, unknown>;
+  disabled: boolean;
+  setOption: (key: string, value: unknown) => void;
+}) {
+  const numeric = (key: string) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    setOption(key, event.target.value ? Number(event.target.value) : "");
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-runtime-${name}`}>Runtime</Label>
+        <Select
+          value={typeof options.runtime === "string" ? options.runtime : "vm"}
+          onValueChange={(value) => setOption("runtime", value === "vm" ? "" : value)}
+          disabled={disabled}
+        >
+          <SelectTrigger id={`sandbox-runtime-${name}`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="vm">VM (own kernel)</SelectItem>
+            <SelectItem value="gvisor">gVisor container</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-image-${name}`}>Image</Label>
+        <Input
+          id={`sandbox-image-${name}`}
+          value={optionString(options, "image")}
+          onChange={(event) => setOption("image", event.target.value)}
+          placeholder="python:3.13-slim with git and curl"
+          disabled={disabled}
+          className="font-mono"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-cpu-${name}`}>CPU cores</Label>
+        <Input
+          id={`sandbox-cpu-${name}`}
+          type="number"
+          min={0.125}
+          max={64}
+          step={0.125}
+          value={optionString(options, "cpu")}
+          onChange={numeric("cpu")}
+          placeholder="Provider default"
+          disabled={disabled}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-memory-${name}`}>Memory (MiB)</Label>
+        <Input
+          id={`sandbox-memory-${name}`}
+          type="number"
+          min={128}
+          max={262_144}
+          value={optionString(options, "memory_mb")}
+          onChange={numeric("memory_mb")}
+          placeholder="Provider default"
+          disabled={disabled}
+        />
+      </div>
+      <div className="space-y-2 sm:col-span-2">
+        <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+        <Input
+          id={`sandbox-workspace-${name}`}
+          value={optionString(options, "workspace_path")}
+          onChange={(event) => setOption("workspace_path", event.target.value)}
+          placeholder="/workspace"
+          disabled={disabled}
+          className="font-mono"
+        />
+      </div>
+    </div>
+  );
+}
+
 function TemplateSpecEditor({
   name,
   spec,
@@ -155,6 +246,7 @@ function TemplateSpecEditor({
   const descriptor = targets.find((target) => targetKey(target) === specTargetKey(spec));
   const options = targetOptions(spec);
   const managed = spec.target.kind === "managed";
+  const modal = managed && spec.target.provider === "modal";
   const lifecycle = {
     idle_after_seconds: spec.lifecycle?.idle_after_seconds ?? DEFAULT_IDLE_SECONDS,
     idle_action: spec.lifecycle?.idle_action ?? "checkpoint_and_stop",
@@ -262,73 +354,83 @@ function TemplateSpecEditor({
       {managed ? (
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            Daytona uses the connection of the person starting the chat. Configure it in{" "}
+            {modal ? "Modal" : "Daytona"} uses the connection of the person starting the chat.
+            Configure it in{" "}
             <Link href="/settings/agent-experience" className="underline underline-offset-2">
               Settings → My agent experience
             </Link>
             .
           </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor={`sandbox-size-${name}`}>Compute size</Label>
-              <Select
-                value={typeof options.size === "string" ? options.size : "default"}
-                onValueChange={(value) => setOption("size", value === "default" ? "" : value)}
-                disabled={disabled}
-              >
-                <SelectTrigger id={`sandbox-size-${name}`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">Provider default</SelectItem>
-                  <SelectItem value="small">Small</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="large">Large</SelectItem>
-                </SelectContent>
-              </Select>
+          {modal ? (
+            <ModalOptionFields
+              name={name}
+              options={options}
+              disabled={disabled}
+              setOption={setOption}
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor={`sandbox-size-${name}`}>Compute size</Label>
+                <Select
+                  value={typeof options.size === "string" ? options.size : "default"}
+                  onValueChange={(value) => setOption("size", value === "default" ? "" : value)}
+                  disabled={disabled}
+                >
+                  <SelectTrigger id={`sandbox-size-${name}`} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Provider default</SelectItem>
+                    <SelectItem value="small">Small</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="large">Large</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`sandbox-snapshot-${name}`}>Snapshot</Label>
+                <Input
+                  id={`sandbox-snapshot-${name}`}
+                  value={typeof options.snapshot === "string" ? options.snapshot : ""}
+                  onChange={(event) => setOption("snapshot", event.target.value)}
+                  placeholder="Provider default"
+                  disabled={disabled}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
+                <Input
+                  id={`sandbox-workspace-${name}`}
+                  value={typeof options.workspace_path === "string" ? options.workspace_path : ""}
+                  onChange={(event) => setOption("workspace_path", event.target.value)}
+                  placeholder="/home/daytona/workspace"
+                  disabled={disabled}
+                  className="font-mono"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`sandbox-auto-stop-${name}`}>Provider auto-stop (minutes)</Label>
+                <Input
+                  id={`sandbox-auto-stop-${name}`}
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={
+                    typeof options.auto_stop_minutes === "number" ? options.auto_stop_minutes : ""
+                  }
+                  onChange={(event) =>
+                    setOption(
+                      "auto_stop_minutes",
+                      event.target.value ? Number(event.target.value) : "",
+                    )
+                  }
+                  placeholder="Provider default"
+                  disabled={disabled}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor={`sandbox-snapshot-${name}`}>Snapshot</Label>
-              <Input
-                id={`sandbox-snapshot-${name}`}
-                value={typeof options.snapshot === "string" ? options.snapshot : ""}
-                onChange={(event) => setOption("snapshot", event.target.value)}
-                placeholder="Provider default"
-                disabled={disabled}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`sandbox-workspace-${name}`}>Workspace path</Label>
-              <Input
-                id={`sandbox-workspace-${name}`}
-                value={typeof options.workspace_path === "string" ? options.workspace_path : ""}
-                onChange={(event) => setOption("workspace_path", event.target.value)}
-                placeholder="/home/daytona/workspace"
-                disabled={disabled}
-                className="font-mono"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`sandbox-auto-stop-${name}`}>Provider auto-stop (minutes)</Label>
-              <Input
-                id={`sandbox-auto-stop-${name}`}
-                type="number"
-                min={1}
-                max={60}
-                value={
-                  typeof options.auto_stop_minutes === "number" ? options.auto_stop_minutes : ""
-                }
-                onChange={(event) =>
-                  setOption(
-                    "auto_stop_minutes",
-                    event.target.value ? Number(event.target.value) : "",
-                  )
-                }
-                placeholder="Provider default"
-                disabled={disabled}
-              />
-            </div>
-          </div>
+          )}
         </div>
       ) : null}
 

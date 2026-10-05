@@ -307,3 +307,65 @@ async fn terminating_is_idempotent_and_unknown_ids_are_not_found() {
     // The worker's lease cleanup treats this wording as "already gone".
     assert!(err.contains("not found"), "{err}");
 }
+
+#[tokio::test]
+async fn managed_provider_pauses_to_a_snapshot_and_resumes_with_files_intact() {
+    use everruns_contracts::session_sandbox::{
+        SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxProvider,
+    };
+    use everruns_integrations::modal::ModalSessionSandboxProvider;
+
+    let creds = credentials();
+    let token = format!("{}:{}", creds.token_id, creds.token_secret);
+    let (ctx, _, leases) = common::context(Some(&token));
+    let config = SessionSandboxConfig {
+        provider: "modal".into(),
+        provider_config: json!({"runtime": "vm"}),
+        ..Default::default()
+    };
+    let provider = ModalSessionSandboxProvider;
+    let exec = |command: &str| SessionSandboxExecRequest {
+        command: command.into(),
+        cwd: None,
+        timeout_ms: Some(60_000),
+        output_mode: "full".into(),
+    };
+
+    let created = provider.create(&ctx, &config).await.unwrap();
+    let _first = SandboxGuard(created.external_id.clone());
+    provider
+        .write_file(&ctx, &config, &created, "keep.txt", b"survives pause")
+        .await
+        .unwrap();
+
+    let paused = provider.pause(&ctx, &config, &created).await.unwrap();
+    assert_eq!(paused.metadata["remote_state"], "paused");
+    assert!(paused.provider_state["snapshot_image_id"].is_string());
+
+    let resumed = provider.resume(&ctx, &config, &paused).await.unwrap();
+    let _second = SandboxGuard(resumed.external_id.clone());
+    assert_ne!(resumed.external_id, created.external_id);
+    let read = provider
+        .read_file(&ctx, &config, &resumed, "keep.txt")
+        .await
+        .unwrap();
+    assert_eq!(read.content, "survives pause");
+    let out = provider
+        .exec(&ctx, &config, &resumed, &exec("pwd && uname -r"))
+        .await
+        .unwrap();
+    assert!(out.success, "{}", out.stderr);
+    assert!(out.stdout.starts_with("/workspace\n"), "{}", out.stdout);
+
+    provider.delete(&ctx, &config, &resumed).await.unwrap();
+    let active = leases
+        .resources
+        .lock()
+        .await
+        .iter()
+        .filter(|r| {
+            r.status == everruns_contracts::runtime::leased_resource::LeasedResourceStatus::Active
+        })
+        .count();
+    assert_eq!(active, 0, "every lease is released");
+}
