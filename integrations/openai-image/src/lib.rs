@@ -27,3 +27,6 @@ mod test_egress;
 pub use image_capability::{
     CAPABILITY_PLUGINS, EditImageTool, GenerateImageTool, GptImageGenCapability,
 };
+
+#[cfg(test)]
+mod narration_tests;

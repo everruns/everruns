@@ -79,12 +79,7 @@ fn hosted_catalog_keeps_dependency_tool_and_narration_invariants() {
     let registry = everruns_capabilities::capabilities::hosted_capability_registry_for_grade(
         everruns_core::DeploymentGrade::Prod,
     );
-    let generic_narration_allowlist = [
-        "data_knowledge",
-        "platform",
-        "model_scout",
-        "openrouter_workspace",
-    ];
+    let generic_narration_allowlist = ["data_knowledge", "platform"];
 
     for capability in registry.list() {
         for dependency in capability.dependencies() {
@@ -200,3 +195,10 @@ async fn hosted_delegation_providers_share_one_spawn_agent_tool() {
         serde_json::json!(["subagent", "agent"]),
     );
 }
+
+#[path = "capability_boundary/slack_narration.rs"]
+mod slack_narration;
+
+#[cfg(feature = "container-sandbox")]
+#[path = "capability_boundary/container_narration.rs"]
+mod container_narration;

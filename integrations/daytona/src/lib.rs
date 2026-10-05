@@ -242,6 +242,59 @@ impl SandboxFleetTool {
 
 #[async_trait::async_trait]
 impl Tool for SandboxFleetTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        if let Some(narration) = self
+            .inner
+            .as_ref()
+            .and_then(|tool| tool.narrate(call, phase, locale, ctx))
+        {
+            return Some(narration);
+        }
+        let (english, ukrainian, keys): (_, _, &[&str]) = match self.operation {
+            FleetOperation::List => (
+                (
+                    "Listing sandboxes",
+                    "Listed sandboxes",
+                    "Could not list sandboxes",
+                ),
+                (
+                    "Перелічую пісочниці",
+                    "Перелічив пісочниці",
+                    "Не вдалося перелічити пісочниці",
+                ),
+                &[],
+            ),
+            FleetOperation::Inspect => (
+                (
+                    "Inspecting sandbox",
+                    "Inspected sandbox",
+                    "Could not inspect sandbox",
+                ),
+                (
+                    "Перевіряю пісочницю",
+                    "Перевірив пісочницю",
+                    "Не вдалося перевірити пісочницю",
+                ),
+                &["sandbox_id"],
+            ),
+            _ => return None,
+        };
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            english,
+            ukrainian,
+            keys,
+        ))
+    }
+
     fn name(&self) -> &str {
         self.name
     }

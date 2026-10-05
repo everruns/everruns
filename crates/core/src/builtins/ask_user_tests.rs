@@ -763,3 +763,74 @@ async fn defaults_responder_matches_unattended_result() {
         assert_eq!(engine_json, typed_json, "diverged on {arguments}");
     }
 }
+
+#[test]
+fn question_narration_covers_in_process_and_client_side_without_claiming_an_answer() {
+    use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    for capability in [
+        AskUserCapability::default(),
+        AskUserCapability::client_side(),
+    ] {
+        let call = crate::tool_types::ToolCall {
+            id: "call".into(),
+            name: ASK_USER_TOOL_NAME.into(),
+            arguments: json!({"questions":[{"header":"API access","kind":"secret","secret_name":"PRIVATE","purpose":"PRIVATE","question":"PRIVATE"}]}),
+        };
+        for (phase, expected) in [
+            (ToolNarrationPhase::Started, "Asking user: API access"),
+            (ToolNarrationPhase::Waiting, "Asking user: API access"),
+            (ToolNarrationPhase::Completed, "Asked user: API access"),
+            (ToolNarrationPhase::Failed, "Could not ask user: API access"),
+        ] {
+            assert_eq!(
+                capability
+                    .narrate(None, &call, phase, None, ToolNarrationContext::default())
+                    .as_deref(),
+                Some(expected)
+            );
+        }
+        assert_eq!(
+            capability
+                .narrate(
+                    None,
+                    &call,
+                    ToolNarrationPhase::Completed,
+                    Some("uk"),
+                    ToolNarrationContext::default()
+                )
+                .as_deref(),
+            Some("Запитав користувача: API access")
+        );
+        let empty = crate::tool_types::ToolCall {
+            arguments: json!({}),
+            ..call.clone()
+        };
+        assert_eq!(
+            capability
+                .narrate(
+                    None,
+                    &empty,
+                    ToolNarrationPhase::Completed,
+                    None,
+                    ToolNarrationContext::default()
+                )
+                .as_deref(),
+            Some("Asked user")
+        );
+        let other = crate::tool_types::ToolCall {
+            name: "other".into(),
+            ..call
+        };
+        assert!(
+            capability
+                .narrate(
+                    None,
+                    &other,
+                    ToolNarrationPhase::Completed,
+                    None,
+                    ToolNarrationContext::default()
+                )
+                .is_none()
+        );
+    }
+}

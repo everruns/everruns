@@ -163,6 +163,31 @@ pub(crate) async fn upsert(
 
 #[async_trait]
 impl Tool for UpsertGitHubIssueTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Saving GitHub issue",
+                "Saved GitHub issue",
+                "Could not save GitHub issue",
+            ),
+            (
+                "Зберігаю задачу GitHub",
+                "Зберіг задачу GitHub",
+                "Не вдалося зберегти задачу GitHub",
+            ),
+            &["title", "repo"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "upsert_github_issue"
     }

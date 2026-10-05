@@ -105,7 +105,25 @@ impl McpCapability {
 
         ToolDefinition::Builtin(BuiltinTool {
             name: prefixed_name,
-            display_name: None,
+            display_name: Some(
+                mcp_tool
+                    .title
+                    .as_deref()
+                    .filter(|title| !title.trim().is_empty())
+                    .map(crate::tool_narration::narration_detail)
+                    .unwrap_or_else(|| {
+                        format!(
+                            "{}: {}",
+                            self.server_name,
+                            mcp_tool
+                                .name
+                                .split(['_', '-', '.'])
+                                .filter(|part| !part.is_empty())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        )
+                    }),
+            ),
             description: mcp_tool
                 .description
                 .clone()
@@ -165,7 +183,12 @@ impl Capability for McpCapability {
         _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // Generic search narration for provider/MCP search tools (`*__search`).
-        if !tool_call.name.ends_with("__search") {
+        if !self
+            .tools
+            .iter()
+            .any(|tool| mcp_tool_name(&self.server_name, &tool.name) == tool_call.name)
+            || !tool_call.name.ends_with("__search")
+        {
             return None;
         }
         Some(crate::tool_narration::narrate_provider_search(
@@ -279,6 +302,7 @@ mod tests {
                 Some("Microsoft Learn MCP".into()),
                 vec![McpToolDefinition {
                     name: "search".into(),
+                    title: None,
                     description: Some("Search documentation".into()),
                     input_schema: schema.clone(),
                     annotations,
@@ -315,6 +339,7 @@ mod tests {
                 None,
                 vec![McpToolDefinition {
                     name: "search".into(),
+                    title: None,
                     description: None,
                     input_schema: json!({"type":"object"}),
                     annotations: None,
@@ -331,6 +356,7 @@ mod tests {
             None,
             vec![McpToolDefinition {
                 name: "read__file".into(),
+                title: None,
                 description: None,
                 input_schema: json!({"type":"object"}),
                 annotations: None,
@@ -342,5 +368,73 @@ mod tests {
             crate::parse_mcp_tool_name(definitions[0].name()),
             Some(("docs_api".into(), "read__file".into()))
         );
+    }
+}
+
+#[cfg(test)]
+mod narration_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn remote_titles_survive_discovery_and_generic_narration() {
+        for (title, expected) in [
+            (Some("Read project notes"), "Read project notes"),
+            (None, "notes: read file"),
+            (Some("  "), "notes: read file"),
+        ] {
+            let tool: McpToolDefinition = serde_json::from_value(
+                json!({"name":"read_file", "title":title, "inputSchema":{"type":"object"}}),
+            )
+            .unwrap();
+            let capability = McpCapability::new(Uuid::nil(), "notes".into(), None, vec![tool]);
+            let definitions = capability.tool_definitions();
+            assert_eq!(definitions[0].display_name(), Some(expected));
+            let call = everruns_contracts::tool_types::ToolCall {
+                id: "call".into(),
+                name: definitions[0].name().into(),
+                arguments: json!({}),
+            };
+            assert_eq!(
+                crate::tool_narration::render_tool_narration(
+                    Some(&definitions[0]),
+                    &call,
+                    crate::tool_narration::ToolNarrationPhase::Completed
+                ),
+                format!("Ran {expected}")
+            );
+        }
+    }
+
+    #[test]
+    fn capability_only_narrates_search_tools_it_owns() {
+        let capability = McpCapability::new(
+            Uuid::nil(),
+            "notes".into(),
+            None,
+            vec![
+                serde_json::from_value(json!({"name":"search", "inputSchema":{"type":"object"}}))
+                    .unwrap(),
+            ],
+        );
+        for (name, owned) in [("mcp_notes__search", true), ("mcp_other__search", false)] {
+            let call = everruns_contracts::tool_types::ToolCall {
+                id: "call".into(),
+                name: name.into(),
+                arguments: json!({"query":"release notes"}),
+            };
+            assert_eq!(
+                capability
+                    .narrate(
+                        None,
+                        &call,
+                        crate::tool_narration::ToolNarrationPhase::Completed,
+                        None,
+                        crate::tool_narration::ToolNarrationContext::default()
+                    )
+                    .is_some(),
+                owned
+            );
+        }
     }
 }

@@ -150,6 +150,31 @@ pub struct SearchGitHubCodeTool;
 
 #[async_trait]
 impl Tool for SearchGitHubCodeTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Searching GitHub code",
+                "Searched GitHub code",
+                "Could not search GitHub code",
+            ),
+            (
+                "Шукаю код на GitHub",
+                "Знайшов код на GitHub",
+                "Не вдалося знайти код на GitHub",
+            ),
+            &["query"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "search_github_code"
     }
@@ -253,6 +278,31 @@ pub struct ReadGitHubFileTool;
 
 #[async_trait]
 impl Tool for ReadGitHubFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Reading GitHub file",
+                "Read GitHub file",
+                "Could not read GitHub file",
+            ),
+            (
+                "Читаю файл GitHub",
+                "Прочитав файл GitHub",
+                "Не вдалося прочитати файл GitHub",
+            ),
+            &["path"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "read_github_file"
     }
@@ -379,6 +429,31 @@ pub struct SearchGitHubIssuesTool;
 
 #[async_trait]
 impl Tool for SearchGitHubIssuesTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Searching GitHub issues",
+                "Searched GitHub issues",
+                "Could not search GitHub issues",
+            ),
+            (
+                "Шукаю задачі GitHub",
+                "Знайшов задачі GitHub",
+                "Не вдалося знайти задачі GitHub",
+            ),
+            &["query"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "search_github_issues"
     }

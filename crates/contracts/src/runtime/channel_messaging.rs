@@ -153,22 +153,24 @@ impl Tool for ChannelPostMessageTool {
 
     fn narrate(
         &self,
-        _call: &crate::tool_types::ToolCall,
+        call: &everruns_contracts::tool_types::ToolCall,
         phase: crate::runtime::tool_narration::ToolNarrationPhase,
-        _locale: Option<&str>,
+        locale: Option<&str>,
         _ctx: crate::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        use crate::runtime::tool_narration::ToolNarrationPhase;
-        Some(
-            match phase {
-                ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
-                    "Posting to conversation"
-                }
-                ToolNarrationPhase::Completed => "Posted to conversation",
-                ToolNarrationPhase::Failed => "Could not post to conversation",
-            }
-            .into(),
-        )
+        // This text is already intended for the recipient, unlike prompts or file bodies.
+        Some(crate::runtime::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            ("Sending message", "Sent message", "Could not send message"),
+            (
+                "Надсилаю повідомлення",
+                "Надіслав повідомлення",
+                "Не вдалося надіслати повідомлення",
+            ),
+            &["text"],
+        ))
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

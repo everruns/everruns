@@ -550,6 +550,31 @@ pub struct DockerReadFileTool;
 
 #[async_trait]
 impl Tool for DockerReadFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Reading container file",
+                "Read container file",
+                "Could not read container file",
+            ),
+            (
+                "Читаю файл контейнера",
+                "Прочитав файл контейнера",
+                "Не вдалося прочитати файл контейнера",
+            ),
+            &["path"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "docker_read_file"
     }
@@ -676,6 +701,31 @@ pub struct DockerWriteFileTool;
 
 #[async_trait]
 impl Tool for DockerWriteFileTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Writing container file",
+                "Wrote container file",
+                "Could not write container file",
+            ),
+            (
+                "Записую файл контейнера",
+                "Записав файл контейнера",
+                "Не вдалося записати файл контейнера",
+            ),
+            &["path"],
+        ))
+    }
+
     fn name(&self) -> &str {
         "docker_write_file"
     }
@@ -816,6 +866,31 @@ pub struct DockerStopTool;
 
 #[async_trait]
 impl Tool for DockerStopTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Stopping container",
+                "Stopped container",
+                "Could not stop container",
+            ),
+            (
+                "Зупиняю контейнер",
+                "Зупинив контейнер",
+                "Не вдалося зупинити контейнер",
+            ),
+            &[],
+        ))
+    }
+
     fn name(&self) -> &str {
         "docker_stop"
     }
@@ -952,6 +1027,31 @@ pub struct DockerLogsTool;
 
 #[async_trait]
 impl Tool for DockerLogsTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Reading container logs",
+                "Read container logs",
+                "Could not read container logs",
+            ),
+            (
+                "Читаю журнали контейнера",
+                "Прочитав журнали контейнера",
+                "Не вдалося прочитати журнали контейнера",
+            ),
+            &[],
+        ))
+    }
+
     fn name(&self) -> &str {
         "docker_logs"
     }

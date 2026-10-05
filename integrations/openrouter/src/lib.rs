@@ -43,3 +43,6 @@ pub use workspace::{
     OpenRouterWorkspaceCapability, PolicyCompatibilityReport, WorkspacePolicyDrift,
     detect_policy_drift,
 };
+
+#[cfg(test)]
+mod narration_tests;

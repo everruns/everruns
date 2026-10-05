@@ -151,6 +151,31 @@ pub struct JevDecisionTool {
 
 #[async_trait]
 impl Tool for JevDecisionTool {
+    fn narrate(
+        &self,
+        call: &everruns_contracts::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_labeled_action(
+            &call.arguments,
+            phase,
+            locale,
+            (
+                "Evaluating decision",
+                "Evaluated decision",
+                "Could not evaluate decision",
+            ),
+            (
+                "Оцінюю рішення",
+                "Оцінив рішення",
+                "Не вдалося оцінити рішення",
+            ),
+            &[],
+        ))
+    }
+
     fn name(&self) -> &str {
         evaluate::TOOL_NAME
     }

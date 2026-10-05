@@ -98,7 +98,8 @@ So wording and localization stay consistent without a global registry,
 locale-aware phrasing helpers that capabilities call from `narrate()`:
 `narrate_read_file`, `narrate_shell_exec`, `narrate_search_web`,
 `narrate_web_fetch`, `narrate_tool_search`, `narrate_skill`,
-`narrate_secret_store`, `narrate_subagent_spawn`, `narrate_write_todos`, and the
+`narrate_secret_store`, `narrate_subagent_spawn`, `narrate_write_todos`,
+`narrate_labeled_action`, and the
 generic builders `generic_phrase` / `labeled_phrase`, plus argument utilities
 (`arg_str`, `safe_arg_str`, `basename`, `truncate`, `url_display`).
 
@@ -115,7 +116,10 @@ in order:
    `narration_noun` and whose args carry `operation`/`action` (see
    [`knowledge/execution/tool-execution.md`](tool-execution.md#narration-formatting)).
 2. **Display-name fallback**: `"{verb} {display_name}"` from the localized
-   display name or title-cased tool name.
+   display name or title-cased tool name, with an optional bounded resource label
+   (name, title, filename, file basename, or sanitized URL). No arbitrary argument
+   inspection. MCP discovery preserves the server-authored display title; servers
+   without one use a readable server/tool label.
 
 This is the only path that runs without a capability, and it never matches
 specific tool names.
@@ -148,6 +152,8 @@ Arguments shown in narration are **display values, not faithful echoes**:
   `display_path()` so narration matches tool results. Capabilities receive this
   via [`ToolNarrationContext`] on `Tool::narrate` / `ToolCallHook::narration`.
   Offline builders without a store fall back to legacy argument echo.
+- **Single line.** Collapse whitespace in bounded details; hide control and directional
+  override characters in message previews and resource labels.
 - **Truncate.** queries / patterns / commands: ~48–80 chars with an ellipsis.
   File paths show the basename only.
 - **URLs.** show host + path; strip the scheme, query string, and fragment (the
@@ -156,6 +162,12 @@ Arguments shown in narration are **display values, not faithful echoes**:
   `password`, `secret`, `authorization`, or similar is never rendered, even as
   the only candidate, fall back to the bare verb. `safe_arg_str` enforces this;
   capability `narrate()` implementations must uphold it.
+- **Outgoing message previews.** Channel posts and Slack edits show a bounded
+  excerpt of the user-facing text, so a completed work-log row identifies what was
+  communicated. This is an intentional exception for recipient-facing content;
+  prompts, upload content, comments attached to files, and other internal bodies
+  remain excluded. Preview URLs, including Markdown link destinations, lose
+  credentials, queries, and fragments before truncation.
 - **Never dump prompts.** Long free text, background-agent instructions, full
   approval-action text, slash-command argument bodies, is not shown.
 
@@ -180,13 +192,26 @@ to a generic localized verb phrase rather than mixing languages.
 
 ## Regression guard
 
-`builtin_tools_have_narration_or_documented_generic_fallback` (in
-`crates/contracts/src/runtime/capabilities/mod.rs`) walks every tool of every built-in
-production capability and fails unless the tool is **covered**: its capability
+`hosted_catalog_keeps_dependency_tool_and_narration_invariants` (in
+[`capability_boundary.rs`](../../crates/capabilities/tests/capability_boundary.rs))
+walks the hosted production catalog and fails unless each tool is **covered**: its capability
 `narrate()` returns `Some`, or it carries a `narration_noun` hint (data-driven
 CRUD narration). A capability whose generic display-name presentation is
-deliberate is listed in that test's `GENERIC_NARRATION_ALLOWLIST` with a
+deliberate is listed in that test's `generic_narration_allowlist` with a
 documented reason (demo/eval fixtures, operator-only admin surfaces, arbitrary
 code execution). A newly added built-in tool that neither narrates nor is
 allowlisted trips this test rather than silently falling back to the raw
 tool-call presentation.
+
+Integration catalog tests also cover tools outside the static hosted registry,
+including blueprint-only model-scout tools. They verify all phases, missing
+arguments, and exclusion of prompt/file/credential bodies. Provider lifecycle
+narration selects the requested action (pause, resume, delete); no tool-name
+heuristic guesses an external tool's semantics.
+
+Computer actions narrate the action without echoing typed text or key payloads,
+which can contain credentials. Structured questions use their short header in
+both in-process and client-side modes; completion says the question was asked,
+not that an answer arrived, since a timeout is also a successful tool result.
+Sandbox fleet wrappers delegate narration to their executing tool and narrate
+their own list/inspect operations.
