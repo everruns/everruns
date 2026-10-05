@@ -959,18 +959,25 @@ impl Command for ValidateAgentPackage {
             }
         }
         match parse_input(ctx, &self.0).await {
-            Ok(package) => match async {
-                request(ctx, &package).await?;
-                destination(ctx, &package, self.0.target.as_deref()).await?;
-                Ok::<_, CommandError>(())
+            Ok(package) => {
+                // Preview only authored values and file digests, never asset bodies
+                // or resolved destination credentials. Available even if binding fails.
+                let preview = package.canonical().map_err(package_error)?;
+                match async {
+                    request(ctx, &package).await?;
+                    destination(ctx, &package, self.0.target.as_deref()).await?;
+                    Ok::<_, CommandError>(())
+                }
+                .await
+                {
+                    Ok(_) => Ok(
+                        json!({"valid":true,"diagnostics":[],"name":package.manifest.name,"preview":preview}),
+                    ),
+                    Err(e) => Ok(
+                        json!({"valid":false,"preview":preview,"diagnostics":[{"path":"dependencies","message":e.message()}]}),
+                    ),
+                }
             }
-            .await
-            {
-                Ok(_) => Ok(json!({"valid":true,"diagnostics":[],"name":package.manifest.name})),
-                Err(e) => Ok(
-                    json!({"valid":false,"diagnostics":[{"path":"dependencies","message":e.message()}]}),
-                ),
-            },
             Err(e) => {
                 Ok(json!({"valid":false,"diagnostics":[{"path":"manifest","message":e.message()}]}))
             }

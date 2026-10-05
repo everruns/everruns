@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { inspectAgentPackage } from "@/lib/api/agents";
+import { inspectAgentPackage, type AgentPackagePreview } from "@/lib/api/agents";
+import { AgentPackageReview, PackageChangeReview } from "./agent-package-review";
 import { useImportAgent } from "@/hooks/use-agents";
 import type { Agent } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export function AgentImportDialog({
   const [busy, setBusy] = useState(false);
   const [valid, setValid] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<AgentPackagePreview | null>(null);
   const [changes, setChanges] = useState<
     { path: string; before: unknown; after: unknown }[] | null
   >(null);
@@ -43,11 +45,13 @@ export function AgentImportDialog({
     setBusy(true);
     setValid(false);
     setError(null);
+    setPreview(null);
     setChanges(null);
     void (async () => {
       try {
         const validation = await inspectAgentPackage(file, "validate", target);
         if (!current) return;
+        setPreview(validation.preview ?? null);
         if (!validation.valid) {
           setError(
             validation.diagnostics?.map((d) => `${d.path}: ${d.message}`).join("\n") ||
@@ -91,12 +95,12 @@ export function AgentImportDialog({
         if (!open && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Import agent</DialogTitle>
           <DialogDescription>
-            {file?.name}. Files and complete skills are included. Channels default to disabled;
-            enablement creates a draft.
+            Review {file?.name} before importing. Starting files affect new sessions; existing
+            session files stay intact.
           </DialogDescription>
         </DialogHeader>
         <label className="grid gap-2 text-sm">
@@ -129,21 +133,8 @@ export function AgentImportDialog({
         {valid && !busy && (
           <p className="text-sm">Package and destination dependencies are valid.</p>
         )}
-        {changes && (
-          <div className="grid gap-2 text-sm">
-            <p>
-              {changes.length} {changes.length === 1 ? "change" : "changes"}
-            </p>
-            {changes.map((change) => (
-              <details key={change.path}>
-                <summary className="break-all font-mono">{change.path}</summary>
-                <pre className="overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs">
-                  {JSON.stringify({ before: change.before, after: change.after }, null, 2)}
-                </pre>
-              </details>
-            ))}
-          </div>
-        )}
+        {preview && !busy && <AgentPackageReview preview={preview} />}
+        {changes && <PackageChangeReview changes={changes} />}
         <DialogFooter>
           <Button variant="outline" disabled={busy} onClick={onClose}>
             Cancel

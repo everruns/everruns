@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "support-agent"
+display_name = "Support Agent"
+description = "Handles customer inquiries, manages support tickets, and maintains CRM records"
+tags = ["demo","crm","support"]
+capabilities = ["fake_crm","current_time","session_file_system"]

@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "financial-analyst"
+display_name = "Financial Analyst"
+description = "Analyzes financial data, generates reports, and provides business insights"
+tags = ["demo","financial","analysis"]
+capabilities = ["fake_financial","current_time","session_file_system"]

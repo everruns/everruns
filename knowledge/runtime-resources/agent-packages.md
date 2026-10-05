@@ -19,7 +19,10 @@ The codec is a module in `everruns-core`, following the existing
 stay empty. The Framework includes disk loading by default and exposes the same
 feature for applications that disable its defaults.
 Public authoring instructions and field reference live in the
-[product guide](../../docs/how-to/define-agents-as-files.md).
+[product guide](../../docs/how-to/define-agents-as-files.md) and
+[format reference](../../docs/reference/agent-package.md). The
+[public authoring schema](../../docs/schemas/agent/v1.json) is generated from the
+manifest types; docs builds check freshness and publish it for editor validation.
 
 ## Portability boundary
 
@@ -74,3 +77,11 @@ reapply the starting snapshot. The product calls these views Files while the
 existing durable Workspace resource retains its storage identity. See the
 [creation boundary](../../crates/server/src/domains/sessions/service/create.rs)
 and [workspace ownership](workspace.md).
+
+## Import review
+
+Validation returns an authored preview before mutation, even when destination
+binding fails. It includes instructions and configuration; assets are represented
+by relative paths, byte sizes, permissions and digests, never file bodies or resolved
+credentials. The UI reviews that same validated candidate and human-readable
+changes before import. Invalid dependencies disable applying the candidate.

@@ -30,7 +30,8 @@ session loop, explains expected behavior, and documents what remains a fixture.
 
 These are in-memory sessions. For durability itself, use the session-history and
 workspace examples below. Importable hosted Platform definitions live separately
-in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/agents).
+as TOML folders in [`examples/agents`](https://github.com/everruns/everruns/tree/main/examples/agents).
+See [file-based agents](/how-to/define-agents-as-files/) for loading, importing and serving them.
 
 ## Execution runtimes
 

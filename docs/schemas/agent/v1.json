@@ -1,0 +1,729 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "id": "https://docs.everruns.com/schemas/agent/v1.json",
+  "title": "Everruns agent.toml v1",
+  "description": "Canonical agent.toml authoring schema. Also applies to parsed YAML and JSON. Validate asset paths, skills, credentials and destination dependencies with everruns agents validate.",
+  "$ref": "#/definitions/Manifest",
+  "definitions": {
+    "Channel": {
+      "type": "object",
+      "description": "Portable channel intent. Authentication and installation are host bindings.\nChannels default to disabled; enabled intent still requires host publication.",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "config": {
+          "description": "Declarative transport settings, excluding credentials and destination resource IDs.",
+          "default": {},
+          "type": "object"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Request an enabled draft; false by default. Publication remains a host operation.",
+          "default": false
+        },
+        "type": {
+          "type": "string",
+          "description": "Ingress transport type, such as ag_ui, public_chat, fcp or slack."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ConversationStarter": {
+      "type": "object",
+      "description": "A conversation starter shown on a fresh Platform Chat thread.\nSelecting one inserts its text into the composer. `icon` reuses the\nharness icon name set (`HarnessIcon`); unknown names fall back to the\ndefault glyph.",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "icon": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional icon name from the harness icon set.",
+          "example": "zap"
+        },
+        "text": {
+          "type": "string",
+          "description": "Prompt text inserted into the composer when selected.",
+          "example": "Triage the newest P1"
+        }
+      }
+    },
+    "DeferrablePolicy": {
+      "type": "string",
+      "description": "Controls whether a tool's full schema can be deferred (tool_search).\n\nWhen tool_search is active and a model supports it, tools marked as\n`Automatic` or `Always` will have `defer_loading: true` set, meaning\nonly the name+description are sent upfront and full parameter schemas\nare loaded on-demand by the model.",
+      "enum": [
+        "never",
+        "automatic",
+        "always"
+      ]
+    },
+    "File": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/FileSource"
+        },
+        {
+          "$ref": "#/definitions/InitialFile"
+        }
+      ],
+      "description": "Embedded files and folder-relative sources share the same manifest field."
+    },
+    "FileSource": {
+      "type": "object",
+      "description": "A package-relative file or glob and its working-directory destination.",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "is_readonly": {
+          "type": "boolean",
+          "description": "Whether the initial workspace file is read-only. Defaults to true.",
+          "default": true
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Working-directory destination; omitted paths preserve the package source."
+        },
+        "source": {
+          "type": "string",
+          "description": "Relative file path or glob confined to the package directory."
+        }
+      },
+      "additionalProperties": false
+    },
+    "InitialFile": {
+      "type": "object",
+      "description": "Starter file copied into a new session from an agent or harness.",
+      "required": [
+        "path",
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "File content: plain text or base64-encoded binary."
+        },
+        "encoding": {
+          "type": "string",
+          "description": "Content encoding: `text` or `base64`.",
+          "enum": [
+            "text",
+            "base64"
+          ],
+          "default": "text"
+        },
+        "is_readonly": {
+          "type": "boolean",
+          "description": "Prevent session-side edits or deletes when true.",
+          "default": false
+        },
+        "path": {
+          "type": "string",
+          "description": "Relative destination in the session file tree; leading / and /workspace/ are accepted aliases."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Manifest": {
+      "type": "object",
+      "description": "Authored values only: no organisation, agent, model, harness or channel IDs.",
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PackageCapability"
+          },
+          "description": "Named capabilities, optionally with configuration; the host validates availability."
+        },
+        "channels": {
+          "type": "object",
+          "description": "Named channel descriptions, upserted without removing omitted destination channels.",
+          "additionalProperties": {
+            "$ref": "#/definitions/Channel"
+          },
+          "propertyNames": {
+            "type": "string"
+          },
+          "maxProperties": 32
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional description of the agent's purpose."
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Human-readable agent label. Defaults to the stable name at the host."
+        },
+        "environments": {
+          "description": "Platform-specific environment requirements; other hosts must bind or reject them."
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/File"
+          },
+          "description": "Starting files or package-relative sources. Sources retain their relative paths.",
+          "maxItems": 100
+        },
+        "harness": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Named harness requirement. Omission uses the host's default harness."
+        },
+        "instructions": {
+          "type": "string",
+          "description": "Authored instructions. Legacy system_prompt input is also accepted."
+        },
+        "instructions_file": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Package-relative instructions source. Folder loading defaults to instructions.md."
+        },
+        "intro_markdown": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional Markdown introduction shown before the conversation starts."
+        },
+        "max_iterations": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Optional tool-loop iteration limit. Omission keeps the host default.",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "mcpServers": {
+          "type": "object",
+          "description": "Named scoped MCP definitions. Credential placeholders require explicit host bindings.",
+          "additionalProperties": {
+            "$ref": "#/definitions/ScopedMcpServer"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        },
+        "model": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/PackageModel",
+              "description": "Provider and model names. Omission uses the host's default model."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "Stable agent name used for destination lookup; resource IDs are not portable.",
+          "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "network_access": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/NetworkAccessList",
+              "description": "Optional outbound network policy enforced by the host."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "parallel_tool_calls": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Whether independent tool calls may run concurrently. Omission keeps the host default."
+        },
+        "schema_version": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Portable format version. Currently 1; omitted values default to 1.",
+          "minimum": 0,
+          "enum": [
+            1
+          ],
+          "default": 1
+        },
+        "short_description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional short description for agent discovery surfaces."
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Package-relative skill folders including SKILL.md and supporting assets."
+        },
+        "starters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConversationStarter"
+          },
+          "description": "Suggested opening messages in the platform's starter format."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Discovery tags, compared as an unordered set."
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ToolDefinition"
+          },
+          "description": "Tool schemas whose executable implementations must be bound by the host."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "instructions_file",
+              "instructions"
+            ],
+            "properties": {
+              "instructions": {
+                "minLength": 1
+              },
+              "instructions_file": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "McpElicitationPolicy": {
+      "type": "string",
+      "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
+      "enum": [
+        "url",
+        "url_and_form",
+        "none"
+      ],
+      "example": "url"
+    },
+    "McpProtocolMode": {
+      "type": "string",
+      "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
+      "enum": [
+        "auto",
+        "2025-03-26",
+        "2025-06-18",
+        "2026-07-28"
+      ],
+      "example": "auto"
+    },
+    "McpServerActsAs": {
+      "type": "string",
+      "description": "Identity whose OAuth grant a scoped MCP attachment requests.",
+      "enum": [
+        "none",
+        "service",
+        "user"
+      ],
+      "example": "service"
+    },
+    "McpServerAuthMode": {
+      "type": "string",
+      "description": "MCP server authentication mode.",
+      "enum": [
+        "none",
+        "api_key",
+        "oauth"
+      ],
+      "example": "api_key"
+    },
+    "McpServerPresetRef": {
+      "type": "string",
+      "description": "Reference to an organization MCP server catalog entry.",
+      "example": "catalog:linear"
+    },
+    "McpServerTransportType": {
+      "type": "string",
+      "description": "MCP Server transport type.",
+      "enum": [
+        "http",
+        "stdio"
+      ],
+      "example": "http"
+    },
+    "NetworkAccessList": {
+      "type": "object",
+      "description": "Network access list controlling which hosts/URLs an agent session can reach.\n\n- `allowed`: if non-empty, only URLs matching these patterns are permitted.\n- `blocked`: URLs matching these patterns are always denied (takes precedence over allowed).\n\nPattern format:\n- `example.com` — exact domain match (any port, any path)\n- `*.example.com` — domain and all subdomains\n- `https://example.com/api/` — exact URL prefix (scheme + host + path)",
+      "properties": {
+        "allowed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed host patterns. If non-empty, only matching URLs are permitted.\nAn empty list means \"no restriction from this layer\" (inherit parent)."
+        },
+        "blocked": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Blocked host patterns. Always denied, even if matched by `allowed`."
+        }
+      },
+      "example": {
+        "allowed": [
+          "*.example.com",
+          "https://api.acme.com/"
+        ],
+        "blocked": [
+          "169.254.169.254"
+        ]
+      },
+      "additionalProperties": false
+    },
+    "PackageCapability": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/PackageCapabilityReference"
+        }
+      ],
+      "description": "A named capability or a named capability with host-validated configuration."
+    },
+    "PackageCapabilityReference": {
+      "type": "object",
+      "description": "A capability requirement identified by a stable reference and optional settings.",
+      "required": [
+        "ref"
+      ],
+      "properties": {
+        "config": {
+          "description": "Configuration validated against the destination capability schema.",
+          "default": {},
+          "type": "object"
+        },
+        "ref": {
+          "type": "string",
+          "description": "Built-in or catalog capability name. Destination resource IDs are rejected."
+        }
+      },
+      "additionalProperties": false
+    },
+    "PackageModel": {
+      "type": "object",
+      "description": "A portable provider/model name pair, resolved at the destination.",
+      "required": [
+        "provider",
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Provider-native model name, rather than a platform model ID."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Stable provider name, such as openai or anthropic."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ScopedMcpServer": {
+      "type": "object",
+      "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
+      "properties": {
+        "actsAs": {
+          "$ref": "#/definitions/McpServerActsAs",
+          "description": "Identity whose grant this attachment requests."
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Arguments passed to the stdio `command`."
+        },
+        "auth_mode": {
+          "$ref": "#/definitions/McpServerAuthMode",
+          "description": "Authentication mode used when executing tools from this scoped server."
+        },
+        "command": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Executable to spawn for a stdio transport server."
+        },
+        "elicitation_policy": {
+          "$ref": "#/definitions/McpElicitationPolicy",
+          "description": "Which elicitation modes this server may use (`url` by default)."
+        },
+        "env": {
+          "type": "object",
+          "description": "Environment variables set for the stdio `command`.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        },
+        "headers": {
+          "type": "object",
+          "description": "Additional HTTP headers sent on MCP requests (HTTP transport only).",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "propertyNames": {
+            "type": "string"
+          }
+        },
+        "oauth_provider_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Provider id used to resolve a user-scoped bearer token."
+        },
+        "protocol_mode": {
+          "$ref": "#/definitions/McpProtocolMode",
+          "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+        },
+        "tool_discovery": {
+          "type": "boolean",
+          "description": "Whether to discover tool definitions live from this server."
+        },
+        "type": {
+          "$ref": "#/definitions/McpServerTransportType",
+          "description": "MCP transport type. Only remote HTTP is supported today."
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio."
+        },
+        "use": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/McpServerPresetRef",
+              "description": "Organization catalog preset that supplies transport and authentication policy."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "SideEffectClass": {
+      "type": "string",
+      "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+      "enum": [
+        "Pure",
+        "Idempotent",
+        "AtMostOnce"
+      ]
+    },
+    "ToolDefinition": {
+      "type": "object",
+      "description": "Client-side tool - executed by the client, not the server\nThe server pauses execution and waits for the client to submit results.",
+      "required": [
+        "name",
+        "description",
+        "parameters",
+        "type"
+      ],
+      "properties": {
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Category for tool_search namespace grouping (from parent capability)"
+        },
+        "deferrable": {
+          "$ref": "#/definitions/DeferrablePolicy",
+          "description": "Whether this tool's schema can be deferred via tool_search"
+        },
+        "description": {
+          "type": "string",
+          "description": "Tool description for LLM"
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Human-readable display name for UI rendering"
+        },
+        "full_parameters": {
+          "description": "Original full parameter schema saved by `DeferSchemaHook` before stripping.\nSerialized only when present so durable reason-to-act scheduling can\npreserve deferred schemas for `tool_search` in the act phase."
+        },
+        "hints": {
+          "$ref": "#/definitions/ToolHints",
+          "description": "Semantic hints describing the tool's behavioral properties"
+        },
+        "name": {
+          "type": "string",
+          "description": "Tool name (used by LLM and for correlation)"
+        },
+        "parameters": {
+          "description": "JSON schema for tool parameters"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "client_side"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ToolHints": {
+      "type": "object",
+      "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
+      "properties": {
+        "capability_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload."
+        },
+        "capability_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Human-readable capability name snapshot for reporting."
+        },
+        "concurrency_class": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Scheduling conflict key. Tool calls within the same act batch that share\na non-empty `concurrency_class` are executed sequentially in arrival\norder; calls in different classes (or with no class) run concurrently.\n\nSet this on tools that mutate shared session state so that, e.g., two\nfile writes or two SQL mutations in one batch do not race. Read-only\ntools should leave this `None` so they always parallelize. See\n`everruns-engine`'s tool scheduler for how the act phase consumes it."
+        },
+        "cpu_bound": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool performs significant CPU-bound or otherwise non-yielding work in\nprocess (e.g. an in-process interpreter). When true, the act scheduler\nruns the call on its own task (`tokio::spawn`) so a long CPU burst does\nnot starve the cooperative polling of I/O-bound tools in the same batch.\n\nDistinct from `long_running`, which describes wall-clock time for\nI/O-bound work (those tools yield at await points and need no offload)."
+        },
+        "destructive": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool may irreversibly destroy or delete data.\nSubset of non-readonly — a tool can be non-readonly (writes) without\nbeing destructive (e.g., create/update operations)."
+        },
+        "idempotent": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Calling the tool repeatedly with the same arguments produces the same\neffect. Safe to retry on transient failures."
+        },
+        "long_running": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool may take significant time to complete (> ~5s typical).\nUseful for clients to show progress indicators and set timeouts."
+        },
+        "metadata": {
+          "description": "Host-owned annotations that core does not interpret.\n\nThe typed hints above are the vocabulary core itself reasons about. This\nis the escape hatch for everything a *host* wants to carry alongside a\ntool — risk tiers for an approval UI, presentation hints, an embedder's\nrouting keys — without adding a field to core for each one. Core reads\nnothing here and no driver sends it to a provider; it travels with the\ndefinition so a consumer sees it at the point of decision (e.g. a\n`PreToolUseHook` gating on what the tool declared).\n\nThe schema belongs to whoever writes it. Never put credentials or other\nsensitive payload here: like the rest of the definition, it is persisted\nand surfaced to clients."
+        },
+        "narration_noun": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Entity noun for operation-based narration (e.g. \"agent\", \"harness\").\nWhen set, the narration system reads the `operation` argument and\nproduces verb-based narration like \"Created agent: Neon Cartographer\"\ninstead of the generic \"Ran Manage Agents\"."
+        },
+        "open_world": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool interacts with external entities beyond the local system\n(network calls, third-party APIs, cloud services)."
+        },
+        "persist_output": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool output should be persisted to session VFS before truncation.\nWhen set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes\nstdout to `/outputs/{tool_call_id}.stdout` and stderr to\n`/outputs/{tool_call_id}.stderr`, injecting `full_output`, `total_lines`,\nand `output_files` into the result."
+        },
+        "readonly": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool does not modify any state (read-only queries, lookups).\nWhen true: safe to call speculatively, result can be cached."
+        },
+        "requires_secrets": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool requires API keys, credentials, or other secrets to function.\nUseful for UI to show connection prompts and for LLMs to anticipate\nauthentication failures."
+        },
+        "side_effect_class": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/SideEffectClass",
+              "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supports_background": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later."
+        }
+      }
+    }
+  }
+}

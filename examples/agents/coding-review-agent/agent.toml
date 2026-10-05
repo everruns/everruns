@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "coding-review-agent"
+display_name = "Coding Review Agent"
+description = "Reviews a trusted code workspace for correctness, security, regressions, and missing tests"
+tags = ["demo","coding","review"]
+capabilities = ["session_file_system","bashkit_shell","stateless_todo_list"]

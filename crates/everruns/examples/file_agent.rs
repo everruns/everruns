@@ -5,7 +5,7 @@ use everruns::{AgentPackage, Engine, Model};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let path = std::env::args().nth(1).unwrap_or_else(|| {
         format!(
-            "{}/../../examples/agent-packages/triage",
+            "{}/../../examples/agents/triage",
             env!("CARGO_MANIFEST_DIR")
         )
     });

@@ -1,0 +1,7 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "warehouse-operations-manager"
+display_name = "Warehouse Operations Manager"
+description = "Manages warehouse inventory, shipments, orders, and logistics operations"
+tags = ["demo","warehouse","operations"]
+capabilities = ["fake_warehouse","current_time","session_file_system"]

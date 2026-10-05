@@ -3,14 +3,14 @@ use serde_json::json;
 
 fn example(path: &str) -> String {
     format!(
-        "{}/../../examples/agent-packages/{path}",
+        "{}/../../examples/agents/{path}",
         env!("CARGO_MANIFEST_DIR")
     )
 }
 
 #[tokio::test]
 async fn markdown_and_folder_execute_and_export() {
-    for path in ["dad-jokes.md", "triage", "project-review"] {
+    for path in ["legacy/dad-jokes.md", "triage", "project-review"] {
         let package = AgentPackage::load(example(path)).unwrap();
         let agent = package
             .builder()

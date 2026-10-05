@@ -10,6 +10,7 @@ scripts/__pycache__/
 
 # OpenAPI schema copied from docs/api/ by prepare-content
 public/api/
+public/schemas/
 
 # Generated OG social card images (rebuilt by prebuild script)
 public/og/

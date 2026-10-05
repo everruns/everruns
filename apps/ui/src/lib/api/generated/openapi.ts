@@ -14268,7 +14268,9 @@ export interface components {
       /** @description Optional tool-loop iteration limit. Omission keeps the host default. */
       max_iterations?: number | null;
       /** @description Named scoped MCP definitions. Credential placeholders require explicit host bindings. */
-      mcpServers?: components["schemas"]["BTreeMap"];
+      mcpServers?: {
+        [key: string]: components["schemas"]["ScopedMcpServer"];
+      };
       model?: components["schemas"]["PackageModel"] | null;
       /** @description Stable agent name used for destination lookup; resource IDs are not portable. */
       name?: string;
@@ -18028,6 +18030,47 @@ export interface components {
     SchemaResponse: {
       database: string;
       tables: unknown[];
+    };
+    /**
+     * @description Session-, agent-, or harness-scoped remote MCP server configuration.
+     *
+     *     This intentionally mirrors the `mcpServers` object shape used by common MCP
+     *     client config files while staying within Everruns' current remote-HTTP-only
+     *     support.
+     */
+    ScopedMcpServer: {
+      /** @description Identity whose grant this attachment requests. */
+      actsAs?: components["schemas"]["McpServerActsAs"];
+      /** @description Arguments passed to the stdio `command`. */
+      args?: string[];
+      /** @description Authentication mode used when executing tools from this scoped server. */
+      auth_mode?: components["schemas"]["McpServerAuthMode"];
+      /** @description Executable to spawn for a stdio transport server. */
+      command?: string | null;
+      /** @description Which elicitation modes this server may use (`url` by default). */
+      elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
+      /** @description Environment variables set for the stdio `command`. */
+      env?: {
+        [key: string]: string;
+      };
+      /** @description Additional HTTP headers sent on MCP requests (HTTP transport only). */
+      headers?: {
+        [key: string]: string;
+      };
+      /** @description Provider id used to resolve a user-scoped bearer token. */
+      oauth_provider_id?: string | null;
+      /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
+      protocol_mode?: components["schemas"]["McpProtocolMode"];
+      /** @description Whether to discover tool definitions live from this server. */
+      tool_discovery?: boolean;
+      /** @description MCP transport type. Only remote HTTP is supported today. */
+      type?: components["schemas"]["McpServerTransportType"];
+      /**
+       * @description URL of the remote MCP server endpoint. Required for HTTP transport;
+       *     empty/ignored for stdio.
+       */
+      url?: string;
+      use?: components["schemas"]["McpServerPresetRef"] | null;
     };
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {

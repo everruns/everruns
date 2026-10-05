@@ -1,0 +1,18 @@
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "mcp-research"
+display_name = "Repository research assistant"
+description = "Answer questions about public repositories using DeepWiki MCP evidence."
+max_iterations = 20
+parallel_tool_calls = false
+
+[mcpServers.deepwiki]
+type = "http"
+url = "https://mcp.deepwiki.com/mcp"
+
+[channels.chat]
+type = "ag_ui"
+enabled = false
+[channels.chat.config]
+tool_visibility = "generic"
+generic_tool_text = "Reading repository documentation…"

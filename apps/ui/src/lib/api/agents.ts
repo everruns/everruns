@@ -97,12 +97,35 @@ export async function importAgent(input: AgentImport): Promise<Agent> {
   return response.json();
 }
 
+export interface AgentPackagePreview {
+  name: string;
+  display_name?: string;
+  description?: string;
+  instructions: string;
+  model?: { provider: string; model: string };
+  harness?: string;
+  tags?: string[];
+  capabilities: Record<string, unknown>;
+  files: Record<string, { bytes: number; is_readonly: boolean; sha256: string }>;
+  mcpServers?: Record<string, { use?: string; type?: string; url?: string; command?: string }>;
+  channels?: Record<string, { type: string; enabled: boolean; config: unknown }>;
+  max_iterations?: number;
+  parallel_tool_calls?: boolean;
+  tools?: { name: string; description: string; parameters: unknown }[];
+  network_access?: unknown;
+  environments?: unknown;
+  intro_markdown?: string;
+  short_description?: string;
+  starters?: { text: string; icon?: string }[];
+}
+
 export async function inspectAgentPackage(
   file: File,
   operation: "validate" | "diff",
   target?: string,
 ): Promise<{
   valid?: boolean;
+  preview?: AgentPackagePreview;
   diagnostics?: { path: string; message: string }[];
   changes?: { path: string; before: unknown; after: unknown }[];
 }> {

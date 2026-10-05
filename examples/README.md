@@ -33,7 +33,8 @@ half of that capability an embedding host owns.
 [Focused Framework API examples](../crates/everruns/examples/) cover persistence,
 session history, workspaces, cancellation, structured questions, and other
 individual features.
-[Platform definitions](agents/) are a separate hosted-control-plane catalog.
+[Portable agent folders](agents/) use TOML instructions and asset definitions
+that import into the Platform or load in Framework and serve hosts.
 [Serve examples](serve/) run agents as HTTP services with `everruns-serve`:
 [hello](serve/hello/) is the smallest app, [ag-ui](serve/ag-ui/) streams to
 AG-UI clients, and [a2a](serve/a2a/) has two agents talking over A2A, one served

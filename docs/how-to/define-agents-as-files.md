@@ -5,28 +5,8 @@ appliesTo: [framework, platform, cloud]
 ---
 
 An agent package describes authored behavior and assets. The same definition
-works in the UI, API, CLI, Platform Chat, MCP, Framework and serve. Use a single
-Markdown file for simple agents or an `agent.toml` folder for assets. ZIP is the
+works in the UI, API, CLI, Platform Chat, MCP, Framework and serve. Use an `agent.toml` folder with instructions and selected assets. ZIP is the
 transport format for complete folders.
-
-## Keep simple Markdown agents
-
-Existing Markdown with YAML front matter remains supported. Its body becomes
-**instructions**. The old `system_prompt` field is accepted as an input alias;
-new exports use `instructions`. Conflicting values fail validation.
-
-```markdown
----
-name: dad-jokes
-capabilities:
-  - current_time
----
-Tell one short, family-friendly dad joke when asked.
-```
-
-Unversioned legacy imports can still use `id`, `default_model_id` and
-`harness_id`. New packages and every export omit these resource IDs. Use
-`--target dad-jokes` to update an existing agent explicitly.
 
 ## A folder with good defaults
 
@@ -82,7 +62,7 @@ A folder contains exactly one `agent.toml`, `agent.md`, `agent.yaml`,
 
 TOML, YAML and JSON share one schema. Capability strings select default config;
 `{ ref = "current_time", config = {} }` supplies explicit config. See the
-[package reference](#package-reference) below for optional fields.
+[format reference](/reference/agent-package/) below for optional fields.
 
 ## Paths, environments and session files
 
@@ -109,7 +89,8 @@ New folder and ZIP exports use root-relative files and `.agents/skills/`.
 
 ## Describe MCP dependencies
 
-Use a destination catalog name when the host owns authentication and installation:
+Reference an MCP server already configured in your organization when the platform
+owns its authentication and installation:
 
 ```toml
 [mcpServers.issues]
@@ -128,9 +109,9 @@ Authorization = "${DOCS_AUTHORIZATION}"
 ```
 
 The Framework resolves that requirement only through `package.bind_mcp(...)`.
-Bind a catalog requirement with a same-named `AgentBuilder::mcp_server` before
+Bind this named server requirement with a same-named `AgentBuilder::mcp_server` before
 applying the package. Serve explicitly resolves named environment requirements
-at startup. Platform imports require destination catalog bindings for credentials.
+at startup. Platform imports resolve named servers and credentials from your organization’s MCP settings.
 
 ## Validate, compare and import
 
@@ -139,7 +120,7 @@ at startup. Platform imports require destination catalog bindings for credential
 everruns agents validate ./triage
 everruns agents diff ./triage --against ./triage-before
 
-# Check destination models, harnesses, capabilities, MCP catalog and channels.
+# Check destination models, harnesses, capabilities, configured MCP servers and channels.
 everruns agents validate ./triage --remote
 everruns agents diff ./triage --target triage
 
@@ -168,9 +149,11 @@ channels survive.
 
 ## UI and HTTP API
 
-In **Agents → Import**, select a Markdown, TOML, YAML, JSON or ZIP file. Review
-validation, choose a new agent or an existing destination, then apply. Existing
-agents show a diff before updating. Export offers a complete ZIP or Markdown.
+In **Agents → Import**, select a ZIP for a complete folder, or a self-contained
+TOML, YAML, JSON or Markdown file. Review instructions, model/harness defaults,
+capabilities, files and permissions, skills, MCP servers and channels before
+applying. For an existing destination, review the current/imported values and
+added, removed or updated files. Validation failures block importing. Export offers a complete ZIP or Markdown.
 
 The HTTP import endpoint accepts raw text or ZIP bytes. Folder references must
 be materialized by a local loader or supplied in ZIP; the server never reads
@@ -187,14 +170,17 @@ curl "$EVERRUNS_API_URL/v1/agents/triage/export?format=zip" \
 
 `POST /v1/agents/validate` and `POST /v1/agents/diff` accept the same bytes or an
 envelope `{ "content": "…", "format": "toml", "target": "triage" }`.
-Validation returns `valid` and field-addressed `diagnostics`. Diff requires
+Validation returns `valid`, field-addressed `diagnostics`, and an authored
+`preview` when parsing succeeds, even if a destination dependency is missing.
+The preview contains file sizes, permissions and digests, without asset bodies
+or resolved credentials. Diff requires
 `target` and returns `changed` and `changes`. Export formats are `markdown`
 (default), `toml`, `yaml`, `json` and `zip`.
 
 ## Platform Chat and MCP
 
-The catalog exposes `import_agent`, `export_agent`, `validate_agent_package`
-and `diff_agent_package`. Use the same CLI verbs inside Platform Chat:
+In Platform Chat, ask Everruns to validate, compare, import or export an agent
+from the chat’s files. The assistant can run the same CLI commands:
 
 ```bash
 everruns agents validate /agents/triage
@@ -205,9 +191,12 @@ everruns agents export triage --format zip --out /exports/triage.zip
 
 `file` and `out` refer only to the current session workspace. Reads and writes
 use its existing tenant, permission and private-memory checks. Export creates a
-new artifact and fails if that path already exists. MCP clients without a current
-session send materialized `content`; export without `out` returns the portable
-manifest. `--content` also accepts inline text in Platform Chat.
+new artifact and fails if that path already exists.
+
+When using an MCP client connected to Everruns, these operations are available
+as the tools `import_agent`, `export_agent`, `validate_agent_package` and
+`diff_agent_package`. A client without a current session sends materialized
+`content`; export without `out` returns the portable manifest. `--content` also accepts inline text in Platform Chat.
 
 ## Framework: load and run
 
@@ -263,63 +252,48 @@ embeds a package in the binary. The serve build manifest includes the declaratio
 and asset contents so edits change its build ID. Channel descriptions do not
 register arbitrary network handlers; configure serve channel transports separately.
 
-## Package reference
+## Format reference and editor schema
 
-| Field | Meaning and default |
-| --- | --- |
-| `schema_version` | `1`; unknown versions fail |
-| `name` | Lowercase letters/digits/hyphens; stable address, not a platform ID |
-| `instructions` / `instructions_file` | Inline instructions or a package-relative file; mutually exclusive |
-| `model` | `{ provider = "openai", model = "…" }`; destination binds an enabled provider/model pair |
-| `harness` | Destination harness name; omitted uses the host default |
-| `capabilities` | Stable capability names or `ref`/`config` objects |
-| `files` | Inline `path`/`content`/`encoding`/`is_readonly`, relative paths/globs, or `source` mappings; legacy `initial_files` is accepted |
-| `skills` | Relative directories containing skill subfolders; folder default `.agents/skills/` |
-| `mcpServers` | Existing scoped MCP schema; named `use = "catalog:name"` references or inline HTTP/stdio settings |
-| `channels` | Named descriptions with `type`, `config`, and optional `enabled` (default `false`) |
-| `network_access` | Existing network policy; host enforcement still applies |
-| `max_iterations`, `parallel_tool_calls` | Existing execution settings; omitted uses runtime defaults |
-| `tools` | Client-side tool schemas; Framework requires matching host handlers |
-| `display_name`, `description`, `tags` | Display metadata |
-| `intro_markdown`, `short_description`, `starters`, `environments` | Platform presentation and environment declarations |
-
-Map a directory explicitly, for example to `/data`, while retaining read-only files:
+The [agent folder and TOML reference](/reference/agent-package/) covers every
+manifest field, defaults, file mappings, skill layout, MCP settings, channels,
+validation limits and compatibility rules. The
+[public v1 JSON Schema](/schemas/agent/v1.json) applies to the parsed TOML document.
+Add its editor directive at the top of `agent.toml`:
 
 ```toml
-files = [{ source = "fixtures", path = "data" }]
+#:schema https://docs.everruns.com/schemas/agent/v1.json
+schema_version = 1
+name = "my-agent"
 ```
 
-`encoding` defaults to `text`; binary inline content uses `base64`.
-`is_readonly` defaults to `true`. Relative sources stay inside the package;
-absolute paths, traversal, symlinks, duplicate destinations, invalid Base64 and
-unknown manifest fields are rejected. Hidden credential files are skipped by
-folder/glob collection; explicit hidden credential sources fail. Maximums:
-10 MiB package, 100 files, 1 MiB per asset, 5 MiB decoded file content,
-and 32 channel declarations.
-Native folder scans also cap nesting at 32 levels and visited entries at 1,024.
-Remote validation also enforces the destination Platform’s input and resource limits.
-
-Credential-bearing MCP headers/env must use placeholders. The Platform requires
-catalog bindings instead of reading worker environment variables. Literal MCP
-credentials are replaced with requirements on export. Channel credentials and
-resource IDs are omitted. Installed plugin IDs cannot be exported; describe their
-portable MCP or declarative capability requirements instead. Treat packaged file
-contents as authored data and review them before sharing.
-
-The Platform creates `ag_ui`, `public_chat`, `fcp` and `slack` channels from packages.
-They default to disabled; explicit `enabled = true` creates a draft that must be
-published through the channel API. Imports preserve activation of existing channels
-and preflight permission to modify live configuration before changing the agent. Other known channel types can be described for hosts,
-but Platform validation rejects them until bound through their dedicated channel
-or trigger APIs. Public Chat also requires its feature flag. Schedules remain
-trigger resources. Packages do not embed sessions, history, grants or deployment state.
+Editor validation checks the document shape. Run `everruns agents validate`
+for asset and skill validation, and add `--remote` to check destination bindings.
 
 ## Examples and references
 
-- [Simple Markdown and complete triage folder](https://github.com/everruns/everruns/tree/main/examples/agent-packages)
+- [TOML agents, root files, skills and legacy Markdown examples](https://github.com/everruns/everruns/tree/main/examples/agents)
 - [Runnable Framework example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/file_agent.rs)
 - [Shared package API](https://docs.rs/everruns-core/latest/everruns_core/agent_package/)
 - [REST API reference](/api/)
 - [CLI](/features/cli/)
 - [Framework agents](/framework/agents/) and [serve](/framework/serve/)
 - [MCP configuration](/features/mcp/)
+
+## Keep simple Markdown agents
+
+Existing Markdown with YAML front matter remains supported. Its body becomes
+**instructions**. The old `system_prompt` field is accepted as an input alias;
+new exports use `instructions`. Conflicting values fail validation.
+
+```markdown
+---
+name: dad-jokes
+capabilities:
+  - current_time
+---
+Tell one short, family-friendly dad joke when asked.
+```
+
+Unversioned legacy imports can still use `id`, `default_model_id` and
+`harness_id`. New packages and every export omit these resource IDs. Use
+`--target dad-jokes` to update an existing agent explicitly.

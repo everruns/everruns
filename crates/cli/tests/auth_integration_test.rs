@@ -103,7 +103,7 @@ fn test_cli_status_without_login_exits_nonzero() {
 #[test]
 fn package_validation_and_local_diff_print_results_without_credentials() {
     let path = format!(
-        "{}/../../examples/agent-packages/triage",
+        "{}/../../examples/agents/triage",
         env!("CARGO_MANIFEST_DIR")
     );
     for args in [

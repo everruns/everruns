@@ -265,29 +265,32 @@ case "$cmd" in
       exit 1
     fi
 
-    # Build CLI if needed
-    if [[ -f "$PROJECT_ROOT/target/release/everruns" ]]; then
-      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
-    elif [[ -f "$PROJECT_ROOT/target/debug/everruns" ]]; then
-      CLI_PATH="$PROJECT_ROOT/target/debug/everruns"
+    # Build CLI if needed, honoring the configured shared build cache.
+    cli_target_dir="${CARGO_TARGET_DIR:-$PROJECT_ROOT/target}"
+    if [[ -f "$cli_target_dir/release/everruns" ]]; then
+      CLI_PATH="$cli_target_dir/release/everruns"
+    elif [[ -f "$cli_target_dir/debug/everruns" ]]; then
+      CLI_PATH="$cli_target_dir/debug/everruns"
     else
       echo "📦 Building everruns CLI..."
       cargo build -p everruns-cli --release
-      CLI_PATH="$PROJECT_ROOT/target/release/everruns"
+      CLI_PATH="$cli_target_dir/release/everruns"
     fi
 
-    # Get existing agent names
-    existing_agents=$(curl -s "$API_URL/v1/agents" | jq -r '.data[].name' 2>/dev/null || echo "")
+    # Reuse CLI authentication and API routing for package operations.
+    agents_api_url="${API_URL%/}/api"
+    existing_agents=$("$CLI_PATH" --api-url "$agents_api_url" agents list --output json | jq -r '.data[].name')
 
     # Upload all example agents
     uploaded=0
     skipped=0
-    for agent_file in "$EXAMPLES_DIR"/*.md; do
+    failed=0
+    for agent_file in "$EXAMPLES_DIR"/*/agent.toml; do
       if [[ ! -f "$agent_file" ]]; then
         continue
       fi
 
-      display_name=$(grep -A1 "^---" "$agent_file" | grep "^name:" | sed 's/name:[[:space:]]*"\?\([^"]*\)"\?/\1/' | tr -d '"')
+      display_name=$("$CLI_PATH" agents validate "$(dirname "$agent_file")" --output json | jq -er '.name')
 
       if echo "$existing_agents" | grep -Fxq "$display_name"; then
         echo "   ⏭️  Skipping '$display_name' (already exists)"
@@ -296,16 +299,20 @@ case "$cmd" in
       fi
 
       echo "   🌱 Creating '$display_name'..."
-      if $CLI_PATH --api-url "$API_URL" agents create --file "$agent_file" --quiet 2>/dev/null; then
+      if "$CLI_PATH" --api-url "$agents_api_url" agents import "$(dirname "$agent_file")" --quiet; then
         echo "      ✅ Created"
         uploaded=$((uploaded + 1))
       else
         echo "      ❌ Failed to create"
+        failed=$((failed + 1))
       fi
     done
 
     echo ""
-    echo "📊 Upload complete: $uploaded created, $skipped skipped"
+    echo "📊 Upload complete: $uploaded created, $skipped skipped, $failed failed"
+    if [[ "$failed" -gt 0 ]]; then
+      exit 1
+    fi
     ;;
 
   seed)

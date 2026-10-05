@@ -224,6 +224,7 @@ pub struct Manifest {
         deserialize_with = "mcp_servers",
         skip_serializing_if = "BTreeMap::is_empty"
     )]
+    #[cfg_attr(feature = "openapi", schema(value_type = BTreeMap<String, crate::ScopedMcpServer>))]
     pub mcp_servers: ScopedMcpServers,
     /// Optional outbound network policy enforced by the host.
     #[serde(default, skip_serializing_if = "Option::is_none")]

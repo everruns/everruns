@@ -36767,8 +36767,14 @@
             "minimum": 0
           },
           "mcpServers": {
-            "$ref": "#/components/schemas/BTreeMap",
-            "description": "Named scoped MCP definitions. Credential placeholders require explicit host bindings."
+            "type": "object",
+            "description": "Named scoped MCP definitions. Credential placeholders require explicit host bindings.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScopedMcpServer"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "model": {
             "oneOf": [
@@ -43128,6 +43134,92 @@
           "tables": {
             "type": "array",
             "items": {}
+          }
+        }
+      },
+      "ScopedMcpServer": {
+        "type": "object",
+        "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
+        "properties": {
+          "actsAs": {
+            "$ref": "#/components/schemas/McpServerActsAs",
+            "description": "Identity whose grant this attachment requests."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Arguments passed to the stdio `command`."
+          },
+          "auth_mode": {
+            "$ref": "#/components/schemas/McpServerAuthMode",
+            "description": "Authentication mode used when executing tools from this scoped server."
+          },
+          "command": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Executable to spawn for a stdio transport server."
+          },
+          "elicitation_policy": {
+            "$ref": "#/components/schemas/McpElicitationPolicy",
+            "description": "Which elicitation modes this server may use (`url` by default)."
+          },
+          "env": {
+            "type": "object",
+            "description": "Environment variables set for the stdio `command`.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "headers": {
+            "type": "object",
+            "description": "Additional HTTP headers sent on MCP requests (HTTP transport only).",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "oauth_provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider id used to resolve a user-scoped bearer token."
+          },
+          "protocol_mode": {
+            "$ref": "#/components/schemas/McpProtocolMode",
+            "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+          },
+          "tool_discovery": {
+            "type": "boolean",
+            "description": "Whether to discover tool definitions live from this server."
+          },
+          "type": {
+            "$ref": "#/components/schemas/McpServerTransportType",
+            "description": "MCP transport type. Only remote HTTP is supported today."
+          },
+          "url": {
+            "type": "string",
+            "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio."
+          },
+          "use": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpServerPresetRef",
+                "description": "Organization catalog preset that supplies transport and authentication policy."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
