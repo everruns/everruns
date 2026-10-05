@@ -1695,6 +1695,9 @@ enum PlatformCommandSurfaceOperation {
     PLATFORM_COMMAND_SURFACE_OPERATION_DISCOVER = 1;
     PLATFORM_COMMAND_SURFACE_OPERATION_QUERY = 2;
     PLATFORM_COMMAND_SURFACE_OPERATION_EXECUTE = 3;
+    // One command by wire name, arguments `{"command": "...", "params": {...}}`:
+    // what the worker shell sends once its local grammar has parsed a line.
+    PLATFORM_COMMAND_SURFACE_OPERATION_RUN = 4;
 }
 
 message InvokePlatformCommandSurfaceRequest {

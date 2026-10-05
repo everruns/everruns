@@ -43,6 +43,18 @@ impl everruns_capabilities::PlatformStore for DirectPlatformStore {
         .await
     }
 
+    async fn platform_run(
+        &self,
+        command: &str,
+        params: serde_json::Value,
+    ) -> everruns_contracts::error::Result<String> {
+        self.invoke_platform_command_surface(
+            crate::services::platform_command_surface::Operation::Run,
+            serde_json::json!({ "command": command, "params": params }),
+        )
+        .await
+    }
+
     // =========================================================================
     // Harness Operations
     // =========================================================================

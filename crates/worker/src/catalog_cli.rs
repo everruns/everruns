@@ -14,7 +14,10 @@
 //! What that changes for a caller: `everruns agents list --help` costs no round
 //! trip, and `--limit` on a command without one is rejected here rather than
 //! after a control-plane call. Only a command that actually runs goes over the
-//! wire.
+//! wire, and it goes as what the grammar produced, a wire name and params
+//! (`PlatformStore::platform_run`), not a command line rendered back for the
+//! server to parse again. Values never pass through a second shell, so there
+//! is no quoting to get wrong.
 
 use std::sync::{Arc, OnceLock};
 
@@ -62,15 +65,8 @@ impl CliCommandSource for CatalogCommandSource {
             return Err(format!("unknown command `{wire_name}`"));
         };
         let params = everruns_cli_contract::params_from(contract, &matches);
-
-        // The transport takes a script, so the parsed arguments are rendered
-        // back into one canonical line. That is not a round trip saved, but it
-        // is a round trip the caller no longer spends on help or on a flag that
-        // was never going to parse. A direct (name, params) command transport
-        // would remove the re-render; it does not exist yet.
-        let line = render_line(wire_name, &params);
         self.store
-            .platform_execute(serde_json::json!({ "commands": line }))
+            .platform_run(wire_name, params)
             .await
             .map_err(|error| error.to_string())
     }
@@ -97,72 +93,9 @@ fn contract_specs() -> Vec<CliCommandSpec> {
         .collect()
 }
 
-/// Render parsed arguments as the flat invocation the catalog's bash accepts.
-fn render_line(wire_name: &str, params: &serde_json::Value) -> String {
-    let mut line = String::from(wire_name);
-    let Some(object) = params.as_object() else {
-        return line;
-    };
-    for (field, value) in object {
-        line.push_str(&format!(" --{field}"));
-        match value {
-            // A boolean flag is a switch on the far side; a value would be
-            // parsed as the next token.
-            serde_json::Value::Bool(true) => {}
-            serde_json::Value::Bool(false) => line.push_str(" false"),
-            serde_json::Value::String(text) => {
-                line.push(' ');
-                line.push_str(&quote(text));
-            }
-            other => {
-                line.push(' ');
-                line.push_str(&quote(&other.to_string()));
-            }
-        }
-    }
-    line
-}
-
-/// Quote a value so the receiving parser sees exactly these bytes. The caller's
-/// argv was already split and unquoted by this shell; without re-quoting, a
-/// value built from tool output would re-parse as syntax on the far side.
-fn quote(value: &str) -> String {
-    if !value.is_empty()
-        && value.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(c, '_' | '-' | '.' | '/' | ':' | '=' | '@' | ',' | '+')
-        })
-    {
-        return value.to_string();
-    }
-    format!("'{}'", value.replace('\'', r"'\''"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn a_switch_renders_without_a_value() {
-        let line = render_line("list_agents", &json!({ "include_archived": true }));
-        assert_eq!(line, "list_agents --include_archived");
-    }
-
-    #[test]
-    fn a_number_and_a_document_survive_the_render() {
-        let line = render_line("list_agents", &json!({ "limit": 10, "filter": {"a": 1} }));
-        assert!(line.contains("--limit 10"), "{line}");
-        assert!(line.contains(r#"--filter '{"a":1}'"#), "{line}");
-    }
-
-    /// The property the forwarding builtin had to earn and this must not lose:
-    /// a value carrying shell syntax arrives as data.
-    #[test]
-    fn shell_syntax_in_a_value_is_neutralized() {
-        let line = render_line("create_agent", &json!({ "name": "a; rm -rf /" }));
-        assert_eq!(line, "create_agent --name 'a; rm -rf /'");
-    }
 
     /// The tree is the contract's, so every routed command is spelled here and
     /// the worker needs no round trip to know the grammar.
@@ -185,5 +118,98 @@ mod tests {
                 .iter()
                 .any(|spec| spec.path == ["agents", "versions"] && spec.verb == "rollback")
         );
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::core::{AgentDefinition, ExecutionSession, HarnessDefinition};
+    use everruns_capabilities::{PlatformCreateSessionRequest, PlatformMessage};
+    use everruns_contracts::error::Result;
+    use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId, SessionParticipantId};
+
+    /// Records what the shell sends; nothing else is reachable from it.
+    #[derive(Default)]
+    struct RecordingStore {
+        runs: Mutex<Vec<(String, serde_json::Value)>>,
+    }
+
+    #[async_trait]
+    impl PlatformStore for RecordingStore {
+        async fn platform_execute(&self, _arguments: serde_json::Value) -> Result<String> {
+            panic!("the worker shell must not send a rendered command line");
+        }
+        async fn platform_run(&self, command: &str, params: serde_json::Value) -> Result<String> {
+            self.runs
+                .lock()
+                .unwrap()
+                .push((command.to_string(), params));
+            Ok("{}".into())
+        }
+        async fn get_harness(&self, _: HarnessId) -> Result<Option<HarnessDefinition>> {
+            unimplemented!()
+        }
+        async fn get_agent_by_id(&self, _: AgentId) -> Result<Option<AgentDefinition>> {
+            unimplemented!()
+        }
+        async fn create_session_with_options(
+            &self,
+            _: PlatformCreateSessionRequest,
+        ) -> Result<ExecutionSession> {
+            unimplemented!()
+        }
+        async fn get_session_by_id(&self, _: SessionId) -> Result<Option<ExecutionSession>> {
+            unimplemented!()
+        }
+        async fn add_agent_session_participant(
+            &self,
+            _: SessionId,
+            _: AgentId,
+        ) -> Result<SessionParticipantId> {
+            unimplemented!()
+        }
+        async fn send_message(&self, _: SessionId, _: &str) -> Result<()> {
+            unimplemented!()
+        }
+        async fn get_messages(
+            &self,
+            _: SessionId,
+            _: Option<usize>,
+        ) -> Result<Vec<PlatformMessage>> {
+            unimplemented!()
+        }
+        async fn wait_for_idle(&self, _: SessionId, _: Option<u64>) -> Result<String> {
+            unimplemented!()
+        }
+    }
+
+    /// A parsed line crosses as the wire name and the params the grammar
+    /// produced, so a value full of shell syntax arrives byte for byte.
+    #[tokio::test]
+    async fn a_parsed_line_is_sent_as_name_and_params() {
+        let store = Arc::new(RecordingStore::default());
+        let source = CatalogCommandSource {
+            store: store.clone(),
+        };
+        let spec = contract_specs()
+            .into_iter()
+            .find(|spec| spec.wire_name == "list_agents")
+            .expect("list_agents is routed");
+        let hostile = "a'; rm -rf / $(id) `x`";
+        let matches = spec
+            .command
+            .try_get_matches_from(["list", "--search", hostile, "--limit", "3"])
+            .expect("the line parses");
+
+        source.dispatch("list_agents", matches).await.unwrap();
+
+        let runs = store.runs.lock().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].0, "list_agents");
+        assert_eq!(runs[0].1["search"], hostile);
+        assert_eq!(runs[0].1["limit"], 3);
     }
 }

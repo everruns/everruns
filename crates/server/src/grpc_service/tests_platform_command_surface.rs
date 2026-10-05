@@ -318,6 +318,84 @@ async fn platform_command_surface_uses_current_invocation_and_org() {
         "unexpected authorization error: {error}"
     );
 
+    // Run takes the worker shell's parsed (name, params) and goes through the
+    // same gate and policy as Execute.
+    let run = |command: &str, params: serde_json::Value| {
+        Request::new(InvokePlatformCommandSurfaceRequest {
+            input_message_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+            session_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+            org_id: session.org_id,
+            operation: PlatformCommandSurfaceOperation::Run as i32,
+            arguments_json: serde_json::to_vec(
+                &serde_json::json!({ "command": command, "params": params }),
+            )
+            .unwrap(),
+        })
+    };
+    let result =
+        |response: InvokePlatformCommandSurfaceResponse| match response.result.expect("run result")
+        {
+            proto::invoke_platform_command_surface_response::Result::Output(output) => Ok(output),
+            proto::invoke_platform_command_surface_response::Result::Error(error) => Err(error),
+        };
+
+    // A value carrying shell syntax is data: it is never parsed as a line.
+    let listed = result(
+        service
+            .invoke_platform_command_surface(run(
+                "list_agents",
+                serde_json::json!({ "search": "a; rm -rf / $(id)", "limit": 5 }),
+            ))
+            .await
+            .expect("run succeeds")
+            .into_inner(),
+    )
+    .expect("list_agents runs");
+    assert!(listed.contains("\"data\""), "{listed}");
+
+    let denied = result(
+        service
+            .invoke_platform_command_surface(run(
+                "create_harness",
+                serde_json::json!({ "name": "forbidden" }),
+            ))
+            .await
+            .expect("authorization denial is a tool result")
+            .into_inner(),
+    )
+    .expect_err("member mutation must be denied over Run too");
+    assert!(
+        denied.contains("forbidden") || denied.contains("Access denied"),
+        "unexpected authorization error: {denied}"
+    );
+
+    let unknown = result(
+        service
+            .invoke_platform_command_surface(run("not_a_command", serde_json::json!({})))
+            .await
+            .expect("unknown command is a tool result")
+            .into_inner(),
+    )
+    .expect_err("unknown command");
+    assert!(unknown.contains("unknown command"), "{unknown}");
+
+    let invalid = result(
+        service
+            .invoke_platform_command_surface(run(
+                "list_agents",
+                serde_json::json!({ "limit": "x" }),
+            ))
+            .await
+            .expect("invalid params are a tool result")
+            .into_inner(),
+    )
+    .expect_err("params are validated");
+    assert!(!invalid.is_empty());
+
     let foreign = service
         .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
             input_message_id: Some(proto::Uuid {

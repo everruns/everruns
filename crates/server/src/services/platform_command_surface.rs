@@ -12,6 +12,11 @@ pub enum Operation {
     Discover,
     Query,
     Execute,
+    /// One command by wire name with structured params, for a caller that
+    /// already parsed the command line (the worker shell). It is the
+    /// `everruns` builtin of `Execute` without the script around it: the same
+    /// exposure rule, validation, `Command::run` and output.
+    Run,
 }
 
 pub async fn invoke(
@@ -23,7 +28,27 @@ pub async fn invoke(
         Operation::Discover => discover(arguments, &context.domain_ctx.feature_flags),
         Operation::Query => script(arguments, context, catalog::ToolsetMode::ReadOnly).await,
         Operation::Execute => script(arguments, context, catalog::ToolsetMode::Full).await,
+        Operation::Run => run(arguments, &context).await,
     }
+}
+
+async fn run(arguments: &Value, context: &catalog::CatalogContext) -> Result<String, String> {
+    let command = arguments
+        .get("command")
+        .and_then(Value::as_str)
+        .ok_or("Missing required parameter: command")?;
+    let params = arguments
+        .get("params")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    if !params.is_object() {
+        return Err("params must be a JSON object".into());
+    }
+    // THREAT[TM-MCP-002]: the same gate the `everruns` builtin applies before
+    // it runs a resolved line in the full toolset.
+    let desc = catalog::scripted_descriptor(command, catalog::ToolsetMode::Full)
+        .ok_or_else(|| format!("unknown command `{command}`"))?;
+    catalog::run_for_shell(desc, params, context).await
 }
 
 fn discover(

@@ -266,6 +266,9 @@ impl WorkerServiceImpl {
             Ok(PlatformCommandSurfaceOperation::Execute) => {
                 crate::services::platform_command_surface::Operation::Execute
             }
+            Ok(PlatformCommandSurfaceOperation::Run) => {
+                crate::services::platform_command_surface::Operation::Run
+            }
             _ => {
                 return Err(Status::invalid_argument(
                     "Invalid platform command operation",

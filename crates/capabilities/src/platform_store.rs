@@ -57,6 +57,14 @@ pub trait PlatformStore: Send + Sync {
         ))
     }
 
+    /// Run one command of the full catalog by wire name with structured
+    /// params: `platform_execute` for a caller that already parsed the line.
+    async fn platform_run(&self, _command: &str, _params: serde_json::Value) -> Result<String> {
+        Err(everruns_contracts::error::AgentLoopError::config(
+            "Platform command surface is not available in this host",
+        ))
+    }
+
     // =========================================================================
     // Harness Operations
     // =========================================================================
