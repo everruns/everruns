@@ -31,10 +31,28 @@
 //! - Workers stop when the last [`DurableBackend`] handle drops, or on
 //!   [`DurableBackend::shutdown`]. A step in flight is dropped, as dropping an
 //!   in-process turn's ticket drops it.
-//! - Not served yet, with a configuration error: `ResumeInterrupted`,
-//!   `ToolResults` and `Persisted`. Crash recovery and multi-process stores
-//!   need a session-to-runtime route this backend does not have; the memory
-//!   store dies with the process anyway.
+//! - Continuations reuse the in-process runtime's own resume logic and the
+//!   durable engine's own resume paths, so a continued turn takes the steps
+//!   it takes in process:
+//!   - A turn that parks on client-side tool calls is recorded on the runtime
+//!     ([`InProcessRuntime::park_turn`]) when the driver plans the pause, so
+//!     `parked_tool_calls` reports it as in process. [`TurnInput::ToolResults`]
+//!     records the results under it
+//!     ([`InProcessRuntime::deliver_parked_tool_results`]) and continues the
+//!     workflow from its stored checkpoint through the runner's
+//!     tool-resolution resume, the path the server uses.
+//!   - [`TurnInput::ResumeInterrupted`] reads the cut-off turn from the
+//!     session log ([`InProcessRuntime::interrupted_turn_plan`]) and starts a
+//!     workflow whose first task is that act, checkpointed with the turn's
+//!     state, so the driver runs it and plans on from there.
+//!   - The ticket of a continued turn counts only the steps this run takes,
+//!     as an in-process result does.
+//! - No `recover()`: the memory store dies with the process, so a turn a
+//!   process exit cut off survives only in the session log, which
+//!   `ResumeInterrupted` resumes from. A shared store needs a
+//!   session-to-runtime route this backend does not have yet.
+//! - Not served: `Persisted`, the server's stored input, with a configuration
+//!   error.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -45,11 +63,12 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{MessageId, SessionId};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::engine::{ReasonInput, ReasonResult, TurnPlan, reason_schedules_act};
+use everruns_core::events::ToolCompletedData;
 use everruns_core::host::{
-    InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnSteering, TurnTicket,
-    in_process_internal_org_id,
+    AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnSteering,
+    TurnTicket, in_process_internal_org_id,
 };
 use everruns_durable::{ClaimedTask, InMemoryWorkflowEventStore, WorkerInfo};
 use tokio::sync::Notify;
@@ -60,7 +79,8 @@ use tracing::{debug, warn};
 use crate::durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput};
 use crate::task_heartbeat::CancelSignals;
 use crate::task_store::TaskStore;
-use crate::turn_driver::{TurnTaskDriver, TurnTaskHost};
+use crate::turn_backend::TurnBaseline;
+use crate::turn_driver::{TurnTaskDriver, TurnTaskHost, act_task_input};
 
 /// How long an idle worker waits for a start notification before it polls
 /// the queue again.
@@ -504,18 +524,32 @@ impl TurnTaskHost for SessionHosts {
         &self,
         checkpoint: &DurableTurnInput,
         plan: &TurnPlan,
+        output: &serde_json::Value,
     ) -> anyhow::Result<()> {
         let steering = self.0.steering();
         match plan {
             TurnPlan::Complete { .. } => steering.close(),
-            // A parked turn keeps what was steered into it, as in process.
-            TurnPlan::WaitForToolResults { .. } => {
+            // A parked turn keeps what was steered into it and waits on the
+            // runtime for its client-side results, as in process.
+            TurnPlan::WaitForToolResults { resume } => {
                 steering.close();
                 if let Some(turn_id) = checkpoint.turn_id {
                     self.0
                         .runtime
                         .append_accepted_inputs(self.0.session_id, turn_id, steering.drain())
                         .await?;
+                    let client_tool_calls = output
+                        .get("client_tool_calls")
+                        .cloned()
+                        .map(serde_json::from_value)
+                        .transpose()?
+                        .unwrap_or_default();
+                    self.0.runtime.park_turn(
+                        self.0.session_id,
+                        turn_id,
+                        client_tool_calls,
+                        resume.clone(),
+                    );
                 }
             }
             TurnPlan::ScheduleReason(_) | TurnPlan::ScheduleAct(_) => {}
@@ -529,7 +563,8 @@ impl TurnTaskHost for SessionHosts {
 ///
 /// **Experimental**, with [`TurnBackend`].
 ///
-/// Serves [`TurnInput::Message`]. The workflow starts before
+/// Serves [`TurnInput::Message`], [`TurnInput::ToolResults`] and
+/// [`TurnInput::ResumeInterrupted`]. The workflow starts before
 /// [`start_turn`](TurnBackend::start_turn) returns, so the turn runs whether
 /// or not its ticket is polled; the ticket resolves when the workflow ends.
 /// Dropping this handle detaches the session: its in-flight step is dropped
@@ -565,51 +600,48 @@ impl Drop for DurableSessionBackend {
 
 fn unsupported_input(input: &TurnInput) -> AgentLoopError {
     let name = match input {
-        TurnInput::ResumeInterrupted => "TurnInput::ResumeInterrupted",
-        TurnInput::ToolResults(_) => "TurnInput::ToolResults",
         TurnInput::Persisted(_) => "TurnInput::Persisted",
         _ => "this turn input",
     };
     AgentLoopError::config(format!(
-        "the durable backend cannot run {name} yet; it serves TurnInput::Message"
+        "the durable backend cannot run {name}; it serves TurnInput::Message, \
+         TurnInput::ToolResults and TurnInput::ResumeInterrupted"
     ))
 }
 
-#[async_trait]
-impl TurnBackend for DurableSessionBackend {
-    async fn start_turn(&self, request: TurnRequest) -> Result<TurnTicket> {
-        let TurnRequest {
-            session_id,
-            turn_id,
-            input,
-            steering,
-            ..
-        } = request;
-        if session_id != self.slot.session_id {
-            return Err(AgentLoopError::config(format!(
-                "this durable backend handle runs session {}, not {session_id}",
-                self.slot.session_id
-            )));
-        }
-        let input = match input {
-            TurnInput::Message(input) => *input,
-            other => return Err(unsupported_input(&other)),
-        };
-        if self.shared.runner.is_running(session_id).await {
-            return Err(AgentLoopError::store(format!(
-                "session {session_id} already runs a turn"
-            )));
-        }
+fn already_running(session_id: SessionId) -> AgentLoopError {
+    AgentLoopError::store(format!("session {session_id} already runs a turn"))
+}
 
-        // Route and persist exactly as `InProcessRuntime::run_steerable_turn`.
-        let runtime = &self.slot.runtime;
-        let snapshot = runtime.resolved_execution_snapshot(session_id).await?;
+fn store_error(error: anyhow::Error) -> AgentLoopError {
+    AgentLoopError::store(format!("{error:#}"))
+}
+
+impl DurableSessionBackend {
+    /// Make `steering` the session's current turn's, with a fresh cancel.
+    fn begin_turn(&self, steering: TurnSteering) {
         *self.slot.turn() = SlotTurn {
             steering,
             cancel: CancellationToken::new(),
             pending_prompt_messages: Vec::new(),
         };
+    }
+
+    /// Start a new turn from `input`, persisted exactly as
+    /// `InProcessRuntime::run_steerable_turn` persists it.
+    async fn start_message(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        input: AcceptedTurnInput,
+        steering: TurnSteering,
+    ) -> Result<TurnTicket> {
+        let runtime = &self.slot.runtime;
+        let snapshot = runtime.resolved_execution_snapshot(session_id).await?;
+        self.begin_turn(steering);
         let input_message_id = runtime.persist_accepted_input(session_id, input).await?;
+        // A new turn supersedes one parked on client-side tool calls.
+        runtime.supersede_parked_turn(session_id);
         let turn_input = DurableTurnInput {
             org_id: in_process_internal_org_id(&snapshot.organization_id),
             session_id,
@@ -633,13 +665,131 @@ impl TurnBackend for DurableSessionBackend {
             .runner
             .start_workflow(session_id.uuid(), &turn_input)
             .await
-            .map_err(|error| AgentLoopError::store(format!("{error:#}")))?;
+            .map_err(store_error)?;
         if !started {
-            return Err(AgentLoopError::store(format!(
-                "session {session_id} already runs a turn"
-            )));
+            return Err(already_running(session_id));
         }
         Ok(self.shared.runner.ticket(session_id, turn_id))
+    }
+
+    /// Continue the turn parked on client-side tool calls: record `results`
+    /// under it on the runtime, then resume the workflow from the checkpoint
+    /// it parked with, through the runner's tool-resolution resume.
+    async fn resume_tool_results(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        results: Vec<ToolCompletedData>,
+        steering: TurnSteering,
+    ) -> Result<TurnTicket> {
+        let resume = self
+            .slot
+            .runtime
+            .deliver_parked_tool_results(session_id, results)
+            .await?;
+        self.begin_turn(steering);
+        // The facade has no stored resolution; a fresh id keys this resume.
+        self.shared
+            .runner
+            .resume_persisted_resolution(session_id, uuid::Uuid::now_v7())
+            .await
+            .map_err(store_error)?;
+        let baseline = TurnBaseline {
+            // The next reason runs at the resume state's iteration.
+            iterations: resume.iteration.saturating_sub(1),
+            tool_calls: resume.tool_call_count,
+        };
+        Ok(self
+            .shared
+            .runner
+            .ticket_after(session_id, resume.turn_id.unwrap_or(turn_id), baseline))
+    }
+
+    /// Continue the turn a process exit cut off in its act: a workflow whose
+    /// first task is the act that runs its unfinished calls again.
+    async fn resume_interrupted(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        steering: TurnSteering,
+    ) -> Result<TurnTicket> {
+        let (state, plan) = self
+            .slot
+            .runtime
+            .interrupted_turn_plan(session_id)
+            .await?
+            .ok_or_else(|| {
+                AgentLoopError::store(format!(
+                    "session {session_id} has no turn interrupted in its tool calls"
+                ))
+            })?;
+        self.begin_turn(steering);
+        let rerun = u32::try_from(plan.input.tool_calls.len()).unwrap_or(u32::MAX);
+        let input = act_task_input(&plan, &state).map_err(store_error)?;
+        let started = self
+            .shared
+            .runner
+            .start_workflow_at(
+                session_id.uuid(),
+                format!("act_{}", uuid::Uuid::now_v7()),
+                "act",
+                input,
+            )
+            .await
+            .map_err(store_error)?;
+        if !started {
+            return Err(already_running(session_id));
+        }
+        let baseline = TurnBaseline {
+            // The act moves the turn to its next iteration's reason.
+            iterations: state.iteration,
+            // The log already counts the calls the act runs again; in process
+            // the act counts them for this run.
+            tool_calls: state.tool_call_count.saturating_sub(rerun),
+        };
+        Ok(self
+            .shared
+            .runner
+            .ticket_after(session_id, state.turn_id.unwrap_or(turn_id), baseline))
+    }
+}
+
+#[async_trait]
+impl TurnBackend for DurableSessionBackend {
+    async fn start_turn(&self, request: TurnRequest) -> Result<TurnTicket> {
+        let TurnRequest {
+            session_id,
+            turn_id,
+            input,
+            steering,
+            ..
+        } = request;
+        if session_id != self.slot.session_id {
+            return Err(AgentLoopError::config(format!(
+                "this durable backend handle runs session {}, not {session_id}",
+                self.slot.session_id
+            )));
+        }
+        if matches!(input, TurnInput::Persisted(_)) {
+            return Err(unsupported_input(&input));
+        }
+        if self.shared.runner.is_running(session_id).await {
+            return Err(already_running(session_id));
+        }
+        match input {
+            TurnInput::Message(input) => {
+                self.start_message(session_id, turn_id, *input, steering)
+                    .await
+            }
+            TurnInput::ToolResults(results) => {
+                self.resume_tool_results(session_id, turn_id, results, steering)
+                    .await
+            }
+            TurnInput::ResumeInterrupted => {
+                self.resume_interrupted(session_id, turn_id, steering).await
+            }
+            other => Err(unsupported_input(&other)),
+        }
     }
 
     async fn cancel(&self, session_id: SessionId) -> Result<bool> {

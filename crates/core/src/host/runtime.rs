@@ -66,8 +66,8 @@ use std::sync::{Arc, Mutex};
 mod parked;
 mod steering;
 
+use parked::ParkedTurns;
 pub use parked::{InterruptedToolCalls, ParkedToolCalls};
-use parked::{ParkedTurn, ParkedTurns, lock_parked};
 pub use steering::{TurnSteering, TurnSteeringPushError};
 
 /// Cap on the input length hashed by [`hash_public_org_id`].
@@ -1393,15 +1393,11 @@ impl InProcessRuntime {
                     steering.close();
                     self.append_accepted_inputs(session_id, turn_id, steering.drain())
                         .await?;
-                    lock_parked(&self.parked_turns).insert(
+                    self.park_turn(
                         session_id,
-                        ParkedTurn {
-                            calls: ParkedToolCalls {
-                                turn_id,
-                                tool_calls: std::mem::take(&mut client_tool_calls),
-                            },
-                            resume,
-                        },
+                        turn_id,
+                        std::mem::take(&mut client_tool_calls),
+                        resume,
                     );
                     return Ok(finish_turn(
                         turn_id,

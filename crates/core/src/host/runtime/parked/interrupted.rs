@@ -104,11 +104,50 @@ impl InProcessRuntime {
         session_id: SessionId,
         steering: TurnSteering,
     ) -> Result<TurnResult> {
-        let (turn, tool_calls) = self.open_turn(session_id).await?.ok_or_else(|| {
-            AgentLoopError::store(format!(
-                "session {session_id} has no turn interrupted in its tool calls"
-            ))
-        })?;
+        let (state, plan) = self
+            .interrupted_turn_plan(session_id)
+            .await?
+            .ok_or_else(|| no_interrupted_turn(session_id))?;
+        let snapshot = self.resolved_execution_snapshot(session_id).await?;
+        let drive = TurnDrive {
+            session_id,
+            org_id: state.org_id,
+            turn_id: state.turn_id.unwrap_or_default(),
+            input_message_id: state.input_message_id,
+            harness_id: snapshot.harness_id,
+            agent_id: snapshot.agent_id,
+            workspace_id: snapshot.workspace_id,
+        };
+        self.drive_turn_plan(
+            drive,
+            InProcessExecution::new(state),
+            TurnPlan::ScheduleAct(plan),
+            steering,
+        )
+        .await
+    }
+
+    /// The step [`resume_interrupted_turn`](Self::resume_interrupted_turn)
+    /// continues `session_id`'s interrupted turn with: the act that runs its
+    /// unfinished tool calls again, and the engine state that act starts
+    /// from. `None` when the session has no interrupted turn (see
+    /// [`interrupted_tool_calls`](Self::interrupted_tool_calls)).
+    ///
+    /// Not part of the framework surface: it exists so a turn backend that
+    /// drives the steps itself (the durable backend) resumes an interrupted
+    /// turn exactly as this runtime does.
+    ///
+    /// # Errors
+    ///
+    /// A store error when the log or the session cannot be read.
+    #[doc(hidden)]
+    pub async fn interrupted_turn_plan(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<(TurnState, ActPlan)>> {
+        let Some((turn, tool_calls)) = self.open_turn(session_id).await? else {
+            return Ok(None);
+        };
         let snapshot = self.resolved_execution_snapshot(session_id).await?;
         let org_id = in_process_internal_org_id(&snapshot.organization_id);
         // The same tool surface a reason step would hand the act.
@@ -132,7 +171,7 @@ impl InProcessRuntime {
             final_message_id: turn.final_message_id,
             final_answer_preview: None,
         };
-        let plan = TurnPlan::ScheduleAct(ActPlan {
+        let plan = ActPlan {
             input: ActInput {
                 org_id: Some(org_id),
                 context: ExecutionContext::new(session_id, turn.turn_id, turn.input_message_id)
@@ -151,22 +190,8 @@ impl InProcessRuntime {
             iteration: state.iteration,
             request_id: None,
             resume_state: Box::new(state.clone()),
-        });
-        self.drive_turn_plan(
-            TurnDrive {
-                session_id,
-                org_id,
-                turn_id: turn.turn_id,
-                input_message_id: turn.input_message_id,
-                harness_id: snapshot.harness_id,
-                agent_id: snapshot.agent_id,
-                workspace_id: snapshot.workspace_id,
-            },
-            InProcessExecution::new(state),
-            plan,
-            steering,
-        )
-        .await
+        };
+        Ok(Some((state, plan)))
     }
 
     /// Read the log forward, keeping only the last turn while it is open.
@@ -193,6 +218,12 @@ impl InProcessRuntime {
         }
         Ok(open.and_then(OpenTurn::unfinished))
     }
+}
+
+fn no_interrupted_turn(session_id: SessionId) -> AgentLoopError {
+    AgentLoopError::store(format!(
+        "session {session_id} has no turn interrupted in its tool calls"
+    ))
 }
 
 /// Fold one event into the open turn.

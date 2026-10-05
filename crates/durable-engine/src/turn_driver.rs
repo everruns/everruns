@@ -93,8 +93,15 @@ pub trait TurnTaskHost: Clone + Send + Sync + 'static {
     /// Called with the turn's next step once the engine planned it, before
     /// the driver enqueues that step or ends the workflow. A host that
     /// accepts mid-turn input closes its ingress here when the turn ends.
-    async fn turn_planned(&self, checkpoint: &DurableTurnInput, plan: &TurnPlan) -> Result<()> {
-        let _ = (checkpoint, plan);
+    /// `output` is the output of the step the plan follows (an act's carries
+    /// the client-side calls a parked turn waits on).
+    async fn turn_planned(
+        &self,
+        checkpoint: &DurableTurnInput,
+        plan: &TurnPlan,
+        output: &serde_json::Value,
+    ) -> Result<()> {
+        let _ = (checkpoint, plan, output);
         Ok(())
     }
 
@@ -489,7 +496,7 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
     )
     .await?;
     let checkpoint = execution.checkpoint();
-    hosts.turn_planned(&checkpoint, &plan).await?;
+    hosts.turn_planned(&checkpoint, &plan, output).await?;
     match plan {
         TurnPlan::ScheduleReason(_) => {
             enqueue_reason_task(store, workflow_id, &checkpoint).await?;
@@ -620,7 +627,10 @@ async fn enqueue_act_task<S: TaskStore>(
     Ok(())
 }
 
-fn act_task_input(plan: &ActPlan, checkpoint: &DurableTurnInput) -> Result<serde_json::Value> {
+pub(crate) fn act_task_input(
+    plan: &ActPlan,
+    checkpoint: &DurableTurnInput,
+) -> Result<serde_json::Value> {
     let mut input = serde_json::to_value(&plan.input)?;
     input["resume_state"] = serde_json::to_value(checkpoint)?;
     Ok(input)

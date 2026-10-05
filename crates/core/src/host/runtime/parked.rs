@@ -72,12 +72,48 @@ impl InProcessRuntime {
         results: Vec<ToolCompletedData>,
         steering: TurnSteering,
     ) -> Result<TurnResult> {
+        let resume = self
+            .deliver_parked_tool_results(session_id, results)
+            .await?;
+        let snapshot = self.resolved_execution_snapshot(session_id).await?;
+        let drive = TurnDrive {
+            session_id,
+            org_id: resume.org_id,
+            turn_id: resume.turn_id.unwrap_or_default(),
+            input_message_id: resume.input_message_id,
+            harness_id: snapshot.harness_id,
+            agent_id: snapshot.agent_id,
+            workspace_id: snapshot.workspace_id,
+        };
+        let plan = TurnPlan::ScheduleReason(resume.clone());
+        self.drive_turn_plan(drive, InProcessExecution::new(resume), plan, steering)
+            .await
+    }
+
+    /// Take the turn `session_id` parked on client-side tool calls and record
+    /// `results` under it, as [`resume_steerable_turn`](Self::resume_steerable_turn)
+    /// does before it continues the turn. Returns the engine state the turn
+    /// continues from: a reason at that state's iteration.
+    ///
+    /// Not part of the framework surface: it exists so a turn backend that
+    /// drives the steps itself (the durable backend) continues a parked turn
+    /// exactly as this runtime does.
+    ///
+    /// # Errors
+    ///
+    /// A store error when no turn of `session_id` is parked, or the results
+    /// cannot be recorded.
+    #[doc(hidden)]
+    pub async fn deliver_parked_tool_results(
+        &self,
+        session_id: SessionId,
+        results: Vec<ToolCompletedData>,
+    ) -> Result<TurnState> {
         let parked = self.take_parked_turn(session_id).ok_or_else(|| {
             AgentLoopError::store(format!(
                 "session {session_id} has no turn waiting for tool results"
             ))
         })?;
-        let snapshot = self.resolved_execution_snapshot(session_id).await?;
         let turn_id = parked.calls.turn_id;
         let input_message_id = parked.resume.input_message_id;
         for result in results {
@@ -89,23 +125,46 @@ impl InProcessRuntime {
                 ))
                 .await?;
         }
-        let drive = TurnDrive {
+        let mut resume = parked.resume;
+        resume.turn_id = Some(turn_id);
+        Ok(resume)
+    }
+
+    /// Record that `session_id`'s turn `turn_id` parked on the client-side
+    /// `tool_calls`, to continue from `resume`, as a turn this runtime drives
+    /// records it when it pauses.
+    ///
+    /// Not part of the framework surface: it exists so a turn backend that
+    /// drives the steps itself (the durable backend) parks a turn where
+    /// [`parked_tool_calls`](Self::parked_tool_calls) and
+    /// [`resume_steerable_turn`](Self::resume_steerable_turn) find it.
+    #[doc(hidden)]
+    pub fn park_turn(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        tool_calls: Vec<everruns_contracts::tool_types::ToolCall>,
+        resume: TurnState,
+    ) {
+        lock_parked(&self.parked_turns).insert(
             session_id,
-            org_id: parked.resume.org_id,
-            turn_id,
-            input_message_id,
-            harness_id: snapshot.harness_id,
-            agent_id: snapshot.agent_id,
-            workspace_id: snapshot.workspace_id,
-        };
-        let plan = TurnPlan::ScheduleReason(parked.resume.clone());
-        self.drive_turn_plan(
-            drive,
-            InProcessExecution::new(parked.resume),
-            plan,
-            steering,
-        )
-        .await
+            ParkedTurn {
+                calls: ParkedToolCalls {
+                    turn_id,
+                    tool_calls,
+                },
+                resume,
+            },
+        );
+    }
+
+    /// Drop the turn `session_id` parked on client-side tool calls, as a new
+    /// turn this runtime starts does: its calls stay unanswered in history.
+    ///
+    /// Not part of the framework surface; see [`park_turn`](Self::park_turn).
+    #[doc(hidden)]
+    pub fn supersede_parked_turn(&self, session_id: SessionId) {
+        self.take_parked_turn(session_id);
     }
 
     pub(super) fn take_parked_turn(&self, session_id: SessionId) -> Option<ParkedTurn> {

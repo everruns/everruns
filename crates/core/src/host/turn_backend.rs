@@ -16,8 +16,10 @@
 //!   the doc-hidden [`TurnInput::Persisted`], which only a durable backend
 //!   serves. [`InProcessBackend`] rejects it.
 //! - Crash recovery (`recover`) is left out: the in-process runtime keeps no
-//!   queue to recover from, and an interrupted turn is already resumed per
-//!   session through [`TurnInput::ResumeInterrupted`].
+//!   queue to recover from, and an interrupted turn is resumed per session
+//!   through [`TurnInput::ResumeInterrupted`], from the session log, on any
+//!   backend. The durable memory backend needs nothing more: its queue dies
+//!   with the process.
 //! - [`InProcessBackend`] drives the turn on the task that polls its ticket,
 //!   so swapping the facade onto the seam changed no concurrency: a turn makes
 //!   progress only while its owner polls it, and dropping the ticket stops it,
@@ -43,8 +45,8 @@ use crate::events::ToolCompletedData;
 ///
 /// **Experimental.** The trait is public and unsealed so a third-party
 /// backend can implement it, but its shape may change without a major
-/// version bump until the backend conformance suite passes on both the
-/// in-process and the durable backend.
+/// version bump; the backend conformance suite in the `everruns` facade
+/// (`tests/backend_conformance/`) is the bar a backend meets.
 ///
 /// A backend runs at most one turn per session at a time. Starting a turn
 /// returns a [`TurnTicket`] that resolves with the turn's [`TurnResult`];

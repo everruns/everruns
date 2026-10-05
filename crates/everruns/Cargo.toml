@@ -43,6 +43,14 @@ name = "local"
 path = "tests/local/main.rs"
 required-features = ["local"]
 
+# The cross-backend conformance suite: every scenario runs on the in-process
+# and the durable memory backend and must observe the same outcome. Needs the
+# durable backend, and AG-UI to park and resume on client-side tool calls.
+[[test]]
+name = "backend_conformance"
+path = "tests/backend_conformance/main.rs"
+required-features = ["durable", "ag-ui"]
+
 [features]
 # Default features stay offline: the facade includes the contained session
 # filesystem and package disk loading, but activates no provider, shell, web,
