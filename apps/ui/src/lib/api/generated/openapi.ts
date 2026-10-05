@@ -27098,7 +27098,10 @@ export interface operations {
   execute_command: {
     parameters: {
       query?: never;
-      header?: never;
+      header?: {
+        /** @description Makes a mutating command safe to retry: a repeat with the same key and request returns the first response (with `Idempotent-Replayed: true`) instead of running again. Up to 255 printable ASCII characters, remembered for 24 hours per caller. Ignored by read-only commands. */
+        "Idempotency-Key"?: string | null;
+      };
       path: {
         /** @description Command wire name, e.g. create_agent */
         name: string;
@@ -27114,6 +27117,8 @@ export interface operations {
       /** @description Command output */
       200: {
         headers: {
+          /** @description `true` when this is the stored response of an earlier request with the same Idempotency-Key */
+          "Idempotent-Replayed"?: string;
           [name: string]: unknown;
         };
         content: {
@@ -27140,6 +27145,24 @@ export interface operations {
       };
       /** @description Unknown command or resource */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description A request with this Idempotency-Key is still running */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description The Idempotency-Key was used for a different request */
+      422: {
         headers: {
           [name: string]: unknown;
         };

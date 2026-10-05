@@ -17,6 +17,7 @@ pub mod agent_trigger_mcp_subscriptions;
 pub mod agents_api_store;
 pub mod backend;
 pub mod blob_store;
+pub mod command_idempotency;
 pub mod compaction_checkpoint_store;
 pub mod connection_resolver;
 pub mod durable_tool_results;

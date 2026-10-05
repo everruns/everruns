@@ -264,3 +264,327 @@ async fn envelope_rejects_unknown_versions_and_fields() {
         .await;
     assert!(response.status().is_client_error(), "{}", response.text());
 }
+
+async fn post_with_key(
+    server: &TestServer,
+    uri: &str,
+    key: &str,
+    body: Value,
+) -> test_harness::TestResponse {
+    server
+        .request_raw(
+            axum::http::Method::POST,
+            uri,
+            vec![
+                ("content-type", "application/json"),
+                ("idempotency-key", key),
+            ],
+            serde_json::to_vec(&body).expect("body"),
+        )
+        .await
+}
+
+async fn agents_named(server: &TestServer, name: &str) -> usize {
+    let body: Value = server
+        .post(
+            "/v1/commands/list_agents",
+            json!({ "params": { "search": name } }),
+        )
+        .await
+        .assert_success()
+        .json();
+    body["output"]["data"]
+        .as_array()
+        .map(|agents| agents.iter().filter(|agent| agent["name"] == name).count())
+        .unwrap_or_default()
+}
+
+async fn idempotency_key_replays_the_first_response(server: TestServer) {
+    let name = unique("idem");
+    let key = unique("key");
+    let params = json!({ "params": { "name": name, "system_prompt": "Be brief" } });
+
+    let first = post_with_key(&server, "/v1/commands/create_agent", &key, params).await;
+    assert_eq!(first.status(), StatusCode::OK, "{}", first.text());
+    assert!(first.headers().get("idempotent-replayed").is_none());
+    let first: Value = first.json();
+
+    // Field order is not part of the request's identity.
+    let reordered = json!({ "params": { "system_prompt": "Be brief", "name": name } });
+    let second = post_with_key(&server, "/v1/commands/create_agent", &key, reordered).await;
+    assert_eq!(second.status(), StatusCode::OK, "{}", second.text());
+    assert_eq!(second.headers()["idempotent-replayed"], "true");
+    let second: Value = second.json();
+
+    assert_eq!(second, first, "a retry returns the stored response");
+    assert_eq!(
+        agents_named(&server, &name).await,
+        1,
+        "the command ran once"
+    );
+
+    // At rest the response is sealed with the server's encryption key.
+    use everruns_server::storage::command_idempotency::{
+        ClaimIdempotencyKey, IdempotencyClaim, IdempotencyKeyScope,
+    };
+    let now = chrono::Utc::now();
+    let IdempotencyClaim::Existing(stored) = server
+        .db
+        .claim_command_idempotency_key(&ClaimIdempotencyKey {
+            scope: IdempotencyKeyScope {
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                principal_id: everruns_server::records::ANONYMOUS_USER_ID,
+                key,
+            },
+            command: "create_agent".into(),
+            fingerprint: String::new(),
+            locked_until: now,
+            expires_at: now + chrono::Duration::hours(1),
+        })
+        .await
+        .expect("claim")
+    else {
+        panic!("the key is taken");
+    };
+    let sealed = stored.response.expect("stored response");
+    assert!(
+        !String::from_utf8_lossy(&sealed).contains(name.as_str()),
+        "the stored response is encrypted"
+    );
+}
+
+#[tokio::test]
+async fn idempotency_key_replays_the_first_response_in_memory() {
+    idempotency_key_replays_the_first_response(TestServer::in_memory().await).await;
+}
+
+#[tokio::test]
+async fn idempotency_key_replays_the_first_response_on_postgres() {
+    idempotency_key_replays_the_first_response(TestServer::new().await).await;
+}
+
+#[tokio::test]
+async fn idempotency_key_reused_for_another_request_is_unprocessable() {
+    let server = TestServer::in_memory().await;
+    let key = unique("key");
+    post_with_key(
+        &server,
+        "/v1/commands/create_agent",
+        &key,
+        json!({ "params": { "name": unique("idem"), "system_prompt": "a" } }),
+    )
+    .await
+    .assert_success();
+
+    let other_name = unique("idem");
+    let error: Value = post_with_key(
+        &server,
+        "/v1/commands/create_agent",
+        &key,
+        json!({ "params": { "name": other_name, "system_prompt": "a" } }),
+    )
+    .await
+    .assert_status(StatusCode::UNPROCESSABLE_ENTITY)
+    .json();
+    assert_eq!(error["code"], "idempotency_key_reused");
+    assert_eq!(agents_named(&server, &other_name).await, 0);
+}
+
+#[tokio::test]
+async fn a_failed_command_releases_its_key() {
+    let server = TestServer::in_memory().await;
+    let key = unique("key");
+    post_with_key(
+        &server,
+        "/v1/commands/create_agent",
+        &key,
+        json!({ "params": { "name": 7 } }),
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+
+    let name = unique("idem");
+    let response = post_with_key(
+        &server,
+        "/v1/commands/create_agent",
+        &key,
+        json!({ "params": { "name": name, "system_prompt": "a" } }),
+    )
+    .await
+    .assert_success();
+    assert!(response.headers().get("idempotent-replayed").is_none());
+    assert_eq!(agents_named(&server, &name).await, 1);
+}
+
+#[tokio::test]
+async fn a_key_still_in_flight_is_a_conflict() {
+    use everruns_server::api::command_dispatch::request_fingerprint;
+    use everruns_server::storage::command_idempotency::{
+        ClaimIdempotencyKey, IdempotencyClaim, IdempotencyKeyScope,
+    };
+
+    let server = TestServer::in_memory().await;
+    let key = unique("key");
+    let name = unique("idem");
+    let params = json!({ "name": name, "system_prompt": "a" });
+    // An earlier request with this key is still running: claim it as the
+    // handler does, without completing it.
+    let now = chrono::Utc::now();
+    let claim = server
+        .db
+        .claim_command_idempotency_key(&ClaimIdempotencyKey {
+            scope: IdempotencyKeyScope {
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                principal_id: everruns_server::records::ANONYMOUS_USER_ID,
+                key: key.clone(),
+            },
+            command: "create_agent".into(),
+            fingerprint: request_fingerprint("create_agent", &params),
+            locked_until: now + chrono::Duration::minutes(10),
+            expires_at: now + chrono::Duration::hours(1),
+        })
+        .await
+        .expect("claim");
+    assert_eq!(claim, IdempotencyClaim::Claimed);
+
+    let error: Value = post_with_key(
+        &server,
+        "/v1/commands/create_agent",
+        &key,
+        json!({ "params": params }),
+    )
+    .await
+    .assert_status(StatusCode::CONFLICT)
+    .json();
+    assert_eq!(error["code"], "idempotency_key_in_progress");
+    assert_eq!(
+        agents_named(&server, &name).await,
+        0,
+        "the retry did not run"
+    );
+}
+
+#[tokio::test]
+async fn read_only_commands_ignore_the_key_and_bad_keys_are_rejected() {
+    let server = TestServer::in_memory().await;
+    let key = unique("key");
+    for _ in 0..2 {
+        let response = post_with_key(&server, "/v1/commands/list_agents", &key, json!({})).await;
+        assert_eq!(response.status(), StatusCode::OK, "{}", response.text());
+        assert!(response.headers().get("idempotent-replayed").is_none());
+    }
+
+    let too_long = "k".repeat(256);
+    for bad in ["", "has space", too_long.as_str()] {
+        post_with_key(&server, "/v1/commands/create_agent", bad, json!({}))
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+}
+
+/// The claim rules both stores must agree on: a live lease is not taken over,
+/// an abandoned one only by the same request, an expired key by anyone, and a
+/// completed key survives release.
+async fn claim_rules_hold(server: TestServer) {
+    use chrono::{Duration, Utc};
+    use everruns_server::storage::command_idempotency::{
+        ClaimIdempotencyKey, IdempotencyClaim, IdempotencyKeyScope, StoredIdempotencyKey,
+    };
+
+    let scope = |key: &str| IdempotencyKeyScope {
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        principal_id: uuid::Uuid::now_v7(),
+        key: key.to_string(),
+    };
+    let claim = |scope: &IdempotencyKeyScope, fingerprint: &str, lock: Duration, ttl: Duration| {
+        ClaimIdempotencyKey {
+            scope: scope.clone(),
+            command: "create_agent".into(),
+            fingerprint: fingerprint.into(),
+            locked_until: Utc::now() + lock,
+            expires_at: Utc::now() + ttl,
+        }
+    };
+    let db = &server.db;
+    let live = Duration::minutes(5);
+    let day = Duration::hours(24);
+
+    let abandoned = scope("abandoned");
+    let first = claim(&abandoned, "a", Duration::seconds(-1), day);
+    assert_eq!(
+        db.claim_command_idempotency_key(&first).await.unwrap(),
+        IdempotencyClaim::Claimed
+    );
+    assert!(matches!(
+        db.claim_command_idempotency_key(&claim(&abandoned, "b", live, day))
+            .await
+            .unwrap(),
+        IdempotencyClaim::Existing(_)
+    ));
+    assert_eq!(
+        db.claim_command_idempotency_key(&claim(&abandoned, "a", live, day))
+            .await
+            .unwrap(),
+        IdempotencyClaim::Claimed
+    );
+    assert_eq!(
+        db.claim_command_idempotency_key(&claim(&abandoned, "a", live, day))
+            .await
+            .unwrap(),
+        IdempotencyClaim::Existing(StoredIdempotencyKey {
+            command: "create_agent".into(),
+            fingerprint: "a".into(),
+            response: None,
+        })
+    );
+
+    let expired = scope("expired");
+    db.claim_command_idempotency_key(&claim(&expired, "a", live, Duration::seconds(-1)))
+        .await
+        .unwrap();
+    assert_eq!(
+        db.claim_command_idempotency_key(&claim(&expired, "b", live, day))
+            .await
+            .unwrap(),
+        IdempotencyClaim::Claimed
+    );
+
+    let completed = scope("completed");
+    let request = claim(&completed, "a", live, day);
+    db.claim_command_idempotency_key(&request).await.unwrap();
+    db.complete_command_idempotency_key(&completed, b"sealed")
+        .await
+        .unwrap();
+    db.release_command_idempotency_key(&completed)
+        .await
+        .unwrap();
+    assert_eq!(
+        db.claim_command_idempotency_key(&request).await.unwrap(),
+        IdempotencyClaim::Existing(StoredIdempotencyKey {
+            command: "create_agent".into(),
+            fingerprint: "a".into(),
+            response: Some(b"sealed".to_vec()),
+        })
+    );
+
+    let released = scope("released");
+    let request = claim(&released, "a", live, day);
+    db.claim_command_idempotency_key(&request).await.unwrap();
+    db.release_command_idempotency_key(&released).await.unwrap();
+    assert_eq!(
+        db.claim_command_idempotency_key(&claim(&released, "b", live, day))
+            .await
+            .unwrap(),
+        IdempotencyClaim::Claimed
+    );
+}
+
+#[tokio::test]
+async fn idempotency_claim_rules_hold_in_memory() {
+    claim_rules_hold(TestServer::in_memory().await).await;
+}
+
+#[tokio::test]
+async fn idempotency_claim_rules_hold_on_postgres() {
+    claim_rules_hold(TestServer::new().await).await;
+}

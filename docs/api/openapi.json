@@ -5366,6 +5366,18 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Makes a mutating command safe to retry: a repeat with the same key and request returns the first response (with `Idempotent-Replayed: true`) instead of running again. Up to 255 printable ASCII characters, remembered for 24 hours per caller. Ignored by read-only commands.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "requestBody": {
@@ -5381,6 +5393,14 @@
         "responses": {
           "200": {
             "description": "Command output",
+            "headers": {
+              "Idempotent-Replayed": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "`true` when this is the stored response of an earlier request with the same Idempotency-Key"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -5411,6 +5431,26 @@
           },
           "404": {
             "description": "Unknown command or resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A request with this Idempotency-Key is still running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The Idempotency-Key was used for a different request",
             "content": {
               "application/json": {
                 "schema": {

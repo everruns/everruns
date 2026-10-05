@@ -83,6 +83,16 @@ a wire name and params, help text, or an error with usage:
 | Worker shell | the platform store, over gRPC |
 | `POST /v1/commands/{name}` | the scripted pipeline, from an HTTP client |
 
+`POST /v1/commands/{name}` is the one host a network sits in front of, so it
+is the one that takes an `Idempotency-Key`. A client that never saw a
+response cannot tell whether a mutating command ran; with a key it can send
+the same request again and get the first response back (marked
+`Idempotent-Replayed: true`) instead of a second agent or session. The key is
+scoped to the caller, bound to the request (the same key with other params is
+refused, not replayed), and kept only for a success, so a failed command can
+be retried as usual. Read-only commands ignore it. The rules and the
+in-flight lease live in `crates/server/src/api/command_dispatch.rs`.
+
 `ScriptedTool` hosts used to rewrite the tree spelling into flat names at
 statement boundaries before the interpreter ran, because its `ToolDef`
 builtins only see parsed flags. Its raw-argv `builtin` registration removed

@@ -128,6 +128,9 @@ the work is local: login, file sync, streaming, and reading or writing local age
 packages. A contract spelling the CLI hand-writes is not mounted. Output is the command's
 JSON (or YAML). `@path` values for text and JSON flags are read from local files; `@@`
 escapes a literal `@`. Spellings that differed from the contract were dropped, not aliased.
+Each invocation sends one `Idempotency-Key` (`EVERRUNS_IDEMPOTENCY_KEY` when a script sets
+it, a fresh one otherwise) and retries a dropped connection, a 502/503/504, or a "still
+running" 409 with that same key, so a retry never runs a mutating command twice.
 
 ---
 

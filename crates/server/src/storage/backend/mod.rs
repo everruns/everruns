@@ -142,6 +142,7 @@ impl StorageBackend {
 mod a2a_push_configs;
 mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
+mod command_idempotency;
 mod decision_defaults;
 mod environments;
 mod harnesses_sessions;

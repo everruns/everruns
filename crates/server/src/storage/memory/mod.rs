@@ -20,6 +20,7 @@ mod apps;
 mod audit_logs;
 mod auth;
 mod budgets;
+mod command_idempotency;
 mod compaction_checkpoints;
 mod declarative_capabilities;
 mod evals;
@@ -251,6 +252,9 @@ pub struct InMemoryDatabase {
     agent_avatars: RwLock<HashMap<Uuid, agent_avatars::StoredAvatar>>,
     // Generations billed before their usage arrived (EVE-1145).
     usage_generations: RwLock<HashMap<Uuid, late_generation_usage::MemoryUsageGeneration>>,
+    command_idempotency_keys: RwLock<
+        HashMap<command_idempotency::IdempotencyRowKey, command_idempotency::MemoryIdempotencyKey>,
+    >,
     agent_trigger_mcp_subscriptions: RwLock<
         HashMap<TriggerId, super::agent_trigger_mcp_subscriptions::AgentTriggerMcpSubscriptionRow>,
     >,
@@ -430,6 +434,7 @@ impl Default for InMemoryDatabase {
             a2a_push_configs: RwLock::new(Vec::new()),
             agent_avatars: RwLock::new(HashMap::new()),
             usage_generations: RwLock::new(HashMap::new()),
+            command_idempotency_keys: RwLock::new(HashMap::new()),
             agent_trigger_mcp_subscriptions: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),
