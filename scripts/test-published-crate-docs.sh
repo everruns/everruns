@@ -8,6 +8,8 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$PROJECT_ROOT"
 
+python3 scripts/test-published-crate-docs.py
+
 python3 - <<'PY'
 from __future__ import annotations
 
@@ -20,6 +22,9 @@ import tomllib
 from urllib.parse import urlparse
 
 root = pathlib.Path.cwd()
+sys.path.insert(0, str(root / "scripts"))
+from published_crate_docs import crate_rustdoc
+
 metadata = json.loads(subprocess.check_output(
     ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True
 ))
@@ -78,13 +83,7 @@ for package in published:
 
     readme_text = readme.read_text()
     rustdoc = lib.read_text() if has_library else ""
-    crate_doc_lines = []
-    for line in rustdoc.splitlines():
-        if line.startswith("//!"):
-            crate_doc_lines.append(line)
-        elif crate_doc_lines:
-            break
-    crate_docs = "\n".join(crate_doc_lines)
+    has_crate_docs, crate_docs = crate_rustdoc(rustdoc, readme_text)
 
     require(
         re.search(rf"^# {re.escape(package)}\s*$", readme_text, re.M) is not None,
@@ -114,12 +113,9 @@ for package in published:
     require(re.search(r"^## License\s*$", readme_text, re.M | re.I) is not None, readme, "add a License section")
     require("github.com/everruns/everruns/blob/main/LICENSE" in readme_text, readme, "link the repository MIT license")
 
-    # Crate-level lint attributes may precede the inner rustdoc. Strip only
-    # single-line inner attributes; executable items or ordinary comments must
-    # still fail the structural contract.
+    # Validate literal inner docs and the canonical shared README equally.
     if has_library:
-        rustdoc_start = re.sub(r"\A(?:#!\[[^\n]*\]\s*)*", "", rustdoc)
-        require(rustdoc_start.startswith("//!"), lib, "start with crate-level rustdoc")
+        require(has_crate_docs, lib, "start with crate-level rustdoc")
         require("https://everruns.com" in crate_docs, lib, "mirror the Everruns ecosystem link in rustdoc")
         require(
             re.search(r"^//! ```(?:rust|no_run)?\s*$", crate_docs, re.M) is not None,
