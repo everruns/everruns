@@ -23,7 +23,8 @@
 //!
 //! Run with: `cargo test -p everruns --features durable,ag-ui --test backend_conformance`
 //! (`DATABASE_URL=postgres://... ` in front adds the PostgreSQL backend; the
-//! durable schema is applied to it, idempotently).
+//! durable schema is applied to it, idempotently.
+//! `EVERRUNS_REQUIRE_POSTGRES_TESTS=1` makes a missing URL fail, as in CI).
 
 mod interrupted;
 mod parked;

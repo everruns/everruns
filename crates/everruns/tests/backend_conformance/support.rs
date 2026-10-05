@@ -18,15 +18,30 @@ pub enum BackendKind {
 /// The backends to run on: in process first, the reference every other
 /// backend is compared with. The durable PostgreSQL backend joins when
 /// `DATABASE_URL` names a database; without it the suite runs the other two
-/// and says so. A set URL that does not connect fails the suite.
+/// and says so, unless `EVERRUNS_REQUIRE_POSTGRES_TESTS` is set (CI's durable
+/// PostgreSQL shard sets it), which makes the missing URL a failure. A set URL
+/// that does not connect fails the suite.
 pub fn backends() -> Vec<BackendKind> {
     let mut kinds = vec![BackendKind::InProcess, BackendKind::DurableMemory];
     if database_url().is_some() {
         kinds.push(BackendKind::DurablePostgres);
     } else {
+        assert!(
+            !require_postgres(),
+            "EVERRUNS_REQUIRE_POSTGRES_TESTS is set but DATABASE_URL is not"
+        );
         eprintln!("DATABASE_URL is unset; skipping the durable PostgreSQL backend");
     }
     kinds
+}
+
+/// Same flag and parsing as durable-engine's PostgreSQL backend tests, so one
+/// CI setting makes both suites fail instead of skipping.
+fn require_postgres() -> bool {
+    std::env::var("EVERRUNS_REQUIRE_POSTGRES_TESTS").is_ok_and(|v| {
+        let v = v.trim();
+        !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+    })
 }
 
 fn database_url() -> Option<String> {
