@@ -8,6 +8,11 @@ tags:
 ---
 # Agent Versions
 
+> Proposed replacement: [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)
+> folds the automatic snapshots into generic entity history (revisions) and keeps
+> versions as named, pinnable revisions. This concept describes the current model
+> until that phase lands.
+
 ## Abstract
 
 Agent versions are immutable snapshots of an Agent configuration. They support audit history, rollback, forks, and per-exposure deployment policies without changing the editable Agent draft model.

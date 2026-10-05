@@ -1,7 +1,7 @@
 ---
 type: Design
 title: "Change Reasons and Manager Context"
-description: "A reason on every mutation from any surface, recorded in a generic entity history, plus per-entity notes that managers read and the entity itself never sees."
+description: "A reason on every mutation from any surface, recorded in a generic entity history that also replaces agent versions, plus per-entity notes that managers read and the entity itself never sees."
 tags:
   - everruns
   - execution
@@ -34,6 +34,10 @@ This design adds two generic things, one per question a manager asks:
    notes addressed to whoever manages it: requirements, constraints, ownership,
    the history of a decision. It is never part of the entity's own definition
    or runtime. "What must I keep in mind before changing this?" becomes a read.
+
+The history also absorbs [Agent Versions](../runtime-resources/agent-versions.md):
+every change becomes a revision, and a version is only a named revision that
+exposures can pin (see Revisions and versions).
 
 Both are generic. They hang off the command contract that every surface
 already shares ([Command Tree](command-tree.md),
@@ -135,14 +139,15 @@ on it can argue with them, and its prompt budget is not the place for them.
 Other entities' context stays readable to that session when its caller is a
 manager of them.
 
-### History stores what changed by name, not by value
+### History stores values only for kinds that declare a safe snapshot
 
-An entry lists the top-level field names that changed, never their values.
-Values can be secrets (provider keys, MCP headers) and are already versioned
-where versioning exists. When the entity has versions (agents today), the
-entry links the version the change produced, so the agent case has a full
-diff one hop away. Generic value snapshots are out of scope, as they were for
-[Agent Versions](../runtime-resources/agent-versions.md).
+Every entry lists the top-level field names that changed. An entity kind may
+also declare a snapshot: a function that renders its editable configuration
+with no secret fields, the way agents already do for versions. For those
+kinds each entry carries that snapshot, which is what makes diff, restore and
+versions generic (next section). Kinds that hold secrets in their own row
+(providers, MCP servers with headers) declare no snapshot until they have a
+secret-free rendering, and their history keeps field names only.
 
 ### Agents must give a reason; people may
 
@@ -155,6 +160,96 @@ and the ones that reliably follow an error's recovery hint.
 
 Rollout starts as a warning for agent callers and turns into the error once
 the Platform Chat eval passes (see Phases).
+
+## Revisions and versions
+
+This section replaces the Agent Versions model, and it is a refactor, not an
+addition.
+
+### What agent versions mix today
+
+One `agent_versions` row currently plays three roles at once:
+
+1. **Change log.** Every agent update writes an automatic draft snapshot
+   (`change_kind = auto`, `is_published = false`, label `draft.N`), pruned to
+   50 per agent, with a `summary`, a parent link and a
+   `created_by_principal_id` that is never set.
+2. **Release.** A user publishes a version with a semver bump chosen from
+   `patch`, `minor`, `major` and friends, and one of them is the default.
+3. **Runtime binding.** Sessions, endpoints, triggers and participants pin a
+   version, and the worker runs its `resolved_config`.
+
+Role 1 is exactly what entity history is, done for one entity kind. Roles 2
+and 3 are what nobody else needs to reinvent. Keeping both tables would mean
+two timelines for agents that drift, and two places to write a reason.
+
+### The split
+
+- **Revision** = one history entry with a snapshot. Every change to a
+  snapshot kind is a revision, numbered per entity (1, 2, 3, ...). This is
+  the timeline, the diff source and the rollback target, for every snapshot
+  kind, not only agents. It replaces automatic draft snapshots, `draft.N`
+  labels, `summary` (now the reason), `change_kind` (now the action),
+  `parent_version_id` (the previous revision), `source_version_id` (the
+  restored revision, recorded on the restore entry) and
+  `created_by_principal_id` (now the real actor).
+- **Version** = a named revision someone chose to keep and pin. It holds the
+  revision it points at, a sequential number per entity (`v1`, `v2`), an
+  optional free-text label, and the `resolved_config` computed once when it
+  is created. Exactly one version per entity can be the default. Exposure
+  policies (`default`, `latest`, `pinned`) and session binding stay as they
+  are and point at versions.
+
+Semver bumps go away. `patch`, `minor` and `major` asked callers to classify
+a change the server cannot check, and the label field covers anyone who wants
+`1.4.0`. The config hash stays, on the revision, because no-op updates still
+must not create revisions.
+
+### Storage after the refactor
+
+- `entity_changes` gains `revision` (per-entity number, null for kinds
+  without snapshots), `snapshot` (JSONB, null when not captured) and
+  `snapshot_hash`.
+- `entity_versions` replaces `agent_versions`: org, kind, ref, change id,
+  number, label, `resolved_config`, created by, created at. The default
+  pointer stays on the entity row (`agents.default_version_id`), because
+  exposure resolution reads the entity anyway.
+- Retention: the snapshot is dropped (set null) from revisions older than the
+  newest 50 for that entity unless a version or a fork points at them. The
+  entry itself, with its reason, stays. That keeps the existing TM-DOS-013
+  bound without losing the "why".
+- Version public ids keep the `agentver_` prefix, so every pin, exposure and
+  stored session keeps resolving. The migration copies each published
+  `agent_versions` row into `entity_versions` with the same id, and each
+  automatic snapshot into `entity_changes` as a revision with its summary as
+  the reason. Foreign keys from sessions, participants, endpoints, triggers
+  and `agents.default_version_id` / `forked_from_version_id` are repointed to
+  `entity_versions`.
+
+### Commands after the refactor
+
+| Spelling | Replaces |
+|---|---|
+| `everruns history list <ref>` | `agents versions list` for drafts |
+| `everruns history diff <ref> --from N --to M` | `diff_agent_versions` (authored diff), for any snapshot kind |
+| `everruns history restore <ref> --revision N --reason ...` | `rollback_agent_version`, for any snapshot kind |
+| `everruns agents versions create <ref> [--revision N] [--label] --reason ...` | `create_agent_version` (publish) |
+| `everruns agents versions list <ref>` | `list_agent_versions`, versions only |
+| `everruns agents versions set-default <ref> <version>` | unchanged |
+| `everruns agents versions diff <ref> <from> <to>` | resolved-config diff between versions |
+| `everruns agents fork <ref> [--revision N] [--version V]` | `fork_agent_version` |
+
+Restore is a new change, not a rewind: it applies the old snapshot through the
+entity's own update command, so policy, validation, history and the reason
+all apply as for any update. Versions stay agent-only commands because only
+agents have a runtime to pin; the table is generic so a harness can join
+without a second migration.
+
+### Flag
+
+History, revisions, diff and restore are not flagged; they are how changes
+are recorded. Creating versions and pinning exposures stay behind
+`agent_versions` until that flag retires, as today.
 
 ## Contracts
 
@@ -210,8 +305,8 @@ reads the id from the serialized params or output, so no command writes code
 for this. `EntityKind` is a registry entry: the id prefix, the read policy,
 the manage (update) policy, and whether the kind supports manager context.
 `ChangeAction` is a small closed set: `created`, `updated`, `deleted`,
-`restored`, `context_updated`, plus kind-specific verbs where the generic ones
-lie (`rolled_back`, `published`, `attached`, `detached`).
+`restored`, `forked`, `imported`, `context_updated`, plus kind-specific verbs
+where the generic ones lie (`version_created`, `attached`, `detached`).
 
 Changed field names come from the params object's top-level keys minus the
 subject id, which is exactly what the caller asked to change. Commands that
@@ -225,7 +320,8 @@ Two tables (exact DDL belongs in `crates/server/migrations/`):
   name, action, reason, changed field names, actor (user id or API key id,
   plus actor kind: `user`, `api_key`, `agent_session`, `system`), via session
   and via agent when an agent made the change, surface, request id,
-  idempotency key, produced version id, timestamp. Indexed by
+  idempotency key, revision and snapshot (see Revisions and versions),
+  timestamp. Indexed by
   `(org_id, entity_kind, entity_ref, created_at desc)`. Rows outlive the
   entity: deleting an agent keeps its history readable by managers of the org.
   Org deletion removes them.
@@ -255,8 +351,10 @@ caller text and never authoritative; who and through what are.
 - System mutations (managed-agent reconciliation, plugin sync, migrations that
   rewrite entities) record actor kind `system` and a fixed reason string from
   the code that made them, so history has no unexplained gaps.
-- When an agent update produces an automatic draft snapshot, the reason
-  becomes that version's `summary` unless one was given.
+- For snapshot kinds, the chokepoint reads the entity after `execute`
+  succeeds, renders its snapshot, and records a revision unless the hash
+  equals the previous one (a no-op update still gets an entry, without a
+  revision).
 
 ### Commands
 
@@ -382,8 +480,23 @@ entity, not only for the ones that exist today.
 - Agent-origin without a reason gets `reason_required` with the retry action;
   a user via REST without one succeeds with `reason: null`.
 - System reconciliation writes `system` entries.
-- An agent update links the produced version and copies the reason into its
-  summary.
+- Snapshot kinds: every real update creates exactly one revision; a no-op
+  update creates none; `restore` to revision N yields a snapshot equal to
+  N's; diff between two revisions equals the diff of their snapshots.
+- Snapshots of every snapshot kind contain no field the kind marks secret
+  (a guard over the registry, with seeded secret values).
+- Retention keeps entries, drops snapshots past 50, and never drops a
+  snapshot a version or fork points at.
+
+### Agent versions migration (server, Postgres)
+
+- A fixture database with published, automatic, rolled-back and forked agent
+  versions, plus pinned endpoints, triggers, participants and sessions. After
+  the migration every pin resolves to the same `agentver_` id and the same
+  `resolved_config`, automatic snapshots are revisions with their summaries
+  as reasons, and default and fork pointers are intact.
+- Session creation under `default`, `latest` and `pinned` binds the same
+  version before and after the migration.
 
 ### Manager context (server, Postgres)
 
@@ -438,17 +551,24 @@ Each phase is one PR-sized change.
    `--context-revision`, the never-reaches-the-runtime test.
 3. **Agents know.** Platform Chat and capability prompts, MCP instructions,
    error recovery actions, public docs, the two evals.
-4. **Enforcement and atomicity.** `reason_required` for agent callers; history
+4. **Revisions and versions.** Snapshot capture for agents, `history diff`
+   and `restore`, `entity_versions` with the data migration, version commands
+   reshaped, semver removed, the UI version tab reading revisions and
+   versions. The Agent Versions concept is rewritten to match.
+5. **Enforcement and atomicity.** `reason_required` for agent callers; history
    write inside the mutation transaction with idempotency records.
-5. **UI.** Reason field in save and delete dialogs, a generic History tab and a
+6. **UI.** Reason field in save and delete dialogs, a generic History tab and a
    manager notes panel on entity pages.
 
 ## Open questions
 
 - Should `agents export` offer `--include-context`, and should forking a
   version copy the source agent's context?
-- Retention: history currently lives as long as the org. Is a per-org cap
-  needed for high-churn kinds (session metadata)?
+- Retention: history entries live as long as the org (snapshots are bounded).
+  Is a per-org cap needed for high-churn kinds (session metadata)?
+- Which kinds get snapshots after agents: harnesses and skills are the
+  obvious next ones; providers and MCP servers need a secret-free rendering
+  first.
 - Should Platform Chat's shared memory notes about an entity migrate into that
   entity's context, now that context exists?
 
@@ -457,6 +577,6 @@ Each phase is one PR-sized change.
 - [Command Tree](command-tree.md): the shared grammar and Mapper this extends.
 - [Domain Modules](../foundations/domains.md): `Command::run` as the chokepoint.
 - [Audit Logging](../security/audit-logging.md): the security record, unchanged.
-- [Agent Versions](../runtime-resources/agent-versions.md): value snapshots for agents.
+- [Agent Versions](../runtime-resources/agent-versions.md): the model phase 4 replaces.
 - [Platform Chat](../harnesses/platform-chat.md): the main agent caller.
 - [Permissions](../security/permissions.md): read and manage policies per kind.
