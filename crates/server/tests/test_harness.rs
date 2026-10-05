@@ -80,6 +80,47 @@ pub async fn create_test_pool() -> PgPool {
         .expect("Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.")
 }
 
+/// A fresh, migrated database of its own on this process's embedded
+/// PostgreSQL, for tests that must not see each other's rows.
+///
+/// Migrations run once per test binary into a template database; every call
+/// then copies that template, which takes milliseconds.
+pub async fn isolated_test_pool() -> PgPool {
+    static TEMPLATE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+    const TEMPLATE_DB: &str = "everruns_template";
+
+    let pg = everruns_pg_embedded::EmbeddedPostgres::shared()
+        .await
+        .expect("start embedded PostgreSQL");
+    TEMPLATE
+        .get_or_init(|| async {
+            pg.create_database(TEMPLATE_DB, None)
+                .await
+                .expect("create template database");
+            let pool = PgPool::connect(&pg.url(TEMPLATE_DB))
+                .await
+                .expect("connect to template database");
+            sqlx::migrate!("./migrations")
+                .run(&pool)
+                .await
+                .expect("migrate template database");
+            // A template cannot be copied while anything is connected to it.
+            pool.close().await;
+        })
+        .await;
+
+    let name = format!("test_{}", uuid::Uuid::now_v7().simple());
+    pg.create_database(&name, Some(TEMPLATE_DB))
+        .await
+        .expect("copy template database");
+    // Every test gets its own pool on one shared cluster, so keep each small.
+    PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&pg.url(&name))
+        .await
+        .expect("connect to test database")
+}
+
 /// Test server for in-process API testing
 pub struct TestServer {
     router: Router,
@@ -564,13 +605,14 @@ impl TestServer {
                 (db, pool, durable_store)
             }
             TestMode::InMemory => {
-                let db = Arc::new(StorageBackend::in_memory());
+                // Records live in a private database on the embedded cluster,
+                // so these tests need no external PostgreSQL and see no other
+                // test's rows; durable execution stays in memory.
+                let pool = isolated_test_pool().await;
+                let db = Arc::new(StorageBackend::Postgres(
+                    everruns_server::storage::Database::new(pool.clone()),
+                ));
                 let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-                // In-memory tests do not use PostgreSQL; keep a lazy pool only
-                // to satisfy the test harness return type.
-                let pool = PgPoolOptions::new()
-                    .connect_lazy(&get_database_url())
-                    .expect("Failed to create lazy PostgreSQL pool");
                 (
                     db,
                     pool,
