@@ -8736,8 +8736,8 @@ export interface components {
         [key: string]: unknown;
       } | null;
       /**
-       * @description Session-level initial files (additive to agent initial_files).
-       *     Files with matching paths override agent/harness files; new paths are appended.
+       * @description Starting files for a new file tree (additive to agent/harness files).
+       *     Matching paths override earlier layers. Rejected when attaching workspace_id.
        * @example [
        *       {
        *         "content": "# Project notes\n",
@@ -15429,8 +15429,8 @@ export interface components {
          */
         id: string;
         /**
-         * @description Session-level initial files (additive to agent initial_files).
-         *     Files with matching paths override agent/harness files; new paths are appended.
+         * @description Starting files for a new file tree (additive to agent/harness files).
+         *     Matching paths override earlier layers. Rejected when attaching workspace_id.
          */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
@@ -16022,8 +16022,8 @@ export interface components {
          */
         id: string;
         /**
-         * @description Session-level initial files (additive to agent initial_files).
-         *     Files with matching paths override agent/harness files; new paths are appended.
+         * @description Starting files for a new file tree (additive to agent/harness files).
+         *     Matching paths override earlier layers. Rejected when attaching workspace_id.
          */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
@@ -18009,8 +18009,8 @@ export interface components {
        */
       id: string;
       /**
-       * @description Session-level initial files (additive to agent initial_files).
-       *     Files with matching paths override agent/harness files; new paths are appended.
+       * @description Starting files for a new file tree (additive to agent/harness files).
+       *     Matching paths override earlier layers. Rejected when attaching workspace_id.
        */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
@@ -22387,8 +22387,8 @@ export interface components {
        */
       id: string;
       /**
-       * @description Session-level initial files (additive to agent initial_files).
-       *     Files with matching paths override agent/harness files; new paths are appended.
+       * @description Starting files for a new file tree (additive to agent/harness files).
+       *     Matching paths override earlier layers. Rejected when attaching workspace_id.
        */
       initial_files?: components["schemas"]["InitialFile"][];
       /**

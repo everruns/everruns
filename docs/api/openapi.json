@@ -26565,7 +26565,7 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended.",
+            "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id.",
             "example": [
               {
                 "content": "# Project notes\n",
@@ -38745,7 +38745,7 @@
                   "items": {
                     "$ref": "#/components/schemas/InitialFile"
                   },
-                  "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+                  "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
                 },
                 "is_pinned": {
                   "type": [
@@ -39725,7 +39725,7 @@
                       "items": {
                         "$ref": "#/components/schemas/InitialFile"
                       },
-                      "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+                      "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
                     },
                     "is_pinned": {
                       "type": [
@@ -42912,7 +42912,7 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+            "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
           },
           "is_pinned": {
             "type": [
@@ -50948,7 +50948,7 @@
                 "items": {
                   "$ref": "#/components/schemas/InitialFile"
                 },
-                "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+                "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
               },
               "is_pinned": {
                 "type": [
