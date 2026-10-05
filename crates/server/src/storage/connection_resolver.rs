@@ -102,6 +102,9 @@ impl GitHubAppTokenMinter {
             private_key: self.private_key.clone(),
             app_slug: String::new(),
             setup_url: String::new(),
+            client_id: None,
+            client_secret: None,
+            endpoints: Default::default(),
         };
         let service = GitHubAppService::new(&config);
         service

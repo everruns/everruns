@@ -131,8 +131,17 @@ pub struct GitHubConnectionConfig {
     pub private_key: String,
     /// App slug for constructing installation URLs (e.g. "everruns")
     pub app_slug: String,
-    /// Callback URL after user installs the GitHub App
+    /// Callback URL after user installs the GitHub App. Also sent as the
+    /// `redirect_uri` of the user-authorization step, so the App's OAuth
+    /// "Callback URL" must match it.
     pub setup_url: String,
+    /// OAuth client ID of the same GitHub App. Required to prove that the
+    /// GitHub user completing setup can access the claimed installation.
+    pub client_id: Option<String>,
+    /// OAuth client secret of the same GitHub App.
+    pub client_secret: Option<String>,
+    /// GitHub endpoints. Always github.com outside tests.
+    pub endpoints: crate::github_apps::GitHubEndpoints,
 }
 
 /// Admin user configuration (for admin-only mode or initial setup)
@@ -394,11 +403,20 @@ impl AuthConfig {
                         base_url.trim_end_matches('/')
                     )
                 });
+                let non_empty = |name: &str| {
+                    std::env::var(name)
+                        .ok()
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty())
+                };
                 Some(GitHubConnectionConfig {
                     app_id,
                     private_key,
                     app_slug,
                     setup_url,
+                    client_id: non_empty("GITHUB_APP_CLIENT_ID"),
+                    client_secret: non_empty("GITHUB_APP_CLIENT_SECRET"),
+                    endpoints: crate::github_apps::GitHubEndpoints::default(),
                 })
             }
             _ => None,
@@ -1044,6 +1062,9 @@ mod tests {
                 private_key: "key".to_string(),
                 app_slug: "everruns".to_string(),
                 setup_url: "https://example.com/setup".to_string(),
+                client_id: None,
+                client_secret: None,
+                endpoints: Default::default(),
             }),
             ..Default::default()
         };

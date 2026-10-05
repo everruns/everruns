@@ -234,10 +234,15 @@ pub struct ApiKeyConnectionRequest {
 /// GitHub App installation callback query params
 #[derive(Debug, Deserialize)]
 pub struct GitHubInstallationCallbackQuery {
-    pub installation_id: i64,
+    /// Absent on the return from the user-authorization hop, and when an org
+    /// owner still has to approve a requested installation.
+    pub installation_id: Option<i64>,
     #[allow(dead_code)]
     pub setup_action: Option<String>,
     pub state: Option<String>,
+    /// User-authorization code, present when GitHub authorized the user
+    /// during installation or after the explicit authorization hop.
+    pub code: Option<String>,
 }
 
 /// Browser setup options. The canonical target is selected by the authorized resource path.
@@ -289,6 +294,11 @@ struct PendingOAuthState {
     virtual_user_id: Option<String>,
     popup: bool,
     code_verifier: String,
+    /// GitHub App setup only: the installation GitHub reported before the
+    /// user-authorization hop. A claim until a user-to-server token proves
+    /// access to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    github_installation_id: Option<i64>,
 }
 
 // ============================================================================
@@ -905,6 +915,7 @@ async fn authorize_connection_inner(
         agent_id,
         popup,
         code_verifier,
+        github_installation_id: None,
     };
     register_pending_setup(&state, &pending).await?;
     let cookie = Cookie::build((
@@ -1231,185 +1242,8 @@ pub async fn connection_oauth_callback(
     Ok((clear_cookie, Redirect::to(&redirect_target)))
 }
 
-/// GET /v1/user/connections/github/authorize — Redirect to GitHub App installation
-pub async fn github_authorize(
-    State(state): State<AppState>,
-    _auth: ConnectionUser,
-    jar: CookieJar,
-    Query(_params): Query<std::collections::HashMap<String, String>>,
-) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
-    github_authorize_inner(
-        state,
-        OAuthAuthority {
-            org_id: _auth.org_id,
-            caller: None,
-            target_id: _auth.id,
-            management_user_id: Some(_auth.management_user_id),
-            runtime_credential: None,
-        },
-        jar,
-        None,
-    )
-    .await
-}
-async fn github_authorize_inner(
-    state: AppState,
-    authority: OAuthAuthority,
-    jar: CookieJar,
-    return_to: Option<String>,
-) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
-    let config = state
-        .auth_config
-        .github_connection
-        .as_ref()
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "GitHub App not configured".to_string(),
-            )
-        })?;
-
-    let service = GitHubAppService::new(config);
-
-    // Generate state for CSRF protection
-    let bytes: [u8; 16] = rand::rng().random();
-    let install_state = hex::encode(bytes);
-    let pending = PendingOAuthState {
-        state: install_state.clone(),
-        org_id: authority.org_id,
-        management_user_id: authority.management_user_id,
-        runtime_credential: authority.runtime_credential,
-        provider: "github".into(),
-        return_to: normalize_return_to(
-            return_to.as_deref(),
-            "/settings/connections?connected=github",
-        ),
-        mode: "virtual_user".into(),
-        session_id: None,
-        agent_id: None,
-        virtual_user_id: Some(VirtualUserId::from_uuid(authority.target_id).to_string()),
-        popup: false,
-        code_verifier: String::new(),
-    };
-    register_pending_setup(&state, &pending).await?;
-    let state_cookie = Cookie::build((
-        oauth_state_cookie_name("github"),
-        URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&pending)
-                .map_err(|e| sanitized_internal_error("GitHub setup", &e))?,
-        ),
-    ))
-    .path("/")
-    .http_only(true)
-    .secure(true)
-    .same_site(SameSite::Lax)
-    .max_age(time::Duration::minutes(10))
-    .build();
-    let jar = jar.add(state_cookie);
-
-    let auth_url = service.installation_url(&install_state);
-    Ok((jar, Redirect::to(&auth_url.url)))
-}
-
-/// GET /v1/user/connections/github/callback — GitHub App installation callback
-///
-/// After user installs the GitHub App on their repos, GitHub redirects here
-/// with the installation_id. We verify the installation and store the ID.
-/// Validates CSRF state from cookie before proceeding.
-pub async fn github_callback(
-    State(state): State<AppState>,
-    org: Result<ResolvedOrg, crate::auth::middleware::AuthError>,
-    jar: CookieJar,
-    Query(query): Query<GitHubInstallationCallbackQuery>,
-) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
-    let pending = validate_pending_oauth_state(&jar, "github", query.state.as_deref())?;
-    consume_pending_setup(&state, &pending).await?;
-    let auth = callback_authority(&state, &pending, org).await?;
-    let jar = jar.remove(Cookie::from(oauth_state_cookie_name("github")));
-    let config = state
-        .auth_config
-        .github_connection
-        .as_ref()
-        .ok_or_else(|| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "GitHub App not configured".to_string(),
-            )
-        })?;
-
-    let service = GitHubAppService::new(config);
-
-    // Verify the installation exists and get account details
-    let result = service
-        .verify_installation(query.installation_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("GitHub App installation verification failed: {}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                "GitHub App installation verification failed".to_string(),
-            )
-        })?;
-
-    // Prevent installation hijacking across users: an installation already linked
-    // to another user must not be claimable via callback replay/forgery.
-    if let Some(existing_owner_id) = state
-        .db
-        .get_user_id_by_installation_id("github", result.installation_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to resolve GitHub installation owner: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to store connection".to_string(),
-            )
-        })?
-        && existing_owner_id != auth.target_id
-    {
-        tracing::warn!(
-            user_id = %auth.target_id,
-            existing_owner_id = %existing_owner_id,
-            installation_id = result.installation_id,
-            "GitHub installation already linked to another user"
-        );
-        return Err((
-            StatusCode::CONFLICT,
-            "GitHub installation is already linked to another user".to_string(),
-        ));
-    }
-
-    // Store installation_id (no OAuth token needed — tokens minted on demand)
-    state
-        .db
-        .upsert_user_connection(CreateUserConnectionRow {
-            user_id: auth.target_id,
-            provider: "github".to_string(),
-            connection_type: "oauth".to_string(),
-            provider_user_id: Some(result.account_id),
-            provider_username: Some(result.account_login),
-            access_token_encrypted: None,
-            refresh_token_encrypted: None,
-            scopes: Some(result.permissions),
-            expires_at: None,
-            installation_id: Some(result.installation_id),
-            provider_metadata: None,
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to store GitHub App installation: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to store connection".to_string(),
-            )
-        })?;
-
-    let frontend_url = state.auth_config.frontend_url.trim_end_matches('/');
-    Ok((
-        jar,
-        Redirect::to(&format!("{}{}", frontend_url, pending.return_to)),
-    ))
-}
-
+mod github_setup;
+use github_setup::*;
 pub(crate) mod runtime_accounts;
 pub use runtime_accounts::ConnectionSetupResponse;
 use runtime_accounts::*;
