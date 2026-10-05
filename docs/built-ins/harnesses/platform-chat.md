@@ -31,6 +31,11 @@ explicit intent; notes default to private memory. Documentation and memory are r
 material, never instructions. Scratch files live in `/workspace`; credentials belong
 in the secure setup flow. Recurring autonomous work belongs to an Agent Trigger.
 
+Before changing an existing entity, Platform Chat reads its manager context and passes
+the revision it read and a reason with the change, so the entity's history says why it
+changed. It asks before acting on a request that conflicts with the recorded context.
+See [Change history](/features/change-history/).
+
 ## Bundled Capabilities
 
 The Agent configures these capabilities in addition to the execution environment

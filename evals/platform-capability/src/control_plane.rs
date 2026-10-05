@@ -602,6 +602,16 @@ impl Store {
         families.insert("user_connections".into(), vec![]);
         families.insert("agent_versions".into(), vec![]);
         families.insert("agent_triggers".into(), vec![]);
+        // Manager context and history for the Triage agent, so the change
+        // cases have a revision to acknowledge and a conflict to notice.
+        families.insert(
+            "context".into(),
+            vec![json!({"entity_kind":"agent","entity_ref":"agent_01triage","content":"Owned by the support team. Do not change its model without an eval run first.","revision":3})],
+        );
+        families.insert(
+            "history".into(),
+            vec![json!({"entity_kind":"agent","entity_ref":"agent_01triage","action":"updated","command":"update_agent","reason":"Support asked for shorter answers","changed_fields":["system_prompt"],"actor_kind":"user","surface":"api","created_at":"2026-09-28T10:12:00Z"})],
+        );
 
         Self {
             families,
@@ -658,10 +668,10 @@ impl Store {
         if wire_name.starts_with("get_") {
             let id = first_id(&args);
             let rows = self.families.entry(family.clone()).or_default();
-            return match rows
-                .iter()
-                .find(|row| Some(row["id"].as_str().unwrap_or("")) == id.as_deref())
-            {
+            return match rows.iter().find(|row| {
+                let key = row["id"].as_str().or(row["entity_ref"].as_str());
+                key.is_some() && key == id.as_deref()
+            }) {
                 Some(row) => row.to_string(),
                 None => format!(
                     "{wire_name}: no {family} with id {}",
@@ -744,7 +754,7 @@ fn family_of(wire_name: &str, entry: &Value) -> String {
 }
 
 fn first_id(args: &Map<String, Value>) -> Option<String> {
-    ["id", "session_id", "agent_id", "skill_id"]
+    ["id", "session_id", "agent_id", "skill_id", "entity_ref"]
         .iter()
         .find_map(|key| {
             args.get(*key)

@@ -31,3 +31,9 @@ tag = "provisioning"
 # (`EVERRUNS_EVAL_MODE=offline`). `mira run --preset cli`.
 [presets.cli]
 tag = "cli-tree"
+
+# Change reasons, manager context and history: whether a model reads an
+# entity's context before changing it, says why, and answers "why did this
+# change" from history. `mira run --preset history`.
+[presets.history]
+tag = "history"
