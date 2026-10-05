@@ -661,8 +661,11 @@ mod tests {
     #[test]
     fn agent_projection_preserves_all_overlay_fields() {
         let expected = sample_overlay();
-        let mut agent =
-            AgentDefinition::new(crate::runtime::typed_id::AgentId::new(), "agent", "Base prompt.");
+        let mut agent = AgentDefinition::new(
+            crate::runtime::typed_id::AgentId::new(),
+            "agent",
+            "Base prompt.",
+        );
         agent.capabilities = expected.capabilities.clone();
         agent.initial_files = expected.initial_files.clone();
         agent.network_access = expected.network_access.clone();

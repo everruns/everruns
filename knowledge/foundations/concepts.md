@@ -104,7 +104,7 @@ Modular, reusable configuration unit that extends harness, agent, or session beh
 
 Composable configuration layer shared by Harness, Agent, and Session. Each entity produces an overlay via `From<&T>`; overlays fold bottom-up into a single effective config that `RuntimeAgentBuilder::from_overlay()` resolves into a RuntimeAgent.
 
-See `crates/core/src/config_layer.rs` for implementation.
+See `crates/contracts/src/runtime/config_layer.rs` for implementation.
 
 **Fields and merge semantics:**
 

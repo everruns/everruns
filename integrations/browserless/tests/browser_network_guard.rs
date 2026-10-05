@@ -8,9 +8,11 @@
 
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
-use everruns_contracts::runtime::{connection_services::UserConnectionResolver, tool_context::ToolContext};
+use everruns_contracts::runtime::{
+    connection_services::UserConnectionResolver, tool_context::ToolContext,
+};
+use everruns_contracts::typed_id::SessionId;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::sync::Arc;

@@ -316,7 +316,7 @@ modules while the default kernel dependency graph remains portable.
 | Transport trait + HTTP impl | `everruns-core` (`mcp` feature) (lift from `worker/src/mcp_executor.rs`, `server/.../service.rs::fetch_mcp_tools`) |
 | stdio transport | `everruns-core` (`mcp` feature), `#[cfg(feature = "mcp-stdio")]` |
 | Auth provider trait | `everruns-core` (`mcp` feature); web-OAuth adapter in `server`/`worker` |
-| Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/core/src/mcp_server.rs` |
+| Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/contracts/src/runtime/mcp_server.rs` |
 | Runtime discovery | `crates/core/src/host/runtime.rs` (replace `vec![]`), `crates/core/src/host/mcp.rs` (live per-turn discovery) |
 | Runtime execution | `crates/core/src/host/runtime_host.rs::execute_act_activity` (composite executor) |
 | Adapter hook | `RuntimeHostAdapter::mcp_executor()` |

@@ -79,7 +79,7 @@ When disabled:
 
 ## References
 
-- Core types: `crates/server/src/records/agent.rs`, `crates/server/src/records/app.rs`, `crates/core/src/session.rs`
+- Core types: `crates/server/src/records/agent.rs`, `crates/server/src/records/app.rs`, `crates/contracts/src/runtime/session.rs`
 - Storage models: `crates/server/src/storage/models.rs`
 - API commands: `crates/server/src/domains/agents/commands.rs`
 - Exposure policy validation: `crates/server/src/domains/agents/version_policy.rs`

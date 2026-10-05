@@ -51,7 +51,7 @@ Deprecation is independent of lifecycle. Archiving Generic would block existing 
 
 A harness has one parent. Resolution folds root to leaf at runtime and preview. Prompt fragments append; capability configurations override by ID; starter files override by normalized path; model defaults fall back through the chain. Execution environment selection replaces inherited compute attachments. There is no general capability subtraction, so parents must stay small.
 
-System prompts are optional. Empty layers contribute no prose. Agent starter files retain the filesystem capability. Harness presentation fields are deprecated and backfilled onto Agents by the Platform Chat migration. Scoped MCP servers and network access compose through the existing overlay contract. [Config composition](../../crates/core/src/config_layer.rs) owns exact merge behavior.
+System prompts are optional. Empty layers contribute no prose. Agent starter files retain the filesystem capability. Harness presentation fields are deprecated and backfilled onto Agents by the Platform Chat migration. Scoped MCP servers and network access compose through the existing overlay contract. [Config composition](../../crates/contracts/src/runtime/config_layer.rs) owns exact merge behavior.
 
 ## Built-in identity and lifecycle
 

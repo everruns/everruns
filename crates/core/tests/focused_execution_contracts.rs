@@ -1,7 +1,7 @@
 //! EVE-904 source/API guard for the focused execution-contract boundary.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const CONTRACT_MODULES: &[&str] = &[
     "connection_services.rs",
@@ -17,6 +17,16 @@ const CONTRACT_MODULES: &[&str] = &[
     "tool_execution.rs",
 ];
 
+/// Most contract modules moved to `everruns_contracts::runtime`; the rest stay in core.
+fn contract_module_path(module: &str) -> PathBuf {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let core = manifest.join("src").join(module);
+    if core.exists() {
+        return core;
+    }
+    manifest.join("../contracts/src/runtime").join(module)
+}
+
 #[test]
 fn contracts_stay_focused_and_host_composition_stays_out() {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
@@ -29,7 +39,7 @@ fn contracts_stay_focused_and_host_composition_stays_out() {
     );
 
     for module in CONTRACT_MODULES {
-        let path = src.join(module);
+        let path = contract_module_path(module);
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("read focused module {}: {error}", path.display()));
         let lines = text.lines().count();
@@ -53,7 +63,9 @@ fn contracts_stay_focused_and_host_composition_stays_out() {
 
     let all_contracts = CONTRACT_MODULES
         .iter()
-        .map(|module| fs::read_to_string(src.join(module)).expect("read contract module"))
+        .map(|module| {
+            fs::read_to_string(contract_module_path(module)).expect("read contract module")
+        })
         .collect::<Vec<_>>()
         .join("\n");
     for host_only in [

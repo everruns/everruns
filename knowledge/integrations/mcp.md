@@ -709,7 +709,7 @@ not a replacement.
 
 The full enum, per-variant default `category`/`retryable`, and
 human-readable meanings live in
-[`crates/core/src/mcp_server.rs`](../../crates/core/src/mcp_server.rs)
+[`crates/contracts/src/runtime/mcp_server.rs`](../../crates/contracts/src/runtime/mcp_server.rs)
 (`pub enum McpErrorCode` near line 477). The defaults there are
 authoritative; this spec captures the contract around them.
 
@@ -721,7 +721,7 @@ known to be transient still ships `retryable: true`.
 ### Closed vocabulary rules
 
 * Adding a new code is a spec change. Add the variant to
-  `McpErrorCode` in `crates/core/src/mcp_server.rs` and update this
+  `McpErrorCode` in `crates/contracts/src/runtime/mcp_server.rs` and update this
   spec's narrative if the new code changes the contract (new
   category, new retry semantics, new client guidance).
 * SDKs deserialise any unrecognised code into `unknown` (serde
@@ -754,6 +754,6 @@ end — the `ask_user` `requestedSchema`, the answer mapping, and the handler th
 `session_get_status` poll calls; and `crates/server/src/api/mcp_elicitation.rs`
 for the pages that complete a URL mode one. Each mode owns one file so the
 endpoint's dispatcher stays a dispatcher.
-See `crates/core/src/mcp_server.rs` for the `McpExecuteError` /
+See `crates/contracts/src/runtime/mcp_server.rs` for the `McpExecuteError` /
 `McpErrorCode` / `McpErrorCategory` types backing the structured
 error envelope.

@@ -1,8 +1,8 @@
 //! Tool implementations for DuckDuckGo operations.
 
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -24,11 +24,13 @@ impl Tool for DuckDuckGoSearchTool {
         locale: Option<&str>,
         _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_contracts::runtime::tool_narration::narrate_search_web(
-            &tool_call.arguments,
-            phase,
-            locale,
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_search_web(
+                &tool_call.arguments,
+                phase,
+                locale,
+            ),
+        )
     }
 
     fn name(&self) -> &str {

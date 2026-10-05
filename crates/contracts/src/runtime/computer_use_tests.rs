@@ -1,6 +1,6 @@
 use super::*;
-use crate::runtime::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use crate::error::Result as StoreResult;
+use crate::runtime::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use crate::typed_id::SessionId;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -494,9 +494,8 @@ fn native_tools_request_a_native_adapter_unless_turned_off() {
     .driver_options();
     assert_eq!(options.len(), 1);
     let options: std::collections::HashMap<_, _> = options.into_iter().collect();
-    let native =
-        crate::native_computer::NativeComputerUse::from_driver_options(&options)
-            .expect("option parses");
+    let native = crate::native_computer::NativeComputerUse::from_driver_options(&options)
+        .expect("option parses");
     assert_eq!(native.display_width, 1024);
     assert_eq!(native.display_height, DEFAULT_DISPLAY_HEIGHT);
 

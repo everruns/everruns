@@ -27,7 +27,7 @@ Effective hints are resolved per turn via shallow merge:
 effective_hints = session.hints ∪ last_user_message.controls.hints
 ```
 
-Per-message hints override session hints key-by-key. See `Controls::resolve_hints()` in `crates/core/src/message.rs`.
+Per-message hints override session hints key-by-key. See `Controls::resolve_hints()` in `crates/contracts/src/runtime/message.rs`.
 
 ### API surface
 

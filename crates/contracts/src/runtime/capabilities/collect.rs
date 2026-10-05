@@ -20,6 +20,7 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
+use crate::is_plugin_capability;
 use crate::runtime::capability_mcp_server::capability_mcp_servers_to_scoped;
 use crate::runtime::events::TokenUsage;
 use crate::runtime::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
@@ -29,7 +30,6 @@ use crate::runtime::runtime_agent::RuntimeAgent;
 use crate::runtime::tool_types::ToolDefinition;
 use crate::runtime::tools::{Tool, ToolRegistry};
 use crate::runtime::typed_id::SessionId;
-use crate::is_plugin_capability;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -154,7 +154,10 @@ impl CollectedCapabilities {
 
     /// Apply post-load transforms from all message filter providers.
     /// Called after messages are loaded, filtered, and injected.
-    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::runtime::message::RuntimeMessage>) {
+    pub fn apply_post_load_filters(
+        &self,
+        messages: &mut Vec<crate::runtime::message::RuntimeMessage>,
+    ) {
         for (provider, config) in &self.message_filter_providers {
             provider.post_load(messages, config);
         }
@@ -217,7 +220,10 @@ impl CollectedMessageFilters {
     }
 
     /// Apply post-load transforms from all message filter providers.
-    pub fn apply_post_load_filters(&self, messages: &mut Vec<crate::runtime::message::RuntimeMessage>) {
+    pub fn apply_post_load_filters(
+        &self,
+        messages: &mut Vec<crate::runtime::message::RuntimeMessage>,
+    ) {
         for (provider, config) in &self.message_filter_providers {
             provider.post_load(messages, config);
         }

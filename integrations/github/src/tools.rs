@@ -1,12 +1,12 @@
 //! Private tools for the GitHub Scout blueprint.
 
 use async_trait::async_trait;
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
 };
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 use tracing::{debug, error};
 
@@ -484,14 +484,14 @@ impl Tool for SearchGitHubIssuesTool {
 mod tests {
     use super::*;
     use everruns_contracts::error::Result;
-    use everruns_contracts::typed_id::HarnessId;
-    use everruns_contracts::typed_id::SessionId;
     use everruns_contracts::runtime::{ExecutionSession, SessionExecutionState};
     use everruns_contracts::runtime::{
         connection_services::UserConnectionResolver, execution_loading::SessionStore,
         session_services::KeyInfo, session_services::SecretInfo,
         session_services::SessionStorageStore,
     };
+    use everruns_contracts::typed_id::HarnessId;
+    use everruns_contracts::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;

@@ -168,7 +168,11 @@ impl Tool for UnifiedSpawnAgentTool {
             .and_then(|target_type| self.provider_for(target_type))
             .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx));
         Some(from_provider.unwrap_or_else(|| {
-            crate::runtime::tool_narration::narrate_subagent_spawn(&tool_call.arguments, phase, locale)
+            crate::runtime::tool_narration::narrate_subagent_spawn(
+                &tool_call.arguments,
+                phase,
+                locale,
+            )
         }))
     }
 

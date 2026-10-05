@@ -131,7 +131,10 @@ impl ToolExecutor for std::sync::Arc<dyn ToolExecutor> {
 #[async_trait]
 pub trait BudgetChecker: Send + Sync {
     /// Check all budgets for a session and return a tool-friendly response.
-    async fn check_budgets(&self, session_id: &str) -> Result<crate::runtime::budget::BudgetToolResponse>;
+    async fn check_budgets(
+        &self,
+        session_id: &str,
+    ) -> Result<crate::runtime::budget::BudgetToolResponse>;
 }
 
 // ============================================================================

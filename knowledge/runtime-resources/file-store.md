@@ -67,7 +67,7 @@ The public surface is split across the execution and host concerns:
 - `everruns_core::host::SessionFileSystemFactory`, resolves the deployment's
   chosen filesystem from host-provided dependencies.
 
-See `crates/core/src/session_files.rs` and
+See `crates/contracts/src/runtime/session_files.rs` and
 `crates/core/src/host/session_file_system_factory.rs` for the full method signatures
 and doc comments. The filesystem trait shape is intentionally small: an implementation
 supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
@@ -602,18 +602,18 @@ APIs or the `SessionFileSystem` trait.
 
 ## Source Index
 
-- `crates/core/src/mount_fs.rs`, `MountFs` (the mount + cwd resolver, the only
+- `crates/contracts/src/runtime/mount_fs.rs`, `MountFs` (the mount + cwd resolver, the only
   path authority, EVE-660)
-- `crates/core/src/session_path.rs`, host-agnostic `/workspace`-alias helpers
+- `crates/contracts/src/runtime/session_path.rs`, host-agnostic `/workspace`-alias helpers
   (`to_session_path`, `to_display_path`)
 - `crates/core/src/workspace_roots.rs`, `WorkspaceRootSet` and host-root
   resolver for multi-root host sessions
 - `crates/core/src/workspace_policy.rs`, portable `WorkspacePolicy`
 - `crates/core/src/host/real_disk.rs`, `RealDiskFileStore` + its private
   `HostPathMap` (virtual ⇄ host mapping; the only host-rooted backend)
-- `crates/core/src/session_files.rs`, `SessionFileSystem` trait
+- `crates/contracts/src/runtime/session_files.rs`, `SessionFileSystem` trait
   (`display_path`/`display_root`/`resolve_path`)
-- `crates/core/src/session_file.rs`, `SessionFile`, `FileInfo`,
+- `crates/contracts/src/runtime/session_file.rs`, `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`
 - `crates/core/src/host/backends.rs`, `HostBackends`
 - `crates/core/src/host/file_store_decorators.rs`, `PolicyFileStore`,

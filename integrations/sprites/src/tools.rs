@@ -1,11 +1,11 @@
 //! Tool implementations for Sprites operations.
 
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -204,12 +204,14 @@ impl Tool for SpritesExecTool {
         _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sprites");
-        Some(everruns_contracts::runtime::tool_narration::narrate_shell_exec(
-            &tool_call.arguments,
-            fallback,
-            phase,
-            locale,
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_shell_exec(
+                &tool_call.arguments,
+                fallback,
+                phase,
+                locale,
+            ),
+        )
     }
 
     fn name(&self) -> &str {

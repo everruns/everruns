@@ -106,18 +106,19 @@ pub trait SessionScheduleStore: Send + Sync {
         cron_expression: Option<String>,
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
-    ) -> std::result::Result<SessionSchedule, crate::runtime::session_schedule::ScheduleLimitError> {
+    ) -> std::result::Result<SessionSchedule, crate::runtime::session_schedule::ScheduleLimitError>
+    {
         let per_session = self
             .count_active_schedules(session_id)
             .await
             .map_err(crate::runtime::session_schedule::ScheduleLimitError::Store)?;
         if per_session >= crate::runtime::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION {
-            return Err(crate::runtime::session_schedule::ScheduleLimitError::Rejected(
-                format!(
+            return Err(
+                crate::runtime::session_schedule::ScheduleLimitError::Rejected(format!(
                     "Maximum {} active schedules per session. Cancel an existing schedule first.",
                     crate::runtime::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION
-                ),
-            ));
+                )),
+            );
         }
 
         let max_per_org = crate::runtime::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG;
@@ -126,11 +127,11 @@ pub trait SessionScheduleStore: Send + Sync {
             .await
             .map_err(crate::runtime::session_schedule::ScheduleLimitError::Store)?;
         if i64::from(per_org) >= max_per_org {
-            return Err(crate::runtime::session_schedule::ScheduleLimitError::Rejected(
-                format!(
+            return Err(
+                crate::runtime::session_schedule::ScheduleLimitError::Rejected(format!(
                     "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
-                ),
-            ));
+                )),
+            );
         }
 
         if let Some(cron) = cron_expression.as_deref() {

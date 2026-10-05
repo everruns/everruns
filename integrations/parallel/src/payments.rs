@@ -8,7 +8,6 @@
 //! internal feature flag.
 
 use async_trait::async_trait;
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
@@ -18,6 +17,7 @@ use everruns_contracts::runtime::tool_narration::{
     generic_phrase, labeled_phrase, safe_arg_str, truncate, url_display,
 };
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -554,8 +554,8 @@ mod tests {
     // Tool narration
     // ========================================================================
 
-    use everruns_contracts::tool_types::ToolCall;
     use everruns_contracts::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    use everruns_contracts::tool_types::ToolCall;
 
     fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
         let call = ToolCall {

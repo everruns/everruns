@@ -7,9 +7,11 @@ use super::*;
 use crate::test_egress::LoopbackTestEgress;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::runtime::EgressService;
-use everruns_contracts::runtime::connection_services::{ProviderCredentialStore, ProviderCredentials};
+use everruns_contracts::runtime::connection_services::{
+    ProviderCredentialStore, ProviderCredentials,
+};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::host::DirectEgressService;
 use std::sync::{Arc, Mutex};
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers::any};

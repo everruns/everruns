@@ -535,12 +535,12 @@ impl Event {
 // Input/Output Event Data Types
 // ============================================================================
 
+use crate::execution_phase::ExecutionPhase;
 use crate::runtime::message::{ContentPart, RuntimeMessage};
 use crate::runtime::tool_narration::{
     ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
 };
 use crate::runtime::tool_types::ToolCall;
-use crate::execution_phase::ExecutionPhase;
 
 /// File operation constants for `FileWrittenData.operation`.
 pub const FILE_OP_CREATE: &str = "create";

@@ -27,9 +27,9 @@ use std::time::Duration;
 
 use base64::Engine;
 use everruns_contracts::driver_helpers::SsrfGuardResolver;
-use everruns_contracts::url_validation::validate_safe_url;
 use everruns_contracts::runtime::SystemAllowlist;
 use everruns_contracts::runtime::network_access::NetworkAccessList;
+use everruns_contracts::url_validation::validate_safe_url;
 use reqwest::dns::Resolve;
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
@@ -146,7 +146,9 @@ impl BrowserEgress {
     }
 
     /// Egress for a tool call in `context`, under its session network policy.
-    pub fn for_context(context: &everruns_contracts::runtime::tool_context::ToolContext) -> Arc<Self> {
+    pub fn for_context(
+        context: &everruns_contracts::runtime::tool_context::ToolContext,
+    ) -> Arc<Self> {
         Self::new(context.network_access.clone())
     }
 

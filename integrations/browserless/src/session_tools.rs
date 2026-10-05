@@ -6,10 +6,10 @@
 //! Decision: Each tool call reconnects → does work → calls reconnect → disconnects.
 //!   No long-lived WebSocket connections. The browser stays alive on Browserless servers.
 
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::UpsertLeasedResource;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

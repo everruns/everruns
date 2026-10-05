@@ -367,10 +367,9 @@ pub fn scoped_prompt_file_store(
     file_store: Arc<dyn SessionFileSystem>,
     workspace_id: crate::runtime::typed_id::WorkspaceId,
 ) -> Arc<dyn SessionFileSystem> {
-    MountFs::wrap_if_needed(crate::runtime::session_files::WorkspaceScopedFileSystem::wrap(
-        file_store,
-        workspace_id,
-    ))
+    MountFs::wrap_if_needed(
+        crate::runtime::session_files::WorkspaceScopedFileSystem::wrap(file_store, workspace_id),
+    )
 }
 
 /// Normalize an input into an absolute virtual path: join cwd if relative, then
@@ -1020,8 +1019,10 @@ mod tests {
         let embedder_store: Arc<dyn SessionFileSystem> =
             Arc::new(MountFs::new(backend).with_backend_display());
 
-        let prompt_store =
-            scoped_prompt_file_store(embedder_store, crate::runtime::typed_id::WorkspaceId::from_seed(91));
+        let prompt_store = scoped_prompt_file_store(
+            embedder_store,
+            crate::runtime::typed_id::WorkspaceId::from_seed(91),
+        );
 
         // Host path survives all the way to what the system prompt would render.
         assert_eq!(prompt_store.display_root(), "/host/root");
@@ -1062,8 +1063,10 @@ mod tests {
             ..Default::default()
         });
 
-        let prompt_store =
-            scoped_prompt_file_store(backend, crate::runtime::typed_id::WorkspaceId::from_seed(92));
+        let prompt_store = scoped_prompt_file_store(
+            backend,
+            crate::runtime::typed_id::WorkspaceId::from_seed(92),
+        );
 
         assert_eq!(prompt_store.display_root(), "/workspace");
         assert_eq!(

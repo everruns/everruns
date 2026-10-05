@@ -162,7 +162,7 @@ More accurate estimation can use tiktoken for OpenAI or anthropic-tokenizer for 
 ### Message Selection Algorithm
 
 Selection is "protect the head + tail, drop the middle" (see
-`anchored_window` in `crates/core/src/message_filter.rs`). The agent system
+`anchored_window` in `crates/contracts/src/runtime/message_filter.rs`). The agent system
 prompt is assembled separately and is never part of this list. When
 `keep_first_messages` is explicitly configured, the head anchor protects the
 **first conversation message, the original task/goal**.
@@ -225,7 +225,7 @@ prompt anchor.
 The notice states how many earlier messages are hidden and points at `query_history`, in plain
 language rather than emphasis so the model does not call the tool for questions the visible
 context already answers. The exact text lives in `ExcludedNoticeTransform::infinity_context`
-(`crates/core/src/message_filter.rs`); `parse_excluded_notice_count`
+(`crates/contracts/src/runtime/message_filter.rs`); `parse_excluded_notice_count`
 (`crates/core/src/builtins/infinity_context.rs`) must match it.
 
 ### Query History Tool Schema

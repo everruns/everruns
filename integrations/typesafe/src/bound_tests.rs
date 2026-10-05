@@ -12,7 +12,8 @@ impl BudgetChecker for BudgetFixture {
     async fn check_budgets(
         &self,
         _: &str,
-    ) -> everruns_contracts::error::Result<everruns_contracts::runtime::budget::BudgetToolResponse> {
+    ) -> everruns_contracts::error::Result<everruns_contracts::runtime::budget::BudgetToolResponse>
+    {
         Ok(everruns_contracts::runtime::budget::BudgetToolResponse {
             status: self.0.into(),
             budgets: vec![],

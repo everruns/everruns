@@ -1,9 +1,9 @@
 use super::*;
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::runtime::connection_services::ProviderCredentialStore;
 use everruns_contracts::runtime::connection_services::ProviderCredentials;
+use everruns_contracts::typed_id::SessionId;
 use std::sync::Arc;
 
 struct MockProviderCredentialStore {

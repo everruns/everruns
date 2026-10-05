@@ -50,7 +50,7 @@ See `crates/core/src/builtins/agent_instructions.rs` for the `AgentInstructionsC
 ## SystemPromptContext
 
 Capabilities that need dynamic system prompt content receive a `SystemPromptContext`
-with access to session-specific resources. See `crates/core/src/capabilities/mod.rs` for the `SystemPromptContext` struct.
+with access to session-specific resources. See `crates/contracts/src/runtime/capabilities/mod.rs` for the `SystemPromptContext` struct.
 
 The context is constructed in `ReasonAtom` and passed through the async builder
 methods (`with_harness_async`, `with_agent_async`, `with_capabilities_async`).

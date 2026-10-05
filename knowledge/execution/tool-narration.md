@@ -32,7 +32,7 @@ unowned/foreign calls fall back to generic display-name phrasing.
 
 Two levels:
 
-1. **Tool level (default).** [`Tool::narrate`](../../crates/core/src/tools/mod.rs)
+1. **Tool level (default).** [`Tool::narrate`](../../crates/contracts/src/runtime/tools/mod.rs)
    returns the line for a call to that tool (default `None`). The tool knows its
    own arguments, so this is the natural home for its wording.
 
@@ -42,7 +42,7 @@ Two levels:
    ```
 
 2. **Capability level (aggregation + override).**
-   [`Capability::narrate`](../../crates/core/src/capabilities/mod.rs) **defaults** to
+   [`Capability::narrate`](../../crates/contracts/src/runtime/capabilities/mod.rs) **defaults** to
    dispatching to the matching tool's `narrate()`:
 
    ```rust
@@ -65,7 +65,7 @@ other capabilities or the generic fallback can handle them.
 Ownership boundary (EVE-876): narration is an execution-semantic value, it is
 authored during tool execution and persisted on tool events, so it stays with
 the tool/capability contracts in `everruns-core`
-([`tool_narration`](../../crates/core/src/tool_narration.rs)). Observability
+([`tool_narration`](../../crates/contracts/src/runtime/tool_narration.rs)). Observability
 exporters never author or re-format narration; they only export the `narration`
 field already carried by events (e.g. the Braintrust listener includes it in
 span payloads).
@@ -74,7 +74,7 @@ span payloads).
 
 During capability assembly, the framework wraps each applied capability in a
 `CapabilityNarrationHook` (an adapter over the existing
-[`ToolCallHook`](../../crates/core/src/capabilities/mod.rs) channel) and registers
+[`ToolCallHook`](../../crates/contracts/src/runtime/capabilities/mod.rs) channel) and registers
 it on the act atom. These adapters are appended **after** every explicit
 tool-call hook, so model-authored narration (the `human_intent` capability)
 keeps precedence. The first hook to return `Some` wins.
@@ -85,7 +85,7 @@ assembled outside a capability still own their narration — the unified
 augmentations, MCP proxy tools — so when no hook answers, the act atom asks
 the executing tool in the session's tool registry for its `Tool::narrate`.
 Only then does it fall back to
-[`render_tool_narration_with_locale`](../../crates/core/src/tool_narration.rs).
+[`render_tool_narration_with_locale`](../../crates/contracts/src/runtime/tool_narration.rs).
 
 The default `Capability::narrate` constructs `self.tools()` per call to find the
 match; narration is low-frequency, but a capability with expensive `tools()` can
@@ -94,7 +94,7 @@ override `narrate()` with a direct match.
 ## Reusable phrasing helpers
 
 So wording and localization stay consistent without a global registry,
-[`crate::tool_narration`](../../crates/core/src/tool_narration.rs) exposes
+[`crate::tool_narration`](../../crates/contracts/src/runtime/tool_narration.rs) exposes
 locale-aware phrasing helpers that capabilities call from `narrate()`:
 `narrate_read_file`, `narrate_shell_exec`, `narrate_search_web`,
 `narrate_web_fetch`, `narrate_tool_search`, `narrate_skill`,
@@ -181,7 +181,7 @@ to a generic localized verb phrase rather than mixing languages.
 ## Regression guard
 
 `builtin_tools_have_narration_or_documented_generic_fallback` (in
-`crates/core/src/capabilities/mod.rs`) walks every tool of every built-in
+`crates/contracts/src/runtime/capabilities/mod.rs`) walks every tool of every built-in
 production capability and fails unless the tool is **covered**: its capability
 `narrate()` returns `Some`, or it carries a `narration_noun` hint (data-driven
 CRUD narration). A capability whose generic display-name presentation is

@@ -69,7 +69,7 @@ other providers.
   loaded history, and inserts a counted notice
   (`crates/core/src/builtins/infinity_context.rs:296-366`).
 - `ExcludedNoticeTransform` renders the changing count
-  (`crates/core/src/message_filter.rs:176-208`).
+  (`crates/contracts/src/runtime/message_filter.rs:176-208`).
 - Host assembly applies those filters before it resolves the per-turn model
   override (`crates/core/src/host/runtime_context.rs:242-274`).
 - The Anthropic driver places later system messages in `messages` for selected

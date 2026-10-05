@@ -50,9 +50,7 @@ fn generation_metadata() -> LlmGenerationMetadata {
     }
 }
 
-fn reasoning_part(
-    message: &RuntimeMessage,
-) -> &crate::reasoning::ReasoningContentPart {
+fn reasoning_part(message: &RuntimeMessage) -> &crate::reasoning::ReasoningContentPart {
     message
         .content
         .iter()

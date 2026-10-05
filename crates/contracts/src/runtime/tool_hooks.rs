@@ -1,8 +1,8 @@
 //! Neutral contracts for capability-contributed per-tool execution hooks.
 
 use crate::runtime::tool_context::ToolContext;
-use async_trait::async_trait;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use async_trait::async_trait;
 
 /// Decision returned by a [`PreToolUseHook`] before a tool is dispatched.
 #[derive(Debug, Clone)]

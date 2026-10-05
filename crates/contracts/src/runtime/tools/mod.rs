@@ -490,7 +490,10 @@ impl ToolExecutor for ToolRegistry {
         _tool_def: &ToolDefinition,
     ) -> Result<ToolResult> {
         let tool = self.tools.get(&tool_call.name).ok_or_else(|| {
-            crate::runtime::error::AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
+            crate::runtime::error::AgentLoopError::tool(format!(
+                "Tool not found: {}",
+                tool_call.name
+            ))
         })?;
 
         if let Some(error) = validate_tool_arguments(tool.as_ref(), tool_call)? {
@@ -509,7 +512,10 @@ impl ToolExecutor for ToolRegistry {
         context: &ToolContext,
     ) -> Result<ToolResult> {
         let tool = self.tools.get(&tool_call.name).ok_or_else(|| {
-            crate::runtime::error::AgentLoopError::tool(format!("Tool not found: {}", tool_call.name))
+            crate::runtime::error::AgentLoopError::tool(format!(
+                "Tool not found: {}",
+                tool_call.name
+            ))
         })?;
 
         if let Some(error) = validate_tool_arguments(tool.as_ref(), tool_call)? {

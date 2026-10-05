@@ -2,6 +2,12 @@
 
 ## 2026-10-05
 
+* **Integrations ship against contracts alone.** The runtime SPI (capability,
+  tool, tool context, session, message, event) moved from core into
+  `everruns_contracts::runtime` behind a `runtime` feature; core re-exports each
+  module at its old path. The provider isolation guard now rejects a normal or
+  build edge from any integration to core. See [Crate Layout](project/crate-layout.md).
+
 * **Turns run through one execution backend seam.** Core's host defines the
   experimental `TurnBackend`; the facade session actor runs every turn through
   its in-process default with no behavior change. `everruns-durable-engine` is

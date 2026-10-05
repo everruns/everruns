@@ -5,9 +5,11 @@
 
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::SessionId;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
-use everruns_contracts::runtime::{connection_services::UserConnectionResolver, tool_context::ToolContext};
+use everruns_contracts::runtime::{
+    connection_services::UserConnectionResolver, tool_context::ToolContext,
+};
+use everruns_contracts::typed_id::SessionId;
 use serde_json::json;
 use std::sync::Arc;
 use wiremock::matchers::{method, path};

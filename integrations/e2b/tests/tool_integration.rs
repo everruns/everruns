@@ -10,15 +10,17 @@
 
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
-use everruns_contracts::typed_id::{LeasedResourceId, SessionId};
 use everruns_contracts::runtime::capabilities::Capability;
-use everruns_contracts::runtime::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
+use everruns_contracts::runtime::leased_resource::{
+    LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
+};
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
 use everruns_contracts::runtime::{
     connection_services::UserConnectionResolver, session_services::KeyInfo,
     session_services::LeasedResourceStore, session_services::SecretInfo,
     session_services::SessionStorageStore, tool_context::ToolContext,
 };
+use everruns_contracts::typed_id::{LeasedResourceId, SessionId};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;

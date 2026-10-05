@@ -261,7 +261,7 @@ jobs:
               # scripts/test-docs-catalogs.sh compares the docs catalogs with
               # these sources (docs/** and crates/*/Cargo.toml are above).
               - 'scripts/check_docs_catalogs.py'
-              - 'crates/core/src/events/mod.rs'
+              - 'crates/contracts/src/runtime/events/mod.rs'
               - 'crates/contracts/src/capability/presets.rs'
               - 'crates/server/src/harnesses/platform_chat.rs'
               # scripts/test-no-everruns-runtime.sh scans these trees too.

@@ -160,7 +160,9 @@ pub trait SessionFileSystem: Send + Sync {
         let all = self
             .grep_files(session_id, pattern, options.path_pattern.as_deref())
             .await?;
-        Ok(crate::runtime::session_file::bound_grep_matches(all, options))
+        Ok(crate::runtime::session_file::bound_grep_matches(
+            all, options,
+        ))
     }
 
     /// Create a directory

@@ -2,10 +2,10 @@
 //! Integration test: verify Cursor plugin and connection provider registration.
 
 use everruns_contracts::connector::ConnectorPlugin;
-use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_contracts::runtime::deployment::DeploymentGrade;
 use everruns_contracts::runtime::tool_narration::ToolNarrationPhase;
+use everruns_contracts::tool_types::ToolCall;
 use serde_json::json;
 
 use everruns_integrations_cursor::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};

@@ -277,8 +277,8 @@ mod tests {
     use crate::driver_registry::{LlmContentPart, MessageContent, MessageRole};
     use crate::message::{TextContentPart, ToolCallContentPart};
     use everruns_contracts::ProviderOpaqueContent;
-    use serde_json::json;
     use everruns_contracts::model::ReasoningEffort;
+    use serde_json::json;
 
     #[test]
     fn test_resolved_parallel_tool_calls_gating() {

@@ -170,9 +170,10 @@ mod tests {
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = E2BCapability;
-        let ctx = everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
-            everruns_contracts::typed_id::SessionId::new(),
-        );
+        let ctx =
+            everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
+                everruns_contracts::typed_id::SessionId::new(),
+            );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1000 → 1300: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
         // single-read/contextual-search policy (+438 bytes), taking this

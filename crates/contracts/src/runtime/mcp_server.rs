@@ -1610,17 +1610,19 @@ mod tests {
     #[test]
     fn ambiguous_bindings_do_not_rewrite_a_different_tool() {
         let schema = serde_json::json!({"type":"object","properties":{"key":{"type":"string"}},"required":["key"]});
-        let mut definitions = vec![crate::runtime::ToolDefinition::Builtin(crate::runtime::BuiltinTool {
-            name: "mcp_docs___search".into(),
-            display_name: None,
-            description: "Search".into(),
-            parameters: schema,
-            policy: Default::default(),
-            category: None,
-            deferrable: Default::default(),
-            hints: Default::default(),
-            full_parameters: None,
-        })];
+        let mut definitions = vec![crate::runtime::ToolDefinition::Builtin(
+            crate::runtime::BuiltinTool {
+                name: "mcp_docs___search".into(),
+                display_name: None,
+                description: "Search".into(),
+                parameters: schema,
+                policy: Default::default(),
+                category: None,
+                deferrable: Default::default(),
+                hints: Default::default(),
+                full_parameters: None,
+            },
+        )];
         let before = serde_json::to_value(&definitions).unwrap();
         let mut binding = McpSecretBindingMetadata {
             server_name: "docs_".into(),

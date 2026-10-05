@@ -18,7 +18,6 @@
 //! See `integrations/daytona/SPEC.md` (GitHub clone-auth host allowlist) and
 //! `TM-DAYTONA-008` in `knowledge/security/threat-model.md`.
 
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::SessionFile;
 use everruns_contracts::runtime::exec_tool_result::ExecToolResultPayload;
 use everruns_contracts::runtime::resource_ownership::{
@@ -35,6 +34,7 @@ use everruns_contracts::runtime::tool_output_sanitizer::{
     parse_read_file_window_args,
 };
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -464,12 +464,14 @@ impl Tool for DaytonaExecTool {
         _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Daytona");
-        Some(everruns_contracts::runtime::tool_narration::narrate_shell_exec(
-            &tool_call.arguments,
-            fallback,
-            phase,
-            locale,
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_shell_exec(
+                &tool_call.arguments,
+                fallback,
+                phase,
+                locale,
+            ),
+        )
     }
 
     fn name(&self) -> &str {
@@ -2360,11 +2362,11 @@ mod tests {
     // ========================================================================
 
     use everruns_contracts::error::Result;
-    use everruns_contracts::typed_id::SessionId;
     use everruns_contracts::runtime::{
         connection_services::UserConnectionResolver, session_services::KeyInfo,
         session_services::SecretInfo, session_services::SessionStorageStore,
     };
+    use everruns_contracts::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -3629,8 +3631,8 @@ mod tests {
     // Tool narration
     // ========================================================================
 
-    use everruns_contracts::tool_types::ToolCall;
     use everruns_contracts::runtime::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    use everruns_contracts::tool_types::ToolCall;
 
     fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
         let call = ToolCall {

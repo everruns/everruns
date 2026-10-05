@@ -615,7 +615,8 @@ async fn test_contribute_skills_normalized_to_mounts() {
         MountSource::InlineDirectory { entries } => {
             assert!(entries.contains_key("SKILL.md"));
             assert!(entries.contains_key("scripts/a.sh"));
-            let parsed = crate::runtime::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
+            let parsed =
+                crate::runtime::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
             assert_eq!(parsed.name, "alpha-skill");
             assert_eq!(parsed.description, "Alpha skill desc");
             assert_eq!(parsed.instructions, "# Alpha\nDo alpha.");
@@ -630,7 +631,8 @@ async fn test_contribute_skills_normalized_to_mounts() {
         .expect("beta-skill mount missing");
     match &beta.source {
         MountSource::InlineDirectory { entries } => {
-            let parsed = crate::runtime::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
+            let parsed =
+                crate::runtime::skill::parse_skill_md(skill_md_from_entries(entries)).unwrap();
             assert!(!parsed.user_invocable);
             assert_eq!(parsed.name, "beta-skill");
             assert_eq!(parsed.instructions, "# Beta\nDo beta.");

@@ -136,13 +136,13 @@ pub use everruns_contracts::runtime::capability_dto;
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
 // enums) moved to the `crates/server/src/records/` — they are product
 // management/reporting records that never participate in a turn.
+use everruns_contracts::model_profiles;
 pub use everruns_contracts::runtime::events;
 pub use everruns_contracts::runtime::finalized_tool_calls;
 pub use everruns_contracts::runtime::harness_definition;
 pub use everruns_contracts::runtime::leased_resource;
 pub use everruns_contracts::runtime::mcp_proxy;
 pub use everruns_contracts::runtime::mcp_server;
-use everruns_contracts::model_profiles;
 pub use everruns_contracts::runtime::mount_fs;
 pub use everruns_contracts::runtime::network_access;
 // EVE-879: the OAuth 2.1 protocol client moved to the MCP adapter crate — MCP
@@ -152,12 +152,11 @@ pub use everruns_contracts::runtime::network_access;
 // configuration, match rules and their lifecycle enums) moved to the
 // `crates/server/src/records/` — online scoring watches completed turns from the
 // hosted control plane and never participates in a turn.
+use everruns_contracts::model_spec;
+use everruns_contracts::provider;
 pub use everruns_contracts::runtime::organization;
 pub use everruns_contracts::runtime::payment;
 pub use everruns_contracts::runtime::principal;
-use everruns_contracts::model_spec;
-use everruns_contracts::provider;
-use everruns_contracts::runtime_provider;
 pub use everruns_contracts::runtime::session;
 pub use everruns_contracts::runtime::session_file;
 pub use everruns_contracts::runtime::session_path;
@@ -166,6 +165,7 @@ pub use everruns_contracts::runtime::session_schedule;
 pub use everruns_contracts::runtime::session_task;
 pub use everruns_contracts::runtime::skill;
 pub use everruns_contracts::runtime::system_allowlist;
+use everruns_contracts::runtime_provider;
 pub mod task_observer;
 pub mod wake_queue;
 pub mod workspace_policy;
@@ -211,12 +211,12 @@ pub use everruns_contracts::runtime::message;
 pub use everruns_contracts::runtime::message_filter;
 pub use everruns_contracts::runtime::message_retriever;
 mod tool_call_integrity;
+pub use everruns_contracts::runtime::connection_services;
+pub use everruns_contracts::runtime::delegation_services;
 pub use tool_call_integrity::{
     retain_complete_llm_tool_exchanges, retain_complete_llm_tool_exchanges_for_request,
     retain_complete_message_tool_exchanges,
 };
-pub use everruns_contracts::runtime::connection_services;
-pub use everruns_contracts::runtime::delegation_services;
 pub mod durability;
 pub use everruns_contracts::runtime::event_emitter;
 pub use everruns_contracts::runtime::execution_loading;

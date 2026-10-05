@@ -23,7 +23,6 @@
 //! # let _ = capability;
 //! ```
 
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
@@ -32,6 +31,7 @@ use everruns_contracts::runtime::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -385,12 +385,14 @@ impl Tool for DockerExecTool {
         _ctx: everruns_contracts::runtime::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Docker");
-        Some(everruns_contracts::runtime::tool_narration::narrate_shell_exec(
-            &tool_call.arguments,
-            fallback,
-            phase,
-            locale,
-        ))
+        Some(
+            everruns_contracts::runtime::tool_narration::narrate_shell_exec(
+                &tool_call.arguments,
+                fallback,
+                phase,
+                locale,
+            ),
+        )
     }
 
     fn name(&self) -> &str {
@@ -1125,9 +1127,10 @@ mod tests {
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = DockerContainerCapability;
-        let ctx = everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
-            everruns_contracts::typed_id::SessionId::new(),
-        );
+        let ctx =
+            everruns_contracts::runtime::capabilities::SystemPromptContext::without_file_store(
+                everruns_contracts::typed_id::SessionId::new(),
+            );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1150 → 1500: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
         // single-read/contextual-search policy (+438 bytes), taking this

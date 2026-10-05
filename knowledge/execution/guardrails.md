@@ -246,7 +246,7 @@ end-of-message boundary is skipped.
 The capability compiles its config once and contributes hooks only for stages
 that have at least one check:
 
-- **`output`** → an `OutputGuardrail` (see [output_guardrail](../../crates/core/src/output_guardrail.rs)).
+- **`output`** → an `OutputGuardrail` (see [output_guardrail](../../crates/contracts/src/runtime/output_guardrail.rs)).
   Armed per assistant-message stream; evaluated against the accumulated text on
   each delta so matches spanning delta boundaries are caught. A blocking hit
   aborts the stream and emits `output.message.replaced`; the original tokens

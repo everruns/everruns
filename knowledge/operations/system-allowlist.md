@@ -22,7 +22,7 @@ it on or off; they do not edit it per deployment.
 
 ## Data Model
 
-Source of truth is an embedded TOML file, `crates/core/src/system_allowlist.toml`,
+Source of truth is an embedded TOML file, `crates/contracts/src/runtime/system_allowlist.toml`,
 organized into named groups so it stays manageable instead of one flat list:
 
 ```toml
@@ -51,7 +51,7 @@ Current groups: `package_registries`, `source_hosting`, `container_registries`,
 An allowlist with no patterns (empty/misconfigured TOML) **fails closed**: it
 denies every URL rather than allowing all, via a sentinel pattern, since an
 empty `NetworkAccessList.allowed` otherwise means "no restriction". See
-`crates/core/src/system_allowlist.rs`.
+`crates/contracts/src/runtime/system_allowlist.rs`.
 
 ## Enabling
 

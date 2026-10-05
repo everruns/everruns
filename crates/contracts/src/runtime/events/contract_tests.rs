@@ -1,6 +1,8 @@
 //! Tests moved out of events.rs: contract_tests.
 
-use crate::runtime::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId};
+use crate::runtime::typed_id::{
+    AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId,
+};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -475,17 +477,19 @@ fn act_started_with_definitions_populates_display_names() {
             arguments: serde_json::json!({}),
         },
     ];
-    let tool_defs = vec![crate::runtime::tool_types::ToolDefinition::Builtin(BuiltinTool {
-        name: "get_weather".to_string(),
-        display_name: Some("Get Weather".to_string()),
-        description: "Gets weather".to_string(),
-        parameters: serde_json::json!({}),
-        policy: ToolPolicy::Auto,
-        category: None,
-        deferrable: DeferrablePolicy::default(),
-        hints: crate::runtime::tool_types::ToolHints::default(),
-        full_parameters: None,
-    })];
+    let tool_defs = vec![crate::runtime::tool_types::ToolDefinition::Builtin(
+        BuiltinTool {
+            name: "get_weather".to_string(),
+            display_name: Some("Get Weather".to_string()),
+            description: "Gets weather".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: crate::runtime::tool_types::ToolHints::default(),
+            full_parameters: None,
+        },
+    )];
 
     let data = ActStartedData::with_definitions(&tool_calls, &tool_defs);
     assert_eq!(data.tool_calls.len(), 2);

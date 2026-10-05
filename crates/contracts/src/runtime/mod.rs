@@ -12,8 +12,10 @@ pub mod annotation_hook;
 pub mod background;
 pub mod budget;
 pub mod capabilities;
+pub mod capability_dto;
 pub mod capability_mcp_server;
 pub mod capability_types;
+pub mod channel;
 pub mod channel_messaging;
 pub mod command;
 pub mod command_host;
@@ -32,8 +34,10 @@ pub mod exec_tool_result;
 pub mod execution_context;
 pub mod execution_features;
 pub mod execution_loading;
+pub mod feature_flag_grade;
 pub mod finalized_tool_calls;
 pub mod harness_definition;
+pub mod hook_executor;
 pub mod image_services;
 pub mod leased_resource;
 pub mod llm_error_hook;
@@ -46,12 +50,14 @@ pub mod message_retriever;
 pub mod mount_fs;
 pub mod network_access;
 pub mod organization;
+pub mod outline;
 pub mod output_guardrail;
 pub mod payment;
 pub mod principal;
 pub mod resource_names;
 pub mod resource_ownership;
 pub mod runtime_agent;
+pub mod sandbox_context;
 pub mod session;
 pub mod session_file;
 pub mod session_files;
@@ -72,85 +78,10 @@ pub mod tools;
 pub mod truncation_info;
 pub mod user_hook_types;
 pub mod utility_llm;
-pub mod channel;
-pub mod feature_flag_grade;
-pub mod capability_dto;
-pub mod sandbox_context;
-pub mod outline;
-pub mod hook_executor;
 
-use crate::tool_types;
-use crate::typed_id;
-use crate::model_profiles;
-use crate::model_spec;
-use crate::provider;
-use crate::runtime_provider;
-use crate::driver_registry;
-use crate::error;
-use crate::user_facing_error;
-pub use self::command_host::{
-    CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
-    SessionCompletionError, SessionCompletionRequest, SessionCompletionStream,
-};
-pub use self::config_layer::{
-    AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
-};
-pub use self::connection_services::UserConnectionResolver;
-pub use self::delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
-pub use self::event_emitter::EventEmitter;
-pub use self::execution_loading::{HarnessStore, SessionStore};
-pub use self::image_services::{ImageResolver, ResolvedImage};
-pub use self::llm_error_hook::{
-    LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
-};
-pub use self::message::{
-    AnnotationSource, ContentPart, ContentType, Controls, ExternalActor, ImageContentPart,
-    ImageFileContentPart, InputContentPart, ReasoningConfig, RuntimeMessage, RuntimeMessageRole,
-    TextAnnotation, TextContentPart, ToolCallContentPart, ToolResultContentPart,
-    VerificationStatus, VerificationVerdict,
-};
-pub use self::message_filter::{
-    ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,
-    MessageFilterProvider, MessageQuery, PrependTransform,
-};
-pub use self::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
-pub use self::mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
-pub use self::runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
-pub use self::session_files::{RuntimeArtifactFileSystem, SessionFileSystem, WorkspaceScopedFileSystem};
-pub use self::session_services::{
-    KeyInfo, LeasedResourceStore, SecretInfo, SessionResourceRegistry, SessionStorageStore,
-};
-pub use self::tool_context::{ReasoningEffortHandle, ToolContext};
-pub use self::tool_execution::{OutboundToolRateLimiter, ToolExecutor};
-pub use self::resource_ownership::{
-    LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
-    LEASED_RESOURCE_TYPE_KEY, list_owned_external_resource_ids,
-    ownership_tracking_unavailable_error, require_owned_external_resource,
-    resource_not_owned_error, verify_owned_external_resource_if_available,
-};
-pub use self::subagent_delegation::{
-    PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
-};
+pub use self::agent_definition::AgentDefinition;
 pub use self::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
-};
-pub use self::egress::{
-    DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
-    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
-};
-pub use self::system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
-pub use self::decisions::{
-    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
-    DecisionsService, DisabledDecisionsService,
-};
-pub use self::utility_llm::{
-    DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmReasoningEffort, UtilityLlmRequest,
-    UtilityLlmService,
-};
-#[cfg(test)]
-pub(crate) use crate::compact::CompactOutputItem;
-pub use self::tools::{
-    CliSpelling, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder,
 };
 pub use self::capabilities::SystemPromptContext;
 pub use self::capabilities::{
@@ -172,13 +103,40 @@ pub use self::capabilities::{
     SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
     parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
-pub use self::execution_context::ExecutionContext;
-pub(crate) use crate::CapabilityRef as AgentCapabilityConfig;
-pub use self::agent_definition::AgentDefinition;
+pub use self::capability_dto::{AgentCapability, CapabilityInfo};
+pub use self::capability_mcp_server::{
+    CapabilityMcpServer, CapabilityMcpServers, capability_mcp_servers_to_scoped,
+};
+pub use self::channel::{
+    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
+    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
+    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
+    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
+};
+pub use self::command_host::{
+    CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
+    SessionCompletionError, SessionCompletionRequest, SessionCompletionStream,
+};
 pub use self::compaction_policy::{
     CompactionPolicy, CompactionSettings, CompactionStrategy as PolicyCompactionStrategy,
     ObservationMaskingResult as PolicyObservationMaskingResult,
 };
+pub use self::config_layer::{
+    AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
+};
+pub use self::connection_services::UserConnectionResolver;
+pub use self::decisions::{
+    DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
+    DecisionsService, DisabledDecisionsService,
+};
+pub use self::delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
+pub use self::dependency_blocker::DependencyBlocker;
+pub use self::deployment::DeploymentGrade;
+pub use self::egress::{
+    DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
+    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
+};
+pub use self::event_emitter::EventEmitter;
 pub use self::events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, CONTEXT_COMPACTED,
     CONTEXT_COMPACTING, CONTEXT_COMPACTION_FAILED, CONTEXT_COMPACTION_SKIPPED, CompactionFailStage,
@@ -202,17 +160,24 @@ pub use self::events::{
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
     TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
+pub use self::execution_context::ExecutionContext;
+pub use self::execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
+pub use self::execution_loading::{HarnessStore, SessionStore};
+pub use self::feature_flag_grade::FeatureFlagGrade;
 pub use self::finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
 };
-pub use self::capability_mcp_server::{
-    CapabilityMcpServer, CapabilityMcpServers, capability_mcp_servers_to_scoped,
-};
 pub use self::harness_definition::HarnessDefinition;
+pub use self::image_services::{ImageResolver, ResolvedImage};
 pub use self::leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
-pub use self::mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
+pub use self::llm_error_hook::{
+    LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
+};
+pub use self::mcp_proxy::{
+    McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+};
 pub use self::mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
     McpContent, McpElicitationPolicy, McpError, McpProtocolMode, McpSecretBindingMetadata,
@@ -224,19 +189,46 @@ pub use self::mcp_server::{
     merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
     sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
 };
+pub use self::message::{
+    AnnotationSource, ContentPart, ContentType, Controls, ExternalActor, ImageContentPart,
+    ImageFileContentPart, InputContentPart, ReasoningConfig, RuntimeMessage, RuntimeMessageRole,
+    TextAnnotation, TextContentPart, ToolCallContentPart, ToolResultContentPart,
+    VerificationStatus, VerificationVerdict,
+};
+pub use self::message_filter::{
+    ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,
+    MessageFilterProvider, MessageQuery, PrependTransform,
+};
+pub use self::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
+pub use self::mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
 pub use self::organization::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, org_public_id_from_internal,
 };
-pub use self::payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail};
+pub use self::payment::{
+    MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,
+};
 pub use self::principal::{PrincipalKind, PrincipalSummary};
+pub use self::resource_ownership::{
+    LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
+    LEASED_RESOURCE_TYPE_KEY, list_owned_external_resource_ids,
+    ownership_tracking_unavailable_error, require_owned_external_resource,
+    resource_not_owned_error, verify_owned_external_resource_if_available,
+};
+pub use self::runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use self::session::{ExecutionSession, SessionExecutionState, SessionSeedMode, SubagentStatus};
 pub use self::session_file::{
     FileInfo, FileStat, GREP_MAX_CONTEXT_LINES, GREP_MAX_RETURN_BYTES, GrepContextBlock,
     GrepContextLine, GrepMatch, GrepOptions, GrepResult, GrepSearchResult, InitialFile,
     SessionFile,
 };
+pub use self::session_files::{
+    RuntimeArtifactFileSystem, SessionFileSystem, WorkspaceScopedFileSystem,
+};
 pub use self::session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
+};
+pub use self::session_services::{
+    KeyInfo, LeasedResourceStore, SecretInfo, SessionResourceRegistry, SessionStorageStore,
 };
 pub use self::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
@@ -250,14 +242,28 @@ pub use self::skill::{
     ParsedSkillMd, SkillContent, SkillFileEntry, SkillValidationResult, parse_skill_md,
     validate_skill_md, validate_skill_name,
 };
-pub use self::dependency_blocker::DependencyBlocker;
-pub use self::deployment::DeploymentGrade;
-pub use self::execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
-pub use self::channel::{
-    ChannelAgentSurface, ChannelDeliveryAdapter, ChannelReplyMode, ChannelStreamDelivery,
-    ChannelViewContext, DeliveryContext as ChannelDeliveryContext,
-    DeliveryResult as ChannelDeliveryResult, InboundAttachment, InboundChannelEvent,
-    OutboundChannelMessage, Participant, SessionBinding, ThreadContext,
+pub use self::subagent_delegation::{
+    PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
 };
-pub use self::feature_flag_grade::FeatureFlagGrade;
-pub use self::capability_dto::{AgentCapability, CapabilityInfo};
+pub use self::system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
+pub use self::tool_context::{ReasoningEffortHandle, ToolContext};
+pub use self::tool_execution::{OutboundToolRateLimiter, ToolExecutor};
+pub use self::tools::{
+    CliSpelling, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder,
+};
+pub use self::utility_llm::{
+    DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmReasoningEffort, UtilityLlmRequest,
+    UtilityLlmService,
+};
+pub(crate) use crate::CapabilityRef as AgentCapabilityConfig;
+#[cfg(test)]
+pub(crate) use crate::compact::CompactOutputItem;
+use crate::driver_registry;
+use crate::error;
+use crate::model_profiles;
+use crate::model_spec;
+use crate::provider;
+use crate::runtime_provider;
+use crate::tool_types;
+use crate::typed_id;
+use crate::user_facing_error;

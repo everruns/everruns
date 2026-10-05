@@ -56,8 +56,8 @@ fn test_validate_interaction_steps_rejects_blocked_navigate_url() {
 }
 
 fn acl_context(patterns: &[&str], block: bool) -> ToolContext {
-    use everruns_contracts::typed_id::SessionId;
     use everruns_contracts::runtime::network_access::NetworkAccessList;
+    use everruns_contracts::typed_id::SessionId;
     let mut context = ToolContext::new(SessionId::new());
     context.network_access = Some(if block {
         NetworkAccessList::block(patterns.iter().copied())

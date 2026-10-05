@@ -32,15 +32,15 @@ use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 #[cfg(test)]
 use everruns_contracts::error::AgentLoopError;
-#[cfg(test)]
-use everruns_contracts::typed_id;
-use everruns_contracts::{ToolResultImage, error, tool_types};
 use everruns_contracts::runtime::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
 };
 use everruns_contracts::runtime::session_files::SessionFileSystem;
 use everruns_contracts::runtime::tool_context::{ToolContext, ToolContextService};
 use everruns_contracts::runtime::*;
+#[cfg(test)]
+use everruns_contracts::typed_id;
+use everruns_contracts::{ToolResultImage, error, tool_types};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;

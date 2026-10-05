@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+use crate::CapabilityId;
 use crate::runtime::capabilities::RiskLevel;
 use crate::runtime::capability_types::CapabilityStatus;
 use crate::runtime::tool_types::ToolDefinition;
-use crate::CapabilityId;
 
 /// Public capability information (without internal details)
 /// This is what gets returned from the API

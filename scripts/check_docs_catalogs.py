@@ -9,7 +9,7 @@ This check compares each against its source of truth without compiling Rust:
   ``crates/server/src/docs_catalog.rs`` writes and keeps fresh.
 - Generic and Platform Chat Agent: the capability lists in ``crates/contracts/src/capability/presets.rs``
   (generic) and ``crates/server/src/platform_chat_agent.rs``.
-- Events: the event-type constants in ``crates/core/src/events/mod.rs``.
+- Events: the event-type constants in ``crates/contracts/src/runtime/events/mod.rs``.
 - Environment variables: string literals the Rust sources read.
 
 Run from anywhere; ``--root`` points at a checkout (tests use a scratch copy).
@@ -27,7 +27,7 @@ CATALOG = "docs/api/capability-catalog.json"
 CAPABILITY_INDEX = "docs/capabilities/index.md"
 CAPABILITY_PAGES = "docs/capabilities"
 EVENT_REFERENCE = "docs/event-reference.md"
-EVENT_SOURCE = "crates/core/src/events/mod.rs"
+EVENT_SOURCE = "crates/contracts/src/runtime/events/mod.rs"
 ENV_PAGE = "docs/sre/environment-variables.md"
 GENERIC_PAGE = "docs/built-ins/harnesses/generic.md"
 GENERIC_SOURCE = "crates/contracts/src/capability/presets.rs"
@@ -218,7 +218,7 @@ def check_capability_index(
                 report.error(
                     where,
                     f"`{capability_id}` links /capabilities/{slug}/ but the UI docs link "
-                    f"(builtin_capability_docs_slug in crates/core/src/capability_dto.rs) is "
+                    f"(builtin_capability_docs_slug in crates/contracts/src/runtime/capability_dto.rs) is "
                     f"{docs_slug!r}",
                 )
         count = LEADING_INT.match(cells[2])
@@ -256,7 +256,7 @@ def check_capability_index(
         docs_slug = entry.get("docs_slug")
         if docs_slug and not any((pages / f"{docs_slug}{ext}").exists() for ext in (".md", ".mdx")):
             report.error(
-                "crates/core/src/capability_dto.rs",
+                "crates/contracts/src/runtime/capability_dto.rs",
                 f"`{capability_id}` docs slug {docs_slug!r} has no page under {CAPABILITY_PAGES}/",
             )
 

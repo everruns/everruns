@@ -196,9 +196,11 @@ impl SandboxFleetTool {
         context: &everruns_contracts::runtime::tool_context::ToolContext,
     ) -> Result<(), everruns_contracts::runtime::tools::ToolExecutionResult> {
         let Some(logical_id) = arguments.get("sandbox_id").and_then(|value| value.as_str()) else {
-            return Err(everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
-                "sandbox_id is required",
-            ));
+            return Err(
+                everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
+                    "sandbox_id is required",
+                ),
+            );
         };
         let Some(registry) = &context.session_resource_registry else {
             return Err(
@@ -317,17 +319,19 @@ impl Tool for SandboxFleetTool {
                 );
             };
             return match registry.list(context.session_id, None).await {
-                Ok(entries) => {
-                    everruns_contracts::runtime::tools::ToolExecutionResult::success(serde_json::json!({
+                Ok(entries) => everruns_contracts::runtime::tools::ToolExecutionResult::success(
+                    serde_json::json!({
                         "sandboxes": entries.into_iter().filter(|entry| entry.kind == "sandbox" && entry.metadata.get("role").and_then(|v| v.as_str()) == Some("resource")).map(|entry| serde_json::json!({
                             "sandbox_id": entry.resource_id,
                             "name": entry.display_name,
                             "status": entry.status.to_string(),
                             "provider": entry.metadata.get("provider").cloned().unwrap_or(serde_json::Value::Null),
                         })).collect::<Vec<_>>()
-                    }))
+                    }),
+                ),
+                Err(error) => {
+                    everruns_contracts::runtime::tools::ToolExecutionResult::internal_error(error)
                 }
-                Err(error) => everruns_contracts::runtime::tools::ToolExecutionResult::internal_error(error),
             };
         }
 
@@ -349,17 +353,21 @@ impl Tool for SandboxFleetTool {
                         && entry.metadata.get("role").and_then(|value| value.as_str())
                             == Some("resource") =>
                 {
-                    everruns_contracts::runtime::tools::ToolExecutionResult::success(serde_json::json!({
-                        "sandbox_id": entry.resource_id,
-                        "name": entry.display_name,
-                        "status": entry.status.to_string(),
-                        "provider": entry.metadata.get("provider").cloned().unwrap_or(serde_json::Value::Null),
-                    }))
+                    everruns_contracts::runtime::tools::ToolExecutionResult::success(
+                        serde_json::json!({
+                            "sandbox_id": entry.resource_id,
+                            "name": entry.display_name,
+                            "status": entry.status.to_string(),
+                            "provider": entry.metadata.get("provider").cloned().unwrap_or(serde_json::Value::Null),
+                        }),
+                    )
                 }
                 Ok(_) => everruns_contracts::runtime::tools::ToolExecutionResult::tool_error(
                     "Sandbox was not created by this Session",
                 ),
-                Err(error) => everruns_contracts::runtime::tools::ToolExecutionResult::internal_error(error),
+                Err(error) => {
+                    everruns_contracts::runtime::tools::ToolExecutionResult::internal_error(error)
+                }
             };
         }
 
@@ -377,7 +385,9 @@ impl Tool for SandboxFleetTool {
         };
         let result = inner.execute_with_context(arguments, context).await;
         if !matches!(self.operation, FleetOperation::Create) {
-            if let everruns_contracts::runtime::tools::ToolExecutionResult::Success(mut value) = result {
+            if let everruns_contracts::runtime::tools::ToolExecutionResult::Success(mut value) =
+                result
+            {
                 if let Some(logical_id) = logical_id {
                     if value.get("sandbox_id").is_some() {
                         value["sandbox_id"] = serde_json::json!(logical_id.clone());
@@ -399,7 +409,8 @@ impl Tool for SandboxFleetTool {
             }
             return result;
         }
-        let everruns_contracts::runtime::tools::ToolExecutionResult::Success(mut value) = result else {
+        let everruns_contracts::runtime::tools::ToolExecutionResult::Success(mut value) = result
+        else {
             return result;
         };
         let Some(external_id) = value
@@ -696,12 +707,12 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use everruns_contracts::error::Result as AgentResult;
-    use everruns_contracts::typed_id::SessionId;
     use everruns_contracts::runtime::capabilities::CapabilityStatus;
     use everruns_contracts::runtime::session_resource::{
         RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
     };
     use everruns_contracts::runtime::session_services::SessionResourceRegistry;
+    use everruns_contracts::typed_id::SessionId;
     use serde_json::json;
     use std::sync::{Arc, Mutex};
 

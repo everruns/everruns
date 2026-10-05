@@ -351,7 +351,8 @@ mod tests {
                 self.result.clone()
             }
         }
-        let service: Arc<dyn crate::runtime::UtilityLlmService> = Arc::new(crate::runtime::DisabledUtilityLlmService);
+        let service: Arc<dyn crate::runtime::UtilityLlmService> =
+            Arc::new(crate::runtime::DisabledUtilityLlmService);
         let mut first = ann(0, 1);
         first.origin = "first".into();
         let mut second = ann(1, 3);
@@ -443,7 +444,8 @@ mod tests {
                 }),
             },
         ];
-        let service: Arc<dyn crate::runtime::UtilityLlmService> = Arc::new(crate::runtime::DisabledUtilityLlmService);
+        let service: Arc<dyn crate::runtime::UtilityLlmService> =
+            Arc::new(crate::runtime::DisabledUtilityLlmService);
         let out = verify_annotations(&providers, "αβγ", Some(&service), original.clone()).await;
         let expected = original
             .into_iter()

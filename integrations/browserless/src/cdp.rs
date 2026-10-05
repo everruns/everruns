@@ -744,7 +744,9 @@ impl CdpSession {
         if let Err(result) = validate_browserless_navigation(access, &url) {
             let _ = self.navigate("about:blank").await;
             return Err(match result {
-                everruns_contracts::runtime::tools::ToolExecutionResult::ToolError(message) => message,
+                everruns_contracts::runtime::tools::ToolExecutionResult::ToolError(message) => {
+                    message
+                }
                 other => format!("{other:?}"),
             });
         }

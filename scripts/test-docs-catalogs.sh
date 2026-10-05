@@ -98,9 +98,9 @@ sed -i '/^| `budget.resumed` |/d' "$WORK/repo/docs/event-reference.md"
 expect_drift "event reference omits an event" '`budget.resumed` is defined'
 
 scratch
-own crates/core/src/events/mod.rs
+own crates/contracts/src/runtime/events/mod.rs
 sed -i 's/^pub const FILE_WRITTEN: &str = "file.written";/&\npub const FILE_DELETED: \&str = "file.deleted";/' \
-  "$WORK/repo/crates/core/src/events/mod.rs"
+  "$WORK/repo/crates/contracts/src/runtime/events/mod.rs"
 expect_drift "code adds an event the reference lacks" '`file.deleted` is defined'
 
 scratch

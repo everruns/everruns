@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::{tool_types::ToolHints, typed_id::MessageId};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 

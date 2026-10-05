@@ -17,9 +17,9 @@
 //!   issue, not a lost finding.
 
 use async_trait::async_trait;
-use everruns_contracts::tool_types::ToolHints;
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 use crate::client::{GitHubClient, Issue};

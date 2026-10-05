@@ -39,7 +39,7 @@ ReasonAtom (derives phase from state)
 
 ## ExecutionPhase Enum
 
-See `crates/core/src/message.rs` for the full definition, wire values, and legacy deserialization mappings.
+See `crates/contracts/src/runtime/message.rs` for the full definition, wire values, and legacy deserialization mappings.
 
 Two variants: `Commentary` (intermediate, before/between tool calls) and `FinalAnswer` (completed response, no more tool calls).
 

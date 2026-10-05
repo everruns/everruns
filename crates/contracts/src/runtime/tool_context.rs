@@ -164,7 +164,8 @@ pub struct ToolContextServices {
     pub agent_store: Option<Arc<dyn AgentStore>>,
     pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
-    pub subagent_delegate: Option<Arc<dyn crate::runtime::subagent_delegation::SubagentSessionDelegate>>,
+    pub subagent_delegate:
+        Option<Arc<dyn crate::runtime::subagent_delegation::SubagentSessionDelegate>>,
     pub extensions: ToolContextExtensions,
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
     pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
@@ -333,7 +334,8 @@ pub struct ToolContext {
     /// Optional narrow child-session delegate for host-provided orchestration.
     /// The hosted `PlatformStore` seam itself is not named by core; a host
     /// adapter implements this contract and platform tools use typed extensions.
-    pub subagent_delegate: Option<Arc<dyn crate::runtime::subagent_delegation::SubagentSessionDelegate>>,
+    pub subagent_delegate:
+        Option<Arc<dyn crate::runtime::subagent_delegation::SubagentSessionDelegate>>,
     /// Type-erased, host-supplied extensions keyed by concrete type. Lets crates
     /// layered above core (e.g. `everruns-capabilities`) hang typed services on the
     /// tool context without core naming them (EVE-839).
@@ -627,7 +629,10 @@ impl ToolContext {
     }
 
     /// Set the utility LLM service on this context.
-    pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::runtime::UtilityLlmService>) -> Self {
+    pub fn with_utility_llm_service(
+        mut self,
+        service: Arc<dyn crate::runtime::UtilityLlmService>,
+    ) -> Self {
         self.utility_llm_service = Some(service);
         self
     }
@@ -727,7 +732,10 @@ impl ToolContext {
     }
 
     /// Set the active built-in tool registry on this context.
-    pub fn with_tool_registry(mut self, registry: Arc<crate::runtime::tools::ToolRegistry>) -> Self {
+    pub fn with_tool_registry(
+        mut self,
+        registry: Arc<crate::runtime::tools::ToolRegistry>,
+    ) -> Self {
         self.tool_registry = Some(registry);
         self
     }

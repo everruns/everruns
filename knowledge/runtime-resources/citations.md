@@ -64,7 +64,7 @@ Producers agree on "here is a text span and a thing to link to", nothing about
 citation *semantics*.
 
 * A new optional field `annotations` on `TextContentPart`
-  (`crates/core/src/message.rs`), serialized `skip_serializing_if` empty so the
+  (`crates/contracts/src/runtime/message.rs`), serialized `skip_serializing_if` empty so the
   wire shape of non-cited text is unchanged. It derives the `openapi` `ToSchema`
   so the TypeScript types regenerate automatically (no hand-written TS).
 * A new `TextAnnotation` struct. It is deliberately minimal and open:
@@ -105,7 +105,7 @@ surface only appears when some citation capability is active.
 The reason atom already runs end-of-message guardrails on the fully-assembled
 assistant text before the `Message` is built
 (`evaluate_post_generation_guardrails` in `crates/core/src/engine/execution/reason.rs`,
-trait `PostGenerationOutputGuardrail` in `crates/core/src/output_guardrail.rs`).
+trait `PostGenerationOutputGuardrail` in `crates/contracts/src/runtime/output_guardrail.rs`).
 Those are **block/allow only**. Citations need a **mutating sibling in the same
 family**: a `PostGenerationAnnotationHook` that receives the assembled text (and
 an LLM-capable context) and returns `Vec<TextAnnotation>` to attach to the

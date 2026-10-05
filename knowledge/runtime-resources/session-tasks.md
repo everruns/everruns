@@ -552,7 +552,7 @@ No backward compatibility is required; data migrates forward once:
 
 - Storage: `session_tasks` + `session_task_messages` (migration 053);
   PostgreSQL and in-memory backends both route updates through
-  `apply_task_update` in `crates/core/src/session_task.rs`. gRPC workers get
+  `apply_task_update` in `crates/contracts/src/runtime/session_task.rs`. gRPC workers get
   the registry via task RPCs in the internal worker protocol; task and message
   payloads travel as native protobuf messages (EVE-642), serialized once by
   protobuf framing rather than JSON-encoded into byte fields. The proto↔core

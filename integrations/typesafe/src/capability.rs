@@ -1,10 +1,12 @@
 //! The hosted `typesafe` capability and its tool.
 
 use async_trait::async_trait;
-use everruns_contracts::tool_types::ToolHints;
-use everruns_contracts::runtime::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_contracts::runtime::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus,
+};
 use everruns_contracts::runtime::tool_context::ToolContext;
 use everruns_contracts::runtime::tools::{Tool, ToolExecutionResult};
+use everruns_contracts::tool_types::ToolHints;
 use serde_json::Value;
 use tracing::debug;
 
@@ -14,12 +16,13 @@ use crate::{CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER
 
 /// This crate's capability contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "hosted")]
-pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::IntegrationPlugin] =
-    &[everruns_contracts::runtime::capabilities::IntegrationPlugin {
+pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::IntegrationPlugin] = &[
+    everruns_contracts::runtime::capabilities::IntegrationPlugin {
         experimental_only: true,
         feature_flag: None,
         factory: || Box::new(JevCapability),
-    }];
+    },
+];
 
 /// This crate's connector contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "hosted")]
@@ -229,9 +232,9 @@ impl Tool for JevDecisionTool {
 mod tests {
     use super::*;
     use everruns_contracts::error::{AgentLoopError, Result};
-    use everruns_contracts::typed_id::SessionId;
     use everruns_contracts::runtime::connection_services::UserConnectionResolver;
     use everruns_contracts::runtime::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
+    use everruns_contracts::typed_id::SessionId;
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Arc;

@@ -231,7 +231,8 @@ pub fn decode_thread_context(raw: &str) -> Option<ThreadContext> {
 
 /// Encode a thread context for persistence. See [`decode_thread_context`].
 pub fn encode_thread_context(context: &ThreadContext) -> crate::runtime::error::Result<String> {
-    serde_json::to_string(context).map_err(|e| crate::runtime::error::AgentLoopError::store(e.to_string()))
+    serde_json::to_string(context)
+        .map_err(|e| crate::runtime::error::AgentLoopError::store(e.to_string()))
 }
 
 /// Load the persisted thread context for a session, if any.

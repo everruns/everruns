@@ -118,7 +118,7 @@ template. See [agent-handoff.md](../runtime-resources/agent-handoff.md).
 `agent_delegation` feature flag. Its adoption default requires organisation opt-in;
 registration follows deployment availability, while assignment and execution use
 organisation-effective flags. See [Feature Flags](../security/feature-flags.md)
-and the [shared registration policy](../../crates/core/src/execution_features.rs).
+and the [shared registration policy](../../crates/contracts/src/runtime/execution_features.rs).
 
 ### Guardrail Capabilities
 
@@ -160,7 +160,7 @@ Contract rules:
   (`crates/everruns/tests/fixtures/external-consumer/capability-pack/`
   proves this;
   API/DB serialization adapters like the OpenAPI shadow schema in
-  `crates/core/src/capability_types.rs` stay thin).
+  `crates/contracts/src/runtime/capability_types.rs` stay thin).
 - Architecture guard: `scripts/lib/check-capability-contract.sh` (pre-push
   step and CI job `capability-contract`) fails any new capability
   ID/config/definition type in core, host, or platform.
@@ -313,7 +313,7 @@ from org data and are validated separately.
 
 #### Capability (Public DTO)
 
-See `crates/core/src/capability_dto.rs` for the full `CapabilityDto` struct definition.
+See `crates/contracts/src/runtime/capability_dto.rs` for the full `CapabilityDto` struct definition.
 
 ##### Description Markdown Support
 
@@ -356,7 +356,7 @@ Fetch content from URLs and convert HTML to markdown.
 
 #### CapabilityId (String wrapper)
 
-Capability IDs are string-based for extensibility. New capabilities can be added without database migrations. See `crates/core/src/capability_types.rs` for `CapabilityId`, `CapabilityStatus`, and `AgentCapabilityConfig` types.
+Capability IDs are string-based for extensibility. New capabilities can be added without database migrations. See `crates/contracts/src/runtime/capability_types.rs` for `CapabilityId`, `CapabilityStatus`, and `AgentCapabilityConfig` types.
 
 ##### ID Format
 
@@ -402,7 +402,7 @@ Associates a capability with an agent via `ref` (CapabilityId) + optional `confi
 
 #### Capability Trait (everruns-core)
 
-See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `facts()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`, `llm_error_hook()`.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `facts()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`, `llm_error_hook()`.
 
 ##### LLM Error Hook Boundary
 
@@ -423,7 +423,7 @@ capability-specific message copy). The atom stays behavior-agnostic: it knows
 nothing about any specific capability's logic, so new error-recovery extensions
 are built purely as capabilities. The first consumer is
 `usage_limit_auto_continue` (schedules a continuation after a provider usage limit
-resets); see `crates/core/src/llm_error_hook.rs`.
+resets); see `crates/contracts/src/runtime/llm_error_hook.rs`.
 
 ##### System Prompt Methods
 
@@ -442,7 +442,7 @@ resets); see `crates/core/src/llm_error_hook.rs`.
 
 This is the generic mechanism behind "the current time is X": baking a changing timestamp into the system prompt would bust the system-prompt cache every turn, and a tool round-trip is slower and only informs the model when it asks. `current_time` contributes its value as a `Dynamic` fact (and keeps `get_current_time` for explicit timezone/format queries). Static facts share the same `<facts>` wire format; a single explanatory note (`FACTS_DYNAMIC_NOTE`) is added to the cached prompt once whenever any active capability declares a dynamic fact.
 
-`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per answered input on every request (via `collect_dynamic_facts`), so implementations must be cheap, side-effect free, and derive time-dependent values from `ctx.as_of`, never from the clock: a past block has to render the same text on every later request. See `crates/core/src/capabilities/facts.rs` and `crates/core/src/engine/execution/reason/facts.rs`.
+`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per answered input on every request (via `collect_dynamic_facts`), so implementations must be cheap, side-effect free, and derive time-dependent values from `ctx.as_of`, never from the clock: a past block has to render the same text on every later request. See `crates/contracts/src/runtime/capabilities/facts.rs` and `crates/core/src/engine/execution/reason/facts.rs`.
 
 **Cache-anchor interaction.** Every facts block is replayed on the next request, so none is volatile and cache breakpoints may sit on them. The one exception is a conversation that ends on an answer (a continuation): the block then trails the answer as of now and nothing reproduces it, so `ReasonAtom` sets `LlmCallConfig.volatile_suffix_len` to 1 and the Anthropic driver anchors its breakpoint before it. Drivers that do not implement message-level anchoring ignore the field (`0` is the default).
 
@@ -550,7 +550,7 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 
 ##### Capability-Contributed Skills
 
-Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-core` (`builtins` feature) then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
+Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-core` (`builtins` feature) then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/contracts/src/runtime/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
 
 ### Capability Dependencies
 
@@ -582,7 +582,7 @@ When a capability that depends on `session_file_system` is selected (e.g. the
 
 #### Dependency Resolution API
 
-See `crates/core/src/capabilities/mod.rs` for `resolve_dependencies()` and `ResolvedCapabilities`.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for `resolve_dependencies()` and `ResolvedCapabilities`.
 
 #### Built-in Capabilities with Dependencies
 
@@ -645,12 +645,12 @@ MCP and Skill virtual capabilities currently declare no features.
 
 #### compute_features()
 
-See `crates/core/src/capabilities/mod.rs` for `compute_features()`, resolves dependencies, collects features, deduplicates.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for `compute_features()`, resolves dependencies, collects features, deduplicates.
 
 ### Capability Lifecycle
 
 Removing a built-in capability is a two-step lifecycle declared in code on the
-capability itself (`CapabilityStatus`, `crates/core/src/capability_types.rs`),
+capability itself (`CapabilityStatus`, `crates/contracts/src/runtime/capability_types.rs`),
 never in org data. Nothing about a removal depends on a migration over agent or
 harness rows.
 
@@ -694,7 +694,7 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 
 High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
 
-See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
+See `crates/contracts/src/runtime/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
 
 #### Admin-Only Tier Decision (PRs #1485, #1500, EVE-395)
 
@@ -1207,7 +1207,7 @@ Capabilities can declare mount points to populate files and directories in the s
 
 #### Mount Point Data Model
 
-See `crates/core/src/capability_types.rs` for `MountPoint`, `MountAccess`, `MountSource`, and `MountEntry` types.
+See `crates/contracts/src/runtime/capability_types.rs` for `MountPoint`, `MountAccess`, `MountSource`, and `MountEntry` types.
 
 Key concepts:
 - `MountAccess`: `ReadOnly` or `ReadWrite`
@@ -1224,7 +1224,7 @@ Virtual mounts (`MountSource::Virtual`) serve content from an in-memory `Virtual
 - **Write protection**: Writes/deletes to virtual paths return a readonly error.
 - **Eviction**: Virtual mount entries for a session are evicted from the registry on session delete.
 - **Lazy reconstruction**: Content is deterministic (compiled in), so the registry can be reconstructed from session capabilities on server restart.
-- **Implementation**: See `crates/server/src/domains/session_files/virtual_mount_registry.rs` for `VirtualMountRegistry` and `crates/core/src/capability_types.rs` for `VirtualFileTree`.
+- **Implementation**: See `crates/server/src/domains/session_files/virtual_mount_registry.rs` for `VirtualMountRegistry` and `crates/contracts/src/runtime/capability_types.rs` for `VirtualFileTree`.
 
 #### Mount Application Flow
 
@@ -1422,7 +1422,7 @@ Capabilities can contribute message filters that modify how messages are retriev
 
 #### MessageFilter Types and Provider Trait
 
-For the full `MessageFilter` enum variants (TimeRange, EventTypes, ToolName, Search, ExcludeIds, IncludeIds, Custom) and `MessageFilterProvider` trait, see `crates/core/src/message_filter.rs`. Most filters map directly to SQL WHERE clauses; `Custom` uses in-memory predicates applied after DB query.
+For the full `MessageFilter` enum variants (TimeRange, EventTypes, ToolName, Search, ExcludeIds, IncludeIds, Custom) and `MessageFilterProvider` trait, see `crates/contracts/src/runtime/message_filter.rs`. Most filters map directly to SQL WHERE clauses; `Custom` uses in-memory predicates applied after DB query.
 
 #### Message Injection
 
@@ -1478,7 +1478,7 @@ output.message.completed  ← persisted message body = replacement
 
 #### Trait + Helpers
 
-See `crates/core/src/output_guardrail.rs` for `OutputGuardrail`, `OutputGuardrailRun`, `OutputGuardrailContext`, `GuardrailDecision`, `GuardrailBlock`, `ArmedGuardrail`, and the `evaluate_guardrails` helper used by `ReasonAtom`.
+See `crates/contracts/src/runtime/output_guardrail.rs` for `OutputGuardrail`, `OutputGuardrailRun`, `OutputGuardrailContext`, `GuardrailDecision`, `GuardrailBlock`, `ArmedGuardrail`, and the `evaluate_guardrails` helper used by `ReasonAtom`.
 
 #### Design Decisions
 

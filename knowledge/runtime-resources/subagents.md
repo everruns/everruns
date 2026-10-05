@@ -62,7 +62,7 @@ migration 062. Lifecycle state is now tracked via `SessionTask` records
 (`TASK_KIND_SUBAGENT`) owned by the parent session; use `list_tasks` /
 `get_task` to read subagent status.
 
-See `crates/core/src/session.rs` for full field list.
+See `crates/contracts/src/runtime/session.rs` for full field list.
 
 ### SubagentStatus
 

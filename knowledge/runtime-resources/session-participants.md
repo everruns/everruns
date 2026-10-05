@@ -18,7 +18,7 @@ agents that can be addressed for individual turns, and the users watching or
 driving the conversation.
 
 This spec captures the durable model and its invariants. Field-level shapes,
-enum variants, and SQL live in code, see `crates/core/src/session.rs`
+enum variants, and SQL live in code, see `crates/contracts/src/runtime/session.rs`
 (`SessionParticipant`, `SessionParticipantKind`, `SessionParticipantRole`), the
 command layer in `crates/server/src/domains/sessions/commands.rs`, and migrations
 `095_session_participants.sql` / `098_session_participant_user_identity.sql` /

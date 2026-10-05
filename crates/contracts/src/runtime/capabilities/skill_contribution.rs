@@ -5,8 +5,8 @@
 //! mount contribution DTOs, and SKILL.md normalization used by declarative and
 //! custom capabilities.
 
-use crate::runtime::capability_types::{MountDirectoryBuilder, MountPoint};
 use crate::CapabilityId;
+use crate::runtime::capability_types::{MountDirectoryBuilder, MountPoint};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

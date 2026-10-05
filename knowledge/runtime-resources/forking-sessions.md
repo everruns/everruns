@@ -250,7 +250,7 @@ best-effort posture of `create_session`'s post-commit side effects.
 
 ## Implementation references
 
-- Session model: `crates/core/src/session.rs` (`Session`, `SessionStatus`).
+- Session model: `crates/contracts/src/runtime/session.rs` (`Session`, `SessionStatus`).
 - Session row + create row: `crates/server/src/storage/models.rs`
   (`SessionRow`, `CreateSessionRow`).
 - Create flow + `row_to_session`:

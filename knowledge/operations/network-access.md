@@ -13,7 +13,7 @@ Controls which hosts/URLs an agent session can reach via network-capable tools
 
 ## Policy Contract
 
-The [network access implementation](../../crates/core/src/network_access.rs)
+The [network access implementation](../../crates/contracts/src/runtime/network_access.rs)
 owns the serialized fields and supported domain, subdomain, and URL-prefix
 patterns. Allow rules restrict access; block rules override grants.
 
@@ -48,7 +48,7 @@ Harness (baseline)
 ```
 
 Merge function: `network_access::merge_network_access(parent, child)`
-- See `crates/core/src/network_access.rs` for implementation.
+- See `crates/contracts/src/runtime/network_access.rs` for implementation.
 
 ## Enforcement
 

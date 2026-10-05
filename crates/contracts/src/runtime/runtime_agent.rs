@@ -590,7 +590,9 @@ mod tests {
         }
 
         fn tools(&self) -> Vec<Box<dyn crate::runtime::Tool>> {
-            vec![Box::new(crate::runtime::channel_messaging::ChannelPostMessageTool)]
+            vec![Box::new(
+                crate::runtime::channel_messaging::ChannelPostMessageTool,
+            )]
         }
     }
 
@@ -640,8 +642,10 @@ mod tests {
     }
 
     fn progress_definition() -> ToolDefinition {
-        crate::runtime::Tool::to_definition(&crate::runtime::channel_messaging::ChannelPostMessageTool)
-            .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
+        crate::runtime::Tool::to_definition(
+            &crate::runtime::channel_messaging::ChannelPostMessageTool,
+        )
+        .with_capability_attribution("prompt_tool_fixture", Some("Prompt Tool Fixture"))
     }
 
     fn tools_json(tools: &[ToolDefinition]) -> serde_json::Value {
@@ -672,7 +676,8 @@ mod tests {
     #[test]
     fn builder_preserves_all_explicit_request_options() {
         let tool = client_tool("click", "Click a selector");
-        let policy = crate::runtime::network_access::NetworkAccessList::block(["private.example.com"]);
+        let policy =
+            crate::runtime::network_access::NetworkAccessList::block(["private.example.com"]);
         let agent = RuntimeAgentBuilder::default()
             .system_prompt("You are a coder.")
             .model("gpt-5.4")
@@ -995,7 +1000,8 @@ mod tests {
             (false, Some(true), true),
         ] {
             let client = client_tool("click", "overlay client");
-            let policy = crate::runtime::network_access::NetworkAccessList::block(["private.example.com"]);
+            let policy =
+                crate::runtime::network_access::NetworkAccessList::block(["private.example.com"]);
             let routing =
                 serde_json::json!({"models":["openai/a","anthropic/b"],"route":"fallback"});
             let layer = AgentConfigOverlay {

@@ -188,10 +188,14 @@ mod tests {
     use std::sync::Arc;
 
     use crate::runtime::error::Result;
-    use crate::runtime::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
+    use crate::runtime::leased_resource::{
+        LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
+    };
     use crate::runtime::session_resource::{RegisterSessionResource, SessionResourceEntry};
     use crate::runtime::typed_id::{LeasedResourceId, SessionId};
-    use crate::runtime::{session_services::LeasedResourceStore, session_services::SessionResourceRegistry};
+    use crate::runtime::{
+        session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
+    };
 
     #[derive(Default)]
     struct TestLeasedResourceStore {
@@ -299,7 +303,9 @@ mod tests {
             filter: Option<&SessionResourceFilter>,
         ) -> Result<Vec<SessionResourceEntry>> {
             if self.fail_reads {
-                return Err(crate::runtime::AgentLoopError::store("registry unavailable"));
+                return Err(crate::runtime::AgentLoopError::store(
+                    "registry unavailable",
+                ));
             }
             let entries = self.entries.lock().await;
             Ok(entries

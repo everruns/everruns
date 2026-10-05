@@ -21,10 +21,13 @@ fail() {
 
 # Decision SPI lives below core for credential-free vendor drivers.
 # The two thin concern modules re-export only those neutral contracts.
+# The runtime SPI lives in `everruns_contracts::runtime` so integrations skip
+# core, but it is still core's own surface: whole-module re-exports keep it.
 if core_kernel_source_files | xargs grep -n -E \
   '^pub use (everruns_provider|everruns_capability|everruns_contracts|crate::(compact|driver_registry|error|execution_phase|llm_retry|model|model_profiles|model_spec|provider|runtime_provider|tool_types|typed_id))' \
   | grep -v -F 'pub use everruns_contracts::tools::{ToolExecutionResult, ToolInternalError};' \
-  | grep -v -E '^crates/core/src/(decisions|decision_driver)\.rs:[0-9]+:pub use everruns_contracts::(decisions|decision_driver)::\*;'; then
+  | grep -v -E '^crates/core/src/(decisions|decision_driver)\.rs:[0-9]+:pub use everruns_contracts::(decisions|decision_driver)::\*;' \
+  | grep -v -E '^crates/core/src/lib\.rs:[0-9]+:pub use everruns_contracts::runtime::[a-z_]+;$'; then
   fail "everruns-core publicly re-exports a provider/capability compatibility owner"
 fi
 

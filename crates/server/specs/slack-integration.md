@@ -121,7 +121,7 @@ Future: a Slack file fetch tool could let agents pull file content on demand via
 
 ## User Identity
 
-Slack user identity is carried via the channel-agnostic `ExternalActor` struct (see `crates/core/src/message.rs`). The Slack handler:
+Slack user identity is carried via the channel-agnostic `ExternalActor` struct (see `crates/contracts/src/runtime/message.rs`). The Slack handler:
 
 1. Resolves Slack user ID → display name via `users.info` API (requires `users:read` scope)
 2. Populates `ExternalActor { actor_id, actor_name, source: "slack", metadata }` on the message
@@ -149,10 +149,10 @@ Doppler vars: `TEST_SLACK_BOT_TOKEN`, `TEST_SLACK_SIGNING_SECRET`, `TEST_SLACK_T
 
 ## Files
 
-- `crates/core/src/channel.rs` - Channel abstractions: `InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionRoutingStrategy`, `ThreadContext`, `build_session_routing_tag()`
+- `crates/contracts/src/runtime/channel.rs` - Channel abstractions: `InboundChannelEvent`, `ChannelDeliveryAdapter`, `SessionRoutingStrategy`, `ThreadContext`, `build_session_routing_tag()`
 - `crates/core/src/app.rs` - `SlackChannelConfig`, `SessionStrategy` (converts to/from `SessionRoutingStrategy`), `SlackReplyMode` (converts to/from `ChannelReplyMode`)
-- `crates/core/src/message.rs` - `ExternalActor` struct
-- `crates/core/src/channel_messaging.rs` - Channel-neutral posting tool, sender contract, mode instructions and stored-tag normalization
+- `crates/contracts/src/runtime/message.rs` - `ExternalActor` struct
+- `crates/contracts/src/runtime/channel_messaging.rs` - Channel-neutral posting tool, sender contract, mode instructions and stored-tag normalization
 - `crates/server/src/api/messages.rs` - API `Message` response includes `external_actor`
 - `crates/server/src/api/slack_events.rs` - Webhook endpoint, `parse_slack_inbound_event()`, manifest generation, signing verification, session routing via `build_session_routing_tag()`, user name resolution
 - `crates/server/src/slack_delivery.rs` - `SlackDeliveryAdapter` (implements `ChannelDeliveryAdapter`), event-driven `SlackDeliveryDispatcher` with retry and startup recovery

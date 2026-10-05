@@ -21,7 +21,7 @@ Commands are NOT tools. They either execute directly (system) or inject instruct
 
 ## Types
 
-See `crates/core/src/command.rs` for `CommandDescriptor`, `CommandSource`, `CommandArg`, `CommandResult`.
+See `crates/contracts/src/runtime/command.rs` for `CommandDescriptor`, `CommandSource`, `CommandArg`, `CommandResult`.
 
 ## Capability Trait Extension
 
