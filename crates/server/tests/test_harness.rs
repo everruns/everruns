@@ -785,10 +785,6 @@ impl TestServer {
             auth_state.clone(),
             driver_registry.clone(),
         );
-        let knowledge_bases_state =
-            api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
-        let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
-        let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let virtual_registry = Arc::new(
             everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
@@ -811,12 +807,6 @@ impl TestServer {
                 db.clone(),
                 encryption.clone(),
             ),
-        );
-        let mcp_servers_state = api::mcp_servers::AppState::new(
-            db.clone(),
-            encryption.clone(),
-            capability_service.clone(),
-            auth_state.clone(),
         );
         let capabilities_state = api::capabilities::AppState::new(
             db.clone(),
@@ -867,26 +857,14 @@ impl TestServer {
             event_service.clone(),
             auth_state.clone(),
         );
-        let workspaces_state = api::workspaces::AppState::new(db.clone(), auth_state.clone());
         let workspace_files_state =
             api::workspace_files::AppState::new(db.clone(), auth_state.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
-        let session_storage_state =
-            api::session_storage::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
-        let agent_credentials_state = api::agent_credentials::AppState::new(
-            db.clone(),
-            encryption.clone(),
-            auth_state.clone(),
-        );
         let session_databases_state = api::session_databases::AppState::new(
             sqldb_store.clone(),
             db.clone(),
             auth_state.clone(),
         );
-        let users_state = api::users::UsersState {
-            db: db.clone(),
-            auth: auth_state.clone(),
-        };
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone());
         let durable_state = api::durable::AppState::new(
             Some(durable_store.clone()),
@@ -899,11 +877,8 @@ impl TestServer {
             Some(durable_store.clone()),
             auth_state.clone(),
         );
-        let skills_state =
-            api::skills::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
         let plugins_state =
             api::plugins::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
-        let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
             auth_state.clone(),
@@ -955,11 +930,6 @@ impl TestServer {
         );
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
 
-        let virtual_users_state = api::virtual_users::AppState::new(
-            db.clone(),
-            capability_service.clone(),
-            auth_state.clone(),
-        );
         let virtual_user_connections_state = api::virtual_user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1069,6 +1039,7 @@ impl TestServer {
         // under, matching app_builder.
         .with_elicitation_base_url(auth::builtin::root_url_from_api_base(&auth_config.base_url))
         .with_mcp_events(mcp_events.clone());
+        let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
         let mcp_elicitation_state = api::mcp_elicitation::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1092,15 +1063,11 @@ impl TestServer {
 
         // Build API routes
         let mut api_routes = Router::new()
-            .merge(api::health_issues::routes(api::health_issues::AppState {
-                db: db.clone(),
-                auth: auth_state.clone(),
-                encryption: encryption.clone(),
-            }))
+            .merge(api::health_issues::routes(api_state.clone()))
             .merge(api::agents::routes(agents_state))
             .merge(api::budgets::routes(budgets_state))
-            .merge(api::agent_credentials::routes(agent_credentials_state))
-            .merge(api::virtual_users::routes(virtual_users_state))
+            .merge(api::agent_credentials::routes(api_state.clone()))
+            .merge(api::virtual_users::routes(api_state.clone()))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))
@@ -1115,37 +1082,37 @@ impl TestServer {
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
             .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
-            .merge(api::knowledge_bases::routes(knowledge_bases_state))
-            .merge(api::memory::routes(memory_state))
-            .merge(api::memory_files::routes(memory_files_state))
+            .merge(api::knowledge_bases::routes(api_state.clone()))
+            .merge(api::memory::routes(api_state.clone()))
+            .merge(api::memory_files::routes(api_state.clone()))
             .merge(api::providers::routes(providers_state))
-            .merge(api::mcp_servers::routes(mcp_servers_state))
+            .merge(api::mcp_servers::routes(api_state.clone()))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::commands::routes(commands_state))
             .merge(api::command_dispatch::routes(mcp_endpoint_state.clone()))
             .merge(api::session_files::routes(
                 session_files_state.with_virtual_registry(virtual_registry.clone()),
             ))
-            .merge(api::workspaces::routes(workspaces_state))
+            .merge(api::workspaces::routes(api_state.clone()))
             .merge(api::workspace_files::routes(
                 workspace_files_state.with_virtual_registry(virtual_registry.clone()),
             ))
             .merge(api::session_git::routes(session_git_state))
-            .merge(api::session_storage::routes(session_storage_state))
+            .merge(api::session_storage::routes(api_state.clone()))
             .merge(api::session_databases::routes(session_databases_state))
-            .merge(api::users::routes(users_state))
+            .merge(api::users::routes(api_state.clone()))
             .merge(api::durable::routes(durable_state))
             .merge(api::schedules::routes(schedules_state))
-            .merge(api::skills::routes(skills_state))
+            .merge(api::skills::routes(api_state.clone()))
             .merge(api::plugins::routes(plugins_state))
-            .merge(api::images::routes(images_state))
+            .merge(api::images::routes(api_state.clone()))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::org_invitations::routes(org_invitations_state))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::org_feature_flags::routes(org_feature_flags_state))
             .merge(api::payments::routes(
-                api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone()),
+                api_state.clone(),
                 feature_flags.machine_payments,
             ))
             .merge(api::sandbox_templates::routes(environments_state))
@@ -1176,8 +1143,7 @@ impl TestServer {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
         }
         if feature_flags.observers {
-            let observers_state = api::observers::AppState::new(db.clone(), auth_state.clone());
-            api_routes = api_routes.merge(api::observers::routes(observers_state));
+            api_routes = api_routes.merge(api::observers::routes(api_state.clone()));
         }
 
         api_routes = api_routes.merge(auth::personal_access_token_routes(

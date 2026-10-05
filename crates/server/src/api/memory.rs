@@ -1,50 +1,24 @@
 // Workspace Memory CRUD HTTP routes.
 
-use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::{Command, Ctx};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
+use crate::domains::common::Command;
 pub use crate::domains::memory::types::{
     CreateMemoryRequest, ListMemoriesQuery, MemoryResponse, UpdateMemoryRequest,
 };
 use crate::domains::memory::{
     CreateMemory, DeleteMemory, GetMemory, ListMemories, SyncMemoryNow, UpdateMemoryCmd,
 };
-use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::Caller;
-use std::sync::Arc;
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiResult, ErrorResponse, ListResponse};
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-
-    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(
-            Caller::from(org),
-            self.db.clone(),
-            None,
-            self.auth.permission_resolver.clone(),
-        )
-        .with_feature_flags(org.feature_flags.clone())
-    }
-}
-
-impl_auth_state!(AppState);
-
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/memories", post(create_memory).get(list_memories))
         .route(
@@ -69,7 +43,7 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn create_memory(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreateMemoryRequest>,
 ) -> Result<(StatusCode, Json<MemoryResponse>), (StatusCode, Json<ErrorResponse>)> {
     let memory = CreateMemory::from(req).run(&state.ctx(&org)).await?;
@@ -88,7 +62,7 @@ pub async fn create_memory(
 )]
 pub async fn list_memories(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListMemoriesQuery>,
 ) -> ApiResult<ListResponse<MemoryResponse>> {
     let memories = ListMemories::from(query).run(&state.ctx(&org)).await?;
@@ -108,7 +82,7 @@ pub async fn list_memories(
 )]
 pub async fn get_memory(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(memory_id): Path<String>,
 ) -> ApiResult<MemoryResponse> {
     Ok(Json(GetMemory { memory_id }.run(&state.ctx(&org)).await?))
@@ -130,7 +104,7 @@ pub async fn get_memory(
 )]
 pub async fn update_memory(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(memory_id): Path<String>,
     Json(request): Json<UpdateMemoryRequest>,
 ) -> ApiResult<MemoryResponse> {
@@ -155,7 +129,7 @@ pub async fn update_memory(
 )]
 pub async fn sync_memory_now(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(memory_id): Path<String>,
 ) -> ApiResult<MemoryResponse> {
     Ok(Json(
@@ -176,7 +150,7 @@ pub async fn sync_memory_now(
 )]
 pub async fn delete_memory(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(memory_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     DeleteMemory { memory_id }.run(&state.ctx(&org)).await?;

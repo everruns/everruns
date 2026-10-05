@@ -2,14 +2,13 @@
 // Routes for listing session key-value storage and secrets
 // Secrets are returned without their values for security
 
-use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::{Command, Ctx};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
+use crate::domains::common::Command;
 use crate::domains::session_storage::{
     BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage,
 };
-use crate::kernel_imports::{Caller, contracts::typed_id::SessionId};
-use crate::storage::StorageBackend;
-use crate::storage::encryption::EncryptionService;
+use crate::kernel_imports::contracts::typed_id::SessionId;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -18,10 +17,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiResult, ErrorResponse, ListResponse};
 
 /// Key-value entry info (key and timestamps, no value)
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -63,41 +61,8 @@ pub struct BatchSetSecretsResponse {
     pub count: usize,
 }
 
-/// App state for session storage routes
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub encryption: Option<Arc<EncryptionService>>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        encryption: Option<Arc<EncryptionService>>,
-        auth: AuthState,
-    ) -> Self {
-        Self {
-            db,
-            encryption,
-            auth,
-        }
-    }
-
-    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(
-            Caller::from(org),
-            self.db.clone(),
-            self.encryption.clone(),
-            self.auth.permission_resolver.clone(),
-        )
-    }
-}
-
-impl_auth_state!(AppState);
-
 /// Create session storage routes (nested under sessions)
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/sessions/{session_id}/storage/keys", get(list_keys))
         .route(
@@ -127,7 +92,7 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn delete_secret(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((session_id, name)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let deleted = DeleteSessionSecret { session_id, name }
@@ -156,7 +121,7 @@ pub async fn delete_secret(
 )]
 pub async fn list_keys(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<KeyValueInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
@@ -185,7 +150,7 @@ pub async fn list_keys(
 )]
 pub async fn list_secrets(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(session_id): Path<String>,
 ) -> Result<Json<ListResponse<SecretInfo>>, StatusCode> {
     let session_id: SessionId = session_id.parse().map_err(|_| StatusCode::BAD_REQUEST)?;
@@ -219,7 +184,7 @@ pub async fn list_secrets(
 )]
 pub async fn batch_set_secrets(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(session_id): Path<String>,
     Json(body): Json<BatchSetSecretsRequest>,
 ) -> ApiResult<BatchSetSecretsResponse> {

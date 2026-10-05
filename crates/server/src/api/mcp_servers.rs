@@ -3,12 +3,11 @@
 //
 // Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (API endpoints)
 
+use crate::api::state::ApiState;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::records::McpServer;
-use crate::services::CapabilityService;
-use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -18,13 +17,10 @@ use axum::{
 use everruns_contracts::typed_id::McpServerId;
 use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
 
-use super::common::{
-    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
-};
-use super::dispatch::{Dispatchable, impl_dispatchable};
+use super::common::{ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls};
+use super::dispatch::Dispatchable;
 use super::pagination::bounded_page_limit;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 const USAGE_AGENT_NAME_LIMIT: i64 = 25;
@@ -94,47 +90,8 @@ pub struct McpServerConfigResponse {
     pub transport_type: String,
 }
 
-/// App state for MCP servers routes
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub encryption: Option<Arc<EncryptionService>>,
-    pub capability_service: Arc<CapabilityService>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        encryption: Option<Arc<EncryptionService>>,
-        capability_service: Arc<CapabilityService>,
-        auth: AuthState,
-    ) -> Self {
-        Self {
-            db,
-            encryption,
-            capability_service,
-            auth,
-        }
-    }
-
-    /// Build a domain Ctx from this AppState for the given org.
-    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
-        crate::domains::common::Ctx::new(
-            Caller::from(org),
-            self.db.clone(),
-            self.capability_service.clone(),
-            self.encryption.clone(),
-            self.auth.permission_resolver.clone(),
-        )
-    }
-}
-
-impl_auth_state!(AppState);
-impl_dispatchable!(AppState);
-
 /// Create MCP server routes
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route(
             "/v1/mcp-servers",
@@ -197,7 +154,7 @@ pub async fn mcp_server_config(
 )]
 pub async fn create_mcp_server(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreateMcpServerRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<McpServer>>), (StatusCode, Json<ErrorResponse>)> {
     state
@@ -219,7 +176,7 @@ pub async fn create_mcp_server(
 )]
 pub async fn list_mcp_servers(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListMcpServersQuery>,
 ) -> ApiResult<ListResponse<WithUrls<McpServer>>> {
     state
@@ -246,7 +203,7 @@ pub async fn list_mcp_servers(
 )]
 pub async fn list_mcp_server_catalog(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListMcpServerCatalogQuery>,
 ) -> Result<Json<McpServerCatalogResponse>, (StatusCode, Json<ErrorResponse>)> {
     let caller = Caller::from(&org);
@@ -325,7 +282,7 @@ pub async fn list_mcp_server_catalog(
 )]
 pub async fn get_mcp_server_usage(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(server_id): Path<String>,
 ) -> Result<Json<McpServerUsageResponse>, (StatusCode, Json<ErrorResponse>)> {
     let caller = Caller::from(&org);
@@ -378,7 +335,7 @@ pub async fn get_mcp_server_usage(
 )]
 pub async fn get_mcp_server(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(server_id): Path<String>,
 ) -> ApiResult<WithUrls<McpServer>> {
     state
@@ -405,7 +362,7 @@ pub async fn get_mcp_server(
 )]
 pub async fn update_mcp_server(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(server_id): Path<String>,
     Json(req): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<WithUrls<McpServer>> {
@@ -432,7 +389,7 @@ pub async fn update_mcp_server(
 )]
 pub async fn delete_mcp_server(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     state
@@ -443,7 +400,7 @@ pub async fn delete_mcp_server(
 
 pub async fn destroy_mcp_server(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     state

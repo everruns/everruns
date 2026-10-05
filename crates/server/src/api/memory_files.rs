@@ -4,12 +4,12 @@
 // by the session filesystem so reusable client code is straightforward to
 // share.
 
-use crate::auth::{AuthState, ResolvedOrg};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
 use crate::domains::memory::files::{
     GrepMatchInfo, MemoryFileRead, MemoryFileService, MemoryFsError, NewFileInput,
 };
 use crate::domains::memory::{MEMORY_MANAGE, MEMORY_VIEW};
-use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -20,30 +20,15 @@ use axum::{
 use everruns_core::{Caller, Policy};
 use mime_guess::from_path;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::{ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ErrorResponse, ListResponse};
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
+fn service(state: &ApiState) -> MemoryFileService {
+    MemoryFileService::new(state.db.clone())
 }
 
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-
-    fn service(&self) -> MemoryFileService {
-        MemoryFileService::new(self.db.clone())
-    }
-}
-
-impl_auth_state!(AppState);
-
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route(
             "/v1/memories/{memory_id}/fs",
@@ -206,7 +191,7 @@ fn decode_request_content(
 }
 
 fn authorize_memory_file_access(
-    state: &AppState,
+    state: &ApiState,
     org: &ResolvedOrg,
     policy: &Policy,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
@@ -263,11 +248,11 @@ fn err_to_response(e: MemoryFsError) -> (StatusCode, Json<ErrorResponse>) {
 )]
 pub async fn list_root(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(memory_id): Path<String>,
 ) -> Result<Json<ListResponse<MemoryFileInfo>>, (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -297,11 +282,11 @@ pub async fn list_root(
 )]
 pub async fn get_file(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((memory_id, path)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -344,7 +329,7 @@ pub async fn get_file(
 // so the router method returns 400 rather than 405.
 pub async fn create_at_root(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(_memory_id): Path<String>,
     Json(_req): Json<CreateMemoryFileRequest>,
 ) -> Result<(StatusCode, Json<MemoryFileInfo>), (StatusCode, Json<ErrorResponse>)> {
@@ -376,12 +361,12 @@ pub async fn create_at_root(
 )]
 pub async fn create_file(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((memory_id, path)): Path<(String, String)>,
     Json(req): Json<CreateMemoryFileRequest>,
 ) -> Result<(StatusCode, Json<MemoryFileInfo>), (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -435,12 +420,12 @@ pub async fn create_file(
 )]
 pub async fn update_file(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((memory_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateMemoryFileRequest>,
 ) -> Result<Json<MemoryFile>, (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -479,12 +464,12 @@ pub async fn update_file(
 )]
 pub async fn delete_file(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((memory_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -509,12 +494,12 @@ pub async fn delete_file(
 )]
 pub async fn stat_action(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(memory_id): Path<String>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<MemoryFileInfo>, (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -538,12 +523,12 @@ pub async fn stat_action(
 )]
 pub async fn grep_action(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(memory_id): Path<String>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResultEntry>>, (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -579,11 +564,11 @@ pub async fn grep_action(
 )]
 pub async fn download_action(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((memory_id, path)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
-    let svc = state.service();
+    let svc = service(&state);
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
         .await
@@ -643,10 +628,10 @@ mod tests {
         }
     }
 
-    fn app_state() -> AppState {
-        let db = Arc::new(StorageBackend::in_memory());
-        let auth = AuthState::builtin(AuthConfig::default(), db.clone());
-        AppState::new(db, auth)
+    fn app_state() -> ApiState {
+        let db = std::sync::Arc::new(crate::storage::StorageBackend::in_memory());
+        let auth = crate::auth::AuthState::builtin(AuthConfig::default(), db.clone());
+        ApiState::for_test(db, None, auth)
     }
 
     struct DenyAllResolver;
@@ -684,7 +669,7 @@ mod tests {
     #[tokio::test]
     async fn get_file_uses_configured_permission_resolver() {
         let mut state = app_state();
-        state.auth.permission_resolver = Arc::new(DenyAllResolver);
+        state.auth.permission_resolver = std::sync::Arc::new(DenyAllResolver);
 
         let result = get_file(
             org_with_role(OrgRole::Owner),

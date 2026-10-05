@@ -5,9 +5,9 @@
 // Supports PNG, JPEG, GIF, WebP (OpenAI Vision compatible formats).
 // Generates thumbnails on upload for efficient display.
 
-use super::common::impl_auth_state;
-use crate::auth::{AuthState, ResolvedOrg};
-use crate::storage::{StorageBackend, models::CreateImageRow};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
+use crate::storage::models::CreateImageRow;
 use axum::{
     Json, Router,
     body::Body,
@@ -23,7 +23,6 @@ use image::ImageFormat;
 use image::ImageReader;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
-use std::sync::Arc;
 use utoipa::ToSchema;
 
 // ============================================
@@ -97,23 +96,8 @@ pub struct UploadImageQuery {
 // App State and Routes
 // ============================================
 
-/// App state for images routes
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-}
-
-impl_auth_state!(AppState);
-
 /// Create images routes
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         // Upload needs larger body limit (100MB + some overhead for multipart encoding)
         .route(
@@ -219,7 +203,7 @@ pub(crate) fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec
 )]
 pub async fn upload_image(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<UploadImageQuery>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ImageUploadResponse>), (StatusCode, String)> {
@@ -348,7 +332,7 @@ pub async fn upload_image(
 )]
 pub async fn list_images(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListImagesQuery>,
 ) -> Result<Json<Vec<ImageInfo>>, StatusCode> {
     let rows = state
@@ -392,7 +376,7 @@ pub async fn list_images(
 )]
 pub async fn get_image(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(image_id): Path<String>,
 ) -> Result<Response, (StatusCode, String)> {
     let image_id: ImageId = image_id
@@ -443,7 +427,7 @@ pub async fn get_image(
 )]
 pub async fn get_thumbnail(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(image_id): Path<String>,
 ) -> Result<Response, (StatusCode, String)> {
     let image_id: ImageId = image_id
@@ -496,7 +480,7 @@ pub async fn get_thumbnail(
 )]
 pub async fn delete_image(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(image_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let image_id: ImageId = image_id

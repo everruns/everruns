@@ -3,45 +3,20 @@
 // Exposes the session resource registry — a unified view of all resources
 // active in a session (sandboxes, subagents, browser sessions, etc.).
 
-use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::{Command, Ctx};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
+use crate::domains::common::Command;
 use crate::domains::session_resources::ListSessionResources;
-use crate::kernel_imports::{Caller, SessionResourceEntry, contracts::typed_id::SessionId};
-use crate::storage::StorageBackend;
+use crate::kernel_imports::{SessionResourceEntry, contracts::typed_id::SessionId};
 use axum::{
     Json, Router,
     extract::{Path, State},
     routing::get,
 };
-use std::sync::Arc;
 
-use super::common::{ApiResult, impl_auth_state};
+use super::common::ApiResult;
 
-/// App state for session resource routes.
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-
-    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(
-            Caller::from(org),
-            self.db.clone(),
-            None,
-            self.auth.permission_resolver.clone(),
-        )
-    }
-}
-
-impl_auth_state!(AppState);
-
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/sessions/{session_id}/resources", get(list_resources))
         .with_state(state)
@@ -59,7 +34,7 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn list_resources(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<Vec<SessionResourceEntry>> {
     Ok(Json(

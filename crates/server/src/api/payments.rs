@@ -1,7 +1,8 @@
 // Machine payment account/policy/attempt HTTP routes.
 
-use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::{Command, Ctx};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
+use crate::domains::common::Command;
 use crate::domains::payments::types::{
     CreatePaymentAccountRequest, CreatePaymentPolicyRequest, ListPaymentAccountsQuery,
     ListPaymentAttemptsQuery, ListPaymentPoliciesQuery, UpdatePaymentAccountRequest,
@@ -13,54 +14,18 @@ use crate::domains::payments::{
     ListPaymentPolicies, UpdatePaymentAccountCmd, UpdatePaymentPolicyCmd,
 };
 use crate::records::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
-use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{any, get, post},
 };
-use everruns_core::Caller;
-use std::sync::Arc;
 
-use super::common::{ErrorResponse, impl_auth_state};
+use super::common::ErrorResponse;
 
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub encryption: Option<Arc<EncryptionService>>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        encryption: Option<Arc<EncryptionService>>,
-        auth: AuthState,
-    ) -> Self {
-        Self {
-            db,
-            encryption,
-            auth,
-        }
-    }
-
-    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(
-            Caller::from(org),
-            self.db.clone(),
-            self.encryption.clone(),
-            self.auth.permission_resolver.clone(),
-        )
-        .with_feature_flags(org.feature_flags.clone())
-    }
-}
-
-impl_auth_state!(AppState);
-
-pub fn routes(state: AppState, machine_payments_enabled: bool) -> Router {
+pub fn routes(state: ApiState, machine_payments_enabled: bool) -> Router {
     // THREAT[TM-CRYPTO-008]: Do not expose wallet-custody or spending-policy APIs when
     // machine payments are disabled, even though their handlers remain compiled in.
     if !machine_payments_enabled {
@@ -109,7 +74,7 @@ async fn machine_payments_disabled() -> ApiError {
 )]
 pub async fn create_payment_account(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreatePaymentAccountRequest>,
 ) -> Result<(StatusCode, Json<PaymentAccount>), ApiError> {
     let account = CreatePaymentAccount(req).run(&state.ctx(&org)).await?;
@@ -126,7 +91,7 @@ pub async fn create_payment_account(
 )]
 pub async fn list_payment_accounts(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListPaymentAccountsQuery>,
 ) -> Result<Json<Vec<PaymentAccount>>, ApiError> {
     Ok(Json(
@@ -152,7 +117,7 @@ pub async fn list_payment_accounts(
 )]
 pub async fn get_payment_account(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(payment_account_id): Path<String>,
 ) -> Result<Json<PaymentAccount>, ApiError> {
     Ok(Json(
@@ -177,7 +142,7 @@ pub async fn get_payment_account(
 )]
 pub async fn update_payment_account(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(payment_account_id): Path<String>,
     Json(req): Json<UpdatePaymentAccountRequest>,
 ) -> Result<Json<PaymentAccount>, ApiError> {
@@ -208,7 +173,7 @@ pub async fn update_payment_account(
 )]
 pub async fn disable_payment_account(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(payment_account_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let result = DisablePaymentAccount { payment_account_id }
@@ -233,7 +198,7 @@ pub async fn disable_payment_account(
 )]
 pub async fn create_payment_policy(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreatePaymentPolicyRequest>,
 ) -> Result<(StatusCode, Json<PaymentPolicy>), ApiError> {
     let policy = CreatePaymentPolicy(req).run(&state.ctx(&org)).await?;
@@ -250,7 +215,7 @@ pub async fn create_payment_policy(
 )]
 pub async fn list_payment_policies(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListPaymentPoliciesQuery>,
 ) -> Result<Json<Vec<PaymentPolicy>>, ApiError> {
     Ok(Json(
@@ -277,7 +242,7 @@ pub async fn list_payment_policies(
 )]
 pub async fn get_payment_policy(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(payment_policy_id): Path<String>,
 ) -> Result<Json<PaymentPolicy>, ApiError> {
     Ok(Json(
@@ -302,7 +267,7 @@ pub async fn get_payment_policy(
 )]
 pub async fn update_payment_policy(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(payment_policy_id): Path<String>,
     Json(req): Json<UpdatePaymentPolicyRequest>,
 ) -> Result<Json<PaymentPolicy>, ApiError> {
@@ -337,7 +302,7 @@ pub async fn update_payment_policy(
 )]
 pub async fn disable_payment_policy(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(payment_policy_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let result = DisablePaymentPolicy { payment_policy_id }
@@ -359,7 +324,7 @@ pub async fn disable_payment_policy(
 )]
 pub async fn list_payment_attempts(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListPaymentAttemptsQuery>,
 ) -> Result<Json<Vec<PaymentAttempt>>, ApiError> {
     Ok(Json(
@@ -375,11 +340,14 @@ pub async fn list_payment_attempts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::AuthState;
     use crate::auth::config::AuthConfig;
+    use crate::storage::{EncryptionService, StorageBackend};
     use axum::body::{Body, to_bytes};
     use axum::http::{Method, Request};
     use serde::de::DeserializeOwned;
     use serde_json::json;
+    use std::sync::Arc;
     use tower::ServiceExt;
 
     fn test_app(machine_payments_enabled: bool) -> Router {
@@ -388,7 +356,7 @@ mod tests {
             EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap();
         routes(
-            AppState::new(
+            ApiState::for_test(
                 db.clone(),
                 Some(Arc::new(encryption)),
                 AuthState::builtin(AuthConfig::default(), db).with_feature_flag_policy(

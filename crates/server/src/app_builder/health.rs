@@ -1,22 +1,7 @@
-use crate::api;
-use crate::auth::AuthState;
 use crate::domains::health_issues::service::SlackHealthService;
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::supervised_task::TaskSupervisor;
-use axum::Router;
 use std::sync::Arc;
-
-pub(super) fn routes(
-    db: Arc<StorageBackend>,
-    auth: AuthState,
-    encryption: Option<Arc<EncryptionService>>,
-) -> Router {
-    api::health_issues::routes(api::health_issues::AppState {
-        db,
-        auth,
-        encryption,
-    })
-}
 
 pub(super) async fn start(
     supervisor: &mut TaskSupervisor,

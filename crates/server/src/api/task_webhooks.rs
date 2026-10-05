@@ -2,11 +2,9 @@
 // task transitions (Succeeded / Failed / Canceled). See EVE-579 and
 // knowledge/runtime-resources/session-tasks.md.
 
-use crate::auth::middleware::{AuthState, OrgAdmin};
-use crate::storage::{
-    StorageBackend,
-    models::{CreateOrgTaskWebhook, UpdateOrgTaskWebhook},
-};
+use crate::api::state::ApiState;
+use crate::auth::middleware::OrgAdmin;
+use crate::storage::models::{CreateOrgTaskWebhook, UpdateOrgTaskWebhook};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -16,26 +14,10 @@ use axum::{
 use chrono::{DateTime, Utc};
 use everruns_contracts::url_validation::validate_safe_url;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state};
-
-/// App state for task webhook routes.
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-}
-
-impl_auth_state!(AppState);
+use super::common::{ApiOptionExt, ApiResultExt, ErrorResponse, ListResponse};
 
 fn generate_webhook_public_id() -> String {
     let uuid = Uuid::new_v4();
@@ -113,7 +95,7 @@ where
     Option::<T>::deserialize(de).map(Some)
 }
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/task-webhooks", get(list_webhooks).post(create_webhook))
         .route(
@@ -137,7 +119,7 @@ pub fn routes(state: AppState) -> Router {
     tag = "task-webhooks"
 )]
 pub async fn list_webhooks(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     OrgAdmin(org): OrgAdmin,
 ) -> Result<Json<ListResponse<TaskWebhookResponse>>, (StatusCode, Json<ErrorResponse>)> {
     let rows = state
@@ -166,7 +148,7 @@ pub async fn list_webhooks(
     tag = "task-webhooks"
 )]
 pub async fn create_webhook(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     OrgAdmin(org): OrgAdmin,
     Json(req): Json<CreateTaskWebhookRequest>,
 ) -> Result<(StatusCode, Json<TaskWebhookResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -208,7 +190,7 @@ pub async fn create_webhook(
     tag = "task-webhooks"
 )]
 pub async fn get_webhook(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     OrgAdmin(org): OrgAdmin,
     Path(webhook_id): Path<String>,
 ) -> Result<Json<TaskWebhookResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -237,7 +219,7 @@ pub async fn get_webhook(
     tag = "task-webhooks"
 )]
 pub async fn update_webhook(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     OrgAdmin(org): OrgAdmin,
     Path(webhook_id): Path<String>,
     Json(req): Json<UpdateTaskWebhookRequest>,
@@ -277,7 +259,7 @@ pub async fn update_webhook(
     tag = "task-webhooks"
 )]
 pub async fn delete_webhook(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     OrgAdmin(org): OrgAdmin,
     Path(webhook_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
