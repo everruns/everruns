@@ -62,17 +62,21 @@ describe("SidebarChatThreads", () => {
     expect(sideChats.getByRole("link", { name: "Alpha" })).toHaveAttribute("aria-current", "page");
     expect(sideChats.getByRole("link", { name: "Beta" })).not.toHaveAttribute("aria-current");
     expect(sideChats.getByRole("link", { name: "New side chat" })).toBeInTheDocument();
+    expect(sideChats.getByText("Side chats").parentElement).toContainElement(
+      sideChats.getByRole("link", { name: "New side chat" }),
+    );
+    expect(sideChats.queryByText("New side chat")).not.toBeInTheDocument();
   });
 
   it("caps the list and offers the way out to all chats", () => {
-    setThreads(Array.from({ length: 8 }, (_, index) => thread(`sess_${index}`, `Thread ${index}`)));
+    setThreads(Array.from({ length: 6 }, (_, index) => thread(`sess_${index}`, `Thread ${index}`)));
 
     render(<SidebarChatThreads pathname="/chats/history" />);
 
     expect(screen.getByText("Thread 0")).toBeInTheDocument();
     expect(screen.getByText(`Thread ${SIDEBAR_THREAD_LIMIT - 1}`)).toBeInTheDocument();
     expect(screen.queryByText(`Thread ${SIDEBAR_THREAD_LIMIT}`)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "All chats" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "View all chats" })).toHaveAttribute(
       "href",
       "/chats/history",
     );
@@ -82,16 +86,17 @@ describe("SidebarChatThreads", () => {
     );
   });
 
-  it("keeps the way out to all chats even with no threads", () => {
-    // /chats is the only place archived threads can be brought back into view,
-    // so the link must not disappear with the list.
-    setThreads([]);
+  it.each([0, 1, 5])("hides All chats with %i side chats", (count) => {
+    setThreads(
+      Array.from({ length: count }, (_, index) => thread(`sess_${index}`, `Thread ${index}`)),
+    );
 
     render(<SidebarChatThreads pathname="/chats/history" />);
 
-    expect(screen.getByRole("link", { name: "All chats" })).toHaveAttribute(
+    expect(screen.queryByRole("link", { name: "View all chats" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New side chat" })).toHaveAttribute(
       "href",
-      "/chats/history",
+      "/chats/new",
     );
   });
 
@@ -121,13 +126,19 @@ describe("SidebarChatThreads", () => {
     setThreads([second, first]);
     rerender(<SidebarChatThreads pathname="/chats/history" />);
 
-    const titles = screen.getAllByRole("link").map((link) => link.textContent);
+    const titles = screen
+      .getAllByRole("link")
+      .filter((link) => link.getAttribute("href") !== "/chats/new")
+      .map((link) => link.textContent);
     expect(titles.slice(0, 2)).toEqual(["Alpha", "Beta"]);
 
     fireEvent.mouseLeave(list);
     rerender(<SidebarChatThreads pathname="/chats/history" />);
 
-    const reordered = screen.getAllByRole("link").map((link) => link.textContent);
+    const reordered = screen
+      .getAllByRole("link")
+      .filter((link) => link.getAttribute("href") !== "/chats/new")
+      .map((link) => link.textContent);
     expect(reordered.slice(0, 2)).toEqual(["Beta", "Alpha"]);
   });
 
