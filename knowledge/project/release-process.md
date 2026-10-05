@@ -273,7 +273,10 @@ runs at three points:
   every crate in the publish set has the workspace version on crates.io, and
   every crate's release tag names the same commit. Before this nothing on
   `main` reported a crate a halted cascade left a version behind, and a version
-  published from several commits (0.34.1) looked complete.
+  published from several commits (0.34.1) looked complete. A never-published
+  crate with no release tag at this version joined the publish set after the
+  version was cut; Crate Release holds it back until the next version, so the
+  audit reports it as a notice rather than a failure (durable-engine after 0.41.0).
 
 **A failed publish is retried once before the cascade halts.** Crate Release
 re-runs a failed Publish Crate job once, on the same run. Transient crates.io

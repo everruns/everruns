@@ -254,6 +254,24 @@ def check_version_is_new(
         )
 
 
+def pending_first_release(
+    version: str, crates: dict[str, str], registry: Registry, tags: dict[str, str]
+) -> list[str]:
+    """Never-published crates that joined the publish set after `version` was cut.
+
+    Crate Release holds a new crate back once siblings are on crates.io from
+    another commit, so it first ships with the next version. Without a
+    crate/<name>/v<version> tag no cascade ever tried it at this version; that
+    is the expected wait, not a halted cascade. A tagged one did fail to publish
+    and stays in the audit.
+    """
+    return sorted(
+        name
+        for name in crates
+        if not registry.versions(name) and f"crate/{name}/v{version}" not in tags
+    )
+
+
 def audit(version: str, crates: dict[str, str], registry: Registry) -> list[str]:
     missing = []
     for name in sorted(crates):
@@ -326,7 +344,14 @@ def main() -> int:
     failures = Failures()
 
     if args.audit:
-        missing = audit(version, crates, Registry())
+        registry = Registry()
+        tags = release_tags(version)
+        pending = pending_first_release(version, crates, registry, tags)
+        if pending:
+            message = f"first crates.io publish waits for the next version: {', '.join(pending)}"
+            print(f"::notice::{message}" if os.environ.get("GITHUB_ACTIONS") == "true" else message)
+            crates = {name: v for name, v in crates.items() if name not in pending}
+        missing = audit(version, crates, registry)
         if missing:
             print(
                 f"{version} is not fully published: {len(missing)} of {len(crates)} crate(s) "
@@ -336,7 +361,7 @@ def main() -> int:
             for line in missing:
                 print(f"  {line}", file=sys.stderr)
             return 1
-        mixed = audit_provenance(version, crates, release_tags(version))
+        mixed = audit_provenance(version, crates, tags)
         if mixed:
             print(
                 f"{version} is on crates.io but was not released from one commit. The "
