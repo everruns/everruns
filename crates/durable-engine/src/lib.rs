@@ -2,8 +2,9 @@
 //!
 //! Durable owns persistence primitives and database connections. This crate
 //! owns the agent-turn conventions, the turn task driver (`TurnTaskDriver`),
-//! and runner backends; the worker composes process services through this
-//! boundary.
+//! and runner backends: `DurableRunner` implements core's `TurnBackend` seam,
+//! with `AgentRunner` as a shim over it. The worker composes process services
+//! through this boundary.
 //!
 //! Decision: this crate carries no transport. The worker's gRPC stores and
 //! runner constructors live in `everruns-worker`, which implements this
@@ -22,6 +23,9 @@ pub mod task_heartbeat;
 #[cfg(test)]
 mod task_heartbeat_tests;
 pub mod task_store;
+pub mod turn_backend;
+#[cfg(test)]
+mod turn_backend_tests;
 pub mod turn_driver;
 #[cfg(test)]
 mod turn_driver_tests;

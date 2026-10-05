@@ -143,7 +143,9 @@ pub use session_services::{
     is_internal_session_kv_key, is_internal_session_secret_name, session_title_updated_event,
     update_session_title_with_event,
 };
-pub use turn_backend::{InProcessBackend, TurnBackend, TurnInput, TurnRequest, TurnTicket};
+pub use turn_backend::{
+    InProcessBackend, PersistedTurn, TurnBackend, TurnInput, TurnRequest, TurnTicket,
+};
 pub use turn_strategy::advance_host_execution;
 #[deprecated(note = "use WorkspaceBackend")]
 pub use workspace::WorkspaceBackend as WorkspaceProvider;
