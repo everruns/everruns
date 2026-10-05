@@ -23,6 +23,7 @@ pub mod context;
 mod context_tests;
 pub mod intent;
 pub mod registry;
+pub mod rest;
 
 use serde_json::Value;
 

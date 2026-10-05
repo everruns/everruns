@@ -180,3 +180,85 @@ async fn reasons_from_rest_and_commands_land_in_history_and_context_holds_its_re
             .any(|entry| entry["entity_ref"] == id.as_str())
     );
 }
+
+#[tokio::test]
+async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context() {
+    let server = TestServer::new().await;
+
+    // POST /v1/workspaces writes storage directly; the header reason still lands.
+    let created: Value = send(
+        &server,
+        Method::POST,
+        "/v1/workspaces",
+        vec![("everruns-change-reason", "rest%20create")],
+        json!({ "name": unique("rest") }),
+    )
+    .await
+    .assert_success()
+    .json();
+    let id = created["id"].as_str().expect("workspace id").to_string();
+
+    server
+        .put(
+            &format!("/v1/context/{id}"),
+            json!({ "content": "Frozen until review.", "expected_revision": 0 }),
+        )
+        .await
+        .assert_success();
+
+    // A stale acknowledgement is refused before the write.
+    let refused: Value = send(
+        &server,
+        Method::PATCH,
+        &format!("/v1/workspaces/{id}"),
+        vec![("everruns-context-revision", "7")],
+        json!({ "name": unique("stale") }),
+    )
+    .await
+    .assert_status(StatusCode::CONFLICT)
+    .json();
+    assert_eq!(refused["code"], "manager_context_changed");
+
+    send(
+        &server,
+        Method::PATCH,
+        &format!("/v1/workspaces/{id}"),
+        vec![
+            ("everruns-change-reason", "acked%20rename"),
+            ("everruns-context-revision", "1"),
+        ],
+        json!({ "name": unique("renamed") }),
+    )
+    .await
+    .assert_success();
+
+    let history: Value = server
+        .get(&format!("/v1/history/{id}"))
+        .await
+        .assert_success()
+        .json();
+    let commands: Vec<&str> = history
+        .as_array()
+        .expect("history")
+        .iter()
+        .map(|entry| entry["command"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        commands,
+        [
+            "update_workspace",
+            "set_manager_context",
+            "create_workspace"
+        ]
+    );
+    assert_eq!(history[0]["reason"], "acked rename");
+    assert_eq!(history[0]["changed_fields"], json!(["name"]));
+    assert_eq!(history[0]["surface"], "api");
+    assert_eq!(history[2]["reason"], "rest create");
+
+    // Archiving drops the workspace's manager context.
+    server
+        .delete(&format!("/v1/workspaces/{id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+}

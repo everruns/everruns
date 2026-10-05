@@ -160,6 +160,17 @@ pub async fn upload_skill(
     SKILL_MANAGE
         .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
         .map_err(|e| ErrorResponse::new(e.message).into_response(StatusCode::FORBIDDEN))?;
+    // Upload writes storage directly, so it records its history entry itself.
+    let change = crate::domains::change_history::rest::RestChange::begin(
+        state.db.clone(),
+        caller.clone(),
+        "upload_skill",
+        crate::domains::change_history::EntityKind::Skill,
+        crate::domains::change_history::ChangeAction::Created,
+        None,
+        &["archive"],
+    )
+    .await?;
 
     let skill =
         crate::domains::skills::archive::create_from_archive(&state.db, caller.org_id, data)
@@ -185,6 +196,7 @@ pub async fn upload_skill(
         .capability_service
         .invalidate_skills_cache(caller.org_id)
         .await;
+    change.finish(&skill.id.to_string()).await;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(skill))))

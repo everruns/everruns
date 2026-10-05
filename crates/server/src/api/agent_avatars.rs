@@ -91,6 +91,21 @@ fn bad_request(message: impl Into<String>) -> ApiError {
 }
 
 /// The agent the caller may manage, or the error to return.
+/// Avatar routes write storage directly, so they record the agent's history
+/// entry themselves (`change_history::rest`).
+async fn avatar_change(
+    state: &AppState,
+    org: &ResolvedOrg,
+    agent: &AgentRow,
+    operation: &'static str,
+) -> Result<crate::domains::change_history::rest::RestChange, ApiError> {
+    use crate::domains::change_history::{ChangeAction, EntityKind, rest::RestChange};
+    let (db, caller) = (state.db.clone(), Caller::from(org));
+    let (kind, action) = (EntityKind::Agent, ChangeAction::Updated);
+    let entity_ref = Some(agent.public_id.as_str());
+    Ok(RestChange::begin(db, caller, operation, kind, action, entity_ref, &["avatar"]).await?)
+}
+
 async fn manageable_agent(
     state: &AppState,
     org: &ResolvedOrg,
@@ -176,6 +191,7 @@ async fn store_avatar(
     source: String,
     variants: Vec<RenderedAvatarVariant>,
 ) -> Result<Json<AgentAvatar>, ApiError> {
+    let change = avatar_change(state, org, agent, "set_agent_avatar").await?;
     let avatar_id = state
         .db
         .set_agent_avatar(SetAgentAvatar {
@@ -197,6 +213,7 @@ async fn store_avatar(
             ErrorResponse::internal_error()
         })?
         .ok_or_else(|| ErrorResponse::not_found("Agent"))?;
+    change.finish(&agent.public_id).await;
 
     if let Some(provisioner) = state.slack_provisioner.clone() {
         let (db, encryption) = (state.db.clone(), state.encryption.clone());
@@ -324,6 +341,7 @@ pub async fn delete_agent_avatar(
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let agent = manageable_agent(&state, &org, &agent_id).await?;
+    let change = avatar_change(&state, &org, &agent, "delete_agent_avatar").await?;
     state
         .db
         .clear_agent_avatar(org.org_id, agent.id.uuid())
@@ -332,6 +350,7 @@ pub async fn delete_agent_avatar(
             tracing::error!(%error, "Failed to remove agent avatar");
             ErrorResponse::internal_error()
         })?;
+    change.finish(&agent.public_id).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
