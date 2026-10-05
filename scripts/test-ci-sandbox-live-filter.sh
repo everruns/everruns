@@ -16,13 +16,21 @@ workflow = Path(".github/workflows/ci.yml")
 jobs = yaml.safe_load(workflow.read_text())["jobs"]
 
 filters_raw = None
+predicate_quantifier = None
 for step in jobs["changes"]["steps"]:
     if step.get("id") == "live_filter":
         filters_raw = step["with"]["filters"]
+        predicate_quantifier = step["with"].get("predicate-quantifier")
         break
 
 if filters_raw is None:
     sys.exit(f"{workflow}: no `live_filter` paths-filter step found")
+
+if predicate_quantifier != "some-with-excludes":
+    sys.exit(
+        f"{workflow}: `live_filter` must use `some-with-excludes` so one changed "
+        "file can match any positive provider/shared path while negated docs stay excluded"
+    )
 
 filters = yaml.safe_load(filters_raw)
 
