@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Clock3,
   ExternalLink,
@@ -38,7 +38,7 @@ import {
 } from "@/components/agents/agent-version-policy-field";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/layout";
 import {
   Dialog,
   DialogContent,
@@ -66,7 +66,13 @@ function TriggerRuns({ agentId, triggerId }: { agentId: string; triggerId: strin
   );
 }
 
-export function AgentTriggersPanel({ agentId }: { agentId: string }) {
+export function AgentTriggersPanel({
+  agentId,
+  children,
+}: {
+  agentId: string;
+  children?: ReactNode;
+}) {
   const { data: triggers = [], isLoading } = useAgentTriggers(agentId);
   const updateTrigger = useUpdateAgentTrigger(agentId);
   const deleteTrigger = useDeleteAgentTrigger(agentId);
@@ -108,25 +114,27 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
+    <section className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <CardTitle>Triggers</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Wake this agent on a schedule or on events.
-          </p>
+          <h3 className="text-lg font-semibold tracking-tight">Triggers</h3>
+          <p className="text-sm text-muted-foreground">When this agent wakes up on its own</p>
         </div>
         <LinkButton href={`/agents/${agentId}/triggers/new`} size="sm">
           <Plus className="size-4" /> Add trigger
         </LinkButton>
-      </CardHeader>
-      <CardContent className="space-y-3">
+      </div>
+      {children}
+      <div className="space-y-3">
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Loading triggers…</p>
         ) : triggers.length === 0 ? (
-          <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No triggers yet. Add one to let this agent run proactively.
-          </div>
+          <EmptyState
+            icon={<Clock3 />}
+            title="No triggers yet"
+            description="Add a schedule or event to run this agent proactively."
+            className="border-solid bg-card py-8"
+          />
         ) : (
           triggers.map((trigger) => {
             const isGithub = trigger.trigger_type === "github";
@@ -146,7 +154,7 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
                 ? getScheduleTriggerConfig(trigger)
                 : getWebhookTriggerConfig(trigger);
             return (
-              <div key={trigger.id} className="space-y-3 border p-4">
+              <div key={trigger.id} className="space-y-3 border bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -263,7 +271,7 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
             );
           })
         )}
-      </CardContent>
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
@@ -285,6 +293,6 @@ export function AgentTriggersPanel({ agentId }: { agentId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </section>
   );
 }

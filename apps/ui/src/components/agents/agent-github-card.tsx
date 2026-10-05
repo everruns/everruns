@@ -9,7 +9,7 @@ import {
   useDisconnectAgentGitHub,
 } from "@/hooks/use-agent-github";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -48,24 +48,33 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <GitPullRequest className="size-4" /> GitHub
-        </CardTitle>
-      </CardHeader>
       <CardContent className="space-y-3">
-        {isLoading || !status ? (
-          <p className="text-sm text-muted-foreground">Loading GitHub status…</p>
-        ) : status.connected ? (
-          <>
-            <div className="text-sm">
-              <p className="font-medium">{status.account ?? "GitHub App installed"}</p>
-              <p className="text-muted-foreground">
-                {status.repository_selection === "selected"
-                  ? "Selected repositories"
-                  : "All repositories"}
-              </p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-[1_1_24rem] items-start gap-3">
+            <span className="flex size-9 shrink-0 items-center justify-center border bg-muted">
+              <GitPullRequest className="size-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 space-y-1">
+              <h4 className="font-medium">GitHub</h4>
+              {isLoading || !status ? (
+                <p className="text-sm text-muted-foreground">Loading GitHub status…</p>
+              ) : status.connected ? (
+                <>
+                  <p className="break-words text-sm">{status.account ?? "GitHub App installed"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {status.repository_selection === "selected"
+                      ? "Selected repositories"
+                      : "All repositories"}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Give this agent its own GitHub App to read pull requests and comment as itself.
+                </p>
+              )}
             </div>
+          </div>
+          {status?.connected ? (
             <div className="flex flex-wrap items-center gap-2">
               <Link
                 href={`/agents/${agentId}/triggers/new?type=github`}
@@ -87,17 +96,12 @@ export function AgentGitHubCard({ agentId }: { agentId: string }) {
                 Disconnect
               </Button>
             </div>
-          </>
-        ) : (
-          <>
-            <p className="text-sm text-muted-foreground">
-              Give this agent its own GitHub App so it can read pull requests and comment as itself.
-            </p>
-            <Button size="sm" onClick={onConnect} disabled={connect.isPending}>
+          ) : !isLoading && status ? (
+            <Button variant="outline" size="sm" onClick={onConnect} disabled={connect.isPending}>
               {status.app_created ? "Finish installing" : "Connect GitHub"}
             </Button>
-          </>
-        )}
+          ) : null}
+        </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
       </CardContent>
 

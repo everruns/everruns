@@ -110,9 +110,15 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
   const scheduleEndpoints = channels.filter(({ channel }) => isTriggerChannel(channel));
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">Integrations</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Manage how this agent connects and runs.
+        </p>
+      </div>
       <PageControlStrip>
-        <StatGrid>
+        <StatGrid className="gap-4">
           <StatCard label="Health" value={stats.health} hint={stats.healthSub} />
           <StatCard
             label="Invocations · 24h"
@@ -124,21 +130,25 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
             value={stats.successRate === null ? "No runs" : `${stats.successRate.toFixed(1)}%`}
             hint={stats.successSub}
           />
-          <StatCard label="Activity" hint="Last 24 hours">
-            <MiniTimeline runs={stats.timeline} />
+          <StatCard label="Activity" hint="Run metrics pending backend aggregation">
+            {stats.timeline.length > 0 ? (
+              <MiniTimeline runs={stats.timeline} />
+            ) : (
+              <div className="flex h-8 items-center" aria-label="Activity unavailable">
+                <span className="h-px w-full bg-border" />
+              </div>
+            )}
           </StatCard>
         </StatGrid>
       </PageControlStrip>
 
       <PageColumns>
-        <PageMain>
+        <PageMain className="gap-6">
           <section className="flex flex-col gap-3">
-            <div className="flex items-end justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">Channels</h2>
-                <p className="text-sm text-muted-foreground">
-                  {doors.length} {pluralize(doors.length, "channel")} · how callers reach this agent
-                </p>
+                <h3 className="text-lg font-semibold tracking-tight">Channels</h3>
+                <p className="text-sm text-muted-foreground">How callers reach this agent</p>
               </div>
               {canManage && (
                 <Link
@@ -213,12 +223,8 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
             )}
           </section>
 
-          <section className="flex flex-col gap-3">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight">Triggers</h2>
-              <p className="text-sm text-muted-foreground">When this agent wakes up on its own</p>
-            </div>
-
+          <AgentTriggersPanel agentId={agent.id}>
+            <AgentGitHubCard agentId={agent.id} />
             {scheduleEndpoints.length > 0 && (
               <div className="flex flex-col gap-2">
                 {scheduleEndpoints.map(({ channel }) => (
@@ -253,23 +259,14 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                 ))}
               </div>
             )}
-
-            <AgentGitHubCard agentId={agent.id} />
-
-            <AgentTriggersPanel agentId={agent.id} />
-          </section>
+          </AgentTriggersPanel>
         </PageMain>
 
         <PageRail>
-          {budgetsEnabled && canViewBudgets && (
-            <RailSection label="Agent budget">
-              <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
-            </RailSection>
-          )}
-          <RailSection label="Exposures">
+          <RailSection label="Exposure">
             <div className="flex items-center justify-between gap-3">
-              <label htmlFor="exposures-suspended" className="text-sm">
-                Suspend all
+              <label htmlFor="exposures-suspended" className="text-sm font-medium">
+                Suspend all channels
               </label>
               <Switch
                 id="exposures-suspended"
@@ -280,13 +277,17 @@ export function AgentIntegrationsPanel({ agent }: { agent: Agent }) {
                 disabled={!canManage || suspendExposures.isPending || resumeExposures.isPending}
               />
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Takes every channel of this agent off the internet at once, without changing the
-              publish state each one should return to.
+            <p className="mt-3 text-sm text-muted-foreground">
+              Temporarily pause all channels. Published settings are preserved.
             </p>
           </RailSection>
+          {budgetsEnabled && canViewBudgets && (
+            <RailSection label="Agent budget">
+              <BudgetPanel subjectType="agent" subjectId={agent.id} canManage={canManageBudgets} />
+            </RailSection>
+          )}
         </PageRail>
       </PageColumns>
-    </>
+    </div>
   );
 }
