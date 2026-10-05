@@ -236,7 +236,7 @@ impl PrependTransform for ExcludedNoticeTransform {
 ///
 /// ```
 /// use everruns_contracts::runtime::message_filter::{MessageQuery, MessageFilter};
-/// use crate::typed_id::SessionId;
+/// use everruns_contracts::typed_id::SessionId;
 /// use chrono::Utc;
 ///
 /// let query = MessageQuery::new(SessionId::new())
