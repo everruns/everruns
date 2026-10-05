@@ -45,6 +45,10 @@ jest.mock("@/components/agents", () => ({
   ExampleCard: () => null,
 }));
 
+jest.mock("@/components/agents/agent-import-dialog", () => ({
+  AgentImportDialog: () => null,
+}));
+
 // Empty agent set so the primary frame renders the empty-state CTA, and the
 // examples section stays quiet. Everything else is inert.
 jest.mock("@/hooks", () => ({

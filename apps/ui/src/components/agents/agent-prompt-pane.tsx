@@ -28,7 +28,9 @@ interface AgentPromptPaneProps {
   editing: boolean;
   /** Absent for read-only agents: the pane stays a reader. */
   onEdit?: () => void;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
+  /** Untrusted imported instructions must not render raw HTML. */
+  skipHtml?: boolean;
   error?: string;
   /** Rendered under the editor in edit mode: checks about the prompt sit beside it. */
   checks?: React.ReactNode;
@@ -40,6 +42,7 @@ export function AgentPromptPane({
   editing,
   onEdit,
   onChange,
+  skipHtml,
   error,
   checks,
   className,
@@ -101,7 +104,7 @@ export function AgentPromptPane({
             aria-invalid={!!error}
             placeholder="You are a helpful assistant..."
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => onChange?.(event.target.value)}
             className="min-h-[320px] flex-1 resize-y lg:min-h-[520px] font-mono text-sm leading-relaxed md:text-sm"
           />
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -116,7 +119,11 @@ export function AgentPromptPane({
               {value}
             </pre>
           ) : (
-            <StreamdownMessage variant="compact" className="text-[15px] leading-relaxed">
+            <StreamdownMessage
+              skipHtml={skipHtml}
+              variant="compact"
+              className="text-[15px] leading-relaxed"
+            >
               {value}
             </StreamdownMessage>
           )}
