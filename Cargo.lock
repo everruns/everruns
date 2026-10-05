@@ -3352,6 +3352,7 @@ dependencies = [
  "everruns-integrations-web-fetch",
  "everruns-internal-protocol",
  "everruns-sdk",
+ "everruns-server-macros",
  "everruns-test-support",
  "everruns-turbopuffer",
  "everruns-worker",
@@ -3408,6 +3409,15 @@ dependencies = [
  "uuid",
  "wiremock",
  "zip",
+]
+
+[[package]]
+name = "everruns-server-macros"
+version = "0.41.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]

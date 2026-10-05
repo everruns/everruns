@@ -4715,10 +4715,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/skills - List all skills */
+    /** List all active skills. Use search for name search, include_archived=true to include archived. */
     get: operations["list_skills"];
     put?: never;
-    /** POST /v1/skills - Create skill from SKILL.md */
+    /** Create a new skill from SKILL.md content. */
     post: operations["create_skill"];
     delete?: never;
     options?: never;
@@ -4767,7 +4767,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/skills/usage - Count agents/harnesses referencing each skill */
+    /** Count agents and harnesses referencing each skill capability. */
     get: operations["list_skills_usage"];
     put?: never;
     post?: never;
@@ -4794,36 +4794,53 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
-  "/v1/skills/{skill_id}": {
+  "/v1/skills/{id}": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/skills/{skill_id} - Get skill by ID */
+    /** Get a single skill by ID. */
     get: operations["get_skill"];
     put?: never;
     post?: never;
-    /** DELETE /v1/skills/{skill_id} - Delete skill */
+    /** Archive a skill (soft delete). Can be restored. */
     delete: operations["delete_skill"];
     options?: never;
     head?: never;
-    /** PATCH /v1/skills/{skill_id} - Update skill */
+    /** Update a skill. Only provided fields are changed. */
     patch: operations["update_skill"];
     trace?: never;
   };
-  "/v1/skills/{skill_id}/content": {
+  "/v1/skills/{id}/content": {
     parameters: {
       query?: never;
       header?: never;
       path?: never;
       cookie?: never;
     };
-    /** GET /v1/skills/{skill_id}/content - Get full skill content */
+    /** Get full skill content (SKILL.md + files). */
     get: operations["get_skill_content"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/skills/{id}/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Permanently delete an archived skill. */
+    post: operations["destroy_skill"];
     delete?: never;
     options?: never;
     head?: never;
@@ -37256,9 +37273,9 @@ export interface operations {
     parameters: {
       query?: {
         /** @description Search by name or description (case-insensitive substring match). */
-        search?: string | null;
+        search?: string;
         /** @description Include archived skills. Deleted skills never appear in lists. */
-        include_archived?: boolean | null;
+        include_archived?: boolean;
       };
       header?: never;
       path?: never;
@@ -37266,7 +37283,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description List of skills */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
@@ -37290,7 +37307,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Skill created */
+      /** @description Created */
       201: {
         headers: {
           [name: string]: unknown;
@@ -37395,7 +37412,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Usage map keyed by skill id */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
@@ -37437,14 +37454,14 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Skill ID (prefixed, e.g., skill_...) */
-        skill_id: string;
+        /** @description Prefixed public identifier */
+        id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Skill found */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
@@ -37467,14 +37484,14 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Skill ID */
-        skill_id: string;
+        /** @description Prefixed public identifier */
+        id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Skill deleted */
+      /** @description No content */
       204: {
         headers: {
           [name: string]: unknown;
@@ -37495,7 +37512,8 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        skill_id: string;
+        /** @description Prefixed public identifier */
+        id: string;
       };
       cookie?: never;
     };
@@ -37505,7 +37523,7 @@ export interface operations {
       };
     };
     responses: {
-      /** @description Skill updated */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
@@ -37546,20 +37564,57 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description Skill ID */
-        skill_id: string;
+        /** @description Prefixed public identifier */
+        id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
-      /** @description Skill content */
+      /** @description Success */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["SkillContent"];
+        };
+      };
+      /** @description Skill not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  destroy_skill: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Skill is not archived */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Skill not found */

@@ -286,7 +286,7 @@ fn retype_aggregate_properties_in_place(
 /// their `--flag ''` → `None` behavior. The dispatcher applies the same trim
 /// rule for non-empty strings, so we only intervene when there is JSON to
 /// parse on the bash side.
-fn coerce_json_text_params(
+pub(crate) fn coerce_json_text_params(
     schema: &serde_json::Value,
     params: &mut serde_json::Value,
 ) -> Result<(), String> {

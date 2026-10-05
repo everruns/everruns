@@ -74,6 +74,7 @@ parking_lot.workspace = true
 metrics.workspace = true
 cron = "0.17"
 inventory.workspace = true
+everruns-server-macros = { path = "../server-macros" }
 moka.workspace = true
 zip = { version = "8", default-features = false, features = ["deflate"] }
 urlencoding = "2"

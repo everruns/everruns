@@ -13096,9 +13096,11 @@
       "description": "List skills. Supports search and include_archived.",
       "properties": {
         "include_archived": {
+          "description": "Include archived skills. Deleted skills never appear in lists.",
           "type": "boolean"
         },
         "search": {
+          "description": "Search by name or description (case-insensitive substring match).",
           "type": [
             "string",
             "null"

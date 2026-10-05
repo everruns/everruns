@@ -199,3 +199,149 @@ fn every_apidoc_operation_id_is_snake_case() {
         "operationId values must be lower_snake_case: {bad:?}"
     );
 }
+
+/// Commands that declare a REST path the OpenAPI document does not describe.
+///
+/// Ratchet: this list may only shrink. Migrating a command to
+/// `#[command(http = ..)]` documents it; remove its entry then. A command
+/// added here is a route agents cannot discover.
+const UNDOCUMENTED_COMMAND_ROUTES: &[&str] = &[
+    "bulk_update_eval_run_scores",
+    "cancel_eval_run",
+    "check_budget",
+    "check_session_budgets",
+    "copy_workspace_file",
+    "create_budget",
+    "create_eval",
+    "create_eval_case",
+    "create_eval_run",
+    "create_eval_run_share",
+    "create_observer",
+    "create_workspace_file",
+    "delete_agent_check_rule",
+    "delete_budget",
+    "delete_eval",
+    "delete_eval_case",
+    "delete_observer",
+    "delete_workspace_file",
+    "destroy_agent",
+    "destroy_harness",
+    "destroy_mcp_server",
+    "eval_import_preflight",
+    "export_eval_run_artifacts",
+    "export_eval_run_dataset",
+    "get_budget",
+    "get_eval",
+    "get_eval_case",
+    "get_eval_run",
+    "get_eval_run_dataset",
+    "get_eval_run_share",
+    "get_observer",
+    "get_workspace_file",
+    "grep_workspace_files",
+    "import_atif_trajectories",
+    "import_eval_run",
+    "list_agent_check_rules",
+    "list_audit_logs",
+    "list_budget_ledger",
+    "list_budgets",
+    "list_connection_providers",
+    "list_eval_cases",
+    "list_eval_runs",
+    "list_evals",
+    "list_notifications",
+    "list_observer_scores",
+    "list_observers",
+    "list_session_budgets",
+    "list_user_connections",
+    "list_workspace_files",
+    "mark_notification_viewed",
+    "move_workspace_file",
+    "resume_session_budgets",
+    "revoke_eval_run_share",
+    "search_workspace_files",
+    "stat_workspace_file",
+    "top_up_budget",
+    "update_budget",
+    "update_eval",
+    "update_eval_case",
+    "update_eval_result_scores",
+    "update_observer",
+    "update_workspace_file",
+    "upsert_agent_check_rule",
+];
+
+/// `METHOD /path` with placeholder names erased, so `{id}` and `{skill_id}`
+/// compare equal.
+fn route_key(method: &str, path: &str) -> String {
+    let mut normalized = String::new();
+    let mut in_param = false;
+    for c in path.chars() {
+        match c {
+            '{' => {
+                in_param = true;
+                normalized.push_str("{}");
+            }
+            '}' => in_param = false,
+            _ if in_param => {}
+            _ => normalized.push(c),
+        }
+    }
+    format!("{} {normalized}", method.to_ascii_uppercase())
+}
+
+fn spec_routes() -> BTreeSet<String> {
+    let doc = ApiDoc::openapi();
+    let mut out = BTreeSet::new();
+    for (path, item) in &doc.paths.paths {
+        for (method, op) in [
+            ("GET", item.get.as_ref()),
+            ("PUT", item.put.as_ref()),
+            ("POST", item.post.as_ref()),
+            ("PATCH", item.patch.as_ref()),
+            ("DELETE", item.delete.as_ref()),
+        ] {
+            if op.is_some() {
+                out.insert(route_key(method, path));
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn every_command_route_is_documented_in_openapi() {
+    use everruns_server::domains::common::CommandDescriptor;
+
+    let spec = spec_routes();
+    let allowed: BTreeSet<&str> = UNDOCUMENTED_COMMAND_ROUTES.iter().copied().collect();
+    let mut missing = Vec::new();
+    let mut fixed = Vec::new();
+    for desc in inventory::iter::<CommandDescriptor> {
+        let meta = (desc.meta)();
+        if !meta.path.starts_with("/v1/") {
+            continue;
+        }
+        let documented = spec.contains(&route_key(meta.method, meta.path));
+        let listed = allowed.contains(meta.name);
+        if !documented && !listed {
+            missing.push(meta.name);
+        }
+        if documented && listed {
+            fixed.push(meta.name);
+        }
+    }
+    missing.sort_unstable();
+    fixed.sort_unstable();
+    assert!(
+        missing.is_empty(),
+        "Commands with a REST path missing from the OpenAPI document. Declare \
+         them with `#[command(http = ..)]` (or annotate the hand-written \
+         handler with #[utoipa::path] and register it): {missing:?}"
+    );
+    assert!(
+        fixed.is_empty(),
+        "These commands are documented now; remove them from \
+         UNDOCUMENTED_COMMAND_ROUTES: {fixed:?}"
+    );
+}

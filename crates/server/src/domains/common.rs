@@ -716,11 +716,11 @@ impl Ctx {
 // CLI route
 // ============================================================================
 
-// The command line is one contract, shared by `everruns-cli` and the
-// agent-facing tree, so its declaration types live in the contract crate
-// rather than in either consumer. Re-exported here because every command
-// declaration references them.
+// The command line is one contract, shared by `everruns-cli` and the agent-facing
+// tree, so its declaration types live in the contract crate rather than in either
+// consumer. Re-exported, with `#[command]`, because declarations reference them.
 pub use everruns_cli_contract::{CliArg, CliExample, CliRoute};
+pub use everruns_server_macros::command;
 
 // ============================================================================
 // Command trait
