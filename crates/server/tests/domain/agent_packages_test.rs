@@ -22,7 +22,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     assert_eq!(validation["preview"]["files"]["runbook.md"]["bytes"], 11);
     assert_eq!(
         validation["preview"]["files"]["runbook.md"]["is_readonly"],
-        true
+        false
     );
     assert!(
         validation["preview"]["files"]["runbook.md"]

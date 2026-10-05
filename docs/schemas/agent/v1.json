@@ -5,57 +5,6 @@
   "description": "Canonical agent.toml authoring schema. Also applies to parsed YAML and JSON. Validate asset paths, skills, credentials and destination dependencies with everruns agents validate.",
   "$ref": "#/definitions/Manifest",
   "definitions": {
-    "BuiltinTool": {
-      "type": "object",
-      "description": "Built-in tool configuration\n\nNote: The `kind` field has been removed. Tools are now identified\nsolely by their `name` field, and execution happens via the ToolRegistry\nwhich looks up tools by name.",
-      "required": [
-        "name",
-        "description",
-        "parameters"
-      ],
-      "properties": {
-        "category": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Category for tool_search namespace grouping (from parent capability)"
-        },
-        "deferrable": {
-          "$ref": "#/definitions/DeferrablePolicy",
-          "description": "Whether this tool's schema can be deferred via tool_search"
-        },
-        "description": {
-          "type": "string",
-          "description": "Tool description for LLM"
-        },
-        "display_name": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Human-readable display name for UI rendering (e.g., \"Get Current Time\" for `get_current_time`)"
-        },
-        "full_parameters": {
-          "description": "Original full parameter schema saved by `DeferSchemaHook` before stripping.\nSerialized only when present so durable reason-to-act scheduling can\npreserve deferred schemas for `tool_search` in the act phase."
-        },
-        "hints": {
-          "$ref": "#/definitions/ToolHints",
-          "description": "Semantic hints describing the tool's behavioral properties"
-        },
-        "name": {
-          "type": "string",
-          "description": "Tool name (used by LLM and for registry lookup)"
-        },
-        "parameters": {
-          "description": "JSON schema for tool parameters"
-        },
-        "policy": {
-          "$ref": "#/definitions/ToolPolicy",
-          "description": "Tool policy (auto or requires_approval)"
-        }
-      }
-    },
     "Channel": {
       "type": "object",
       "description": "Portable channel intent. Authentication and installation are host bindings.\nChannels default to disabled; enabled intent still requires host publication.",
@@ -79,53 +28,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "ClientSideTool": {
-      "type": "object",
-      "description": "Client-side tool - executed by the client, not the server\nThe server pauses execution and waits for the client to submit results.",
-      "required": [
-        "name",
-        "description",
-        "parameters"
-      ],
-      "properties": {
-        "category": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Category for tool_search namespace grouping (from parent capability)"
-        },
-        "deferrable": {
-          "$ref": "#/definitions/DeferrablePolicy",
-          "description": "Whether this tool's schema can be deferred via tool_search"
-        },
-        "description": {
-          "type": "string",
-          "description": "Tool description for LLM"
-        },
-        "display_name": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Human-readable display name for UI rendering"
-        },
-        "full_parameters": {
-          "description": "Original full parameter schema saved by `DeferSchemaHook` before stripping.\nSerialized only when present so durable reason-to-act scheduling can\npreserve deferred schemas for `tool_search` in the act phase."
-        },
-        "hints": {
-          "$ref": "#/definitions/ToolHints",
-          "description": "Semantic hints describing the tool's behavioral properties"
-        },
-        "name": {
-          "type": "string",
-          "description": "Tool name (used by LLM and for correlation)"
-        },
-        "parameters": {
-          "description": "JSON schema for tool parameters"
-        }
-      }
     },
     "ConversationStarter": {
       "type": "object",
@@ -222,7 +124,7 @@
         "is_readonly": {
           "type": "boolean",
           "description": "Prevent session-side edits or deletes when true.",
-          "default": true
+          "default": false
         },
         "path": {
           "type": "string",
@@ -822,15 +724,6 @@
           "description": "Tool supports detached background execution via `spawn_background`.\nWhen true, the tool may be executed asynchronously outside the current\nforeground tool call and report status back later."
         }
       }
-    },
-    "ToolPolicy": {
-      "type": "string",
-      "description": "Tool policy determines how tool calls are handled",
-      "enum": [
-        "auto",
-        "requires_approval",
-        "client_side"
-      ]
     }
   }
 }

@@ -284,6 +284,7 @@ case "$cmd" in
     # Upload all example agents
     uploaded=0
     skipped=0
+    failed=0
     for agent_file in "$EXAMPLES_DIR"/*/agent.toml; do
       if [[ ! -f "$agent_file" ]]; then
         continue
@@ -303,11 +304,15 @@ case "$cmd" in
         uploaded=$((uploaded + 1))
       else
         echo "      ❌ Failed to create"
+        failed=$((failed + 1))
       fi
     done
 
     echo ""
-    echo "📊 Upload complete: $uploaded created, $skipped skipped"
+    echo "📊 Upload complete: $uploaded created, $skipped skipped, $failed failed"
+    if [[ "$failed" -gt 0 ]]; then
+      exit 1
+    fi
     ;;
 
   seed)

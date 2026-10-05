@@ -11,23 +11,15 @@ and [how-to guide](https://docs.everruns.com/how-to/define-agents-as-files/).
 | [triage](triage) | Root files, CSV fixture, complete skill tree, disabled chat channel | “Investigate an issue using the runbook.” |
 | [project-review](project-review) | Manifest beside a project; `src/**` is selected, README stays out | “Review src/sample.py.” |
 | [mcp-research](mcp-research) | Real anonymous HTTP MCP server; host model defaults; channel intent | “Explain configuration in owner/repository.” |
-| [customer-support-agent](customer-support-agent) | CRM support workflow with demo data tools | “Help a customer recover account access.” |
 | [everruns-support-agent](everruns-support-agent) | Everruns troubleshooting instructions | “Help diagnose a failed session.” |
 | [coding-review-agent](coding-review-agent) | Repository review, file access and Bashkit | “Review this change for material defects.” |
 | [research-agent](research-agent) | Research workflow with a plan and evidence | “Research an engineering decision.” |
 | [incident-commander-agent](incident-commander-agent) | Incident coordination workflow | “Triage the current incident.” |
-| [devops-engineer](devops-engineer) | Infrastructure operations with demo services | “Investigate a service health issue.” |
-| [financial-analyst](financial-analyst) | Financial analysis with demo records | “Summarize monthly expenses.” |
-| [warehouse-operations-manager](warehouse-operations-manager) | Logistics with demo records | “Identify low-stock items.” |
-| [cloud-infrastructure-manager](cloud-infrastructure-manager) | Cloud resource management with demo records | “Review resource utilization.” |
-| [business-operations-analyst](business-operations-analyst) | Business analysis with demo records | “Summarize operational performance.” |
 
-Definitions using `fake_*` capabilities operate on built-in demonstration data;
-they do not connect to a real CRM, warehouse, finance or cloud account. Verify
-capability availability at the destination. No provider model is pinned: choose
-the organization's enabled model, or bind a model in Framework code. Bashkit and
-file tools still depend on host policy. These packages configure behavior; they
-do not include Framework code-defined tools or production service integrations.
+No provider model is pinned: choose the organization's enabled model, or bind a
+model in Framework code. Bashkit and file tools still depend on host policy.
+These packages configure behavior; they do not include Framework code-defined
+tools or production service integrations.
 
 ## Validate, import, compare and export
 
@@ -76,5 +68,23 @@ They have their own Cargo packages, live provider profiles, fixtures and tests.
 everruns agents validate examples/agents/legacy/dad-jokes.md
 ```
 
-The old root Markdown examples were migrated into the TOML folders above,
-preserving their instructions and capability requirements.
+The old root Markdown examples were migrated into TOML folders, preserving
+instructions and capability requirements.
+
+## Test-only demonstration fixtures
+
+Six older definitions depend on `fake_*` capabilities now owned by
+[`everruns-test-support`](../../crates/test-support/src/capabilities/mod.rs).
+They are kept in [fixtures/](fixtures/) for custom test hosts that explicitly
+register those capabilities. Production Platform/worker registries deliberately
+exclude them, so they are not standard imports and `just upload-agents` skips
+this directory. They do not connect to real business services.
+
+| Fixture | Demonstrates |
+| --- | --- |
+| [business-operations-analyst](fixtures/business-operations-analyst) | Cross-system demo analysis |
+| [cloud-infrastructure-manager](fixtures/cloud-infrastructure-manager) | Cloud audit with tool hooks |
+| [customer-support-agent](fixtures/customer-support-agent) | CRM support workflow |
+| [devops-engineer](fixtures/devops-engineer) | Cloud operations workflow |
+| [financial-analyst](fixtures/financial-analyst) | Finance records |
+| [warehouse-operations-manager](fixtures/warehouse-operations-manager) | Warehouse operations |

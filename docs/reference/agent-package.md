@@ -160,7 +160,10 @@ encoding = "base64"
 | `path` | String | Required destination; prefer relative paths |
 | `content` | String | Required text or Base64-encoded bytes |
 | `encoding` | String | `text`; only `text` and `base64` are accepted |
-| `is_readonly` | Boolean | `true` |
+| `is_readonly` | Boolean | `false` for inline files; set `true` to protect seeded content |
+
+Source-selected files default to read-only; inline files default to writable.
+Set `is_readonly` explicitly when permissions matter.
 
 Use either the `files = [...]` form or `[[files]]` tables in one TOML document,
 not both. Strings and inline mapping objects can be mixed in the array form.
@@ -201,7 +204,7 @@ capabilities = [
 
 [model]
 provider = "openai"
-model = "gpt-5.6-terra"
+model = "your-enabled-model"
 ```
 
 `provider` and `model` must be nonempty names. Platform validation requires one

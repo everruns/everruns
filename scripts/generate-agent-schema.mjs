@@ -43,7 +43,7 @@ for (const name of ["Manifest", "FileSource", "InitialFile", "PackageModel", "Pa
   if (defs[name]) defs[name].additionalProperties = false;
 }
 defs.InitialFile.properties.encoding = { ...defs.InitialFile.properties.encoding, enum: ["text", "base64"], default: "text" };
-defs.InitialFile.properties.is_readonly.default = true;
+defs.InitialFile.properties.is_readonly.default = false;
 defs.InitialFile.properties.path.description = "Relative destination in the session file tree; leading / and /workspace/ are accepted aliases.";
 defs.FileSource.properties.is_readonly.default = true;
 defs.PackageCapabilityReference.properties.config.default = {};
@@ -54,13 +54,24 @@ defs.PackageCapabilityReference.properties.config.type = "object";
 if (!defs.ScopedMcpServer) throw new Error("Manifest must expose scoped MCP server settings");
 // serde defaults and try_from are not represented by the shared MCP OpenAPI type.
 delete defs.ScopedMcpServer.required;
+// Drop unused API branches (for example builtin tools) from the public package reference.
+const reachable = new Set(["Manifest"]);
+function visit(value) {
+  if (!value || typeof value !== "object") return;
+  if (value.$ref) {
+    const name = value.$ref.replace("#/definitions/", "");
+    if (!reachable.has(name)) { reachable.add(name); visit(defs[name]); }
+  }
+  for (const child of Object.values(value)) visit(child);
+}
+visit(manifest);
 const document = {
   $schema: "http://json-schema.org/draft-04/schema#",
   id: "https://docs.everruns.com/schemas/agent/v1.json",
   title: "Everruns agent.toml v1",
   description: "Canonical agent.toml authoring schema. Also applies to parsed YAML and JSON. Validate asset paths, skills, credentials and destination dependencies with everruns agents validate.",
   $ref: "#/definitions/Manifest",
-  definitions: Object.fromEntries(Object.entries(defs).sort(([a], [b]) => a.localeCompare(b))),
+  definitions: Object.fromEntries(Object.entries(defs).filter(([name]) => reachable.has(name)).sort(([a], [b]) => a.localeCompare(b))),
 };
 const destination = resolve(root, "docs/schemas/agent/v1.json");
 const content = JSON.stringify(document, null, 2) + "\n";
