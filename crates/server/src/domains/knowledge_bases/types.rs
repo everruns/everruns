@@ -1,4 +1,3 @@
-use crate::api::common::deserialize_nullable_update_field;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{KnowledgeBaseId, KnowledgeEntryId, ModelId};
 use everruns_durable::UpdateField;
@@ -60,17 +59,17 @@ pub struct CreateKnowledgeBaseRequest {
 }
 
 /// Request body for the `update_knowledge_base` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeBaseRequest {
     #[serde(default)]
     /// Human-readable name. Safe to render in user-facing messages.
     #[schema(example = "support-runbooks-archive")]
     pub name: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: UpdateField<String>,
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     /// Optional embedding model for hybrid retrieval. Set to null to clear.
     pub embedding_model_id: UpdateField<ModelId>,
@@ -175,7 +174,7 @@ pub struct CreateKnowledgeEntryRequest {
 }
 
 /// Request body for the `update_knowledge_entry` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeEntryRequest {
     #[serde(default)]
     /// Human-readable title. Safe to render in user-facing messages.
@@ -196,7 +195,7 @@ pub struct UpdateKnowledgeEntryRequest {
     /// Free-form tags attached to this resource.
     #[schema(example = json!(["billing", "refunds", "vp-approval"]))]
     pub tags: Option<Vec<String>>,
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     /// Optional OKF resource URI. Set to null to clear.
     pub resource: UpdateField<String>,

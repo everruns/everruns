@@ -65,7 +65,7 @@ fn encrypt_api_key(ctx: &Ctx, api_key: &str) -> Result<Vec<u8>, CommandError> {
 // ============================================================================
 
 /// Create a new MCP server with a name, URL, and optional authentication.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateMcpServer(pub CreateMcpServerRequest);
 
 impl CommandSchema for CreateMcpServer {
@@ -176,7 +176,7 @@ inventory::submit! { CommandDescriptor::of::<CreateMcpServer>() }
 // ============================================================================
 
 /// List MCP servers. Supports search and include_archived.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListMcpServers {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -230,7 +230,7 @@ inventory::submit! { CommandDescriptor::of::<ListMcpServers>() }
 // ============================================================================
 
 /// Get a single MCP server by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetMcpServer {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -290,7 +290,7 @@ inventory::submit! { CommandDescriptor::of::<GetMcpServer>() }
 // ============================================================================
 
 /// Update an MCP server. Only provided fields are changed.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateMcpServerCmd {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -485,7 +485,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateMcpServerCmd>() }
 // ============================================================================
 
 /// Archive an MCP server (soft delete).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteMcpServer {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -552,7 +552,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteMcpServer>() }
 // ============================================================================
 
 /// Permanently delete an archived MCP server.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyMcpServer {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,

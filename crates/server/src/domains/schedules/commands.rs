@@ -13,7 +13,7 @@ use everruns_durable::{
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateSchedule(pub CreateScheduleRequest);
 
 impl CommandSchema for CreateSchedule {
@@ -80,7 +80,7 @@ impl Command for CreateSchedule {
 
 inventory::submit! { CommandDescriptor::of::<CreateSchedule>() }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListSchedules {
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
@@ -145,7 +145,7 @@ impl Command for ListSchedules {
 
 inventory::submit! { CommandDescriptor::of::<ListSchedules>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
@@ -184,7 +184,7 @@ impl Command for GetSchedule {
 
 inventory::submit! { CommandDescriptor::of::<GetSchedule>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateScheduleCmd {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
@@ -263,7 +263,7 @@ impl Command for UpdateScheduleCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateScheduleCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
@@ -298,7 +298,7 @@ impl Command for DeleteSchedule {
 
 inventory::submit! { CommandDescriptor::of::<DeleteSchedule>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PauseSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
@@ -350,7 +350,7 @@ impl Command for PauseSchedule {
 
 inventory::submit! { CommandDescriptor::of::<PauseSchedule>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
@@ -405,7 +405,7 @@ impl Command for ResumeSchedule {
 
 inventory::submit! { CommandDescriptor::of::<ResumeSchedule>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerSchedule {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
@@ -445,7 +445,7 @@ impl Command for TriggerSchedule {
 
 inventory::submit! { CommandDescriptor::of::<TriggerSchedule>() }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListScheduleExecutions {
     pub schedule_id: uuid::Uuid,
     pub status: Option<String>,
@@ -541,7 +541,7 @@ impl Command for ListScheduleExecutions {
 
 inventory::submit! { CommandDescriptor::of::<ListScheduleExecutions>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetExecution {
     /// Schedule execution's identifier.
     pub execution_id: uuid::Uuid,
@@ -580,7 +580,7 @@ impl Command for GetExecution {
 
 inventory::submit! { CommandDescriptor::of::<GetExecution>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetScheduleStats {
     /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,

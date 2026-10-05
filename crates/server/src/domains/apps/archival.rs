@@ -24,7 +24,7 @@ fn redact_app_for_response(mut app: App) -> App {
 }
 
 /// List frozen App records for archival access.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListApps {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -66,7 +66,7 @@ impl Command for ListApps {
 }
 
 /// Get one frozen App record for archival access.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetApp {
     pub id: String,
 }

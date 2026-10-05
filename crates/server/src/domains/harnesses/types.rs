@@ -16,7 +16,7 @@ use utoipa::{IntoParams, ToSchema};
 pub use crate::storage::models::{CreateHarnessRow, HarnessRow, UpdateHarness};
 
 /// Request to create a new harness
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateHarnessRequest {
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[schema(example = "deep-research")]
@@ -82,7 +82,7 @@ pub struct CreateHarnessRequest {
 }
 
 /// Request to update a harness. Only provided fields will be updated.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateHarnessRequest {
     /// Name, unique per org.
     #[serde(skip_serializing_if = "Option::is_none")]

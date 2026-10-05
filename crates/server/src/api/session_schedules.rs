@@ -51,7 +51,7 @@ impl_auth_state!(AppState);
 // Request/Response types
 // ============================================
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateScheduleRequest {
     /// Enable or disable the schedule.
     pub enabled: Option<bool>,

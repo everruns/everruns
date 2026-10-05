@@ -29,7 +29,7 @@ const MAX_LIMIT: u32 = 200;
 // ============================================================================
 
 /// List available capabilities with optional search and pagination.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListCapabilities {
     pub search: Option<String>,
     /// Include capabilities that have been retired (removed but still
@@ -111,7 +111,7 @@ inventory::submit! { CommandDescriptor::of::<ListCapabilities>() }
 // ============================================================================
 
 /// Get a specific capability by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetCapability {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -157,7 +157,7 @@ inventory::submit! { CommandDescriptor::of::<GetCapability>() }
 // Declarative Capability CRUD
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateDeclarativeCapability(pub CreateDeclarativeCapabilityRequest);
 
 impl CommandSchema for CreateDeclarativeCapability {
@@ -222,7 +222,7 @@ impl Command for CreateDeclarativeCapability {
 
 inventory::submit! { CommandDescriptor::of::<CreateDeclarativeCapability>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListDeclarativeCapabilities {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -262,7 +262,7 @@ impl Command for ListDeclarativeCapabilities {
 
 inventory::submit! { CommandDescriptor::of::<ListDeclarativeCapabilities>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetDeclarativeCapability {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -297,7 +297,7 @@ impl Command for GetDeclarativeCapability {
 
 inventory::submit! { CommandDescriptor::of::<GetDeclarativeCapability>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateDeclarativeCapabilityCmd {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -376,7 +376,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateDeclarativeCapabilityCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteDeclarativeCapability {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -419,7 +419,7 @@ impl Command for DeleteDeclarativeCapability {
 
 inventory::submit! { CommandDescriptor::of::<DeleteDeclarativeCapability>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyDeclarativeCapability {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -522,7 +522,7 @@ const MAX_DRY_RUN_TEXT_BYTES: usize = 64 * 1024;
 /// Evaluate a guardrails capability config against sample content without a
 /// session. This is how checks are tuned (especially in advisory mode)
 /// before being attached to an agent. Pure computation — nothing persisted.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct DryRunGuardrails(pub GuardrailsDryRunRequest);
 
 impl CommandSchema for DryRunGuardrails {
@@ -591,7 +591,7 @@ inventory::submit! { CommandDescriptor::of::<DryRunGuardrails>() }
 /// List the read-only guardrail gallery: ready-made `GuardrailsConfig`
 /// presets an author can adopt into an agent's `guardrails` capability config.
 /// Pure computation over a static catalogue — nothing persisted, no I/O.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 #[serde(default)]
 pub struct ListGuardrailExamples {}
 

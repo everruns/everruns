@@ -14,7 +14,7 @@ fn sqldb_store(
     })
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionDatabases {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -54,7 +54,7 @@ impl Command for ListSessionDatabases {
 
 inventory::submit! { CommandDescriptor::of::<ListSessionDatabases>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateSessionDatabaseCmd {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -103,7 +103,7 @@ impl Command for CreateSessionDatabaseCmd {
 
 inventory::submit! { CommandDescriptor::of::<CreateSessionDatabaseCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionDatabase {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -144,7 +144,7 @@ pub struct DeleteSessionDatabaseResult {
     pub deleted: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSessionDatabase {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -186,7 +186,7 @@ impl Command for DeleteSessionDatabase {
 
 inventory::submit! { CommandDescriptor::of::<DeleteSessionDatabase>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionDatabaseSchema {
     /// Session's prefixed public identifier.
     pub session_id: String,

@@ -162,7 +162,7 @@ pub struct CheckRulesResponse {
 }
 
 /// Upsert request for a single rule (keyed by rule_id in the path).
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpsertCheckRuleRequest {
     /// `builtin_override`, `declarative`, or `nl_rubric`.
     pub kind: String,

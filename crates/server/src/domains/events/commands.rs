@@ -64,7 +64,7 @@ fn validate_q_filter(q: Option<&str>) -> Result<(), CommandError> {
     Ok(())
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListEvents {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -342,7 +342,7 @@ pub struct EventsSummaryResult {
 }
 
 /// Debug snapshot for a session: per-type counts and time span.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct EventsSummaryCmd {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -414,7 +414,7 @@ impl Command for EventsSummaryCmd {
 
 inventory::submit! { CommandDescriptor::of::<EventsSummaryCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StreamSse {
     /// Session's prefixed public identifier.
     pub session_id: String,

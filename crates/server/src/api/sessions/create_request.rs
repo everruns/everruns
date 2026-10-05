@@ -1,7 +1,7 @@
 use super::*;
 
 /// Request to create a session
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateSessionRequest {
     /// How this session was started. Clients may declare `chat`, `playground`, or `api`
     /// (the default); every other source is

@@ -1,4 +1,3 @@
-use crate::api::common::deserialize_nullable_update_field;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{AgentId, MemoryId};
 use everruns_durable::UpdateField;
@@ -89,13 +88,13 @@ pub struct CreateMemoryRequest {
 }
 
 /// Request body for the `update_memory` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateMemoryRequest {
     #[serde(default)]
     /// Human-readable name. Safe to render in user-facing messages.
     #[schema(example = "design-docs")]
     pub name: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: UpdateField<String>,
@@ -115,7 +114,7 @@ pub struct ListMemoriesQuery {
 }
 
 /// Request body for the `create_memory_source` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 #[schema(example = json!({"type": "github", "repository": "acme/design-docs", "branch": "main", "root_folder": "docs/"}))]
 pub enum CreateMemorySourceRequest {
@@ -163,7 +162,7 @@ pub struct GitMemorySourceResponse {
 }
 
 /// Request body for GitHub memory source.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct GitHubMemorySourceRequest {
     /// GitHub repository in `owner/repo` form.
     #[schema(example = "acme/design-docs")]
@@ -183,7 +182,7 @@ pub struct GitHubMemorySourceRequest {
 }
 
 /// Request body for git memory source.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct GitMemorySourceRequest {
     /// Clonable git URL (SSH or HTTPS).
     #[schema(example = "https://github.com/acme/design-docs.git")]

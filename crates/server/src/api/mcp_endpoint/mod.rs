@@ -1533,14 +1533,14 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
 }
 
 // ============================================================================
-// Catalog command-context helpers
+// Catalog command contexts for an org, on the MCP change surface
 // ============================================================================
 
-/// Build a CatalogContext for the given org.
 pub(crate) fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogContext {
     catalog::CatalogContext {
-        domain_ctx: domain_context(Caller::from(org), state)
-            .with_feature_flags(org.feature_flags.clone()),
+        domain_ctx: crate::domains::change_history::on_surface(
+            domain_context(Caller::from(org), state).with_feature_flags(org.feature_flags.clone()),
+        ),
         link_builder: link_builder(state),
     }
 }

@@ -8909,6 +8909,212 @@
         }
       }
     },
+    "/v1/history": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "GET /v1/history - Changes across the organization",
+        "operationId": "list_org_history",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Only this entity kind.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Only this action.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "actor_user_id",
+            "in": "query",
+            "description": "Only changes made as this user.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "via_agent_id",
+            "in": "query",
+            "description": "Only changes an agent made, by the agent's public id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "description": "Only changes at or after this timestamp.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Only changes older than this timestamp (page cursor).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max entries (default 50, max 200).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded changes, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EntityChange"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown kind or action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/{entity_ref}": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "GET /v1/history/{entity_ref} - Changes to one entity",
+        "operationId": "list_entity_history",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id, e.g. agent_01933b5a...",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Entity kind, needed only for kinds whose ids have no prefix\n(`schedule`, `saved_report`, `check_rule`).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "description": "Only this action (`created`, `updated`, `deleted`, ...).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "description": "Only changes older than this timestamp (page cursor).",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max entries (default 50, max 200).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded changes, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EntityChange"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown kind or action, or a ref whose kind cannot be told",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/images": {
       "get": {
         "tags": [
@@ -24327,6 +24533,14 @@
             "type": "object",
             "description": "The command's params, keyed by field name as the contract lists it."
           },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the caller is making this change, recorded in the changed entity's\nhistory. 1 to 1000 characters; rejected if it looks like a credential.\nRead-only commands ignore it. Not part of the idempotency fingerprint:\na retry may word it differently, and the first reason is kept.",
+            "example": "Make the support agent kid friendly, as requested in the product review"
+          },
           "schema_hash": {
             "type": [
               "string",
@@ -28170,6 +28384,105 @@
             "type": "string",
             "format": "uuid",
             "description": "Durable task's identifier."
+          }
+        }
+      },
+      "EntityChange": {
+        "type": "object",
+        "description": "One recorded change to an entity.",
+        "required": [
+          "id",
+          "entity_kind",
+          "entity_ref",
+          "action",
+          "command",
+          "changed_fields",
+          "actor_kind",
+          "surface",
+          "created_at"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "What happened: `created`, `updated`, `deleted`, ...",
+            "example": "updated"
+          },
+          "actor_kind": {
+            "type": "string",
+            "description": "`user`, `api_key`, `agent_session` or `system`.",
+            "example": "agent_session"
+          },
+          "actor_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The user the change was made as (for an agent, the user it acted for)."
+          },
+          "changed_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fields the caller asked to change."
+          },
+          "command": {
+            "type": "string",
+            "description": "Wire name of the command that made the change.",
+            "example": "update_agent"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "entity_kind": {
+            "type": "string",
+            "description": "Kind of entity changed, e.g. `agent`.",
+            "example": "agent"
+          },
+          "entity_ref": {
+            "type": "string",
+            "description": "The entity's public id.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Id of this history entry."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why, in the caller's words. Caller text, not verified."
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Correlation id of the HTTP request, when there was one."
+          },
+          "surface": {
+            "type": "string",
+            "description": "Where the change came in: `api`, `commands`, `mcp`, `platform`,\n`worker` or `internal`.",
+            "example": "platform"
+          },
+          "via_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The agent of that session."
+          },
+          "via_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The session through which an agent made the change."
           }
         }
       },
@@ -52623,6 +52936,10 @@
     {
       "name": "commands",
       "description": "Generic command dispatch over the shared command contract"
+    },
+    {
+      "name": "history",
+      "description": "Recorded changes to entities: who changed what, through which surface, and why"
     },
     {
       "name": "task-webhooks",

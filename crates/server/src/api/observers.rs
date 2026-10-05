@@ -58,7 +58,7 @@ impl AppState {
 // ============================================
 
 /// Request to create a new observer.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateObserverRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -76,7 +76,7 @@ pub struct CreateObserverRequest {
 }
 
 /// Request to update an observer. Omitted fields are unchanged.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateObserverRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable name. Safe to render in user-facing messages.

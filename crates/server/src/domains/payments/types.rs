@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 /// Request body for the `create_payment_account` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreatePaymentAccountRequest {
     /// Principal class that owns the account. One of: `user`, `virtual_user`, `organization`.
     /// The prefix on `owner_id` must match this: `user` → `user_…`, `virtual_user` → `identity_…`,
@@ -63,7 +63,7 @@ pub struct ListPaymentAccountsQuery {
 }
 
 /// Request body for the `create_payment_policy` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreatePaymentPolicyRequest {
     /// Payment account this policy authorizes spending from. Accepts a prefixed `payacct_…`
     /// identifier or a bare UUID.

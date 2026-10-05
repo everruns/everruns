@@ -144,7 +144,7 @@ pub fn routes(state: ScheduleAppState) -> Router {
 // ============================================================================
 
 /// Target for a schedule - either a workflow or activity
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 #[schema(example = json!({"type": "workflow", "name": "session.run", "input": {"session_id": "session_01933b5a00007000800000000000001"}}))]
 pub struct ScheduleTarget {
     /// Target type: "workflow" or "activity"
@@ -161,7 +161,7 @@ pub struct ScheduleTarget {
 }
 
 /// Create schedule request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateScheduleRequest {
     /// Unique name for the schedule
     #[schema(example = "nightly-triage")]
@@ -206,7 +206,7 @@ fn default_enabled() -> bool {
 }
 
 /// Update schedule request
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateScheduleRequest {
     /// New description
     #[schema(example = "Fires the support-triage agent every weekday at 08:00 UTC")]

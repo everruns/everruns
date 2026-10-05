@@ -8,7 +8,7 @@ use super::resolve::{sandbox_from_capabilities, sandbox_from_record, sandbox_tar
 use crate::api::sandbox_templates::{SandboxTargetsResponse, SessionSandboxResponse};
 use crate::domains::common::*;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionSandbox {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -59,7 +59,7 @@ impl Command for GetSessionSandbox {
 
 inventory::submit! { CommandDescriptor::of::<GetSessionSandbox>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSandboxTargets;
 
 impl Command for ListSandboxTargets {

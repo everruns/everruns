@@ -9,7 +9,7 @@ use everruns_core::message::ContentPart;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SubmitToolResults {
     /// Session's prefixed public identifier.
     pub session_id: String,

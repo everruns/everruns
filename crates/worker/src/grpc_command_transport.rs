@@ -56,8 +56,7 @@ impl GrpcAdapter {
                 })?,
                 org_id,
                 user_id: None,
-                idempotency_key: None,
-                metadata: Default::default(),
+                ..Default::default()
             })
             .await
             .map_err(grpc_status_to_error)?

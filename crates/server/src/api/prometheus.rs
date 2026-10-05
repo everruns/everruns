@@ -155,6 +155,9 @@ pub mod names {
     /// bad_request | unprocessable | forbidden | not_found | conflict |
     /// rate_limited | unavailable | internal).
     pub const COMMANDS_TOTAL: &str = "everruns_commands_total";
+    /// Entity history rows that could not be written after their mutation
+    /// committed (see `domains::change_history`). Should stay at zero.
+    pub const ENTITY_HISTORY_WRITE_FAILURES: &str = "everruns_entity_history_write_failures_total";
 
     /// Orphaned blob objects deleted by the object-storage GC sweep (objects
     /// present in the bucket with no live sidecar pointer, older than the grace

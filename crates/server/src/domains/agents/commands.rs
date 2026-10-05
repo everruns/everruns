@@ -78,7 +78,7 @@ async fn persist_harness_source(
 // CreateAgent
 
 /// Create a new agent with a name, system prompt, and optional capabilities.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateAgent(pub CreateAgentRequest);
 
 impl CommandSchema for CreateAgent {
@@ -287,7 +287,7 @@ inventory::submit! { CommandDescriptor::of::<CreateAgent>() }
 // ListAgents
 
 /// List agents. Supports search, include_archived, pagination.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgents {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -368,7 +368,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgents>() }
 // ============================================================================
 
 /// Get a single agent by ID or name.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgent {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -423,7 +423,7 @@ inventory::submit! { CommandDescriptor::of::<GetAgent>() }
 // ============================================================================
 
 /// Update an agent. Only provided fields are changed.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentCmd {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -681,7 +681,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAgentCmd>() }
 // ============================================================================
 
 /// Archive an agent (soft delete).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgent {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -760,7 +760,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteAgent>() }
 // ============================================================================
 
 /// Upsert agent — create or update by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpsertAgent {
     /// Internal replacement mode used by complete portable manifests.
     #[serde(skip)]
@@ -949,7 +949,7 @@ inventory::submit! { CommandDescriptor::of::<UpsertAgent>() }
 // ============================================================================
 
 /// Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyAgent {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -1242,7 +1242,7 @@ async fn create_auto_snapshot_from_agent(ctx: &Ctx, agent: &Agent) -> Result<(),
     })))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentVersions {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1291,7 +1291,7 @@ impl Command for ListAgentVersions {
 
 inventory::submit! { CommandDescriptor::of::<ListAgentVersions>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentVersionCmd {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1346,7 +1346,7 @@ impl Command for CreateAgentVersionCmd {
 
 inventory::submit! { CommandDescriptor::of::<CreateAgentVersionCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SetDefaultAgentVersion {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1431,7 +1431,7 @@ inventory::submit! { CommandDescriptor::of::<SetDefaultAgentVersion>() }
 /// from per-endpoint publish: it leaves every endpoint's own `status` untouched,
 /// so resuming restores exactly the set that was live before — which is what
 /// makes it safe to reach for under pressure.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SuspendAgentExposures {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1477,7 +1477,7 @@ impl Command for SuspendAgentExposures {
 inventory::submit! { CommandDescriptor::of::<SuspendAgentExposures>() }
 
 /// Clear the agent-level exposure suspend, restoring the previously live set.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeAgentExposures {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1551,7 +1551,7 @@ async fn set_exposures_suspended(
         .ok_or_else(|| CommandError::not_found("Agent"))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RollbackAgentVersion {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1662,7 +1662,7 @@ impl Command for RollbackAgentVersion {
 
 inventory::submit! { CommandDescriptor::of::<RollbackAgentVersion>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DiffAgentVersions {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1741,7 +1741,7 @@ fn json_diff(from: &serde_json::Value, to: &serde_json::Value) -> serde_json::Va
 
 inventory::submit! { CommandDescriptor::of::<DiffAgentVersions>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ForkAgentVersion {
     /// Agent's prefixed public identifier.
     pub agent_id: String,
@@ -1866,7 +1866,7 @@ inventory::submit! { CommandDescriptor::of::<ForkAgentVersion>() }
 // ============================================================================
 
 /// Run advisory checks (built-in rules + LLM analysis) against an agent shape.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct AnalyzeAgent {
     #[serde(default)]
     pub harness_id: Option<HarnessId>,
@@ -2003,7 +2003,7 @@ inventory::submit! { CommandDescriptor::of::<AnalyzeAgent>() }
 // ============================================================================
 
 /// Check whether an agent name is available.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckAgentName {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -2083,7 +2083,7 @@ mod tests;
 // ============================================================================
 
 /// Permanently delete an archived agent.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyAgent {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,

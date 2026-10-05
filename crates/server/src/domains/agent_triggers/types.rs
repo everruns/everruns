@@ -32,7 +32,7 @@ pub struct AgentTriggerRun {
 }
 
 /// Request to create a trigger on an agent.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentTriggerRequest {
     /// Trigger kind. Omitted values retain the schedule API default.
     #[serde(default)]
@@ -104,7 +104,7 @@ pub struct CreateAgentTriggerRequest {
 
 /// Request to update a trigger. Only provided fields change; the rest are
 /// preserved from the stored config.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentTriggerRequest {
     /// Replacement cron expression.
     #[serde(default)]

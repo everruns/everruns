@@ -20,7 +20,7 @@ use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::supervised_task::{RestartPolicy, TaskSupervisor};
-use crate::{api, org_init, seed, services};
+use crate::{api, domains, org_init, seed, services};
 use everruns_core::host::HostComposition;
 
 mod health;
@@ -29,7 +29,7 @@ use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
 use axum::http::{Method, header};
-use axum::{Json, Router, extract::State, routing::get};
+use axum::{Json, Router, extract::State, middleware::from_fn, routing::get};
 use everruns_core::host::observability::{BraintrustListener, OtelEventListener};
 use everruns_core::{
     ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, SharedErrorReporter,
@@ -1645,13 +1645,13 @@ impl ServerAppBuilder {
             api::common::decorate_pagination_links(builder, req, next)
         }));
 
-        // RFC 9457: rewrite Content-Type on JSON error responses (4xx/5xx) to
-        // `application/problem+json` and mirror retry metadata into
-        // `Retry-After`. Runs after link decoration, which only touches
-        // success responses.
-        let api_routes = api_routes.layer(axum::middleware::from_fn(
-            api::problem_details::standard_error_headers,
-        ));
+        // RFC 9457: rewrite JSON error responses (4xx/5xx) to `problem+json` and
+        // mirror retry metadata into `Retry-After`; runs after link decoration,
+        // which only touches success responses. Then capture
+        // `Everruns-Change-Reason` for the commands a request runs.
+        let api_routes = api_routes
+            .layer(from_fn(api::problem_details::standard_error_headers))
+            .layer(from_fn(domains::change_history::http_change_intent_layer));
 
         let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env_with_valkey(
             valkey_for_api_rate_limits,

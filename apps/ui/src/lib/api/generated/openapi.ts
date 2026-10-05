@@ -2423,6 +2423,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/history": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/history - Changes across the organization */
+    get: operations["list_org_history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/history/{entity_ref}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/history/{entity_ref} - Changes to one entity */
+    get: operations["list_entity_history"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/images": {
     parameters: {
       query?: never;
@@ -7317,6 +7351,14 @@ export interface components {
       /** @description The command's params, keyed by field name as the contract lists it. */
       params?: Record<string, unknown>;
       /**
+       * @description Why the caller is making this change, recorded in the changed entity's
+       *     history. 1 to 1000 characters; rejected if it looks like a credential.
+       *     Read-only commands ignore it. Not part of the idempotency fingerprint:
+       *     a retry may word it differently, and the first reason is kept.
+       * @example Make the support agent kid friendly, as requested in the product review
+       */
+      reason?: string | null;
+      /**
        * @description `schema_hash` from the catalog the client was built against. A mismatch
        *     adds a warning to the response; it does not fail the call.
        */
@@ -9520,6 +9562,62 @@ export interface components {
        * @description Durable task's identifier.
        */
       task_id: string;
+    };
+    /** @description One recorded change to an entity. */
+    EntityChange: {
+      /**
+       * @description What happened: `created`, `updated`, `deleted`, ...
+       * @example updated
+       */
+      action: string;
+      /**
+       * @description `user`, `api_key`, `agent_session` or `system`.
+       * @example agent_session
+       */
+      actor_kind: string;
+      /**
+       * Format: uuid
+       * @description The user the change was made as (for an agent, the user it acted for).
+       */
+      actor_user_id?: string | null;
+      /** @description Fields the caller asked to change. */
+      changed_fields: string[];
+      /**
+       * @description Wire name of the command that made the change.
+       * @example update_agent
+       */
+      command: string;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * @description Kind of entity changed, e.g. `agent`.
+       * @example agent
+       */
+      entity_kind: string;
+      /**
+       * @description The entity's public id.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      entity_ref: string;
+      /**
+       * Format: uuid
+       * @description Id of this history entry.
+       */
+      id: string;
+      /** @description Why, in the caller's words. Caller text, not verified. */
+      reason?: string | null;
+      /** @description Correlation id of the HTTP request, when there was one. */
+      request_id?: string | null;
+      /**
+       * @description Where the change came in: `api`, `commands`, `mcp`, `platform`,
+       *     `worker` or `internal`.
+       * @example platform
+       */
+      surface: string;
+      /** @description The agent of that session. */
+      via_agent_id?: string | null;
+      /** @description The session through which an agent made the change. */
+      via_session_id?: string | null;
     };
     /**
      * @description Standard error response.
@@ -29968,6 +30066,112 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["HealthIssue"];
+        };
+      };
+    };
+  };
+  list_org_history: {
+    parameters: {
+      query?: {
+        /** @description Only this entity kind. */
+        kind?: string;
+        /** @description Only this action. */
+        action?: string;
+        /** @description Only changes made as this user. */
+        actor_user_id?: string;
+        /** @description Only changes an agent made, by the agent's public id. */
+        via_agent_id?: string;
+        /** @description Only changes at or after this timestamp. */
+        since?: string;
+        /** @description Only changes older than this timestamp (page cursor). */
+        before?: string;
+        /** @description Max entries (default 50, max 200). */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Recorded changes, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EntityChange"][];
+        };
+      };
+      /** @description Unknown kind or action */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_entity_history: {
+    parameters: {
+      query?: {
+        /**
+         * @description Entity kind, needed only for kinds whose ids have no prefix
+         *     (`schedule`, `saved_report`, `check_rule`).
+         */
+        kind?: string;
+        /** @description Only this action (`created`, `updated`, `deleted`, ...). */
+        action?: string;
+        /** @description Only changes older than this timestamp (page cursor). */
+        before?: string;
+        /** @description Max entries (default 50, max 200). */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        /** @description The entity's public id, e.g. agent_01933b5a... */
+        entity_ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Recorded changes, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EntityChange"][];
+        };
+      };
+      /** @description Unknown kind or action, or a ref whose kind cannot be told */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

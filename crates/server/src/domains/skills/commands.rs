@@ -23,7 +23,7 @@ use utoipa::ToSchema;
 // ============================================================================
 
 /// Create a new skill from SKILL.md content.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateSkill(pub CreateSkillRequest);
 
 impl CommandSchema for CreateSkill {
@@ -131,7 +131,7 @@ inventory::submit! { CommandDescriptor::of::<CreateSkill>() }
 // ============================================================================
 
 /// List skills. Supports search and include_archived.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSkills {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -184,7 +184,7 @@ inventory::submit! { CommandDescriptor::of::<ListSkills>() }
 // ============================================================================
 
 /// Get a single skill by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSkill {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -249,7 +249,7 @@ inventory::submit! { CommandDescriptor::of::<GetSkill>() }
 // ============================================================================
 
 /// Get full skill content (SKILL.md + files).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSkillContent {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -360,7 +360,7 @@ inventory::submit! { CommandDescriptor::of::<GetSkillContent>() }
 // ============================================================================
 
 /// Update a skill. Only provided fields are changed.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSkillCmd {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -529,7 +529,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateSkillCmd>() }
 // ============================================================================
 
 /// Archive a skill (soft delete).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSkill {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -599,7 +599,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteSkill>() }
 // ============================================================================
 
 /// Permanently delete an archived skill.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroySkill {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -682,7 +682,7 @@ inventory::submit! { CommandDescriptor::of::<DestroySkill>() }
 /// skill via its `skill:{uuid}` capability id. Returned map is keyed by the
 /// public SkillId string (e.g. `skill_<32hex>`). Skills with zero references
 /// are omitted; the UI defaults missing entries to zero.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSkillsUsage {}
 
 impl Command for ListSkillsUsage {

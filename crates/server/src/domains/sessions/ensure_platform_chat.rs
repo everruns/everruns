@@ -5,7 +5,7 @@ use crate::records::Session;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct EnsurePlatformChat {}
 impl Command for EnsurePlatformChat {
     type Output = Session;

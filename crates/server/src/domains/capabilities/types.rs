@@ -75,7 +75,7 @@ pub struct DeclarativeCapability {
 }
 
 /// Request body for the `create_declarative_capability` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateDeclarativeCapabilityRequest {
     /// Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref.
     #[schema(value_type = Object, example = json!({
@@ -92,7 +92,7 @@ pub struct CreateDeclarativeCapabilityRequest {
 
 /// Request body for the `dry_run_guardrails` operation: evaluate a
 /// guardrails capability config against sample content without a session.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct GuardrailsDryRunRequest {
     /// The `guardrails` capability config to evaluate (same shape persisted
     /// in `AgentCapabilityConfig.config`).
@@ -196,7 +196,7 @@ pub struct GuardrailExamplesResponse {
 }
 
 /// Request body for the `update_declarative_capability` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateDeclarativeCapabilityRequest {
     /// Replacement declarative definition. Changing `name` updates the canonical capability ref after uniqueness validation.
     #[serde(skip_serializing_if = "Option::is_none")]

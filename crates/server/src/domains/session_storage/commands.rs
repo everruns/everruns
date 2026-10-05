@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 const MAX_SECRET_COUNT_PER_REQUEST: usize = 100;
 const MAX_SECRET_VALUE_BYTES: usize = 64 * 1024;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionStorage {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -76,7 +76,7 @@ impl Command for ListSessionStorage {
 
 inventory::submit! { CommandDescriptor::of::<ListSessionStorage>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionSecrets {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -128,7 +128,7 @@ impl Command for ListSessionSecrets {
 
 inventory::submit! { CommandDescriptor::of::<ListSessionSecrets>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct BatchSetSessionSecrets {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -212,7 +212,7 @@ impl Command for BatchSetSessionSecrets {
 
 inventory::submit! { CommandDescriptor::of::<BatchSetSessionSecrets>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 /// Delete one encrypted secret from a session's private storage.
 pub struct DeleteSessionSecret {
     /// Session that owns the secret.

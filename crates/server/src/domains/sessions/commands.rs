@@ -26,7 +26,7 @@ use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateSession(pub CreateSessionRequest);
 
 impl CommandSchema for CreateSession {
@@ -313,7 +313,7 @@ impl Command for CreateSession {
 
 inventory::submit! { CommandDescriptor::of::<CreateSession>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionParticipants {
     /// Session whose participant history should be returned.
     pub session_id: String,
@@ -369,7 +369,7 @@ impl Command for ListSessionParticipants {
 
 inventory::submit! { CommandDescriptor::of::<ListSessionParticipants>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct AddSessionParticipant {
     /// Session that receives the participant.
     pub session_id: String,
@@ -518,7 +518,7 @@ impl Command for AddSessionParticipant {
 
 inventory::submit! { CommandDescriptor::of::<AddSessionParticipant>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct LeaveSessionParticipant {
     /// Session that owns the participant.
     pub session_id: String,
@@ -604,7 +604,7 @@ async fn ensure_session_exists(
 }
 
 /// Fork a session into a new, independent session (knowledge/runtime-resources/forking-sessions.md).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ForkSession {
     /// Session to fork (prefixed public id).
     pub session_id: String,
@@ -709,7 +709,7 @@ inventory::submit! { CommandDescriptor::of::<ForkSession>() }
 mod filters;
 pub use filters::SessionFilterArgs;
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessions {
     #[serde(flatten)]
     pub filters: SessionFilterArgs,
@@ -783,7 +783,7 @@ impl Command for ListSessions {
 inventory::submit! { CommandDescriptor::of::<ListSessions>() }
 
 /// Facet-rail counts and masthead metrics over the sessions list predicate.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionFacets {
     #[serde(flatten)]
     pub filters: SessionFilterArgs,
@@ -840,7 +840,7 @@ impl Command for GetSessionFacets {
 
 inventory::submit! { CommandDescriptor::of::<GetSessionFacets>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -888,7 +888,7 @@ impl Command for GetSession {
 
 inventory::submit! { CommandDescriptor::of::<GetSession>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionContextReport {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -991,7 +991,7 @@ mod tests;
 
 inventory::submit! { CommandDescriptor::of::<GetSessionContextReport>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSessionCmd {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -1067,7 +1067,7 @@ impl Command for UpdateSessionCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateSessionCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -1114,7 +1114,7 @@ impl Command for DeleteSession {
 
 inventory::submit! { CommandDescriptor::of::<DeleteSession>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionStats;
 
 impl Command for GetSessionStats {
@@ -1163,7 +1163,7 @@ impl Command for GetSessionStats {
 
 inventory::submit! { CommandDescriptor::of::<GetSessionStats>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PinSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -1214,7 +1214,7 @@ impl Command for PinSession {
 
 inventory::submit! { CommandDescriptor::of::<PinSession>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnpinSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -1264,7 +1264,7 @@ impl Command for UnpinSession {
 
 inventory::submit! { CommandDescriptor::of::<UnpinSession>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ArchiveSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -1315,7 +1315,7 @@ impl Command for ArchiveSession {
 
 inventory::submit! { CommandDescriptor::of::<ArchiveSession>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnarchiveSession {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -1363,7 +1363,7 @@ impl Command for UnarchiveSession {
 
 inventory::submit! { CommandDescriptor::of::<UnarchiveSession>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CancelSession {
     /// Session's prefixed public identifier.
     pub session_id: String,

@@ -176,7 +176,7 @@ fn parse_memory_id(memory_id: &str) -> Result<MemoryId, CommandError> {
         .map_err(|_| CommandError::not_found("Memory"))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListMemories {
     #[serde(default)]
     pub search: Option<String>,
@@ -232,7 +232,7 @@ impl Command for ListMemories {
 
 inventory::submit! { CommandDescriptor::of::<ListMemories>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateMemory {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -303,7 +303,7 @@ impl Command for CreateMemory {
 
 inventory::submit! { CommandDescriptor::of::<CreateMemory>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetMemory {
     /// Workspace memory's prefixed public identifier.
     pub memory_id: String,
@@ -348,7 +348,7 @@ impl Command for GetMemory {
 
 inventory::submit! { CommandDescriptor::of::<GetMemory>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateMemoryCmd {
     /// Workspace memory's prefixed public identifier.
     pub memory_id: String,
@@ -434,7 +434,7 @@ impl Command for UpdateMemoryCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateMemoryCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncMemoryNow {
     /// Workspace memory's prefixed public identifier.
     pub memory_id: String,
@@ -499,7 +499,7 @@ impl Command for SyncMemoryNow {
 
 inventory::submit! { CommandDescriptor::of::<SyncMemoryNow>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteMemory {
     /// Workspace memory's prefixed public identifier.
     pub memory_id: String,

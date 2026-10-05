@@ -370,7 +370,7 @@ pub(super) fn parse_agent_id(raw: &str) -> Result<AgentId, CommandError> {
 // ============================================================================
 
 /// Create a trigger on an agent.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentTrigger {
     /// Owning agent's prefixed public identifier.
     pub agent_id: String,
@@ -523,7 +523,7 @@ inventory::submit! { CommandDescriptor::of::<CreateAgentTrigger>() }
 // ============================================================================
 
 /// List an agent's triggers.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentTriggers {
     pub agent_id: String,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -579,7 +579,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgentTriggers>() }
 // ============================================================================
 
 /// Get a single trigger by id.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentTrigger {
     pub agent_id: String,
     pub trigger_id: String,
@@ -620,7 +620,7 @@ inventory::submit! { CommandDescriptor::of::<GetAgentTrigger>() }
 // ListAgentTriggerRuns
 // ============================================================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentTriggerRuns {
     pub agent_id: String,
     pub trigger_id: String,
@@ -681,7 +681,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgentTriggerRuns>() }
 // ============================================================================
 
 /// Update a trigger. Only provided fields change; the rest are preserved.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentTriggerCmd {
     pub agent_id: String,
     pub trigger_id: String,
@@ -852,7 +852,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAgentTriggerCmd>() }
 // ============================================================================
 
 /// Archive a trigger (soft delete) and tear down its durable schedule.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgentTrigger {
     pub agent_id: String,
     pub trigger_id: String,
@@ -909,7 +909,7 @@ pub struct TriggerAgentTriggerOutput {
 }
 
 /// Manually fire a trigger once (does not expose the durable schedule id).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentTriggerNow {
     pub agent_id: String,
     pub trigger_id: String,

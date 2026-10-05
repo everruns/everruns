@@ -10,7 +10,7 @@ use utoipa::ToSchema;
 pub use crate::storage::models::{CreateSkillRow, SkillRow, UpdateSkill};
 
 /// Request to create a skill from SKILL.md content
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateSkillRequest {
     /// Full SKILL.md content (YAML frontmatter + markdown body)
     #[schema(
@@ -20,7 +20,7 @@ pub struct CreateSkillRequest {
 }
 
 /// Request to update a skill
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSkillRequest {
     /// Updated SKILL.md content (re-parses frontmatter)
     #[serde(skip_serializing_if = "Option::is_none")]

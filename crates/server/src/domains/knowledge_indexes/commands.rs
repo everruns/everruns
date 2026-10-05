@@ -155,7 +155,7 @@ async fn response_with_document_count(
 // Knowledge Index CRUD
 // ============================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListKnowledgeIndexes {
     #[serde(default)]
     pub search: Option<String>,
@@ -219,7 +219,7 @@ impl Command for ListKnowledgeIndexes {
 
 inventory::submit! { CommandDescriptor::of::<ListKnowledgeIndexes>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateKnowledgeIndex {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -301,7 +301,7 @@ impl Command for CreateKnowledgeIndex {
 
 inventory::submit! { CommandDescriptor::of::<CreateKnowledgeIndex>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetKnowledgeIndex {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
@@ -346,7 +346,7 @@ impl Command for GetKnowledgeIndex {
 
 inventory::submit! { CommandDescriptor::of::<GetKnowledgeIndex>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeIndexCmd {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
@@ -443,7 +443,7 @@ impl Command for UpdateKnowledgeIndexCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeIndexCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteKnowledgeIndex {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
@@ -489,7 +489,7 @@ impl Command for DeleteKnowledgeIndex {
 
 inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeIndex>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncKnowledgeIndex {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,
@@ -551,7 +551,7 @@ inventory::submit! { CommandDescriptor::of::<SyncKnowledgeIndex>() }
 // Knowledge Index Documents (read-only; populated by the Syncout worker)
 // ============================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListKnowledgeIndexDocuments {
     /// Knowledge index's prefixed public identifier.
     pub index_id: String,

@@ -14,7 +14,7 @@ use utoipa::{IntoParams, ToSchema};
 pub use crate::storage::models::{AgentRow, CreateAgentRow, UpdateAgent};
 
 /// Request to create a new agent
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentRequest {
     #[serde(default)]
     #[schema(value_type=Option<String>)]
@@ -122,12 +122,9 @@ pub struct CreateAgentRequest {
 // Every field is optional, so `Default` means "change nothing" — convenient for
 // tests that exercise one field at a time. Kept out of the doc comment: utoipa
 // publishes those into docs/api/openapi.json, and this is an internal note.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentRequest {
-    #[serde(
-        default,
-        deserialize_with = "crate::api::common::deserialize_nullable_update_field"
-    )]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id:
         everruns_durable::UpdateField<everruns_contracts::typed_id::VirtualUserId>,
@@ -188,7 +185,7 @@ pub struct UpdateAgentRequest {
     #[serde(
         default,
         alias = "environments",
-        deserialize_with = "crate::api::common::deserialize_nullable_update_field"
+        with = "crate::domains::change_history::update_field"
     )]
     #[schema(value_type = Option<SandboxPolicy>)]
     pub sandbox_policy: everruns_durable::UpdateField<SandboxPolicy>,
@@ -236,7 +233,7 @@ pub struct UpdateAgentRequest {
 }
 
 /// Request body for the `create_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentVersionRequest {
     /// Free-text summary of what changed in this version. Shown in the version timeline.
     #[serde(default)]
@@ -249,7 +246,7 @@ pub struct CreateAgentVersionRequest {
 }
 
 /// Request body for the `rollback_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct RollbackAgentVersionRequest {
     /// When true, snapshot the current agent state as a new version before rolling back.
     /// Use this to preserve the in-flight work alongside the recovery point.
@@ -263,7 +260,7 @@ pub struct RollbackAgentVersionRequest {
 }
 
 /// Request body for the `set_default_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct SetDefaultAgentVersionRequest {
     /// Agent version's prefixed public identifier.
     #[schema(value_type = String, example = "agentver_01933b5a00007000800000000000001")]
@@ -271,7 +268,7 @@ pub struct SetDefaultAgentVersionRequest {
 }
 
 /// Request body for the `fork_agent_version` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ForkAgentVersionRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     #[schema(example = "support-agent-experimental")]

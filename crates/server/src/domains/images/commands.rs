@@ -4,7 +4,7 @@ use crate::domains::common::*;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListImages {
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
     /// Zero-based offset into the result set.
@@ -44,7 +44,7 @@ impl Command for ListImages {
 
 inventory::submit! { CommandDescriptor::of::<ListImages>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetImage {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,

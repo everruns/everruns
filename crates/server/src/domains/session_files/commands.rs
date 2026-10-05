@@ -62,7 +62,7 @@ fn map_move_or_copy_error(error: anyhow::Error) -> CommandError {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListWorkspaceFiles {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -115,7 +115,7 @@ impl Command for ListWorkspaceFiles {
 
 inventory::submit! { CommandDescriptor::of::<ListWorkspaceFiles>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -185,7 +185,7 @@ impl Command for GetWorkspaceFile {
 
 inventory::submit! { CommandDescriptor::of::<GetWorkspaceFile>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -280,7 +280,7 @@ impl Command for CreateWorkspaceFile {
 
 inventory::submit! { CommandDescriptor::of::<CreateWorkspaceFile>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -390,7 +390,7 @@ impl Command for UpdateWorkspaceFile {
 
 inventory::submit! { CommandDescriptor::of::<UpdateWorkspaceFile>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -432,7 +432,7 @@ impl Command for DeleteWorkspaceFile {
 
 inventory::submit! { CommandDescriptor::of::<DeleteWorkspaceFile>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MoveWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -475,7 +475,7 @@ impl Command for MoveWorkspaceFile {
 
 inventory::submit! { CommandDescriptor::of::<MoveWorkspaceFile>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -518,7 +518,7 @@ impl Command for CopyWorkspaceFile {
 
 inventory::submit! { CommandDescriptor::of::<CopyWorkspaceFile>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GrepWorkspaceFiles {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -582,7 +582,7 @@ impl Command for GrepWorkspaceFiles {
 
 inventory::submit! { CommandDescriptor::of::<GrepWorkspaceFiles>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SearchWorkspaceFiles {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -649,7 +649,7 @@ impl Command for SearchWorkspaceFiles {
 
 inventory::submit! { CommandDescriptor::of::<SearchWorkspaceFiles>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StatWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,

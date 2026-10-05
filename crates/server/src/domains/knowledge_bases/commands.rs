@@ -161,7 +161,7 @@ async fn validate_embedding_model_id(
 // Knowledge Base CRUD
 // ============================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListKnowledgeBases {
     #[serde(default)]
     pub search: Option<String>,
@@ -217,7 +217,7 @@ impl Command for ListKnowledgeBases {
 
 inventory::submit! { CommandDescriptor::of::<ListKnowledgeBases>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateKnowledgeBase {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -287,7 +287,7 @@ impl Command for CreateKnowledgeBase {
 
 inventory::submit! { CommandDescriptor::of::<CreateKnowledgeBase>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetKnowledgeBase {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
@@ -332,7 +332,7 @@ impl Command for GetKnowledgeBase {
 
 inventory::submit! { CommandDescriptor::of::<GetKnowledgeBase>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeBaseCmd {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
@@ -414,7 +414,7 @@ impl Command for UpdateKnowledgeBaseCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeBaseCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteKnowledgeBase {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
@@ -487,7 +487,7 @@ pub(super) async fn resolve_kb_internal_id(
     Ok(kb.id)
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListKnowledgeEntries {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
@@ -545,7 +545,7 @@ impl Command for ListKnowledgeEntries {
 
 inventory::submit! { CommandDescriptor::of::<ListKnowledgeEntries>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateKnowledgeEntry {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
@@ -623,7 +623,7 @@ impl Command for CreateKnowledgeEntry {
 
 inventory::submit! { CommandDescriptor::of::<CreateKnowledgeEntry>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetKnowledgeEntry {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
@@ -667,7 +667,7 @@ impl Command for GetKnowledgeEntry {
 
 inventory::submit! { CommandDescriptor::of::<GetKnowledgeEntry>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeEntryCmd {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
@@ -748,7 +748,7 @@ impl Command for UpdateKnowledgeEntryCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeEntryCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteKnowledgeEntry {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,

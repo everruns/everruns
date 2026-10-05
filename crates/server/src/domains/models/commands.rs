@@ -13,7 +13,7 @@ pub struct DeleteModelResult {
     pub deleted: bool,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateModel {
     /// LLM provider's prefixed public identifier.
     pub provider_id: String,
@@ -76,7 +76,7 @@ impl Command for CreateModel {
 
 inventory::submit! { CommandDescriptor::of::<CreateModel>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListProviderModels {
     /// LLM provider's prefixed public identifier.
     pub provider_id: String,
@@ -110,7 +110,7 @@ impl Command for ListProviderModels {
 
 inventory::submit! { CommandDescriptor::of::<ListProviderModels>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListModels {
     pub service: Option<everruns_contracts::ServiceKind>,
     pub source: Option<ModelSource>,
@@ -171,7 +171,7 @@ impl Command for ListModels {
 
 inventory::submit! { CommandDescriptor::of::<ListModels>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetModel {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -210,7 +210,7 @@ impl Command for GetModel {
 
 inventory::submit! { CommandDescriptor::of::<GetModel>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateModel {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -281,7 +281,7 @@ impl Command for UpdateModel {
 
 inventory::submit! { CommandDescriptor::of::<UpdateModel>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteModel {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -402,7 +402,7 @@ mod parse_tests {
 }
 
 /// Resolve the organization's default without creating a session.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetDefaultModel {}
 impl Command for GetDefaultModel {
     type Output = Option<ModelWithProvider>;
@@ -428,7 +428,7 @@ impl Command for GetDefaultModel {
 inventory::submit! { CommandDescriptor::of::<GetDefaultModel>() }
 
 /// Read or change the organization's explicit decision model selection.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetDefaultDecisionModel {}
 impl Command for GetDefaultDecisionModel {
     type Output = Option<ModelWithProvider>;
@@ -459,7 +459,7 @@ impl Command for GetDefaultDecisionModel {
 }
 inventory::submit! { CommandDescriptor::of::<GetDefaultDecisionModel>() }
 /// Select or clear the organization decision default.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SetDefaultDecisionModel {
     /// Prefixed saved model ID; omit or pass null to clear the default.
     pub model_id: Option<String>,

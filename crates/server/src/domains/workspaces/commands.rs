@@ -45,7 +45,7 @@ fn validate_status(status: &str) -> Result<(), CommandError> {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListWorkspaces {
     #[serde(default)]
     pub search: Option<String>,
@@ -99,7 +99,7 @@ impl Command for ListWorkspaces {
 
 inventory::submit! { CommandDescriptor::of::<ListWorkspaces>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateWorkspace {
     /// Human-readable workspace name. Must be unique per org.
     pub name: String,
@@ -168,7 +168,7 @@ impl Command for CreateWorkspace {
 
 inventory::submit! { CommandDescriptor::of::<CreateWorkspace>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetWorkspace {
     /// Workspace ID (wsp_<32-hex>).
     pub workspace_id: String,
@@ -213,7 +213,7 @@ impl Command for GetWorkspace {
 
 inventory::submit! { CommandDescriptor::of::<GetWorkspace>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateWorkspaceCmd {
     /// Workspace ID (wsp_<32-hex>).
     pub workspace_id: String,
@@ -282,7 +282,7 @@ impl Command for UpdateWorkspaceCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateWorkspaceCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteWorkspace {
     /// Workspace ID (wsp_<32-hex>).
     pub workspace_id: String,

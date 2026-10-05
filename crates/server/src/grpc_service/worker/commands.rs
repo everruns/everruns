@@ -90,6 +90,29 @@ impl WorkerServiceImpl {
                 parse_uuid(Some(session))?,
             ));
         }
+        // Who the change came through: the session the caller acts as or for.
+        // `reason` is the caller's text; everything else is derived here.
+        let via_session = req
+            .platform_session_id
+            .as_ref()
+            .or(req.acting_for_session_id.as_ref());
+        let mut intent = match via_session {
+            Some(session) => {
+                crate::domains::change_history::agent_session_intent(
+                    &self.db,
+                    req.org_id,
+                    everruns_contracts::typed_id::SessionId::from_uuid(parse_uuid(Some(session))?),
+                    crate::domains::change_history::ChangeSurface::Worker,
+                )
+                .await
+            }
+            None => crate::domains::change_history::ChangeIntent::on(
+                crate::domains::change_history::ChangeSurface::Worker,
+            ),
+        };
+        intent.reason = req.reason.clone();
+        intent.idempotency_key = req.idempotency_key.clone();
+        ctx = ctx.with_change_intent(intent);
         let result = if req.runtime_view {
             crate::services::runtime_command_view::dispatch_runtime_view(&req.name, params, &ctx)
                 .await
@@ -305,10 +328,18 @@ impl WorkerServiceImpl {
             tracing::error!(%error, org_id = req.org_id, "Failed to resolve Platform command feature flags");
             Status::internal("Failed to resolve organization feature flags")
         })?;
+        let intent = crate::domains::change_history::ChangeIntent {
+            via_session_id: Some(session.id.uuid()),
+            via_agent_id: session.agent_id.map(|agent| agent.to_string()),
+            ..crate::domains::change_history::ChangeIntent::on(
+                crate::domains::change_history::ChangeSurface::Platform,
+            )
+        };
         let context = crate::api::mcp_endpoint::catalog::CatalogContext {
             domain_ctx: self
                 .domain_ctx_for_caller(caller)
-                .with_feature_flags(feature_flags),
+                .with_feature_flags(feature_flags)
+                .with_change_intent(intent),
             link_builder: crate::api::common::UrlBuilder::new(&api_base, &ui_base),
         };
         let result =
@@ -356,6 +387,7 @@ pub(crate) mod test_support {
                 user_id: None,
                 idempotency_key: None,
                 metadata: std::collections::HashMap::new(),
+                reason: None,
             }))
             .await
             .unwrap_or_else(|status| panic!("{name} transport failure: {status:?}"))

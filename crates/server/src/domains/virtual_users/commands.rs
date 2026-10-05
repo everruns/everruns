@@ -20,7 +20,7 @@ use utoipa::ToSchema;
 // ============================================================================
 
 /// Create a new virtual user (org-scoped runtime account for a consumer or service).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateVirtualUser(pub CreateVirtualUserRequest);
 
 impl CommandSchema for CreateVirtualUser {
@@ -94,7 +94,7 @@ inventory::submit! { CommandDescriptor::of::<CreateVirtualUser>() }
 // ============================================================================
 
 /// List virtual users. Supports search and include_archived.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListVirtualUsers {
     /// Immutable account purpose filter.
     #[schema(example = "service")]
@@ -177,7 +177,7 @@ inventory::submit! { CommandDescriptor::of::<ListVirtualUsers>() }
 // ============================================================================
 
 /// Get a single virtual user by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetVirtualUser {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -224,7 +224,7 @@ inventory::submit! { CommandDescriptor::of::<GetVirtualUser>() }
 // ============================================================================
 
 /// Update a virtual user. Only provided fields are changed.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateVirtualUserCmd {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -347,7 +347,7 @@ async fn ensure_no_live_references(
 // ============================================================================
 
 /// Archive a virtual user (soft delete).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteVirtualUser {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -407,7 +407,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteVirtualUser>() }
 // ============================================================================
 
 /// Permanently delete a virtual user.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyVirtualUser {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,

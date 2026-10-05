@@ -11684,6 +11684,60 @@
     "read_only": true
   },
   {
+    "category": "history",
+    "cli": "history list",
+    "description": "List recorded changes to one entity (agent, harness, knowledge base, provider, ...), newest first, with who made each change, through which surface and session, and why.",
+    "input_schema": {
+      "description": "List the recorded changes to one entity, newest first.",
+      "properties": {
+        "action": {
+          "description": "Only this action (`created`, `updated`, `deleted`, ...).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "Only changes older than this timestamp (page cursor).",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "entity_ref": {
+          "description": "The entity's public id, e.g. `agent_01933b5a...`.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Entity kind. Needed only for kinds whose ids have no prefix\n(`schedule`, `saved_report`, `check_rule`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Max entries (default 50, max 200).",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "entity_ref"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_entity_history",
+    "output_shape": "array of {entity_kind, entity_ref, action, reason, changed_fields, actor_kind, via_agent_id, surface, created_at}",
+    "path": "/v1/history/{entity_ref}",
+    "positional_arg": "entity_ref",
+    "read_only": true
+  },
+  {
     "category": "evals",
     "cli": null,
     "description": "List eval cases.",
@@ -12379,6 +12433,76 @@
     "name": "list_observers",
     "output_shape": "unknown",
     "path": "/v1/observers",
+    "positional_arg": null,
+    "read_only": true
+  },
+  {
+    "category": "history",
+    "cli": "history org",
+    "description": "List recorded changes across the organization, newest first. Filter by entity kind, action, the user a change was made as, or the agent that made it.",
+    "input_schema": {
+      "description": "List recorded changes across the organization, newest first.",
+      "properties": {
+        "action": {
+          "description": "Only this action.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "actor_user_id": {
+          "description": "Only changes made as this user.",
+          "format": "uuid",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "Only changes older than this timestamp (page cursor).",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "Only this entity kind.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "Max entries (default 50, max 200).",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "since": {
+          "description": "Only changes at or after this timestamp.",
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via_agent_id": {
+          "description": "Only changes an agent made, by the agent's public id.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "list_org_history",
+    "output_shape": "array of {entity_kind, entity_ref, action, reason, changed_fields, actor_kind, via_agent_id, surface, created_at}",
+    "path": "/v1/history",
     "positional_arg": null,
     "read_only": true
   },
