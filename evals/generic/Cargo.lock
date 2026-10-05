@@ -728,6 +728,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-cli-contract"
+version = "0.41.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "everruns-contracts"
 version = "0.41.0"
 dependencies = [
@@ -844,6 +853,7 @@ dependencies = [
  "async-trait",
  "bashkit",
  "clap",
+ "everruns-cli-contract",
  "everruns-contracts",
  "futures",
  "serde_json",
