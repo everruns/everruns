@@ -34,6 +34,9 @@ jest.mock("@/hooks/use-agent-channels", () => ({
 
 jest.mock("@/hooks/use-agent-triggers", () => ({
   useAgentTriggers: () => ({ data: [] }),
+  useUpdateAgentTrigger: () => ({ mutate: jest.fn(), isPending: false }),
+  useDeleteAgentTrigger: () => ({ mutate: jest.fn() }),
+  useRunAgentTrigger: () => ({ mutate: jest.fn(), isPending: false }),
 }));
 
 jest.mock("@/hooks/use-policies", () => ({
@@ -60,10 +63,6 @@ jest.mock("@/components/agents/integrations/channel-details-panel", () => ({
 
 jest.mock("@/components/agents/agent-github-card", () => ({
   AgentGitHubCard: () => <div>Agent GitHub</div>,
-}));
-
-jest.mock("@/components/agents/agent-triggers-panel", () => ({
-  AgentTriggersPanel: () => <div>Agent triggers</div>,
 }));
 
 jest.mock("@/components/budgets/budget-panel", () => ({
@@ -142,5 +141,20 @@ describe("AgentIntegrationsPanel budgets", () => {
     render(<AgentIntegrationsPanel agent={agent} />);
 
     expect(screen.queryByTestId(/^budget-/)).not.toBeInTheDocument();
+  });
+
+  it("groups GitHub setup and trigger creation under one Triggers heading", () => {
+    mockUseFeatureFlag.mockReturnValue(false);
+    mockCanBudget.mockReturnValue(false);
+
+    render(<AgentIntegrationsPanel agent={agent} />);
+
+    expect(screen.getAllByText("Triggers")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Add trigger" })).toHaveAttribute(
+      "href",
+      "/agents/agent_1/triggers/new",
+    );
+    expect(screen.getByText("Agent GitHub")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No triggers yet" })).toBeInTheDocument();
   });
 });

@@ -16,7 +16,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CronLabel } from "@/components/apps/cron-label";
-import { MiniTimeline, type TimelineBin } from "@/components/apps/mini-timeline";
 import type {
   AgUiChannelConfig,
   AgentChannel,
@@ -133,7 +132,6 @@ export function ChannelRow({
   publishPending = false,
   usePanel,
   configureHref,
-  timeline = [],
 }: {
   channel: AgentChannel;
   expanded: boolean;
@@ -146,7 +144,6 @@ export function ChannelRow({
   /// channel's real URL instead of a placeholder.
   usePanel?: React.ReactNode;
   configureHref?: string;
-  timeline?: TimelineBin[];
 }) {
   const lifecycle = getChannelLifecyclePresentation(channel);
   const { isLive } = lifecycle;
@@ -160,21 +157,8 @@ export function ChannelRow({
   };
 
   return (
-    <div className="border bg-card">
-      <div
-        className={
-          // Four fixed columns plus a rail left roughly 130px for the name at
-          // an ordinary 1280px window, which truncated "Webhook channel" to
-          // "W." and stacked its badges. The metric columns — both of which
-          // read 0 until run aggregation lands — are held back until there is
-          // width for them; the name, status and actions are what the row is
-          // for. The publish switch shares the actions cell for the same
-          // reason.
-          onPublishChange
-            ? "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_160px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_160px] md:items-center"
-            : "grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_48px] 2xl:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center"
-        }
-      >
+    <div className="@container/channel-row border bg-card">
+      <div className="grid gap-4 p-4 @min-[44rem]/channel-row:grid-cols-[minmax(0,1fr)_auto] @min-[44rem]/channel-row:items-center">
         <button
           type="button"
           onClick={toggle}
@@ -197,65 +181,68 @@ export function ChannelRow({
                 <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
                 <Badge variant={isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">{channelSubline(channel)}</p>
+              <p className="mt-1 break-words text-sm text-muted-foreground">
+                {channelSubline(channel)}
+              </p>
               <p className="mt-1 text-xs">
                 {expanded ? "Hide" : "Show"} {inlineConfiguration ? "configuration" : "details"}
               </p>
             </div>
           </div>
         </button>
-        <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            {channel.channel_type === "schedule" ? "Next run" : "Last invoke"}
-          </p>
-          <p className="mt-1 text-sm">
-            {channel.channel_type === "schedule"
-              ? relativeTime(channel.next_run_at ?? null)
-              : relativeTime(channel.last_invoked_at ?? null)}
-          </p>
-        </div>
-        <div className="hidden 2xl:block">
-          <p className="text-xs font-medium uppercase text-muted-foreground">Runs · 24h</p>
-          <p className="mt-1 text-sm">0</p>
-        </div>
-        <MiniTimeline runs={timeline} length={12} className="hidden 2xl:flex" />
-        <div className="flex items-center justify-end gap-1">
-          {onPublishChange && (
-            <label className="flex items-center gap-2 text-xs">
-              {isLive ? "Published" : "Draft"}
-              <Switch
-                checked={isLive}
-                onCheckedChange={onPublishChange}
-                disabled={publishPending || !channel.enabled}
-                aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
-              />
-            </label>
-          )}
-          {(configureHref || onRunNow) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={buttonVariants({ variant: "ghost", size: "icon" })}
-                aria-label="Channel actions"
-              >
-                <MoreHorizontal className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuPositioner>
-                <DropdownMenuContent>
-                  {configureHref && (
-                    <DropdownMenuItem render={<Link href={configureHref} />}>
-                      {inlineConfiguration ? "Channel options" : "Configure"}
-                    </DropdownMenuItem>
-                  )}
-                  {onRunNow && (
-                    <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
-                      <Play className="size-4" />
-                      Run now
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenuPositioner>
-            </DropdownMenu>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-4 @min-[44rem]/channel-row:justify-end">
+          <div className="shrink-0">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              {channel.channel_type === "schedule" ? "Next run" : "Last invoke"}
+            </p>
+            <p className="mt-1 text-sm">
+              {channel.channel_type === "schedule"
+                ? relativeTime(channel.next_run_at ?? null)
+                : relativeTime(channel.last_invoked_at ?? null)}
+            </p>
+          </div>
+          <div className="hidden @min-[52rem]/channel-row:block">
+            <p className="text-xs font-medium uppercase text-muted-foreground">Runs · 24h</p>
+            <p className="mt-1 text-sm">0</p>
+          </div>
+          <div className="flex items-center justify-end gap-1">
+            {onPublishChange && (
+              <label className="flex items-center gap-2 text-xs">
+                {isLive ? "Published" : "Draft"}
+                <Switch
+                  checked={isLive}
+                  onCheckedChange={onPublishChange}
+                  disabled={publishPending || !channel.enabled}
+                  aria-label={`${isLive ? "Unpublish" : "Publish"} ${channelName(channel)}`}
+                />
+              </label>
+            )}
+            {(configureHref || onRunNow) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={buttonVariants({ variant: "ghost", size: "icon" })}
+                  aria-label="Channel actions"
+                >
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuPositioner>
+                  <DropdownMenuContent>
+                    {configureHref && (
+                      <DropdownMenuItem render={<Link href={configureHref} />}>
+                        {inlineConfiguration ? "Channel options" : "Configure"}
+                      </DropdownMenuItem>
+                    )}
+                    {onRunNow && (
+                      <DropdownMenuItem onClick={onRunNow} disabled={!canRunNow}>
+                        <Play className="size-4" />
+                        Run now
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenuPositioner>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
       </div>
       {(expanded || (inlineConfiguration && hasExpanded)) && (

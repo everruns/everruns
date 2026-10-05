@@ -32,22 +32,23 @@ Verifies the Agent detail Integrations tab lists the agent's channels and trigge
 1. Navigate to `/agents` and open the agent's detail page.
 2. Verify the tab rail shows **Integrations** and shows neither **Triggers** nor **Integrate**.
 3. Open the Integrations tab. Verify the address is `/agents/{agentId}?tab=integrations`, then reload and confirm Integrations is still selected.
-4. Verify the stat strip shows Health, Invocations 24h, Success rate, and Activity, and that Health counts live channels rather than enabled ones.
+4. Verify the stat strip shows Health, Invocations 24h, Success rate, and Activity, and that Health counts live channels rather than enabled ones. Unavailable activity metrics use a flat baseline with an explanatory caption.
 5. Verify the **Channels** section lists the channel, with a status badge reading `draft`.
-6. Toggle the row's **Live** switch on.
+6. Toggle the row's **Publish** switch on.
 7. Verify the badge becomes `live` and the subline reads "Live" without the page being reloaded.
 8. Click the row to expand it.
 9. Verify the expanded panel shows a **Use it** block whose URL contains the channel's own id (`/v1/channels/{channelId}/…`), not a placeholder.
 10. Verify the expanded row's Configure link points at `/agents/{agentId}/channels/{channelId}`.
-11. Verify the **Triggers** section renders below Channels, and that any schedule row shows a human-readable cadence rather than a raw cron expression.
-12. In the rail, toggle **Suspend all** on.
+11. Verify a single **Triggers** heading renders below Channels, with **Add trigger** beside it and compact GitHub setup beneath it. Any schedule row shows a human-readable cadence rather than a raw cron expression.
+12. In the Exposure rail card, toggle **Suspend all channels** on.
 13. Verify Health reads "Suspended".
+14. Repeat at a narrow mobile width in light and dark modes. Verify the sections stack, channel actions remain readable, and the page has no horizontal overflow.
 
 ## Expected Result
 
 - One tab named Integrations; no Integrate tab and no separate Triggers tab.
 - Channel rows show the channel's own lifecycle, not the owning App's publish state.
-- The Live switch publishes and unpublishes a single channel without affecting its siblings.
+- The Publish switch publishes and unpublishes a single channel without affecting its siblings.
 - The expanded row's snippet carries that channel's real URL.
 - No raw cron expression appears outside an editable Cron input.
 - Suspending exposures is reflected in the stat strip.
