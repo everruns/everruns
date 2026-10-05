@@ -565,6 +565,113 @@ impl EventLog for PostgresWorkflowEventStore {
         Ok(true)
     }
 
+    #[instrument(skip(self, input, task))]
+    async fn start_run_with_task(
+        &self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        mut task: TaskDefinition,
+    ) -> Result<RunStart, StoreError> {
+        task.workflow_id = Some(workflow_id);
+        let db = |action: &'static str| {
+            move |e: sqlx::Error| {
+                error!(error = %e, "{action}");
+                StoreError::Database(e.to_string())
+            }
+        };
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(db("Failed to begin run start"))?;
+
+        // Lock the workflow row (or learn it is missing) and see whether a run
+        // is active, in one round trip. A start that loses the create race
+        // falls through to the second pass and finds the winner's run.
+        let mut started = None;
+        for _ in 0..2 {
+            let row: Option<(String, bool)> = sqlx::query_as(
+                r#"
+                SELECT w.status,
+                       EXISTS(
+                           SELECT 1 FROM durable_task_queue t
+                           WHERE t.workflow_id = w.id AND t.status = 'claimed'
+                       )
+                FROM durable_workflow_instances w
+                WHERE w.id = $1
+                FOR UPDATE OF w
+                "#,
+            )
+            .bind(workflow_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(db("Failed to lock workflow for run start"))?;
+
+            match row {
+                None => {
+                    if insert_started_workflow(
+                        &mut tx,
+                        workflow_id,
+                        workflow_type,
+                        input.clone(),
+                        &task,
+                    )
+                    .await?
+                    {
+                        started = Some(true);
+                        break;
+                    }
+                }
+                Some((status, has_claimed_task)) => {
+                    if status == "running" || has_claimed_task {
+                        tx.rollback().await.ok();
+                        return Ok(RunStart::Active);
+                    }
+                    // New run: reset the workflow and cancel the previous
+                    // run's stale pending tasks, as `try_start_new_run` does.
+                    sqlx::query(
+                        r#"
+                        WITH reset AS (
+                            UPDATE durable_workflow_instances
+                            SET status = 'running',
+                                result = NULL,
+                                error = NULL,
+                                started_at = NOW(),
+                                completed_at = NULL
+                            WHERE id = $1
+                        )
+                        UPDATE durable_task_queue
+                        SET status = 'cancelled'
+                        WHERE workflow_id = $1 AND status = 'pending'
+                        "#,
+                    )
+                    .bind(workflow_id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(db("Failed to reset workflow for new run"))?;
+                    started = Some(false);
+                    break;
+                }
+            }
+        }
+
+        let Some(created) = started else {
+            // Only reachable if the workflow vanished between the two passes.
+            tx.rollback().await.ok();
+            return Err(StoreError::WorkflowNotFound(workflow_id));
+        };
+
+        // Stale pending tasks were just cancelled (or the workflow is new),
+        // so the per-workflow pending cap cannot be hit here.
+        let task_id = insert_workflow_task(&mut tx, workflow_id, &task).await?;
+        tx.commit()
+            .await
+            .map_err(db("Failed to commit run start"))?;
+        debug!(%workflow_id, %task_id, created, "started workflow run");
+        Ok(RunStart::Started { task_id, created })
+    }
+
     #[instrument(skip(self))]
     async fn cancel_workflow(&self, workflow_id: Uuid) -> Result<(), StoreError> {
         // Update workflow status to cancelled

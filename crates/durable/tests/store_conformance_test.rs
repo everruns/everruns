@@ -16,8 +16,9 @@
 use std::time::Duration;
 
 use everruns_durable::persistence::{
-    DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, InMemoryWorkflowEventStore, StoreError, TaskDefinition,
-    TaskFailureOutcome, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventStore, WorkflowStatus,
+    DEFAULT_MAX_PENDING_TASKS_PER_WORKFLOW, InMemoryWorkflowEventStore, RunStart, StoreError,
+    TaskDefinition, TaskFailureOutcome, TaskStatus, WorkerFilter, WorkerInfo, WorkflowEventStore,
+    WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
@@ -125,6 +126,11 @@ conformance!(
     dead_letters_can_be_requeued,
     cancel_workflow_cancels_pending_tasks_once,
     drained_workers_stop_claiming_until_resumed,
+    start_run_creates_an_unknown_workflow,
+    start_run_leaves_an_active_run_alone,
+    start_run_restarts_a_finished_workflow,
+    concurrent_run_starts_elect_one_winner,
+    claims_carry_the_workflow_status,
 );
 
 // --- helpers ---------------------------------------------------------------
@@ -717,4 +723,150 @@ async fn drained_workers_stop_claiming_until_resumed<H: Harness>(h: H) {
 
     h.store().resume_worker(&w).await.unwrap();
     assert_eq!(claim(&h, &w, &ty, 1).await.len(), 1);
+}
+
+// --- run start -------------------------------------------------------------------
+
+async fn start_run<H: Harness>(h: &H, wf: Uuid, ty: &str, activity_id: &str) -> RunStart {
+    h.store()
+        .start_run_with_task(
+            wf,
+            "conformance",
+            json!({ "run": activity_id }),
+            task(None, ty, activity_id),
+        )
+        .await
+        .expect("start run")
+}
+
+async fn start_run_creates_an_unknown_workflow<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    let wf = Uuid::now_v7();
+
+    let RunStart::Started { task_id, created } = start_run(&h, wf, &ty, "first").await else {
+        panic!("an unknown workflow starts a run");
+    };
+    assert!(created);
+    assert_eq!(
+        h.store().get_workflow_status(wf).await.unwrap(),
+        WorkflowStatus::Running
+    );
+    let events = h.store().load_events(wf).await.unwrap();
+    assert!(matches!(events[0].1, WorkflowEvent::WorkflowStarted { .. }));
+    assert!(matches!(
+        &events[1].1,
+        WorkflowEvent::ActivityScheduled { activity_id, .. } if activity_id == "first"
+    ));
+    let claimed = h
+        .store()
+        .claim_task(&w, std::slice::from_ref(&ty), 10)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].id, task_id);
+    assert_eq!(claimed[0].workflow_id, Some(wf));
+}
+
+async fn start_run_leaves_an_active_run_alone<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+
+    // Running workflow: the second start changes nothing.
+    let running = Uuid::now_v7();
+    start_run(&h, running, &ty, "first").await;
+    assert_eq!(
+        start_run(&h, running, &ty, "second").await,
+        RunStart::Active
+    );
+    assert_eq!(claim(&h, &w, &ty, 10).await.len(), 1);
+
+    // Not Running, but a worker still holds one of its tasks.
+    let claimed = workflow(&h).await;
+    enqueue(&h, task(Some(claimed), &ty, "held")).await;
+    assert_eq!(claim(&h, &w, &ty, 1).await.len(), 1);
+    assert_eq!(start_run(&h, claimed, &ty, "next").await, RunStart::Active);
+    assert_eq!(
+        h.store().get_workflow_status(claimed).await.unwrap(),
+        WorkflowStatus::Pending
+    );
+    assert!(claim(&h, &w, &ty, 10).await.is_empty());
+}
+
+async fn start_run_restarts_a_finished_workflow<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    let wf = workflow(&h).await;
+    let stale = enqueue(&h, task(Some(wf), &ty, "stale")).await;
+    h.store()
+        .update_workflow_status(wf, WorkflowStatus::Completed, Some(json!("done")), None)
+        .await
+        .unwrap();
+
+    let RunStart::Started { task_id, created } = start_run(&h, wf, &ty, "next").await else {
+        panic!("a finished workflow starts a new run");
+    };
+    assert!(!created);
+    let info = h.store().get_workflow_info(wf).await.unwrap();
+    assert_eq!(info.status, WorkflowStatus::Running);
+    assert_eq!(info.result, None);
+    assert_eq!(status(&h, stale).await, TaskStatus::Cancelled);
+    assert_eq!(claim(&h, &w, &ty, 10).await, vec![task_id]);
+}
+
+async fn concurrent_run_starts_elect_one_winner<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    for existing in [false, true] {
+        let wf = if existing {
+            let wf = workflow(&h).await;
+            h.store()
+                .update_workflow_status(wf, WorkflowStatus::Completed, None, None)
+                .await
+                .unwrap();
+            wf
+        } else {
+            Uuid::now_v7()
+        };
+        let one = || start_run(&h, wf, &ty, "race");
+        let (a, b, c, d) = tokio::join!(one(), one(), one(), one());
+        let winners = [a, b, c, d]
+            .iter()
+            .filter(|r| matches!(r, RunStart::Started { .. }))
+            .count();
+        assert_eq!(winners, 1, "existing={existing}");
+        assert_eq!(claim(&h, &w, &ty, 10).await.len(), 1, "existing={existing}");
+    }
+}
+
+async fn claims_carry_the_workflow_status<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    let pending = workflow(&h).await;
+    let running = workflow(&h).await;
+    h.store()
+        .update_workflow_status(running, WorkflowStatus::Running, None, None)
+        .await
+        .unwrap();
+    for (wf, id) in [(pending, "p"), (running, "r")] {
+        enqueue(&h, task(Some(wf), &ty, id)).await;
+    }
+    enqueue(&h, task(None, &ty, "standalone")).await;
+
+    let claimed = h
+        .store()
+        .claim_task(&w, std::slice::from_ref(&ty), 10)
+        .await
+        .unwrap();
+    let status_of = |activity_id: &str| {
+        claimed
+            .iter()
+            .find(|t| t.activity_id == activity_id)
+            .expect("claimed")
+            .workflow_status
+    };
+    assert_eq!(claimed.len(), 3);
+    assert_eq!(status_of("p"), Some(WorkflowStatus::Pending));
+    assert_eq!(status_of("r"), Some(WorkflowStatus::Running));
+    assert_eq!(status_of("standalone"), None);
 }

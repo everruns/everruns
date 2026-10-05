@@ -398,14 +398,14 @@ struct MissedWakeups(InMemoryDurableStore);
 #[async_trait::async_trait]
 impl DurableStoreBackend for MissedWakeups {
     async fn get_workflow_status(
-        &mut self,
+        &self,
         workflow_id: Uuid,
     ) -> anyhow::Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
         self.0.get_workflow_status(workflow_id).await
     }
 
     async fn create_workflow(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         workflow_type: &str,
         input: serde_json::Value,
@@ -416,7 +416,7 @@ impl DurableStoreBackend for MissedWakeups {
     }
 
     async fn update_workflow_status(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         status: WorkflowStatus,
         output: Option<serde_json::Value>,
@@ -428,7 +428,7 @@ impl DurableStoreBackend for MissedWakeups {
     }
 
     async fn enqueue_task(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         activity_id: String,
         activity_type: String,
@@ -439,16 +439,16 @@ impl DurableStoreBackend for MissedWakeups {
             .await
     }
 
-    async fn start_workflow_with_task(
-        &mut self,
+    async fn start_turn(
+        &self,
         workflow_id: Uuid,
         workflow_type: &str,
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
-    ) -> anyhow::Result<Uuid> {
+    ) -> anyhow::Result<everruns_durable::RunStart> {
         self.0
-            .start_workflow_with_task(
+            .start_turn(
                 workflow_id,
                 workflow_type,
                 input,
@@ -458,16 +458,16 @@ impl DurableStoreBackend for MissedWakeups {
             .await
     }
 
-    async fn count_active_workflows(&mut self) -> anyhow::Result<usize> {
+    async fn count_active_workflows(&self) -> anyhow::Result<usize> {
         self.0.count_active_workflows().await
     }
 
-    async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> anyhow::Result<u64> {
+    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> anyhow::Result<u64> {
         self.0.cancel_pending_tasks(workflow_id).await
     }
 
     async fn append_events(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         expected_sequence: i32,
         events: Vec<WorkflowEvent>,
@@ -477,27 +477,19 @@ impl DurableStoreBackend for MissedWakeups {
             .await
     }
 
-    async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> anyhow::Result<bool> {
-        self.0.try_claim_workflow_for_new_turn(workflow_id).await
-    }
-
-    async fn send_signal(
-        &mut self,
-        workflow_id: Uuid,
-        signal: WorkflowSignal,
-    ) -> anyhow::Result<()> {
+    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> anyhow::Result<()> {
         self.0.send_signal(workflow_id, signal).await
     }
 
     async fn get_and_consume_signals(
-        &mut self,
+        &self,
         workflow_id: Uuid,
     ) -> anyhow::Result<Vec<WorkflowSignal>> {
         self.0.get_and_consume_signals(workflow_id).await
     }
 
     async fn latest_completion_output(
-        &mut self,
+        &self,
         workflow_id: Uuid,
     ) -> anyhow::Result<Option<serde_json::Value>> {
         self.0.latest_completion_output(workflow_id).await

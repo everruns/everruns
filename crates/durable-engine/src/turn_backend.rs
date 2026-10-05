@@ -54,8 +54,7 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::host::{PersistedTurn, TurnBackend, TurnInput, TurnRequest, TurnTicket};
 use everruns_core::turn::TurnStopReason;
-use everruns_durable::{EventLog, WorkflowEvent, WorkflowSignal, WorkflowStatus};
-use tokio::sync::Mutex;
+use everruns_durable::{EventLog, RunStart, WorkflowEvent, WorkflowSignal, WorkflowStatus};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -131,13 +130,7 @@ impl DurableRunner {
                     "agent_id": agent_id.map(|id| id.to_string()),
                 }),
             );
-            if let Err(error) = self
-                .store
-                .lock()
-                .await
-                .send_signal(workflow_id, signal)
-                .await
-            {
+            if let Err(error) = self.store.send_signal(workflow_id, signal).await {
                 warn!(
                     session_id = %session_id,
                     %error,
@@ -178,50 +171,21 @@ impl DurableRunner {
         activity_type: &str,
         input_json: serde_json::Value,
     ) -> anyhow::Result<bool> {
-        {
-            let mut store = self.store.lock().await;
-
-            match store.try_claim_workflow_for_new_turn(workflow_id).await {
-                Ok(true) => {
-                    if let Err(error) = store
-                        .enqueue_task(
-                            workflow_id,
-                            activity_id,
-                            activity_type.to_string(),
-                            input_json,
-                        )
-                        .await
-                    {
-                        let _ = store
-                            .update_workflow_status(
-                                workflow_id,
-                                WorkflowStatus::Completed,
-                                None,
-                                None,
-                            )
-                            .await;
-                        return Err(anyhow::anyhow!("Failed to enqueue task: {error}"));
-                    }
-                }
-                Ok(false) => return Ok(false),
-                Err(error) => {
-                    let err = error.to_string();
-                    if !err.contains("not found") && !err.contains("NOT_FOUND") {
-                        return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
-                    }
-
-                    store
-                        .start_workflow_with_task(
-                            workflow_id,
-                            "turn_workflow",
-                            input_json,
-                            activity_id,
-                            activity_type.to_string(),
-                        )
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to start workflow: {e}"))?;
-                }
-            }
+        // One atomic store call, no runner lock: concurrent sends to a
+        // session elect one winner in the store, the rest steer its run.
+        let started = self
+            .store
+            .start_turn(
+                workflow_id,
+                "turn_workflow",
+                input_json,
+                activity_id,
+                activity_type.to_string(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to start turn workflow: {e}"))?;
+        if matches!(started, RunStart::Active) {
+            return Ok(false);
         }
 
         self.notify_task_available(activity_type).await;
@@ -236,7 +200,7 @@ impl DurableRunner {
         resolution_id: Uuid,
     ) -> anyhow::Result<()> {
         let workflow_id = session_id.uuid();
-        let mut store = self.store.lock().await;
+        let store = &self.store;
 
         let (status, result_json, _) = store
             .get_workflow_status(workflow_id)
@@ -291,7 +255,6 @@ impl DurableRunner {
                 .await;
             return Err(anyhow::anyhow!("Failed to enqueue reason task: {error}"));
         }
-        drop(store);
         self.notify_task_available("reason").await;
 
         Ok(())
@@ -307,7 +270,7 @@ impl DurableRunner {
         message: &str,
     ) -> Result<bool> {
         let workflow_id = session_id.uuid();
-        let mut store = self.store.lock().await;
+        let store = &self.store;
         let was_running = matches!(
             store.get_workflow_status(workflow_id).await,
             Ok((status, _, _)) if !status.is_terminal()
@@ -418,7 +381,7 @@ impl TurnBackend for DurableRunner {
 
     async fn is_running(&self, session_id: SessionId) -> bool {
         let workflow_id = session_id.uuid();
-        let mut store = self.store.lock().await;
+        let store = &self.store;
         match store.get_workflow_status(workflow_id).await {
             Ok((status, _, _)) => !status.is_terminal(),
             Err(_) => false,
@@ -426,7 +389,7 @@ impl TurnBackend for DurableRunner {
     }
 
     async fn active_count(&self) -> usize {
-        let mut store = self.store.lock().await;
+        let store = &self.store;
         store.count_active_workflows().await.unwrap_or_default()
     }
 }
@@ -493,14 +456,13 @@ struct EndedWorkflow {
 
 /// Wait until `workflow_id` ends, then map the end to a turn result.
 async fn await_workflow(
-    store: Arc<Mutex<dyn DurableStoreBackend>>,
+    store: Arc<dyn DurableStoreBackend>,
     workflow_id: Uuid,
     turn_id: TurnId,
     baseline: TurnBaseline,
 ) -> Result<TurnResult> {
     loop {
         let (ended, end_signal) = {
-            let mut store = store.lock().await;
             // Subscribe before reading the status, so an end that lands
             // between the read and the wait still wakes this ticket.
             let end_signal = store.workflow_end_signal(workflow_id);

@@ -13,7 +13,7 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::core::config::env_string_any;
-use crate::durable::{WorkflowEvent, WorkflowSignal, WorkflowStatus};
+use crate::durable::{RunStart, WorkflowEvent, WorkflowSignal, WorkflowStatus};
 use crate::durable_runner::{DurableRunner, DurableStoreBackend};
 use crate::grpc_durable_store::GrpcDurableStore;
 use crate::grpc_task_store::{grpc_status_to_workflow_status, workflow_status_to_grpc_status};
@@ -56,35 +56,38 @@ pub async fn create_runner(
     }
 }
 
+// Each call clones the store: a tonic client is a cheap handle over one
+// shared channel, and the trait takes `&self` so the runner needs no lock.
 #[async_trait]
 impl DurableStoreBackend for GrpcDurableStore {
     async fn get_workflow_status(
-        &mut self,
+        &self,
         workflow_id: Uuid,
     ) -> Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
         let (status, output, error) =
-            GrpcDurableStore::get_workflow_status(self, workflow_id).await?;
+            GrpcDurableStore::get_workflow_status(&mut self.clone(), workflow_id).await?;
         Ok((grpc_status_to_workflow_status(status), output, error))
     }
 
     async fn create_workflow(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         workflow_type: &str,
         input: serde_json::Value,
     ) -> Result<Uuid> {
-        GrpcDurableStore::create_workflow(self, workflow_id, workflow_type, input).await
+        GrpcDurableStore::create_workflow(&mut self.clone(), workflow_id, workflow_type, input)
+            .await
     }
 
     async fn update_workflow_status(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         status: WorkflowStatus,
         output: Option<serde_json::Value>,
         error: Option<String>,
     ) -> Result<()> {
         GrpcDurableStore::update_workflow_status(
-            self,
+            &mut self.clone(),
             workflow_id,
             workflow_status_to_grpc_status(status),
             output,
@@ -94,68 +97,46 @@ impl DurableStoreBackend for GrpcDurableStore {
     }
 
     async fn enqueue_task(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         activity_id: String,
         activity_type: String,
         input: serde_json::Value,
     ) -> Result<Uuid> {
-        GrpcDurableStore::enqueue_task(self, workflow_id, activity_id, activity_type, input).await
-    }
-
-    async fn start_workflow_with_task(
-        &mut self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        activity_id: String,
-        activity_type: String,
-    ) -> Result<Uuid> {
-        GrpcDurableStore::create_workflow(self, workflow_id, workflow_type, input.clone()).await?;
-        let _ = self
-            .append_events(workflow_id, 0, vec![WorkflowEvent::started(input.clone())])
-            .await?;
-        let task_id = GrpcDurableStore::enqueue_task(
-            self,
+        GrpcDurableStore::enqueue_task(
+            &mut self.clone(),
             workflow_id,
-            activity_id.clone(),
-            activity_type.clone(),
-            input.clone(),
+            activity_id,
+            activity_type,
+            input,
         )
-        .await?;
-        GrpcDurableStore::update_workflow_status(
-            self,
-            workflow_id,
-            workflow_status_to_grpc_status(WorkflowStatus::Running),
-            None,
-            None,
-        )
-        .await?;
-        let _ = self
-            .append_events(
-                workflow_id,
-                1,
-                vec![WorkflowEvent::ActivityScheduled {
-                    activity_id,
-                    activity_type,
-                    input,
-                    options: crate::durable::ActivityOptions::default(),
-                }],
-            )
-            .await?;
-        Ok(task_id)
+        .await
     }
 
-    async fn count_active_workflows(&mut self) -> Result<usize> {
-        GrpcDurableStore::count_active_workflows(self).await
+    async fn start_turn(
+        &self,
+        _workflow_id: Uuid,
+        _workflow_type: &str,
+        _input: serde_json::Value,
+        _activity_id: String,
+        _activity_type: String,
+    ) -> Result<RunStart> {
+        // Turns start on the control plane, which owns the store. A worker's
+        // runner only steers runs that already exist, so it reports one as
+        // active and the runner signals it.
+        Ok(RunStart::Active)
     }
 
-    async fn cancel_pending_tasks(&mut self, _workflow_id: Uuid) -> Result<u64> {
+    async fn count_active_workflows(&self) -> Result<usize> {
+        GrpcDurableStore::count_active_workflows(&mut self.clone()).await
+    }
+
+    async fn cancel_pending_tasks(&self, _workflow_id: Uuid) -> Result<u64> {
         Ok(0)
     }
 
     async fn append_events(
-        &mut self,
+        &self,
         _workflow_id: Uuid,
         _expected_sequence: i32,
         _events: Vec<WorkflowEvent>,
@@ -163,15 +144,11 @@ impl DurableStoreBackend for GrpcDurableStore {
         Ok(0)
     }
 
-    async fn try_claim_workflow_for_new_turn(&mut self, _workflow_id: Uuid) -> Result<bool> {
-        Ok(false)
+    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> Result<()> {
+        GrpcDurableStore::send_signal(&mut self.clone(), workflow_id, signal).await
     }
 
-    async fn send_signal(&mut self, workflow_id: Uuid, signal: WorkflowSignal) -> Result<()> {
-        GrpcDurableStore::send_signal(self, workflow_id, signal).await
-    }
-
-    async fn get_and_consume_signals(&mut self, workflow_id: Uuid) -> Result<Vec<WorkflowSignal>> {
-        GrpcDurableStore::get_and_consume_signals(self, workflow_id).await
+    async fn get_and_consume_signals(&self, workflow_id: Uuid) -> Result<Vec<WorkflowSignal>> {
+        GrpcDurableStore::get_and_consume_signals(&mut self.clone(), workflow_id).await
     }
 }

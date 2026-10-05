@@ -305,7 +305,9 @@ impl GrpcDurableStore {
             .tasks
             .into_iter()
             .map(|t| {
-                let status = t.workflow_status.map(|_| t.workflow_status());
+                let status = t
+                    .workflow_status
+                    .map(|_| proto_status_to_workflow(t.workflow_status()));
                 let id =
                     t.id.as_ref()
                         .map(parse_proto_uuid)
@@ -313,7 +315,7 @@ impl GrpcDurableStore {
                         .unwrap_or_else(Uuid::nil);
                 let workflow_id = t.workflow_id.as_ref().map(parse_proto_uuid).transpose()?;
                 if let (Some(workflow_id), Some(status)) = (workflow_id, status) {
-                    self.remember_claimed_status(workflow_id, proto_status_to_workflow(status));
+                    self.remember_claimed_status(workflow_id, status);
                 }
                 let input = t
                     .input
@@ -329,6 +331,8 @@ impl GrpcDurableStore {
                     options: crate::durable::ActivityOptions::default(),
                     attempt: t.attempt as u32,
                     max_attempts: t.max_attempts as u32,
+                    workflow_status: status
+                        .map(crate::grpc_task_store::grpc_status_to_workflow_status),
                 })
             })
             .collect::<Result<Vec<_>>>()?;

@@ -32,8 +32,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use everruns_durable::{
-    ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome, WorkerInfo, WorkflowError,
-    WorkflowEvent, WorkflowSignal, WorkflowStatus,
+    ClaimedTask, HeartbeatResponse, RunStart, StoreError, TaskFailureOutcome, WorkerInfo,
+    WorkflowError, WorkflowEvent, WorkflowSignal, WorkflowStatus,
 };
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -336,14 +336,14 @@ impl<B> RoutedDurableStore<B> {
 #[async_trait]
 impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
     async fn get_workflow_status(
-        &mut self,
+        &self,
         workflow_id: Uuid,
     ) -> AnyResult<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
         self.inner.get_workflow_status(workflow_id).await
     }
 
     async fn create_workflow(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         workflow_type: &str,
         input: serde_json::Value,
@@ -354,7 +354,7 @@ impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
     }
 
     async fn update_workflow_status(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         status: WorkflowStatus,
         output: Option<serde_json::Value>,
@@ -371,7 +371,7 @@ impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
     }
 
     async fn enqueue_task(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         activity_id: String,
         activity_type: String,
@@ -383,17 +383,17 @@ impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
             .await
     }
 
-    async fn start_workflow_with_task(
-        &mut self,
+    async fn start_turn(
+        &self,
         workflow_id: Uuid,
         workflow_type: &str,
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
-    ) -> AnyResult<Uuid> {
+    ) -> AnyResult<RunStart> {
         let activity_type = self.routing.route(&activity_type);
         self.inner
-            .start_workflow_with_task(
+            .start_turn(
                 workflow_id,
                 workflow_type,
                 input,
@@ -403,16 +403,16 @@ impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
             .await
     }
 
-    async fn count_active_workflows(&mut self) -> AnyResult<usize> {
+    async fn count_active_workflows(&self) -> AnyResult<usize> {
         self.inner.count_active_workflows().await
     }
 
-    async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> AnyResult<u64> {
+    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> AnyResult<u64> {
         self.inner.cancel_pending_tasks(workflow_id).await
     }
 
     async fn append_events(
-        &mut self,
+        &self,
         workflow_id: Uuid,
         expected_sequence: i32,
         events: Vec<WorkflowEvent>,
@@ -422,25 +422,16 @@ impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
             .await
     }
 
-    async fn try_claim_workflow_for_new_turn(&mut self, workflow_id: Uuid) -> AnyResult<bool> {
-        self.inner
-            .try_claim_workflow_for_new_turn(workflow_id)
-            .await
-    }
-
-    async fn send_signal(&mut self, workflow_id: Uuid, signal: WorkflowSignal) -> AnyResult<()> {
+    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> AnyResult<()> {
         self.inner.send_signal(workflow_id, signal).await
     }
 
-    async fn get_and_consume_signals(
-        &mut self,
-        workflow_id: Uuid,
-    ) -> AnyResult<Vec<WorkflowSignal>> {
+    async fn get_and_consume_signals(&self, workflow_id: Uuid) -> AnyResult<Vec<WorkflowSignal>> {
         self.inner.get_and_consume_signals(workflow_id).await
     }
 
     async fn latest_completion_output(
-        &mut self,
+        &self,
         workflow_id: Uuid,
     ) -> AnyResult<Option<serde_json::Value>> {
         self.inner.latest_completion_output(workflow_id).await

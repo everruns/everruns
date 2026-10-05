@@ -178,8 +178,18 @@ pub struct TaskDefinition {
     pub options: ActivityOptions,
 }
 
+/// Outcome of [`EventLog::start_run_with_task`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunStart {
+    /// A new run started and its first task was enqueued. `created` is true
+    /// when this call also created the workflow.
+    Started { task_id: Uuid, created: bool },
+    /// A run is already active; nothing changed.
+    Active,
+}
+
 /// A task that has been claimed by a worker
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ClaimedTask {
     pub id: Uuid,
     pub workflow_id: Option<Uuid>,
@@ -189,6 +199,10 @@ pub struct ClaimedTask {
     pub options: ActivityOptions,
     pub attempt: u32,
     pub max_attempts: u32,
+    /// Status of the task's workflow, read in the same statement as the
+    /// claim, so a worker can skip work for a cancelled or finished workflow
+    /// without a second read. `None` for standalone tasks.
+    pub workflow_status: Option<WorkflowStatus>,
 }
 
 /// Response from heartbeat operation
@@ -691,6 +705,31 @@ pub trait EventLog: Send + Sync + 'static {
     /// same atomic operation. Safe under horizontal scaling: only one caller
     /// wins the claim.
     async fn try_start_new_run(&self, workflow_id: Uuid) -> Result<bool, StoreError>;
+
+    /// Start a run of `workflow_id` and enqueue its first task, atomically.
+    ///
+    /// The one-step form of "create or `try_start_new_run`, then
+    /// `enqueue_task`" that callers starting a run on a long-lived workflow
+    /// need. Doing it in one step means a run is never left Running without a
+    /// task, and concurrent callers need no lock of their own: exactly one
+    /// wins, the rest get [`RunStart::Active`] and can signal the run instead.
+    ///
+    /// - Unknown workflow: create it Running with `WorkflowStarted` and
+    ///   `ActivityScheduled` events and enqueue `task`.
+    /// - Known workflow with no active run: start a new run exactly as
+    ///   `try_start_new_run` does (stale pending tasks are cancelled) and
+    ///   enqueue `task`.
+    /// - Active run (Running, or a task claimed): change nothing and return
+    ///   [`RunStart::Active`].
+    ///
+    /// `task.workflow_id` is ignored; the task always belongs to `workflow_id`.
+    async fn start_run_with_task(
+        &self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        task: TaskDefinition,
+    ) -> Result<RunStart, StoreError>;
 
     /// Cancel a workflow
     async fn cancel_workflow(&self, workflow_id: Uuid) -> Result<(), StoreError>;
