@@ -138,7 +138,9 @@ async fn cancel_then_the_next_turn() {
         },
         |_, session, ()| async move {
             let sent = session.send("hi").await.expect("send");
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            // Cancel once the model is answering, not after a fixed sleep a
+            // slow backend may not have started the turn within.
+            wait_for_event(&session, "output.message.started").await;
             tokio::time::timeout(Duration::from_millis(500), sent.turn().cancel())
                 .await
                 .expect("cancel does not wait for the slow step")
