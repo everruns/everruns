@@ -89,6 +89,7 @@ pub mod skills;
 pub mod slack_events;
 pub mod slack_install;
 pub mod sse;
+pub mod state;
 pub mod task_webhooks;
 pub mod tool_approvals;
 pub mod tool_results;

@@ -1,6 +1,6 @@
-use super::common::impl_auth_state;
-use crate::auth::{AuthState, ResolvedOrg};
-use crate::storage::{StorageBackend, models::CreateFileRow};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
+use crate::storage::models::CreateFileRow;
 use axum::body::Body;
 use axum::extract::DefaultBodyLimit;
 use axum::extract::{Path, Query, State};
@@ -14,23 +14,7 @@ use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::FileId;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
-
-/// App state for files routes
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-}
-
-impl_auth_state!(AppState);
 
 /// Maximum upload size for files transferred inline over gRPC.
 ///
@@ -112,7 +96,7 @@ pub struct ListFilesQuery {
 /// Upload a PDF file for use as model input.
 pub async fn upload_file(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     query: Query<UploadFileQuery>,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, Response> {
@@ -222,7 +206,7 @@ pub async fn upload_file(
 /// List uploaded files, newest first.
 pub async fn list_files(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     query: Query<ListFilesQuery>,
 ) -> Result<impl IntoResponse, Response> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
@@ -256,7 +240,7 @@ pub async fn list_files(
 /// Download a stored file's bytes.
 pub async fn get_file(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     path: Path<String>,
 ) -> Result<impl IntoResponse, Response> {
     let file_id = parse_file_id(&path.0)?;
@@ -314,7 +298,7 @@ pub async fn get_file(
 /// Delete a stored file.
 pub async fn delete_file(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     path: Path<String>,
 ) -> Result<impl IntoResponse, Response> {
     let file_id = parse_file_id(&path.0)?;
@@ -341,7 +325,7 @@ fn parse_file_id(raw: &str) -> Result<FileId, Response> {
 }
 
 /// Create files router.
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/files", post(upload_file).get(list_files))
         .route("/v1/files/{file_id}", get(get_file).delete(delete_file))

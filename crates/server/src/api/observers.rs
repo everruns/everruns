@@ -1,57 +1,25 @@
 // Observer API routes — online scoring of production sessions.
 // See knowledge/evaluation/online-evals.md. Gated behind the `observers` feature flag.
 
+use crate::api::state::ApiState;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use std::sync::Arc;
 
 use crate::records::observer::{
     Observer, ObserverMatch, ObserverScorerConfig, ObserverStatus, TraceScore,
 };
-use everruns_core::Caller;
 
 use crate::api::common::{ApiResult, ErrorResponse, ListResponse};
-use crate::api::dispatch::{Dispatchable, impl_dispatchable};
-use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::Ctx;
+use crate::api::dispatch::Dispatchable;
+use crate::auth::ResolvedOrg;
 use crate::domains::observers::{
     CreateObserver, DeleteObserver, GetObserver, ListObserverScores, ListObservers, UpdateObserver,
 };
-use crate::storage::StorageBackend;
 
 use utoipa::{IntoParams, ToSchema};
-
-// ============================================
-// State
-// ============================================
-
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-crate::api::common::impl_auth_state!(AppState);
-impl_dispatchable!(AppState);
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-
-    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(
-            Caller::from(org),
-            self.db.clone(),
-            None,
-            self.auth.permission_resolver.clone(),
-        )
-        .with_feature_flags(org.feature_flags.clone())
-    }
-}
 
 // ============================================
 // Request/Response types
@@ -114,7 +82,7 @@ pub struct ListTraceScoresQuery {
 // Routes
 // ============================================
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/observers", post(create).get(list))
         .route(
@@ -131,7 +99,7 @@ pub fn routes(state: AppState) -> Router {
 
 async fn create(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreateObserverRequest>,
 ) -> Result<(StatusCode, Json<Observer>), (StatusCode, Json<ErrorResponse>)> {
     state
@@ -142,7 +110,7 @@ async fn create(
 
 async fn list(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListObserversQuery>,
 ) -> ApiResult<ListResponse<Observer>> {
     state
@@ -155,7 +123,7 @@ async fn list(
 
 async fn get_observer(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(observer_id): Path<String>,
 ) -> ApiResult<Observer> {
     state
@@ -166,7 +134,7 @@ async fn get_observer(
 
 async fn update(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(observer_id): Path<String>,
     Json(req): Json<UpdateObserverRequest>,
 ) -> ApiResult<Observer> {
@@ -178,7 +146,7 @@ async fn update(
 
 async fn delete(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(observer_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     state
@@ -189,7 +157,7 @@ async fn delete(
 
 async fn list_scores(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(observer_id): Path<String>,
     Query(query): Query<ListTraceScoresQuery>,
 ) -> ApiResult<ListResponse<TraceScore>> {

@@ -5,14 +5,12 @@
 // Supports both SKILL.md text upload and ZIP archive upload.
 
 use crate::api::command_http::CommandRouterExt;
-use crate::api::common::{ErrorResponse, UrlBuilder, WithUrls, impl_auth_state};
-use crate::api::dispatch::impl_dispatchable;
+use crate::api::common::{ErrorResponse, UrlBuilder, WithUrls};
+use crate::api::state::ApiState;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::skills;
 use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::records::Skill;
-use crate::services::CapabilityService;
-use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, State},
@@ -25,7 +23,6 @@ use everruns_core::{
     validate_skill_md,
 };
 use serde::Deserialize;
-use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 // ============================================
@@ -62,42 +59,6 @@ pub struct ListSkillsQuery {
     pub include_archived: Option<bool>,
 }
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub capability_service: Arc<CapabilityService>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        capability_service: Arc<CapabilityService>,
-        auth: AuthState,
-    ) -> Self {
-        Self {
-            db,
-            capability_service,
-            auth,
-        }
-    }
-
-    /// Build a domain Ctx from this AppState for the given org.
-    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
-        crate::domains::common::Ctx::new(
-            Caller::from(org),
-            self.db.clone(),
-            self.capability_service.clone(),
-            None,
-            self.auth.permission_resolver.clone(),
-        )
-        .with_feature_flags(org.feature_flags.clone())
-    }
-}
-
-impl_auth_state!(AppState);
-impl_dispatchable!(AppState);
-
 // ============================================
 // Helpers
 // ============================================
@@ -131,7 +92,7 @@ pub async fn skill_config(
 // Routes
 // ============================================
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/skills/config", get(skill_config))
         .route(
@@ -168,7 +129,7 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn upload_skill(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
     if !org.feature_flags.skills {
@@ -241,7 +202,7 @@ pub async fn upload_skill(
 )]
 pub async fn validate_skill(
     org: ResolvedOrg,
-    State(_state): State<AppState>,
+    State(_state): State<ApiState>,
     Json(req): Json<ValidateSkillRequest>,
 ) -> Result<Json<SkillValidationResult>, (StatusCode, Json<ErrorResponse>)> {
     if !org.feature_flags.skills {

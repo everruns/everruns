@@ -99,8 +99,12 @@ permission resolver, storage, feature flags, and cross-cutting facilities
 needed by domain orchestration. The exact dependency set changes as domains
 evolve and is intentionally not listed here.
 
-Context construction is centralized per transport. Tests use the supported
-minimal test constructor rather than assembling partial production context.
+Context construction is centralized. REST modules share one `ApiState`
+([`api/state.rs`](../../crates/server/src/api/state.rs)) built once at startup
+from the same services the MCP endpoint uses, so a command sees the same
+context whichever transport calls it. Modules still on their own state are
+being moved onto it. Tests use the supported minimal test constructor rather
+than assembling partial production context.
 
 Domain-specific algorithms remain in their domain; adding every helper as a
 context field would recreate the old service layer.
