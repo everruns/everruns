@@ -2,7 +2,7 @@
 // Events are SSE notifications for real-time updates
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { getApiBaseUrl, throwApiError } from "./client";
+import { api, getApiBaseUrl, throwApiError } from "./client";
 import type { Event, ListResponse } from "./types";
 import { withOrgHeader } from "./active-org";
 
@@ -80,6 +80,49 @@ export async function listEventsPaginated(
     events: body.data,
     totalNonDeltaCount,
   };
+}
+
+const TOOL_EVENT_PAGE_SIZE = 200;
+const TOOL_EVENT_PAGE_CAP = 50;
+
+/**
+ * Every successful completion of one tool in a session, oldest first.
+ *
+ * Approval asks and grants are rare next to the rest of the transcript, and
+ * the session view only keeps a recent window. This walks backward through
+ * `tool.completed` rows for that tool so a long recording still shows the
+ * early ones. The total-count header is unused here, so this goes through the
+ * shared API client.
+ */
+export async function listToolCompletionEvents(
+  sessionId: string,
+  toolName: string,
+): Promise<Event[]> {
+  const pages: Event[][] = [];
+  let before: number | undefined;
+  for (let page = 0; page < TOOL_EVENT_PAGE_CAP; page += 1) {
+    const params = new URLSearchParams();
+    params.append("types", "tool.completed");
+    params.set("tool_name", toolName);
+    params.set("limit", String(TOOL_EVENT_PAGE_SIZE));
+    if (before !== undefined) params.set("before_sequence", String(before));
+    const response = await api.get<ListResponse<Event>>(
+      `/v1/sessions/${encodeURIComponent(sessionId)}/events?${params.toString()}`,
+    );
+    const batch = response.data.data ?? [];
+    if (batch.length === 0) break;
+    pages.push(batch);
+    const oldest = batch[0]?.sequence;
+    if (
+      batch.length < TOOL_EVENT_PAGE_SIZE ||
+      oldest === undefined ||
+      (before !== undefined && oldest >= before)
+    ) {
+      break;
+    }
+    before = oldest;
+  }
+  return pages.reverse().flat();
 }
 
 /**

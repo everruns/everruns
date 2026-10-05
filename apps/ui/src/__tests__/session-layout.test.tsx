@@ -274,12 +274,12 @@ describe("SessionLayout", () => {
       screen
         .getAllByRole("link")
         .filter((link) =>
-          ["Transcript", "Timeline", "Work", "Events", "Files", "Cost"].includes(
+          ["Transcript", "Timeline", "Approvals", "Work", "Events", "Files", "Cost"].includes(
             link.textContent ?? "",
           ),
         )
         .map((link) => link.textContent),
-    ).toEqual(["Transcript", "Timeline", "Work", "Events", "Files", "Cost"]);
+    ).toEqual(["Transcript", "Timeline", "Approvals", "Work", "Events", "Files", "Cost"]);
   });
 
   it("points each tab at its route", async () => {

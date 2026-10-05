@@ -35,6 +35,7 @@ import {
   Folder,
   ListTree,
   MessageSquare,
+  ShieldCheck,
   Sparkles,
   Waypoints,
   Zap,
@@ -45,7 +46,14 @@ import {
  * recording actually has. `files` keeps its route id — the label is
  * "Files"; its stable route preserves existing links.
  */
-export type SessionNavKey = "transcript" | "timeline" | "work" | "events" | "files" | "cost";
+export type SessionNavKey =
+  | "transcript"
+  | "timeline"
+  | "approvals"
+  | "work"
+  | "events"
+  | "files"
+  | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -183,6 +191,15 @@ export function buildSessionNavigation({
       label: "Timeline",
       href: `${basePath}/timeline`,
       icon: ListTree,
+    },
+    // Approvals pairs each request with the grant recorded for it. The count
+    // is not a denormalized session counter, so the tab stays unbadged rather
+    // than scanning the event log to paint a number.
+    {
+      key: "approvals",
+      label: "Approvals",
+      href: `${basePath}/approvals`,
+      icon: ShieldCheck,
     },
     ...(hasWork
       ? [

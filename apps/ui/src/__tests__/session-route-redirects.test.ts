@@ -4,6 +4,7 @@ jest.mock("next/navigation", () => ({
   redirect: (href: string) => mockRedirect(href),
 }));
 
+import ApprovalsPage from "@/app/(main)/approvals/page";
 import LegacySessionChatPage from "@/app/(main)/sessions/[sessionId]/chat/page";
 import SessionPage from "@/app/(main)/sessions/[sessionId]/page";
 
@@ -16,6 +17,12 @@ describe("session recording redirects", () => {
     await SessionPage({ params: Promise.resolve({ sessionId: "session_123" }) });
 
     expect(mockRedirect).toHaveBeenCalledWith("/sessions/session_123/transcript");
+  });
+
+  it("sends the retired org-wide approvals list to Sessions", () => {
+    ApprovalsPage();
+
+    expect(mockRedirect).toHaveBeenCalledWith("/sessions");
   });
 
   it("preserves legacy session chat bookmarks as Transcript", async () => {

@@ -202,10 +202,13 @@ import EventsPage from "../app/(main)/sessions/[sessionId]/events/page";
 import WorkspacePage from "../app/(main)/sessions/[sessionId]/files/page";
 // eslint-disable-next-line import/first
 import CostPage from "../app/(main)/sessions/[sessionId]/cost/page";
+// eslint-disable-next-line import/first
+import ApprovalsPage from "../app/(main)/sessions/[sessionId]/approvals/page";
 
 const TABS: Array<[string, React.ComponentType]> = [
   ["Transcript", TranscriptPage],
   ["Timeline", TimelinePage],
+  ["Approvals", ApprovalsPage],
   ["Work", WorkPage],
   ["Events", EventsPage],
   ["Workspace", WorkspacePage],
