@@ -2,6 +2,12 @@
 
 ## 2026-10-05
 
+* **Proposed: change reasons and manager context.** Every mutating command
+  takes a `reason` from any surface, recorded by `Command::run` in a generic
+  entity history; every managed entity can carry manager-only notes its own
+  runtime never sees. Design, contracts and test plan in
+  [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
+
 * **Integrations ship against contracts alone.** The runtime SPI (capability,
   tool, tool context, session, message, event) moved from core into
   `everruns_contracts::runtime` behind a `runtime` feature; core re-exports each
