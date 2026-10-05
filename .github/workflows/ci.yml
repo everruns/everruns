@@ -717,7 +717,9 @@ jobs:
 
   # Architecture guard: everruns-durable is a generic durable-execution engine
   # with no everruns-* normal or build dependency; agent/turn semantics live in
-  # durable-engine and server. Also owns the database-driver boundary check.
+  # durable-engine and server. durable-engine itself carries no tonic or
+  # internal-protocol edge (the worker owns gRPC). Also owns the
+  # database-driver boundary check.
   durable-isolation:
     name: Durable Isolation Guard
     runs-on: ubuntu-latest

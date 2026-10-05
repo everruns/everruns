@@ -9,6 +9,10 @@
 # 2. `cargo tree` for the shipped (normal + build) edges contains no
 #    `everruns-*` crate other than `everruns-durable` itself, so the engine
 #    never compiles the agent stack.
+# 3. `everruns-durable-engine` carries no transport: neither its manifest nor
+#    its shipped (normal + build) tree contains `tonic` or
+#    `everruns-internal-protocol`. The worker owns the gRPC stores and runner
+#    constructors, so durable-engine can ship as a framework backend.
 
 set -euo pipefail
 
@@ -49,10 +53,33 @@ if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
 
-# Worker composition enters the engine through the private durable-engine.
+# 3. durable-engine is transport-free (manifest and shipped tree).
+ENGINE_MANIFEST=crates/durable-engine/Cargo.toml
 if matches=$(awk '
   /^\[/ { section = $0 }
-  /^[[:space:]]*(everruns-(core|engine|host|builtins|mcp|ag-ui|durable)|sqlx)[[:space:]]*[.=]/ {
+  /^[[:space:]]*(tonic[a-z0-9-]*|everruns-internal-protocol)[[:space:]]*[.=]/ {
+    if (section != "[dev-dependencies]") print FILENAME ":" NR ": " section " " $0
+  }
+' "$ENGINE_MANIFEST"); [ -n "$matches" ]; then
+  echo "everruns-durable-engine must not declare tonic or everruns-internal-protocol (normal/build):"
+  echo "$matches"
+  exit 1
+fi
+engine_tree=$(guard_cargo_tree -p everruns-durable-engine --edges normal,build --prefix none)
+if leaked=$(echo "$engine_tree" | grep -E '^(tonic[a-z0-9-]* |everruns-internal-protocol )' | sort -u) \
+  && [ -n "$leaked" ]; then
+  echo "everruns-durable-engine must not depend on tonic or everruns-internal-protocol (normal/build edges):"
+  echo "$leaked"
+  echo "Keep gRPC stores and runner constructors in everruns-worker."
+  exit 1
+fi
+
+# Worker composition enters the engine through the private durable-engine.
+# `everruns-core` is allowed in the manifest only to select worker-only core
+# features (MCP, telemetry, ...); source still goes through durable-engine.
+if matches=$(awk '
+  /^\[/ { section = $0 }
+  /^[[:space:]]*(everruns-(engine|host|builtins|mcp|ag-ui|durable)|sqlx)[[:space:]]*[.=]/ {
     if (section != "[dev-dependencies]") print FILENAME ":" NR ": " section " " $0
   }
 ' crates/worker/Cargo.toml); [ -n "$matches" ]; then
@@ -70,4 +97,4 @@ if ! grep -q '^publish = false$' crates/durable-engine/Cargo.toml; then
   exit 1
 fi
 
-echo "Durable isolation guard passed: durable remains generic; worker uses the private durable-engine entry."
+echo "Durable isolation guard passed: durable remains generic; durable-engine is transport-free; worker uses the private durable-engine entry."

@@ -82,6 +82,11 @@ part of the facade builder.
 `everruns` feature. It drives the facade's own runtime, so no second adapter is
 needed, and the platform's worker becomes one more user of the same driver.
 
+The crate already carries no transport: the worker owns the gRPC stores, the
+gRPC runner constructors, `tonic`, and `everruns-internal-protocol`, and plugs
+its store in through durable-engine's `DurableStoreBackend` and `TaskStore`
+traits. The durable isolation guard keeps it that way.
+
 ### Queue plus per-step checkpoint, not Workflow replay
 
 The durable backend keeps today's model: each turn step is a queued task, and

@@ -6,7 +6,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use everruns_core::config::env_string_any;
 pub use everruns_core::engine::TurnState as DurableTurnInput;
 use everruns_durable::{
     DurableAdmin, EventLog, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, SignalStore,
@@ -17,7 +16,6 @@ use tokio::sync::Mutex;
 use tracing::info;
 use uuid::Uuid;
 
-use crate::grpc_durable_store::{GrpcDurableStore, WorkflowStatus as GrpcWorkflowStatus};
 use crate::runner::AgentRunner;
 
 #[async_trait]
@@ -128,126 +126,6 @@ impl InMemoryDurableStore {
 impl Default for InMemoryDurableStore {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[async_trait]
-impl DurableStoreBackend for GrpcDurableStore {
-    async fn get_workflow_status(
-        &mut self,
-        workflow_id: Uuid,
-    ) -> Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
-        let (status, output, error) =
-            GrpcDurableStore::get_workflow_status(self, workflow_id).await?;
-        Ok((grpc_to_runtime_status(status), output, error))
-    }
-
-    async fn create_workflow(
-        &mut self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-    ) -> Result<Uuid> {
-        GrpcDurableStore::create_workflow(self, workflow_id, workflow_type, input).await
-    }
-
-    async fn update_workflow_status(
-        &mut self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> Result<()> {
-        GrpcDurableStore::update_workflow_status(
-            self,
-            workflow_id,
-            runtime_to_grpc_status(status),
-            output,
-            error,
-        )
-        .await
-    }
-
-    async fn enqueue_task(
-        &mut self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> Result<Uuid> {
-        GrpcDurableStore::enqueue_task(self, workflow_id, activity_id, activity_type, input).await
-    }
-
-    async fn start_workflow_with_task(
-        &mut self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        activity_id: String,
-        activity_type: String,
-    ) -> Result<Uuid> {
-        GrpcDurableStore::create_workflow(self, workflow_id, workflow_type, input.clone()).await?;
-        let _ = self
-            .append_events(workflow_id, 0, vec![WorkflowEvent::started(input.clone())])
-            .await?;
-        let task_id = GrpcDurableStore::enqueue_task(
-            self,
-            workflow_id,
-            activity_id.clone(),
-            activity_type.clone(),
-            input.clone(),
-        )
-        .await?;
-        GrpcDurableStore::update_workflow_status(
-            self,
-            workflow_id,
-            runtime_to_grpc_status(WorkflowStatus::Running),
-            None,
-            None,
-        )
-        .await?;
-        let _ = self
-            .append_events(
-                workflow_id,
-                1,
-                vec![WorkflowEvent::ActivityScheduled {
-                    activity_id,
-                    activity_type,
-                    input,
-                    options: everruns_durable::ActivityOptions::default(),
-                }],
-            )
-            .await?;
-        Ok(task_id)
-    }
-
-    async fn count_active_workflows(&mut self) -> Result<usize> {
-        GrpcDurableStore::count_active_workflows(self).await
-    }
-
-    async fn cancel_pending_tasks(&mut self, _workflow_id: Uuid) -> Result<u64> {
-        Ok(0)
-    }
-
-    async fn append_events(
-        &mut self,
-        _workflow_id: Uuid,
-        _expected_sequence: i32,
-        _events: Vec<WorkflowEvent>,
-    ) -> Result<i32> {
-        Ok(0)
-    }
-
-    async fn try_claim_workflow_for_new_turn(&mut self, _workflow_id: Uuid) -> Result<bool> {
-        Ok(false)
-    }
-
-    async fn send_signal(&mut self, workflow_id: Uuid, signal: WorkflowSignal) -> Result<()> {
-        GrpcDurableStore::send_signal(self, workflow_id, signal).await
-    }
-
-    async fn get_and_consume_signals(&mut self, workflow_id: Uuid) -> Result<Vec<WorkflowSignal>> {
-        GrpcDurableStore::get_and_consume_signals(self, workflow_id).await
     }
 }
 
@@ -549,17 +427,16 @@ pub struct DurableRunner {
 }
 
 impl DurableRunner {
-    pub async fn new(grpc_address: &str) -> Result<Self> {
-        info!(
-            grpc_address = %grpc_address,
-            "Initializing durable runner (gRPC mode)"
-        );
-
-        let store = GrpcDurableStore::connect(grpc_address).await?;
-        Ok(Self {
+    /// Build a runner over any durable store backend.
+    ///
+    /// Process-specific transports (the worker's gRPC store) implement
+    /// [`DurableStoreBackend`] in their own crate and enter here, so this crate
+    /// stays free of transport dependencies.
+    pub fn from_store(store: impl DurableStoreBackend + 'static) -> Self {
+        Self {
             store: Arc::new(Mutex::new(store)),
             task_notifier: None,
-        })
+        }
     }
 
     pub fn new_with_pool(pool: everruns_durable::PostgresPool) -> Self {
@@ -604,14 +481,6 @@ impl DurableRunner {
     pub fn with_task_notifier(mut self, task_notifier: Arc<dyn DurableTaskNotifier>) -> Self {
         self.task_notifier = Some(task_notifier);
         self
-    }
-
-    pub async fn from_env() -> Result<Self> {
-        let grpc_address = env_string_any(
-            &["SERVER_GRPC_ADDRESS", "WORKER_GRPC_ADDRESS"],
-            "127.0.0.1:9001",
-        );
-        Self::new(&grpc_address).await
     }
 
     async fn notify_task_available(&self, activity_type: &str) {
@@ -840,28 +709,6 @@ impl AgentRunner for DurableRunner {
     async fn active_count(&self) -> usize {
         let mut store = self.store.lock().await;
         store.count_active_workflows().await.unwrap_or_default()
-    }
-}
-
-fn grpc_to_runtime_status(status: GrpcWorkflowStatus) -> WorkflowStatus {
-    match status {
-        GrpcWorkflowStatus::Pending => WorkflowStatus::Pending,
-        GrpcWorkflowStatus::Running => WorkflowStatus::Running,
-        GrpcWorkflowStatus::Completed => WorkflowStatus::Completed,
-        GrpcWorkflowStatus::Failed => WorkflowStatus::Failed,
-        GrpcWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
-        GrpcWorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
-    }
-}
-
-fn runtime_to_grpc_status(status: WorkflowStatus) -> GrpcWorkflowStatus {
-    match status {
-        WorkflowStatus::Pending => GrpcWorkflowStatus::Pending,
-        WorkflowStatus::Running => GrpcWorkflowStatus::Running,
-        WorkflowStatus::Completed => GrpcWorkflowStatus::Completed,
-        WorkflowStatus::Failed => GrpcWorkflowStatus::Failed,
-        WorkflowStatus::Cancelled => GrpcWorkflowStatus::Cancelled,
-        WorkflowStatus::ContinuedAsNew => GrpcWorkflowStatus::ContinuedAsNew,
     }
 }
 

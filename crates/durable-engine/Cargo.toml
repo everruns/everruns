@@ -7,16 +7,14 @@ license.workspace = true
 
 [dependencies]
 everruns-contracts = { workspace = true, default-features = false }
-everruns-core = { workspace = true, default-features = false, features = ["engine", "host", "mcp", "observability", "openai-agents-api", "tree-sitter-outlines"] }
+everruns-core = { workspace = true, default-features = false, features = ["engine", "host"] }
 everruns-durable.workspace = true
-everruns-internal-protocol = { path = "../internal-protocol" }
 anyhow.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-tonic.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 

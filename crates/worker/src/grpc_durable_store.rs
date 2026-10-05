@@ -292,7 +292,7 @@ impl GrpcDurableStore {
         worker_id: &str,
         activity_types: &[String],
         max_tasks: usize,
-    ) -> Result<Vec<everruns_durable::ClaimedTask>> {
+    ) -> Result<Vec<crate::durable::ClaimedTask>> {
         let request = ClaimDurableTasksRequest {
             worker_id: worker_id.to_string(),
             activity_types: activity_types.to_vec(),
@@ -320,13 +320,13 @@ impl GrpcDurableStore {
                     .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
                     .unwrap_or_else(|| serde_json::json!({}));
 
-                Ok(everruns_durable::ClaimedTask {
+                Ok(crate::durable::ClaimedTask {
                     id,
                     workflow_id,
                     activity_id: t.activity_id,
                     activity_type: t.activity_type,
                     input,
-                    options: everruns_durable::ActivityOptions::default(),
+                    options: crate::durable::ActivityOptions::default(),
                     attempt: t.attempt as u32,
                     max_attempts: t.max_attempts as u32,
                 })
@@ -431,7 +431,7 @@ impl GrpcDurableStore {
     pub async fn send_signal(
         &mut self,
         workflow_id: Uuid,
-        signal: everruns_durable::WorkflowSignal,
+        signal: crate::durable::WorkflowSignal,
     ) -> Result<()> {
         use everruns_internal_protocol::proto::{
             DurableWorkflowSignal, SendDurableWorkflowSignalRequest,
@@ -455,7 +455,7 @@ impl GrpcDurableStore {
     pub async fn get_and_consume_signals(
         &mut self,
         workflow_id: Uuid,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
+    ) -> Result<Vec<crate::durable::WorkflowSignal>> {
         use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
         let request = GetAndConsumeDurableWorkflowSignalsRequest {
             workflow_id: workflow_id.to_string(),
@@ -476,7 +476,7 @@ impl GrpcDurableStore {
                     .map(everruns_internal_protocol::proto_value_to_json)
                     .unwrap_or(serde_json::json!({}));
                 match chrono::DateTime::parse_from_rfc3339(&s.sent_at) {
-                    Ok(dt) => Some(everruns_durable::WorkflowSignal {
+                    Ok(dt) => Some(crate::durable::WorkflowSignal {
                         signal_type: s.signal_type,
                         payload,
                         sent_at: dt.with_timezone(&chrono::Utc),
@@ -501,7 +501,7 @@ impl GrpcDurableStore {
         &mut self,
         workflow_id: Uuid,
         signal_type: &str,
-    ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
+    ) -> Result<Vec<crate::durable::WorkflowSignal>> {
         use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
         let request = GetAndConsumeDurableWorkflowSignalsRequest {
             workflow_id: workflow_id.to_string(),
@@ -522,7 +522,7 @@ impl GrpcDurableStore {
                     .map(everruns_internal_protocol::proto_value_to_json)
                     .unwrap_or(serde_json::json!({}));
                 match chrono::DateTime::parse_from_rfc3339(&s.sent_at) {
-                    Ok(dt) => Some(everruns_durable::WorkflowSignal {
+                    Ok(dt) => Some(crate::durable::WorkflowSignal {
                         signal_type: s.signal_type,
                         payload,
                         sent_at: dt.with_timezone(&chrono::Utc),
@@ -752,7 +752,7 @@ pub struct CircuitBreakerFailureResult {
     pub circuit_opened: bool,
 }
 
-/// Workflow status (mirrors everruns_durable::WorkflowStatus)
+/// Workflow status (mirrors crate::durable::WorkflowStatus)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkflowStatus {
     Pending,

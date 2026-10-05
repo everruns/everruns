@@ -1,7 +1,9 @@
 //! Task queue adapter shared by durable runner backends and the worker loop.
 //!
-//! The trait and its gRPC implementation share this owner so the blanket
-//! workflow-store implementation cannot overlap a future upstream backend.
+//! Every `WorkflowEventStore` gets this trait through the blanket impl below.
+//! Transport-backed stores implement it from their own crate for their own
+//! type (the worker does so for its gRPC client), which coherence accepts
+//! because that type does not implement `WorkflowEventStore`.
 
 use crate::durable::{
     ActivityOptions, ClaimedTask, EventLog, HeartbeatResponse, SignalStore, StoreError,
