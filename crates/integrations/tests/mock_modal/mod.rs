@@ -37,6 +37,10 @@ pub struct MockState {
     pub execs: HashMap<String, ExecRecord>,
     pub stdin: HashMap<String, Vec<u8>>,
     pub router_access_calls: u32,
+    /// Live secrets: id -> (owning app, values).
+    pub secrets: HashMap<String, (String, HashMap<String, String>)>,
+    pub deleted_secrets: Vec<String>,
+    pub secrets_created: u32,
 }
 
 #[derive(Clone, Default)]
@@ -282,6 +286,44 @@ impl pb::modal_client_server::ModalClient for MockModal {
             image_id: "im-snapshot".into(),
             result: Some(success()),
         }))
+    }
+
+    async fn secret_get_or_create(
+        &self,
+        request: Request<pb::SecretGetOrCreateRequest>,
+    ) -> std::result::Result<Response<pb::SecretGetOrCreateResponse>, Status> {
+        check_control(&request)?;
+        let request = request.into_inner();
+        if request.object_creation_type != pb::ObjectCreationType::AnonymousOwnedByApp as i32
+            || request.app_id.is_empty()
+        {
+            return Err(Status::invalid_argument(
+                "expected an app-owned anonymous secret",
+            ));
+        }
+        let mut state = self.lock();
+        state.secrets_created += 1;
+        let id = format!("st-mock{}", state.secrets_created);
+        state
+            .secrets
+            .insert(id.clone(), (request.app_id, request.env_dict));
+        Ok(Response::new(pb::SecretGetOrCreateResponse {
+            secret_id: id,
+        }))
+    }
+
+    async fn secret_delete(
+        &self,
+        request: Request<pb::SecretDeleteRequest>,
+    ) -> std::result::Result<Response<()>, Status> {
+        check_control(&request)?;
+        let id = request.into_inner().secret_id;
+        let mut state = self.lock();
+        if state.secrets.remove(&id).is_none() {
+            return Err(Status::not_found("secret not found"));
+        }
+        state.deleted_secrets.push(id);
+        Ok(Response::new(()))
     }
 
     async fn sandbox_terminate(

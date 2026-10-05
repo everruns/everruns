@@ -10,6 +10,8 @@ syntax = "proto3";
 
 package modal.client;
 
+import "google/protobuf/empty.proto";
+
 enum ObjectCreationType {
   OBJECT_CREATION_TYPE_UNSPECIFIED = 0;
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
@@ -103,6 +105,42 @@ message PortSpecs {
   repeated PortSpec ports = 1;
 }
 
+message NetworkAccess {
+  enum NetworkAccessType {
+    UNSPECIFIED = 0;
+    OPEN = 1;
+    BLOCKED = 2;
+    ALLOWLIST = 3;
+  }
+  NetworkAccessType network_access_type = 1;
+  repeated string allowed_cidrs = 2;
+  repeated string allowed_domains = 3;
+}
+
+// Policy for outbound traffic from a sandbox.
+message OutboundPolicy {
+  // Replace headers in outbound HTTPS requests, potentially with secret values.
+  repeated HeaderReplacement header_replacements = 1;
+
+  message HeaderReplacement {
+    // Domain that the header replacements are scoped to. Supports wildcards in
+    // subdomain positions.
+    string domain = 1;
+    // Reference to a secret usable in the header value templates. Can be
+    // empty if no secret value is used.
+    string secret_id = 4;
+    // Header name -> header value.
+    //
+    // Values support templating with keys in the stanza's secret_id: a
+    // $-prefixed key name in the secret will be replaced with the secret
+    // value. Literal $ characters can be represented by two dollars: `$$`.
+    map<string, string> headers = 5;
+
+    reserved 2, 3;
+    reserved "header_name", "header_value";
+  }
+}
+
 message Sandbox {
   repeated string entrypoint_args = 1;
   string image_id = 3;
@@ -114,7 +152,9 @@ message Sandbox {
   }
   optional string runtime = 28;
   optional string name = 30;
+  NetworkAccess network_access = 22;
   optional uint32 idle_timeout_secs = 33;
+  optional OutboundPolicy outbound_policy = 42;
 }
 
 message SandboxTag {
@@ -188,6 +228,24 @@ message SandboxSnapshotFsResponse {
   GenericResult result = 2;
 }
 
+message SecretDeleteRequest {
+  string secret_id = 1;
+}
+
+message SecretGetOrCreateRequest {
+  string deployment_name = 1;
+  reserved 2; // removed namespace
+  string environment_name = 3;
+  ObjectCreationType object_creation_type = 4;  // Not used atm
+  map<string, string> env_dict = 5;
+  string app_id = 6;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
+  repeated string required_keys = 7;
+}
+
+message SecretGetOrCreateResponse {
+  string secret_id = 1;
+}
+
 message TaskGetCommandRouterAccessRequest {
   string task_id = 1;
 }
@@ -208,5 +266,7 @@ service ModalClient {
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
+  rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
+  rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc TaskGetCommandRouterAccess(TaskGetCommandRouterAccessRequest) returns (TaskGetCommandRouterAccessResponse);
 }

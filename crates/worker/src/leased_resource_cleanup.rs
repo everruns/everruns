@@ -405,6 +405,13 @@ async fn cleanup_modal(
         }
         Err(error) => return Err(anyhow!("Modal cleanup failed: {error}")),
     }
+    // Injected connection tokens live in a Modal Secret that outlives the
+    // sandbox unless deleted.
+    let egress_secret_id = resource
+        .metadata
+        .get("egress_secret_id")
+        .and_then(serde_json::Value::as_str);
+    everruns_integrations::modal::egress::delete_egress_secret(&client, egress_secret_id).await;
 
     if let Some(session_id) = resource.session_id {
         let _ = storage_store

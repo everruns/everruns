@@ -14,6 +14,9 @@
 //!   from, otherwise `Lost`; resume then boots the base image again.
 //! - Files go over exec: reads through `base64` so binary content survives,
 //!   writes through stdin with the path as an argv value, never shell text.
+//! - Egress rules (`network`, written by the server from the template's
+//!   containment, and `inject_connections`) apply on every boot; the egress
+//!   Secret is recreated per boot and deleted on pause and delete.
 //! - No recovery checkpoints: durability is `provider_snapshot` only, enforced
 //!   by Sandbox Template validation.
 
@@ -34,6 +37,7 @@ use serde_json::{Value, json};
 use tracing::warn;
 
 use super::client::{CreateSandboxParams, ModalClient, ModalCredentials, SandboxStatus};
+use super::egress::{EgressSpec, delete_egress_secret};
 use super::state::MODAL_SANDBOX_LEASE_DURATION_SECONDS;
 use super::tools::validate_image_tag;
 use super::{
@@ -64,6 +68,9 @@ struct ProviderState {
     /// Set by pause, which terminated the sandbox.
     #[serde(default)]
     paused: bool,
+    /// Modal Secret holding injected connection tokens for this boot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    egress_secret_id: Option<String>,
 }
 
 impl ProviderState {
@@ -87,6 +94,7 @@ struct Options {
     milli_cpu: Option<u32>,
     memory_mb: Option<u32>,
     workspace_path: String,
+    egress: EgressSpec,
 }
 
 fn options(config: &SessionSandboxConfig) -> Result<Options, ToolExecutionResult> {
@@ -143,12 +151,15 @@ fn options(config: &SessionSandboxConfig) -> Result<Options, ToolExecutionResult
             ));
         }
     };
+    let egress = EgressSpec::from_json(cfg)
+        .map_err(|e| ToolExecutionResult::tool_error(format!("Invalid Modal egress: {e}")))?;
     Ok(Options {
         image,
         runtime,
         milli_cpu,
         memory_mb,
         workspace_path,
+        egress,
     })
 }
 
@@ -211,6 +222,8 @@ async fn refresh_lease(
                 "image": state.image,
                 "workspace_path": instance.workspace_path,
                 "managed": true,
+                // An ID, not the secret: cleanup deletes the Modal Secret by it.
+                "egress_secret_id": state.egress_secret_id,
             }),
         })
         .await
@@ -252,6 +265,8 @@ async fn boot(
         }
     };
 
+    let (egress_secret_id, header_replacements) =
+        options.egress.prepare(client, &app_id, context).await?;
     let mut tags: Vec<(String, String)> = context
         .resource_labels()
         .await
@@ -269,11 +284,16 @@ async fn boot(
         memory_mb: options.memory_mb,
         encrypted_ports: Vec::new(),
         tags,
+        network_access: options.egress.network.clone(),
+        header_replacements,
     };
-    let (sandbox_id, task_id) = client
-        .create_sandbox(&app_id, &params)
-        .await
-        .map_err(ToolExecutionResult::tool_error)?;
+    let (sandbox_id, task_id) = match client.create_sandbox(&app_id, &params).await {
+        Ok(ids) => ids,
+        Err(err) => {
+            delete_egress_secret(client, egress_secret_id.as_deref()).await;
+            return Err(ToolExecutionResult::tool_error(err));
+        }
+    };
 
     let state = ProviderState {
         task_id,
@@ -282,6 +302,7 @@ async fn boot(
         image: image_label,
         snapshot_image_id: snapshot_image_id.map(str::to_string),
         paused: false,
+        egress_secret_id,
     };
     let instance = SessionSandboxInstance {
         external_id: sandbox_id.clone(),
@@ -297,6 +318,7 @@ async fn boot(
     // A sandbox nothing can clean up must not outlive this call.
     if let Err(err) = refresh_lease(context, &instance, &state).await {
         let _ = client.terminate(&sandbox_id).await;
+        delete_egress_secret(client, state.egress_secret_id.as_deref()).await;
         return Err(err);
     }
     let mkdir = vec![
@@ -394,6 +416,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
             state.snapshot_image_id.as_deref(),
         )
         .await?;
+        delete_egress_secret(&client, state.egress_secret_id.as_deref()).await;
         if let Err(err) = context
             .release_lease(MODAL_PROVIDER, &instance.external_id)
             .await
@@ -434,6 +457,7 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
         context
             .release_lease(MODAL_PROVIDER, &instance.external_id)
             .await?;
+        delete_egress_secret(&client, state.egress_secret_id.take().as_deref()).await;
         state.paused = true;
         Ok(SessionSandboxInstance {
             provider_state: state.to_value(),
@@ -457,6 +481,9 @@ impl SessionSandboxProvider for ModalSessionSandboxProvider {
             Ok(()) => {}
             Err(err) if is_not_found(&err) => {}
             Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+        }
+        if let Ok(state) = ProviderState::from_instance(instance) {
+            delete_egress_secret(&client, state.egress_secret_id.as_deref()).await;
         }
         context
             .release_lease(MODAL_PROVIDER, &instance.external_id)

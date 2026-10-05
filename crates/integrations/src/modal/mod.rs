@@ -21,6 +21,7 @@
 
 pub mod client;
 pub mod connection;
+pub mod egress;
 mod session_sandbox;
 pub mod state;
 mod tools;

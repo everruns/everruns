@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { SandboxTemplateSpec, SandboxPolicy, SandboxTargetDescriptor } from "@/lib/api/types";
 
@@ -136,17 +137,27 @@ function optionString(options: Record<string, unknown>, key: string): string {
 }
 
 /** Modal fields; the server and provider validate the same ranges. */
+type NetworkPolicy = NonNullable<NonNullable<SandboxTemplateSpec["containment"]>["network"]>;
+
 function ModalOptionFields({
   name,
   options,
+  network,
   disabled,
   setOption,
+  onNetworkChange,
 }: {
   name: string;
   options: Record<string, unknown>;
+  network: NetworkPolicy;
   disabled: boolean;
   setOption: (key: string, value: unknown) => void;
+  onNetworkChange: (network: NetworkPolicy) => void;
 }) {
+  const injected = Array.isArray(options.inject_connections) ? options.inject_connections : [];
+  const injectGithub = injected.includes("github");
+  // Modal cannot inject credentials when egress is blocked or limited to domains.
+  const injectionAllowed = network.mode === "allow";
   const numeric = (key: string) => (event: React.ChangeEvent<HTMLInputElement>) =>
     setOption(key, event.target.value ? Number(event.target.value) : "");
   return (
@@ -216,6 +227,64 @@ function ModalOptionFields({
           className="font-mono"
         />
       </div>
+      <div className="space-y-2">
+        <Label htmlFor={`sandbox-network-${name}`}>Outbound network</Label>
+        <Select
+          value={network.mode}
+          onValueChange={(mode) =>
+            onNetworkChange(
+              mode === "allowlist"
+                ? { mode: "allowlist", allowed_hosts: [] }
+                : { mode: mode as "allow" | "deny" },
+            )
+          }
+          disabled={disabled}
+        >
+          <SelectTrigger id={`sandbox-network-${name}`} className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="allow">Open</SelectItem>
+            <SelectItem value="allowlist">Only listed domains</SelectItem>
+            <SelectItem value="deny">Blocked</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-start gap-3 pt-6">
+        <Switch
+          id={`sandbox-inject-github-${name}`}
+          aria-label="Use my GitHub connection"
+          checked={injectGithub && injectionAllowed}
+          onCheckedChange={(checked) => setOption("inject_connections", checked ? ["github"] : "")}
+          disabled={disabled || !injectionAllowed}
+        />
+        <p className="text-xs text-muted-foreground">
+          Use my GitHub connection for api.github.com and git. Modal adds the token to requests, so
+          the agent never sees it.
+          {injectionAllowed ? "" : " Needs open network."}
+        </p>
+      </div>
+      {network.mode === "allowlist" ? (
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor={`sandbox-domains-${name}`}>Allowed domains</Label>
+          <Textarea
+            id={`sandbox-domains-${name}`}
+            value={network.allowed_hosts.join("\n")}
+            onChange={(event) =>
+              onNetworkChange({
+                mode: "allowlist",
+                allowed_hosts: event.target.value
+                  .split("\n")
+                  .map((host) => host.trim())
+                  .filter(Boolean),
+              })
+            }
+            placeholder={"pypi.org\n*.pythonhosted.org"}
+            disabled={disabled}
+            className="font-mono"
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -365,8 +434,22 @@ function TemplateSpecEditor({
             <ModalOptionFields
               name={name}
               options={options}
+              network={spec.containment?.network ?? { mode: "allow" }}
               disabled={disabled}
               setOption={setOption}
+              onNetworkChange={(network) => {
+                const next = {
+                  ...spec,
+                  containment: { level: "isolated" as const, ...spec.containment, network },
+                };
+                // Injection needs open egress; drop it rather than save a template Modal rejects.
+                if (network.mode !== "allow") {
+                  const nextOptions = targetOptions(spec);
+                  delete nextOptions.inject_connections;
+                  next.target = { ...spec.target, options: nextOptions };
+                }
+                onChange(next);
+              }}
             />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">

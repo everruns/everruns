@@ -1475,6 +1475,7 @@ Modal sandboxes are remote Linux VMs (default) or gVisor containers driven over 
 | TM-MODAL-005 | Sandbox not terminated, resource leak and spend | Medium | Every sandbox has a Modal-side lifetime (default 1 hour, max 24 hours), a 30-minute Everruns lease refreshed on use, and lease cleanup that terminates it; a failed state save terminates the just-created sandbox | MITIGATED |
 | TM-MODAL-006 | Full-network sandbox misuse and public tunnels | High | Capability is high-risk and Admin-gated via capability assignment policy; exposed ports are public HTTPS URLs by Modal design and the docs say so; residual network exposure depends on the user's Modal workspace | **CALLER RISK** |
 | TM-MODAL-007 | Sandbox Template redirects the managed provider to another endpoint | High | Template validation allowlists Modal options (no endpoint or test keys); the provider reads `_test_server_url` only when built with the `test-util` feature, which shipped builds never enable | MITIGATED |
+| TM-MODAL-008 | Injected connection token exfiltrated to an attacker host | Critical | The domains a connection's token is sent to are a fixed table in code (`github`: `api.github.com`, `github.com`); templates and tools can only name the connection. The token lives in a Modal Secret and is added to requests outside the sandbox, so `env`, files and tool output never hold it (live-tested). Secrets are deleted with the sandbox and by lease cleanup | MITIGATED |
 
 ## 19. Client-Side Tools (TM-CLIENT)
 

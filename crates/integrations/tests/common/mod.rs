@@ -166,6 +166,32 @@ impl UserConnectionResolver for MockConnectionResolver {
     }
 }
 
+/// Resolves several providers' connection tokens.
+pub struct MapConnectionResolver(pub HashMap<String, String>);
+
+#[async_trait]
+impl UserConnectionResolver for MapConnectionResolver {
+    async fn get_connection_token(&self, _: SessionId, provider: &str) -> Result<Option<String>> {
+        Ok(self.0.get(provider).cloned())
+    }
+}
+
+/// A tool context whose connections are `(provider, token)` pairs.
+pub fn context_with_connections(
+    connections: &[(&str, &str)],
+) -> (ToolContext, Arc<MockLeasedResourceStore>) {
+    let leases = Arc::new(MockLeasedResourceStore::default());
+    let map = connections
+        .iter()
+        .map(|(p, t)| ((*p).to_string(), (*t).to_string()))
+        .collect();
+    let context =
+        ToolContext::with_storage_store(SessionId::new(), Arc::new(MockStorageStore::default()))
+            .with_leased_resource_store(leases.clone())
+            .with_connection_resolver(Arc::new(MapConnectionResolver(map)));
+    (context, leases)
+}
+
 /// A tool context with fresh in-memory stores and the given connection token.
 pub fn context(
     token: Option<&str>,

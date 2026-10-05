@@ -3371,6 +3371,7 @@ dependencies = [
  "everruns-core",
  "everruns-drivers",
  "everruns-durable",
+ "everruns-integrations",
  "everruns-integrations-bashkit",
  "everruns-integrations-catalog",
  "everruns-integrations-github",
