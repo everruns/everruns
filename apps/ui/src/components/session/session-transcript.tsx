@@ -33,11 +33,14 @@ export function SessionTranscript({
   footer,
   /** Show inline run cards for work the turns started (Chats thread surface). */
   showRunCards = false,
+  /** Human chat opts into folding; session recordings show the full work log. */
+  collapseWorkLog = false,
   /** Replaces the transcript's default empty state (see `ChatMessageList`). */
   emptyState,
 }: {
   footer?: ReactNode;
   showRunCards?: boolean;
+  collapseWorkLog?: boolean;
   emptyState?: ReactNode;
 }) {
   const { t } = useLocale();
@@ -137,6 +140,7 @@ export function SessionTranscript({
           participants={participants}
           runsByEventId={runsByEventId}
           emptyState={emptyState}
+          collapseWorkLog={collapseWorkLog}
         />
 
         {(isThinking || streamingText) && (

@@ -216,10 +216,12 @@ function Transcript({
   title,
   events,
   action,
+  collapseWorkLog = true,
 }: {
   title: string;
   events: Event[];
   action?: React.ReactNode;
+  collapseWorkLog?: boolean;
 }) {
   return (
     <section className="space-y-3 border border-border/70 bg-card/90 p-4">
@@ -230,6 +232,7 @@ function Transcript({
       <div className="border border-border/70 bg-background px-4 py-4">
         <ChatMessageList
           events={events}
+          collapseWorkLog={collapseWorkLog}
           chatEvents={events}
           sessionId={SESSION_ID}
           toolResultsMap={emptyToolResults}
@@ -261,7 +264,7 @@ export default function DevWorkLogPage() {
     <DevPageShell
       eyebrow="Chat"
       title="Turn work log"
-      description="The folded working section: live turn with elapsed time, latest step and error count; completed turn with its error count."
+      description="Platform Chat and Chats fold work into a compact section. Playground and Sessions keep the full log visible during and after a turn."
       widthClassName="max-w-4xl"
     >
       {mountedAt != null && (
@@ -270,6 +273,16 @@ export default function DevWorkLogPage() {
           <Transcript
             title="Completed turn"
             events={turnEvents("turn-done", mountedAt - 120000, false)}
+          />
+          <Transcript
+            title="Playground / Sessions: live full log"
+            events={turnEvents("turn-full-live", mountedAt - 21000, true)}
+            collapseWorkLog={false}
+          />
+          <Transcript
+            title="Playground / Sessions: completed full log"
+            events={turnEvents("turn-full-done", mountedAt - 120000, false)}
+            collapseWorkLog={false}
           />
           {largeCount > 0 && <LargeTurn startMs={mountedAt - 300000} count={largeCount} />}
         </div>

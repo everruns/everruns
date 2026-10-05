@@ -15,6 +15,7 @@ interface ToolActivityTimelineGroupProps {
   headline: string;
   completedHeadline?: string;
   rows: TimelineToolRow[];
+  collapsible?: boolean;
 }
 
 function resultPreview(result?: ToolCompletedData): string | null {
@@ -115,6 +116,7 @@ export function ToolActivityTimelineGroup({
   headline,
   completedHeadline,
   rows,
+  collapsible = true,
 }: ToolActivityTimelineGroupProps) {
   const { t } = useLocale();
   const completedCount = useMemo(
@@ -131,6 +133,19 @@ export function ToolActivityTimelineGroup({
   if (rows.length === 1) {
     const row = rows[0];
     return <TimelineRow row={{ ...row, label: displayHeadline }} />;
+  }
+
+  if (!collapsible) {
+    return (
+      <div className="space-y-2">
+        <div className="text-[15px] leading-6 text-muted-foreground">{displayHeadline}</div>
+        <div className="ml-2 space-y-0.5 border-l border-border/60 pl-3">
+          {rows.map((row) => (
+            <TimelineRow key={row.id} row={row} />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

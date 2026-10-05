@@ -61,8 +61,16 @@ jest.mock("@/hooks/use-thread-runs", () => ({
 }));
 
 jest.mock("@/components/chat/chat-message-list", () => ({
-  ChatMessageList: ({ chatEvents }: { chatEvents: Event[] }) => (
-    <div data-testid="completed-transcript">{chatEvents.map((item) => item.type).join(",")}</div>
+  ChatMessageList: ({
+    chatEvents,
+    collapseWorkLog,
+  }: {
+    chatEvents: Event[];
+    collapseWorkLog: boolean;
+  }) => (
+    <div data-testid="completed-transcript" data-collapse-work-log={collapseWorkLog}>
+      {chatEvents.map((item) => item.type).join(",")}
+    </div>
   ),
 }));
 
@@ -101,6 +109,20 @@ describe("SessionTranscript replay and streaming", () => {
       "input.message,output.message.completed",
     );
     expect(screen.queryByTestId("streaming-text")).not.toBeInTheDocument();
+  });
+
+  it("shows the full log by default and allows human chat surfaces to fold it", () => {
+    const { rerender } = render(<SessionTranscript />);
+    expect(screen.getByTestId("completed-transcript")).toHaveAttribute(
+      "data-collapse-work-log",
+      "false",
+    );
+
+    rerender(<SessionTranscript collapseWorkLog />);
+    expect(screen.getByTestId("completed-transcript")).toHaveAttribute(
+      "data-collapse-work-log",
+      "true",
+    );
   });
 
   it("shows live output and settles back to completed replay", () => {

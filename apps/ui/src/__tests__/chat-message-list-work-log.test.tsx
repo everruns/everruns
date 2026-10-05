@@ -261,3 +261,122 @@ describe("ChatMessageList work log at scale", () => {
     expect(screen.getByRole("button", { name: "show_earlier_steps" })).toBeInTheDocument();
   });
 });
+
+describe("ChatMessageList full work log", () => {
+  function renderFullLog(chatEvents: Event[]) {
+    return render(
+      <ChatMessageList
+        events={chatEvents}
+        chatEvents={chatEvents}
+        sessionId="session-1"
+        toolResultsMap={new Map()}
+        toolProgressMap={new Map()}
+        toolOutputMap={new Map()}
+        eventsLoading={false}
+        hasMoreEvents={false}
+        loadingOlderEvents={false}
+        getMessageText={(data) =>
+          data.message?.content
+            ?.flatMap((part) => (part.type === "text" ? [part.text] : []))
+            .join("") ?? ""
+        }
+        getToolCalls={(data) =>
+          data.message?.content?.flatMap((part) => (part.type === "tool_call" ? [part] : [])) ?? []
+        }
+        collapseWorkLog={false}
+      />,
+    );
+  }
+
+  it.each([false, true])(
+    "shows all activity and errors without a turn fold (completed: %s)",
+    (completed) => {
+      const events = [
+        event("act", "act.started", {
+          headline: "Updating the agent",
+          tool_calls: [
+            { id: "tool-1", name: "create_agent", narration: "Creating the agent" },
+            { id: "tool-2", name: "get_agent", narration: "Checking the agent" },
+          ],
+        }),
+        event("failed", "tool.completed", {
+          tool_call_id: "tool-1",
+          tool_name: "create_agent",
+          success: false,
+          status: "error",
+          error: "Missing system prompt",
+          result: [],
+        }),
+        event("checked", "tool.completed", {
+          tool_call_id: "tool-2",
+          tool_name: "get_agent",
+          success: true,
+          status: "success",
+          result: [],
+        }),
+        event("ask", "tool.call_requested", {
+          tool_calls: [{ id: "ask-1", name: "ask_user", arguments: { questions: [] } }],
+        }),
+        ...(completed
+          ? [event("end", "turn.completed", { turn_id: "turn-1", duration_ms: 9000 })]
+          : []),
+      ];
+      renderFullLog(events);
+
+      expect(screen.queryByRole("button", { name: /working|worked_for/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /activity_group/i })).not.toBeInTheDocument();
+      for (const text of [
+        "Creating the agent",
+        "Checking the agent",
+        "Missing system prompt",
+        "ask user card",
+      ]) {
+        expect(screen.getByText(text).closest("[aria-hidden='true']")).toBeNull();
+      }
+    },
+  );
+
+  it("keeps reasoning in event order around intermediate messages, even for a single iteration", () => {
+    renderFullLog([
+      event("first", "reason.item", { turn_id: "turn-1", summary: ["First step"] }),
+      event("message", "output.message.completed", {
+        message: { content: [{ type: "text", text: "Intermediate message" }] },
+      }),
+      event("second", "reason.completed", { success: true, text_preview: "Second step" }),
+      event("end", "turn.completed", { turn_id: "turn-1", duration_ms: 9000, iterations: 1 }),
+    ]);
+
+    const first = screen.getByText("First step");
+    const message = screen.getByText("Intermediate message");
+    const second = screen.getByText("Second step");
+    expect(first.compareDocumentPosition(message) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(message.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("does not page away earlier work entries", () => {
+    const events = Array.from({ length: WORK_LOG_PAGE_SIZE + 1 }, (_, index) =>
+      event(`reason-${index}`, "reason.item", { turn_id: "turn-1", summary: [`Step ${index}`] }),
+    );
+    renderFullLog(events);
+
+    expect(screen.getAllByTestId("work-log-narration")).toHaveLength(WORK_LOG_PAGE_SIZE + 1);
+    expect(screen.getByText("Step 0")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "show_earlier_steps" })).not.toBeInTheDocument();
+  });
+
+  it("shows tool-only assistant messages without a fold, including uncorrelated events", () => {
+    renderFullLog([
+      {
+        ...event("tools", "output.message.completed", {
+          message: {
+            content: [{ type: "tool_call", id: "tool-1", name: "list_files", arguments: {} }],
+          },
+        }),
+        context: {},
+      },
+    ]);
+
+    expect(screen.getByTestId("tool-output")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /working|worked_for/i })).not.toBeInTheDocument();
+  });
+});
