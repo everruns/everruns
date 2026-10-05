@@ -85,7 +85,9 @@ if [ -e crates/core/src/in_memory.rs ] || grep -qE '^pub mod in_memory;' crates/
   FAILED=1
 fi
 
-if matches=$(grep -rnE 'everruns_core::in_memory|everruns-core::in_memory' crates apps examples tests --include='*.rs' --include='*.md' 2>/dev/null); then
+# Generated documentation can quote removed APIs as migration examples.
+# Respect ignore rules so build output does not become a source violation.
+if matches=$(rg -n 'everruns_core::in_memory|everruns-core::in_memory' crates apps examples tests --glob '*.rs' --glob '*.md' 2>/dev/null); then
   echo "Legacy everruns-core in-memory backend imports are forbidden:"
   echo "$matches"
   FAILED=1
