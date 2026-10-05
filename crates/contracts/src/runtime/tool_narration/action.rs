@@ -13,7 +13,7 @@ static URL: LazyLock<regex::Regex> =
 
 /// A bounded, single-line display value. URLs never echo credentials or query strings.
 pub fn narration_detail(value: &str) -> String {
-    // THREAT[TM-OBS-012]: Selected labels can contain credential-bearing URLs.
+    // THREAT[TM-OBS-014]: Selected labels can contain credential-bearing URLs.
     let redacted = URL.replace_all(value, |captures: &regex::Captures<'_>| {
         url_display(&captures[0])
     });
