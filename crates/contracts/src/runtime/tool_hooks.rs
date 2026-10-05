@@ -105,7 +105,7 @@ pub trait PostToolExecHook: Send + Sync {
 }
 
 /// The act phase's per-call policy, handed to a tool that runs another tool on
-/// the model's behalf (`spawn_background`).
+/// the model's behalf (`spawn_background`, Lua code mode).
 ///
 /// THREAT[TM-TOOL-055]: hooks see the outer call, so without this a nested
 /// target call skips the target tool's approval, guardrail, and user hook

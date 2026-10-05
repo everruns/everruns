@@ -168,7 +168,11 @@ pathological synchronous C ops (out-of-process execution is the robust fix).
     predicate (`gated_code_mode_tools` filters the live registry through it):
     only `Auto`-policy, non-destructive, non-`cpu_bound` tools; approval/client-side
     and the execution tools (`lua`/`bash`) are excluded. The child `ToolContext`
-    drops `tool_registry`, so code mode cannot recurse (TM-LUA-009).
+    drops `tool_registry`, so code mode cannot recurse (TM-LUA-009). Hooks only
+    see the outer `lua` call, so each nested call runs the turn's pre-tool chain,
+    the target's schema, and the post-tool chain as itself through
+    `ToolContext::nested_tool_policy`, like `spawn_background`; without the policy
+    code mode refuses to dispatch (TM-TOOL-055).
   - **Code-mode routing capability (`lua_code_mode`), DONE.** Makes Lua the
     agent's *primary* action surface by hiding the code-mode-eligible tools from
     the model's direct tool list, so the agent must orchestrate them inside a

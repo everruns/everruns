@@ -2,6 +2,12 @@
 
 ## 2026-10-05
 
+* **Lua code-mode calls pass the target tool's policy.** `tools.<name>(...)`
+  runs the act phase's pre-tool chain and the target's schema as the nested
+  tool before running it, and the post-tool hooks on its result, and refuses
+  without the turn's policy. See [Lua Execution](execution/lua-execution.md) and
+  [Threat Model](security/threat-model.md) TM-LUA-009.
+
 * **Proposed: change reasons and manager context.** Every mutating command
   takes a `reason` from any surface, recorded by `Command::run` in a generic
   entity history; every managed entity can carry manager-only notes its own
