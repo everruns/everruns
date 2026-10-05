@@ -213,6 +213,29 @@ Hosted managed-Sandbox state is queryable product state in `sandboxes`,
 `sandbox_instances`, and `sandbox_checkpoints`. The Daytona sandbox id belongs
 to a disposable incarnation and may change after recovery.
 
+### Fleet view and history
+
+The Sandboxes page (`/sandboxes`, `GET /v1/sandboxes[/stats|/timeline|/{id}]`,
+[`domains/sandboxes`](../../crates/server/src/domains/sandboxes/commands.rs))
+lists every logical Sandbox in an organization across providers. It reads
+three things the hosted store keeps:
+
+- `sandboxes` rows outlive their Session. Deleting a Session marks its
+  Sandboxes deleted and keeps the Session title and Agent, so deleted compute
+  stays explainable. Deleted rows are purged after
+  `SANDBOX_HISTORY_RETENTION_DAYS` (default 30,
+  [`sandbox_history_retention.rs`](../../crates/server/src/sandbox_history_retention.rs)).
+- `sandbox_state_transitions` is an append-only log written by a database
+  trigger on every `observed_state` or `generation` change, so running time,
+  pauses and rebuilds can be drawn without each writer remembering to log.
+- "Needs attention" reasons (lost, failed, init commands failed, running with
+  no activity for an hour, provider cleanup failed) are computed in the fleet
+  query, so they filter and page like any other column.
+
+In-process targets (virtual filesystem, host) have no provider resource and
+are hidden unless `include_in_process` is set. The fleet is read-only;
+pause, resume and delete go through the Session's Sandbox endpoint.
+
 Framework, remote, and in-memory hosts that do not install the hosted state
 store continue to use the encrypted `session_sandbox` secret as a compatibility
 fallback. That fallback is not the hosted control-plane authority.

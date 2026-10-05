@@ -3817,6 +3817,74 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sandboxes": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters. */
+    get: operations["list_sandboxes"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/stats": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention. */
+    get: operations["get_sandbox_fleet_stats"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/timeline": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Show when each Sandbox was running, paused or lost over a time window, with how many ran at once. */
+    get: operations["get_sandbox_timeline"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sandboxes/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get one Sandbox with its provider resources and full state history. */
+    get: operations["get_sandbox"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions": {
     parameters: {
       query?: never;
@@ -17509,6 +17577,13 @@ export interface components {
       /** @description Whether interactive pseudo-terminals are supported. */
       pty: boolean;
     };
+    /** @description How many Sandboxes were running from `at` until the next point. */
+    SandboxConcurrencyPoint: {
+      /** Format: date-time */
+      at: string;
+      /** Format: int64 */
+      running: number;
+    };
     /** @description What commands may touch, and who enforces it. */
     SandboxContainment: {
       /**
@@ -17535,6 +17610,16 @@ export interface components {
       /** @description Outbound network access the provider must enforce. */
       network?: components["schemas"]["SandboxNetworkPolicy"];
     };
+    /** @description A count keyed by a label. */
+    SandboxCount: {
+      /**
+       * Format: int64
+       * @example 5
+       */
+      count: number;
+      /** @example running */
+      key: string;
+    };
     /**
      * @description What survives physical compute loss.
      * @enum {string}
@@ -17550,8 +17635,173 @@ export interface components {
       /** @description Absolute roots the runtime may mutate; empty means provider default. */
       writable_roots?: string[];
     };
+    /** @description One Sandbox with its incarnations and lifecycle history. */
+    SandboxFleetDetail: components["schemas"]["SandboxFleetItem"] & {
+      /** @description State history, oldest first. */
+      history: components["schemas"]["SandboxStateSpan"][];
+      /** @description Provider resources, newest first. */
+      incarnations: components["schemas"]["SandboxIncarnation"][];
+    };
+    /** @description One logical Sandbox in the organization. */
+    SandboxFleetItem: {
+      /** @description Agent the Session ran. */
+      agent_id?: string | null;
+      /**
+       * @description Agent display name.
+       * @example Coder
+       */
+      agent_name?: string | null;
+      /**
+       * @description Why this Sandbox needs attention: `lost`, `failed`, `init_failed`,
+       *     `idle_running` (running with no activity for an hour) or `cleanup_failed`.
+       */
+      attention: string[];
+      /**
+       * Format: int64
+       * @description Committed workspace checkpoints.
+       * @example 12
+       */
+      checkpoint_count: number;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      deleted_at?: string | null;
+      /**
+       * @description Lifecycle intent the control plane is moving the Sandbox toward: `ready`, `paused` or `deleted`.
+       * @example ready
+       */
+      desired_state: string;
+      /**
+       * @description Provider's id for the latest physical resource.
+       * @example dtn-7f3a91c2
+       */
+      external_id?: string | null;
+      /**
+       * Format: int64
+       * @description Incarnation counter. Above 1 means the provider resource was lost and rebuilt.
+       * @example 1
+       */
+      generation: number;
+      /**
+       * @description Durable logical Sandbox id. Stays the same when the provider resource is replaced.
+       * @example sandbox_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * Format: int64
+       * @description Inactivity interval before the Sandbox is paused.
+       * @example 300
+       */
+      idle_after_seconds?: number | null;
+      /**
+       * Format: date-time
+       * @description Last recorded tool activity or state change.
+       */
+      last_activity_at?: string | null;
+      /** @description Error from the latest init commands, if they failed. */
+      last_init_error?: string | null;
+      /**
+       * @description Provider id, such as `daytona`, `modal` or `docker`.
+       * @example daytona
+       */
+      provider: string;
+      /**
+       * @description `primary` (addressed implicitly by shell and file tools) or `resource`.
+       * @example primary
+       */
+      role: string;
+      /** @description Owning Session; absent once the Session is deleted. */
+      session_id?: string | null;
+      /**
+       * @description Session title, kept after the Session is deleted.
+       * @example Fix flaky CI
+       */
+      session_title?: string | null;
+      /**
+       * @description `running`, `paused`, `lost`, `starting`, `failed`, `not_started` or `deleted`.
+       * @example running
+       */
+      state: string;
+      /**
+       * @description Target kind from the pinned specification: `managed`, `container`, `machine`, `vfs` or `host`.
+       * @example managed
+       */
+      target_kind?: string | null;
+      template?: components["schemas"]["SandboxTemplateRef"] | null;
+      /** Format: date-time */
+      updated_at: string;
+      /**
+       * @description Working directory inside the Sandbox.
+       * @example /home/daytona/workspace
+       */
+      workspace_path?: string | null;
+    };
+    /** @description A page of the fleet. */
+    SandboxFleetPage: {
+      items: components["schemas"]["SandboxFleetItem"][];
+      /** Format: int64 */
+      limit: number;
+      /** Format: int64 */
+      offset: number;
+      /**
+       * Format: int64
+       * @description Sandboxes matching the filters.
+       */
+      total: number;
+    };
+    /** @description Roll-ups for the fleet summary. */
+    SandboxFleetStats: {
+      /** @description Sandboxes per state. */
+      by_state: components["schemas"]["SandboxCount"][];
+      /**
+       * Format: int64
+       * @description Created in the window before, for a trend.
+       */
+      created_in_prior_window: number;
+      /** Format: int64 */
+      created_in_window: number;
+      /** @description Live Sandboxes per provider. */
+      live_by_provider: components["schemas"]["SandboxCount"][];
+      /**
+       * Format: int64
+       * @description Sandboxes with at least one attention reason.
+       */
+      needs_attention: number;
+      /**
+       * Format: int64
+       * @description Provider resources lost and rebuilt in the window.
+       */
+      recoveries_in_window: number;
+      /**
+       * Format: int64
+       * @description Total time Sandboxes spent running in the window.
+       */
+      running_seconds_in_window: number;
+      /**
+       * Format: int64
+       * @description Days covered by the `*_in_window` figures.
+       * @example 7
+       */
+      window_days: number;
+    };
     /** @enum {string} */
     SandboxIdleAction: "checkpoint_and_stop" | "stop" | "keep_running";
+    /** @description One physical provider resource behind a logical Sandbox. */
+    SandboxIncarnation: {
+      /** Format: date-time */
+      created_at: string;
+      external_id: string;
+      /** Format: int64 */
+      generation: number;
+      last_init_error?: string | null;
+      /**
+       * Format: date-time
+       * @description When it was replaced or deleted.
+       */
+      retired_at?: string | null;
+      /** @description Provider status the last time it was observed: `running`, `paused` or `lost`. */
+      status: string;
+    };
     /** @description Control-plane lifecycle intent. Providers do not own these timers. */
     SandboxLifecycle: {
       /** @description Action Everruns requests after the idle interval. */
@@ -17620,6 +17870,25 @@ export interface components {
           use: string;
         }
       | components["schemas"]["SandboxTemplateSpec"];
+    /** @description A span of time a Sandbox spent in one state. */
+    SandboxStateSpan: {
+      /** @description The Sandbox is still in this state. */
+      current: boolean;
+      /** Format: date-time */
+      end: string;
+      /**
+       * Format: int64
+       * @description Incarnation during the span.
+       */
+      generation: number;
+      /** Format: date-time */
+      start: string;
+      /**
+       * @description Fleet state during the span.
+       * @example running
+       */
+      state: string;
+    };
     /** @description Where a session's commands run. */
     SandboxTarget: {
       /**
@@ -17724,6 +17993,25 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description Template revision a Sandbox was created from. */
+    SandboxTemplateRef: {
+      /**
+       * @description Template display name.
+       * @example Coding - Daytona
+       */
+      display_name?: string | null;
+      /**
+       * @description Sandbox Template id.
+       * @example sbxtpl_01933b5a00007000800000000000001
+       */
+      id: string;
+      /**
+       * Format: int32
+       * @description Revision number pinned when the Session was created.
+       * @example 4
+       */
+      revision?: number | null;
+    };
     /** @description Immutable revision of a Sandbox Template. */
     SandboxTemplateRevision: {
       /**
@@ -17766,6 +18054,37 @@ export interface components {
        *     later template revisions cannot change an existing version.
        */
       template_revision_id?: string | null;
+    };
+    /** @description Lifecycle of the fleet over a window. */
+    SandboxTimeline: {
+      /** @description Step series of concurrently running Sandboxes across every lane. */
+      concurrency: components["schemas"]["SandboxConcurrencyPoint"][];
+      /** Format: date-time */
+      from: string;
+      /** @description Lanes ordered by running time, longest first. */
+      lanes: components["schemas"]["SandboxTimelineLane"][];
+      /** Format: date-time */
+      peak_at?: string | null;
+      /** Format: int64 */
+      peak_running: number;
+      /** Format: date-time */
+      to: string;
+      /**
+       * Format: int64
+       * @description Sandboxes with activity in the window, including those beyond `limit`.
+       */
+      total_lanes: number;
+    };
+    /** @description One Sandbox's lane on the timeline. */
+    SandboxTimelineLane: {
+      /**
+       * Format: int64
+       * @description Seconds spent running within the window.
+       */
+      running_seconds: number;
+      sandbox: components["schemas"]["SandboxFleetItem"];
+      /** @description Spans clipped to the window, oldest first. */
+      spans: components["schemas"]["SandboxStateSpan"][];
     };
     /**
      * @description A user-saved report definition — a named, persistable wrapper around a
@@ -34696,6 +35015,160 @@ export interface operations {
         content: {
           "application/json": unknown;
         };
+      };
+    };
+  };
+  list_sandboxes: {
+    parameters: {
+      query?: {
+        /**
+         * @description Comma-separated states: `running`, `paused`, `lost`, `starting`,
+         *     `failed`, `not_started`, `deleted`, or `live` for the first five.
+         */
+        state?: string;
+        /** @description Comma-separated provider ids, such as `daytona,modal`. */
+        provider?: string;
+        /** @description Only Sandboxes of Sessions that ran this Agent. */
+        agent_id?: string;
+        /** @description Only Sandboxes created from this Sandbox Template. */
+        sandbox_template_id?: string;
+        /** @description Only Sandboxes with at least one attention reason. */
+        needs_attention?: boolean;
+        /** @description Case-insensitive match on Session title, Agent, provider or provider resource id. */
+        search?: string;
+        /** @description Include in-process targets (virtual filesystem, host), which have no provider resource. */
+        include_in_process?: boolean;
+        /** @description Page size, 1 to 200. Defaults to 50. */
+        limit?: number;
+        /** @description Rows to skip. */
+        offset?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxFleetPage"];
+        };
+      };
+    };
+  };
+  get_sandbox_fleet_stats: {
+    parameters: {
+      query?: {
+        /**
+         * @description Comma-separated states: `running`, `paused`, `lost`, `starting`,
+         *     `failed`, `not_started`, `deleted`, or `live` for the first five.
+         */
+        state?: string;
+        /** @description Comma-separated provider ids, such as `daytona,modal`. */
+        provider?: string;
+        /** @description Only Sandboxes of Sessions that ran this Agent. */
+        agent_id?: string;
+        /** @description Only Sandboxes created from this Sandbox Template. */
+        sandbox_template_id?: string;
+        /** @description Only Sandboxes with at least one attention reason. */
+        needs_attention?: boolean;
+        /** @description Case-insensitive match on Session title, Agent, provider or provider resource id. */
+        search?: string;
+        /** @description Include in-process targets (virtual filesystem, host), which have no provider resource. */
+        include_in_process?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxFleetStats"];
+        };
+      };
+    };
+  };
+  get_sandbox_timeline: {
+    parameters: {
+      query?: {
+        /**
+         * @description Comma-separated states: `running`, `paused`, `lost`, `starting`,
+         *     `failed`, `not_started`, `deleted`, or `live` for the first five.
+         */
+        state?: string;
+        /** @description Comma-separated provider ids, such as `daytona,modal`. */
+        provider?: string;
+        /** @description Only Sandboxes of Sessions that ran this Agent. */
+        agent_id?: string;
+        /** @description Only Sandboxes created from this Sandbox Template. */
+        sandbox_template_id?: string;
+        /** @description Only Sandboxes with at least one attention reason. */
+        needs_attention?: boolean;
+        /** @description Case-insensitive match on Session title, Agent, provider or provider resource id. */
+        search?: string;
+        /** @description Include in-process targets (virtual filesystem, host), which have no provider resource. */
+        include_in_process?: boolean;
+        /** @description Window start (RFC 3339). Defaults to 24 hours before `to`. */
+        from?: string;
+        /** @description Window end (RFC 3339). Defaults to now. */
+        to?: string;
+        /** @description Lanes to return, 1 to 200. Defaults to 50. */
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxTimeline"];
+        };
+      };
+    };
+  };
+  get_sandbox: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SandboxFleetDetail"];
+        };
+      };
+      /** @description Sandbox not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
     };
   };

@@ -1370,6 +1370,35 @@ impl Database {
             .execute(&mut *tx)
             .await?;
 
+        // Sandboxes outlive their Session as history (migration 175): keep the
+        // title for display and mark them deleted. The provider resource is
+        // reclaimed by its lease cleanup.
+        sqlx::query(
+            r#"
+            UPDATE sandboxes sb
+            SET session_title = COALESCE(s.title, sb.session_title),
+                agent_id = COALESCE(s.agent_id, sb.agent_id),
+                desired_state = 'deleted', observed_state = 'deleted',
+                current_instance_id = NULL, updated_at = NOW()
+            FROM sessions s
+            WHERE s.id = sb.session_id AND s.org_id = $1 AND s.id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE sandbox_instances i SET retired_at = NOW(), updated_at = NOW()
+            FROM sandboxes sb
+            WHERE i.sandbox_id = sb.id AND sb.session_id = $1 AND i.retired_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
         let result = sqlx::query(
             r#"
             DELETE FROM sessions

@@ -28,6 +28,7 @@ import {
   Radio,
   Server,
   Container,
+  Cpu,
   Settings,
   Shield,
   Telescope,
@@ -36,7 +37,10 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
-import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
+import {
+  registryNavigationItems,
+  type RegistryNavigationItem,
+} from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
 
 export type NavigationItem = {
@@ -80,7 +84,12 @@ export const defaultChatsNavigation: NavigationItem[] = [
 
 // These links are rendered beneath Chat rather than as peer sidebar destinations.
 export const sideChatNavigation: NavigationItem[] = [
-  { name: "New side chat", href: "/chats/new", icon: Plus, keywords: ["thread", "conversation"] },
+  {
+    name: "New side chat",
+    href: "/chats/new",
+    icon: Plus,
+    keywords: ["thread", "conversation"],
+  },
   {
     name: "View all chats",
     href: "/chats/history",
@@ -96,7 +105,20 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     icon: MessageSquare,
     keywords: ["recordings", "conversation", "transcript"],
   },
-  { name: "Approvals", href: "/approvals", icon: ShieldCheck, minimumRole: "admin" },
+  // Live and past compute, read rather than authored, so it sits with
+  // Sessions; the templates that configure it stay under Building.
+  {
+    name: "Sandboxes",
+    href: "/sandboxes",
+    icon: Cpu,
+    keywords: ["compute", "daytona", "modal", "containers", "fleet"],
+  },
+  {
+    name: "Approvals",
+    href: "/approvals",
+    icon: ShieldCheck,
+    minimumRole: "admin",
+  },
   // "What in this org is reachable from outside right now" is a question
   // security and ops ask, and no agent page can answer it — it shows one agent
   // (EVE-1010). It sits here rather than under Building because reading it is
@@ -118,8 +140,18 @@ export const defaultBuildingNavigation: NavigationItem[] = [
     href: "/playground",
     icon: FlaskConical,
   },
-  { name: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
-  { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
+  {
+    name: "Agents",
+    href: "/agents",
+    icon: Boxes,
+    keywords: ["bot", "assistant"],
+  },
+  {
+    name: "Harnesses",
+    href: "/harnesses",
+    icon: Shield,
+    keywords: ["template", "config"],
+  },
   {
     name: "Sandbox Templates",
     href: "/sandbox-templates",
@@ -150,12 +182,18 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
 ];
 
-export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(
-  ({ name, href, icon, keywords }: RegistryNavigationItem) => {
-    const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-    return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
-  },
-);
+export const defaultRegistriesNavigation: NavigationItem[] =
+  registryNavigationItems.map(
+    ({ name, href, icon, keywords }: RegistryNavigationItem) => {
+      const flag =
+        href === "/skills"
+          ? "skills"
+          : href === "/plugins"
+            ? "plugins"
+            : undefined;
+      return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
+    },
+  );
 
 export const defaultQualityNavigation: NavigationItem[] = [
   {
@@ -212,7 +250,11 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Registries", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
-  { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
+  {
+    label: "Durable Execution",
+    items: defaultDurableNavigation,
+    defaultCollapsed: true,
+  },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
@@ -270,7 +312,9 @@ export function visibleNavigationSections(
     .filter((section) => section.items.length > 0);
 }
 
-export function isDurableNavigationSection(section: NavigationSection): boolean {
+export function isDurableNavigationSection(
+  section: NavigationSection,
+): boolean {
   return section.items.some(
     (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
   );

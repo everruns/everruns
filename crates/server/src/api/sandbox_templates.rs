@@ -13,9 +13,14 @@ use axum::{Json, Router, extract::Path, extract::State, http::StatusCode, routin
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::api::command_http::CommandRouterExt;
+use crate::api::dispatch::impl_dispatchable;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sandbox_templates::commands::{GetSessionSandbox, ListSandboxTargets};
+use crate::domains::sandboxes::{
+    GetSandbox, GetSandboxFleetStats, GetSandboxTimeline, ListSandboxes,
+};
 use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
 use everruns_contracts::typed_id::SandboxTemplateId;
@@ -229,9 +234,15 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        // Org-wide Sandbox fleet (domains/sandboxes).
+        .command::<ListSandboxes>()
+        .command::<GetSandboxFleetStats>()
+        .command::<GetSandboxTimeline>()
+        .command::<GetSandbox>()
         .route(
             "/v1/sandbox-templates",
             get(list_sandbox_templates).post(create_sandbox_template),

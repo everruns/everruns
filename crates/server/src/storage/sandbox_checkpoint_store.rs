@@ -75,8 +75,9 @@ impl PgSandboxCheckpointStore {
         let inserted: Option<Uuid> = sqlx::query_scalar(
             r#"
             INSERT INTO sandboxes
-                (org_id, session_id, provider, profile_name, profile_snapshot, environment_revision_id, role)
-            SELECT s.org_id, s.id, $2, $3, $4, $5, 'primary'
+                (org_id, session_id, provider, profile_name, profile_snapshot, environment_revision_id, role,
+                 agent_id, session_title)
+            SELECT s.org_id, s.id, $2, $3, $4, $5, 'primary', s.agent_id, s.title
             FROM sessions s
             WHERE s.id = $1
             ON CONFLICT (session_id) WHERE profile_snapshot IS NOT NULL DO UPDATE SET
@@ -359,8 +360,8 @@ impl SandboxStateStore for PgSandboxCheckpointStore {
             None => sqlx::query_as(
                 r#"
                 INSERT INTO sandboxes
-                    (org_id, session_id, provider, created_at, updated_at)
-                SELECT s.org_id, s.id, $2, $3, $4
+                    (org_id, session_id, provider, created_at, updated_at, agent_id, session_title)
+                SELECT s.org_id, s.id, $2, $3, $4, s.agent_id, s.title
                 FROM sessions s
                 WHERE s.id = $1
                 RETURNING id, generation, current_instance_id
@@ -629,8 +630,8 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         // conflict path too; touching updated_at is the cheapest such no-op.
         let row: (Uuid, i64) = sqlx::query_as(
             r#"
-            INSERT INTO sandboxes (org_id, session_id, provider)
-            SELECT s.org_id, s.id, $2
+            INSERT INTO sandboxes (org_id, session_id, provider, agent_id, session_title)
+            SELECT s.org_id, s.id, $2, s.agent_id, s.title
             FROM sessions s
             WHERE s.id = $1
             ON CONFLICT (session_id, provider)
