@@ -11,9 +11,11 @@ tags:
 ---
 # Change Reasons and Manager Context
 
-Status: proposed design. Nothing here is implemented yet. Once a phase lands,
-the Rust source, migrations and OpenAPI export own the exact fields and this
-concept keeps only the intent, contracts and success bars.
+Status: in progress. Phase 1 (reasons and history) is implemented; phases 2
+to 7 are design. For what has landed, the Rust source
+(`crates/server/src/domains/change_history/`), migrations and OpenAPI export
+own the exact fields and this concept keeps only the intent, contracts and
+success bars.
 
 ## Abstract
 
@@ -466,7 +468,8 @@ Knowing has to be structural, not a hope that the model reads docs:
 
 ## Threats
 
-New entries for [Threat Model](../security/threat-model.md) when Phase 1 lands:
+Entries for [Threat Model](../security/threat-model.md) (TM-API-028 and
+TM-API-029 landed with Phase 1; the context entries land with Phase 2):
 
 - **Planted instructions in context.** A manager writes context meant to steer
   future Platform Chat threads. Same trust as editing the entity itself, which
@@ -585,7 +588,7 @@ the edit-mode hint and the secret markers in a provider's diff.
 
 Each phase is one PR-sized change.
 
-1. **Reasons and history.** Envelope field, header, `--reason` in the Mapper,
+1. **Reasons and history** (implemented). Envelope field, header, `--reason` in the Mapper,
    gRPC field, `ChangeIntent` on `Ctx`, `Change` declarations with the guard,
    `entity_changes`, `history` commands. Reason optional everywhere. Builds on
    the idempotency-key envelope work so both share one invocation-metadata
