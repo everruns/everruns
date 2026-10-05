@@ -24,6 +24,7 @@ use everruns_contracts::runtime::*;
 use std::result::Result;
 
 mod code_mode;
+mod nested_tool;
 use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
 use crate::tool_types::ToolHints;
@@ -597,7 +598,8 @@ impl LuaVfs {
 //   and a non-empty network allow-list that permits the URL (TM-LUA-005).
 // - code mode: `tools.<name>(args)` re-enters only Auto, non-destructive,
 //   non-execution tools; the child context has no tool_registry, so code mode
-//   cannot recurse (TM-LUA-009).
+//   cannot recurse (TM-LUA-009). Each nested call passes the turn's
+//   `NestedToolPolicy` as itself and is refused without it (EVE-1210).
 mod engine {
     use super::{LuaLimits, LuaOutcome, LuaVfs, ToolContext, VfsEntry, VfsGrepHit};
     use mlua::{
@@ -713,33 +715,14 @@ mod engine {
         })
     }
 
-    /// Code mode: re-enter another tool. The child context drops `tool_registry`
-    /// so a code-mode tool cannot itself open code mode (no recursion).
+    /// Code mode: re-enter another tool through the turn's policy
+    /// (`crate::nested_tool`, EVE-1210).
     async fn do_tool(
         ctx: &ToolContext,
         name: &str,
         args: serde_json::Value,
     ) -> Result<serde_json::Value, String> {
-        use crate::tools::ToolExecutionResult as R;
-        let reg = ctx
-            .tool_registry
-            .as_ref()
-            .ok_or_else(|| "tools unavailable in this environment".to_string())?;
-        let tool = reg
-            .get(name)
-            .ok_or_else(|| format!("unknown tool: {name}"))?;
-        let mut child = ctx.clone();
-        child.tool_registry = None;
-        child.tool_call_id = Some(format!("lua:{name}"));
-        match tool.execute_with_context(args, &child).await {
-            R::Success(v) | R::SuccessWithImages { result: v, .. } => Ok(v),
-            R::ToolError(e) => Err(e),
-            R::InternalError(_) => Err("tool internal error".to_string()),
-            R::ConnectionRequired { provider, .. } => {
-                Err(format!("tool requires a connection: {provider}"))
-            }
-            R::PolicyOutcome(result) => Err(result.error.unwrap_or_default()),
-        }
+        crate::nested_tool::call(ctx, name, args).await
     }
 
     /// Synchronous host call from inside a Lua function (blocking thread).
@@ -1248,7 +1231,7 @@ mod tests {
     }
 
     /// Minimal file store used by engine tests.
-    struct EmptyFileStore;
+    pub(crate) struct EmptyFileStore;
 
     #[async_trait]
     impl SessionFileSystem for EmptyFileStore {
@@ -1526,6 +1509,9 @@ mod tests {
             let mut ctx = ToolContext::new(SessionId::new());
             ctx.file_store = Some(Arc::new(EmptyFileStore));
             ctx.tool_registry = Some(Arc::new(registry));
+            ctx = ctx.with_nested_tool_policy(crate::nested_tool::tests::ScriptedPolicy::blocking(
+                "nothing",
+            ));
             let v = match LuaTool
                 .execute_with_context(
                     json!({ "script": r#"return tools.echo({ n = 5 }).n"# }),

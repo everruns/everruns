@@ -419,9 +419,10 @@ pub struct ToolContext {
     pub cancellation: Option<tokio_util::sync::CancellationToken>,
 
     /// The act phase's pre- and post-tool chains, for a tool that runs another
-    /// tool on the model's behalf (`spawn_background`). Set by ActAtom on every
-    /// call it dispatches; a dispatching tool refuses to run without it so a
-    /// nested call can never skip the target tool's policy (EVE-1186).
+    /// tool on the model's behalf (`spawn_background`, Lua code mode). Set by
+    /// ActAtom on every call it dispatches; a dispatching tool refuses to run
+    /// without it so a nested call can never skip the target tool's policy
+    /// (EVE-1186, EVE-1210).
     pub nested_tool_policy: Option<Arc<dyn crate::runtime::tool_hooks::NestedToolPolicy>>,
 }
 

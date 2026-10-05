@@ -14,6 +14,10 @@
 use everruns_contracts::driver_registry::DriverRegistry;
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_contracts::provider::DriverId;
+use everruns_contracts::runtime::Capability;
+use everruns_contracts::runtime::tool_context::ToolContext;
+use everruns_contracts::runtime::tool_hooks::{PreToolUseDecision, PreToolUseHook};
+use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::CapabilityRegistry;
 use everruns_core::host::HostComposition;
@@ -22,6 +26,7 @@ use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_test_support::TestMathCapability;
+use std::sync::Arc;
 
 const ORCHESTRATION_SCRIPT: &str = r#"
     local product = tools.multiply({ a = 6, b = 7 })       -- 42
@@ -35,6 +40,8 @@ fn platform() -> HostComposition {
     caps.register(LuaCapability);
     caps.register(LuaCodeModeCapability);
     caps.register(TestMathCapability);
+    // Contributes its hook only to harnesses that select it.
+    caps.register(DenyMultiplyCapability);
 
     let mut drivers = DriverRegistry::new();
     everruns_llmsim::register_driver(&mut drivers);
@@ -144,4 +151,119 @@ async fn hides_math_tools_but_runs_them_via_lua() {
         .and_then(|f| f.content)
         .unwrap_or_default();
     assert!(out.contains("50"), "expected 50 in out.txt, got {out:?}");
+}
+
+/// Blocks every `multiply` call, as a tool-specific user hook or guardrail
+/// would.
+struct DenyMultiplyHook;
+
+#[async_trait::async_trait]
+impl PreToolUseHook for DenyMultiplyHook {
+    async fn before_exec(
+        &self,
+        tool_call: ToolCall,
+        _tool_def: &ToolDefinition,
+        _context: &ToolContext,
+    ) -> PreToolUseDecision {
+        if tool_call.name == "multiply" {
+            return PreToolUseDecision::Block {
+                tool_call,
+                reason: "multiply is denied".to_string(),
+                user_message: None,
+            };
+        }
+        PreToolUseDecision::Continue(tool_call)
+    }
+}
+
+struct DenyMultiplyCapability;
+
+impl Capability for DenyMultiplyCapability {
+    fn id(&self) -> &str {
+        "deny_multiply"
+    }
+    fn name(&self) -> &str {
+        "Deny Multiply"
+    }
+    fn description(&self) -> &str {
+        "Test capability: blocks the multiply tool."
+    }
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn PreToolUseHook>> {
+        vec![Arc::new(DenyMultiplyHook)]
+    }
+}
+
+/// THREAT[TM-LUA-009]: a call a pre-tool hook denies when made directly is
+/// denied from a code-mode script too, and allowed calls still run (EVE-1210).
+#[tokio::test]
+async fn pre_tool_hook_denial_applies_to_code_mode_calls() {
+    const SCRIPT: &str = r#"
+        local ok, err = pcall(tools.multiply, { a = 6, b = 7 })
+        local sum = tools.add({ a = 1, b = 2 })
+        fs.write("/workspace/out.txt", string.format("%s|%s|%d", tostring(ok), tostring(err), sum.result))
+        return sum.result
+    "#;
+    let harness_id = HarnessId::new();
+    let agent_id = AgentId::new();
+    let session_id = SessionId::new();
+
+    let sim = LlmSimConfig::scripted(vec![
+        SimTurn::ToolCalls(vec![SimToolCall {
+            name: "lua".to_string(),
+            arguments: serde_json::json!({ "script": SCRIPT }),
+            id: None,
+        }]),
+        SimTurn::Assistant("Done.".to_string()),
+    ]);
+
+    let harness = HarnessBuilder::new("code-mode", "Use the lua tool to act.")
+        .id(harness_id)
+        .capability("lua")
+        .capability("lua_code_mode")
+        .capability("test_math")
+        .capability("deny_multiply")
+        .build();
+    let agent = AgentBuilder::new("agent", "Finish the task then stop.")
+        .id(agent_id)
+        .max_iterations(6)
+        .build();
+    let session = SessionBuilder::new(harness_id)
+        .id(session_id)
+        .agent(agent_id)
+        .build();
+
+    let runtime = everruns::batteries::runtime_builder()
+        .host_composition(platform())
+        .llm_sim_as_default(sim)
+        .default_model(ModelSpec::on(
+            (DriverId::LlmSim).as_str(),
+            "llmsim-model".to_string(),
+        ))
+        .harness(harness)
+        .agent(agent)
+        .session(session)
+        .build()
+        .await
+        .expect("build runtime");
+
+    let turn = runtime
+        .run_text_turn(session_id, "Compute 6 * 7 and 1 + 2.")
+        .await
+        .expect("run turn");
+    assert!(turn.success, "turn should succeed");
+
+    let out = runtime
+        .read_file(session_id, "/workspace/out.txt")
+        .await
+        .expect("read out.txt")
+        .and_then(|f| f.content)
+        .unwrap_or_default();
+    assert!(
+        out.starts_with("false|") && out.contains("multiply is denied"),
+        "the denied multiply must not run from code mode: {out:?}"
+    );
+    assert!(
+        out.ends_with("|3"),
+        "the allowed add must still run: {out:?}"
+    );
 }
