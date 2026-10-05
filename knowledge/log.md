@@ -2,9 +2,9 @@
 
 ## 2026-10-05
 
-* **Proposed: agent versions fold into entity history.** Every change to a
-  snapshot kind becomes a revision; a version is a named revision that
-  exposures pin, with semver bumps removed and `agentver_` ids preserved. See
+* **Proposed: entity history replaces agent versions.** Every change stores a
+  secret-free snapshot (secrets as keyed fingerprints), any point can be
+  restored, and public versions, semver and pinning are retired. See
   [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
 
 * **The durable framework backend runs on PostgreSQL.**

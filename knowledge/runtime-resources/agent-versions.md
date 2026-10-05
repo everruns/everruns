@@ -8,9 +8,9 @@ tags:
 ---
 # Agent Versions
 
-> Proposed replacement: [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)
-> folds the automatic snapshots into generic entity history (revisions) and keeps
-> versions as named, pinnable revisions. This concept describes the current model
+> Proposed retirement: [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)
+> replaces versions with entity history and restore to any point, and drops
+> publishing, semver and pinning. This concept describes the current model
 > until that phase lands.
 
 ## Abstract
