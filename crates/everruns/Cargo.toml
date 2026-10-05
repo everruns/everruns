@@ -20,9 +20,10 @@ description = "Build and run durable AI agents in Rust — the application-facin
 readme = "README.md"
 keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
 categories = ["development-tools", "asynchronous"]
-# The out-of-workspace downstream-consumer fixtures are a CI harness, not part
-# of the library; keep them out of the published package.
-exclude = ["tests/fixtures/external-consumer/"]
+# The out-of-workspace downstream-consumer fixtures are a CI harness, and the
+# bench baseline is maintainer history; neither is part of the library, so keep
+# them out of the published package.
+exclude = ["tests/fixtures/external-consumer/", "benches/turn_backends_baseline.jsonl"]
 
 [[example]]
 name = "lifecycle_hooks"
@@ -50,6 +51,16 @@ required-features = ["local"]
 name = "backend_conformance"
 path = "tests/backend_conformance/main.rs"
 required-features = ["durable", "ag-ui"]
+
+# Per-turn latency and throughput of the in-process and the durable memory
+# backend (`benches/turn_backends.rs`). `test = true` lets the facade's single
+# `cargo test --all-features` CI invocation run it as a smoke, at the cost of
+# one more link and no extra cargo pass; `cargo bench` runs the full scale.
+[[bench]]
+name = "turn_backends"
+harness = false
+test = true
+required-features = ["durable"]
 
 [features]
 # Default features stay offline: the facade includes the contained session

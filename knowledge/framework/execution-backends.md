@@ -170,12 +170,58 @@ platform.
     process: the ticket subtracts what the turn had counted before.
 
 Not served on the durable backend: server-persisted input, a configuration
-error. Still to come, in order: the turn-backend benchmark and a PostgreSQL
-store. PostgreSQL
-needs more than a store constructor: workers sharing a queue across processes
+error. Still to come: a PostgreSQL store. PostgreSQL needs more than a store constructor: workers sharing a queue across processes
 would claim tasks for sessions another process attached, so it waits on a
 route from a task's session to the process (or runtime factory) that can run
 it, and on `recover()` for workflows a crashed process left behind.
+
+### Benchmark
+
+[`benches/turn_backends.rs`](../../crates/everruns/benches/turn_backends.rs)
+in the facade runs the same llmsim turns, with zero model latency, on each
+backend: a text turn (one reason) and a tool turn (reason, one function tool
+call, reason), at 1, 16 and 64 concurrent slots of short sessions, reporting
+per-turn `send_and_wait` p50/p99 and turns per second. It lives in the facade
+because it needs both backends and `Engine`; durable-engine depending back on
+the facade would build a second copy of itself. The durable PostgreSQL store
+is not a framework backend yet, so it is not measured.
+
+Baseline, a 4-core cloud container (one full run,
+[`turn_backends_baseline.jsonl`](../../crates/everruns/benches/turn_backends_baseline.jsonl);
+durable rows at 4 workers, 16 workers within noise except where shown):
+
+| Scenario | Backend | c1 p50 ms | c1 turns/s | c16 turns/s | c64 turns/s | c64 p99 ms |
+|---|---|---:|---:|---:|---:|---:|
+| text | in process | 2.0 | 496 | 1113 | 1101 | 74 |
+| text | durable memory | 51.6 | 19 | 302 | 780 (970 at w16) | 113 |
+| tool | in process | 4.8 | 200 | 319 | 316 | 290 |
+| tool | durable memory | 51.5 | 19 | 263 | 294 | 310 |
+
+- **The ticket poll is the durable backend's latency.** A durable turn waits
+  for the next 50 ms `TICKET_POLL_INTERVAL` tick after its workflow ends, so
+  one session gets at most ~19 turns/s. With the interval at 1 ms (measured,
+  not shipped) c1 is 3.7 ms text and 7.0 ms tool p50 (268 and 141 turns/s): the
+  queue, checkpoints and wakeups cost ~1.7 ms per text turn and ~2.3 ms per
+  tool turn over in process. A notifier on the workflow's terminal transition,
+  with the poll kept as the fallback, would recover that; it needs a hook on
+  every path that ends a workflow (driver, runner, cancel, dead task), so it is
+  follow-up work rather than a constant change.
+- **Under load both backends are CPU-bound** and close: at c64 throughput is
+  within ~10-30% and the poll no longer dominates.
+- **Turn cost grows with session history on both backends**, which is why
+  the bench keeps sessions to five turns: over a 100-turn session an
+  in-process tool turn went from ~5 ms to ~85 ms p50.
+
+Run it with
+`cargo bench -p everruns --features durable --bench turn_backends`
+(about a minute; `-- --summary <file>` appends JSONL in the shape of
+`crates/durable/benches/baseline.jsonl`, which
+`scripts/lib/durable-bench-compare.sh <file> crates/everruns/benches/turn_backends_baseline.jsonl`
+compares). `-- --smoke` runs it in seconds. The bench target sets
+`test = true`, so the facade CI job's existing
+`cargo test -p everruns ... --all-features` runs the smoke at the cost of one
+more link and no extra cargo invocation (see
+[CI Build Time](../project/ci-build-time.md)); there is no scheduled full run.
 
 ### Queue plus per-step checkpoint, not Workflow replay
 
