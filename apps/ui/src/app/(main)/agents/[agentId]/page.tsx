@@ -370,7 +370,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     },
     {
       id: "files",
-      label: "Starter files",
+      label: "Files",
       summary: draft.files.length ? count(draft.files.length, "file") : "None",
     },
     {

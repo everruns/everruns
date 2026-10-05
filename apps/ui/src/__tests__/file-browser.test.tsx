@@ -105,7 +105,7 @@ describe("FileBrowser States", () => {
 
     renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
-    expect(screen.getByText("Empty workspace")).toBeInTheDocument();
+    expect(screen.getByText("No files yet")).toBeInTheDocument();
     expect(screen.getByText("Create a file or folder to get started")).toBeInTheDocument();
   });
 });

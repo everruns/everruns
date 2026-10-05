@@ -34,11 +34,11 @@ impl AgentPackage {
                 .map(|b| format!("{b:02x}"))
                 .collect::<String>();
             files.insert(
-                file.path,
+                file.path.trim_start_matches('/').to_string(),
                 json!({"sha256": digest, "bytes": bytes.len(), "is_readonly": file.is_readonly}),
             );
         }
-        value["initial_files"] = Value::Object(files);
+        value["files"] = Value::Object(files);
         value["tags"] = json!(
             self.manifest
                 .tags
@@ -67,7 +67,7 @@ fn compare(path: &str, before: Option<&Value>, after: Option<&Value>, changes: &
             .collect::<std::collections::BTreeSet<_>>();
         for key in keys {
             let child = format!("{path}/{}", key.replace('~', "~0").replace('/', "~1"));
-            if path == "/initial_files" {
+            if path == "/files" {
                 if before.get(key) != after.get(key) {
                     changes.push(Change {
                         path: child,

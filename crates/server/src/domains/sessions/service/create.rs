@@ -205,6 +205,11 @@ impl SessionService {
         source: SessionSource,
         req: CreateSessionRequest,
     ) -> Result<Session> {
+        if req.workspace_id.is_some() && !req.initial_files.is_empty() {
+            return Err(BadRequestError::new(
+                "initial_files cannot be applied to an existing file tree; review and update files through the Files API",
+            ).into());
+        }
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
         let harness_id = HarnessId::from_uuid(harness_id);
@@ -606,8 +611,8 @@ impl SessionService {
         };
 
         // Apply capability mounts (harness + agent + session capabilities) and
-        // seed initial files into the session's workspace. Key by workspace_id
-        // (not session id) so an attached shared workspace receives them; for
+        // address the session's working tree. Key by workspace_id
+        // (not session id) so an attached shared workspace receives mounts; for
         // the default 1:1 session these are equal.
         self.apply_capability_mounts(
             org_id,
@@ -619,14 +624,18 @@ impl SessionService {
         )
         .await?;
 
-        self.apply_initial_files(
-            org_id,
-            harness_id.uuid(),
-            agent_id.map(|a| a.uuid()),
-            &req.initial_files,
-            session.workspace_id.uuid(),
-        )
-        .await?;
+        // Agent/harness files seed a new lineage once. Attaching a session must
+        // never reset an existing tree to the agent's starting snapshot.
+        if workspace_id.is_none() {
+            self.apply_initial_files(
+                org_id,
+                harness_id.uuid(),
+                agent_id.map(|a| a.uuid()),
+                &req.initial_files,
+                session.workspace_id.uuid(),
+            )
+            .await?;
+        }
 
         // Effective capability list (harness + agent + session), resolved once
         // and shared by sandbox auto-start and the session_start hook so the

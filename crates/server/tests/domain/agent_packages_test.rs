@@ -31,7 +31,7 @@ async fn api_import_export_zip_and_diff_round_trip_without_ids() {
     assert!(exported.get("id").is_none());
     assert!(exported.get("harness_id").is_none());
     assert_eq!(exported["instructions"], "Read the runbook.");
-    assert_eq!(exported["initial_files"][0]["content"], "The runbook");
+    assert_eq!(exported["files"][0]["content"], "The runbook");
     assert_eq!(exported["channels"]["chat"]["enabled"], false);
     let mut proposed = exported.clone();
     proposed["instructions"] = json!("Changed instructions");
@@ -199,15 +199,19 @@ async fn platform_chat_cli_resolves_workspace_folders_and_exports_zip_artifacts(
     for (path, content) in [
         (
             "/agent/agent.toml",
-            "schema_version = 1\nname = 'chat-package'\nharness = 'base'\ninstructions = 'Read the runbook.'",
+            "schema_version = 1\nname = 'chat-package'\nharness = 'base'\ninstructions = 'Read the runbook.'\nfiles = ['runbook.md']",
         ),
         ("/agent/instructions.md", "Read the runbook."),
-        ("/agent/files/runbook.md", "Workspace runbook"),
+        ("/agent/runbook.md", "Workspace runbook"),
+        ("/agent/unselected.txt", "Do not package this project file"),
         (
-            "/agent/skills/check/SKILL.md",
+            "/agent/.agents/skills/check/SKILL.md",
             "---\nname: check\ndescription: Check the runbook\n---\nUse the script.",
         ),
-        ("/agent/skills/check/scripts/check.py", "print('check')"),
+        (
+            "/agent/.agents/skills/check/scripts/check.py",
+            "print('check')",
+        ),
     ] {
         CreateWorkspaceFile {
             session_id: id.into(),

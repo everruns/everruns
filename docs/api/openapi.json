@@ -26565,7 +26565,7 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended.",
+            "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id.",
             "example": [
               {
                 "content": "# Project notes\n",
@@ -28965,7 +28965,7 @@
       },
       "FileSource": {
         "type": "object",
-        "description": "A package-relative file or glob and its workspace destination.",
+        "description": "A package-relative file or glob and its working-directory destination.",
         "required": [
           "source"
         ],
@@ -28979,7 +28979,7 @@
               "string",
               "null"
             ],
-            "description": "Workspace destination; omitted paths are derived from the package source."
+            "description": "Working-directory destination; omitted paths preserve the package source."
           },
           "source": {
             "type": "string",
@@ -36273,19 +36273,19 @@
           "environments": {
             "description": "Platform-specific environment requirements; other hosts must bind or reject them."
           },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "description": "Starting files or package-relative sources. Sources retain their relative paths."
+          },
           "harness": {
             "type": [
               "string",
               "null"
             ],
             "description": "Named harness requirement. Omission uses the host's default harness."
-          },
-          "initial_files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/File"
-            },
-            "description": "Embedded initial files or package-relative sources. Folder loading defaults to files/."
           },
           "instructions": {
             "type": "string",
@@ -38745,7 +38745,7 @@
                   "items": {
                     "$ref": "#/components/schemas/InitialFile"
                   },
-                  "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+                  "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
                 },
                 "is_pinned": {
                   "type": [
@@ -39725,7 +39725,7 @@
                       "items": {
                         "$ref": "#/components/schemas/InitialFile"
                       },
-                      "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+                      "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
                     },
                     "is_pinned": {
                       "type": [
@@ -42912,7 +42912,7 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+            "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
           },
           "is_pinned": {
             "type": [
@@ -50948,7 +50948,7 @@
                 "items": {
                   "$ref": "#/components/schemas/InitialFile"
                 },
-                "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+                "description": "Starting files for a new file tree (additive to agent/harness files).\nMatching paths override earlier layers. Rejected when attaching workspace_id."
               },
               "is_pinned": {
                 "type": [

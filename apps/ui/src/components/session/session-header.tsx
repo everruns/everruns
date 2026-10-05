@@ -43,7 +43,7 @@ import {
 /**
  * A session is a recording, not a workspace, so its tabs are the views a
  * recording actually has. `files` keeps its route id — the label is
- * "Workspace" and renaming the route would break existing links.
+ * "Files"; its stable route preserves existing links.
  */
 export type SessionNavKey = "transcript" | "timeline" | "work" | "events" | "files" | "cost";
 
@@ -209,7 +209,7 @@ export function buildSessionNavigation({
           {
             key: "files" as const,
             // Route stays /files — renaming it would break existing links.
-            label: "Workspace",
+            label: "Files",
             href: `${basePath}/files`,
             icon: Folder,
             badge: tabBadge(fileCount),

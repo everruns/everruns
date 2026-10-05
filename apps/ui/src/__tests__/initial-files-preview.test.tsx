@@ -16,7 +16,7 @@ describe("InitialFilesPreview", () => {
   it("renders empty state when no files are configured", () => {
     render(<InitialFilesPreview files={[]} />);
 
-    expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+    expect(screen.getByText("No files configured.")).toBeInTheDocument();
   });
 
   // Regression: agents/harnesses persisted before `initial_files` existed (or stripped
@@ -24,7 +24,7 @@ describe("InitialFilesPreview", () => {
   it.each([undefined, null])("renders empty state when files prop is %p", (files) => {
     render(<InitialFilesPreview files={files as InitialFile[] | null | undefined} />);
 
-    expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+    expect(screen.getByText("No files configured.")).toBeInTheDocument();
   });
 
   it("shows text file contents inline and lets the user switch files", () => {
@@ -47,7 +47,7 @@ describe("InitialFilesPreview", () => {
 
     expect(screen.getByText("plain text preview")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /\/src\/app\.ts/i }));
+    fireEvent.click(screen.getByRole("button", { name: /src\/app\.ts/i }));
 
     expect(screen.getByText(/export const value = 1;/)).toBeInTheDocument();
     expect(screen.getByText("read-only")).toBeInTheDocument();

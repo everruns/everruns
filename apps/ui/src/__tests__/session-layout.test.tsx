@@ -274,12 +274,12 @@ describe("SessionLayout", () => {
       screen
         .getAllByRole("link")
         .filter((link) =>
-          ["Transcript", "Timeline", "Work", "Events", "Workspace", "Cost"].includes(
+          ["Transcript", "Timeline", "Work", "Events", "Files", "Cost"].includes(
             link.textContent ?? "",
           ),
         )
         .map((link) => link.textContent),
-    ).toEqual(["Transcript", "Timeline", "Work", "Events", "Workspace", "Cost"]);
+    ).toEqual(["Transcript", "Timeline", "Work", "Events", "Files", "Cost"]);
   });
 
   it("points each tab at its route", async () => {
@@ -295,7 +295,7 @@ describe("SessionLayout", () => {
         "/sessions/ses-abc12345/timeline",
       );
     });
-    expect(screen.getByRole("link", { name: /workspace/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /files/i })).toHaveAttribute(
       "href",
       "/sessions/ses-abc12345/files",
     );
@@ -321,7 +321,7 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /workspace/i })).toHaveClass("border-primary");
+      expect(screen.getByRole("link", { name: /files/i })).toHaveClass("border-primary");
     });
     expect(screen.getByRole("link", { name: /timeline/i })).not.toHaveClass("border-primary");
   });
@@ -438,11 +438,11 @@ describe("SessionLayout", () => {
     expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /events/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /cost/i })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /files/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^work$/i })).not.toBeInTheDocument();
   });
 
-  it("shows Workspace only when the file_system feature is present", async () => {
+  it("shows Files only when the file_system feature is present", async () => {
     mockSessionContext.session = {
       ...mockSessionContext.session,
       features: ["file_system"],
@@ -450,7 +450,7 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /workspace/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /files/i })).toBeInTheDocument();
     });
     expect(screen.queryByRole("link", { name: /^work$/i })).not.toBeInTheDocument();
   });
@@ -483,7 +483,7 @@ describe("SessionLayout", () => {
       expect(screen.getByRole("link", { name: /^work 3$/i })).toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: /^events 42$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^workspace 6$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^files 6$/i })).toBeInTheDocument();
   });
 
   it("leaves an empty tab unbadged rather than showing a zero", async () => {
@@ -500,7 +500,7 @@ describe("SessionLayout", () => {
       expect(screen.getByRole("link", { name: /^work$/i })).toBeInTheDocument();
     });
     expect(screen.getByRole("link", { name: /^events$/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^workspace$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^files$/i })).toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 });

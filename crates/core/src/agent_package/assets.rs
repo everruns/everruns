@@ -97,7 +97,7 @@ pub(crate) fn workspace_path(path: &str) -> Result<String> {
         .unwrap_or(path)
         .trim_start_matches('/');
     if !safe_source(path) || path.split('/').any(|part| part.is_empty() || part == ".") {
-        return Err(error("path", "invalid workspace destination"));
+        return Err(error("path", "invalid working-directory destination"));
     }
     Ok(format!("/{path}"))
 }
@@ -121,11 +121,101 @@ pub(crate) fn allowed(path: &Path) -> bool {
 }
 
 impl AgentPackage {
+    // The canonical skill root is already the runtime path. Older skills/
+    // folders remain importable; ambiguous automatic discovery requires intent.
+    pub(super) fn skill_sources(&self, exists: impl Fn(&str) -> bool) -> Result<Vec<String>> {
+        if !self.manifest.skills.is_empty() {
+            return Ok(self.manifest.skills.clone());
+        }
+        if self.manifest.initial_files.iter().any(|file| match file {
+            File::Inline(file) => file
+                .path
+                .trim_start_matches('/')
+                .starts_with(".agents/skills/"),
+            File::Source(file) => {
+                file.source.starts_with(".agents/skills/") || file.source == ".agents/skills"
+            }
+            File::Pattern(source) => {
+                source.starts_with(".agents/skills/") || source == ".agents/skills"
+            }
+        }) {
+            return Ok(Vec::new());
+        }
+        let sources: Vec<_> = [".agents/skills", "skills"]
+            .into_iter()
+            .filter(|source| exists(source))
+            .map(str::to_string)
+            .collect();
+        if sources.len() > 1 {
+            return Err(error(
+                "skills",
+                "both .agents/skills and skills exist; declare skills explicitly",
+            ));
+        }
+        Ok(sources)
+    }
+
+    /// Select declared assets from a virtual folder listing before reading bytes.
+    /// Hosts use this to avoid uploading unrelated files beside an agent manifest.
+    pub fn referenced_paths<'a>(
+        &self,
+        paths: impl IntoIterator<Item = &'a str>,
+    ) -> Result<std::collections::BTreeSet<String>> {
+        let paths: Vec<_> = paths.into_iter().collect();
+        let mut sources: Vec<_> = self
+            .manifest
+            .initial_files
+            .iter()
+            .filter_map(|file| match file {
+                File::Pattern(source) => Some(source.clone()),
+                File::Source(file) => Some(file.source.clone()),
+                File::Inline(_) => None,
+            })
+            .collect();
+        if !self.files_declared && paths.iter().any(|path| path.starts_with("files/")) {
+            sources.push("files".into());
+        }
+        sources.extend(self.skill_sources(|source| {
+            paths
+                .iter()
+                .any(|path| path.starts_with(&format!("{source}/")))
+        })?);
+        let mut selected = std::collections::BTreeSet::new();
+        if self.manifest.instructions.is_empty() {
+            selected.insert(
+                self.manifest
+                    .instructions_file
+                    .as_deref()
+                    .unwrap_or("instructions.md")
+                    .to_string(),
+            );
+        }
+        for source in sources {
+            let matcher = Glob::new(&source)
+                .map_err(|e| error("files", e))?
+                .compile_matcher();
+            for path in &paths {
+                if allowed(Path::new(path))
+                    && (source == "."
+                        || *path == source
+                        || path.starts_with(&format!("{source}/"))
+                        || matcher.is_match(path))
+                {
+                    selected.insert((*path).to_string());
+                }
+            }
+        }
+        Ok(selected)
+    }
+
     pub(super) fn resolve_assets(
         &mut self,
         entries: BTreeMap<String, Vec<u8>>,
         defaults: bool,
     ) -> Result<()> {
+        let files_declared = self.files_declared;
+        let default_skills = self
+            .skill_sources(|source| entries.keys().any(|p| p.starts_with(&format!("{source}/"))))?;
         let m = &mut self.manifest;
         if m.instructions.is_empty() {
             let source = m.instructions_file.as_deref().unwrap_or("instructions.md");
@@ -139,7 +229,11 @@ impl AgentPackage {
         }
         m.instructions_file = None;
         let mut declared = std::mem::take(&mut m.initial_files);
-        if declared.is_empty() && defaults && entries.keys().any(|s| s.starts_with("files/")) {
+        if !files_declared
+            && declared.is_empty()
+            && defaults
+            && entries.keys().any(|s| s.starts_with("files/"))
+        {
             declared.push(File::Source(FileSource {
                 source: "files".into(),
                 path: Some("/".into()),
@@ -191,17 +285,14 @@ impl AgentPackage {
                 }));
             }
             if count == 0 {
-                return Err(error(
-                    "initial_files",
-                    format!("source matched no files: {source}"),
-                ));
+                return Err(error("files", format!("source matched no files: {source}")));
             }
         }
         let explicit_skills = resolved
             .iter()
             .any(|file| matches!(file, File::Inline(f) if f.path.starts_with("/.agents/skills/")));
         let skills = if m.skills.is_empty() && defaults && !explicit_skills {
-            vec!["skills".to_string()]
+            default_skills
         } else {
             std::mem::take(&mut m.skills)
         };
@@ -371,15 +462,23 @@ impl AgentPackage {
         let mut entries = BTreeMap::new();
         entries.insert("instructions.md".into(), instructions.into_bytes());
         for file in files {
-            let source = if let Some(path) = file.path.strip_prefix("/.agents/skills/") {
-                format!("skills/{path}")
-            } else {
-                format!("files/{}", file.path.trim_start_matches('/'))
-            };
+            let source = file.path.trim_start_matches('/').to_string();
             let source = asset_path(&source)?;
             // Explicit inline bytes may target hidden paths. Keep them inline
             // rather than exporting a source that host-file collection rejects.
-            if !allowed(Path::new(&source)) {
+            if !allowed(Path::new(&source))
+                || matches!(
+                    source.split('/').next().unwrap_or_default(),
+                    "agent.toml"
+                        | "agent.md"
+                        | "agent.yaml"
+                        | "agent.yml"
+                        | "agent.json"
+                        | "instructions.md"
+                )
+            {
+                let mut file = file;
+                file.path = source;
                 manifest.initial_files.push(File::Inline(file));
                 continue;
             }
@@ -390,7 +489,7 @@ impl AgentPackage {
             );
             manifest.initial_files.push(File::Source(FileSource {
                 source,
-                path: Some(file.path),
+                path: None,
                 is_readonly: file.is_readonly,
             }));
         }

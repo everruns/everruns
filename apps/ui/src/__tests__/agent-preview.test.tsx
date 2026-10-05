@@ -141,8 +141,8 @@ describe("AgentPreview", () => {
     expect(screen.getByText(/You are helpful\./)).toBeInTheDocument();
     expect(screen.getByText("Available Tools")).toBeInTheDocument();
     expect(screen.getByText("search_web")).toBeInTheDocument();
-    // The InitialFilesPreview header is "Initial Files".
-    expect(screen.getByText("Initial Files")).toBeInTheDocument();
+    // The InitialFilesPreview header is "Files".
+    expect(screen.getByText("Files")).toBeInTheDocument();
     expect(screen.getByText("hello")).toBeInTheDocument();
   });
 
@@ -162,7 +162,7 @@ describe("AgentPreview", () => {
 
     render(<AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles} />);
 
-    expect(screen.getByText("Initial Files")).toBeInTheDocument();
-    expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+    expect(screen.getByText("Files")).toBeInTheDocument();
+    expect(screen.getByText("No files configured.")).toBeInTheDocument();
   });
 });

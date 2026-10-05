@@ -35,7 +35,7 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   precedence order, default model, tags) are always visible. Secondary settings are one **More**
   row each that shows its current value ("Inherited", "2 files") and opens a side sheet, so the
   whole configuration reads without opening anything. Side sheets, not accordions, because
-  Branding and Starter files are large editors.
+  Branding and Files are large editors.
 - **Page-level edit mode.** Edit, change several things, then one **Save changes** or
   **Discard**. A prompt edit and the capability change that goes with it land in one update.
   Changing any config control in view mode enters edit mode with that change pending, so nothing

@@ -1212,7 +1212,7 @@ async fn a_file_package_serves_a_real_session_and_pins_assets() {
     assert_eq!(manifest.agents.len(), 1);
     assert_eq!(manifest.agents[0].name, "triage");
     assert!(
-        manifest.agents[0].package.as_ref().unwrap()["initial_files"]
+        manifest.agents[0].package.as_ref().unwrap()["files"]
             .as_array()
             .unwrap()
             .len()

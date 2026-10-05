@@ -34,12 +34,14 @@ Unversioned legacy imports can still use `id`, `default_model_id` and
 triage/
 ├── agent.toml
 ├── instructions.md
-├── files/
-│   └── runbook.md
-└── skills/
-    └── investigate/
-        ├── SKILL.md
-        └── scripts/check.py
+├── runbook.md
+├── data/
+│   └── example.csv
+└── .agents/
+    └── skills/
+        └── investigate/
+            ├── SKILL.md
+            └── scripts/check.py
 ```
 
 ```toml
@@ -49,6 +51,7 @@ display_name = "Triage assistant"
 capabilities = ["session_file_system", "current_time"]
 max_iterations = 20
 parallel_tool_calls = false
+files = ["runbook.md", "data/**"]
 
 [channels.chat]
 type = "ag_ui"
@@ -62,10 +65,17 @@ A folder contains exactly one `agent.toml`, `agent.md`, `agent.yaml`,
 `agent.yml` or `agent.json`. The defaults are:
 
 - `instructions.md` supplies instructions when none are inline.
-- `files/` supplies initial workspace files, mounted at `/`, read-only.
-- `skills/` supplies direct skill subfolders, including scripts, references and
-  binary assets. Each `SKILL.md` must have valid front matter and a name matching
-  its directory. Skills mount at `/.agents/skills/`; the `skills` capability is added.
+- `files` explicitly selects ordinary files or globs. Paths stay relative to the
+  directory root: `data/example.csv` becomes `data/example.csv` in Agent Files
+  and Session Files. Files are read-only unless `is_readonly = false` is declared.
+  Unselected project files are never automatically included.
+- `.agents/skills/` supplies direct skill subfolders at the same relative paths,
+  including scripts, references and binary assets. Each `SKILL.md` must have
+  valid front matter and a name matching its directory. The `skills` capability
+  is added automatically.
+- `agent.toml` and `instructions.md` configure behavior; they are runtime files
+  only when explicitly selected in `files`. Exports preserve runtime files that
+  collide with authoring filenames as inline entries in the manifest.
 - The Platform resolves its default model and harness when omitted. Framework
   applications bind a model explicitly. Serve uses its simulator when omitted.
 - Channels default to disabled. `enabled = true` requests a draft channel; publication and credentials are destination bindings.
@@ -73,6 +83,29 @@ A folder contains exactly one `agent.toml`, `agent.md`, `agent.yaml`,
 TOML, YAML and JSON share one schema. Capability strings select default config;
 `{ ref = "current_time", config = {} }` supplies explicit config. See the
 [package reference](#package-reference) below for optional fields.
+
+## Paths, environments and session files
+
+An Environment describes how execution is provisioned; a Sandbox is the live
+execution resource. Both use the same relative file tree. The physical working
+directory is host-specific (for example `/workspace` in a managed sandbox).
+Use relative paths in packages and tools; `/workspace/` remains a supported
+runtime alias. The UI shows **Files**, without adding a package directory wrapper.
+
+Agent Files are the versioned starting files. New sessions with a new file tree
+receive that starting snapshot. Attaching to an existing file tree preserves its
+current files; `initial_files` on such a session request is rejected. Change
+existing files through the Files API after reviewing the intended updates.
+Editing or importing an agent does not rewrite existing sessions. A fork copies
+current session files, and sandbox recovery uses committed session files rather
+than reapplying the agent template. Durable files and live processes have separate
+lifecycles; installed software and background processes depend on the Environment.
+
+Older folders with `files/` and `skills/` still import. When `files`/`initial_files`
+is omitted, legacy `files/` contents map to the working-directory root. An explicit
+empty list disables that discovery. Legacy `skills/` maps to `.agents/skills/`.
+If both skill roots exist, select one explicitly with `skills = [".agents/skills"]`.
+New folder and ZIP exports use root-relative files and `.agents/skills/`.
 
 ## Describe MCP dependencies
 
@@ -240,8 +273,8 @@ register arbitrary network handlers; configure serve channel transports separate
 | `model` | `{ provider = "openai", model = "…" }`; destination binds an enabled provider/model pair |
 | `harness` | Destination harness name; omitted uses the host default |
 | `capabilities` | Stable capability names or `ref`/`config` objects |
-| `initial_files` | Inline `path`/`content`/`encoding`/`is_readonly`, relative paths/globs, or `source` mappings |
-| `skills` | Relative directories containing skill subfolders; folder default `skills/` |
+| `files` | Inline `path`/`content`/`encoding`/`is_readonly`, relative paths/globs, or `source` mappings; legacy `initial_files` is accepted |
+| `skills` | Relative directories containing skill subfolders; folder default `.agents/skills/` |
 | `mcpServers` | Existing scoped MCP schema; named `use = "catalog:name"` references or inline HTTP/stdio settings |
 | `channels` | Named descriptions with `type`, `config`, and optional `enabled` (default `false`) |
 | `network_access` | Existing network policy; host enforcement still applies |
@@ -253,7 +286,7 @@ register arbitrary network handlers; configure serve channel transports separate
 Map a directory explicitly, for example to `/data`, while retaining read-only files:
 
 ```toml
-initial_files = [{ source = "fixtures", path = "/data" }]
+files = [{ source = "fixtures", path = "data" }]
 ```
 
 `encoding` defaults to `text`; binary inline content uses `base64`.
@@ -261,7 +294,7 @@ initial_files = [{ source = "fixtures", path = "/data" }]
 absolute paths, traversal, symlinks, duplicate destinations, invalid Base64 and
 unknown manifest fields are rejected. Hidden credential files are skipped by
 folder/glob collection; explicit hidden credential sources fail. Maximums:
-10 MiB package, 100 initial files, 1 MiB per asset, 5 MiB decoded initial content,
+10 MiB package, 100 files, 1 MiB per asset, 5 MiB decoded file content,
 and 32 channel declarations.
 Native folder scans also cap nesting at 32 levels and visited entries at 1,024.
 Remote validation also enforces the destination Platform’s input and resource limits.

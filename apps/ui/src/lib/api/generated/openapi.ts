@@ -8736,8 +8736,8 @@ export interface components {
         [key: string]: unknown;
       } | null;
       /**
-       * @description Session-level initial files (additive to agent initial_files).
-       *     Files with matching paths override agent/harness files; new paths are appended.
+       * @description Starting files for a new file tree (additive to agent/harness files).
+       *     Matching paths override earlier layers. Rejected when attaching workspace_id.
        * @example [
        *       {
        *         "content": "# Project notes\n",
@@ -10085,11 +10085,11 @@ export interface components {
        */
       size_bytes: number;
     };
-    /** @description A package-relative file or glob and its workspace destination. */
+    /** @description A package-relative file or glob and its working-directory destination. */
     FileSource: {
       /** @description Whether the initial workspace file is read-only. Defaults to true. */
       is_readonly?: boolean;
-      /** @description Workspace destination; omitted paths are derived from the package source. */
+      /** @description Working-directory destination; omitted paths preserve the package source. */
       path?: string | null;
       /** @description Relative file path or glob confined to the package directory. */
       source: string;
@@ -14072,10 +14072,10 @@ export interface components {
       display_name?: string | null;
       /** @description Platform-specific environment requirements; other hosts must bind or reject them. */
       environments?: unknown;
+      /** @description Starting files or package-relative sources. Sources retain their relative paths. */
+      files?: components["schemas"]["File"][];
       /** @description Named harness requirement. Omission uses the host's default harness. */
       harness?: string | null;
-      /** @description Embedded initial files or package-relative sources. Folder loading defaults to files/. */
-      initial_files?: components["schemas"]["File"][];
       /** @description Authored instructions. Legacy system_prompt input is also accepted. */
       instructions?: string;
       /** @description Package-relative instructions source. Folder loading defaults to instructions.md. */
@@ -15429,8 +15429,8 @@ export interface components {
          */
         id: string;
         /**
-         * @description Session-level initial files (additive to agent initial_files).
-         *     Files with matching paths override agent/harness files; new paths are appended.
+         * @description Starting files for a new file tree (additive to agent/harness files).
+         *     Matching paths override earlier layers. Rejected when attaching workspace_id.
          */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
@@ -16022,8 +16022,8 @@ export interface components {
          */
         id: string;
         /**
-         * @description Session-level initial files (additive to agent initial_files).
-         *     Files with matching paths override agent/harness files; new paths are appended.
+         * @description Starting files for a new file tree (additive to agent/harness files).
+         *     Matching paths override earlier layers. Rejected when attaching workspace_id.
          */
         initial_files?: components["schemas"]["InitialFile"][];
         /**
@@ -18009,8 +18009,8 @@ export interface components {
        */
       id: string;
       /**
-       * @description Session-level initial files (additive to agent initial_files).
-       *     Files with matching paths override agent/harness files; new paths are appended.
+       * @description Starting files for a new file tree (additive to agent/harness files).
+       *     Matching paths override earlier layers. Rejected when attaching workspace_id.
        */
       initial_files?: components["schemas"]["InitialFile"][];
       /**
@@ -22387,8 +22387,8 @@ export interface components {
        */
       id: string;
       /**
-       * @description Session-level initial files (additive to agent initial_files).
-       *     Files with matching paths override agent/harness files; new paths are appended.
+       * @description Starting files for a new file tree (additive to agent/harness files).
+       *     Matching paths override earlier layers. Rejected when attaching workspace_id.
        */
       initial_files?: components["schemas"]["InitialFile"][];
       /**

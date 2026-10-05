@@ -5,6 +5,7 @@
  * Keep rendering local to the UI because file content already exists client-side.
  */
 
+import { relativeFilePath } from "@/lib/path-utils";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,7 @@ interface InitialFilesPreviewProps {
 
 export function InitialFilesPreview({
   files,
-  title = "Initial Files",
+  title = "Files",
   description = "Files configured on this item. New sessions may merge files from other layers, with later layers overriding earlier files by path.",
 }: InitialFilesPreviewProps) {
   const sortedFiles = useMemo(
@@ -73,7 +74,7 @@ export function InitialFilesPreview({
       </CardHeader>
       <CardContent>
         {sortedFiles.length === 0 ? (
-          <p className="text-sm text-muted-foreground italic">No initial files configured.</p>
+          <p className="text-sm text-muted-foreground italic">No files configured.</p>
         ) : (
           <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
             <ScrollArea className="h-[420px] border bg-muted/20">
@@ -94,7 +95,9 @@ export function InitialFilesPreview({
                       <div className="flex min-w-0 flex-1 items-start gap-2 text-left">
                         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                         <div className="min-w-0 space-y-1">
-                          <div className="truncate font-mono text-xs">{file.path}</div>
+                          <div className="truncate font-mono text-xs">
+                            {relativeFilePath(file.path)}
+                          </div>
                           <div className="flex flex-wrap gap-1">
                             <Badge variant="outline" className="text-[10px]">
                               {file.encoding}

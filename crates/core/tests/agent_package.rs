@@ -123,7 +123,7 @@ fn semantic_diff_ignores_order_and_shows_changed_files_without_contents() {
     let right = AgentPackage::parse(r#"{"name":"test","instructions":"Hi","tags":["b","a"],"initial_files":[{"path":"/a","content":"changed"}]}"#, Format::Json).unwrap();
     let diff = left.diff(&right).unwrap();
     assert_eq!(diff.len(), 1);
-    assert!(diff[0].path.contains("initial_files"));
+    assert!(diff[0].path.contains("files"));
     assert!(
         !serde_json::to_string(&diff)
             .unwrap()
@@ -406,4 +406,197 @@ fn channel_resource_fanout_is_bounded() {
         .to_string();
     let error = AgentPackage::parse(&text, Format::Json).unwrap_err();
     assert!(error.0.iter().any(|d| d.path == "channels"));
+}
+
+#[test]
+fn root_layout_preserves_paths_without_collecting_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("data")).unwrap();
+    std::fs::create_dir_all(dir.path().join(".agents/skills/check/scripts")).unwrap();
+    std::fs::write(
+        dir.path().join("agent.toml"),
+        "name = 'root-agent'\ninstructions_file = 'instructions.md'\nfiles = ['data/**']",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("instructions.md"), "Use the data").unwrap();
+    std::fs::write(dir.path().join("data/input.csv"), "value\n42").unwrap();
+    std::fs::write(dir.path().join("unselected.txt"), "do not package").unwrap();
+    std::fs::write(
+        dir.path().join(".agents/skills/check/SKILL.md"),
+        "---\nname: check\ndescription: Check data\n---\nCheck the data.",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join(".agents/skills/check/scripts/check.py"),
+        "print(42)",
+    )
+    .unwrap();
+    let package = AgentPackage::load(dir.path().join("agent.toml")).unwrap();
+    let paths: Vec<_> = package
+        .files()
+        .unwrap()
+        .into_iter()
+        .map(|f| f.path)
+        .collect();
+    assert_eq!(
+        paths,
+        [
+            "/data/input.csv",
+            "/.agents/skills/check/SKILL.md",
+            "/.agents/skills/check/scripts/check.py"
+        ]
+    );
+    let entries = package.folder_entries().unwrap();
+    assert!(entries.contains_key("data/input.csv"));
+    assert!(entries.contains_key(".agents/skills/check/scripts/check.py"));
+    assert!(!entries.contains_key("unselected.txt"));
+    assert!(
+        !entries
+            .keys()
+            .any(|p| p.starts_with("files/") || p.starts_with("skills/"))
+    );
+    let manifest = std::str::from_utf8(&entries["agent.toml"]).unwrap();
+    assert!(manifest.contains("files"));
+    assert!(!manifest.contains("initial_files"));
+    assert!(!manifest.contains("path ="));
+    let restored = AgentPackage::from_zip(&package.to_zip().unwrap()).unwrap();
+    assert!(package.diff(&restored).unwrap().is_empty());
+}
+
+#[test]
+fn explicit_empty_files_does_not_discover_legacy_files() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("files")).unwrap();
+    std::fs::write(dir.path().join("files/unselected.txt"), "do not package").unwrap();
+    std::fs::write(
+        dir.path().join("agent.toml"),
+        "name = 'empty'\ninstructions = 'Hi'\nfiles = []",
+    )
+    .unwrap();
+    assert!(
+        AgentPackage::load(dir.path())
+            .unwrap()
+            .files()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn files_alias_and_diff_use_relative_portable_paths() {
+    let legacy = AgentPackage::parse(r#"{"name":"test","instructions":"Hi","initial_files":[{"path":"/workspace/data/a","content":"old"}]}"#, Format::Json).unwrap();
+    let current = AgentPackage::parse(
+        r#"{"name":"test","instructions":"Hi","files":[{"path":"data/a","content":"new"}]}"#,
+        Format::Json,
+    )
+    .unwrap();
+    let text = current.to_string(Format::Json).unwrap();
+    assert!(text.contains("\"files\""));
+    assert!(!text.contains("initial_files"));
+    let changes = legacy.diff(&current).unwrap();
+    assert_eq!(changes.len(), 1);
+    assert_eq!(changes[0].path, "/files/data~1a");
+    assert!(
+        AgentPackage::parse(
+            r#"{"name":"test","instructions":"Hi","files":[],"initial_files":[]}"#,
+            Format::Json
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn root_export_preserves_files_colliding_with_authoring_metadata() {
+    let package = AgentPackage::parse(r#"{"name":"test","instructions":"Hi","files":[{"path":"agent.toml","content":"runtime config"},{"path":"instructions.md","content":"runtime notes"},{"path":"agent.json","content":"{}"}]}"#, Format::Json).unwrap();
+    let entries = package.folder_entries().unwrap();
+    assert_eq!(entries["instructions.md"], b"Hi");
+    assert!(!entries.contains_key("agent.json"));
+    assert!(
+        package
+            .diff(&AgentPackage::from_zip(&package.to_zip().unwrap()).unwrap())
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn ambiguous_skill_roots_require_explicit_selection() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("agent.toml"),
+        "name = 'test'\ninstructions = 'Hi'",
+    )
+    .unwrap();
+    for root in ["skills", ".agents/skills"] {
+        std::fs::create_dir_all(dir.path().join(root).join("check")).unwrap();
+        std::fs::write(
+            dir.path().join(root).join("check/SKILL.md"),
+            "---\nname: check\ndescription: Check\n---\nCheck.",
+        )
+        .unwrap();
+    }
+    assert!(
+        AgentPackage::load(dir.path())
+            .unwrap_err()
+            .to_string()
+            .contains("declare skills explicitly")
+    );
+    std::fs::write(
+        dir.path().join("agent.toml"),
+        "name = 'test'\ninstructions = 'Hi'\nskills = ['.agents/skills']",
+    )
+    .unwrap();
+    assert_eq!(
+        AgentPackage::load(dir.path())
+            .unwrap()
+            .files()
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn virtual_folder_selection_reads_only_referenced_assets() {
+    let package = AgentPackage::parse(
+        "name = 'test'\ninstructions = 'Hi'\nfiles = ['data/*.csv']",
+        Format::Toml,
+    )
+    .unwrap();
+    let selected = package
+        .referenced_paths([
+            "agent.toml",
+            "data/input.csv",
+            "data/unselected.bin",
+            "unselected.txt",
+            ".env",
+        ])
+        .unwrap();
+    assert_eq!(selected.into_iter().collect::<Vec<_>>(), ["data/input.csv"]);
+    assert!(AgentPackage::parse(r#"{"name":"test","instructions":"Hi","files":[{"path":"a","content":"x"},{"path":"a/b","content":"y"}]}"#, Format::Json).unwrap_err().to_string().contains("parent file"));
+}
+
+#[test]
+fn native_globs_do_not_read_unselected_large_siblings() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join("data")).unwrap();
+    std::fs::write(
+        dir.path().join("agent.toml"),
+        "name = 'test'\ninstructions = 'Hi'\nfiles = ['data/*.csv']",
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("data/input.csv"), "42").unwrap();
+    std::fs::write(
+        dir.path().join("data/unselected.bin"),
+        vec![0; 1024 * 1024 + 1],
+    )
+    .unwrap();
+    assert_eq!(
+        AgentPackage::load(dir.path())
+            .unwrap()
+            .files()
+            .unwrap()
+            .len(),
+        1
+    );
 }

@@ -466,8 +466,8 @@ pub struct Session {
     /// Prepended to the agent's system prompt when building RuntimeAgent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
-    /// Session-level initial files (additive to agent initial_files).
-    /// Files with matching paths override agent/harness files; new paths are appended.
+    /// Starting files for a new file tree (additive to agent/harness files).
+    /// Matching paths override earlier layers. Rejected when attaching workspace_id.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub initial_files: Vec<everruns_core::session_file::InitialFile>,
     /// Session-level client hints — arbitrary key-value pairs declared by the

@@ -91,8 +91,8 @@ pub struct CreateSessionRequest {
         example = "You are debugging a production incident. Be concise and cite log lines verbatim."
     )]
     pub system_prompt: Option<String>,
-    /// Session-level initial files (additive to agent initial_files).
-    /// Files with matching paths override agent/harness files; new paths are appended.
+    /// Starting files for a new file tree (additive to agent/harness files).
+    /// Matching paths override earlier layers. Rejected when attaching workspace_id.
     #[serde(default)]
     #[schema(example = json!([{"path": "README.md", "content": "# Project notes\n"}]))]
     pub initial_files: Vec<everruns_core::InitialFile>,

@@ -21,7 +21,7 @@ const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   timeline: "Timeline",
   work: "Work",
   events: "Events",
-  files: "Workspace",
+  files: "Files",
   cost: "Cost",
 };
 
@@ -124,7 +124,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
         navigationItems={navigationItems}
         secondaryMetaText={
           activeTab === "files"
-            ? "Workspace: /workspace"
+            ? "Current session files"
             : // EVE-867: the generated run summary explains what happened;
               // the start timestamp is metadata. Prefer the explanation where
               // one exists, and fall back for chat threads, runs that have not

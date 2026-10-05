@@ -84,7 +84,7 @@ describe("HarnessPreview", () => {
     expect(screen.getByText("shell")).toBeInTheDocument();
     expect(screen.getByText("Included Features")).toBeInTheDocument();
     expect(screen.getByText("Session filesystem")).toBeInTheDocument();
-    expect(screen.getByText("Initial Files")).toBeInTheDocument();
+    expect(screen.getByText("Files")).toBeInTheDocument();
     expect(screen.getByText("welcome to the harness")).toBeInTheDocument();
     expect(screen.getByText("read-only")).toBeInTheDocument();
   });
@@ -105,8 +105,8 @@ describe("HarnessPreview", () => {
 
     render(<HarnessPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles} />);
 
-    expect(screen.getByText("Initial Files")).toBeInTheDocument();
-    expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+    expect(screen.getByText("Files")).toBeInTheDocument();
+    expect(screen.getByText("No files configured.")).toBeInTheDocument();
   });
 
   it("passes parent_harness_id through to the preview mutation", () => {

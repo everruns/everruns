@@ -10,7 +10,7 @@ fn example(path: &str) -> String {
 
 #[tokio::test]
 async fn markdown_and_folder_execute_and_export() {
-    for path in ["dad-jokes.md", "triage"] {
+    for path in ["dad-jokes.md", "triage", "project-review"] {
         let package = AgentPackage::load(example(path)).unwrap();
         let agent = package
             .builder()

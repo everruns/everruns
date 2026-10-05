@@ -17,7 +17,9 @@ fn collect(
     total: &mut usize,
     visited: &mut usize,
     depth: usize,
+    selection: (&str, &globset::GlobMatcher),
 ) -> Result<()> {
+    let (source, matcher) = selection;
     // THREAT[TM-DOS-001]: empty directory trees must not bypass file-count limits.
     if depth > 32 {
         return Err(error("assets", "folder nesting exceeds 32 levels"));
@@ -41,8 +43,16 @@ fn collect(
             ));
         }
         if metadata.is_dir() {
-            collect(root, &path, entries, total, visited, depth + 1)?;
+            collect(root, &path, entries, total, visited, depth + 1, selection)?;
         } else if metadata.is_file() {
+            let relative_name = relative.to_string_lossy();
+            if source != "."
+                && relative_name != source
+                && !relative_name.starts_with(&format!("{source}/"))
+                && !matcher.is_match(relative)
+            {
+                continue;
+            }
             if entries.len() >= MAX_FILES + 2 {
                 return Err(error("assets", "too many files"));
             }
@@ -132,7 +142,10 @@ impl AgentPackage {
                 )
             });
         let folder_defaults = path.is_dir()
-            || (conventional && (root.join("files").is_dir() || root.join("skills").is_dir()));
+            || (conventional
+                && (root.join("files").is_dir()
+                    || root.join("skills").is_dir()
+                    || root.join(".agents/skills").is_dir()));
         let needs_assets = folder_defaults
             || package.manifest.instructions_file.is_some()
             || !package.manifest.skills.is_empty()
@@ -176,14 +189,14 @@ impl AgentPackage {
                     _ => None,
                 })
                 .collect();
-            if sources.is_empty() && folder_defaults && root.join("files").exists() {
+            if !package.files_declared
+                && sources.is_empty()
+                && folder_defaults
+                && root.join("files").exists()
+            {
                 sources.push("files".into());
             }
-            let skills = if package.manifest.skills.is_empty() {
-                vec!["skills".to_string()]
-            } else {
-                package.manifest.skills.clone()
-            };
+            let skills = package.skill_sources(|source| root.join(source).exists())?;
             sources.extend(skills);
             for source in sources {
                 if !safe_source(&source) {
@@ -214,9 +227,6 @@ impl AgentPackage {
                 }
                 let selected = root.join(prefix);
                 if !selected.exists() {
-                    if source == "skills" && package.manifest.skills.is_empty() {
-                        continue;
-                    }
                     return Err(error("source", format!("missing package source {source}")));
                 }
                 let metadata = fs::symlink_metadata(&selected).map_err(|e| error("source", e))?;
@@ -224,7 +234,18 @@ impl AgentPackage {
                     return Err(error("source", "symlinks are not allowed"));
                 }
                 if metadata.is_dir() {
-                    collect(root, &selected, &mut entries, &mut total, &mut visited, 0)?;
+                    let matcher = globset::Glob::new(&source)
+                        .map_err(|e| error("files", e))?
+                        .compile_matcher();
+                    collect(
+                        root,
+                        &selected,
+                        &mut entries,
+                        &mut total,
+                        &mut visited,
+                        0,
+                        (&source, &matcher),
+                    )?;
                 } else {
                     entries.insert(asset_path(prefix)?, read(&selected)?);
                 }
