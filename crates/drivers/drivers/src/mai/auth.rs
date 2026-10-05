@@ -72,7 +72,7 @@ impl MaiAuth {
     ///
     /// Precedence:
     /// 1. An Entra OAuth block in `metadata.extra` (the in-process / embedder
-    ///    path, where credentials arrive as [`ProviderMetadata`]).
+    ///    path, where credentials arrive as [`ProviderMetadata`](everruns_contracts::ProviderMetadata)).
     /// 2. The driver's typed credential fields. Entra ID OAuth is declared as
     ///    discrete fields (`tenant_id`, `client_id`, `client_secret`, optional
     ///    `scope`/`authority`); a plain Azure AI Foundry key is the `api_key`
