@@ -215,3 +215,7 @@ both in-process and client-side modes; completion says the question was asked,
 not that an answer arrived, since a timeout is also a successful tool result.
 Sandbox fleet wrappers delegate narration to their executing tool and narrate
 their own list/inspect operations.
+
+Client pauses and pre-execution rejections use the same capability-owned narrator as executed
+tools. Ask User resolution also persists its completed wording, including default and timeout
+outcomes, so a resumed work log does not regress to a raw tool label.

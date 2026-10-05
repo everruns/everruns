@@ -454,7 +454,19 @@ pub(crate) async fn resolve_question_answers_with_source(
             &payload,
         )],
         None,
-    );
+    )
+    .with_narration(everruns_core::capabilities::Capability::narrate(
+        &everruns_core::builtins::AskUserCapability::client_side(),
+        None,
+        &everruns_core::tool_types::ToolCall {
+            id: pending.tool_call_id.clone(),
+            name: ASK_USER_TOOL_NAME.into(),
+            arguments: serde_json::json!({"questions": pending.questions}),
+        },
+        everruns_core::tool_narration::ToolNarrationPhase::Completed,
+        session.locale.as_deref(),
+        everruns_core::tool_narration::ToolNarrationContext::default(),
+    ));
     let mut events = Vec::new();
     let mut session_values = Vec::new();
     if let Some(elicitation) = &pending.elicitation {
