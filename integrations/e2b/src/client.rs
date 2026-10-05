@@ -182,6 +182,16 @@ impl E2BClient {
     }
 
     pub async fn read_file(&self, state: &SandboxState, path: &str) -> Result<String, String> {
+        let bytes = self.read_file_bytes(state, path).await?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    /// Read a sandbox file as raw bytes (images, archives).
+    pub async fn read_file_bytes(
+        &self,
+        state: &SandboxState,
+        path: &str,
+    ) -> Result<Vec<u8>, String> {
         let url = format!(
             "{}/files?path={}",
             self.envd_base_url(state),
@@ -196,13 +206,16 @@ impl E2BClient {
             .map_err(|e| format!("Failed to read sandbox file: {e}"))?;
         let status = response.status();
         let body = response
-            .text()
+            .bytes()
             .await
             .map_err(|e| format!("Failed to read sandbox file body: {e}"))?;
         if !status.is_success() {
-            return Err(format!("E2B sandbox file API error ({status}): {body}"));
+            return Err(format!(
+                "E2B sandbox file API error ({status}): {}",
+                String::from_utf8_lossy(&body)
+            ));
         }
-        Ok(body)
+        Ok(body.to_vec())
     }
 
     pub async fn write_file(
@@ -245,12 +258,32 @@ impl E2BClient {
         cwd: Option<&str>,
         timeout_ms: Option<u64>,
     ) -> Result<ExecResult, String> {
+        let args = vec!["-l".to_string(), "-c".to_string(), command.to_string()];
+        self.exec_argv(state, "/bin/bash", &args, &[], cwd, timeout_ms)
+            .await
+    }
+
+    /// Run `program` with `args` as its argv, with no shell in between, so
+    /// arguments reach the program byte for byte (the computer-use desktop
+    /// passes model-typed text this way).
+    pub async fn exec_argv(
+        &self,
+        state: &SandboxState,
+        program: &str,
+        args: &[String],
+        envs: &[(&str, &str)],
+        cwd: Option<&str>,
+        timeout_ms: Option<u64>,
+    ) -> Result<ExecResult, String> {
         let client = self.process_client(state)?;
         let request = proto::process::StartRequest {
             process: buffa::MessageField::some(proto::process::ProcessConfig {
-                cmd: "/bin/bash".to_string(),
-                args: vec!["-l".to_string(), "-c".to_string(), command.to_string()],
-                envs: Default::default(),
+                cmd: program.to_string(),
+                args: args.to_vec(),
+                envs: envs
+                    .iter()
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .collect(),
                 cwd: cwd.map(|v| v.to_string()),
                 ..Default::default()
             }),

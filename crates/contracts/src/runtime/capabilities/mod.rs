@@ -595,6 +595,18 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// A group of capabilities that cannot be enabled together, because they
+    /// contribute the same tool with different meaning (the computer-use
+    /// backends all provide `computer`). Two resolved capabilities sharing a
+    /// group fail dependency resolution with
+    /// [`DependencyError::ExclusiveConflict`] instead of one silently
+    /// replacing the other's tool.
+    ///
+    /// By default, returns `None` (combinable with anything).
+    fn exclusive_group(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Returns UI feature strings that this capability contributes to.
     ///
     /// Features are open-ended strings indicating what user-facing functionality

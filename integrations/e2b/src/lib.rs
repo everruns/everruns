@@ -26,6 +26,7 @@
 //!   Daytona.
 
 pub mod client;
+pub mod computer;
 pub mod connection;
 pub mod state;
 mod tools;
@@ -46,11 +47,20 @@ use tools::{
 };
 
 /// Capability plugins this crate contributes to a hosted catalog.
-pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
-    feature_flag: None,
-    factory: || Box::new(E2BCapability),
-}];
+pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
+    IntegrationPlugin {
+        experimental_only: false,
+        feature_flag: None,
+        factory: || Box::new(E2BCapability),
+    },
+    // Desktop computer use ships behind experimental mode, like the
+    // Browserless `computer_use` backend it complements (EVE-1133).
+    IntegrationPlugin {
+        experimental_only: true,
+        feature_flag: None,
+        factory: || Box::new(computer::E2BDesktopComputerUseCapability),
+    },
+];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {

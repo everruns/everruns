@@ -79,11 +79,11 @@ Screenshots are billed as image tokens. A smaller display, or turning off
   `soft_approval` capability when you want those confirmations recorded, and
   the [`tool_approval`](/capabilities/tool-approval/) capability when a person
   must approve every `computer` call before it runs.
-- **Approval before committing input.** In hosted sessions, a `computer` call
-  that types text, presses Enter, or navigates waits for a person to approve
-  that exact call, and so does a call the provider flags with a safety check.
-  The request appears in the session like any other tool approval. Clicks,
-  scrolling, and screenshots run without asking.
+- **Soft approval, no built-in hard gate.** No `computer` call waits for a
+  person by default, whether it clicks, types, presses Enter, navigates, or
+  carries a provider safety check. Approval rests on the stop-and-ask rule
+  above, recorded with `soft_approval`. Add `tool_approval` when every call
+  must be approved before it runs.
 - **Keep credentials out of reach.** Do not give a computer-use agent a browser
   that is signed in to accounts it should not use.
 - **Egress.** `navigate` refuses private and internal addresses and follows the
@@ -94,4 +94,23 @@ Screenshots are billed as image tokens. A smaller display, or turning off
 - **Budget.** `max_actions_per_session` stops runaway loops.
 
 Each screenshot shows as a thumbnail on the tool call in the session view;
-click it for the full frame. Desktop displays on sandboxes are planned.
+click it for the full frame.
+
+## Desktop display (experimental)
+
+The `computer_use_desktop` capability gives the same `computer` tool a full
+Linux desktop instead of a browser page, so the agent can work in any desktop
+app. The desktop runs in an [E2B](/capabilities/e2b/) sandbox built from E2B's
+`desktop` template, which the session creates on first use, keeps between
+calls, and deletes when the session's lease ends. Connect E2B first. It takes
+the same configuration as `computer_use`.
+
+- There is no `navigate` action: the agent opens a browser on the desktop and
+  types the address.
+- The desktop has the E2B sandbox's network access, the same as
+  `e2b_create_sandbox`. The session's network access list does not apply
+  inside it.
+- `computer_use` and `computer_use_desktop` cannot be combined: both provide
+  the `computer` tool. Saving an agent, harness, or session with both, or
+  starting a session whose harness, agent, and session add up to both, fails
+  with an error naming the two capabilities.
