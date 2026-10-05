@@ -54,10 +54,8 @@ export interface SandboxFleetFilters {
 
 function filterParams(filters: SandboxFleetFilters): URLSearchParams {
   const params = new URLSearchParams();
-  if (filters.state && filters.state !== "all")
-    params.set("state", filters.state);
-  if (filters.provider && filters.provider !== "all")
-    params.set("provider", filters.provider);
+  if (filters.state && filters.state !== "all") params.set("state", filters.state);
+  if (filters.provider && filters.provider !== "all") params.set("provider", filters.provider);
   if (filters.needsAttention) params.set("needs_attention", "true");
   const search = filters.search?.trim();
   if (search) params.set("search", search);
@@ -78,8 +76,7 @@ export async function getSandboxFleetStats(
   filters: SandboxFleetFilters,
 ): Promise<SandboxFleetStats> {
   const params = filterParams(filters);
-  return (await api.get<SandboxFleetStats>(`/v1/sandboxes/stats?${params}`))
-    .data;
+  return (await api.get<SandboxFleetStats>(`/v1/sandboxes/stats?${params}`)).data;
 }
 
 export async function getSandboxTimeline(
@@ -89,8 +86,7 @@ export async function getSandboxTimeline(
   const params = filterParams(filters);
   params.set("from", window.from);
   params.set("to", window.to);
-  return (await api.get<SandboxTimeline>(`/v1/sandboxes/timeline?${params}`))
-    .data;
+  return (await api.get<SandboxTimeline>(`/v1/sandboxes/timeline?${params}`)).data;
 }
 
 export async function getSandbox(id: string): Promise<SandboxFleetDetail> {
@@ -102,9 +98,6 @@ export async function manageSessionSandbox(
   action: SandboxAction,
 ): Promise<ManageSessionSandboxResponse> {
   return (
-    await api.post<ManageSessionSandboxResponse>(
-      `/v1/sessions/${sessionId}/sandbox`,
-      { action },
-    )
+    await api.post<ManageSessionSandboxResponse>(`/v1/sessions/${sessionId}/sandbox`, { action })
   ).data;
 }

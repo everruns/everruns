@@ -7,11 +7,7 @@
 import { useState } from "react";
 import { AlertTriangle, Pause, Play, Trash2 } from "lucide-react";
 import { useManageSandbox, useSandbox } from "@/hooks/use-sandbox-fleet";
-import type {
-  SandboxAction,
-  SandboxFleetDetail,
-  SandboxStateSpan,
-} from "@/lib/api/sandboxes";
+import type { SandboxAction, SandboxFleetDetail, SandboxStateSpan } from "@/lib/api/sandboxes";
 import { Button, LinkButton } from "@/components/ui/button";
 import {
   Drawer,
@@ -52,9 +48,7 @@ const DESIRED_LABELS: Record<string, string> = {
 function spanSeconds(span: SandboxStateSpan): number {
   return Math.max(
     0,
-    Math.round(
-      (new Date(span.end).getTime() - new Date(span.start).getTime()) / 1000,
-    ),
+    Math.round((new Date(span.end).getTime() - new Date(span.start).getTime()) / 1000),
   );
 }
 
@@ -81,9 +75,7 @@ function History({ history }: { history: SandboxStateSpan[] }) {
             </span>
             <span className="block font-mono text-[11px] text-muted-foreground">
               {formatDate(span.start)}
-              {span.current
-                ? ", now"
-                : `, for ${formatRunningTime(spanSeconds(span))}`}
+              {span.current ? ", now" : `, for ${formatRunningTime(spanSeconds(span))}`}
             </span>
           </li>
         );
@@ -97,12 +89,7 @@ function Facts({ detail }: { detail: SandboxFleetDetail }) {
     ["State", <SandboxStateBadge key="s" state={detail.state} />],
     ["Wants", DESIRED_LABELS[detail.desired_state] ?? detail.desired_state],
     ["Provider", providerLabel(detail.provider)],
-    [
-      "Target",
-      TARGET_LABELS[detail.target_kind ?? ""] ??
-        detail.target_kind ??
-        "Unknown",
-    ],
+    ["Target", TARGET_LABELS[detail.target_kind ?? ""] ?? detail.target_kind ?? "Unknown"],
     [
       "Template",
       detail.template
@@ -186,29 +173,19 @@ function Actions({ detail }: { detail: SandboxFleetDetail }) {
             >
               Delete Sandbox and workspace
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setConfirmDelete(false)}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
               Keep it
             </Button>
           </>
         ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setConfirmDelete(true)}
-          >
+          <Button size="sm" variant="outline" onClick={() => setConfirmDelete(true)}>
             <Trash2 className="size-4" /> Delete
           </Button>
         )}
       </div>
       {manage.error ? (
         <p className="text-sm text-destructive">
-          {manage.error instanceof Error
-            ? manage.error.message
-            : "The action failed."}
+          {manage.error instanceof Error ? manage.error.message : "The action failed."}
         </p>
       ) : null}
     </div>
@@ -224,16 +201,11 @@ export function SandboxDetailDrawer({
 }) {
   const { data: detail, isLoading, error } = useSandbox(sandboxId);
   return (
-    <Drawer
-      open={sandboxId !== null}
-      onOpenChange={(open) => !open && onClose()}
-    >
+    <Drawer open={sandboxId !== null} onOpenChange={(open) => !open && onClose()}>
       <DrawerContent className="gap-0 overflow-y-auto p-0 sm:max-w-lg">
         <DrawerHeader className="border-b p-5 pr-12">
           <DrawerTitle>{detail ? sandboxTitle(detail) : "Sandbox"}</DrawerTitle>
-          <DrawerDescription className="font-mono text-xs">
-            {sandboxId}
-          </DrawerDescription>
+          <DrawerDescription className="font-mono text-xs">{sandboxId}</DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-col gap-6 p-5">
           {isLoading ? (
@@ -243,26 +215,20 @@ export function SandboxDetailDrawer({
               <Skeleton className="h-4 w-3/4" />
             </div>
           ) : error || !detail ? (
-            <p className="text-sm text-destructive">
-              This Sandbox could not be loaded.
-            </p>
+            <p className="text-sm text-destructive">This Sandbox could not be loaded.</p>
           ) : (
             <>
               {detail.attention.length > 0 ? (
                 <div className="flex flex-col gap-2 border border-destructive/30 bg-destructive/5 p-3">
                   {detail.attention.map((reason) => {
-                    const copy =
-                      SANDBOX_ATTENTION_COPY[reason as SandboxAttention];
+                    const copy = SANDBOX_ATTENTION_COPY[reason as SandboxAttention];
                     return (
                       <div key={reason} className="flex gap-2 text-sm">
                         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
                         <div>
                           <p className="font-medium">{copy?.title ?? reason}</p>
-                          {copy ? (
-                            <p className="text-muted-foreground">{copy.hint}</p>
-                          ) : null}
-                          {reason === "init_failed" &&
-                          detail.last_init_error ? (
+                          {copy ? <p className="text-muted-foreground">{copy.hint}</p> : null}
+                          {reason === "init_failed" && detail.last_init_error ? (
                             <pre className="mt-1 overflow-x-auto bg-muted p-2 font-mono text-xs">
                               {detail.last_init_error}
                             </pre>
@@ -281,11 +247,7 @@ export function SandboxDetailDrawer({
                   </LinkButton>
                 ) : null}
                 {detail.agent_id ? (
-                  <LinkButton
-                    size="sm"
-                    variant="outline"
-                    href={`/agents/${detail.agent_id}`}
-                  >
+                  <LinkButton size="sm" variant="outline" href={`/agents/${detail.agent_id}`}>
                     {detail.agent_name ?? "Agent"}
                   </LinkButton>
                 ) : null}
@@ -298,9 +260,7 @@ export function SandboxDetailDrawer({
                 {detail.history.length > 0 ? (
                   <History history={detail.history} />
                 ) : (
-                  <p className="text-sm text-muted-foreground">
-                    No state changes recorded yet.
-                  </p>
+                  <p className="text-sm text-muted-foreground">No state changes recorded yet.</p>
                 )}
               </section>
               {detail.incarnations.length > 0 ? (
@@ -310,14 +270,9 @@ export function SandboxDetailDrawer({
                   </h3>
                   <ul className="flex flex-col divide-y border text-sm">
                     {detail.incarnations.map((incarnation) => (
-                      <li
-                        key={incarnation.generation}
-                        className="flex flex-col gap-0.5 p-2.5"
-                      >
+                      <li key={incarnation.generation} className="flex flex-col gap-0.5 p-2.5">
                         <span className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-xs">
-                            {incarnation.external_id}
-                          </span>
+                          <span className="font-mono text-xs">{incarnation.external_id}</span>
                           <span className="text-xs text-muted-foreground">
                             Generation {incarnation.generation}
                           </span>
@@ -335,8 +290,7 @@ export function SandboxDetailDrawer({
               ) : null}
               {!detail.session_id ? (
                 <p className="text-xs text-muted-foreground">
-                  Its Session was deleted. The record stays here as history for
-                  a limited time.
+                  Its Session was deleted. The record stays here as history for a limited time.
                 </p>
               ) : null}
             </>

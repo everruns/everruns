@@ -11,26 +11,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatRelativeTime } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
-import {
-  SandboxStateBadge,
-  attentionTitle,
-  formatAge,
-  providerLabel,
-} from "./sandbox-display";
+import { SandboxStateBadge, attentionTitle, formatAge, providerLabel } from "./sandbox-display";
 
 /** Name of a Sandbox in lists: its Session, else what is left of it. */
 export function sandboxTitle(sandbox: SandboxFleetItem): string {
-  return (
-    sandbox.session_title ||
-    (sandbox.session_id ? "Untitled session" : "Deleted session")
-  );
+  return sandbox.session_title || (sandbox.session_id ? "Untitled session" : "Deleted session");
 }
 
 export function SandboxFleetTable({
@@ -55,8 +43,8 @@ export function SandboxFleetTable({
             <Tooltip>
               <TooltipTrigger className="cursor-help">Gen</TooltipTrigger>
               <TooltipContent>
-                How many provider resources this Sandbox has had. Above 1 means
-                it was lost and rebuilt.
+                How many provider resources this Sandbox has had. Above 1 means it was lost and
+                rebuilt.
               </TooltipContent>
             </Tooltip>
           </TableHead>
@@ -81,9 +69,7 @@ export function SandboxFleetTable({
                   {sandbox.attention.length > 0 ? (
                     <Tooltip>
                       <TooltipTrigger
-                        aria-label={sandbox.attention
-                          .map(attentionTitle)
-                          .join(", ")}
+                        aria-label={sandbox.attention.map(attentionTitle).join(", ")}
                         className="text-destructive"
                       >
                         <AlertTriangle className="size-3.5" />
@@ -138,13 +124,9 @@ export function SandboxFleetTable({
               >
                 {sandbox.generation}
               </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {sandbox.checkpoint_count}
-              </TableCell>
+              <TableCell className="text-right tabular-nums">{sandbox.checkpoint_count}</TableCell>
               <TableCell className="text-muted-foreground">
-                {formatRelativeTime(
-                  sandbox.last_activity_at ?? sandbox.updated_at,
-                )}
+                {formatRelativeTime(sandbox.last_activity_at ?? sandbox.updated_at)}
               </TableCell>
               <TableCell className="text-right tabular-nums text-muted-foreground">
                 {formatAge(sandbox.created_at, sandbox.deleted_at ?? null)}

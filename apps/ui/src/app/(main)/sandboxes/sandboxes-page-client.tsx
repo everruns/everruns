@@ -55,13 +55,10 @@ export default function SandboxesPageClient() {
   const state = searchParams.get("state") ?? "live";
   const provider = searchParams.get("provider") ?? "all";
   const needsAttention = searchParams.get("attention") === "1";
-  const windowKey: WindowKey =
-    searchParams.get("window") === "7d" ? "7d" : "24h";
+  const windowKey: WindowKey = searchParams.get("window") === "7d" ? "7d" : "24h";
   const [search, setSearch] = useState(searchParams.get("q") ?? "");
   const [page, setPage] = useState(0);
-  const [selectedId, setSelectedId] = useState<string | null>(
-    searchParams.get("sandbox"),
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("sandbox"));
 
   const update = useCallback(
     (changes: Record<string, string | null>) => {
@@ -156,21 +153,15 @@ export default function SandboxesPageClient() {
           stats={stats.data}
           state={state}
           needsAttention={needsAttention}
-          onState={(next) =>
-            update({ state: next === "live" ? null : next, attention: null })
-          }
-          onNeedsAttention={(value) =>
-            update({ attention: value ? "1" : null })
-          }
+          onState={(next) => update({ state: next === "live" ? null : next, attention: null })}
+          onNeedsAttention={(value) => update({ attention: value ? "1" : null })}
         />
       </PageControlStrip>
 
       <div className="flex flex-col gap-4">
         <SectionTabs
           value={view}
-          onValueChange={(next) =>
-            update({ view: next === "timeline" ? "timeline" : null })
-          }
+          onValueChange={(next) => update({ view: next === "timeline" ? "timeline" : null })}
           items={[
             { value: "table", label: "Table", count: total },
             { value: "timeline", label: "Timeline" },
@@ -189,9 +180,7 @@ export default function SandboxesPageClient() {
           />
           <Select
             value={provider}
-            onValueChange={(value) =>
-              update({ provider: value === "all" ? null : String(value) })
-            }
+            onValueChange={(value) => update({ provider: value === "all" ? null : String(value) })}
           >
             <SelectTrigger className="w-44" aria-label="Filter by provider">
               <SelectValue />
@@ -208,9 +197,7 @@ export default function SandboxesPageClient() {
           {view === "timeline" ? (
             <Select
               value={windowKey}
-              onValueChange={(value) =>
-                update({ window: value === "7d" ? "7d" : null })
-              }
+              onValueChange={(value) => update({ window: value === "7d" ? "7d" : null })}
             >
               <SelectTrigger className="w-36" aria-label="Time window">
                 <SelectValue />
@@ -234,18 +221,12 @@ export default function SandboxesPageClient() {
             <EmptyState
               icon={<Container />}
               title="Sandboxes could not be loaded"
-              description={
-                fleet.error instanceof Error ? fleet.error.message : undefined
-              }
+              description={fleet.error instanceof Error ? fleet.error.message : undefined}
             />
           ) : items.length === 0 ? (
             <EmptyState
               icon={<Container />}
-              title={
-                needsAttention
-                  ? "Nothing needs attention"
-                  : "No Sandboxes match"
-              }
+              title={needsAttention ? "Nothing needs attention" : "No Sandboxes match"}
               description={
                 needsAttention
                   ? "No Sandbox is lost, failed, idle while running, or stuck in cleanup."
@@ -254,16 +235,11 @@ export default function SandboxesPageClient() {
             />
           ) : (
             <div className="flex flex-col gap-3">
-              <SandboxFleetTable
-                items={items}
-                selectedId={selectedId}
-                onSelect={select}
-              />
+              <SandboxFleetTable items={items} selectedId={selectedId} onSelect={select} />
               {total > PAGE_SIZE ? (
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span className="tabular-nums">
-                    {page * PAGE_SIZE + 1} to{" "}
-                    {Math.min(total, (page + 1) * PAGE_SIZE)} of {total}
+                    {page * PAGE_SIZE + 1} to {Math.min(total, (page + 1) * PAGE_SIZE)} of {total}
                   </span>
                   <div className="flex gap-2">
                     <Button
@@ -293,11 +269,7 @@ export default function SandboxesPageClient() {
           <EmptyState
             icon={<Container />}
             title="The timeline could not be loaded"
-            description={
-              timeline.error instanceof Error
-                ? timeline.error.message
-                : undefined
-            }
+            description={timeline.error instanceof Error ? timeline.error.message : undefined}
           />
         ) : !timeline.data || timeline.data.lanes.length === 0 ? (
           <EmptyState
@@ -310,10 +282,7 @@ export default function SandboxesPageClient() {
         )}
       </div>
 
-      <SandboxDetailDrawer
-        sandboxId={selectedId}
-        onClose={() => select(null)}
-      />
+      <SandboxDetailDrawer sandboxId={selectedId} onClose={() => select(null)} />
     </PageContainer>
   );
 }

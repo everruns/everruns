@@ -37,10 +37,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
-import {
-  registryNavigationItems,
-  type RegistryNavigationItem,
-} from "@/lib/registry-navigation";
+import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
 import type { FeatureFlags } from "@/lib/api/types";
 
 export type NavigationItem = {
@@ -182,18 +179,12 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
 ];
 
-export const defaultRegistriesNavigation: NavigationItem[] =
-  registryNavigationItems.map(
-    ({ name, href, icon, keywords }: RegistryNavigationItem) => {
-      const flag =
-        href === "/skills"
-          ? "skills"
-          : href === "/plugins"
-            ? "plugins"
-            : undefined;
-      return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
-    },
-  );
+export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(
+  ({ name, href, icon, keywords }: RegistryNavigationItem) => {
+    const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
+    return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
+  },
+);
 
 export const defaultQualityNavigation: NavigationItem[] = [
   {
@@ -312,9 +303,7 @@ export function visibleNavigationSections(
     .filter((section) => section.items.length > 0);
 }
 
-export function isDurableNavigationSection(
-  section: NavigationSection,
-): boolean {
+export function isDurableNavigationSection(section: NavigationSection): boolean {
   return section.items.some(
     (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
   );

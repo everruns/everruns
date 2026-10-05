@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getSandbox,
   getSandboxFleetStats,
@@ -72,13 +67,8 @@ export function useSandbox(id: string | null) {
 export function useManageSandbox() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      sessionId,
-      action,
-    }: {
-      sessionId: string;
-      action: SandboxAction;
-    }) => manageSessionSandbox(sessionId, action),
+    mutationFn: ({ sessionId, action }: { sessionId: string; action: SandboxAction }) =>
+      manageSessionSandbox(sessionId, action),
     onSuccess: (_data, { sessionId }) => {
       void queryClient.invalidateQueries({ queryKey: fleetKey });
       void queryClient.invalidateQueries({

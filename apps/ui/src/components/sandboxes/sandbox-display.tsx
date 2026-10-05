@@ -25,13 +25,7 @@ export const SANDBOX_STATE_ORDER: SandboxFleetState[] = [
   "deleted",
 ];
 
-export const LIVE_STATES: SandboxFleetState[] = [
-  "running",
-  "paused",
-  "lost",
-  "starting",
-  "failed",
-];
+export const LIVE_STATES: SandboxFleetState[] = ["running", "paused", "lost", "starting", "failed"];
 
 /** Background class of a state's dot or timeline bar. */
 export function sandboxStateTone(state: string): string {
@@ -51,39 +45,21 @@ export function sandboxStateTone(state: string): string {
 }
 
 export function sandboxStateLabel(state: string): string {
-  return (
-    SANDBOX_STATE_LABELS[state as SandboxFleetState] ??
-    state.replaceAll("_", " ")
-  );
+  return SANDBOX_STATE_LABELS[state as SandboxFleetState] ?? state.replaceAll("_", " ");
 }
 
-export function SandboxStateBadge({
-  state,
-  className,
-}: {
-  state: string;
-  className?: string;
-}) {
+export function SandboxStateBadge({ state, className }: { state: string; className?: string }) {
   return (
     <span
-      className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 text-xs font-medium",
-        className,
-      )}
+      className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs font-medium", className)}
     >
-      <span
-        aria-hidden="true"
-        className={cn("size-1.5 rounded-full", sandboxStateTone(state))}
-      />
+      <span aria-hidden="true" className={cn("size-1.5 rounded-full", sandboxStateTone(state))} />
       {sandboxStateLabel(state)}
     </span>
   );
 }
 
-export const SANDBOX_ATTENTION_COPY: Record<
-  SandboxAttention,
-  { title: string; hint: string }
-> = {
+export const SANDBOX_ATTENTION_COPY: Record<SandboxAttention, { title: string; hint: string }> = {
   lost: {
     title: "Lost, not rebuilt yet",
     hint: "The provider resource is gone. The next tool call rebuilds it from the last checkpoint.",
@@ -107,10 +83,7 @@ export const SANDBOX_ATTENTION_COPY: Record<
 };
 
 export function attentionTitle(reason: string): string {
-  return (
-    SANDBOX_ATTENTION_COPY[reason as SandboxAttention]?.title ??
-    reason.replaceAll("_", " ")
-  );
+  return SANDBOX_ATTENTION_COPY[reason as SandboxAttention]?.title ?? reason.replaceAll("_", " ");
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -125,10 +98,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 };
 
 export function providerLabel(provider: string): string {
-  return (
-    PROVIDER_LABELS[provider] ??
-    provider.charAt(0).toUpperCase() + provider.slice(1)
-  );
+  return PROVIDER_LABELS[provider] ?? provider.charAt(0).toUpperCase() + provider.slice(1);
 }
 
 /** Hours with one decimal under 100, whole hours above. */
@@ -142,10 +112,7 @@ export function formatRunningTime(seconds: number): string {
 /** Age of a Sandbox, short form for table columns. */
 export function formatAge(from: string, to: string | null = null): string {
   const end = to ? new Date(to).getTime() : Date.now();
-  const seconds = Math.max(
-    0,
-    Math.round((end - new Date(from).getTime()) / 1000),
-  );
+  const seconds = Math.max(0, Math.round((end - new Date(from).getTime()) / 1000));
   if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))}m`;
   if (seconds < 86_400) return `${Math.round(seconds / 3600)}h`;
   return `${Math.round(seconds / 86_400)}d`;

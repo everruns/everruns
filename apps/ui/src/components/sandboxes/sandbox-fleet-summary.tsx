@@ -49,9 +49,7 @@ function Tile({
         {value}
       </span>
       {children}
-      {hint ? (
-        <span className="text-[13px] text-muted-foreground">{hint}</span>
-      ) : null}
+      {hint ? <span className="text-[13px] text-muted-foreground">{hint}</span> : null}
     </>
   );
   const className = cn(
@@ -61,12 +59,7 @@ function Tile({
     active && "border-primary",
   );
   return onClick ? (
-    <button
-      type="button"
-      className={className}
-      onClick={onClick}
-      aria-pressed={active}
-    >
+    <button type="button" className={className} onClick={onClick} aria-pressed={active}>
       {body}
     </button>
   ) : (
@@ -114,10 +107,7 @@ export function SandboxFleetSummary({
         hint={`${running} running, ${paused} paused`}
       >
         {live > 0 ? (
-          <span
-            className="flex h-1.5 w-full overflow-hidden bg-muted"
-            aria-hidden="true"
-          >
+          <span className="flex h-1.5 w-full overflow-hidden bg-muted" aria-hidden="true">
             {LIVE_STATES.map((s) => {
               const count = countOf(stats, s);
               return count > 0 ? (
@@ -131,11 +121,7 @@ export function SandboxFleetSummary({
           </span>
         ) : null}
       </Tile>
-      <Tile
-        label={`Created, ${window} days`}
-        value={String(created)}
-        hint={trend}
-      />
+      <Tile label={`Created, ${window} days`} value={String(created)} hint={trend} />
       <Tile
         label={`Running time, ${window} days`}
         value={formatRunningTime(stats?.running_seconds_in_window ?? 0)}
@@ -147,9 +133,7 @@ export function SandboxFleetSummary({
         hint={
           providers.length === 0
             ? "Nothing live"
-            : providers
-                .map((p) => `${providerLabel(p.key)} ${p.count}`)
-                .join(", ")
+            : providers.map((p) => `${providerLabel(p.key)} ${p.count}`).join(", ")
         }
       />
       <Tile
@@ -220,16 +204,9 @@ function StateChip({
           : "border-transparent bg-muted text-muted-foreground hover:text-foreground",
       )}
     >
-      {tone ? (
-        <span
-          aria-hidden="true"
-          className={cn("size-1.5 rounded-full", tone)}
-        />
-      ) : null}
+      {tone ? <span aria-hidden="true" className={cn("size-1.5 rounded-full", tone)} /> : null}
       {label}
-      {count !== undefined ? (
-        <span className="tabular-nums">{count}</span>
-      ) : null}
+      {count !== undefined ? <span className="tabular-nums">{count}</span> : null}
     </button>
   );
 }

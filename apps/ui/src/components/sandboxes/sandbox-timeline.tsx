@@ -4,25 +4,15 @@
 // paused, red while lost, with a tick where a lost resource was rebuilt.
 // Underneath, a step chart of how many ran at once.
 
-import type {
-  SandboxTimeline as Timeline,
-  SandboxTimelineLane,
-} from "@/lib/api/sandboxes";
+import type { SandboxTimeline as Timeline, SandboxTimelineLane } from "@/lib/api/sandboxes";
 import { cn } from "@/lib/utils";
-import {
-  formatRunningTime,
-  providerLabel,
-  sandboxStateLabel,
-} from "./sandbox-display";
+import { formatRunningTime, providerLabel, sandboxStateLabel } from "./sandbox-display";
 import { sandboxTitle } from "./sandbox-fleet-table";
 
 const TICKS = 8;
 
 function position(at: string, from: number, span: number): number {
-  return Math.min(
-    100,
-    Math.max(0, ((new Date(at).getTime() - from) / span) * 100),
-  );
+  return Math.min(100, Math.max(0, ((new Date(at).getTime() - from) / span) * 100));
 }
 
 function tickLabel(time: number, span: number): string {
@@ -66,22 +56,12 @@ function Lane({
         title={`${sandboxTitle(sandbox)}, ${formatRunningTime(lane.running_seconds)} running`}
       >
         {sandboxTitle(sandbox)}
-        <span className="text-muted-foreground">
-          {" "}
-          · {providerLabel(sandbox.provider)}
-        </span>
+        <span className="text-muted-foreground"> · {providerLabel(sandbox.provider)}</span>
       </button>
-      <div
-        className="relative h-4"
-        role="img"
-        aria-label={`${sandboxTitle(sandbox)} lifecycle`}
-      >
+      <div className="relative h-4" role="img" aria-label={`${sandboxTitle(sandbox)} lifecycle`}>
         {lane.spans.map((spanItem, index) => {
           const left = position(spanItem.start, from, span);
-          const width = Math.max(
-            0.3,
-            position(spanItem.end, from, span) - left,
-          );
+          const width = Math.max(0.3, position(spanItem.end, from, span) - left);
           const previous = lane.spans[index - 1];
           const rebuilt = previous && spanItem.generation > previous.generation;
           return (
@@ -109,15 +89,7 @@ function Lane({
   );
 }
 
-function Concurrency({
-  timeline,
-  from,
-  span,
-}: {
-  timeline: Timeline;
-  from: number;
-  span: number;
-}) {
+function Concurrency({ timeline, from, span }: { timeline: Timeline; from: number; span: number }) {
   const peak = Math.max(1, timeline.peak_running);
   const height = 48;
   const points = timeline.concurrency;
@@ -133,9 +105,7 @@ function Concurrency({
   });
   const last = points[points.length - 1];
   if (last) path += ` L1000 ${height - (last.running / peak) * (height - 4)}`;
-  const peakX = timeline.peak_at
-    ? position(timeline.peak_at, from, span) * 10
-    : null;
+  const peakX = timeline.peak_at ? position(timeline.peak_at, from, span) * 10 : null;
   return (
     <div className="grid grid-cols-[minmax(0,13rem)_1fr] items-end gap-3 border-t pt-3">
       <span className="text-xs text-muted-foreground">
@@ -153,13 +123,7 @@ function Concurrency({
         role="img"
         aria-label={`Concurrent running Sandboxes, peak ${timeline.peak_running}`}
       >
-        <line
-          x1="0"
-          y1={height - 0.5}
-          x2="1000"
-          y2={height - 0.5}
-          className="stroke-border"
-        />
+        <line x1="0" y1={height - 0.5} x2="1000" y2={height - 0.5} className="stroke-border" />
         {path ? (
           <>
             <path
@@ -176,9 +140,7 @@ function Concurrency({
             />
           </>
         ) : null}
-        {peakX !== null ? (
-          <circle cx={peakX} cy={4} r={3} fill="currentColor" />
-        ) : null}
+        {peakX !== null ? <circle cx={peakX} cy={4} r={3} fill="currentColor" /> : null}
       </svg>
     </div>
   );
@@ -193,10 +155,7 @@ export function SandboxTimelineChart({
 }) {
   const from = new Date(timeline.from).getTime();
   const span = Math.max(1, new Date(timeline.to).getTime() - from);
-  const ticks = Array.from(
-    { length: TICKS + 1 },
-    (_, i) => from + (span / TICKS) * i,
-  );
+  const ticks = Array.from({ length: TICKS + 1 }, (_, i) => from + (span / TICKS) * i);
   return (
     <div className="flex flex-col gap-2 overflow-x-auto">
       <div className="flex min-w-[44rem] flex-col gap-2">
@@ -204,20 +163,12 @@ export function SandboxTimelineChart({
           <span />
           <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
             {ticks.map((tick, i) => (
-              <span key={tick}>
-                {i === TICKS ? "now" : tickLabel(tick, span)}
-              </span>
+              <span key={tick}>{i === TICKS ? "now" : tickLabel(tick, span)}</span>
             ))}
           </div>
         </div>
         {timeline.lanes.map((lane) => (
-          <Lane
-            key={lane.sandbox.id}
-            lane={lane}
-            from={from}
-            span={span}
-            onSelect={onSelect}
-          />
+          <Lane key={lane.sandbox.id} lane={lane} from={from} span={span} onSelect={onSelect} />
         ))}
         <Concurrency timeline={timeline} from={from} span={span} />
         <div className="flex flex-wrap gap-4 pt-1 text-xs text-muted-foreground">
@@ -235,8 +186,7 @@ export function SandboxTimelineChart({
           </span>
           {timeline.total_lanes > timeline.lanes.length ? (
             <span>
-              Showing the {timeline.lanes.length} longest-running of{" "}
-              {timeline.total_lanes}
+              Showing the {timeline.lanes.length} longest-running of {timeline.total_lanes}
             </span>
           ) : null}
         </div>

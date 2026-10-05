@@ -168,8 +168,7 @@ describe("SandboxFleetTable", () => {
 describe("SandboxTimelineChart", () => {
   it("draws a lane per Sandbox and marks rebuilds", () => {
     const from = new Date("2026-10-05T00:00:00Z");
-    const at = (hours: number) =>
-      new Date(from.getTime() + hours * 3_600_000).toISOString();
+    const at = (hours: number) => new Date(from.getTime() + hours * 3_600_000).toISOString();
     render(
       <SandboxTimelineChart
         timeline={{
@@ -217,40 +216,27 @@ describe("SandboxTimelineChart", () => {
     );
     expect(screen.getByLabelText("Fix flaky CI lifecycle")).toBeInTheDocument();
     expect(screen.getByTitle("Rebuilt as generation 2")).toBeInTheDocument();
-    expect(
-      screen.getByText("Showing the 1 longest-running of 3"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Showing the 1 longest-running of 3")).toBeInTheDocument();
   });
 });
 
 describe("SandboxDetailDrawer", () => {
-  function detail(
-    overrides: Partial<SandboxFleetDetail> = {},
-  ): SandboxFleetDetail {
+  function detail(overrides: Partial<SandboxFleetDetail> = {}): SandboxFleetDetail {
     return { ...item(), incarnations: [], history: [], ...overrides };
   }
 
   it("asks before deleting and sends the action to the Session", async () => {
     mockedGet.mockResolvedValue({ data: detail() });
     mockedPost.mockResolvedValue({ data: {} });
-    render(
-      withClient(
-        <SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />,
-      ),
-    );
+    render(withClient(<SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />));
 
     fireEvent.click(await screen.findByRole("button", { name: /Delete/ }));
     expect(mockedPost).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Delete Sandbox and workspace" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Delete Sandbox and workspace" }));
     await waitFor(() =>
-      expect(mockedPost).toHaveBeenCalledWith(
-        "/v1/sessions/session_1/sandbox",
-        {
-          action: "delete",
-        },
-      ),
+      expect(mockedPost).toHaveBeenCalledWith("/v1/sessions/session_1/sandbox", {
+        action: "delete",
+      }),
     );
   });
 
@@ -262,17 +248,9 @@ describe("SandboxDetailDrawer", () => {
         deleted_at: new Date().toISOString(),
       }),
     });
-    render(
-      withClient(
-        <SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />,
-      ),
-    );
-    expect(
-      await screen.findByText(/Its Session was deleted/),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Pause|Resume|Delete/ }),
-    ).toBeNull();
+    render(withClient(<SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />));
+    expect(await screen.findByText(/Its Session was deleted/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pause|Resume|Delete/ })).toBeNull();
   });
 
   it("explains why a Sandbox needs attention", async () => {
@@ -282,11 +260,7 @@ describe("SandboxDetailDrawer", () => {
         last_init_error: "pip exited 1",
       }),
     });
-    render(
-      withClient(
-        <SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />,
-      ),
-    );
+    render(withClient(<SandboxDetailDrawer sandboxId="sandbox_1" onClose={jest.fn()} />));
     expect(await screen.findByText("Init commands failed")).toBeInTheDocument();
     expect(screen.getByText("pip exited 1")).toBeInTheDocument();
   });
