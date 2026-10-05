@@ -4,6 +4,7 @@ import { useId, useMemo, useState } from "react";
 import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { McpAppResourceList } from "./mcp-app-resource-list";
 import { formatResultDetails, getResultPreview } from "./tool-activity-utils";
 import { extractMcpAppResources, getFullText } from "./tool-call-utils";
@@ -87,6 +88,8 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
           {row.result?.error && (
             <div className="mt-0.5 text-xs text-destructive">{row.result.error}</div>
           )}
+
+          <ExecutedArgumentsNotice toolResult={row.result} originalArguments={row.arguments} />
 
           <McpAppResourceList resources={mcpAppResources} />
 

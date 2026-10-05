@@ -238,6 +238,22 @@ export const timelineRows: TimelineToolRow[] = [
     }),
   },
   {
+    // A pre_tool_use hook rewrote the model-authored command before it ran.
+    id: "timeline-hook-rewrite",
+    label: "Cleaned the build directory",
+    state: "completed",
+    arguments: { command: "rm -rf build" },
+    result: {
+      ...makeCompletedResult({
+        toolCallId: "timeline-hook-rewrite",
+        toolName: "daytona_exec",
+        text: "",
+        durationMs: 90,
+      }),
+      executed_arguments: { command: "rm -rf ./build --one-file-system" },
+    },
+  },
+  {
     id: "timeline-read-file",
     label: "Read the file back",
     state: "completed",

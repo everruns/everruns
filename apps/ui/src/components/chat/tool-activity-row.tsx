@@ -11,6 +11,7 @@ import { useState } from "react";
 import { AlertCircle, CalendarClock, Check, Loader2, MonitorSmartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { ExecutedArgumentsNotice } from "./executed-arguments";
 import { McpAppResourceList } from "./mcp-app-resource-list";
 import { ToolResultThumbnails } from "./tool-result-thumbnails";
 import type { ToolCallContent } from "./tool-call-utils";
@@ -116,6 +117,8 @@ export function ToolActivityRow({
           </div>
 
           {hasToolError && <div className="mt-1 text-xs text-destructive">{toolResult?.error}</div>}
+
+          <ExecutedArgumentsNotice toolResult={toolResult} originalArguments={toolCall.arguments} />
 
           <McpAppResourceList resources={mcpAppResources} />
 
