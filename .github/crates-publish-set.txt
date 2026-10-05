@@ -12,6 +12,7 @@ everruns-contracts
 everruns-core
 everruns-drivers
 everruns-durable
+everruns-durable-engine
 everruns-integrations-bashkit
 everruns-integrations-brave-search
 everruns-integrations-browserless

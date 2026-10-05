@@ -502,6 +502,7 @@ jobs:
           cargo check --locked --all-features \
             -p everruns-core \
             -p everruns-durable \
+            -p everruns-durable-engine \
             -p everruns-drivers \
             -p everruns-turbopuffer \
             -p everruns-integrations-duckduckgo \

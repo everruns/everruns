@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-// The process composes runtime services only through its private entry crate.
+// The process composes runtime services only through its entry crate,
+// `everruns-durable-engine`.
 pub use everruns_durable_engine::{core, durable, engine, host};
 // Worker-only core surface. The worker's own `everruns-core` dependency selects
 // these features; durable-engine does not need them.

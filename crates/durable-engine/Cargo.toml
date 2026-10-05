@@ -1,9 +1,25 @@
+# Durable turn backend for Everruns.
+#
+# Runs agent turns as queued, checkpointed steps on `everruns-durable`, behind
+# core's `TurnBackend` seam. Published so an application can choose durable
+# execution; it therefore carries no transport and nothing private to the
+# platform (the worker owns the gRPC stores). Enforced by
+# `scripts/lib/check-durable-isolation.sh`.
+
 [package]
 name = "everruns-durable-engine"
-publish = false
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-durable-engine"
+description = "Durable turn backend for Everruns: agent turns as queued, checkpointed steps on everruns-durable behind core's TurnBackend"
+readme = "README.md"
+keywords = ["agent", "durable", "workflow", "llm", "postgres"]
+categories = ["asynchronous", "development-tools"]
 
 [dependencies]
 everruns-contracts = { workspace = true, default-features = false }
