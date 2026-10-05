@@ -9,6 +9,10 @@
 //! zero. Resource-threshold backpressure is therefore inactive on other
 //! platforms — [`crate::worker::BackpressureState`] simply never receives a
 //! sample, and task-count watermarks continue to apply.
+//!
+//! Crate-private. The worker pool's backpressure needs only memory and CPU
+//! usage; the host and process readings serve the `bench` reports.
+#![cfg_attr(not(feature = "bench"), allow(dead_code))]
 
 #[cfg(target_os = "linux")]
 use std::fs;
@@ -164,10 +168,6 @@ pub struct CpuSampler {
 }
 
 impl CpuSampler {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     /// Returns CPU usage as a 0.0–1.0 ratio across all cores.
     pub fn sample(&mut self) -> Option<f64> {
         let (busy, total) = read_cpu_ticks()?;
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn cpu_sampler_first_sample_has_no_baseline() {
-        let mut sampler = CpuSampler::new();
+        let mut sampler = CpuSampler::default();
         assert_eq!(sampler.sample(), Some(0.0));
         let second = sampler.sample().expect("/proc/stat should be readable");
         assert!((0.0..=1.0).contains(&second));

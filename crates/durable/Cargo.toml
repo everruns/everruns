@@ -78,12 +78,41 @@ everruns-core.workspace = true
 tracing-subscriber.workspace = true
 
 [features]
+# Decision: the generic workflow executor is on by default, so `cargo add
+# everruns-durable` gets the whole engine the README and crate docs describe.
+# Everruns' own crates drive the task queue directly and never run it, so the
+# workspace dependency sets `default-features = false` and they compile only the
+# store, queue, reliability and scheduler core.
+default = ["workflows"]
+# Experimental: the `Workflow`/`Activity` traits, `WorkflowExecutor` (timers,
+# child workflows, system tasks), `WorkerPool` and `TimeoutManager`. Exercised
+# by this crate's tests, benches and `examples/order_pipeline.rs`; no Everruns
+# production path uses it.
+workflows = []
 sqlite = ["dep:rusqlite"]
 failpoints = ["fail/failpoints"]
 postgres-tests = []
 # Metrics, reports and checkpoints used by the bench binaries. Not part of the
 # supported API; off by default so library users do not pull in indicatif.
-bench = ["dep:indicatif"]
+bench = ["dep:indicatif", "workflows"]
+
+# The generic workflow executor's own suites. Store-only suites carry no
+# feature requirement, so they also run under `--no-default-features`.
+[[test]]
+name = "timers_and_children_test"
+required-features = ["workflows"]
+
+[[test]]
+name = "agent_reliability_test"
+required-features = ["workflows"]
+
+# An isolated consumer of the generic engine: no Everruns crate, memory store.
+# `harness = false` runs `main`, so `cargo test --example order_pipeline` runs it
+# to completion and fails on any assertion.
+[[example]]
+name = "order_pipeline"
+required-features = ["workflows"]
+harness = false
 
 [[bench]]
 name = "concurrent_workers"

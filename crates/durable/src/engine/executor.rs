@@ -98,6 +98,8 @@ pub struct ProcessResult {
 
 /// Workflow executor
 ///
+/// **Experimental** (`workflows` feature): the API may change in any release.
+///
 /// The executor drives workflow state machines by replaying events and
 /// processing actions. It uses optimistic concurrency control to handle
 /// concurrent updates: every append names the sequence number it expects.

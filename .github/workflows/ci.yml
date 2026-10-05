@@ -1542,12 +1542,16 @@ jobs:
       # Every bench at a tiny scale, so a broken bench fails the PR that broke
       # it. Full runs are weekly in durable-bench.yml. `cargo test` runs the
       # harness=false bench binaries in the test profile with these arguments.
-      - name: Run durable bench smoke
+      # The order_pipeline example (harness=false, ignores the argument) rides
+      # in the same invocation: it is the generic workflow engine's isolated
+      # consumer, and a separate `cargo test` would cost another lib build.
+      - name: Run durable bench smoke and the isolated example
         if: ${{ matrix.shard == 'durable' }}
         run: >-
           cargo test -p everruns-durable --features bench
           --bench concurrent_workers --bench workflow_throughput --bench cold_start_latency
           --bench db_concurrent_workers --bench db_workflow_throughput --bench db_cold_start_latency
+          --example order_pipeline
           -- --smoke
 
   # Slack live API tests — split out of the `durable` integration shard (EVE-1039).
