@@ -31,6 +31,20 @@ export interface ConversationStarter {
   text: string;
 }
 
+/**
+ * An agent's avatar, pre-rendered as square and circular PNG presets. URLs are
+ * relative to the API base, public and immutable (a new upload gets a new id).
+ */
+export interface AgentAvatar {
+  id: string;
+  /** Square avatar, 256 px. */
+  url: string;
+  /** Circular avatar (transparent corners), 256 px. */
+  circle_url: string;
+  /** Edge lengths, in pixels, available for both shapes. */
+  sizes: number[];
+}
+
 export interface Agent {
   service_virtual_user_id?: string | null;
   id: string;
@@ -55,6 +69,8 @@ export interface Agent {
    * harness starters when non-empty.
    */
   starters?: ConversationStarter[];
+  /** Avatar shown in the UI, the A2A Agent Card and the agent's Slack app. */
+  avatar?: AgentAvatar | null;
   system_prompt: string;
   /** Base execution harness this agent runs on. Required; defaults to the organization default (Conversation for new organizations). */
   harness_id: string;

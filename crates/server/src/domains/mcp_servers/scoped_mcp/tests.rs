@@ -340,6 +340,7 @@ fn test_harness() -> Harness {
 fn test_agent() -> Agent {
     let public_id = generate_agent_public_id();
     Agent {
+        avatar: None,
         service_virtual_user_id: None,
 
         public_id,

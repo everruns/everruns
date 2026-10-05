@@ -162,6 +162,20 @@ pub trait SlackAppProvisioner: Send + Sync {
         Err(SlackProvisioningError::Unavailable)
     }
 
+    /// Set the icon of an app created by `create_app` (Slack's `apps.icon.set`).
+    ///
+    /// A manifest cannot carry an icon, so this is how an agent's avatar
+    /// reaches its Slack app. `png` must be 512 to 2000 px square.
+    async fn set_app_icon(
+        &self,
+        _org_id: i64,
+        _team_id: Option<&str>,
+        _app_id: &str,
+        _png: Vec<u8>,
+    ) -> SlackProvisioningResult<()> {
+        Err(SlackProvisioningError::Unavailable)
+    }
+
     /// Delete an app created by `create_app`.
     ///
     /// Called when an install is abandoned before OAuth completes, so a

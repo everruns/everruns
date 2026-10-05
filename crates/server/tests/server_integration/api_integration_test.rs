@@ -10,6 +10,7 @@
 //! - PostgreSQL running with DATABASE_URL set
 //! - Migrations applied (run migrations from crates/server/migrations/)
 
+mod agent_avatars;
 mod agents;
 mod apps;
 mod channel_rename;

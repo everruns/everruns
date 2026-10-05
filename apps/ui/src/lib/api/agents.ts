@@ -1,7 +1,8 @@
 // Agent API functions (M2)
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api, throwApiError } from "./client";
+import { api, getApiBaseUrl, throwApiError } from "./client";
+import type { AgentAvatar } from "./agent-types";
 import { createCrudApi } from "./crud";
 import { withOrgHeader } from "./active-org";
 import type {
@@ -305,4 +306,35 @@ export async function suspendAgentExposures(agentId: string): Promise<Agent> {
 export async function resumeAgentExposures(agentId: string): Promise<Agent> {
   const response = await api.post<Agent>(`/v1/agents/${agentId}/exposures/resume`);
   return response.data;
+}
+
+/** Upload (or replace) an agent's avatar. The server crops it square and renders presets. */
+export async function uploadAgentAvatar(agentId: string, file: File): Promise<AgentAvatar> {
+  const formData = new FormData();
+  formData.append("file", file);
+  // Raw fetch for FormData: the browser sets the multipart boundary.
+  const response = await fetch(`${getApiBaseUrl()}/v1/agents/${agentId}/avatar`, {
+    method: "PUT",
+    body: formData,
+    credentials: "include",
+    headers: withOrgHeader(),
+  });
+  if (!response.ok) await throwApiError(response);
+  return response.json();
+}
+
+export async function deleteAgentAvatar(agentId: string): Promise<void> {
+  await api.delete(`/v1/agents/${agentId}/avatar`);
+}
+
+/** Browser URL of one avatar preset. Sizes come from `avatar.sizes`. */
+export function agentAvatarUrl(
+  avatar: AgentAvatar,
+  size: number,
+  shape: "square" | "circle" = "square",
+): string {
+  const preset = avatar.sizes.includes(size)
+    ? size
+    : (avatar.sizes.find((s) => s >= size) ?? avatar.sizes[avatar.sizes.length - 1]);
+  return `${getApiBaseUrl()}/v1/avatars/${avatar.id}/${shape}-${preset}.png`;
 }

@@ -65,6 +65,9 @@ pub struct EntityCard {
     pub stats: Vec<StatItem>,
     /// Footer lines (e.g. `Created Jan 02, 2026`).
     pub footer_lines: Vec<String>,
+    /// Avatar as a `data:image/png;base64,…` URI. Inlined because the card's
+    /// CSP blocks every network fetch (`img-src data:`).
+    pub avatar_data_uri: Option<String>,
 }
 
 /// Build the `ui://everruns/{entity}/{public_id}/card` URI for a card.
@@ -124,6 +127,13 @@ pub fn render_html(card: &EntityCard) -> Option<String> {
 
     // Header
     html.push_str("<header class=\"card-header\">\n");
+    if let Some(avatar) = &card.avatar_data_uri {
+        let _ = writeln!(
+            html,
+            "<img class=\"card-avatar\" src=\"{}\" alt=\"\" width=\"48\" height=\"48\">",
+            escape_html(avatar)
+        );
+    }
     let _ = writeln!(
         html,
         "<div class=\"card-kind\">{}</div>",
@@ -266,6 +276,7 @@ body {
   .card { background: rgba(20,20,22,0.6); }
 }
 .card-header { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: baseline; }
+.card-avatar { grid-column: 1 / -1; width: 48px; height: 48px; border-radius: 10px; }
 .card-kind { grid-column: 1 / -1; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.6; }
 .card-title { grid-column: 1 / -1; font-size: 18px; font-weight: 600; margin: 0; }
 .card-subtitle { grid-column: 1 / -1; font-size: 12px; opacity: 0.7; }
@@ -370,7 +381,29 @@ pub fn agent_card(agent: &Agent, stats: AgentCardStats) -> EntityCard {
         tags: agent.tags.clone(),
         stats: stat_items,
         footer_lines,
+        avatar_data_uri: None,
     }
+}
+
+/// [`agent_card`] with the agent's avatar inlined. A missing or unreadable
+/// avatar leaves the card without one rather than failing it.
+pub async fn agent_card_with_avatar(
+    db: &crate::storage::StorageBackend,
+    agent: &Agent,
+    stats: AgentCardStats,
+) -> EntityCard {
+    use crate::domains::agents::avatar::{AvatarShape, variant_name};
+    use base64::Engine as _;
+    let mut card = agent_card(agent, stats);
+    if let Some(avatar) = &agent.avatar
+        && let Ok(Some(row)) = db
+            .get_agent_avatar_variant(avatar.id.uuid(), &variant_name(AvatarShape::Square, 64))
+            .await
+    {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&row.data);
+        card.avatar_data_uri = Some(format!("data:{};base64,{encoded}", row.content_type));
+    }
+    card
 }
 
 /// Short plain-text summary for hosts that don't render the embedded
@@ -418,6 +451,7 @@ mod tests {
 
     fn sample_agent() -> Agent {
         Agent {
+            avatar: None,
             service_virtual_user_id: None,
 
             public_id: AgentId::from_seed(1),
@@ -497,8 +531,20 @@ mod tests {
     }
 
     #[test]
+    fn avatar_is_inlined_as_an_escaped_data_uri() {
+        let mut card = agent_card(&sample_agent(), AgentCardStats::default());
+        assert!(!render_html(&card).unwrap().contains("card-avatar\" src"));
+        card.avatar_data_uri = Some("data:image/png;base64,AAA\"x".into());
+        let html = render_html(&card).unwrap();
+        assert!(html.contains(
+            "<img class=\"card-avatar\" src=\"data:image/png;base64,AAA&quot;x\" alt=\"\""
+        ));
+    }
+
+    #[test]
     fn render_caps_size() {
         let mut card = EntityCard {
+            avatar_data_uri: None,
             kind: EntityKind::Agent,
             public_id: "agent_01".into(),
             title: "x".into(),

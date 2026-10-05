@@ -18,7 +18,9 @@ use uuid::Uuid;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::tool_types::ToolDefinition;
-use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
+use everruns_contracts::typed_id::{
+    AgentId, AgentVersionId, AvatarId, HarnessId, ModelId, PrincipalId,
+};
 use everruns_core::AgentDefinition;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
@@ -26,6 +28,56 @@ use everruns_core::network_access::NetworkAccessList;
 use everruns_core::session_file::InitialFile;
 
 use utoipa::ToSchema;
+
+/// An agent's avatar, pre-rendered as square and circular PNG presets.
+///
+/// URLs are relative to the API base URL, public, and immutable: a new upload
+/// gets a new `id`, so they can be cached forever. Any size in `sizes` can be
+/// substituted into a URL, e.g. `/v1/avatars/{id}/circle-64.png`; the uploaded
+/// square crop is at `/v1/avatars/{id}/source.png`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+pub struct AgentAvatar {
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    #[schema(value_type = String, example = "avatar_01933b5a000070008000000000000001")]
+    pub id: AvatarId,
+    /// Square avatar, 256 px.
+    #[schema(example = "/v1/avatars/avatar_01933b5a000070008000000000000001/square-256.png")]
+    pub url: String,
+    /// Circular avatar (transparent corners), 256 px.
+    #[schema(example = "/v1/avatars/avatar_01933b5a000070008000000000000001/circle-256.png")]
+    pub circle_url: String,
+    /// Edge lengths, in pixels, available for both shapes.
+    #[schema(example = json!([32, 64, 128, 256, 512]))]
+    pub sizes: Vec<u32>,
+}
+
+impl AgentAvatar {
+    /// The avatar for a stored `agent_avatars.id`.
+    pub fn from_uuid(id: Uuid) -> Self {
+        use crate::domains::agents::avatar::{AVATAR_SIZES, AvatarShape, DEFAULT_AVATAR_SIZE};
+        let id = AvatarId::from_uuid(id);
+        let avatar = Self {
+            id,
+            url: String::new(),
+            circle_url: String::new(),
+            sizes: AVATAR_SIZES.to_vec(),
+        };
+        Self {
+            url: avatar.path(AvatarShape::Square, DEFAULT_AVATAR_SIZE),
+            circle_url: avatar.path(AvatarShape::Circle, DEFAULT_AVATAR_SIZE),
+            ..avatar
+        }
+    }
+
+    /// Path of one preset, relative to the API base URL.
+    pub fn path(&self, shape: crate::domains::agents::avatar::AvatarShape, size: u32) -> String {
+        format!(
+            "/v1/avatars/{}/{}",
+            self.id,
+            crate::domains::agents::avatar::variant_name(shape, size)
+        )
+    }
+}
 
 /// Agent lifecycle status.
 /// - `active`: Agent is available for use
@@ -221,6 +273,10 @@ pub struct Agent {
     /// harness starters when non-empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub starters: Vec<crate::records::ConversationStarter>,
+    /// Avatar shown wherever the agent appears: the UI, the A2A Agent Card and
+    /// its Slack app. Set with `PUT /v1/agents/{agent_id}/avatar`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<AgentAvatar>,
     /// System prompt that defines the agent's behavior.
     /// Sent as the first message in every conversation.
     #[schema(
@@ -432,6 +488,7 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent {
+            avatar: None,
             service_virtual_user_id: None,
 
             public_id: "agent_01933b5a000070008000000000000001".parse().unwrap(),

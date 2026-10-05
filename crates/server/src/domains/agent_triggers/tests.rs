@@ -261,6 +261,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let app_id = Some(uuid::Uuid::from_u128(60));
     let now = chrono::Utc::now();
     let agent = crate::storage::models::AgentRow {
+        avatar_id: None,
         id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
         public_id: AgentId::from_uuid(uuid::Uuid::from_u128(71)).to_string(),
         org_id: DEFAULT_ORG_ID,

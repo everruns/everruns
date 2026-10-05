@@ -513,6 +513,53 @@ struct CreateAppCredentials {
 
 #[async_trait]
 impl SlackAppProvisioner for SlackApiProvisioner {
+    async fn set_app_icon(
+        &self,
+        org_id: i64,
+        team_id: Option<&str>,
+        app_id: &str,
+        png: Vec<u8>,
+    ) -> SlackProvisioningResult<()> {
+        let row = self.connection_for(org_id, team_id).await?;
+        let (connection_org, connection_id) = (row.org_id, row.id);
+        // `apps.icon.set` takes the image as a multipart file; the form is
+        // rebuilt for the one retry after a token rotation.
+        let form = |png: Vec<u8>| {
+            let file = reqwest::multipart::Part::bytes(png)
+                .file_name("avatar.png")
+                .mime_str("image/png")
+                .expect("static mime type parses");
+            reqwest::multipart::Form::new()
+                .text("app_id", app_id.to_string())
+                .part("file", file)
+        };
+        let url = format!("{}/apps.icon.set", self.api_base);
+        let access_token = self.token_for_request(row).await?;
+        let first = self
+            .send(
+                self.client
+                    .post(&url)
+                    .bearer_auth(&access_token)
+                    .multipart(form(png.clone())),
+            )
+            .await;
+        match first {
+            Err(SlackProvisioningError::Rejected(code)) if is_auth_error(&code) => {
+                let row = self.connection_by_id(connection_org, connection_id).await?;
+                let replacement = self.rotate_row(row).await?;
+                self.send(
+                    self.client
+                        .post(&url)
+                        .bearer_auth(&replacement)
+                        .multipart(form(png)),
+                )
+                .await?;
+                Ok(())
+            }
+            result => result.map(|_| ()),
+        }
+    }
+
     async fn update_permissions(
         &self,
         org_id: i64,
@@ -768,6 +815,43 @@ mod tests {
             updated["oauth_config"]["scopes"]["bot"],
             serde_json::json!(["chat:write", "custom:read", "reactions:write"])
         );
+    }
+
+    #[tokio::test]
+    async fn app_icon_is_uploaded_as_a_multipart_file_with_the_workspace_token() {
+        let server = MockServer::start().await;
+        let (provisioner, db) = provisioner(&server);
+        db.upsert_org_slack_connection(stored(1, "T1", chrono::Duration::hours(1)))
+            .await
+            .unwrap();
+        Mock::given(method("POST"))
+            .and(path("/apps.icon.set"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok":true})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        provisioner
+            .set_app_icon(1, Some("T1"), "A1", b"\x89PNG-bytes".to_vec())
+            .await
+            .unwrap();
+        let requests = server.received_requests().await.unwrap();
+        let request = &requests[0];
+        let content_type = request
+            .headers
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(
+            content_type.starts_with("multipart/form-data"),
+            "{content_type}"
+        );
+        assert!(request.headers.get("authorization").is_some());
+        let body = String::from_utf8_lossy(&request.body);
+        assert!(body.contains("name=\"app_id\""));
+        assert!(body.contains("A1"));
+        assert!(body.contains("name=\"file\"; filename=\"avatar.png\""));
+        assert!(body.contains("PNG-bytes"));
     }
 
     #[tokio::test]

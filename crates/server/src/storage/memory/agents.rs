@@ -51,6 +51,7 @@ impl InMemoryDatabase {
         let input = crate::platform_chat_agent::definition(generic, id);
         let now = Self::now();
         let row = AgentRow {
+            avatar_id: None,
             id,
             public_id: input.public_id,
             org_id,
@@ -183,6 +184,7 @@ impl InMemoryDatabase {
         let now = Self::now();
         let id = AgentId::new();
         let row = AgentRow {
+            avatar_id: None,
             id,
             public_id: input.public_id,
             org_id,
@@ -279,6 +281,7 @@ impl InMemoryDatabase {
         }
 
         let row = AgentRow {
+            avatar_id: None,
             id,
             public_id: input.public_id,
             org_id,
@@ -629,6 +632,7 @@ impl InMemoryDatabase {
             let now = Self::now();
             let id = AgentId::new();
             let row = AgentRow {
+                avatar_id: None,
                 id,
                 public_id: input.public_id,
                 org_id,
@@ -712,6 +716,7 @@ impl InMemoryDatabase {
             let now = Self::now();
             let id = AgentId::new();
             let row = AgentRow {
+                avatar_id: None,
                 id,
                 public_id: input.public_id,
                 org_id,

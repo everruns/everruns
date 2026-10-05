@@ -62,6 +62,8 @@ pub struct AppState {
     pub built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub org_rate_limiter: OrgRateLimiter,
+    /// Pushes avatar changes to the agent's one-click Slack apps.
+    pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
 }
 
 impl AppState {
@@ -84,6 +86,7 @@ impl AppState {
             built_in_harnesses,
             health_check_service: None,
             org_rate_limiter: OrgRateLimiter::default(),
+            slack_provisioner: None,
         }
     }
 
@@ -92,6 +95,14 @@ impl AppState {
         service: Arc<crate::domains::agents::AgentHealthCheckService>,
     ) -> Self {
         self.health_check_service = Some(service);
+        self
+    }
+
+    pub fn with_slack_provisioner(
+        mut self,
+        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    ) -> Self {
+        self.slack_provisioner = provisioner;
         self
     }
 
@@ -236,6 +247,7 @@ pub fn routes(state: AppState) -> Router {
             get(get_health_check),
         )
         .merge(super::agent_mcp_attachments::routes())
+        .merge(super::agent_avatars::routes())
         .route(
             "/v1/agents/{agent_id}",
             get(get_agent)

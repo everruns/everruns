@@ -61,6 +61,8 @@ The channel then serves:
 | `POST /v1/channels/{channel_id}/a2a` | The A2A JSON-RPC endpoint. Needs `Authorization: Bearer <key>`. |
 | `GET /v1/channels/{channel_id}/a2a/.well-known/agent-card.json` | The public Agent Card, served only while the channel is live. |
 
+When the agent has an avatar, the Agent Card carries it as `iconUrl`: the 256 px square preset, on the same origin as the card.
+
 ### Configuration
 
 | Field | Description |

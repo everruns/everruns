@@ -28,8 +28,9 @@ pub mod slack_provisioning;
 pub mod workspace;
 
 pub use agent::{
-    Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
-    generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
+    Agent, AgentAvatar, AgentStatus, AgentVersion, AgentVersionChangeKind,
+    MAX_ADDRESSABLE_NAME_LEN, generate_agent_public_id, validate_addressable_name,
+    validate_agent_public_id,
 };
 pub use agent_channel::{
     A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentVersionPolicy, ApiChannelConfig,

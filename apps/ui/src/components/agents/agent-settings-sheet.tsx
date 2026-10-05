@@ -11,8 +11,10 @@
 // - Live sections (MCP servers, Credentials, Version history) manage their own
 //   resources and save as they go, as they did when they were tabs.
 
-import { Check, Loader2, X, Zap } from "lucide-react";
-import { useAgentNameAvailability } from "@/hooks";
+import { useRef } from "react";
+import { Check, ImageIcon, Loader2, Trash2, Upload, X, Zap } from "lucide-react";
+import { useAgentAvatar, useAgentNameAvailability } from "@/hooks";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -211,6 +213,72 @@ export function AgentSettingsSheet({
   );
 }
 
+/**
+ * Avatar upload. Saves immediately rather than with the draft: it is a file,
+ * not a field, and the presets are rendered server-side on upload.
+ */
+function AvatarField({ agent, readOnly }: { agent: Agent; readOnly: boolean }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { upload, remove } = useAgentAvatar(agent.id);
+  const busy = upload.isPending || remove.isPending;
+  const error = upload.error ?? remove.error;
+
+  return (
+    <div className="space-y-2">
+      <Label>Avatar</Label>
+      <div className="flex items-center gap-4">
+        <div className="flex size-16 flex-none items-center justify-center border bg-muted/40 text-muted-foreground [&_svg]:size-6">
+          <AgentAvatar avatar={agent.avatar} size={64} fallback={<ImageIcon />} />
+        </div>
+        {agent.avatar && (
+          <AgentAvatar avatar={agent.avatar} size={40} shape="circle" className="hidden sm:block" />
+        )}
+        <div className="flex flex-wrap gap-2">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            className="hidden"
+            aria-label="Avatar image"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) upload.mutate(file);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={readOnly || busy}
+            onClick={() => inputRef.current?.click()}
+          >
+            {upload.isPending ? <Loader2 className="animate-spin" /> : <Upload />}
+            {agent.avatar ? "Replace" : "Upload"}
+          </Button>
+          {agent.avatar && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={readOnly || busy}
+              onClick={() => remove.mutate()}
+            >
+              <Trash2 />
+              Remove
+            </Button>
+          )}
+        </div>
+      </div>
+      {error && <p className="text-xs text-destructive">{error.message}</p>}
+      <p className="text-xs text-muted-foreground">
+        Square PNG, JPEG, GIF or WebP, at least 64×64. Shown in the UI, the A2A Agent Card, and as
+        the icon of Slack apps created in one click.
+      </p>
+    </div>
+  );
+}
+
 function BrandingSection({
   agent,
   draft,
@@ -229,6 +297,8 @@ function BrandingSection({
 
   return (
     <div className="flex flex-col gap-5">
+      <AvatarField agent={agent} readOnly={readOnly} />
+
       <div className="space-y-2">
         <Label htmlFor="description">Description</Label>
         <Textarea

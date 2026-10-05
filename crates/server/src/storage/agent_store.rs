@@ -58,6 +58,7 @@ impl DbAgentStore {
                     .collect();
 
                 Ok(Some(Agent {
+                    avatar: row.avatar_id.map(crate::records::AgentAvatar::from_uuid),
                     service_virtual_user_id: None,
 
                     public_id: row

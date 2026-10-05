@@ -27,6 +27,8 @@ import {
   resumeAgentExposures,
   getAgentMcpAttachments,
   revokeAgentMcpConnection,
+  uploadAgentAvatar,
+  deleteAgentAvatar,
 } from "@/lib/api/agents";
 import type {
   CreateAgentRequest,
@@ -356,4 +358,22 @@ export function useSuspendAgentExposures() {
 
 export function useResumeAgentExposures() {
   return useExposureMutation(resumeAgentExposures);
+}
+
+/** Upload or remove an agent's avatar; refreshes the agent everywhere it shows. */
+export function useAgentAvatar(agentId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+    queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
+  };
+  const upload = useMutation({
+    mutationFn: (file: File) => uploadAgentAvatar(agentId, file),
+    onSuccess: refresh,
+  });
+  const remove = useMutation({
+    mutationFn: () => deleteAgentAvatar(agentId),
+    onSuccess: refresh,
+  });
+  return { upload, remove };
 }

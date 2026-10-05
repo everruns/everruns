@@ -12,8 +12,9 @@ import {
   EntityCardCapabilities,
 } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil, Boxes, Shield } from "lucide-react";
+import { Pencil, Shield } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
+import { AgentAvatar } from "@/components/agents/agent-avatar";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -62,7 +63,7 @@ export function AgentCard({
 
   return (
     <EntityCard
-      icon={<IconTile size="md" icon={<Boxes />} />}
+      icon={<IconTile size="md" icon={<AgentAvatar avatar={agent.avatar} size={28} />} />}
       title={getDisplayName(agent)}
       href={`/agents/${agent.id}`}
       titleClassName={getEntityNameClassName(agent.status)}

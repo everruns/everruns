@@ -189,6 +189,10 @@ jest.mock("@/hooks", () => ({
   useDeleteAgent: () => mutation(mockArchive),
   useDestroyAgent: () => mutation(),
   useAgentNameAvailability: () => ({ isChecking: false, available: null }),
+  useAgentAvatar: () => ({
+    upload: { mutate: jest.fn(), isPending: false, error: null },
+    remove: { mutate: jest.fn(), isPending: false, error: null },
+  }),
   usePageTitle: () => undefined,
 }));
 

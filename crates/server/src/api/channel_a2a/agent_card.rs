@@ -119,6 +119,27 @@ async fn agent_card(
         Some(host) => format!("{scheme}://{host}{endpoint_path}"),
         None => endpoint_path.to_string(),
     };
+    // The agent's avatar, served from the same origin and API prefix as the
+    // card. A2A 1.0 and 0.3 both name it `iconUrl`.
+    let api_prefix = endpoint_path
+        .find("/v1/")
+        .map_or("", |index| &endpoint_path[..index]);
+    let icon_url = state
+        .db
+        .get_agent(
+            app.org_id,
+            everruns_contracts::typed_id::AgentId::from_uuid(app.agent_internal_id),
+        )
+        .await
+        .map_err(internal_error)?
+        .and_then(|agent| agent.avatar_id)
+        .map(|avatar_id| {
+            let path = crate::records::AgentAvatar::from_uuid(avatar_id).url;
+            match host {
+                Some(host) => format!("{scheme}://{host}{api_prefix}{path}"),
+                None => format!("{api_prefix}{path}"),
+            }
+        });
 
     let name = config
         .agent_card_name
@@ -173,6 +194,10 @@ async fn agent_card(
         "preferredTransport": A2A_PROTOCOL_BINDING_JSONRPC,
         "security": requirements,
     });
+    let mut card = card;
+    if let (Some(icon_url), Some(fields)) = (icon_url, card.as_object_mut()) {
+        fields.insert("iconUrl".to_string(), Value::String(icon_url));
+    }
     Ok(Json(card))
 }
 

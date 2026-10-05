@@ -1488,7 +1488,7 @@ async fn tool_agent_get_card(
         .map_err(|e| format!("Failed to count sessions: {e}"))?;
 
     let stats = cards::AgentCardStats { session_count };
-    let card = cards::agent_card(&agent, stats);
+    let card = cards::agent_card_with_avatar(&state.db, &agent, stats).await;
     let summary = cards::agent_card_summary(&agent, stats);
     cards::card_tool_content(&card, &summary)
 }
