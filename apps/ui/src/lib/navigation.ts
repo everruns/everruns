@@ -81,12 +81,7 @@ export const defaultChatsNavigation: NavigationItem[] = [
 
 // These links are rendered beneath Chat rather than as peer sidebar destinations.
 export const sideChatNavigation: NavigationItem[] = [
-  {
-    name: "New side chat",
-    href: "/chats/new",
-    icon: Plus,
-    keywords: ["thread", "conversation"],
-  },
+  { name: "New side chat", href: "/chats/new", icon: Plus, keywords: ["thread", "conversation"] },
   {
     name: "View all chats",
     href: "/chats/history",
@@ -110,12 +105,7 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     icon: Cpu,
     keywords: ["compute", "daytona", "modal", "containers", "fleet"],
   },
-  {
-    name: "Approvals",
-    href: "/approvals",
-    icon: ShieldCheck,
-    minimumRole: "admin",
-  },
+  { name: "Approvals", href: "/approvals", icon: ShieldCheck, minimumRole: "admin" },
   // "What in this org is reachable from outside right now" is a question
   // security and ops ask, and no agent page can answer it — it shows one agent
   // (EVE-1010). It sits here rather than under Building because reading it is
@@ -137,18 +127,8 @@ export const defaultBuildingNavigation: NavigationItem[] = [
     href: "/playground",
     icon: FlaskConical,
   },
-  {
-    name: "Agents",
-    href: "/agents",
-    icon: Boxes,
-    keywords: ["bot", "assistant"],
-  },
-  {
-    name: "Harnesses",
-    href: "/harnesses",
-    icon: Shield,
-    keywords: ["template", "config"],
-  },
+  { name: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
+  { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
   {
     name: "Sandbox Templates",
     href: "/sandbox-templates",
@@ -241,11 +221,7 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Registries", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
-  {
-    label: "Durable Execution",
-    items: defaultDurableNavigation,
-    defaultCollapsed: true,
-  },
+  { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },
 ];
 
