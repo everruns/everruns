@@ -392,6 +392,17 @@ impl McpServerService {
             None
         };
 
+        if let Some(message) = super::retained_credentials_retarget_error(
+            &existing_row.url,
+            existing_row.api_key_set,
+            &existing_row.headers,
+            req.url.as_deref(),
+            api_key_encrypted.is_none(),
+            req.headers.is_none(),
+        ) {
+            anyhow::bail!(crate::errors::BadRequestError::new(message));
+        }
+
         let input = UpdateMcpServer {
             name: req.name,
             description: req.description,

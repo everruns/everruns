@@ -473,4 +473,68 @@ describe("McpServersPage", () => {
 
     expect(await within(dialog).findByText(/name already exists/)).toBeInTheDocument();
   });
+
+  it("requires a fresh API key and drops headers when moving a credentialed server to a new origin", async () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      reset: jest.fn(),
+      isPending: false,
+      error: null,
+    });
+    mockUseMcpServerCatalog.mockReturnValue({
+      data: [
+        {
+          id: "mcp-1",
+          name: "microsoft_learn",
+          description: null,
+          url: "https://learn.microsoft.com/api/mcp",
+          transport_type: "http",
+          status: "active",
+          auth_mode: "api_key",
+          api_key_set: true,
+          headers: { "X-Tenant": "***" },
+          used_by_agents: 0,
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<McpServersPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+
+    // Same-origin path change: no credential prompt.
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "https://learn.microsoft.com/api/v2/mcp" },
+    });
+    expect(within(dialog).queryByLabelText("API Key")).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "https://other.example/mcp" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(
+      await within(dialog).findByText("Re-enter the API key to move this server to a new origin"),
+    ).toBeInTheDocument();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.change(within(dialog).getByLabelText("API Key"), {
+      target: { value: " sk-new " },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: "https://other.example/mcp",
+          api_key: "sk-new",
+          headers: {},
+        }),
+      ),
+    );
+  });
 });

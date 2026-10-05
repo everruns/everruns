@@ -576,6 +576,14 @@ function AddMcpServerDialog({
   );
 }
 
+function urlOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
 function EditMcpServerDialog({
   server,
   open,
@@ -590,9 +598,17 @@ function EditMcpServerDialog({
   const [url, setUrl] = useState("");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
+  const [apiKey, setApiKey] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const updateServer = useUpdateMcpServer(server?.id ?? "");
+
+  // Stored credentials are bound to the server's origin (EVE-1192): the API
+  // rejects moving a server to another origin while it would keep its API key
+  // or custom headers. Ask for a fresh key and drop headers explicitly.
+  const originChanged = !!server && urlOrigin(url) !== urlOrigin(server.url);
+  const needsFreshApiKey = originChanged && server?.auth_mode === "api_key" && !!server.api_key_set;
+  const clearsHeaders = originChanged && Object.keys(server?.headers ?? {}).length > 0;
 
   // Prefill the form with the current values whenever the dialog opens.
   useEffect(() => {
@@ -602,6 +618,7 @@ function EditMcpServerDialog({
     setUrl(server.url);
     setProtocolMode(server.protocol_mode ?? "auto");
     setElicitationPolicy(server.elicitation_policy ?? "url");
+    setApiKey("");
     setFieldErrors({});
     updateServer.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -622,6 +639,13 @@ function EditMcpServerDialog({
       setFieldErrors(getFieldErrors(parsed.error));
       return;
     }
+    const freshApiKey = apiKey.trim();
+    if (needsFreshApiKey && !freshApiKey) {
+      setFieldErrors({
+        api_key: "Re-enter the API key to move this server to a new origin",
+      });
+      return;
+    }
     setFieldErrors({});
 
     try {
@@ -633,6 +657,8 @@ function EditMcpServerDialog({
         url: parsed.data.url,
         protocol_mode: parsed.data.protocol_mode,
         elicitation_policy: parsed.data.elicitation_policy,
+        ...(needsFreshApiKey ? { api_key: freshApiKey } : {}),
+        ...(clearsHeaders ? { headers: {} } : {}),
       });
       onOpenChange(false);
     } catch {
@@ -698,6 +724,34 @@ function EditMcpServerDialog({
             />
             {fieldErrors.url && <p className="text-xs text-destructive">{fieldErrors.url}</p>}
           </div>
+          {needsFreshApiKey && (
+            <div className="space-y-2">
+              <Label htmlFor="edit-api-key">API Key</Label>
+              <Input
+                id="edit-api-key"
+                type="password"
+                value={apiKey}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setApiKey(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, api_key: undefined }));
+                }}
+                aria-invalid={!!fieldErrors.api_key}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                The stored key stays with the original origin. Enter the key for the new URL.
+              </p>
+              {fieldErrors.api_key && (
+                <p className="text-xs text-destructive">{fieldErrors.api_key}</p>
+              )}
+            </div>
+          )}
+          {clearsHeaders && (
+            <p className="text-xs text-muted-foreground">
+              Custom headers stay with the original origin and will be removed. Re-add them after
+              saving if the new server needs them.
+            </p>
+          )}
           <div className="space-y-2">
             <Label htmlFor="edit-protocol-mode">Protocol compatibility</Label>
             <Select

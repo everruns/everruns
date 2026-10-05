@@ -774,3 +774,71 @@ async fn create_and_rename_reject_ambiguous_names_without_changing_stored_identi
         "docs_api"
     );
 }
+
+#[tokio::test]
+async fn update_rejects_api_key_following_url_to_new_origin() {
+    // EVE-1192: the service update path holds the same origin binding as the
+    // PATCH command.
+    let encryption = test_encryption();
+    let db = Arc::new(StorageBackend::in_memory());
+    let svc = McpServerService::new(db.clone(), Some(encryption.clone()));
+    let settings = McpServerSettings {
+        auth_mode: McpServerAuthMode::ApiKey,
+        ..Default::default()
+    };
+    let row = db
+        .create_mcp_server(
+            1,
+            CreateMcpServerRow {
+                name: "keyed".into(),
+                description: None,
+                url: "https://original.example/mcp".into(),
+                transport_type: "streamable_http".into(),
+                api_key_encrypted: Some(encryption.encrypt_string("sk-secret").unwrap()),
+                headers: None,
+                settings: Some(McpServerService::settings_to_value(&settings)),
+            },
+        )
+        .await
+        .unwrap();
+    let id = row.id.uuid();
+    let retarget = |body: serde_json::Value| -> UpdateMcpServerRequest {
+        serde_json::from_value(body).unwrap()
+    };
+
+    let error = svc
+        .update(
+            &test_caller(1),
+            id,
+            retarget(serde_json::json!({"url": "https://attacker.example/mcp"})),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("api_key"), "{error}");
+    assert_eq!(
+        db.get_mcp_server(1, id).await.unwrap().unwrap().url,
+        "https://original.example/mcp"
+    );
+
+    svc.update(
+        &test_caller(1),
+        id,
+        retarget(serde_json::json!({"url": "https://original.example/v2/mcp"})),
+    )
+    .await
+    .expect("same-origin edit keeps the key");
+    svc.update(
+        &test_caller(1),
+        id,
+        retarget(serde_json::json!({"url": "https://new.example/mcp", "api_key": "sk-new"})),
+    )
+    .await
+    .expect("fresh key may move origin");
+    assert_eq!(
+        svc.decrypt_api_key(&test_caller(1), id)
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("sk-new")
+    );
+}
