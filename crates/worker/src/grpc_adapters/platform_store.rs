@@ -34,6 +34,14 @@ impl everruns_capabilities::PlatformStore for GrpcOrgAdapter {
         .await
     }
 
+    async fn platform_run(&self, command: &str, params: serde_json::Value) -> Result<String> {
+        self.invoke_platform_command_surface(
+            proto::PlatformCommandSurfaceOperation::Run,
+            serde_json::json!({ "command": command, "params": params }),
+        )
+        .await
+    }
+
     // =========================================================================
     // Harness Operations
     // =========================================================================
