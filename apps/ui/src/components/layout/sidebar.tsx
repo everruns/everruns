@@ -58,6 +58,7 @@ import { SidebarChatThreads } from "./sidebar-chat-threads";
 import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
 import { SidebarUserMenu } from "./sidebar-user-menu";
 import type { SidebarUserMenuItemsRenderer } from "./sidebar-user-menu";
+import { isDurableNavigationSection } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
@@ -73,12 +74,6 @@ export interface SidebarConfig {
   profileMenu?: {
     items?: SidebarUserMenuItemsRenderer;
   };
-}
-
-function isDurableSection(section: NavigationSection) {
-  return section.items.some(
-    (item) => item.href === "/durable" || item.href.startsWith("/durable/"),
-  );
 }
 
 export function Sidebar({
@@ -107,7 +102,9 @@ export function Sidebar({
   const durableAllowed = durablePolicies.data ? durablePolicies.can("durable.view") : false;
   const baseSections = config?.navigation
     ? config.navigation
-    : defaultNavigationSections.filter((section) => !isDurableSection(section) || durableAllowed);
+    : defaultNavigationSections.filter(
+        (section) => !isDurableNavigationSection(section) || durableAllowed,
+      );
   const sections = shouldShowChatWarning
     ? baseSections.map((section) => ({
         ...section,

@@ -7,7 +7,7 @@
  */
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { cn } from "@/lib/utils";
@@ -57,22 +57,21 @@ const CATEGORY_ORDER: SearchResultCategory[] = [
   "report",
 ];
 
-function groupResults(
-  results: SearchResult[],
-): { category: SearchResultCategory; items: SearchResult[] }[] {
-  const groups = new Map<SearchResultCategory, SearchResult[]>();
-  for (const result of results) {
-    const existing = groups.get(result.category);
-    if (existing) {
-      existing.push(result);
-    } else {
-      groups.set(result.category, [result]);
+function groupResults(results: SearchResult[]) {
+  const groups: { key: string; label: string; items: SearchResult[] }[] = [];
+  for (const category of CATEGORY_ORDER) {
+    const categoryGroups = new Map<string, SearchResult[]>();
+    for (const result of results.filter((result) => result.category === category)) {
+      const label = result.navigationGroup ?? CATEGORY_LABELS[category];
+      const items = categoryGroups.get(label) ?? [];
+      items.push(result);
+      categoryGroups.set(label, items);
+    }
+    for (const [label, items] of categoryGroups) {
+      groups.push({ key: `${category}:${label}`, label, items });
     }
   }
-  return CATEGORY_ORDER.filter((cat) => groups.has(cat)).map((cat) => ({
-    category: cat,
-    items: groups.get(cat)!,
-  }));
+  return groups;
 }
 
 export function CommandPalette() {
@@ -88,7 +87,7 @@ export function CommandPalette() {
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Backdrop className="data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:animation-duration-[200ms] fixed inset-0 z-50 bg-black/50" />
-        <DialogPrimitive.Popup className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
+        <DialogPrimitive.Popup className="fixed inset-0 z-50 flex items-start justify-center px-3 pt-[12vh]">
           {/* Mount the search UI (and its data fetching) only while open, so we
               don't fetch every entity list on every page load. */}
           {open && <CommandPaletteContent setOpen={setOpen} />}
@@ -100,6 +99,7 @@ export function CommandPalette() {
 
 function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }) {
   const router = useRouter();
+  const listId = useId();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +110,8 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
 
   // Flat list for keyboard navigation
   const flatResults = grouped.flatMap((g) => g.items);
+  // Entity results arrive asynchronously and can remove the previously selected row.
+  const activeIndex = Math.max(0, Math.min(selectedIndex, flatResults.length - 1));
 
   // Focus input once the palette mounts.
   useEffect(() => {
@@ -141,23 +143,23 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
     if (selected) {
       selected.scrollIntoView({ block: "nearest" });
     }
-  }, [selectedIndex]);
+  }, [activeIndex, results]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
-          setSelectedIndex((prev) => Math.min(prev + 1, flatResults.length - 1));
+          setSelectedIndex(Math.max(0, Math.min(activeIndex + 1, flatResults.length - 1)));
           break;
         case "ArrowUp":
           e.preventDefault();
-          setSelectedIndex((prev) => Math.max(prev - 1, 0));
+          setSelectedIndex(Math.max(activeIndex - 1, 0));
           break;
         case "Enter":
           e.preventDefault();
-          if (flatResults[selectedIndex]) {
-            navigate(flatResults[selectedIndex]);
+          if (flatResults[activeIndex]) {
+            navigate(flatResults[activeIndex]);
           }
           break;
         case "Escape":
@@ -166,14 +168,19 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
           break;
       }
     },
-    [flatResults, selectedIndex, navigate, setOpen],
+    [flatResults, activeIndex, navigate, setOpen],
   );
 
   // Track which category boundary each flat index falls under
   let flatIndex = 0;
 
   return (
-    <div className="bg-background w-full max-w-lg border shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150">
+    <div className="bg-background w-full max-w-2xl border shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150">
+      <DialogPrimitive.Title className="sr-only">Search and navigate</DialogPrimitive.Title>
+      <DialogPrimitive.Description className="sr-only">
+        Find pages, resources, or organizations. Use arrow keys to choose a result and Enter to open
+        it.
+      </DialogPrimitive.Description>
       {/* Search input */}
       <div className="flex items-center gap-3 border-b px-4">
         <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -182,9 +189,14 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Search pages, organizations, agents..."
+          placeholder="Search pages, resources, organizations..."
           className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
-          aria-label="Search pages, organizations, agents"
+          aria-label="Search pages, resources, organizations"
+          role="combobox"
+          aria-expanded="true"
+          aria-autocomplete="list"
+          aria-controls={listId}
+          aria-activedescendant={flatResults.length ? `${listId}-${activeIndex}` : undefined}
         />
         <kbd className="hidden sm:inline-flex h-5 items-center gap-1 border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
           ESC
@@ -192,24 +204,34 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
       </div>
 
       {/* Results */}
-      <div ref={listRef} className="max-h-[min(50vh,400px)] overflow-y-auto p-1.5">
+      <div
+        ref={listRef}
+        id={listId}
+        role="listbox"
+        aria-label="Search results"
+        className="max-h-[min(50vh,400px)] overflow-y-auto p-1.5"
+      >
         {flatResults.length === 0 && query.trim() ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
             No results for &ldquo;{query}&rdquo;
           </div>
         ) : (
           grouped.map((group) => (
-            <div key={group.category}>
+            <div key={group.key} role="group" aria-label={group.label}>
               <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                {CATEGORY_LABELS[group.category]}
+                {group.label}
               </div>
               {group.items.map((result) => {
                 const idx = flatIndex++;
-                const isSelected = idx === selectedIndex;
+                const isSelected = idx === activeIndex;
                 return (
                   <button
                     key={result.id}
                     type="button"
+                    role="option"
+                    id={`${listId}-${idx}`}
+                    tabIndex={-1}
+                    aria-selected={isSelected}
                     data-selected={isSelected}
                     className={cn(
                       "flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors",
@@ -223,7 +245,7 @@ function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }
                     <result.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <div className="flex-1 text-left min-w-0">
                       <span className="truncate block">{result.title}</span>
-                      {result.subtitle && (
+                      {result.subtitle && !result.navigationGroup && (
                         <span className="truncate block text-xs text-muted-foreground">
                           {result.subtitle}
                         </span>

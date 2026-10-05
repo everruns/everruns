@@ -1,6 +1,10 @@
 import { render, screen } from "@testing-library/react";
 import SettingsLayout from "@/app/(main)/settings/layout";
 
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({ hasRole: () => true }),
+}));
+
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({

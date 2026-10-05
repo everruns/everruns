@@ -2,6 +2,12 @@
 
 Next.js app. Iterate without the full stack: `./node_modules/.bin/next dev --port 9120`.
 
+### Navigation
+
+Add page destinations and search aliases to `src/lib/navigation.ts`, or Settings destinations
+to `src/lib/settings-navigation.ts`. Sidebar and Command-K share these models and visibility
+rules; do not add a separate command-palette page list.
+
 ### Design system (Slate)
 
 `src/app/design-system.css` is the runtime source of truth; [`DESIGN.md`](./DESIGN.md) is its
