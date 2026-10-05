@@ -15,10 +15,11 @@ use chrono::{Duration, Utc};
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, ScheduleId, SessionId};
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_server::records::Session;
-use everruns_server::storage::models::CreateSessionScheduleRow;
+use everruns_server::storage::models::{CreateSessionScheduleRow, UpdateSession};
 use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use test_harness::TestServer;
+use uuid::Uuid;
 
 const TEST_ORG_ID: i64 = 1;
 const SECRET_DESCRIPTION: &str = "nightly payroll export to finance";
@@ -216,4 +217,116 @@ async fn an_authorized_caller_can_manage_schedules() {
             .expect("read schedule")
             .is_none()
     );
+}
+
+async fn create_platform_chat_session(server: &TestServer) -> Session {
+    server
+        .post("/v1/sessions", json!({ "agent_name": "platform-chat" }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json()
+}
+
+/// Hand the session to another user of the same org, so the test caller (the
+/// anonymous user) still holds `SESSION_MANAGE` but is no longer the owner.
+async fn reassign_owner(server: &TestServer, session: &Session, owner: Uuid) {
+    server
+        .db
+        .update_session(
+            TEST_ORG_ID,
+            session.id,
+            UpdateSession {
+                resolved_owner_user_id: everruns_durable::UpdateField::Set(owner),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("reassign session owner")
+        .expect("session exists");
+}
+
+/// Update, trigger, then delete the schedule; each must succeed.
+async fn manage_schedule(server: &TestServer, session: &Session, schedule_id: ScheduleId) {
+    let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
+    server
+        .patch(&one, json!({ "enabled": true }))
+        .await
+        .assert_status(StatusCode::OK);
+    let triggered: Value = server
+        .post(&format!("{one}/trigger"), json!({}))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(triggered["trigger_count"], 1);
+    server
+        .delete(&one)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+}
+
+/// THREAT[TM-AGENT-017]: Platform Chat acts with its persisted owner's
+/// authority, so another same-org user holding `SESSION_MANAGE` must not
+/// fire, disable, or delete the owner's schedules. Reads stay open, like
+/// session reads.
+#[tokio::test]
+async fn a_non_owner_cannot_change_platform_chat_schedules() {
+    let server = TestServer::in_memory_with_runner(Arc::new(IdleRunner)).await;
+    let session = create_platform_chat_session(&server).await;
+    let schedule_id = seed_schedule(&server, &session).await;
+    reassign_owner(&server, &session, Uuid::now_v7()).await;
+
+    let one = format!("/v1/sessions/{}/schedules/{}", session.id, schedule_id);
+    server
+        .patch(&one, json!({ "enabled": false }))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    server
+        .post(&format!("{one}/trigger"), json!({}))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+    server
+        .delete(&one)
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+
+    let persisted = server
+        .db
+        .get_session_schedule(TEST_ORG_ID, schedule_id)
+        .await
+        .expect("read schedule")
+        .expect("schedule survives a refused delete");
+    assert!(persisted.enabled, "refused update must not disable");
+    assert_eq!(persisted.trigger_count, 0, "refused trigger must not fire");
+    assert!(persisted.last_triggered_at.is_none());
+
+    server.get(&one).await.assert_status(StatusCode::OK);
+    server
+        .get(&format!("/v1/sessions/{}/schedules", session.id))
+        .await
+        .assert_status(StatusCode::OK);
+}
+
+#[tokio::test]
+async fn the_platform_chat_owner_can_change_its_schedules() {
+    let server = TestServer::in_memory_with_runner(Arc::new(IdleRunner)).await;
+    let session = create_platform_chat_session(&server).await;
+    assert_eq!(
+        session.resolved_owner_user_id,
+        Some(everruns_server::records::ANONYMOUS_USER_ID)
+    );
+    let schedule_id = seed_schedule(&server, &session).await;
+
+    manage_schedule(&server, &session, schedule_id).await;
+}
+
+/// The owner binding is Platform Chat specific: a regular session owned by
+/// another user stays manageable by any caller holding `SESSION_MANAGE`.
+#[tokio::test]
+async fn other_sessions_schedules_are_not_owner_bound() {
+    let server = TestServer::in_memory_with_runner(Arc::new(IdleRunner)).await;
+    let session = create_session(&server).await;
+    let schedule_id = seed_schedule(&server, &session).await;
+    reassign_owner(&server, &session, Uuid::now_v7()).await;
+
+    manage_schedule(&server, &session, schedule_id).await;
 }

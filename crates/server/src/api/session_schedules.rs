@@ -3,7 +3,8 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_schedules::SessionScheduleService;
-use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
+use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW, SessionService};
+use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -27,14 +28,18 @@ use utoipa::ToSchema;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub db: Arc<StorageBackend>,
     pub schedule_service: Arc<SessionScheduleService>,
+    pub session_service: Arc<SessionService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(schedule_service: Arc<SessionScheduleService>, auth: AuthState) -> Self {
+    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
-            schedule_service,
+            schedule_service: Arc::new(SessionScheduleService::new(db.clone())),
+            session_service: Arc::new(SessionService::new(db.clone())),
+            db,
             auth,
         }
     }
@@ -155,6 +160,7 @@ pub async fn update_schedule(
         "update schedule parent",
     )
     .await?;
+    require_platform_chat_owner(&state, &org, session_id).await?;
 
     let schedule = state
         .schedule_service
@@ -192,6 +198,7 @@ pub async fn delete_schedule(
         "delete schedule parent",
     )
     .await?;
+    require_platform_chat_owner(&state, &org, session_id).await?;
 
     let deleted = state
         .schedule_service
@@ -232,6 +239,7 @@ pub async fn trigger_schedule(
         "trigger schedule parent",
     )
     .await?;
+    require_platform_chat_owner(&state, &org, session_id).await?;
 
     let schedule = state
         .schedule_service
@@ -259,6 +267,37 @@ fn authorize(
     policy
         .evaluate_with(state.auth.permission_resolver.as_ref(), &Caller::from(org))
         .map_err(|error| ErrorResponse::new(error.to_string()).into_response(StatusCode::FORBIDDEN))
+}
+
+/// THREAT[TM-AGENT-017]: Platform Chat acts with its persisted owner's
+/// authority, and posting messages to it is owner-bound. Firing, re-enabling,
+/// disabling, or deleting its schedules would let another same-org user with
+/// `SESSION_MANAGE` make the assistant act (or stop acting) on the owner's
+/// behalf at a time they choose, so changes bind to that owner too. Reads stay
+/// unbound, like session reads. Runs after the policy check and the
+/// parent-session match.
+async fn require_platform_chat_owner(
+    state: &AppState,
+    org: &ResolvedOrg,
+    session_id: SessionId,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(org);
+    let session = state
+        .session_service
+        .get(&caller, session_id.uuid(), None)
+        .await
+        .log_internal_error_json("get schedule session")?
+        .ok_or_not_found_json("Schedule")?;
+    if !crate::domains::sessions::platform_chat_owner_matches_session(&state.db, &caller, &session)
+        .await
+        .log_internal_error_json("authorize session owner")?
+    {
+        return Err(ErrorResponse::new(
+            "Only the Platform Chat session owner can manage its schedules".to_string(),
+        )
+        .into_response(StatusCode::FORBIDDEN));
+    }
+    Ok(())
 }
 
 async fn get_schedule_in_session(

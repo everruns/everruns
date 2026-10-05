@@ -1371,15 +1371,11 @@ impl ServerAppBuilder {
             connector_registry.clone(),
             mcp_server_service,
         );
-        let session_schedule_service =
-            Arc::new(crate::domains::session_schedules::SessionScheduleService::new(db.clone()));
         let background_session_schedule_service = Arc::new(
             crate::domains::session_schedules::SessionScheduleService::new(background_db.clone()),
         );
-        let session_schedules_state = api::session_schedules::AppState::new(
-            session_schedule_service.clone(),
-            auth_state.clone(),
-        );
+        let session_schedules_state =
+            api::session_schedules::AppState::new(db.clone(), auth_state.clone());
         let session_resources_state =
             api::session_resources::AppState::new(db.clone(), auth_state.clone());
         let session_tasks_state = api::session_tasks::AppState::new(
