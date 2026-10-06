@@ -38,7 +38,7 @@ use tools::{
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
     &[everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "deno_connection",
+        name: "deno",
         label: "Deno connection",
         description: "Connect your own Deno Deploy account for Deno sandboxes.",
         grade: everruns_contracts::runtime::FeatureFlagGrade::Off,
@@ -52,7 +52,7 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("deno_connection"),
+    feature_flag: Some("deno"),
     factory: || Box::new(DenoConnector),
 }];
 const DENO_CONSOLE_API_BASE: &str = "https://console.deno.com";

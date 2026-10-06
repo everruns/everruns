@@ -393,9 +393,12 @@ mod tests {
         if std::env::var("FEATURE_DAYTONA").is_err() {
             assert!(prod.has("daytona"), "daytona is adoption grade");
         }
-        if std::env::var("FEATURE_BROWSERLESS_CONNECTION").is_err() {
-            assert!(dev.has("browserless"));
-            assert!(!prod.has("browserless"));
+        if std::env::var("FEATURE_BROWSERLESS").is_err() {
+            assert!(prod.has("browserless"), "browserless is adoption grade");
+        }
+        if std::env::var("FEATURE_DENO").is_err() {
+            assert!(!dev.has("deno"), "deno is off by default");
+            assert!(!prod.has("deno"), "deno is off by default");
         }
     }
 }

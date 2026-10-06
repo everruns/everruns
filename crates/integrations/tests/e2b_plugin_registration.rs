@@ -105,7 +105,7 @@ fn test_desktop_computer_use_is_behind_its_feature_flag() {
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name(), "computer");
     assert!(
-        !registry_for_grade(DeploymentGrade::Prod).has(id),
-        "desktop computer use must stay out of prod while its flag is at dev grade"
+        registry_for_grade(DeploymentGrade::Prod).has(id),
+        "desktop computer use is adoption grade, so prod registers it for opted-in organisations"
     );
 }

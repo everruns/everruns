@@ -54,7 +54,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         name: "e2b_computer_use",
         label: "E2B desktop computer use",
         description: "Let agents operate a remote Linux desktop through E2B Desktop.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     }];
 
 /// Capability plugins this crate contributes to a hosted catalog.

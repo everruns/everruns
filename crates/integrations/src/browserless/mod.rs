@@ -62,10 +62,10 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },
     everruns_contracts::runtime::FeatureFlagDefinition {
-        name: "browserless_connection",
+        name: "browserless",
         label: "Browserless connection",
         description: "Connect your own Browserless account for browser tools.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     },
 ];
 
@@ -87,7 +87,7 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    feature_flag: Some("browserless_connection"),
+    feature_flag: Some("browserless"),
     factory: || Box::new(BrowserlessConnector),
 }];
 // ============================================================================

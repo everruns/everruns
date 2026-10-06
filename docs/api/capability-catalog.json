@@ -347,6 +347,7 @@
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "computer_use_desktop",

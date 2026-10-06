@@ -827,9 +827,9 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        assert_eq!(prod.grade("browserless_connection"), FeatureFlagGrade::Dev);
-        assert!(!prod.deployment_flags().is_enabled("browserless_connection"));
-        assert!(!prod.deployment_flags().is_connector_enabled("browserless"));
+        assert_eq!(prod.grade("deno"), FeatureFlagGrade::Off);
+        assert!(!prod.deployment_flags().is_enabled("deno"));
+        assert!(!prod.deployment_flags().is_connector_enabled("deno"));
         assert_eq!(prod.grade("daytona"), FeatureFlagGrade::Adoption);
         let adopted = prod;
         assert!(adopted.deployment_flags().is_enabled("daytona"));
