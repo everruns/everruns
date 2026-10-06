@@ -40,6 +40,8 @@ if [ -n "$violations" ]; then
   # (the renumber also rewrites the file's `Migration NNN` header, so git emits
   # `R9x`, not `R100`).
   violations="$(printf '%s\n' "$violations" | grep -vE $'^R[0-9]+\tcrates/server/migrations/076_generation_reconciliation_backoff\\.sql\tcrates/server/migrations/077_generation_reconciliation_backoff\\.sql$' || true)"
+  # #4264 and #4265 both merged a migration 178; the later one moves to 179.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/178_durable_task_queue_queue.sql\tcrates/server/migrations/179_durable_task_queue_queue.sql' || true)"
 fi
 
 if [ -n "$violations" ]; then
