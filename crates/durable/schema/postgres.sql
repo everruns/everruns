@@ -193,6 +193,10 @@ CREATE TABLE IF NOT EXISTS durable_dead_letter_queue (
     requeue_count INTEGER NOT NULL DEFAULT 0
 );
 
+-- The dead task's activity options (server migration 181), so a requeue keeps
+-- its queue and retry settings. NULL for rows dead before it.
+ALTER TABLE durable_dead_letter_queue ADD COLUMN IF NOT EXISTS options JSONB;
+
 CREATE INDEX IF NOT EXISTS idx_durable_dlq_activity_type
     ON durable_dead_letter_queue (activity_type);
 CREATE INDEX IF NOT EXISTS idx_durable_dlq_dead_at
