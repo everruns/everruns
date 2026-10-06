@@ -8,11 +8,11 @@ use std::time::Duration;
 use anyhow::Result;
 use everruns_internal_protocol::proto::{
     self, ClaimDurableTasksRequest, CompleteDurableTaskRequest, CountActiveDurableWorkflowsRequest,
-    CreateDurableWorkflowRequest, DeregisterDurableWorkerRequest, DurableActivityOptions,
-    DurableTaskDefinition, EnqueueDurableTaskRequest, FailDurableTaskRequest,
-    GetDurableWorkflowStatusRequest, HeartbeatDurableTaskRequest, HeartbeatDurableWorkerRequest,
-    RegisterDurableWorkerRequest, SubscribeTaskNotificationsRequest, TaskNotification,
-    TaskNotificationType, UpdateDurableWorkflowStatusRequest,
+    CreateDurableWorkflowRequest, DeregisterDurableWorkerRequest, DrainDurableWorkerRequest,
+    DurableActivityOptions, DurableTaskDefinition, EnqueueDurableTaskRequest,
+    FailDurableTaskRequest, GetDurableWorkflowStatusRequest, HeartbeatDurableTaskRequest,
+    HeartbeatDurableWorkerRequest, RegisterDurableWorkerRequest, SubscribeTaskNotificationsRequest,
+    TaskNotification, TaskNotificationType, UpdateDurableWorkflowStatusRequest,
 };
 use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
 use tonic::service::interceptor::InterceptedService;
@@ -515,20 +515,30 @@ impl GrpcDurableStore {
         Ok(())
     }
 
-    /// Send worker heartbeat
+    /// Send worker heartbeat. Returns whether the worker is draining.
     pub async fn heartbeat_worker(
         &mut self,
         worker_id: &str,
         current_load: u32,
         accepting_tasks: bool,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let request = HeartbeatDurableWorkerRequest {
             worker_id: worker_id.to_string(),
             current_load: current_load as i32,
             accepting_tasks,
         };
 
-        self.client.heartbeat_durable_worker(request).await?;
+        let response = self.client.heartbeat_durable_worker(request).await?;
+        Ok(response.into_inner().draining)
+    }
+
+    /// Mark this worker draining, so the queue hands it no new tasks
+    pub async fn drain_worker(&mut self, worker_id: &str) -> Result<()> {
+        let request = DrainDurableWorkerRequest {
+            worker_id: worker_id.to_string(),
+        };
+
+        self.client.drain_durable_worker(request).await?;
         Ok(())
     }
 

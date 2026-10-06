@@ -770,7 +770,10 @@ mod tests {
             _worker_id: &str,
             _current_load: usize,
             _accepting_tasks: bool,
-        ) -> Result<(), StoreError> {
+        ) -> Result<everruns_durable::WorkerHeartbeat, StoreError> {
+            Ok(Default::default())
+        }
+        async fn drain_worker(&self, _worker_id: &str) -> Result<(), StoreError> {
             Ok(())
         }
         async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {

@@ -25,8 +25,8 @@ pub use store::{
     ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
     SealedTaskInfo, SignalStore, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome,
     TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule,
-    WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo, WorkerRegistry, WorkflowEventInfo,
-    WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowSnapshot,
-    WorkflowStatus, event_type_name, no_progress_seal_threshold_from_env,
+    WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerHeartbeat, WorkerInfo, WorkerRegistry,
+    WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
+    WorkflowSnapshot, WorkflowStatus, event_type_name, no_progress_seal_threshold_from_env,
     snapshot_interval_from_env,
 };

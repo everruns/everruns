@@ -101,3 +101,43 @@ async fn idle_worker_waits_for_backoff_without_a_wakeup() {
     shutdown.shutdown();
     run.await.expect("join").expect("worker run");
 }
+
+/// An operator drain reaches the worker through its heartbeat: it stops
+/// claiming, and a resume wakes it to claim at once rather than after its
+/// poll backoff.
+#[tokio::test]
+async fn drained_worker_claims_again_as_soon_as_it_is_resumed() {
+    use crate::durable::WorkerRegistry;
+
+    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let config = TaskWorkerConfig {
+        heartbeat_interval: Duration::from_millis(20),
+        ..single_slot_config()
+    };
+    let worker_id = config.worker_id.clone();
+    let mut worker = TaskWorker::new(config, store.clone(), NoopAdapters);
+    let shutdown = worker.shutdown_handle();
+    let run = tokio::spawn(async move { worker.run().await });
+
+    // Let the worker register and settle into its (long) poll backoff.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    WorkerRegistry::drain_worker(&*store, &worker_id)
+        .await
+        .expect("drain");
+    let task = enqueue(&store).await;
+    assert!(
+        !wait_claimed(&store, task, Duration::from_millis(300)).await,
+        "a drained worker must not claim"
+    );
+
+    WorkerRegistry::resume_worker(&*store, &worker_id)
+        .await
+        .expect("resume");
+    assert!(
+        wait_claimed(&store, task, Duration::from_secs(1)).await,
+        "a resumed worker should claim on the next heartbeat, not after the {BACKOFF:?} backoff"
+    );
+
+    shutdown.shutdown();
+    run.await.expect("join").expect("worker run");
+}
