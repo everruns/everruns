@@ -74,9 +74,10 @@ impl TaskQueue for PostgresWorkflowEventStore {
             INSERT INTO durable_task_queue (
                 id, workflow_id, activity_id, activity_type, input, options,
                 max_attempts, priority, visible_at,
-                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
+                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
+                queue
             )
-            SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11
+            SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11, $13
             WHERE NOT EXISTS (
                 SELECT 1 FROM durable_task_queue WHERE workflow_id = $2 AND activity_id = $3
             )
@@ -88,9 +89,10 @@ impl TaskQueue for PostgresWorkflowEventStore {
             INSERT INTO durable_task_queue (
                 id, workflow_id, activity_id, activity_type, input, options,
                 max_attempts, priority, visible_at,
-                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
+                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
+                queue
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11, $13)
             RETURNING id
             "#
         })
@@ -106,6 +108,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(task.options.start_to_close_timeout.as_millis() as i64)
         .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
         .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
+        .bind(task.options.queue.as_deref())
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
@@ -205,10 +208,10 @@ impl TaskQueue for PostgresWorkflowEventStore {
                     id, workflow_id, activity_id, activity_type, input, options,
                     max_attempts, priority, visible_at,
                     schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
-                    status, claimed_by, claimed_at, heartbeat_at, attempt
+                    status, claimed_by, claimed_at, heartbeat_at, attempt, queue
                 )
                 SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11,
-                       'claimed', $12, NOW(), NOW(), 1
+                       'claimed', $12, NOW(), NOW(), 1, $14
                 WHERE EXISTS (
                     SELECT 1 FROM durable_workers WHERE id = $12 AND status != 'draining'
                 )
@@ -241,6 +244,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
         .bind(worker_id)
         .bind(&started)
+        .bind(task.options.queue.as_deref())
         .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
@@ -277,9 +281,10 @@ impl TaskQueue for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self, activity_types))]
-    async fn claim_task(
+    async fn claim_queue_tasks(
         &self,
         worker_id: &str,
+        queue: Option<&str>,
         activity_types: &[String],
         max_tasks: usize,
     ) -> Result<Vec<ClaimedTask>, StoreError> {
@@ -290,7 +295,8 @@ impl TaskQueue for PostgresWorkflowEventStore {
         // Use SKIP LOCKED for efficient concurrent claiming.
         // This transaction:
         // 1. Verifies worker is not draining (early exit if draining)
-        // 2. Finds pending tasks matching activity types
+        // 2. Finds pending tasks of `queue` (NULL: the default queue) matching
+        //    activity types
         // 3. Orders by priority (desc) then visibility time
         // 4. Limits to max_tasks
         // 5. Uses SKIP LOCKED to avoid contention
@@ -326,6 +332,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
                 FROM durable_task_queue tq, worker_check
                 WHERE tq.status = 'pending'
                   AND tq.activity_type = ANY($1)
+                  AND tq.queue IS NOT DISTINCT FROM $4
                   AND tq.visible_at <= NOW()
                   AND tq.attempt < tq.max_attempts
                 ORDER BY tq.priority DESC, tq.visible_at
@@ -354,6 +361,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         .bind(activity_types)
         .bind(max_tasks as i32)
         .bind(worker_id)
+        .bind(queue)
         .fetch_all(&mut *tx)
         .await
         .map_err(|e| store_failure("durable.tasks.claim", "Failed to claim tasks", e))?;
@@ -748,7 +756,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             r#"
             SELECT id, workflow_id, activity_id, activity_type, status,
                    priority, attempt, max_attempts, claimed_by, last_error,
-                   created_at, claimed_at
+                   created_at, claimed_at, queue
             FROM durable_task_queue
             WHERE id = $1
             "#,
@@ -786,6 +794,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             last_error: row.get("last_error"),
             created_at: row.get("created_at"),
             claimed_at: row.get("claimed_at"),
+            queue: row.get("queue"),
         })
     }
 
@@ -1050,7 +1059,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             r#"
             SELECT id, workflow_id, activity_id, activity_type, status,
                    priority, attempt, max_attempts, claimed_by, last_error,
-                   created_at, claimed_at
+                   created_at, claimed_at, queue
             FROM durable_task_queue
             WHERE ($1::text IS NULL OR status = $1)
               AND ($2::text IS NULL OR activity_type = $2)
@@ -1101,6 +1110,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
                     last_error: row.get("last_error"),
                     created_at: row.get("created_at"),
                     claimed_at: row.get("claimed_at"),
+                    queue: row.get("queue"),
                 }
             })
             .collect();

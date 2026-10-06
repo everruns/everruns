@@ -152,6 +152,9 @@ CREATE TABLE IF NOT EXISTS durable_task_queue (
     progress_token BIGINT,
     no_progress_count INTEGER NOT NULL DEFAULT 0
 );
+-- Named task queue (`ActivityOptions::queue`); NULL is the default queue.
+-- Server migration 178.
+ALTER TABLE durable_task_queue ADD COLUMN IF NOT EXISTS queue TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_durable_task_queue_pending
     ON durable_task_queue (priority DESC, visible_at, activity_type)
@@ -324,8 +327,11 @@ CREATE OR REPLACE TRIGGER trigger_durable_schedules_updated_at
 CREATE OR REPLACE FUNCTION notify_task_available()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Notify with activity_type as payload for filtering
-    PERFORM pg_notify('task_available', NEW.activity_type);
+    -- Notify with activity_type as payload for filtering. A named queue's
+    -- task wakes no default-queue listener: none of them could claim it.
+    IF NEW.queue IS NULL THEN
+        PERFORM pg_notify('task_available', NEW.activity_type);
+    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

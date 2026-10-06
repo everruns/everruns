@@ -8750,6 +8750,51 @@
     "read_only": true
   },
   {
+    "category": "history",
+    "cli": "history diff",
+    "description": "Compare two revisions of an entity field by field (to the latest by default). Secrets compare only as set or changed.",
+    "input_schema": {
+      "description": "Compare two revisions of an entity field by field.",
+      "properties": {
+        "entity_ref": {
+          "description": "The entity's public id.",
+          "type": "string"
+        },
+        "from": {
+          "description": "The older revision.",
+          "format": "int64",
+          "type": "integer"
+        },
+        "kind": {
+          "description": "Entity kind, for ids without a prefix.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "description": "The newer revision; the latest when omitted.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "entity_ref",
+        "from"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "diff_entity_revisions",
+    "output_shape": "array of {field, from, to}",
+    "path": "/v1/history/{entity_ref}/diff",
+    "positional_arg": "entity_ref",
+    "read_only": true
+  },
+  {
     "category": "payments",
     "cli": null,
     "description": "Disable a machine-payment wallet account.",
@@ -14928,6 +14973,43 @@
     "read_only": true
   },
   {
+    "category": "history",
+    "cli": "history restore",
+    "description": "Make an entity look like it did at a revision. Runs as a new change through the entity's own update command, recorded as `restored`; secrets keep their current value.",
+    "input_schema": {
+      "description": "Make an entity look like it did at a revision, as a new change.",
+      "properties": {
+        "entity_ref": {
+          "description": "The entity's public id.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Entity kind, for ids without a prefix.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "description": "The revision to bring back.",
+          "format": "int64",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "entity_ref",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "method": "POST",
+    "name": "restore_entity_revision",
+    "output_shape": "{restored_revision, entity, warnings}",
+    "path": "/v1/history/{entity_ref}/restore",
+    "positional_arg": "entity_ref",
+    "read_only": false
+  },
+  {
     "category": "agents",
     "cli": "agents exposures resume",
     "description": "Let an agent's live channels accept traffic again.",
@@ -15498,6 +15580,45 @@
     "path": "/v1/context/{entity_ref}",
     "positional_arg": "entity_ref",
     "read_only": false
+  },
+  {
+    "category": "history",
+    "cli": "history show",
+    "description": "Show an entity as it stood at one revision of its history (the latest by default). Secrets appear only as markers saying whether they were set.",
+    "input_schema": {
+      "description": "Show an entity as it stood at one revision.",
+      "properties": {
+        "entity_ref": {
+          "description": "The entity's public id.",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Entity kind, for ids without a prefix.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "description": "Revision number; the latest when omitted.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "entity_ref"
+      ],
+      "type": "object"
+    },
+    "method": "GET",
+    "name": "show_entity_revision",
+    "output_shape": "{revision, change, snapshot}",
+    "path": "/v1/history/{entity_ref}/revisions/{revision}",
+    "positional_arg": "entity_ref",
+    "read_only": true
   },
   {
     "category": "health_issues",

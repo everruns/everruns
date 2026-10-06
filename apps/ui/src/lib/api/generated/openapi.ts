@@ -2493,6 +2493,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/history/{entity_ref}/diff": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/history/{entity_ref}/diff - Two revisions compared field by field */
+    get: operations["diff_entity_revisions"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/history/{entity_ref}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/history/{entity_ref}/restore - Bring a revision back as a new change */
+    post: operations["restore_entity_revision"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/history/{entity_ref}/revisions/{revision}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/history/{entity_ref}/revisions/{revision} - The entity at one revision */
+    get: operations["show_entity_revision"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/images": {
     parameters: {
       query?: never;
@@ -9739,6 +9790,17 @@ export interface components {
       /** @description Correlation id of the HTTP request, when there was one. */
       request_id?: string | null;
       /**
+       * Format: int64
+       * @description For a restore, the revision it brought back.
+       */
+      restored_from_revision?: number | null;
+      /**
+       * Format: int64
+       * @description The entity's revision after this change; absent when the change left
+       *     the entity as it was, or its kind keeps no snapshots.
+       */
+      revision?: number | null;
+      /**
        * @description Where the change came in: `api`, `commands`, `mcp`, `platform`,
        *     `worker` or `internal`.
        * @example platform
@@ -9748,6 +9810,20 @@ export interface components {
       via_agent_id?: string | null;
       /** @description The session through which an agent made the change. */
       via_session_id?: string | null;
+    };
+    /**
+     * @description One revision of an entity: the entry that made it and the entity as it
+     *     stood after it.
+     */
+    EntityRevision: {
+      change: components["schemas"]["EntityChange"];
+      /** Format: int64 */
+      revision: number;
+      /**
+       * @description The entity after the change, secrets as markers under `$secrets`.
+       *     `null` once the revision is older than the snapshots kept.
+       */
+      snapshot?: unknown;
     };
     /**
      * @description Standard error response.
@@ -10231,6 +10307,15 @@ export interface components {
      */
     FeatureFlagMap: {
       [key: string]: boolean;
+    };
+    /** @description One field that differs between two snapshots. */
+    FieldDiff: {
+      /** @description Top-level field name; a secret is `$secrets.<name>`. */
+      field: string;
+      /** @description The value before, `null` when absent. A secret shows only its marker. */
+      from: unknown;
+      /** @description The value after, `null` when absent. */
+      to: unknown;
     };
     /**
      * @description Input field type for rendering.
@@ -17667,6 +17752,25 @@ export interface components {
        * @example 2
        */
       waiting_for_tool_results_session_count: number;
+    };
+    /** @description The revision to bring back. */
+    RestoreRequest: {
+      /** @description Entity kind, needed only for kinds whose ids have no prefix. */
+      kind?: string | null;
+      /** Format: int64 */
+      revision: number;
+    };
+    /** @description What a restore did. */
+    RestoreResult: {
+      /** @description The entity after the restore, as its update command returned it. */
+      entity: unknown;
+      /**
+       * Format: int64
+       * @description The revision brought back.
+       */
+      restored_revision: number;
+      /** @description Secrets kept at their current value that differ from the revision. */
+      warnings: string[];
     };
     /** @description Result of resuming budgets paused for a session. */
     ResumeSessionResponse: {
@@ -30858,6 +30962,127 @@ export interface operations {
       };
       /** @description Forbidden */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  diff_entity_revisions: {
+    parameters: {
+      query: {
+        /** @description Entity kind, needed only for kinds whose ids have no prefix. */
+        kind?: string;
+        /** @description The older revision. */
+        from: number;
+        /** @description The newer revision; the latest when omitted. */
+        to?: number;
+      };
+      header?: never;
+      path: {
+        /** @description The entity's public id */
+        entity_ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Fields that differ */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["FieldDiff"][];
+        };
+      };
+      /** @description No such revision */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  restore_entity_revision: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The entity's public id */
+        entity_ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RestoreRequest"];
+      };
+    };
+    responses: {
+      /** @description Restored */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["RestoreResult"];
+        };
+      };
+      /** @description No such revision, or the entity was deleted */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description The entity's manager context changed since it was read */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  show_entity_revision: {
+    parameters: {
+      query?: {
+        /** @description Entity kind, needed only for kinds whose ids have no prefix. */
+        kind?: string;
+      };
+      header?: never;
+      path: {
+        /** @description The entity's public id */
+        entity_ref: string;
+        /** @description Revision number */
+        revision: number;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The entity as it stood after that change */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EntityRevision"];
+        };
+      };
+      /** @description No such revision */
+      404: {
         headers: {
           [name: string]: unknown;
         };

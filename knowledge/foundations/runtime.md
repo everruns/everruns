@@ -58,8 +58,8 @@ own backends through the same contracts.
   helpers, reusable host-phase composition, and lifecycle-effect application.
 - `everruns-durable` is a generic durable-execution engine (persistence,
   retries, task queue, schedules) with no agent or turn semantics and no
-  `everruns-*` dependency. `everruns-durable-engine` owns the checkpointed
-  `DurableExecution` driver, the `TurnTaskDriver` that runs each turn step,
+  `everruns-*` dependency. `everruns-durable-engine` owns the `TurnTaskDriver` that runs each turn step and checkpoints its
+  `TurnExecution` state between steps,
   and the turn conventions layered on durable tasks; it implements host's
   experimental `TurnBackend` seam (see
   [Execution Backends](../framework/execution-backends.md)).

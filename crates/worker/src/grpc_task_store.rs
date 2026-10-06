@@ -1,22 +1,25 @@
-// gRPC-backed TaskStore for standalone workers.
+// gRPC-backed TurnStore for standalone workers and their runner.
 //
-// durable-engine owns the TaskStore trait (with a blanket impl for every
+// durable-engine owns the TurnStore trait (with a blanket impl for every
 // WorkflowEventStore); the worker implements it for its own gRPC client type,
 // so the transport stays out of the engine and coherence holds.
+//
+// Each call clones the store: a tonic client is a cheap handle over one
+// shared channel, and the trait takes `&self` so callers need no lock.
 
 use crate::durable::{
-    ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome, WorkerInfo, WorkflowError,
-    WorkflowStatus,
+    ClaimedTask, HeartbeatResponse, RunStart, StoreError, TaskFailureOutcome, WorkerInfo,
+    WorkflowError, WorkflowSignal, WorkflowStatus,
 };
 use async_trait::async_trait;
 use std::time::Duration;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::{GrpcDurableStore, TaskNotificationEvent};
-use crate::task_store::{TaskStore, TaskWakeups};
+use crate::turn_store::{TaskWakeups, TurnStore, WorkflowSnapshot};
 
 #[async_trait]
-impl TaskStore for GrpcDurableStore {
+impl TurnStore for GrpcDurableStore {
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
         let mut store = self.clone();
         GrpcDurableStore::register_worker(
@@ -80,14 +83,6 @@ impl TaskStore for GrpcDurableStore {
             accepted: response.acknowledged,
             should_cancel: response.should_cancel,
         })
-    }
-
-    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
-        let mut store = self.clone();
-        let (status, _, _) = GrpcDurableStore::get_workflow_status(&mut store, workflow_id)
-            .await
-            .map_err(store_error)?;
-        Ok(grpc_status_to_workflow_status(status))
     }
 
     async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {
@@ -228,6 +223,56 @@ impl TaskStore for GrpcDurableStore {
     ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
         let mut store = self.clone();
         GrpcDurableStore::get_and_consume_signals_by_type(&mut store, workflow_id, signal_type)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn cancel_pending_tasks(&self, _workflow_id: Uuid) -> Result<u64, StoreError> {
+        // The control plane cancels a session's turn; a worker never does.
+        Ok(0)
+    }
+
+    async fn start_turn(
+        &self,
+        _workflow_id: Uuid,
+        _workflow_type: &str,
+        _input: serde_json::Value,
+        _activity_id: String,
+        _activity_type: String,
+    ) -> Result<RunStart, StoreError> {
+        // Turns start on the control plane, which owns the store. A worker's
+        // runner only steers runs that already exist, so it reports one as
+        // active and the runner signals it.
+        Ok(RunStart::Active)
+    }
+
+    async fn get_workflow(&self, workflow_id: Uuid) -> Result<WorkflowSnapshot, StoreError> {
+        let mut store = self.clone();
+        let (status, output, error) =
+            GrpcDurableStore::get_workflow_status(&mut store, workflow_id)
+                .await
+                .map_err(store_error)?;
+        Ok(WorkflowSnapshot {
+            status: grpc_status_to_workflow_status(status),
+            output,
+            error,
+        })
+    }
+
+    async fn count_active_workflows(&self) -> Result<usize, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::count_active_workflows(&mut store)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn send_signal(
+        &self,
+        workflow_id: Uuid,
+        signal: WorkflowSignal,
+    ) -> Result<(), StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::send_signal(&mut store, workflow_id, signal)
             .await
             .map_err(store_error)
     }

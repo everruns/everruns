@@ -11,8 +11,9 @@ tags:
 ---
 # Change Reasons and Manager Context
 
-Status: in progress. Phases 1 (reasons and history), 2 (manager context) and
-3 (agents know) are implemented; phases 4 to 7 are design. For what has landed, the Rust source
+Status: in progress. Phases 1 (reasons and history), 2 (manager context),
+3 (agents know) and 4 (revisions and restore) are implemented; phases 5 to 7
+are design. For what has landed, the Rust source
 (`crates/server/src/domains/change_history/`), migrations and OpenAPI export
 own the exact fields and this concept keeps only the intent, contracts and
 success bars.
@@ -213,6 +214,16 @@ Restore can fail for reasons a snapshot cannot fix: a referenced harness,
 model or MCP server was deleted since. It then fails as the update would,
 with `unprocessable` naming the missing reference. It never partially
 applies.
+
+As built, a snapshot is the entity as its kind's read command returns it,
+or, for kinds read through a parent (channels, triggers, check rules,
+knowledge entries, eval cases), the command's output when that output is the
+entity. Fields derived from other entities (counts, links, timestamps) are
+left out so a no-op update hashes the same. Restore sends every snapshot
+field the update command accepts and clears one the revision lacked; a field
+the update cannot set back (an optional field it cannot clear) is named in a
+warning instead of silently differing. Restoring a deleted entity is not
+supported yet.
 
 ### Secrets
 
@@ -598,7 +609,7 @@ Each phase is one PR-sized change.
    `--context-revision`, the never-reaches-the-runtime test.
 3. **Agents know** (implemented). Platform Chat and capability prompts, MCP instructions,
    error recovery actions, public docs, the two evals.
-4. **Snapshots, restore and secrets.** Snapshot rendering with `Secret`
+4. **Snapshots, restore and secrets** (implemented). Snapshot rendering with `Secret`
    markers for every kind in the coverage table, `history show`, `diff` and
    `restore`, the seeded-secret guard.
 5. **Retire agent versions.** Data migration into history, pins removed,

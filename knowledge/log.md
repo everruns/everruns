@@ -15,6 +15,19 @@
   Server endpoints opt in with `state_visible` (default off, off for Public
   Chat); client `state` is still not read. See
   [AG-UI Channel](integrations/ag-ui.md#shared-state).
+* **One store trait for turns.** durable-engine's runner store
+  (`DurableStoreBackend`) and task store (`TaskStore`) merged into
+  `TurnStore`, which every `everruns-durable` store gets by a blanket impl and
+  the worker implements for its gRPC client; the `DurableExecution` newtype is
+  gone and turn steps checkpoint `TurnExecution` directly. See
+  [Execution Backends](framework/execution-backends.md).
+
+* **Durable tasks have named queues.** `ActivityOptions::queue` (the
+  `durable_task_queue.queue` column, server migration 178) names the queue a
+  task goes to, and a claim takes one queue's tasks only. A PostgreSQL
+  `DurableBackend` routes its sessions' steps through a queue of its own
+  instead of tagging their activity type. See
+  [Execution Backends](framework/execution-backends.md).
 
 ## 2026-10-05
 

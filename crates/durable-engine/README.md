@@ -34,18 +34,17 @@ cargo add everruns-durable-engine
   over a PostgreSQL store several processes may share, each claiming only its
   own sessions' steps. The `everruns` facade selects it with its `durable`
   feature.
-- `TurnTaskDriver`, which runs one claimed turn task against any `TaskStore`:
+- `TurnTaskDriver`, which runs one claimed turn task against any `TurnStore`:
   cancellation check, heartbeat, the step, completion or failure, then the next
   step's enqueue or the workflow's completion. A `TurnTaskHost` supplies the
   runtime host each step runs on.
-- `TaskStore` and `DurableStoreBackend`, the store contracts the driver and the
-  runner run on. Any `everruns-durable` `WorkflowEventStore` is a `TaskStore`.
-- Two stores out of the box: `InMemoryDurableStore` for tests and development,
-  and `DirectDurableStore`, which talks to PostgreSQL through
-  `everruns-durable`'s own schema.
+- `TurnStore`, the one store contract the driver and the runner share. Any
+  `everruns-durable` `WorkflowEventStore` is a `TurnStore`, so the in-memory
+  store (tests and development) and the PostgreSQL store (on
+  `everruns-durable`'s own schema) work out of the box.
 
 The crate carries no transport. The Everruns platform worker reaches the store
-over gRPC: it implements `TaskStore` and `DurableStoreBackend` for its own
+over gRPC: it implements `TurnStore` for its own
 client and builds its runner with `DurableRunner::from_store`. Another process
 boundary plugs in the same way.
 

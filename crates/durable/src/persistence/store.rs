@@ -367,6 +367,8 @@ pub struct TaskInfo {
     pub last_error: Option<String>,
     pub created_at: DateTime<Utc>,
     pub claimed_at: Option<DateTime<Utc>>,
+    /// The task queue it was enqueued to; `None` is the default queue.
+    pub queue: Option<String>,
 }
 
 /// Extended workflow information with timestamps
@@ -810,12 +812,28 @@ pub trait TaskQueue: Send + Sync + 'static {
         self.enqueue_task(task).await.map(Enqueued::Queued)
     }
 
-    /// Claim tasks for execution
-    ///
-    /// Uses SELECT FOR UPDATE SKIP LOCKED for efficient concurrent claiming.
+    /// Claim tasks of the default queue for execution; see
+    /// [`claim_queue_tasks`](Self::claim_queue_tasks).
     async fn claim_task(
         &self,
         worker_id: &str,
+        activity_types: &[String],
+        max_tasks: usize,
+    ) -> Result<Vec<ClaimedTask>, StoreError> {
+        self.claim_queue_tasks(worker_id, None, activity_types, max_tasks)
+            .await
+    }
+
+    /// Claim up to `max_tasks` pending tasks of `activity_types` from one
+    /// task queue: the named one, or the default queue for `None`
+    /// ([`ActivityOptions::queue`](crate::ActivityOptions::queue)). A claim
+    /// never takes another queue's tasks.
+    ///
+    /// Uses SELECT FOR UPDATE SKIP LOCKED for efficient concurrent claiming.
+    async fn claim_queue_tasks(
+        &self,
+        worker_id: &str,
+        queue: Option<&str>,
         activity_types: &[String],
         max_tasks: usize,
     ) -> Result<Vec<ClaimedTask>, StoreError>;

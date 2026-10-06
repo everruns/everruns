@@ -4644,6 +4644,53 @@
     ]
   },
   {
+    "wire_name": "diff_entity_revisions",
+    "path": [
+      "history"
+    ],
+    "verb": "diff",
+    "description": "Compare two revisions of an entity field by field (to the latest by default). Secrets compare only as set or changed.",
+    "method": "GET",
+    "http_path": "/v1/history/{entity_ref}/diff",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id."
+      },
+      {
+        "field": "from",
+        "long": "from",
+        "kind": "integer",
+        "required": true,
+        "help": "The older revision."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind, for ids without a prefix."
+      },
+      {
+        "field": "to",
+        "long": "to",
+        "kind": "integer",
+        "required": false,
+        "help": "The newer revision; the latest when omitted."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what changed in an agent since revision 4",
+        "command": "everruns history diff agent_01h9 --from 4"
+      }
+    ]
+  },
+  {
     "wire_name": "list_entity_history",
     "path": [
       "history"
@@ -4761,6 +4808,86 @@
       {
         "intent": "See what Platform Chat changed today",
         "command": "everruns history org --via-agent agent_01h9 --since 2026-10-05T00:00:00Z"
+      }
+    ]
+  },
+  {
+    "wire_name": "restore_entity_revision",
+    "path": [
+      "history"
+    ],
+    "verb": "restore",
+    "description": "Make an entity look like it did at a revision. Runs as a new change through the entity's own update command, recorded as `restored`; secrets keep their current value.",
+    "method": "POST",
+    "http_path": "/v1/history/{entity_ref}/restore",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind, for ids without a prefix."
+      },
+      {
+        "field": "revision",
+        "long": "revision",
+        "kind": "integer",
+        "required": true,
+        "help": "The revision to bring back."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "Put an agent back the way it was before a bad edit",
+        "command": "everruns history restore agent_01h9 --revision 4 --reason 'Revert the prompt change'"
+      }
+    ]
+  },
+  {
+    "wire_name": "show_entity_revision",
+    "path": [
+      "history"
+    ],
+    "verb": "show",
+    "description": "Show an entity as it stood at one revision of its history (the latest by default). Secrets appear only as markers saying whether they were set.",
+    "method": "GET",
+    "http_path": "/v1/history/{entity_ref}/revisions/{revision}",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind, for ids without a prefix."
+      },
+      {
+        "field": "revision",
+        "long": "revision",
+        "kind": "integer",
+        "required": false,
+        "help": "Revision number; the latest when omitted."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See an agent's configuration before last week's change",
+        "command": "everruns history show agent_01h9 --revision 4"
       }
     ]
   },

@@ -257,7 +257,7 @@ pub struct InMemoryDatabase {
     command_idempotency_keys: RwLock<
         HashMap<command_idempotency::IdempotencyRowKey, command_idempotency::MemoryIdempotencyKey>,
     >,
-    entity_changes: RwLock<Vec<crate::storage::entity_changes::EntityChangeRow>>,
+    entity_changes: RwLock<Vec<crate::storage::entity_changes::StoredEntityChange>>,
     manager_context: RwLock<Vec<crate::storage::manager_context::ManagerContextRow>>,
     agent_trigger_mcp_subscriptions: RwLock<
         HashMap<TriggerId, super::agent_trigger_mcp_subscriptions::AgentTriggerMcpSubscriptionRow>,

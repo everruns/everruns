@@ -74,7 +74,7 @@ store. It knows nothing about agents or turns.
 Neither path owns a private copy of the turn algorithm. `everruns-core` (`engine` feature) owns
 the `Execution` contract, `TurnExecution` state, Input/Reason/Act atoms, phase
 ordering, and effect production. The in-process `InProcessExecution` and the
-checkpointed `DurableExecution` in `everruns-durable-engine` only select where
+checkpointed `TurnExecution` state in `everruns-durable-engine` only select where
 state lives and how work is scheduled.
 
 ## Choose a recovery boundary

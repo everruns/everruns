@@ -16,8 +16,8 @@ Custom PostgreSQL-backed durable execution engine for workflow orchestration wit
 and schedules, with no `everruns-*` dependency (enforced by
 `scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
 use `everruns-durable-engine`: its `TurnTaskDriver` runs each claimed turn step
-over `DurableExecution`, the checkpointed driver for
-`everruns_core::engine::Execution`; its `durable_turn` module owns the
+over `everruns_core::engine::TurnExecution`, restored from and checkpointed to
+the task input between steps; its `durable_turn` module owns the
 turn-level conventions (the `user_message` signal, idempotent waiting-turn
 resolution tasks via `ActivityOptions::dedupe_by_activity_id`); and the server
 turns a sealed task into `turn.sealed`. The durable crate owns persistence,
@@ -145,7 +145,7 @@ Known gaps: a crash between recording a child's terminal status and enqueueing
 its result leaves the parent waiting, and cancelling a child does not notify
 the parent. Agent turns in Everruns do not use timers or child workflows yet:
 workers talk to the store over gRPC, which exposes only the task operations, and
-turns are driven by durable-engine's `DurableExecution` checkpoints rather than
+turns are driven by `TurnExecution` checkpoints in durable-engine rather than
 replay.
 
 ### Persistence
@@ -199,7 +199,7 @@ See `crates/durable/src/engine/executor.rs` for `load_workflow_state()`, `unreco
 
 ### Task Claiming
 
-Workers claim tasks partitioned by `activity_type`. See `crates/durable/src/persistence/store.rs` for implementation.
+Workers claim tasks partitioned by `activity_type`, from one task queue at a time (`ActivityOptions::queue`; the default queue unless a caller names one, as a PostgreSQL framework backend does). See `crates/durable/src/persistence/store.rs` for implementation.
 
 The in-memory store is the test double for PostgreSQL and must behave the same
 wherever a caller can tell: only a registered, non-draining worker claims;

@@ -508,7 +508,7 @@ state machine, concrete `InputAtom`, `ReasonAtom`, and `ActAtom` algorithms,
 their phase values, post-act helpers, tool scheduler, infrastructure hooks, and
 pure turn planner. There is no generic public `Atom` trait. `everruns-core` (`host` feature)
 retains state in `InProcessExecution`; `everruns-durable-engine` checkpoints the same
-state through `DurableExecution` on the generic `everruns-durable` engine, for
+`TurnExecution` state between steps on the generic `everruns-durable` engine, for
 the worker and for the facade's experimental durable backend. Hosts inject core/provider contracts and keep
 deployment composition outside the engine.
 

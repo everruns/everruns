@@ -262,3 +262,81 @@ async fn rest_routes_that_skip_commands_still_record_history_and_hold_to_context
         .await
         .assert_status(StatusCode::NO_CONTENT);
 }
+
+#[tokio::test]
+async fn an_agent_restored_to_an_earlier_revision_runs_as_a_recorded_change() {
+    let server = TestServer::new().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": unique("restore"), "system_prompt": "Answer in English." }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let id = agent["id"].as_str().expect("agent id").to_string();
+    server
+        .patch(
+            &format!("/v1/agents/{id}"),
+            json!({ "system_prompt": "Answer in French.", "description": "Paris office" }),
+        )
+        .await
+        .assert_success();
+
+    let diff: Value = server
+        .get(&format!("/v1/history/{id}/diff?from=1"))
+        .await
+        .assert_success()
+        .json();
+    let fields: Vec<&str> = diff
+        .as_array()
+        .expect("diff")
+        .iter()
+        .filter_map(|change| change["field"].as_str())
+        .collect();
+    assert!(fields.contains(&"system_prompt"), "{diff}");
+    assert!(fields.contains(&"description"), "{diff}");
+
+    let restored: Value = send(
+        &server,
+        Method::POST,
+        &format!("/v1/history/{id}/restore"),
+        vec![("everruns-change-reason", "French%20was%20a%20mistake")],
+        json!({ "revision": 1 }),
+    )
+    .await
+    .assert_success()
+    .json();
+    assert_eq!(restored["restored_revision"], 1);
+    // `update_agent` cannot clear a description, so the restore says so
+    // rather than claiming the revision is back in full.
+    let warnings = restored["warnings"].to_string();
+    assert!(
+        warnings.contains("description could not be set back"),
+        "{warnings}"
+    );
+
+    let now: Value = server
+        .get(&format!("/v1/agents/{id}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(now["system_prompt"], "Answer in English.");
+
+    let history: Value = server
+        .get(&format!("/v1/history/{id}"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(history[0]["action"], "restored");
+    assert_eq!(history[0]["restored_from_revision"], 1);
+    assert_eq!(history[0]["revision"], 3);
+    assert_eq!(history[0]["reason"], "French was a mistake");
+
+    let shown: Value = server
+        .get(&format!("/v1/history/{id}/revisions/2"))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(shown["snapshot"]["system_prompt"], "Answer in French.");
+}

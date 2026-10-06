@@ -90,9 +90,10 @@ impl TaskQueue for InMemoryWorkflowEventStore {
         Ok(Enqueued::Claimed(Box::new(claimed)))
     }
 
-    async fn claim_task(
+    async fn claim_queue_tasks(
         &self,
         worker_id: &str,
+        queue: Option<&str>,
         activity_types: &[String],
         max_tasks: usize,
     ) -> Result<Vec<ClaimedTask>, StoreError> {
@@ -109,7 +110,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
         let now = Utc::now();
         let mut tasks = self.tasks.write();
         let mut claimed = vec![];
-        for task_id in tasks.claimable(activity_types, now, max_tasks) {
+        for task_id in tasks.claimable(queue, activity_types, now, max_tasks) {
             let task = tasks
                 .update(task_id, |task| {
                     task.status = TaskStatus::Claimed;
@@ -280,6 +281,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
             last_error: task.last_error.clone(),
             created_at: task.created_at,
             claimed_at: task.claimed_at,
+            queue: task.definition.options.queue.clone(),
         })
     }
 
@@ -471,6 +473,7 @@ impl TaskQueue for InMemoryWorkflowEventStore {
                 last_error: t.last_error.clone(),
                 created_at: t.created_at,
                 claimed_at: t.claimed_at,
+                queue: t.definition.options.queue.clone(),
             })
             .collect();
         // Sort by created_at ascending (oldest first) to show execution order

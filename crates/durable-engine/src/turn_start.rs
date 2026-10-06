@@ -15,7 +15,7 @@
 
 use crate::core::ExecutionContext;
 use crate::durable_runner::DurableTurnInput;
-use crate::engine::{InputAtomInput, ReasonInput, TurnPlan};
+use crate::engine::{InputAtomInput, ReasonInput, TurnExecution, TurnPlan};
 use crate::host::{
     advance_host_execution, execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity_with_prompt_messages as runtime_execute_reason_activity_with_prompt_messages,
@@ -71,7 +71,7 @@ async fn plan_first_reason<Host: crate::host::RuntimeHostAdapter>(
     turn_id: TurnId,
 ) -> Result<DurableTurnInput> {
     let input_output = execute_input_activity(host, input, turn_id).await?;
-    let mut execution = crate::DurableExecution::new(input.clone());
+    let mut execution = TurnExecution::new(input.clone());
     let plan =
         advance_host_execution(host, &mut execution, "process_input", &input_output, 0).await?;
     // The engine always follows the input with a reason.
@@ -79,7 +79,7 @@ async fn plan_first_reason<Host: crate::host::RuntimeHostAdapter>(
         matches!(plan, TurnPlan::ScheduleReason(_)),
         "process_input planned no reason step"
     );
-    Ok(execution.checkpoint())
+    Ok(execution.into_state())
 }
 
 /// Execute the input step of a turn.

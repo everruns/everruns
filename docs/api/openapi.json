@@ -9465,6 +9465,203 @@
         }
       }
     },
+    "/v1/history/{entity_ref}/diff": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "GET /v1/history/{entity_ref}/diff - Two revisions compared field by field",
+        "operationId": "diff_entity_revisions",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Entity kind, needed only for kinds whose ids have no prefix.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "The older revision.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "The newer revision; the latest when omitted.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fields that differ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FieldDiff"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/{entity_ref}/restore": {
+      "post": {
+        "tags": [
+          "history"
+        ],
+        "summary": "POST /v1/history/{entity_ref}/restore - Bring a revision back as a new change",
+        "operationId": "restore_entity_revision",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Restored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such revision, or the entity was deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The entity's manager context changed since it was read",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/history/{entity_ref}/revisions/{revision}": {
+      "get": {
+        "tags": [
+          "history"
+        ],
+        "summary": "GET /v1/history/{entity_ref}/revisions/{revision} - The entity at one revision",
+        "operationId": "show_entity_revision",
+        "parameters": [
+          {
+            "name": "entity_ref",
+            "in": "path",
+            "description": "The entity's public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "description": "Revision number",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Entity kind, needed only for kinds whose ids have no prefix.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entity as it stood after that change",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityRevision"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/images": {
       "get": {
         "tags": [
@@ -29212,6 +29409,22 @@
             ],
             "description": "Correlation id of the HTTP request, when there was one."
           },
+          "restored_from_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "For a restore, the revision it brought back."
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The entity's revision after this change; absent when the change left\nthe entity as it was, or its kind keeps no snapshots."
+          },
           "surface": {
             "type": "string",
             "description": "Where the change came in: `api`, `commands`, `mcp`, `platform`,\n`worker` or `internal`.",
@@ -29230,6 +29443,26 @@
               "null"
             ],
             "description": "The session through which an agent made the change."
+          }
+        }
+      },
+      "EntityRevision": {
+        "type": "object",
+        "description": "One revision of an entity: the entry that made it and the entity as it\nstood after it.",
+        "required": [
+          "revision",
+          "change"
+        ],
+        "properties": {
+          "change": {
+            "$ref": "#/components/schemas/EntityChange"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "snapshot": {
+            "description": "The entity after the change, secrets as markers under `$secrets`.\n`null` once the revision is older than the snapshots kept."
           }
         }
       },
@@ -30011,6 +30244,27 @@
         },
         "propertyNames": {
           "type": "string"
+        }
+      },
+      "FieldDiff": {
+        "type": "object",
+        "description": "One field that differs between two snapshots.",
+        "required": [
+          "field",
+          "from",
+          "to"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Top-level field name; a secret is `$secrets.<name>`."
+          },
+          "from": {
+            "description": "The value before, `null` when absent. A secret shows only its marker."
+          },
+          "to": {
+            "description": "The value after, `null` when absent."
+          }
         }
       },
       "FieldType": {
@@ -43143,6 +43397,52 @@
             "description": "Sessions currently paused waiting for client-side tool results.",
             "example": 2,
             "minimum": 0
+          }
+        }
+      },
+      "RestoreRequest": {
+        "type": "object",
+        "description": "The revision to bring back.",
+        "required": [
+          "revision"
+        ],
+        "properties": {
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Entity kind, needed only for kinds whose ids have no prefix."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RestoreResult": {
+        "type": "object",
+        "description": "What a restore did.",
+        "required": [
+          "restored_revision",
+          "entity",
+          "warnings"
+        ],
+        "properties": {
+          "entity": {
+            "description": "The entity after the restore, as its update command returned it."
+          },
+          "restored_revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The revision brought back."
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Secrets kept at their current value that differ from the revision."
           }
         }
       },

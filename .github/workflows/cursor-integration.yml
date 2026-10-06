@@ -86,4 +86,4 @@ jobs:
       - name: Run Cursor live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations --features cursor-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features cursor-live-tests --test cursor_live_api_test -- --test-threads=1

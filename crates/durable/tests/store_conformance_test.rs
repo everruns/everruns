@@ -115,6 +115,7 @@ conformance!(
     claims_only_for_registered_active_workers,
     claims_by_priority_then_fifo,
     claim_respects_max_tasks,
+    claims_take_one_queue_only,
     retry_waits_for_backoff,
     delayed_tasks_wait_for_their_start_delay,
     non_retryable_failure_is_dead,
@@ -253,6 +254,43 @@ async fn claim_respects_max_tasks<H: Harness>(h: H) {
     assert_eq!(claim(&h, &w, &ty, 3).await.len(), 3);
     assert_eq!(claim(&h, &w, &ty, 3).await.len(), 2);
     assert!(claim(&h, &w, &ty, 3).await.is_empty());
+}
+
+async fn claims_take_one_queue_only<H: Harness>(h: H) {
+    let ty = activity_type();
+    let w = worker(&h, &ty).await;
+    let queue = format!("conformance-queue-{}", Uuid::now_v7().simple());
+    let other = format!("{queue}-other");
+    let default = enqueue(&h, task(None, &ty, "default")).await;
+    let queued = enqueue(
+        &h,
+        with_options(
+            task(None, &ty, "queued"),
+            ActivityOptions::default().with_queue(queue.clone()),
+        ),
+    )
+    .await;
+    let claim_from = |queue: Option<String>| {
+        let h = &h;
+        let w = w.clone();
+        let types = vec![ty.clone()];
+        async move {
+            h.store()
+                .claim_queue_tasks(&w, queue.as_deref(), &types, 10)
+                .await
+                .expect("claim")
+                .into_iter()
+                .map(|t| (t.id, t.options.queue))
+                .collect::<Vec<_>>()
+        }
+    };
+
+    assert!(claim_from(Some(other)).await.is_empty());
+    assert_eq!(
+        claim_from(Some(queue.clone())).await,
+        vec![(queued, Some(queue))]
+    );
+    assert_eq!(claim(&h, &w, &ty, 10).await, vec![default]);
 }
 
 async fn retry_waits_for_backoff<H: Harness>(h: H) {
