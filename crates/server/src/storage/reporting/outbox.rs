@@ -7,6 +7,25 @@ use super::models::ReportingOutboxRow;
 use super::projection_timing::{FACT_SESSION_UPSERT, maybe_warn_slow_projection};
 use crate::domains::reporting::types::{ProjectorRunResult, ReportingBackfillResult};
 
+/// Event types `project_event` turns into facts. Every other event type is a
+/// no-op for reporting, so the event write skips the outbox row for it: an
+/// outbox row per event cost an insert, a claim, an update and a lookup for
+/// ~7 of a plain chat turn's ~11 events (load test, 2026-10-06). Keep in step
+/// with the `match` in `project_event` and the repair query's `CASE`.
+pub(crate) const PROJECTED_EVENT_TYPES: &[&str] = &[
+    "tool.completed",
+    "capability.usage",
+    "output.message.replaced",
+    "turn.completed",
+    "turn.failed",
+    "turn.cancelled",
+];
+
+/// Whether an event of `event_type` needs a reporting outbox row.
+pub(crate) fn event_needs_projection(event_type: &str) -> bool {
+    PROJECTED_EVENT_TYPES.contains(&event_type)
+}
+
 const STALE_PROCESSING_MINUTES: i32 = 15;
 const GLOBAL_BACKFILL_LOCK_KEY: i64 = 0x6576_6572_7270_7471;
 

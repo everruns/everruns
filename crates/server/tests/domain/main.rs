@@ -40,6 +40,7 @@ mod cli_auth_test;
 mod client_side_tools_test;
 mod command_dispatch_test;
 mod command_policy_enforcement_test;
+mod concurrent_session_create_test;
 mod db_pool_isolation_test;
 mod dev_grade;
 mod evals_integration_test;

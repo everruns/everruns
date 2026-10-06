@@ -99,6 +99,7 @@ All configuration via environment variables, overridden by CLI args where applic
 | `MESSAGES_PER_SESSION` | `50` | Messages per session |
 | `MAX_CONCURRENT` | `50` | Max concurrent sessions |
 | `TIMEOUT_SECS` | `300` | Per-request timeout |
+| `MODEL_ID` | llmsim-latency seed | Model for the load test agent; the zero-latency `llmsim` seed isolates platform overhead |
 | `TARGET` | auto-detected | Target label (e.g., `dev`, `docker-example`) |
 
 The HTTP client is configured with HTTP/2 flow control windows matching the server defaults (2 MB per-stream, 16 MB per-connection, adaptive window enabled) to prevent flow control exhaustion under high SSE concurrency.
@@ -242,7 +243,7 @@ just load-test heavy --save --moniker ci-4cpu-8gb
 
 ## Latency Simulation
 
-Load tests always use the `llmsim-latency` seed model, which simulates realistic LLM streaming behavior:
+Load tests use the `llmsim-latency` seed model by default (override with `MODEL_ID`), which simulates realistic LLM streaming behavior:
 
 - **TTFT (Time To First Token)**: Sampled from `LatencyProfile::fast()` before the first token
 - **TBT (Time Between Tokens)**: Sampled from `LatencyProfile::fast()` between each streamed word

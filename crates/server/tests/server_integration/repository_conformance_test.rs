@@ -138,10 +138,40 @@ async fn run_repository_conformance(repo: &dyn Repository, label: &str, harness_
     )
     .await;
 
-    let event = repo
+    // Only event types reporting projects get an outbox row.
+    let unprojected = repo
         .create_event(CreateEventRow {
             session_id: session.id,
             event_type: "input.message".to_string(),
+            ts: Utc::now(),
+            context: json!({}),
+            data: json!({
+                "message": {
+                    "content": [{ "type": "text", "text": "hello" }]
+                }
+            }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("create unprojected event");
+    assert!(
+        repo.list_reporting_outbox(
+            DEFAULT_ORG_ID,
+            "event",
+            &unprojected.id.uuid().to_string(),
+            "event_projection",
+        )
+        .await
+        .expect("list reporting outbox")
+        .is_empty(),
+        "an event reporting never projects gets no outbox row"
+    );
+
+    let event = repo
+        .create_event(CreateEventRow {
+            session_id: session.id,
+            event_type: "turn.completed".to_string(),
             ts: Utc::now(),
             context: json!({}),
             data: json!({
