@@ -246,6 +246,41 @@ bare "Claim your prize now!"; the middling ones are what a threshold is for.
 `--features typesafe` adds `TypeSafeAI` and the `Jev` capability. Without it
 `everruns` names no vendor: `Decisions::new` takes any `DecisionsService`.
 
+### OpenAI's Decisions API
+
+[OpenAI's Decisions API](https://developers.openai.com/api/docs/guides/decisions)
+(public beta, model `gpt-6-luna`) answers the same questions. `OpenAIDecisions`
+in `everruns-integrations` is a `DecisionsService`, so it drops into the same
+`Decisions`:
+
+```bash
+cargo add everruns
+cargo add everruns-integrations --features openai-decisions
+export OPENAI_API_KEY=...
+```
+
+```rust
+use everruns::Decisions;
+use everruns_integrations::openai_decisions::OpenAIDecisions;
+
+# async fn run() -> Result<(), Box<dyn std::error::Error>> {
+let service = OpenAIDecisions::new(std::env::var("OPENAI_API_KEY")?);
+let decisions = Decisions::new("gpt-6-luna", service);
+
+let urgent = decisions
+    .probability("Does this convey urgency?", "My card was charged twice, fix it today.")
+    .await?;
+println!("urgent: {urgent:.2}");
+# Ok(())
+# }
+```
+
+All three primitives are native and calibrated, and one request sends every
+question in one call. Score questions take at most ten levels. On Everruns
+Platform, set `DECISIONS_DRIVER=openai` with `UTILITY_OPENAI_API_KEY` to answer
+guardrail `jev` checks with it (see
+[environment variables](/sre/environment-variables/)).
+
 ### Three primitives
 
 A decision asks one or more questions about the same state. Each is one of
