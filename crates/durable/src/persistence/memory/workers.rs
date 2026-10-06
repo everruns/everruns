@@ -16,14 +16,17 @@ impl WorkerRegistry for InMemoryWorkflowEventStore {
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<WorkerHeartbeat, StoreError> {
         let mut workers = self.workers.write();
-        if let Some(worker) = workers.get_mut(worker_id) {
-            worker.current_load = current_load as u32;
-            worker.accepting_tasks = accepting_tasks;
-            worker.last_heartbeat_at = Utc::now();
-        }
-        Ok(())
+        let Some(worker) = workers.get_mut(worker_id) else {
+            return Ok(WorkerHeartbeat::default());
+        };
+        let draining = worker.status == "draining";
+        worker.current_load = current_load as u32;
+        // A drained worker stays closed, as in PostgreSQL.
+        worker.accepting_tasks = accepting_tasks && !draining;
+        worker.last_heartbeat_at = Utc::now();
+        Ok(WorkerHeartbeat { draining })
     }
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {

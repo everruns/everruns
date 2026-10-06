@@ -552,7 +552,7 @@ impl WorkerServiceImpl {
         let req = request.into_inner();
         let store = self.durable_store()?;
 
-        store
+        let heartbeat = store
             .worker_heartbeat(
                 &req.worker_id,
                 req.current_load as usize,
@@ -566,7 +566,26 @@ impl WorkerServiceImpl {
 
         Ok(Response::new(HeartbeatDurableWorkerResponse {
             acknowledged: true,
+            draining: heartbeat.draining,
         }))
+    }
+
+    /// The worker drains itself on shutdown, so its chained steps go back to
+    /// the queue while its in-flight turns finish.
+    pub(crate) async fn handle_drain_durable_worker(
+        &self,
+        request: Request<DrainDurableWorkerRequest>,
+    ) -> Result<Response<DrainDurableWorkerResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.durable_store()?;
+
+        store.drain_worker(&req.worker_id).await.map_err(|e| {
+            tracing::error!("Failed to drain worker: {}", e);
+            Status::internal("Failed to drain worker")
+        })?;
+        tracing::info!(worker_id = %req.worker_id, "Worker draining itself for shutdown");
+
+        Ok(Response::new(DrainDurableWorkerResponse {}))
     }
 
     pub(crate) async fn handle_deregister_durable_worker(

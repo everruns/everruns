@@ -761,8 +761,13 @@ async fn drained_workers_stop_claiming_until_resumed<H: Harness>(h: H) {
     let w = worker(&h, &ty).await;
     enqueue(&h, task(None, &ty, "t")).await;
 
+    let beat = h.store().worker_heartbeat(&w, 0, true).await.unwrap();
+    assert!(!beat.draining, "an active worker is not draining");
+
     h.store().drain_worker(&w).await.unwrap();
     assert!(claim(&h, &w, &ty, 1).await.is_empty());
+    let beat = h.store().worker_heartbeat(&w, 0, true).await.unwrap();
+    assert!(beat.draining, "the heartbeat tells a drained worker so");
     let info = h
         .store()
         .list_workers(WorkerFilter::default())
@@ -775,7 +780,16 @@ async fn drained_workers_stop_claiming_until_resumed<H: Harness>(h: H) {
     assert!(!info.accepting_tasks);
 
     h.store().resume_worker(&w).await.unwrap();
+    let beat = h.store().worker_heartbeat(&w, 0, true).await.unwrap();
+    assert!(!beat.draining, "a resumed worker is told to claim again");
     assert_eq!(claim(&h, &w, &ty, 1).await.len(), 1);
+
+    let beat = h
+        .store()
+        .worker_heartbeat("unknown", 0, true)
+        .await
+        .unwrap();
+    assert!(!beat.draining, "an unknown worker is not draining");
 }
 
 // --- run start -------------------------------------------------------------------
