@@ -112,12 +112,6 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
   { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
   {
-    name: "Sandboxes",
-    href: "/sandboxes",
-    icon: Cpu,
-    keywords: ["compute", "daytona", "modal", "containers", "fleet"],
-  },
-  {
     name: "Virtual Users",
     href: "/virtual-users",
     icon: UserRound,
@@ -132,12 +126,6 @@ export const defaultRegistriesNavigation: NavigationItem[] = [
       return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
     },
   ),
-  {
-    name: "Sandbox Templates",
-    href: "/sandbox-templates",
-    icon: Container,
-    keywords: ["environment", "compute", "workspace"],
-  },
   {
     name: "Knowledge indexes",
     href: "/knowledge-indexes",
@@ -194,6 +182,23 @@ export const defaultBottomNavigation: NavigationItem[] = [
   },
 ];
 
+// Sandboxes get their own group, collapsed by default: the fleet (what is
+// running) and the templates that configure it, side by side.
+export const defaultSandboxesNavigation: NavigationItem[] = [
+  {
+    name: "Fleet",
+    href: "/sandboxes",
+    icon: Cpu,
+    keywords: ["sandboxes", "compute", "daytona", "modal", "containers", "running"],
+  },
+  {
+    name: "Templates",
+    href: "/sandbox-templates",
+    icon: Container,
+    keywords: ["sandbox templates", "environment", "compute", "workspace"],
+  },
+];
+
 export const defaultDurableNavigation: NavigationItem[] = [
   { name: "Overview", href: "/durable", icon: Cog, exact: true },
   { name: "Workers", href: "/durable/workers", icon: Server },
@@ -218,6 +223,7 @@ export const defaultNavigationSections: NavigationSection[] = [
   { label: "Operational", items: defaultOperationalNavigation },
   { label: "Registers", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
+  { label: "Sandboxes", items: defaultSandboxesNavigation, defaultCollapsed: true },
   { items: defaultBottomNavigation },
   { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },

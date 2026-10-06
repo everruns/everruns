@@ -72,7 +72,12 @@ function NavSection({
   isFirst: boolean;
   renderExtra?: (section: NavigationSection) => ReactNode;
 }) {
-  const [collapsed, setCollapsed] = useState(section.defaultCollapsed ?? false);
+  // A collapsed-by-default group still opens when the current page is in it,
+  // so the active link is never hidden.
+  const [collapsed, setCollapsed] = useState(
+    (section.defaultCollapsed ?? false) &&
+      !section.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)),
+  );
 
   const isCollapsible = section.defaultCollapsed !== undefined && section.label;
 

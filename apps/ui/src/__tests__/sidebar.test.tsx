@@ -543,6 +543,31 @@ describe("Sidebar", () => {
     expect(screen.getByText("Durable Execution")).toBeInTheDocument();
   });
 
+  it("keeps the Sandboxes group collapsed until one of its pages is open", () => {
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: "Sandboxes" }));
+    expect(screen.getByRole("link", { name: "Fleet" })).toHaveAttribute("href", "/sandboxes");
+    expect(screen.getByRole("link", { name: "Templates" })).toHaveAttribute(
+      "href",
+      "/sandbox-templates",
+    );
+  });
+
+  it.each(["/sandboxes", "/sandbox-templates/template-1"])(
+    "opens the Sandboxes group on %s",
+    (pathname) => {
+      mockPathname.mockReturnValue(pathname);
+      render(<Sidebar />);
+      expect(screen.getByRole("link", { name: "Fleet" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Templates" })).toBeInTheDocument();
+    },
+  );
+
+  it("hides the collapsed Sandboxes links elsewhere", () => {
+    render(<Sidebar />);
+    expect(screen.queryByRole("link", { name: "Fleet" })).not.toBeInTheDocument();
+  });
+
   it("leads with Chats above the first labelled group", () => {
     render(<Sidebar />);
 
@@ -598,10 +623,7 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/durable/workers");
     render(<Sidebar />);
 
-    // Expand the collapsed durable section first
-    const toggle = screen.getByRole("button", { name: /durable execution/i });
-    fireEvent.click(toggle);
-
+    // The collapsed durable section opens itself on one of its pages.
     const workersLink = screen.getByRole("link", { name: /workers/i });
     expect(workersLink).toHaveClass("border-l-primary");
     expect(workersLink).toHaveClass("bg-primary/5");
