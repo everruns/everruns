@@ -437,9 +437,7 @@ impl WorkerServiceImpl {
             turn_id: parse_uuid(req.turn_id.as_ref())?.into(),
             owner: parse_uuid(req.owner.as_ref())?,
         };
-        let pool = self.db.pool().ok_or_else(|| {
-            Status::failed_precondition("native async requires shared durable storage")
-        })?;
+        let pool = self.db.pool();
         let encryption = self.encryption.clone().ok_or_else(|| {
             Status::failed_precondition("checkpoint encryption is not configured")
         })?;
@@ -501,9 +499,7 @@ impl WorkerServiceImpl {
             session_id: parse_uuid(req.session_id.as_ref())?.into(),
             owner: parse_uuid(req.owner.as_ref())?,
         };
-        let pool = self.db.pool().ok_or_else(|| {
-            Status::failed_precondition("agents api backend requires shared durable storage")
-        })?;
+        let pool = self.db.pool();
         let encryption = self.encryption.clone().ok_or_else(|| {
             Status::failed_precondition("checkpoint encryption is not configured")
         })?;

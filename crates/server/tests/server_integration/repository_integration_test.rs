@@ -1377,7 +1377,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         Some("call-final")
     );
 
-    let pool = backend.pool().expect("postgres pool");
+    let pool = backend.pool();
     let (index_ddl, index_target, predicate): (String, String, Option<String>) = sqlx::query_as(
         r#"
         SELECT pg_get_indexdef(i.indexrelid),
