@@ -18,7 +18,7 @@ tags:
 ## Steps
 
 1. Open the agent, enter Edit mode and open Branding.
-2. Choose preset. Confirm 25 named avatars across five families.
+2. Choose preset. Confirm 25 image-only tiles across five families, with accessible names and descriptions.
 3. Search `navy developer fox`. Select Patch and inspect its square and circular previews.
 4. Use avatar. Reload the page and reopen the picker; Patch remains current.
 5. Search `customer service`, `code review`, and a nonexistent term. Clear search and filter by Bloom.
@@ -31,6 +31,8 @@ tags:
 ## Expected Result
 
 Search ignores case and surrounding whitespace; all words can match different metadata fields.
+Tiles and selected square/circle previews display no names, roles or descriptions; search still
+matches that metadata and screen readers can identify each tile.
 Empty queries show all avatars. No matches offers clear filters. Selection saves immediately and
 survives reload. Upload, replacement and removal still work; save progress blocks duplicate
 mutations, failures allow retry, and read-only views cannot mutate. Names and roles do not change
