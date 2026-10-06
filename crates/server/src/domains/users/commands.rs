@@ -33,8 +33,7 @@ impl Command for ListUsers {
         let rows = ctx
             .db
             .list_users_by_org(ctx.org_id(), self.search.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(crate::api::common::ListResponse::new(
             rows.into_iter().map(q::row_to_user).collect(),

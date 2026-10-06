@@ -105,8 +105,7 @@ async fn require_embedding_model(
     let model = ctx
         .db
         .get_model(ctx.org_id(), model_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request(INVALID_EMBEDDING_MODEL))?;
     let capabilities: Vec<String> = serde_json::from_value(model.capabilities).unwrap_or_default();
     if !model.enabled
@@ -119,8 +118,7 @@ async fn require_embedding_model(
     let provider = ctx
         .db
         .get_provider(ctx.org_id(), model.provider_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request(INVALID_EMBEDDING_MODEL))?;
     let provider_type: DriverId = provider
         .provider_type
@@ -143,8 +141,7 @@ async fn response_with_document_count(
     let document_count = ctx
         .db
         .count_knowledge_index_documents(&[row.id])
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .get(&row.id)
         .copied()
         .unwrap_or(0);
@@ -201,13 +198,11 @@ impl Command for ListKnowledgeIndexes {
                 self.search.as_deref(),
                 self.include_archived.unwrap_or(false),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let counts = ctx
             .db
             .count_knowledge_index_documents(&rows.iter().map(|row| row.id).collect::<Vec<_>>())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| {
                 let document_count = counts.get(&row.id).copied().unwrap_or(0);
@@ -290,11 +285,7 @@ impl Command for CreateKnowledgeIndex {
             owner_principal_id: None,
             resolved_owner_user_id: ctx.caller.user_id,
         };
-        let row = ctx
-            .db
-            .create_knowledge_index(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_knowledge_index(ctx.org_id(), input).await?;
         knowledge_index_response(row, 0).map_err(classify_anyhow)
     }
 }
@@ -337,8 +328,7 @@ impl Command for GetKnowledgeIndex {
         let row = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         response_with_document_count(ctx, row).await
     }
@@ -380,8 +370,7 @@ impl Command for UpdateKnowledgeIndexCmd {
         let existing = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         // Archived indexes are read-only per knowledge/foundations/models.md lifecycle contract.
         if existing.status != "active" {
@@ -434,8 +423,7 @@ impl Command for UpdateKnowledgeIndexCmd {
                     status: None,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         response_with_document_count(ctx, row).await
     }
@@ -471,14 +459,12 @@ impl Command for DeleteKnowledgeIndex {
         let existing = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         let archived = ctx
             .db
             .archive_knowledge_index(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if archived {
             Ok(())
         } else {
@@ -525,8 +511,7 @@ impl Command for SyncKnowledgeIndex {
         let existing = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         // Archived/deleted indexes are not syncable per the lifecycle contract.
         if existing.status != "active" {
@@ -538,8 +523,7 @@ impl Command for SyncKnowledgeIndex {
         let row = ctx
             .db
             .enqueue_knowledge_index_sync(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
         response_with_document_count(ctx, row).await
     }
@@ -587,14 +571,9 @@ impl Command for ListKnowledgeIndexDocuments {
         let index = ctx
             .db
             .get_knowledge_index(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        let rows = ctx
-            .db
-            .list_knowledge_index_documents(index.id)
-            .await
-            .map_err(classify_anyhow)?;
+        let rows = ctx.db.list_knowledge_index_documents(index.id).await?;
         rows.into_iter()
             .map(|row| {
                 knowledge_index_document_response(row, &self.index_id).map_err(classify_anyhow)

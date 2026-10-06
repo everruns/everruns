@@ -45,8 +45,7 @@ impl Command for SubmitToolResults {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         let turn_id = TurnId::from_uuid(session_id.uuid());
@@ -93,8 +92,7 @@ impl Command for SubmitToolResults {
         let claim = match ctx
             .db
             .claim_waiting_turn(ctx.org_id(), session_id, plan)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         {
             ClaimWaitingTurnResult::Claimed(claim) => claim,
             ClaimWaitingTurnResult::Conflict { current_status } => {
@@ -117,8 +115,7 @@ impl Command for SubmitToolResults {
             session_id,
             &claim,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         Ok(SubmitToolResultsResponse {
             accepted,
             status: "active".to_string(),

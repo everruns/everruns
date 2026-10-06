@@ -27,12 +27,7 @@ impl Command for ListOrgs {
         let mut orgs = Vec::with_capacity(memberships.len());
 
         for membership in memberships {
-            if let Some(row) = ctx
-                .db
-                .get_organization(membership.org_id)
-                .await
-                .map_err(classify_anyhow)?
-            {
+            if let Some(row) = ctx.db.get_organization(membership.org_id).await? {
                 orgs.push(q::build_organization_response(&ctx.db, membership.org_id, row).await?);
             }
         }
@@ -74,8 +69,7 @@ impl Command for GetOrg {
         let row = ctx
             .db
             .get_organization_by_public_id(&self.org)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Organization"))?;
 
         q::build_organization_response(&ctx.db, membership.org_id, row).await
@@ -128,8 +122,7 @@ impl Command for ResolveOrg {
         let user_id = q::require_user_id(ctx)?;
 
         let resolved = org_resolver::resolve_owning_org_for_user(&ctx.db, user_id, &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Resource"))?;
 
         Ok(ResolveOrgResponse {

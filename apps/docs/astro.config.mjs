@@ -474,6 +474,7 @@ export default defineConfig({
                         { label: "Tool Approval", slug: "capabilities/tool-approval" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
+                        { label: "Output Truncation", slug: "capabilities/output-truncation" },
                         { label: "Soft Approval", slug: "capabilities/soft-approval" },
                         { label: "Tool Loop Detection", slug: "capabilities/loop-detection" },
                       ],

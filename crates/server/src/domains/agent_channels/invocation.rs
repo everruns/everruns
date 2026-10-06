@@ -8,7 +8,7 @@
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
-use crate::domains::common::{CommandError, classify_anyhow};
+use crate::domains::common::CommandError;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
@@ -319,8 +319,7 @@ async fn find_or_create_invocation_session(
                 )
                 .await
             }
-        }
-        .map_err(classify_anyhow)?
+        }?
     {
         return Ok((existing.id, false));
     }
@@ -392,8 +391,7 @@ async fn find_or_create_invocation_session(
                 seed: everruns_core::SessionSeedMode::Fresh,
             },
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
     Ok((session.id, true))
 }
@@ -439,8 +437,7 @@ async fn dispatch_invocation_message(
                 external_actor: None,
             },
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
     Ok(())
 }
@@ -586,8 +583,7 @@ pub async fn invoke_scheduled_legacy_alias_channel(
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|(context, _)| context.org_id == org_id)
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(legacy_app_id) {
@@ -606,8 +602,7 @@ pub async fn invoke_scheduled_agent_channel(
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|(context, _)| context.org_id == org_id)
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     invoke_scheduled_channel_inner(db, session_service, message_service, ingress, channel).await
@@ -677,8 +672,7 @@ where
 {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, &req.channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
         return Err(CommandError::not_found("Channel"));
@@ -757,8 +751,7 @@ pub async fn resolve_channel_api(
 > {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(legacy_app_id) {
         return Err(CommandError::not_found("Channel"));
@@ -873,8 +866,7 @@ pub async fn post_channel_api_message(
 
     let session = db
         .get_session(ingress.org_id, session_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Session"))?;
     if !session_has_channel_tags(
         &session.tags,
@@ -920,8 +912,7 @@ pub async fn invoke_channel_webhook(
 ) -> Result<ChannelInvocationResult, CommandError> {
     let (ingress, channel) =
         crate::api::channel_ingress::resolve_channel(db, encryption, &req.channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
     if !ingress.matches_legacy_app_id(&req.legacy_app_id) {
         return Err(CommandError::not_found("Channel"));

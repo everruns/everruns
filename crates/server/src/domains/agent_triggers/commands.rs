@@ -148,8 +148,7 @@ async fn count_enabled_triggers(ctx: &Ctx) -> Result<i64, CommandError> {
     let rows = ctx
         .db
         .list_agent_triggers(ctx.org_id(), None, false)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     Ok(rows.iter().filter(|row| row.enabled).count() as i64)
 }
 
@@ -182,8 +181,7 @@ async fn set_trigger_durable_schedule_id(
 ) -> Result<(), CommandError> {
     ctx.db
         .set_agent_trigger_durable_schedule_id(ctx.org_id(), trigger_id, durable_schedule_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     Ok(())
 }
 
@@ -209,8 +207,7 @@ pub(crate) async fn sync_agent_trigger_binding(
     let agent = ctx
         .db
         .get_agent(ctx.org_id(), trigger_row.agent_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Agent"))?;
     let agent_public_id = parse_agent_id(&agent.public_id)?;
     let trigger = q::row_to_trigger(
@@ -498,8 +495,7 @@ impl Command for CreateAgentTrigger {
                 agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
                 agent_version_id: version.and_then(|version| version.version_id),
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         sync_agent_trigger_binding(ctx, &row).await?;
         if req.trigger_type == AgentTriggerType::McpEvent {
@@ -558,8 +554,7 @@ impl Command for ListAgentTriggers {
         let rows = ctx
             .db
             .list_agent_triggers(ctx.org_id(), Some(agent.id), self.include_archived)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows
             .into_iter()
             .map(|row| {
@@ -822,8 +817,7 @@ impl Command for UpdateAgentTriggerCmd {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent trigger"))?;
 
         if trigger.trigger_type == AgentTriggerType::Schedule {
@@ -886,8 +880,7 @@ impl Command for DeleteAgentTrigger {
         let deleted = ctx
             .db
             .delete_agent_trigger(ctx.org_id(), trigger.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             Ok(json!({ "deleted": true }))
         } else {
@@ -1015,8 +1008,7 @@ pub async fn invoke_agent_trigger(
     let trigger_id = parse_trigger_id(trigger_id)?;
     let trigger_row = db
         .get_agent_trigger(org_id, trigger_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .filter(|row| row.status == "active")
         .ok_or_else(|| CommandError::not_found("Agent trigger"))?;
     if !trigger_row.enabled {
@@ -1027,8 +1019,7 @@ pub async fn invoke_agent_trigger(
 
     let agent = db
         .get_agent(org_id, trigger_row.agent_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Agent"))?;
     if agent.status != "active" {
         return Err(CommandError::forbidden("Agent is not active".to_string()));
@@ -1142,13 +1133,10 @@ pub(super) async fn resolve_trigger_execution_context(
         });
     }
 
-    let (virtual_user_id, owner) = ensure_identity_for_agent(db, org_id, agent)
-        .await
-        .map_err(classify_anyhow)?;
+    let (virtual_user_id, owner) = ensure_identity_for_agent(db, org_id, agent).await?;
     let harness_id = if agent.harness_source == "organization_default" {
         db.get_organization_settings(org_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .and_then(|settings| settings.default_harness_id)
             .unwrap_or(agent.harness_id)
     } else {
@@ -1233,16 +1221,14 @@ pub(super) async fn find_or_create_trigger_session(
                 execution_context.owner_principal_id,
                 &shared_tags,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         } else {
             db.find_session_by_tags_and_owner(
                 org_id,
                 execution_context.owner_principal_id,
                 &shared_tags,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         };
         if let Some(existing) = existing {
             return Ok((existing.id, false));
@@ -1340,8 +1326,7 @@ pub(super) async fn find_or_create_trigger_session(
                 req,
             )
             .await
-    }
-    .map_err(classify_anyhow)?;
+    }?;
 
     Ok((session.id, true))
 }
@@ -1407,8 +1392,7 @@ pub(super) async fn dispatch_trigger_message(
                 external_actor: None,
             },
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     Ok(())
 }
 

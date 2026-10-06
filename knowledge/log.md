@@ -10,6 +10,16 @@
   runs in CI. It stays non-default: `DECISIONS_DRIVER=openai` selects it. See
   [Decisions Service](operations/decisions-service.md#decision-drivers).
 
+* **Cut-off tool calls never run, and the turn decides what next.** OpenAI
+  Responses and Bedrock drop a call whose arguments never finished or do not
+  parse instead of running it with `{}`, like the other drivers. A generation
+  that lost calls to the output limit goes through the `output_truncation`
+  policy: `continue` (default) tells the model and retries up to twice in a
+  row, `fail` ends the turn, `off` keeps the old behaviour. `llm.generation`
+  records `truncation_gate`. See
+  [Capabilities](execution/capabilities.md#outputtruncation) and
+  [Observability Providers](operations/observability.md#llm-edge-case-telemetry).
+
 * **Decision: user MCP servers.** Virtual users own MCP servers, agents opt
   in to use or manage them through a `user_mcp` capability, and agent servers
   gain a `user_or_service` auth mode. Accepted, implementation in progress.

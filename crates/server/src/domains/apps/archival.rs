@@ -52,12 +52,10 @@ impl Command for ListApps {
         let rows = ctx
             .db
             .list_apps(ctx.org_id(), self.search.as_deref(), self.include_archived)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(
             q::load_apps_list(&ctx.db, ctx.encryption.as_ref(), rows, ctx.org_id())
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .into_iter()
                 .map(redact_app_for_response)
                 .collect(),
@@ -103,8 +101,7 @@ impl Command for GetApp {
             ctx.org_id(),
             &app_id.to_string(),
         )
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .map(redact_app_for_response)
         .ok_or_else(|| CommandError::not_found("App"))
     }

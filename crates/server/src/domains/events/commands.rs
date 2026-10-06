@@ -205,8 +205,7 @@ impl Command for ListEvents {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         let is_paginated = self.limit.is_some();
@@ -234,16 +233,12 @@ impl Command for ListEvents {
                 order_desc: self.order_desc,
                 limit: self.limit,
             };
-            let events = q::event_service(ctx)?
-                .list_advanced(&params)
-                .await
-                .map_err(classify_anyhow)?;
+            let events = q::event_service(ctx)?.list_advanced(&params).await?;
             let total = if is_paginated {
                 Some(
                     q::event_service(ctx)?
                         .count_events(session_id.uuid(), &self.exclude)
-                        .await
-                        .map_err(classify_anyhow)?,
+                        .await?,
                 )
             } else {
                 None
@@ -264,8 +259,7 @@ impl Command for ListEvents {
                 self.before_sequence,
                 self.limit,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if is_paginated && !events.is_empty() && self.before_sequence.is_some() {
             let first_seq = events[0].sequence.unwrap_or(0);
@@ -296,8 +290,7 @@ impl Command for ListEvents {
             Some(
                 q::event_service(ctx)?
                     .count_events(session_id.uuid(), &self.exclude)
-                    .await
-                    .map_err(classify_anyhow)?,
+                    .await?,
             )
         } else {
             None
@@ -369,14 +362,10 @@ impl Command for EventsSummaryCmd {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
-        let summary = q::event_service(ctx)?
-            .summary(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let summary = q::event_service(ctx)?.summary(session_id.uuid()).await?;
 
         let mut turn_count = 0i64;
         let mut error_count = 0i64;

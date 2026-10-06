@@ -160,8 +160,7 @@ impl Command for ListModels {
                 self.include_stale,
                 self.favorites_only,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(models
             .into_iter()
             .filter(|model| self.service.is_none_or(|service| model.service == service))
@@ -202,8 +201,7 @@ impl Command for GetModel {
         let model_id = q::parse_model_id(&self.id)?;
         q::service(ctx)
             .get_with_provider(&ctx.caller, model_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Model"))
     }
 }
@@ -273,8 +271,7 @@ impl Command for UpdateModel {
                     is_favorite: self.is_favorite,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Model"))
     }
 }
@@ -310,10 +307,7 @@ impl Command for DeleteModel {
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteModelResult, CommandError> {
         let model_id = q::parse_model_id(&self.id)?;
-        let deleted = q::service(ctx)
-            .delete(&ctx.caller, model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = q::service(ctx).delete(&ctx.caller, model_id).await?;
         if !deleted {
             return Err(CommandError::not_found("Model"));
         }
@@ -445,15 +439,8 @@ impl Command for GetDefaultDecisionModel {
         Some(&LLM_MODEL_VIEW)
     }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        let id = ctx
-            .db
-            .get_decision_default(ctx.caller.org_id)
-            .await
-            .map_err(classify_anyhow)?;
-        let models = q::service(ctx)
-            .list_all(&ctx.caller)
-            .await
-            .map_err(classify_anyhow)?;
+        let id = ctx.db.get_decision_default(ctx.caller.org_id).await?;
+        let models = q::service(ctx).list_all(&ctx.caller).await?;
         Ok(id.and_then(|id| models.into_iter().find(|m| m.id.uuid() == id)))
     }
 }
@@ -482,10 +469,7 @@ impl Command for SetDefaultDecisionModel {
         let model = match self.model_id {
             None => None,
             Some(id) => {
-                let models = q::service(ctx)
-                    .list_all(&ctx.caller)
-                    .await
-                    .map_err(classify_anyhow)?;
+                let models = q::service(ctx).list_all(&ctx.caller).await?;
                 let model = models
                     .into_iter()
                     .find(|m| m.id.to_string() == id)
@@ -513,8 +497,7 @@ impl Command for SetDefaultDecisionModel {
         };
         ctx.db
             .set_decision_default(ctx.caller.org_id, model.as_ref().map(|m| m.id.uuid()))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(model)
     }
 }

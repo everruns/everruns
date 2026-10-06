@@ -67,8 +67,7 @@ impl Command for CreateMessage {
         let session_id = q::parse_session_id(&self.session_id)?;
         let loaded = q::session_service(ctx)?
             .get_for_send(&ctx.caller, session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
         require_platform_chat_owner(ctx, &loaded)?;
         let session = &loaded.session;
@@ -160,8 +159,7 @@ async fn resolve_responder_agent_id(
     let participants = ctx
         .db
         .list_session_participants(ctx.org_id(), session_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     let participant = participants
         .iter()
         .find(|row| row.id == participant_id)
@@ -193,8 +191,7 @@ async fn resolve_responder_agent_id(
     let public_id = ctx
         .db
         .get_agent_public_id(ctx.org_id(), agent_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::internal(anyhow::anyhow!("participant agent not found")))?
         .parse::<AgentId>()
         .map_err(|err| CommandError::internal(anyhow::anyhow!(err)))?;
@@ -232,8 +229,7 @@ impl Command for ListMessages {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         q::message_service(ctx)?
@@ -302,8 +298,7 @@ impl Command for ExportSessionMessages {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         if self.format == SessionExportFormat::Atif {
@@ -315,8 +310,7 @@ impl Command for ExportSessionMessages {
             );
             let events = event_service
                 .list(session_id.uuid(), None, None, &[], &[], None, None)
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
             let trajectory = crate::atif::build_trajectory(
                 Some(&session_id.to_string()),
                 &events,
@@ -331,10 +325,7 @@ impl Command for ExportSessionMessages {
             });
         }
 
-        let messages = q::message_service(ctx)?
-            .list(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let messages = q::message_service(ctx)?.list(session_id.uuid()).await?;
 
         let mut body = String::new();
         for message in &messages {
@@ -386,8 +377,7 @@ pub async fn export_session_segment(
     let session_id = q::parse_session_id(session_id_str)?;
     q::session_service(ctx)?
         .get(&ctx.caller, session_id.uuid(), None)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Session"))?;
 
     if let Some(raw_cursor) = cursor {
@@ -404,8 +394,7 @@ pub async fn export_session_segment(
     );
     let events = event_service
         .list(session_id.uuid(), None, None, &[], &[], None, None)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
     let segment = crate::atif::build_segment(
         &session_id.to_string(),

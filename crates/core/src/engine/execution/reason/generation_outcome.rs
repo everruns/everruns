@@ -77,6 +77,40 @@ impl GenerationOutcome {
     }
 }
 
+/// Metadata stamped on the assistant message: the model, reasoning state and
+/// effort, and the provider driver id and response id the chat UI uses to deep
+/// link to the provider's trace for this message (see `ProviderTraceConfig`;
+/// the UI keys trace config by driver, `response_id` is absent for providers
+/// that return none). Split out of `reason.rs` (file-size ratchet).
+pub(super) fn assistant_metadata(
+    model: &str,
+    reasoning_state: Option<&everruns_contracts::reasoning_updates::ReasoningState>,
+    reasoning_effort: Option<&str>,
+    provider: &str,
+    response_id: Option<&str>,
+) -> std::collections::HashMap<String, serde_json::Value> {
+    use serde_json::Value;
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("model".to_string(), Value::String(model.to_string()));
+    if let Some(state) = reasoning_state {
+        metadata.insert(
+            super::reasoning_updates::STATE_KEY.to_string(),
+            serde_json::json!(state),
+        );
+    }
+    if let Some(effort) = reasoning_effort {
+        metadata.insert(
+            "reasoning_effort".to_string(),
+            Value::String(effort.to_string()),
+        );
+    }
+    metadata.insert("provider".to_string(), Value::String(provider.to_string()));
+    if let Some(rid) = response_id {
+        metadata.insert("response_id".to_string(), Value::String(rid.to_string()));
+    }
+    metadata
+}
+
 /// Log a provider error that is, or reads like, a context overflow, with the
 /// provider and model the driver layer does not know. One place for every
 /// driver; `llm_telemetry` decides whether the error qualifies.

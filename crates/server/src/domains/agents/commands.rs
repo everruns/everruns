@@ -74,8 +74,7 @@ async fn persist_harness_source(
                 ..Default::default()
             },
         )
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Agent"))
 }
 
@@ -137,11 +136,7 @@ impl Command for CreateAgent {
 
         // Enforce per-org agent cap (excludes soft-deleted) before insert.
         let max = ctx.resource_limits.max_agents_per_org;
-        let count = ctx
-            .db
-            .count_agents_for_org(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let count = ctx.db.count_agents_for_org(ctx.org_id()).await?;
         if count >= max {
             return Err(CommandError::conflict(format!(
                 "Agent limit reached (max {max})"
@@ -163,18 +158,15 @@ impl Command for CreateAgent {
             ctx.org_id(),
             &caps,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
             &ctx.db,
             ctx.org_id(),
             &req.mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
-        let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        .await?;
+        let default_model_id =
+            q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
         let harness_source = if req.harness_id.is_some() || req.harness_name.is_some() {
             "explicit"
         } else {
@@ -208,19 +200,14 @@ impl Command for CreateAgent {
                     .network_access
                     .as_ref()
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
-                max_iterations: max_iterations::to_db(req.max_iterations)
-                    .map_err(classify_anyhow)?,
+                max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
                 // bootstrap. No API-facing creation path may mint one.
                 is_built_in: false,
             };
-            let row = ctx
-                .db
-                .create_agent(ctx.org_id(), input)
-                .await
-                .map_err(classify_anyhow)?;
+            let row = ctx.db.create_agent(ctx.org_id(), input).await?;
             let uuid = row.id.uuid();
             (row, uuid)
         } else {
@@ -245,8 +232,7 @@ impl Command for CreateAgent {
                     .network_access
                     .as_ref()
                     .map(|na| serde_json::to_value(na).unwrap_or_default()),
-                max_iterations: max_iterations::to_db(req.max_iterations)
-                    .map_err(classify_anyhow)?,
+                max_iterations: max_iterations::to_db(req.max_iterations)?,
                 parallel_tool_calls: req.parallel_tool_calls,
                 environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
                 // Built-in agents come from the platform definition via org
@@ -256,8 +242,7 @@ impl Command for CreateAgent {
             let row = ctx
                 .db
                 .create_agent_with_id(ctx.org_id(), AgentId::from_uuid(internal_uuid), input)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| {
                     CommandError::conflict("Agent UUID collision").with_code("agent_id_taken")
                 })?;
@@ -274,8 +259,7 @@ impl Command for CreateAgent {
                         ..Default::default()
                     },
                 )
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| CommandError::not_found("Agent"))?
         } else {
             row
@@ -351,11 +335,8 @@ impl Command for ListAgents {
                 self.include_archived,
                 pg,
             )
-            .await
-            .map_err(classify_anyhow)?;
-        let agents = q::load_agents_list(&ctx.db, rows)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
+        let agents = q::load_agents_list(&ctx.db, rows).await?;
         Ok(Paginated {
             data: agents,
             total,
@@ -414,8 +395,7 @@ impl Command for GetAgent {
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         q::resolve(&ctx.db, ctx.org_id(), &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))
     }
 }
@@ -507,8 +487,7 @@ impl Command for UpdateAgentCmd {
         let existing = ctx
             .db
             .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         if existing.status != "active" {
@@ -519,9 +498,7 @@ impl Command for UpdateAgentCmd {
 
         let internal_id = existing.id;
         let previous_config_hash = if ctx.feature_flags.agent_versions {
-            let caps = q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid())
-                .await
-                .map_err(classify_anyhow)?;
+            let caps = q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid()).await?;
             let agent = q::row_to_agent(existing.clone(), caps);
             Some(q::config_hash(&q::authored_config(&agent)))
         } else {
@@ -549,9 +526,7 @@ impl Command for UpdateAgentCmd {
                 .await?,
             ),
             None if final_has_initial_files => Some(q::ensure_file_system_capability(
-                q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid())
-                    .await
-                    .map_err(classify_anyhow)?,
+                q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid()).await?,
                 true,
             )),
             None => None,
@@ -562,8 +537,7 @@ impl Command for UpdateAgentCmd {
                 ctx.org_id(),
                 caps,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         }
         if let Some(ref servers) = req.mcp_servers {
             crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
@@ -571,12 +545,10 @@ impl Command for UpdateAgentCmd {
                 ctx.org_id(),
                 servers,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         }
-        let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let default_model_id =
+            q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
         let harness_id =
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
@@ -633,8 +605,7 @@ impl Command for UpdateAgentCmd {
             max_iterations: req
                 .max_iterations
                 .map(|v| max_iterations::to_db(Some(v)))
-                .transpose()
-                .map_err(classify_anyhow)?,
+                .transpose()?,
             network_access: req
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
@@ -645,8 +616,7 @@ impl Command for UpdateAgentCmd {
         let row = ctx
             .db
             .update_agent(ctx.org_id(), internal_id, input)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         if is_archiving {
@@ -657,9 +627,7 @@ impl Command for UpdateAgentCmd {
             persist_capabilities(&ctx.db, internal_id.uuid(), &caps).await?;
             caps
         } else {
-            q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid())
-                .await
-                .map_err(classify_anyhow)?
+            q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid()).await?
         };
 
         let agent = q::row_to_agent(row, caps);
@@ -739,8 +707,7 @@ impl Command for DeleteAgent {
         let row = ctx
             .db
             .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         crate::domains::apps::queries::ensure_no_app_references_to_agent(
@@ -750,10 +717,7 @@ impl Command for DeleteAgent {
         )
         .await?;
 
-        ctx.db
-            .delete_agent(ctx.org_id(), row.id)
-            .await
-            .map_err(classify_anyhow)?;
+        ctx.db.delete_agent(ctx.org_id(), row.id).await?;
         super::credentials::revoke_agent_grants(ctx, &row).await?;
 
         Ok(serde_json::json!({"deleted": true}))
@@ -853,18 +817,15 @@ impl Command for UpsertAgent {
             ctx.org_id(),
             &caps,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
             &ctx.db,
             ctx.org_id(),
             &req.mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
-        let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        .await?;
+        let default_model_id =
+            q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
         let harness_source = if req.harness_id.is_some() || req.harness_name.is_some() {
             "explicit"
         } else {
@@ -875,13 +836,10 @@ impl Command for UpsertAgent {
         let existing = ctx
             .db
             .get_agent_by_public_id(ctx.org_id(), &public_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let previous_config_hash = if ctx.feature_flags.agent_versions {
             if let Some(existing) = &existing {
-                let caps = q::get_capabilities(&ctx.db, ctx.org_id(), existing.id.uuid())
-                    .await
-                    .map_err(classify_anyhow)?;
+                let caps = q::get_capabilities(&ctx.db, ctx.org_id(), existing.id.uuid()).await?;
                 let agent = q::row_to_agent(existing.clone(), caps);
                 Some(q::config_hash(&q::authored_config(&agent)))
             } else {
@@ -906,7 +864,7 @@ impl Command for UpsertAgent {
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
-            max_iterations: max_iterations::to_db(req.max_iterations).map_err(classify_anyhow)?,
+            max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
             environments: sandbox_templates::to_json(req.sandbox_policy.as_ref()),
             network_access: req
@@ -916,11 +874,7 @@ impl Command for UpsertAgent {
             // See CreateAgent: only org bootstrap mints built-in agents.
             is_built_in: false,
         };
-        let (row, was_created) = ctx
-            .db
-            .upsert_agent(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let (row, was_created) = ctx.db.upsert_agent(ctx.org_id(), input).await?;
         let row = persist_harness_source(ctx, row, harness_source).await?;
         let agent_uuid = row.id.uuid();
 
@@ -930,9 +884,7 @@ impl Command for UpsertAgent {
         } else if was_created {
             vec![]
         } else {
-            q::get_capabilities(&ctx.db, ctx.org_id(), agent_uuid)
-                .await
-                .map_err(classify_anyhow)?
+            q::get_capabilities(&ctx.db, ctx.org_id(), agent_uuid).await?
         };
 
         let agent = q::row_to_agent(row, final_caps);
@@ -1009,14 +961,11 @@ impl Command for CopyAgent {
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
         let source = q::resolve(&ctx.db, ctx.org_id(), &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         let copy_name =
-            q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name))
-                .await
-                .map_err(classify_anyhow)?;
+            q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name)).await?;
 
         let req = CreateAgentRequest {
             service_virtual_user_id: None,
@@ -1094,8 +1043,7 @@ impl Command for ListAgentVersions {
         let rows = ctx
             .db
             .list_agent_versions(ctx.org_id(), AgentId::from_uuid(agent.internal_id))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.into_iter().map(q::row_to_agent_version).collect())
     }
 }
@@ -1220,12 +1168,9 @@ impl Command for SetDefaultAgentVersion {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
-        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
         Ok(q::row_to_agent(row, caps))
     }
 }
@@ -1349,16 +1294,12 @@ async fn set_exposures_suspended(
                 ..Default::default()
             },
         )
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Agent"))?;
-    let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid())
-        .await
-        .map_err(classify_anyhow)?;
+    let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
     let agent = q::row_to_agent(row, caps);
     q::with_derived_exposure_one(&ctx.db, Some(agent))
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Agent"))
 }
 
@@ -1439,20 +1380,15 @@ impl Command for RollbackAgentVersion {
                             .as_ref()
                             .map(|value| serde_json::to_value(value).unwrap()),
                     ),
-                    max_iterations: Some(
-                        max_iterations::to_db(restored.max_iterations).map_err(classify_anyhow)?,
-                    ),
+                    max_iterations: Some(max_iterations::to_db(restored.max_iterations)?),
                     parallel_tool_calls: Some(restored.parallel_tool_calls),
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
         persist_capabilities(&ctx.db, current.internal_id, &restored.capabilities).await?;
-        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
         let agent = q::row_to_agent(row, caps);
         if self.req.save_version {
             create_version_from_agent(
@@ -1656,12 +1592,9 @@ impl Command for ForkAgentVersion {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
-        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let caps = q::get_capabilities(&ctx.db, row.org_id, row.id.uuid()).await?;
         let agent = q::row_to_agent(row, caps);
         create_version_from_agent(
             ctx,
@@ -1874,11 +1807,7 @@ impl Command for CheckAgentName {
             })
             .transpose()?;
 
-        let existing = ctx
-            .db
-            .get_agent_by_name(ctx.org_id(), &self.name)
-            .await
-            .map_err(classify_anyhow)?;
+        let existing = ctx.db.get_agent_by_name(ctx.org_id(), &self.name).await?;
 
         let available = match existing {
             Some(row) => exclude_id == Some(row.id),
@@ -1951,8 +1880,7 @@ impl Command for DestroyAgent {
         let row = ctx
             .db
             .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         if row.status != "archived" {
@@ -1968,10 +1896,7 @@ impl Command for DestroyAgent {
         )
         .await?;
 
-        ctx.db
-            .destroy_agent(ctx.org_id(), row.id)
-            .await
-            .map_err(classify_anyhow)?;
+        ctx.db.destroy_agent(ctx.org_id(), row.id).await?;
 
         Ok(serde_json::json!({"destroyed": true}))
     }

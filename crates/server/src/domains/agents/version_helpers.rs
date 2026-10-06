@@ -2,8 +2,7 @@ use super::*;
 
 pub(super) async fn resolve_agent(ctx: &Ctx, id: &str) -> Result<Agent, CommandError> {
     q::resolve(&ctx.db, ctx.org_id(), id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Agent"))
 }
 
@@ -24,8 +23,7 @@ pub(super) async fn resolve_agent_version(
 ) -> Result<AgentVersion, CommandError> {
     ctx.db
         .get_agent_version(ctx.org_id(), version_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .map(q::row_to_agent_version)
         .ok_or_else(|| CommandError::not_found("Agent version"))
 }
@@ -95,13 +93,11 @@ pub(super) async fn create_version_from_agent(
     let previous_snapshot = ctx
         .db
         .get_latest_agent_snapshot(ctx.org_id(), agent_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     let previous_published = ctx
         .db
         .get_latest_agent_version(ctx.org_id(), agent_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     let version_number = previous_snapshot
         .as_ref()
         .map_or(1, |row| row.version_number + 1);
@@ -139,8 +135,7 @@ pub(super) async fn create_version_from_agent(
             authored_config,
             resolved_config,
         })
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     if is_published && agent.default_version_id.is_none() {
         ctx.db
             .update_agent(
@@ -151,8 +146,7 @@ pub(super) async fn create_version_from_agent(
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
     }
     Ok(q::row_to_agent_version(row))
 }
@@ -171,8 +165,7 @@ pub(super) async fn create_auto_snapshot_from_agent(
     if ctx
         .db
         .get_latest_agent_snapshot(ctx.org_id(), agent_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .is_some_and(|row| row.config_hash == config_hash)
     {
         return Ok(());
@@ -192,8 +185,7 @@ pub(super) async fn create_auto_snapshot_from_agent(
                         agent_id,
                         MAX_AUTO_SNAPSHOTS_PER_AGENT,
                     )
-                    .await
-                    .map_err(classify_anyhow)?;
+                    .await?;
                 return Ok(());
             }
             Err(CommandError {

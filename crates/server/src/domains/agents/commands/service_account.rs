@@ -15,8 +15,7 @@ pub(super) async fn validate_service_account(
         let user = ctx
             .db
             .get_virtual_user(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Virtual user"))?;
         if user.status != "active" || user.usage != "service" {
             return Err(CommandError::bad_request(

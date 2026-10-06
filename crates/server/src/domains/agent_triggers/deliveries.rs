@@ -52,8 +52,7 @@ impl Command for ListAgentTriggerDeliveries {
         let rows = ctx
             .db
             .list_agent_trigger_deliveries(ctx.org_id(), trigger.id, limit)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows
             .into_iter()
             .map(|row| crate::records::AgentTriggerDelivery {

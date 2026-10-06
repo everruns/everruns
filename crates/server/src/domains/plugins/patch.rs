@@ -125,15 +125,13 @@ impl Command for PatchInstalledPlugin {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Installed plugin"))?;
 
         let marketplace = if let Some(marketplace_id) = updated.marketplace_id {
             ctx.db
                 .get_plugin_marketplace(ctx.org_id(), marketplace_id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
         } else {
             None
         };

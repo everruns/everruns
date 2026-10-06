@@ -61,6 +61,7 @@ mod reasoning_updates;
 mod request_controls;
 mod stream_state;
 mod transcript;
+mod truncation_gate;
 
 use compaction::{
     ProactiveCompactionContext, ReactiveCompactionContext, apply_proactive_compaction,
@@ -182,6 +183,10 @@ pub struct ReasonResult {
     /// A remote tool loop (OpenAI Agents API) paused on a tool call; the turn parks (EVE-1124).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub waiting_for_tool_results: bool,
+    /// The generation lost tool calls to truncation and the output-truncation
+    /// gate retries: the turn runs another reason step even without calls.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub truncation_retry: bool,
 }
 
 fn default_max_iterations() -> usize {
@@ -762,6 +767,7 @@ impl ReasonAtom {
         let resolved_locale = assembled.resolved_locale;
         let compaction_policy = assembled.compaction_policy;
         let resolved_capability_configs = assembled.resolved_capability_configs;
+        let truncation_gate = truncation_gate::Gate::new(&resolved_capability_configs, &messages);
         let runtime_agent = assembled.runtime_agent;
         let embedder_metadata = assembled.embedder_metadata;
 
@@ -971,6 +977,7 @@ impl ReasonAtom {
                 &context_messages,
                 stateful_response_continuation || restored_checkpoint.is_some(),
             );
+        context_messages = truncation_gate::insert_notes(context_messages);
 
         // 9c. Dynamic facts after each answered input, rendered as of that input.
         // Capable Anthropic models use turn-scoped system messages; others keep
@@ -2315,6 +2322,7 @@ impl ReasonAtom {
             !finalized_tool_calls.is_empty(),
         );
         let served = meta.and_then(|m| m.response_model.clone());
+        let truncation = truncation_gate.decide(&outcome);
         let mut generation_data = outcome
             .apply(LlmGenerationData::success_with_retry(
                 messages_for_event.clone(),
@@ -2330,7 +2338,8 @@ impl ReasonAtom {
                 response_id.clone(),
                 generation_outcome::retry_info(meta),
             ))
-            .with_response_model(served);
+            .with_response_model(served)
+            .with_truncation_gate(truncation.label());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }
@@ -2357,45 +2366,30 @@ impl ReasonAtom {
             );
         }
 
-        // 17. Build metadata with model and reasoning effort info
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert(
-            "model".to_string(),
-            serde_json::Value::String(runtime_agent.model.clone()),
+        // A cut-off generation the policy will not retry ends the turn here,
+        // before its answer is stored (see `truncation_gate`).
+        truncation.log(
+            model_with_provider.provider_type.as_str(),
+            &runtime_agent.model,
         );
-        if let Some(state) = &llm_config.reasoning_state {
-            metadata.insert(
-                reasoning_updates::STATE_KEY.to_string(),
-                serde_json::json!(state),
-            );
+        if truncation.action == crate::output_truncation::OutputTruncationAction::Fail {
+            return Err(truncation.failure());
         }
-        if let Some(effort) = llm_config
-            .reasoning_state
-            .as_ref()
-            .and_then(|state| state.effective)
-            .or(reasoning_effort)
-        {
-            metadata.insert(
-                "reasoning_effort".to_string(),
-                serde_json::Value::String(effort.as_str().to_string()),
-            );
-        }
-        // Stamp the provider driver id and provider response id so the chat UI
-        // can build a deep link to the provider's trace/logs for this message
-        // (see ProviderTraceConfig). The resolved model carries the driver id,
-        // not the concrete provider instance id, so the UI keys trace config by
-        // driver. `response_id` is the provider's generation id (e.g.
-        // OpenRouter's "gen-..."); absent for providers that do not return one.
-        metadata.insert(
-            "provider".to_string(),
-            serde_json::Value::String(model_with_provider.provider_type.to_string()),
+
+        // 17. Assistant-message metadata; a retried generation is stamped.
+        let mut metadata = generation_outcome::assistant_metadata(
+            &runtime_agent.model,
+            llm_config.reasoning_state.as_ref(),
+            llm_config
+                .reasoning_state
+                .as_ref()
+                .and_then(|state| state.effective)
+                .or(reasoning_effort)
+                .map(|effort| effort.as_str()),
+            &model_with_provider.provider_type.to_string(),
+            response_id.as_deref(),
         );
-        if let Some(ref rid) = response_id {
-            metadata.insert(
-                "response_id".to_string(),
-                serde_json::Value::String(rid.clone()),
-            );
-        }
+        truncation.stamp(&mut metadata);
 
         // 18. Store and emit output.message.completed event with metadata and usage.
         // Apply capability-owned response filters before persisting/returning
@@ -2504,8 +2498,10 @@ impl ReasonAtom {
             usage,
             output_message_id: Some(output_message_id),
             time_to_first_token_ms,
-            response_id,
+            // A retry must not chain onto a response that ended mid-call.
+            response_id: response_id.filter(|_| !truncation.retries()),
             finish_reason,
+            truncation_retry: truncation.retries(),
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,

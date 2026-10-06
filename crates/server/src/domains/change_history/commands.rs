@@ -220,8 +220,7 @@ impl Command for ListEntityHistory {
                 limit: limit(self.limit),
                 ..EntityChangeQuery::default()
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.into_iter().map(EntityChange::from).collect())
     }
 }
@@ -302,8 +301,7 @@ impl Command for ListOrgHistory {
                 since: self.since,
                 limit: limit(self.limit),
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.into_iter().map(EntityChange::from).collect())
     }
 }

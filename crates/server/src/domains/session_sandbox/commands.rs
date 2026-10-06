@@ -54,8 +54,7 @@ impl Command for ManageSessionSandbox {
         let service = q::session_sandbox_service(ctx)?;
         let config = service
             .config_for_session(session_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| {
                 CommandError::bad_request("Session sandbox is not configured for this session")
             })?;

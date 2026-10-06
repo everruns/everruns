@@ -101,7 +101,7 @@ impl Command for CreateBudget {
                 .map(|period| serde_json::to_value(period).unwrap_or_default()),
             metadata: req.metadata,
         };
-        let row = ctx.db.create_budget(input).await.map_err(classify_anyhow)?;
+        let row = ctx.db.create_budget(input).await?;
         Ok(q::row_to_budget(&row))
     }
 }
@@ -145,8 +145,7 @@ impl Command for ListBudgets {
                 }),
                 self.subject_id.as_deref(),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_budget).collect())
     }
 }
@@ -184,8 +183,7 @@ impl Command for GetBudget {
         let row = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         Ok(q::row_to_budget(&row))
     }
@@ -232,8 +230,7 @@ impl Command for UpdateBudgetCmd {
         let existing = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         validate_subject_type(&existing.subject_type)?;
         let row = ctx
@@ -248,8 +245,7 @@ impl Command for UpdateBudgetCmd {
                     metadata: self.metadata,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         Ok(q::row_to_budget(&row))
     }
@@ -289,15 +285,10 @@ impl Command for DeleteBudget {
         let existing = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         validate_subject_type(&existing.subject_type)?;
-        let deleted = ctx
-            .db
-            .delete_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = ctx.db.delete_budget(ctx.org_id(), budget_id).await?;
         if !deleted {
             return Err(CommandError::not_found("Budget"));
         }
@@ -342,8 +333,7 @@ impl Command for TopUpBudget {
         let existing = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         validate_subject_type(&existing.subject_type)?;
 
@@ -358,8 +348,7 @@ impl Command for TopUpBudget {
                 session_id: None,
                 description: self.description,
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if updated.balance > 0.0 && (updated.status == "paused" || updated.status == "exhausted") {
             let _ = ctx.db.set_budget_status(budget_id, "active").await;
@@ -368,8 +357,7 @@ impl Command for TopUpBudget {
         let row = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         Ok(q::row_to_budget(&row))
     }
@@ -413,14 +401,12 @@ impl Command for ListBudgetLedger {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
         ctx.db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         let rows = ctx
             .db
             .list_budget_ledger(budget_id, self.limit, self.offset)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_ledger_entry).collect())
     }
 }
@@ -454,8 +440,7 @@ impl Command for CheckBudget {
         let budget = ctx
             .db
             .get_budget(ctx.org_id(), budget_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Budget"))?;
         if budget.subject_type != "session" {
             return Err(CommandError::bad_request(
@@ -501,8 +486,7 @@ impl Command for ListSessionBudgets {
         let rows = ctx
             .db
             .list_budgets(ctx.org_id(), Some("session"), Some(&self.session_id))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_budget).collect())
     }
 }
@@ -577,8 +561,7 @@ impl Command for ResumeSessionBudgets {
         let budgets = ctx
             .db
             .list_budgets(ctx.org_id(), Some("session"), Some(&self.session_id))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         let mut resumed_budgets = 0;
         for budget in &budgets {

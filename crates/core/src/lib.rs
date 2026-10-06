@@ -196,6 +196,7 @@ pub use everruns_contracts::runtime::computer_use;
 pub mod config;
 pub use everruns_contracts::runtime::config_layer;
 pub mod context_report;
+pub mod output_truncation;
 pub use everruns_contracts::runtime::dependency_blocker;
 /// Shared lease and persistence contracts for native asynchronous tools.
 pub mod native_async_store;

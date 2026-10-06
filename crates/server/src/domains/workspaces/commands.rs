@@ -91,8 +91,7 @@ impl Command for ListWorkspaces {
                 self.search.as_deref(),
                 self.include_archived.unwrap_or(false),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.into_iter().map(workspace_response).collect())
     }
 }
@@ -204,8 +203,7 @@ impl Command for GetWorkspace {
         let row = ctx
             .db
             .get_workspace(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Workspace"))?;
         Ok(workspace_response(row))
     }
@@ -247,8 +245,7 @@ impl Command for UpdateWorkspaceCmd {
         let existing = ctx
             .db
             .get_workspace(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Workspace"))?;
 
         let name = self.request.name.map(|n| validate_name(&n)).transpose()?;
@@ -314,13 +311,9 @@ impl Command for DeleteWorkspace {
         let existing = ctx
             .db
             .get_workspace(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Workspace"))?;
-        ctx.db
-            .archive_workspace(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+        ctx.db.archive_workspace(ctx.org_id(), existing.id).await?;
         Ok(())
     }
 }

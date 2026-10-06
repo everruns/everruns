@@ -20,10 +20,13 @@ pub(crate) const LLM_PROVIDER_FINISH_REASON: &str = "everruns.llm.provider_finis
 /// Tool calls the driver discarded because the response was cut off.
 #[cfg(feature = "otel")]
 pub(crate) const LLM_TOOL_CALLS_DROPPED: &str = "everruns.llm.tool_calls_dropped";
-/// Tool calls run from a truncated response, possibly with `{}` arguments.
+/// Tool calls run from a truncated response; their own arguments are complete.
 #[cfg(feature = "otel")]
 pub(crate) const LLM_TOOL_CALLS_TRUNCATED_EXECUTED: &str =
     "everruns.llm.tool_calls_truncated_executed";
+/// What the output-truncation gate did: `retried` or `failed`.
+#[cfg(feature = "otel")]
+pub(crate) const LLM_TRUNCATION_GATE: &str = "everruns.llm.truncation_gate";
 /// Stop reason of the turn's final generation.
 #[cfg(feature = "otel")]
 pub(crate) const TURN_STOP_REASON: &str = "everruns.turn.stop_reason";
@@ -58,6 +61,9 @@ pub(crate) fn otel_chat_attributes(meta: &LlmGenerationMetadata) -> Vec<opentele
             LLM_TOOL_CALLS_TRUNCATED_EXECUTED,
             i64::from(meta.tool_calls_truncated_executed),
         ));
+    }
+    if let Some(action) = &meta.truncation_gate {
+        attrs.push(KeyValue::new(LLM_TRUNCATION_GATE, action.clone()));
     }
     attrs
 }
@@ -95,6 +101,9 @@ pub(crate) fn annotate_braintrust(event: &Event, metadata: &mut serde_json::Valu
             if meta.tool_calls_truncated_executed > 0 {
                 metadata["tool_calls_truncated_executed"] =
                     serde_json::json!(meta.tool_calls_truncated_executed);
+            }
+            if let Some(action) = &meta.truncation_gate {
+                metadata["truncation_gate"] = serde_json::json!(action);
             }
         }
         EventData::TurnCompleted(data) => {

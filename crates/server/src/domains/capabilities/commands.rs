@@ -68,11 +68,7 @@ impl Command for ListCapabilities {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Paginated<CapabilityInfo>, CommandError> {
-        let mut capabilities = ctx
-            .capability_service
-            .list_all(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let mut capabilities = ctx.capability_service.list_all(ctx.org_id()).await?;
 
         capabilities.retain(|capability| {
             (self.include_retired || capability.status.is_listed())
@@ -145,8 +141,7 @@ impl Command for GetCapability {
 
         ctx.capability_service
             .get(ctx.org_id(), &cap_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Capability"))
     }
 }
@@ -190,8 +185,7 @@ impl Command for CreateDeclarativeCapability {
         if ctx
             .db
             .get_declarative_capability_by_name(ctx.org_id(), &definition.name)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .is_some()
         {
             return Err(CommandError::conflict(format!(
@@ -213,8 +207,7 @@ impl Command for CreateDeclarativeCapability {
                         .map_err(|error| CommandError::internal(error.into()))?,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(q::row_to_declarative_capability(&row))
     }
@@ -254,8 +247,7 @@ impl Command for ListDeclarativeCapabilities {
                 self.search.as_deref(),
                 self.include_archived,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_declarative_capability).collect())
     }
 }
@@ -342,8 +334,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
                 && ctx
                     .db
                     .get_declarative_capability_by_name(ctx.org_id(), &definition.name)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .is_some()
             {
                 return Err(CommandError::conflict(format!(
@@ -367,8 +358,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
         let row = ctx
             .db
             .update_declarative_capability(ctx.org_id(), existing.id, input)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Declarative capability"))?;
         Ok(q::row_to_declarative_capability(&row))
     }
@@ -408,8 +398,7 @@ impl Command for DeleteDeclarativeCapability {
         let deleted = ctx
             .db
             .delete_declarative_capability(ctx.org_id(), row.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if !deleted {
             return Err(CommandError::not_found("Declarative capability"));
         }
@@ -464,8 +453,7 @@ impl Command for DestroyDeclarativeCapability {
         let deleted = ctx
             .db
             .destroy_declarative_capability(ctx.org_id(), row.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if !deleted {
             return Err(CommandError::not_found("Declarative capability"));
         }
@@ -645,8 +633,7 @@ async fn get_declarative_capability_by_public_id(
     let public_id = parse_declarative_public_id(id)?;
     ctx.db
         .get_declarative_capability_by_public_id(ctx.org_id(), &public_id.to_string())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .filter(|row| row.status != "deleted")
         .ok_or_else(|| CommandError::not_found("Declarative capability"))
 }

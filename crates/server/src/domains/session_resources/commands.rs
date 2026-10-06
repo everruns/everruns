@@ -30,8 +30,7 @@ impl Command for ListSessionResources {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionResourceEntry>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::list_for_session(&ctx.db, ctx.org_id(), session_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))
     }
 }

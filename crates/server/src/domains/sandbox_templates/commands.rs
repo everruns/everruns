@@ -41,15 +41,10 @@ impl Command for GetSessionSandbox {
             .await?;
 
         let capabilities = effective_session_capabilities(&ctx.db, session_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session not found"))?;
 
-        let sandbox = ctx
-            .db
-            .get_primary_sandbox(session_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let sandbox = ctx.db.get_primary_sandbox(session_id).await?;
         Ok(match sandbox {
             Some(record) => sandbox_from_record(&record, &capabilities),
             None => sandbox_from_capabilities(&capabilities),
