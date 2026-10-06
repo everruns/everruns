@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Textarea } from "./textarea";
 import { cn } from "@/lib/utils";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
+import { SectionTabs } from "@/components/layout/page-layout";
 
 interface PromptEditorProps {
   value: string;
@@ -28,36 +29,15 @@ export function PromptEditor({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <div className="flex gap-1 border-b">
-        <button
-          type="button"
-          onClick={() => setMode("edit")}
-          disabled={disabled}
-          className={cn(
-            "px-3 py-1.5 text-sm font-medium transition-colors",
-            mode === "edit"
-              ? "border-b-2 border-primary text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-            disabled && "cursor-not-allowed opacity-50",
-          )}
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode("preview")}
-          disabled={disabled}
-          className={cn(
-            "px-3 py-1.5 text-sm font-medium transition-colors",
-            mode === "preview"
-              ? "border-b-2 border-primary text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-            disabled && "cursor-not-allowed opacity-50",
-          )}
-        >
-          Preview
-        </button>
-      </div>
+      <SectionTabs
+        value={mode}
+        onValueChange={(value) => setMode(value as "edit" | "preview")}
+        aria-label="Prompt editor"
+        items={[
+          { value: "edit", label: "Edit", disabled },
+          { value: "preview", label: "Preview", disabled },
+        ]}
+      />
 
       {mode === "edit" ? (
         <Textarea

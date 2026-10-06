@@ -96,48 +96,47 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     icon: MessageSquare,
     keywords: ["recordings", "conversation", "transcript"],
   },
-  // Live and past compute, read rather than authored, so it sits with
-  // Sessions; the templates that configure it stay under Building.
+  // "What in this org is reachable from outside right now" is a question
+  // security and ops ask, and no agent page can answer it — it shows one agent
+  // (EVE-1010). It sits here rather than under Building because reading it is
+  // an operational act; the editing it links to lives on the agent.
+  { name: "Exposures", href: "/exposures", icon: Radio },
+];
+
+export const defaultBuildingNavigation: NavigationItem[] = [
+  { name: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
+  {
+    name: "Playground",
+    href: "/playground",
+    icon: FlaskConical,
+  },
+  { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
   {
     name: "Sandboxes",
     href: "/sandboxes",
     icon: Cpu,
     keywords: ["compute", "daytona", "modal", "containers", "fleet"],
   },
-  // "What in this org is reachable from outside right now" is a question
-  // security and ops ask, and no agent page can answer it — it shows one agent
-  // (EVE-1010). It sits here rather than under Building because reading it is
-  // an operational act; the editing it links to lives on the agent.
-  { name: "Exposures", href: "/exposures", icon: Radio },
-  {
-    name: "Reports",
-    href: "/reports",
-    icon: ChartColumn,
-    flag: "reports",
-    experimental: true,
-    keywords: ["analytics", "saved report"],
-  },
-];
-
-export const defaultBuildingNavigation: NavigationItem[] = [
-  {
-    name: "Playground",
-    href: "/playground",
-    icon: FlaskConical,
-  },
-  { name: "Agents", href: "/agents", icon: Boxes, keywords: ["bot", "assistant"] },
-  { name: "Harnesses", href: "/harnesses", icon: Shield, keywords: ["template", "config"] },
-  {
-    name: "Sandbox Templates",
-    href: "/sandbox-templates",
-    icon: Container,
-    keywords: ["environment", "compute", "workspace"],
-  },
   {
     name: "Virtual Users",
     href: "/virtual-users",
     icon: UserRound,
     keywords: ["persona", "principal", "identity"],
+  },
+];
+
+export const defaultRegistriesNavigation: NavigationItem[] = [
+  ...registryNavigationItems.map<NavigationItem>(
+    ({ name, href, icon, keywords }: RegistryNavigationItem) => {
+      const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
+      return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
+    },
+  ),
+  {
+    name: "Sandbox Templates",
+    href: "/sandbox-templates",
+    icon: Container,
+    keywords: ["environment", "compute", "workspace"],
   },
   {
     name: "Knowledge indexes",
@@ -157,13 +156,6 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   },
 ];
 
-export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(
-  ({ name, href, icon, keywords }: RegistryNavigationItem) => {
-    const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-    return { name, href, icon, keywords, flag, experimental: Boolean(flag) };
-  },
-);
-
 export const defaultQualityNavigation: NavigationItem[] = [
   {
     name: "Evals",
@@ -180,6 +172,14 @@ export const defaultQualityNavigation: NavigationItem[] = [
     keywords: ["monitor", "score", "production eval"],
     flag: "observers",
     experimental: true,
+  },
+  {
+    name: "Reports",
+    href: "/reports",
+    icon: ChartColumn,
+    flag: "reports",
+    experimental: true,
+    keywords: ["analytics", "saved report"],
   },
 ];
 
@@ -214,9 +214,9 @@ export const defaultDevNavigation: NavigationItem[] = [
 
 export const defaultNavigationSections: NavigationSection[] = [
   { id: "chats", items: defaultChatsNavigation },
-  { label: "Operational", items: defaultOperationalNavigation },
   { label: "Building", items: defaultBuildingNavigation },
-  { label: "Registries", items: defaultRegistriesNavigation },
+  { label: "Operational", items: defaultOperationalNavigation },
+  { label: "Registers", items: defaultRegistriesNavigation },
   { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
   { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },

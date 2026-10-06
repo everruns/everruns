@@ -6,7 +6,7 @@ describe("navigationGroupForPath", () => {
   it("names the group that owns a list route", () => {
     expect(navigationGroupForPath("/sessions")).toBe("Operational");
     expect(navigationGroupForPath("/agents")).toBe("Building");
-    expect(navigationGroupForPath("/models")).toBe("Registries");
+    expect(navigationGroupForPath("/models")).toBe("Registers");
     expect(navigationGroupForPath("/evals")).toBe("Quality");
   });
 
@@ -28,18 +28,6 @@ describe("navigationGroupForPath", () => {
     expect(navigationGroupForPath("/durable/workers")).toBe("Durable Execution");
   });
 
-  it("keeps operational destinations to sessions, sandboxes, exposures and reports", () => {
-    const operational = defaultNavigationSections.find(
-      (section) => section.label === "Operational",
-    );
-    expect(operational?.items.map((item) => item.name)).toEqual([
-      "Sessions",
-      "Sandboxes",
-      "Exposures",
-      "Reports",
-    ]);
-  });
-
   it("gives no group to pages outside a labelled section", () => {
     // Chats and Settings have no group header in the sidebar, so their pages
     // take no prefix.
@@ -54,5 +42,31 @@ describe("navigationGroupForPath", () => {
       section.label === "Building" ? { ...section, label: "Workshop" } : section,
     );
     expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe("Workshop");
+  });
+
+  it("keeps Building and Operational in the requested order", () => {
+    const itemsFor = (label: string) =>
+      defaultNavigationSections
+        .find((section) => section.label === label)
+        ?.items.map((item) => item.name);
+    expect(itemsFor("Building")).toEqual([
+      "Agents",
+      "Playground",
+      "Harnesses",
+      "Sandboxes",
+      "Virtual Users",
+    ]);
+    expect(itemsFor("Operational")).toEqual(["Sessions", "Exposures"]);
+    expect(navigationGroupForPath("/sandboxes")).toBe("Building");
+    expect(navigationGroupForPath("/sandbox-templates/template-1")).toBe("Registers");
+    expect(navigationGroupForPath("/knowledge-indexes")).toBe("Registers");
+    expect(navigationGroupForPath("/memory")).toBe("Registers");
+    expect(navigationGroupForPath("/sessions/session-1/approvals")).toBe("Operational");
+    expect(
+      defaultNavigationSections
+        .flatMap((section) => section.items)
+        .some((item) => item.href === "/approvals"),
+    ).toBe(false);
+    expect(navigationGroupForPath("/reports")).toBe("Quality");
   });
 });

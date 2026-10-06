@@ -335,13 +335,17 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("offers the three escape hatches and no session-editing control", async () => {
+  it("keeps the agent name link and recording actions without a duplicate Open agent button", async () => {
     await renderLayout();
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /fork into chat/i })).toBeInTheDocument();
     });
-    expect(screen.getByRole("link", { name: /open agent/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Test Agent" })).toHaveAttribute(
+      "href",
+      "/agents/agent-123",
+    );
+    expect(screen.queryByRole("link", { name: /open agent/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /export session/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /edit session title/i })).not.toBeInTheDocument();
   });
