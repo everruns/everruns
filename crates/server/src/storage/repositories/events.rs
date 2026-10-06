@@ -63,6 +63,9 @@ fn push_common_filters(qb: &mut sqlx::QueryBuilder<sqlx::Postgres>, params: &Lis
     }
 }
 
+/// Most events [`Database::create_events`] inserts in one statement.
+const MAX_EVENT_BATCH: usize = 1000;
+
 /// Safety cap for otherwise-unbounded full-history message reads. Applied to
 /// both `list_message_events_limited` (no explicit limit) and the
 /// `(offset=None, limit=None)` branch of `list_message_events_filtered`, so
@@ -95,6 +98,125 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
+        self.enqueue_event_projection(&row).await;
+        Ok(row)
+    }
+
+    /// Insert several events in one statement, in order, and return their rows
+    /// in the same order.
+    ///
+    /// Decision: a phase emits its events together (a turn's start events, a
+    /// tool batch), and one INSERT per event cost a round trip plus the events
+    /// table's statement-level triggers (session event count, last turn status,
+    /// turn count) every time. Here the sequences of each session are reserved
+    /// with one `event_sequences` bump of the batch's size, so the rows get
+    /// consecutive sequences in input order exactly as repeated
+    /// `allocate_event_sequence` calls would give them, and the triggers fire
+    /// once for the batch.
+    pub async fn create_events(&self, inputs: Vec<CreateEventRow>) -> Result<Vec<EventRow>> {
+        if inputs.len() <= 1 {
+            let mut rows = Vec::with_capacity(1);
+            for input in inputs {
+                rows.push(self.create_event(input).await?);
+            }
+            return Ok(rows);
+        }
+        // Eight bind parameters per row; stay well under PostgreSQL's 65535.
+        if inputs.len() > MAX_EVENT_BATCH {
+            let mut rows = Vec::with_capacity(inputs.len());
+            let mut rest = inputs;
+            while !rest.is_empty() {
+                let tail = rest.split_off(rest.len().min(MAX_EVENT_BATCH));
+                rows.extend(Box::pin(self.create_events(rest)).await?);
+                rest = tail;
+            }
+            return Ok(rows);
+        }
+        let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+            "WITH input (ord, session_id, event_type, ts, context, data, metadata, tags) AS (",
+        );
+        qb.push_values(inputs.iter().enumerate(), |mut row, (ord, input)| {
+            row.push_bind(ord as i64)
+                .push_unseparated("::BIGINT")
+                .push_bind(input.session_id.uuid())
+                .push_unseparated("::UUID")
+                .push_bind(&input.event_type)
+                .push_unseparated("::TEXT")
+                .push_bind(input.ts)
+                .push_unseparated("::TIMESTAMPTZ")
+                .push_bind(&input.context)
+                .push_unseparated("::JSONB")
+                .push_bind(&input.data)
+                .push_unseparated("::JSONB")
+                .push_bind(&input.metadata)
+                .push_unseparated("::JSONB")
+                .push_bind(&input.tags)
+                .push_unseparated("::TEXT[]");
+        });
+        qb.push(sql!(
+            r#"
+            ),
+            counts AS (
+                SELECT session_id, COUNT(*)::INTEGER AS n FROM input GROUP BY session_id
+            ),
+            reserved AS (
+                INSERT INTO event_sequences (session_id, next_sequence, updated_at)
+                SELECT session_id, n + 1, NOW() FROM counts ORDER BY session_id
+                ON CONFLICT (session_id) DO UPDATE
+                SET next_sequence = event_sequences.next_sequence + EXCLUDED.next_sequence - 1,
+                    updated_at = NOW()
+                RETURNING session_id, next_sequence
+            )
+            INSERT INTO events (session_id, sequence, event_type, ts, context, data, metadata, tags)
+            SELECT
+                input.session_id,
+                reserved.next_sequence - counts.n - 1
+                    + (ROW_NUMBER() OVER (PARTITION BY input.session_id ORDER BY input.ord))::INTEGER,
+                input.event_type, input.ts, input.context, input.data, input.metadata, input.tags
+            FROM input
+            JOIN counts USING (session_id)
+            JOIN reserved USING (session_id)
+            ORDER BY input.ord
+            RETURNING {EventRow}
+            "#
+        ));
+        let mut rows = qb
+            .build_query_as::<EventRow>()
+            .fetch_all(&self.pool)
+            .await?;
+        anyhow::ensure!(
+            rows.len() == inputs.len(),
+            "inserted {} events for a batch of {}",
+            rows.len(),
+            inputs.len()
+        );
+
+        // RETURNING order is unspecified. Within a session the sequences follow
+        // input order, so hand each input the next lowest sequence of its session.
+        rows.sort_by_key(|row| (row.session_id.uuid(), std::cmp::Reverse(row.sequence)));
+        let mut by_session: std::collections::HashMap<Uuid, Vec<EventRow>> =
+            std::collections::HashMap::new();
+        for row in rows {
+            by_session
+                .entry(row.session_id.uuid())
+                .or_default()
+                .push(row);
+        }
+        let mut ordered = Vec::with_capacity(inputs.len());
+        for input in &inputs {
+            let row = by_session
+                .get_mut(&input.session_id.uuid())
+                .and_then(Vec::pop)
+                .ok_or_else(|| anyhow::anyhow!("batch insert lost an event row"))?;
+            ordered.push(row);
+        }
+        for row in &ordered {
+            self.enqueue_event_projection(row).await;
+        }
+        Ok(ordered)
+    }
+
+    async fn enqueue_event_projection(&self, row: &EventRow) {
         // Reporting outbox enqueue is best-effort per knowledge/evaluation/reporting.md:
         // "If an outbox write fails after canonical state commits, a periodic
         // reconciler must be able to discover and enqueue missing projection
@@ -104,7 +226,7 @@ impl Database {
         // enqueue means the corresponding fact will remain stale until the
         // canonical row is touched again and the next enqueue succeeds.
         if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
-            return Ok(row);
+            return;
         }
         if let Err(e) = sqlx::query(
             r#"
@@ -142,8 +264,6 @@ impl Database {
                 "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
             );
         }
-
-        Ok(row)
     }
 
     pub async fn create_waiting_turn_resolution_event(

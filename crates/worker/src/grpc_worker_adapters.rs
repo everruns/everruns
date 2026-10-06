@@ -248,6 +248,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         crate::core::event_emitter::EventEmitter::emit(&emitter, request).await
     }
 
+    async fn emit_events(&self, requests: Vec<EventRequest>) -> Result<()> {
+        GrpcAdapter::new(self.client.clone())
+            .emit_stored_batch(requests)
+            .await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
