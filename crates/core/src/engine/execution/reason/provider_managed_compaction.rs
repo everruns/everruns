@@ -298,6 +298,7 @@ pub(super) struct Call<'a> {
     pub(super) iteration: u32,
     pub(super) mcp_tool_definitions: &'a [ToolDefinition],
     pub(super) assembled: crate::engine::runtime_context::AssembledTurnContext,
+    pub(super) prior: super::partial_recovery::PriorStream,
 }
 
 pub(super) type ErrorHooks = Vec<(
@@ -357,6 +358,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
         iteration,
         mcp_tool_definitions,
         mut assembled,
+        prior,
     } = call;
     let mut disclosure = resolve_error_disclosure(
         &atom.capability_registry,
@@ -425,6 +427,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
             previous_response_id.clone(),
             iteration,
             assembled,
+            prior,
         )
         .await;
     if !native_provider
@@ -490,6 +493,7 @@ pub(super) async fn execute_with_fallback(call: Call<'_>) -> CallOutcome {
                     previous_response_id,
                     iteration,
                     fallback,
+                    super::partial_recovery::PriorStream::None,
                 )
                 .await;
         }

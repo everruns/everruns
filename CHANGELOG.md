@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Requeuing a durable dead letter keeps the task's queue, priority, retry policy and timeouts instead of resetting them to defaults, so a framework step no longer lands on a queue nothing claims.
+- Stop a reason step that a dead worker held from being announced twice. The retry finds the stream the lost attempt left open, emits no second `reason.started` or `output.message.started`, and completes the message under the lost attempt's id, so every started message gets its completion. The in-process runtime (and durable turns driven on it) now detects that stream from its own event log; the platform worker is not wired yet.
 
 ## [0.41.0] - 2026-10-04
 
