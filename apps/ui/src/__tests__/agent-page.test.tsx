@@ -208,6 +208,23 @@ jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({ can: () => true }),
 }));
 
+let mockManagerNotes = { content: "", revision: 0 };
+jest.mock("@/hooks/use-change-history", () => ({
+  useEntityHistory: () => ({
+    data: { pages: [{ entries: [] }] },
+    isLoading: false,
+    error: null,
+    hasNextPage: false,
+  }),
+  useEntityRevision: () => ({ data: undefined, isLoading: false, error: null }),
+  useEntityRevisionDiff: () => ({ data: [], isLoading: false, error: null }),
+  useRestoreEntityRevision: () => ({ mutateAsync: jest.fn(), isPending: false, reset: jest.fn() }),
+  useManagerContext: () => ({ data: mockManagerNotes, isLoading: false, error: null }),
+  useSetManagerContext: () => ({ mutateAsync: jest.fn(), isPending: false, reset: jest.fn() }),
+}));
+
+jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
+
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: (flag: string) => flag === "agent_versions",
 }));
@@ -246,6 +263,7 @@ beforeEach(() => {
   });
   mockUpdate.mockResolvedValue({});
   mockCreateSession.mockResolvedValue({ id: "session-chat-1" });
+  mockManagerNotes = { content: "", revision: 0 };
 });
 
 describe("AgentPage layout", () => {
@@ -601,5 +619,75 @@ describe("AgentPage edit mode", () => {
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(await screen.findByLabelText("Name")).toHaveAttribute("aria-invalid", "true");
+  });
+});
+
+describe("AgentPage entity actions", () => {
+  it("puts History and Manager notes in the menu, not Version history", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(items).toEqual([
+      "Copy",
+      "Export package (ZIP)",
+      "Export Markdown",
+      "History",
+      "Manager notes",
+      "Archive agent",
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Manager notes" }));
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=notes", { scroll: false });
+  });
+
+  it("opens the History sheet from ?sheet=history", async () => {
+    mockSearchParams = new URLSearchParams("sheet=history");
+    await renderPage();
+
+    expect(await screen.findByText("No changes recorded yet.")).toBeInTheDocument();
+  });
+
+  it("sends retired ?tab=versions links to the History sheet", async () => {
+    mockSearchParams = new URLSearchParams("tab=versions");
+    await renderPage();
+
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=history", { scroll: false });
+    expect(screen.queryByText("agent versions")).not.toBeInTheDocument();
+  });
+
+  it("sends the optional reason with Save and never requires one", async () => {
+    mockSearchParams = new URLSearchParams("mode=edit");
+    await renderPage();
+
+    fireEvent.change(screen.getByLabelText(/Reason for this change/), {
+      target: { value: "shorter answers" },
+    });
+    await save();
+    expect(mockUpdate.mock.calls[0][0].reason).toBe("shorter answers");
+  });
+
+  it("sends the reason with Archive", async () => {
+    mockArchive.mockResolvedValue(undefined);
+    await renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText(/Reason for this change/), {
+      target: { value: "replaced by v2" },
+    });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Archive agent" }));
+    });
+    expect(mockArchive).toHaveBeenCalledWith({ id: "agent-1", reason: "replaced by v2" });
+  });
+
+  it("shows the manager notes hint only in edit mode", async () => {
+    mockManagerNotes = { content: "Keep it kid friendly.", revision: 2 };
+    await renderPage();
+    expect(screen.queryByText("This agent has manager notes")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit prompt" }));
+    expect(screen.getByText("This agent has manager notes")).toBeInTheDocument();
   });
 });

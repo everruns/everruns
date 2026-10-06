@@ -12,8 +12,8 @@ tags:
 # Change Reasons and Manager Context
 
 Status: in progress. Phases 1 (reasons and history), 2 (manager context),
-3 (agents know) and 4 (revisions and restore) are implemented; phases 5 to 7
-are design. For what has landed, the Rust source
+3 (agents know), 4 (revisions and restore) and 7 (UI) are implemented;
+phases 5 and 6 are design. For what has landed, the Rust source
 (`crates/server/src/domains/change_history/`), migrations and OpenAPI export
 own the exact fields and this concept keeps only the intent, contracts and
 success bars.
@@ -623,7 +623,7 @@ Each phase is one PR-sized change.
    `agent_change_reasons_required` flag). Writing history inside the mutation
    transaction is deferred: idempotency records are claimed and completed
    outside the mutation, so there is no shared transaction to join yet.
-7. **UI.** `EntityActionsMenu` on every entity page with History and manager
+7. **UI** (implemented). `EntityActionsMenu` on every entity page with History and manager
    notes, an
    optional reason field in save and delete dialogs (see UI).
 

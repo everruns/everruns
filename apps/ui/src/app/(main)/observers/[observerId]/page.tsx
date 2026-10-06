@@ -28,7 +28,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Pencil, Pause, Play, Archive, Settings, BarChart3 } from "lucide-react";
+import { Pencil, Pause, Play, Settings, BarChart3 } from "lucide-react";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
+import { usePolicies } from "@/hooks/use-policies";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { describeRule } from "@/components/observers/scorer-editor";
 import { QualitySummary } from "@/components/observers/quality-summary";
@@ -281,6 +283,8 @@ export default function ObserverDetailPage({
     }
   };
 
+  const { can } = usePolicies("agents");
+
   const handleArchive = async () => {
     try {
       await deleteObserver.mutateAsync(observerId);
@@ -364,12 +368,22 @@ export default function ObserverDetailPage({
               )}
             </Button>
           )}
-          {!isArchived && (
-            <Button variant="outline" onClick={handleArchive} disabled={deleteObserver.isPending}>
-              <Archive className="mr-2 h-4 w-4" />
-              Archive
-            </Button>
-          )}
+          <EntityActionsMenu
+            entityRef={observer.id}
+            kind="observer"
+            entityName={observer.name}
+            // `observer.manage` holds for anyone with agent (or session) manage.
+            permissions={{ manage: can("agent.manage") }}
+            archive={
+              isArchived
+                ? undefined
+                : {
+                    onSelect: handleArchive,
+                    label: deleteObserver.isPending ? "Archiving..." : "Archive observer",
+                    disabled: deleteObserver.isPending,
+                  }
+            }
+          />
         </div>
       </div>
 

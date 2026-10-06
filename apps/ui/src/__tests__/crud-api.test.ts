@@ -39,9 +39,31 @@ describe("createCrudApi", () => {
 
     expect(mockApi.post).toHaveBeenNthCalledWith(1, "/v1/widgets", { name: "Widget" });
     expect(mockApi.get).toHaveBeenCalledWith("/v1/widgets/w1");
-    expect(mockApi.patch).toHaveBeenCalledWith("/v1/widgets/w1", { name: "Renamed" });
-    expect(mockApi.delete).toHaveBeenCalledWith("/v1/widgets/w1");
-    expect(mockApi.post).toHaveBeenNthCalledWith(2, "/v1/widgets/w1/delete");
+    expect(mockApi.patch).toHaveBeenCalledWith("/v1/widgets/w1", { name: "Renamed" }, undefined);
+    expect(mockApi.delete).toHaveBeenCalledWith("/v1/widgets/w1", undefined);
+    expect(mockApi.post).toHaveBeenNthCalledWith(2, "/v1/widgets/w1/delete", undefined, undefined);
+  });
+
+  it("sends a change reason as the percent-encoded reason header", async () => {
+    const crud = createCrudApi<{ id: string }, never, { name?: string }>("/v1/widgets");
+    mockApi.patch.mockResolvedValueOnce({ data: { id: "w1" } } as never);
+    mockApi.delete.mockResolvedValueOnce(undefined as never);
+    mockApi.post.mockResolvedValueOnce(undefined as never);
+
+    await crud.update("w1", { name: "x" }, "  kid friendly ✓ ");
+    await crud.delete("w1", "retired");
+    await crud.destroy("w1", "   ");
+
+    expect(mockApi.patch).toHaveBeenCalledWith(
+      "/v1/widgets/w1",
+      { name: "x" },
+      { headers: { "Everruns-Change-Reason": "kid%20friendly%20%E2%9C%93" } },
+    );
+    expect(mockApi.delete).toHaveBeenCalledWith("/v1/widgets/w1", {
+      headers: { "Everruns-Change-Reason": "retired" },
+    });
+    // A blank reason sends no header: the field never blocks a save.
+    expect(mockApi.post).toHaveBeenCalledWith("/v1/widgets/w1/delete", undefined, undefined);
   });
 
   it("appends include_archived to list requests", async () => {

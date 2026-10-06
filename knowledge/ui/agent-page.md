@@ -46,9 +46,9 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   the address (`?tab=`), so a refresh or a shared link reopens it; the Agent tab omits the
   parameter and `/agents/{id}` stays the default. MCP servers and Credentials are configuration,
   so they are More rows; their sheets keep saving immediately as their own resources. Triggers
-  stay under Integrations (EVE-1009). Version history and archive/delete live in the header
-  overflow menu, replacing the danger-zone card. Old `?tab=mcp`, `?tab=credentials`, and
-  `?tab=versions` links open the matching sheet.
+  stay under Integrations (EVE-1009). History, Manager notes and archive/delete live in the header
+  [Entity Actions Menu](entity-actions-menu.md), replacing the danger-zone card. Old
+  `?tab=mcp` and `?tab=credentials` links open the matching sheet; `?tab=versions` opens History.
 - **Checks sit next to what they check.** In edit mode prompt findings render under the prompt
   editor; the behavioral health check is a More row.
 - **Button tiers.** Gold is only **Test in Playground**. It opens Playground setup with the Agent

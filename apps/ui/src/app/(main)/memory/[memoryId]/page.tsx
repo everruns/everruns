@@ -1,7 +1,9 @@
 "use client";
 
 import { use, useState } from "react";
-import { AlertCircle, Archive, Brain, GitBranch, HardDrive, Pencil, RefreshCw } from "lucide-react";
+import { AlertCircle, Brain, GitBranch, HardDrive, Pencil, RefreshCw } from "lucide-react";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
+import { useOrg } from "@/providers/org-provider";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { ArchiveMemoryDialog } from "@/components/memory/archive-memory-dialog";
@@ -37,6 +39,9 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
   const updateMemory = useUpdateMemory();
   const syncMemory = useSyncMemory();
   const archiveMemory = useArchiveMemory();
+  // `memory.manage` is the org settings permission, held by owners and admins.
+  const { currentOrg } = useOrg();
+  const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
   usePageTitle(memory ? memory.name : null, "Memory");
 
   if (isLoading) {
@@ -85,12 +90,6 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
               <Pencil className="h-4 w-4" />
               Edit
             </Button>
-            {!isReadOnly && (
-              <Button variant="outline" onClick={() => setArchiveOpen(true)}>
-                <Archive className="h-4 w-4" />
-                Archive
-              </Button>
-            )}
             {canSync && (
               <Button
                 variant="outline"
@@ -105,6 +104,13 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
                 Sync
               </Button>
             )}
+            <EntityActionsMenu
+              entityRef={memory.id}
+              kind="memory"
+              entityName={memory.name}
+              permissions={{ manage: canManage }}
+              archive={isReadOnly ? undefined : { onSelect: () => setArchiveOpen(true) }}
+            />
           </>
         }
       />

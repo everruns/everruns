@@ -11,6 +11,16 @@ const mockUseArchiveKnowledgeIndex = jest.fn();
 const mockUseUserConnections = jest.fn();
 const mockUseModels = jest.fn();
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({ currentOrg: { public_id: "org_1", role: "owner" }, isLoading: false }),
+}));
+
 jest.mock("@/hooks", () => ({
   useKnowledgeIndex: (...args: unknown[]) => mockUseKnowledgeIndex(...args),
   useKnowledgeIndexDocuments: (...args: unknown[]) => mockUseKnowledgeIndexDocuments(...args),
@@ -184,7 +194,8 @@ describe("KnowledgeIndexDetailPage", () => {
     mockUseArchiveKnowledgeIndex.mockReturnValue({ mutateAsync, isPending: false });
     await renderWithSuspense();
 
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(screen.getByRole("button", { name: /^More actions for / }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^Archive / }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
 

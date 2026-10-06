@@ -2,7 +2,7 @@
 
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Pencil, Trash2, UserRound } from "lucide-react";
+import { ArchiveRestore, Check, Pencil, UserRound } from "lucide-react";
 import {
   useVirtualUser,
   useDeleteVirtualUser,
@@ -10,10 +10,12 @@ import {
   useUpdateVirtualUser,
 } from "@/hooks/use-virtual-users";
 import { usePageTitle } from "@/hooks";
+import { usePolicies } from "@/hooks/use-policies";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -70,6 +72,9 @@ export default function VirtualUserDetailPage({
   const deleteIdentity = useDeleteVirtualUser();
   const destroyIdentity = useDestroyVirtualUser();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  // Virtual users expose no policy config; their manage permission is granted
+  // to exactly the roles that hold agent manage, so that answer stands in.
+  const { can } = usePolicies("agents");
 
   // Form state - track user changes separately from initial values
   const [formChanges, setFormChanges] = useState<Partial<FormData>>({});
@@ -204,9 +209,54 @@ export default function VirtualUserDetailPage({
             <Button type="button" variant="outline" onClick={() => router.back()}>
               Discard
             </Button>
+            <EntityActionsMenu
+              entityRef={identity.id}
+              kind="virtual_user"
+              entityName={identity.name}
+              permissions={{ manage: can("agent.manage") }}
+              actions={
+                identity.status === "archived"
+                  ? [
+                      {
+                        id: "unarchive",
+                        label: "Unarchive virtual user",
+                        icon: <ArchiveRestore className="size-4" />,
+                        disabled: updateIdentity.isPending,
+                        onSelect: () =>
+                          updateIdentity.mutate({ identityId, request: { status: "active" } }),
+                      },
+                    ]
+                  : []
+              }
+              archive={
+                identity.status === "archived"
+                  ? undefined
+                  : {
+                      onSelect: handleArchive,
+                      label: deleteIdentity.isPending ? "Archiving..." : "Archive virtual user",
+                      disabled: deleteIdentity.isPending,
+                    }
+              }
+              delete={
+                identity.status === "archived"
+                  ? {
+                      onSelect: () => setShowDeleteDialog(true),
+                      disabled: destroyIdentity.isPending,
+                    }
+                  : undefined
+              }
+            />
           </>
         }
       />
+
+      {deleteError && (
+        <EntityDeleteErrorNotice
+          entityKind="identity"
+          action={deleteAction}
+          message={deleteError.message}
+        />
+      )}
 
       <SectionTabs
         value={tab}
@@ -312,72 +362,6 @@ export default function VirtualUserDetailPage({
                     </p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Danger Zone */}
-            <Card className="border-destructive/50">
-              <CardHeader>
-                <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                <CardDescription>
-                  Irreversible actions that affect this virtual user
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">
-                      {identity.status === "archived"
-                        ? "Delete this virtual user"
-                        : "Archive this virtual user"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {identity.status === "archived"
-                        ? "Permanently delete this archived identity. Existing references will render as deleted tombstones."
-                        : "Archive this virtual user. It will stay visible when archived items are shown, become read-only, and stop being assignable."}
-                    </p>
-                  </div>
-                  {identity.status === "archived" ? (
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={updateIdentity.isPending}
-                        onClick={() =>
-                          updateIdentity.mutate({ identityId, request: { status: "active" } })
-                        }
-                      >
-                        Restore virtual user
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={() => setShowDeleteDialog(true)}
-                        disabled={destroyIdentity.isPending}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        {destroyIdentity.isPending ? "Deleting..." : "Delete Virtual User"}
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleArchive}
-                      disabled={deleteIdentity.isPending}
-                    >
-                      {deleteIdentity.isPending ? "Archiving..." : "Archive Virtual User"}
-                    </Button>
-                  )}
-                </div>
-                {deleteError && (
-                  <EntityDeleteErrorNotice
-                    entityKind="identity"
-                    action={deleteAction}
-                    message={deleteError.message}
-                    className="mt-4"
-                  />
-                )}
               </CardContent>
             </Card>
           </PageMain>

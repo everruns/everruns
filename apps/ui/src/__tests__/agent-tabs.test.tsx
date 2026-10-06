@@ -23,16 +23,19 @@ describe("agent tab definitions", () => {
   });
 
   it.each([
-    ["mcp", "agent", "mcp"],
-    ["credentials", "agent", "credentials"],
-    ["versions", "agent", "versions"],
-    ["overview", "agent", null],
-    ["integrations", "integrations", null],
-    ["sessions", "sessions", null],
-    [null, "agent", null],
-  ])("resolves ?tab=%s to the %s tab with sheet %s", (param, tab, section) => {
-    expect(resolveAgentTab(param)).toEqual({ tab, section });
-  });
+    ["mcp", "agent", "mcp", null],
+    ["credentials", "agent", "credentials", null],
+    ["versions", "agent", null, "history"],
+    ["overview", "agent", null, null],
+    ["integrations", "integrations", null, null],
+    ["sessions", "sessions", null, null],
+    [null, "agent", null, null],
+  ])(
+    "resolves ?tab=%s to the %s tab with sheet %s and record sheet %s",
+    (param, tab, section, recordSheet) => {
+      expect(resolveAgentTab(param)).toEqual({ tab, section, recordSheet });
+    },
+  );
 });
 
 describe("agent tab URL", () => {
