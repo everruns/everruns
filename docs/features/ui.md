@@ -32,7 +32,7 @@ The sidebar provides access to main sections:
 
 ## Chat and Threads
 
-**Chat** opens your permanent conversation with the Platform Chat Agent for managing
+**Chat** opens your permanent conversation with the Platform Chat for managing
 Everruns. Agent testing lives in Playground.
 
 Organization owners and admins can opt into **Chat threads** in **Settings → Features**.
@@ -122,7 +122,7 @@ Header actions:
 
 Use **More > Primary sandbox** to add named Bashkit or Daytona Sandbox Template bindings. Then select the
 Agent and Sandbox when starting a **New Playground chat**. Personal Chats always use the
-managed Platform Chat Agent and do not expose a sandbox selector. See [Sandbox Templates]
+managed Platform Chat and do not expose a sandbox selector. See [Sandbox Templates]
 (/features/sandbox-templates/) for recovery and lifecycle behavior.
 
 ## Sessions

@@ -83,7 +83,7 @@ pub struct TestServer {
     pub seed_generic_harness_id: String,
     /// Public ID of the built-in `bashkit-worker` Harness used by Platform Chat.
     pub seed_chat_harness_id: String,
-    /// Public ID of the managed Platform Chat Agent.
+    /// Public ID of the managed Platform Chat.
     pub seed_chat_agent_id: String,
     /// Outbound MCP Events, wired to `webhooks` instead of the network.
     pub mcp_events: Arc<services::mcp_events::McpEventsService>,

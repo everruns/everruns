@@ -995,7 +995,7 @@ Following the agentskills.io specification:
 
 - **ID**: `soft_approval`
 - **Purpose**: Asks the agent to pause for spoken consent before critical actions, batching safe work without interruption
-- **Status**: Registered and included in Worker Base, Worker, deprecated Generic and the Platform Chat Agent at level `normal`
+- **Status**: Registered and included in Worker Base, Worker, deprecated Generic and the Platform Chat at level `normal`
 - **Tools**: `request_approval` (the pause), `record_approval` (audit), `set_approval_mode` (level)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/core/src/builtins/soft_approval.rs`
@@ -1299,7 +1299,7 @@ carries mounts in product registries.
   its loop/error/compaction safeguards, so documentation browsing cannot
   displace the requested management workflow.
 
-The [managed Platform Chat Agent](../../crates/server/src/platform_chat_agent.rs) runs on
+The [managed Platform Chat](../../crates/server/src/platform_chat_agent.rs) runs on
 Generic. Its platform capability exposes the authoritative command catalog through the
 session shell; product docs and durable operator memory share that namespace. The Agent
 owns its domain instructions, identity, introduction, and starters. Generic supplies the
