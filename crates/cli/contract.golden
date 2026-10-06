@@ -223,6 +223,10 @@ reports saved list	--reason
 reports saved run	--reason --report-id!
 reports saved update	--reason --report-id! --request!
 sandbox-targets list	--reason
+sandboxes get	--id --reason <id>
+sandboxes list	--agent-id --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
+sandboxes stats get	--agent-id --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
+sandboxes timeline get	--agent-id --from --include-in-process --limit --needs-attention --provider --reason --sandbox-template-id --search --state --to
 sessions archive	--reason --session <session_id>
 sessions budget-check check	--reason --session-id!
 sessions budgets list	--reason --session-id!

@@ -2152,13 +2152,13 @@ impl ServerAppBuilder {
                 }
             }
 
-            // -- Event retention --
+            // -- Event and Sandbox history retention --
             if let Some(pool) = db.background_pool() {
-                let retention_days = crate::event_retention::retention_days_from_env();
-                supervisor.track_optional(
-                    "event_retention",
-                    crate::event_retention::spawn_retention_task(pool.clone(), retention_days),
-                );
+                use crate::{event_retention as ev, sandbox_history_retention as sb};
+                let ev_task = ev::spawn_retention_task(pool.clone(), ev::retention_days_from_env());
+                supervisor.track_optional("event_retention", ev_task);
+                let sb_task = sb::spawn_retention_task(pool.clone(), sb::retention_days_from_env());
+                supervisor.track_optional("sandbox_history_retention", sb_task);
             }
 
             // -- Object-storage blob GC --

@@ -1451,7 +1451,9 @@ E2B sandboxes are remote Linux environments managed through the E2B Management A
 | TM-E2B-002 | envd access token disclosure | Medium | envd access token stored only in encrypted session secrets and sent only to E2B runtime headers | MITIGATED |
 | TM-E2B-003 | Cross-session sandbox access | Critical | E2B tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; envd state remains session-scoped under `e2b_sandbox:{id}` | MITIGATED |
 | TM-E2B-004 | Sandbox not deleted or paused, resource leak | Low | E2B timeout + auto-pause on create/resume, plus Everruns leased-resource cleanup | MITIGATED |
-| TM-E2B-005 | Full-network sandbox misuse | High | Capability is high-risk/Admin-gated via capability assignment policy; residual network exposure depends on deployment egress isolation | **CALLER RISK** |
+| TM-E2B-005 | Full-network sandbox misuse | High | Capability is high-risk/Admin-gated via capability assignment policy; residual network exposure depends on deployment egress isolation. The `computer_use_desktop` sandbox inherits this policy unchanged: the session network access list does not apply inside the desktop, so a screen-steered agent (TM-TOOL-048) can browse anywhere the sandbox can reach | **CALLER RISK** |
+| TM-E2B-006 | Text a computer-use model types, or a key name it sends, runs as a shell command in the desktop sandbox | High | Every desktop action is an `xdotool` argv sent through envd's process API with no shell; typed text is a single argument after `--`; key names map to X keysyms and anything else is refused. The display start and screenshot scripts are constants that take only numbers and fixed paths as positional arguments. Unit tests feed shell metacharacters through the mapping, and the live test types them into a terminal and checks nothing ran (`integrations/e2b/src/computer.rs`). | MITIGATED |
+| TM-E2B-007 | A model points the computer-use desktop at another sandbox, or makes every call open a new one, by rewriting the recorded sandbox id | Medium | The id lives under `computer_use.display.`, a session storage prefix reserved from `kv_store`, and every acquire re-reads it through the E2B state lookup, which verifies session ownership (TM-E2B-003) before any E2B call. The sandbox is leased, so session cleanup deletes it. | MITIGATED |
 
 ### Mitigation Details
 
@@ -1792,7 +1794,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate channel-owned native
 | TM-TOOL-045 | No per-server elicitation opt-in | Medium | Per-server `elicitation_policy`, defaulting to URL mode only |
 | TM-TOOL-046 | Hostile `requestedSchema` exhausts the person or the client | Medium | Bound property and enum counts; refuse rather than trim |
 | TM-TOOL-047 | Empty `accept` read as an answer nobody gave | Medium | Decline on unattended, timeout or dismissal; never partial accept |
-| TM-TOOL-048 | On-screen content steers a computer-use agent | High | Input-committing actions and provider safety checks are hard-gated per call (EVE-1133); clicks still rely on the untrusted-screen prompt and opt-in `tool_approval`, so computer use stays experimental |
+| TM-TOOL-048 | On-screen content steers a computer-use agent | High | Soft approval only (EVE-1133, aligned with TM-TOOL-008): the untrusted-screen prompt's stop-and-ask rule plus `open_world` for opt-in `tool_approval`; no per-call hard gate, so computer use stays experimental |
 | ~~TM-AGENT-018~~ | ~~No outbound URL filtering on web_fetch~~ | ~~Medium~~ | Mitigated: `NetworkAccessList` layers + system allowlist enforced at the egress boundary; outbound call audit logging still open |
 
 ### Accepted Risks
@@ -1813,7 +1815,7 @@ Frozen execution-only API keys (`evr_app_...`) authenticate channel-owned native
 | TM-DURABLE-006 | DLQ growth | Tasks preserved for debugging; manual cleanup |
 | TM-DAYTONA-001 | Git token on sandbox disk | Same trust boundary as exec; `/tmp` cleared on stop; short-lived token |
 | TM-DENO-004 | Network probing from Deno sandbox | Same residual risk as other remote execution capabilities; requires Admin + operator egress controls |
-| TM-E2B-005 | Full-network sandbox misuse | Same residual risk class as other cloud sandboxes; require deployment egress isolation where needed |
+| TM-E2B-005 | Full-network sandbox misuse | Same residual risk class as other cloud sandboxes, including the `computer_use_desktop` sandbox; require deployment egress isolation where needed |
 | TM-SANDBOX-001 | Container escape via kernel vulnerability | Configurable runtime; operator chooses isolation level (sysbox/kata/gvisor for production) |
 | TM-SANDBOX-003 | SSRF / metadata / internal-network access from sandbox | No in-product egress filtering; operator must restrict egress (block RFC1918 + 169.254.169.254) at the network/firewall layer |
 

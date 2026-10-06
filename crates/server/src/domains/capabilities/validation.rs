@@ -215,7 +215,29 @@ pub async fn validate_capability_refs(
         }
     }
 
+    // Capabilities that provide the same tool (the computer-use backends) are
+    // rejected together instead of one silently replacing the other.
+    if let Some(reg) = registry.as_ref()
+        && let Some(conflict) = exclusive_capability_conflict(capabilities, reg)
+    {
+        return Err(conflict.into());
+    }
+
     Ok(())
+}
+
+/// A `BadRequestError` naming the capabilities in `capabilities` that share an
+/// exclusive group, if any.
+pub fn exclusive_capability_conflict(
+    capabilities: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> Option<BadRequestError> {
+    let ids: Vec<&str> = capabilities
+        .iter()
+        .map(|capability| capability.capability_id())
+        .collect();
+    everruns_core::capabilities::find_exclusive_conflict(&ids, registry)
+        .map(|conflict| BadRequestError::new(conflict.to_string()))
 }
 
 /// Normalize user-entered capability refs before persistence.
@@ -288,6 +310,27 @@ mod tests {
         );
         let error = validate_hydrated_capability_size(&[oversized]).unwrap_err();
         assert_eq!(error.message(), "Capability configs exceed allowed limits");
+    }
+
+    #[test]
+    fn computer_use_backends_cannot_be_enabled_together() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register_plugins(everruns_integrations_catalog::capability_plugins(), |_| {
+            true
+        });
+        let both = vec![
+            AgentCapabilityConfig::new("computer_use"),
+            AgentCapabilityConfig::new("current_time"),
+            AgentCapabilityConfig::new("computer_use_desktop"),
+        ];
+        let error = exclusive_capability_conflict(&both, &registry).expect("conflict");
+        assert_eq!(
+            error.message(),
+            "Capabilities 'computer_use' and 'computer_use_desktop' cannot be enabled together: \
+             each provides the computer tool; keep one"
+        );
+        assert!(exclusive_capability_conflict(&both[..2], &registry).is_none());
+        assert!(exclusive_capability_conflict(&both[1..], &registry).is_none());
     }
 
     #[test]

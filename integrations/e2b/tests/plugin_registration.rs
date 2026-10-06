@@ -84,3 +84,27 @@ fn test_e2b_connection_provider_is_published() {
         "E2B ConnectorPlugin should be published in CONNECTOR_PLUGINS"
     );
 }
+
+#[test]
+fn test_desktop_computer_use_is_experimental_only() {
+    let id = everruns_integrations_e2b::computer::DESKTOP_COMPUTER_USE_CAPABILITY_ID;
+    let plugin = CAPABILITY_PLUGINS
+        .iter()
+        .find(|p| (p.factory)().id() == id)
+        .expect("desktop computer use plugin not found");
+    assert!(plugin.experimental_only);
+    assert!(plugin.feature_flag.is_none());
+
+    let dev = registry_for_grade(DeploymentGrade::Dev);
+    let cap = dev
+        .get(id)
+        .expect("desktop computer use in the dev registry");
+    assert_eq!(cap.dependencies(), vec!["session_storage"]);
+    let tools = cap.tools();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name(), "computer");
+    assert!(
+        !registry_for_grade(DeploymentGrade::Prod).has(id),
+        "desktop computer use must stay out of prod while experimental"
+    );
+}

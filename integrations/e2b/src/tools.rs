@@ -33,7 +33,9 @@ fn parse_timeout_seconds(arguments: &Value) -> Result<u64, ToolExecutionResult> 
     }
 }
 
-fn detail_from_create(create: crate::state::E2BSandboxCreateResponse) -> E2BSandboxDetail {
+pub(crate) fn detail_from_create(
+    create: crate::state::E2BSandboxCreateResponse,
+) -> E2BSandboxDetail {
     E2BSandboxDetail {
         client_id: create.client_id,
         cpu_count: 0,

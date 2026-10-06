@@ -182,6 +182,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "skills" => Some("agent-skills"),
         "browserless" => Some("browserless"),
         "computer_use" => Some("computer-use"),
+        "computer_use_desktop" => Some("computer-use"),
         "budgeting" => Some("budgeting"),
         "current_time" => Some("current-time"),
         "daytona" => Some("daytona"),

@@ -45,6 +45,14 @@ pub enum DependencyError {
         /// Maximum allowed
         max: usize,
     },
+    /// Capabilities that share a [`Capability::exclusive_group`] were
+    /// enabled together.
+    ExclusiveConflict {
+        /// The shared group.
+        group: String,
+        /// The conflicting capability IDs, in resolution order.
+        capabilities: Vec<String>,
+    },
 }
 
 impl std::fmt::Display for DependencyError {
@@ -67,6 +75,21 @@ impl std::fmt::Display for DependencyError {
                     f,
                     "Too many capabilities after resolution: {} (max: {})",
                     count, max
+                )
+            }
+            DependencyError::ExclusiveConflict {
+                group,
+                capabilities,
+            } => {
+                write!(
+                    f,
+                    "Capabilities {} cannot be enabled together: each provides the {} tool; keep one",
+                    capabilities
+                        .iter()
+                        .map(|id| format!("'{id}'"))
+                        .collect::<Vec<_>>()
+                        .join(" and "),
+                    group
                 )
             }
         }
@@ -134,6 +157,10 @@ pub fn resolve_dependencies(
         )?;
     }
 
+    if let Some(conflict) = find_exclusive_conflict(&resolved, registry) {
+        return Err(conflict);
+    }
+
     // Check max limit
     if resolved.len() > MAX_RESOLVED_CAPABILITIES {
         return Err(DependencyError::TooManyCapabilities {
@@ -147,6 +174,37 @@ pub fn resolve_dependencies(
         added_as_dependencies,
         user_selected: selected_ids.to_vec(),
     })
+}
+
+/// The first [`DependencyError::ExclusiveConflict`] among `capability_ids`
+/// (aliases canonicalized; IDs outside the registry are ignored), if any.
+pub fn find_exclusive_conflict<S: AsRef<str>>(
+    capability_ids: &[S],
+    registry: &CapabilityRegistry,
+) -> Option<DependencyError> {
+    let mut groups: Vec<(&'static str, Vec<String>)> = Vec::new();
+    for id in capability_ids {
+        let id = id.as_ref();
+        let id = registry.canonical_id(id).unwrap_or(id);
+        let Some(group) = registry.get(id).and_then(|cap| cap.exclusive_group()) else {
+            continue;
+        };
+        match groups.iter_mut().find(|(name, _)| *name == group) {
+            Some((_, members)) => {
+                if !members.iter().any(|member| member == id) {
+                    members.push(id.to_string());
+                }
+            }
+            None => groups.push((group, vec![id.to_string()])),
+        }
+    }
+    groups
+        .into_iter()
+        .find(|(_, members)| members.len() > 1)
+        .map(|(group, capabilities)| DependencyError::ExclusiveConflict {
+            group: group.to_string(),
+            capabilities,
+        })
 }
 
 /// Resolve dependency-expanded capability configs, preserving explicit config on selected IDs.

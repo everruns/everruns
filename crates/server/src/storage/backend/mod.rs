@@ -155,6 +155,7 @@ mod models_files;
 mod observers_billing;
 mod orgs_images;
 mod resources_tasks;
+pub mod sandbox_fleet;
 mod sandbox_templates;
 
 #[cfg(test)]

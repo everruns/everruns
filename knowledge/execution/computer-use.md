@@ -11,11 +11,13 @@ tags:
 
 # Computer Use
 
-Status: phases 1 and 2 implemented, behind experimental mode. Capability
+Status: phases 1 to 3 implemented, behind experimental mode. Capability
 `computer_use`, contract in
 [`crates/contracts/src/runtime/computer_use.rs`](../../crates/contracts/src/runtime/computer_use.rs), first
 backend in
-[`integrations/browserless/src/computer.rs`](../../integrations/browserless/src/computer.rs).
+[`integrations/browserless/src/computer.rs`](../../integrations/browserless/src/computer.rs),
+desktop backend (capability `computer_use_desktop`) in
+[`integrations/e2b/src/computer.rs`](../../integrations/e2b/src/computer.rs).
 Tracked as EVE-1119 (phase 1) and EVE-1133 (phase 2).
 
 ## Why
@@ -133,13 +135,47 @@ key, code, and virtual key code so default actions fire (Enter submits). The
 CDP layer is independent of Browserless and is tested against a local headless
 Chromium, filling and submitting a form end to end.
 
+### Desktop backend
+
+The display is a full X desktop in a session-owned E2B sandbox built from
+E2B's `desktop` template: Xvfb at exactly the configured size on its own
+display, the template's xfce session, actions through `xdotool`, frames through
+the first screenshot tool the template has, read back as PNG bytes and checked
+against the display size. It is a separate capability, `computer_use_desktop`,
+rather than a backend switch on `computer_use`, because each backend lives in
+its provider's integration crate and neither crate depends on the other. Both
+contribute the `computer` tool, so they declare the same
+`Capability::exclusive_group`: dependency resolution, capability write paths,
+and session creation (across harness, agent, and session layers) reject the
+pair with an error naming both, instead of the last one's tool silently
+winning. Stored config that predates the check applies neither.
+
+- **E2B over Daytona.** The desktop template already carries Xvfb, xdotool and
+  a desktop session, and envd's process API takes an argv. Daytona would need a
+  custom snapshot.
+- **No shell between the model and xdotool.** Every action is an
+  `xdotool` argv; typed text is one argument after `--`. The two fixed shell
+  scripts (display start, screenshot) take only numbers and constant paths as
+  positional arguments.
+- **Ownership.** The sandbox id lives under a session storage key reserved
+  from `kv_store` (`COMPUTER_USE_DISPLAY_KV_PREFIX`) and is re-checked through
+  the E2B state lookup, which verifies session ownership. The sandbox is leased
+  like an `e2b_create_sandbox` sandbox, so session cleanup deletes it; a paused
+  one is resumed with its running display.
+- **Egress is E2B's.** The sandbox is created with the same call, and so the
+  same network policy, as `e2b_create_sandbox` (TM-E2B-005). The backend adds
+  no bypass and no filter: the session network access list, which the
+  Browserless backend enforces, does not reach inside the desktop.
+- **No `navigate`.** The display is not a browser page; the model opens a
+  browser on the desktop.
+
 ## Phases
 
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Contract, `computer` function tool, Browserless browser backend | Done |
 | 2 | Native adapters (OpenAI `computer`, Anthropic `computer_toolset_20260801`), batched calls, soft approval only with no per-call hard gate, screenshot thumbnails in the session UI | Done (EVE-1133) |
-| 3 | Desktop backend on a sandbox image (Xvfb plus a screenshot bridge) for non-browser apps | Planned |
+| 3 | Desktop backend on an E2B `desktop` sandbox (Xvfb, xdotool, PNG frames), capability `computer_use_desktop` | Done (EVE-1133), experimental |
 
 Open before the capability leaves experimental mode: verify the native OpenAI
 path against the live API (the GA reference leaves some action fields

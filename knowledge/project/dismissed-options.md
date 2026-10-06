@@ -119,12 +119,11 @@ execution keys.
 - **Existing retry logic already handles 429s**: `llm_retry.rs` implements per-call exponential backoff (2 retries, 1-60s backoff) with provider-specific rate-limit header parsing (Anthropic `anthropic-ratelimit-*`, OpenAI `x-ratelimit-*`). Transient 429s are handled transparently.
 - **Durable engine bounds concurrency**: The task queue with optimistic locking already limits how many activities run concurrently. Adding a second concurrency layer inside the process is redundant.
 - **Process-level semaphore doesn't help multi-process**: In production with multiple worker processes or pods, a per-process semaphore doesn't coordinate across instances. True rate limiting needs a distributed token bucket (e.g., Redis-based), which is a much larger effort.
-- **Circuit breaker already integrated**: The durable worker wraps `reason_activity` with `DistributedCircuitBreaker` recording (success/failure), providing automatic backoff on sustained provider failures.
+- **No circuit breaker covers this today** (corrected 2026-10-05; the original record claimed the durable worker wrapped `reason_activity` with `DistributedCircuitBreaker`, which no code on main does). `everruns-durable` implements `DistributedCircuitBreaker`, and the server exposes breaker state through the worker gRPC service (`CheckCircuitBreaker`, `RecordCircuitBreaker*`) and the `/v1/durable/circuit-breakers` admin API, but no turn step checks or records one, so sustained provider failures do not trip anything. Wiring a breaker around reason is a separate behaviour decision; the dismissal stands on the other points.
 - **Complexity vs. benefit**: Adding a wrapper layer around every LLM driver, threading `Arc<LlmRateLimiter>` through `ReasonAtom`, `WorkerAdapters`, and `DirectWorkerAdapters` added significant plumbing for marginal benefit.
 
 **What we use instead**:
-- Per-call retry with exponential backoff and provider rate-limit header respect (`llm_retry.rs`)
-- Durable engine activity-level circuit breaker (`DistributedCircuitBreaker`)
+- Per-call retry with exponential backoff and provider rate-limit header respect (`crates/contracts/src/llm_retry.rs`, applied inside each provider driver)
 - Durable task queue concurrency bounding (task claiming limits active workers)
 
 **May revisit when**:

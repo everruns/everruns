@@ -57,6 +57,13 @@ pub const COMPUTER_USE_CAPABILITY_ID: &str = "computer_use";
 /// lift its own action cap (TM-TOOL-050).
 pub const COMPUTER_USE_ACTION_COUNT_KEY: &str = "computer_use.action_count";
 
+/// Session storage key prefix where a backend records which provider resource
+/// hosts the session's display (`computer_use.display.e2b` holds the desktop
+/// sandbox id). Reserved from the model-facing `kv_store` tool: a model that
+/// could rewrite it would point the display at a resource of its choosing or
+/// make every call open a fresh sandbox.
+pub const COMPUTER_USE_DISPLAY_KV_PREFIX: &str = "computer_use.display.";
+
 /// Default display width in pixels.
 pub const DEFAULT_DISPLAY_WIDTH: u32 = 1280;
 /// Default display height in pixels.

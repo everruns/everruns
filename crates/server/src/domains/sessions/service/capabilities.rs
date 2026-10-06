@@ -116,6 +116,15 @@ impl SessionService {
             .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
             .await?;
 
+        // Harness, agent and session each pass validation on their own; the
+        // merged set must not combine capabilities that provide the same tool.
+        if let Some(conflict) = everruns_core::capabilities::find_exclusive_conflict(
+            &capability_ids,
+            &self.capability_registry,
+        ) {
+            return Err(BadRequestError::new(conflict.to_string()).into());
+        }
+
         let mut missing: Vec<String> = capability_ids
             .into_iter()
             .filter(|id| {

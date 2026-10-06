@@ -14993,6 +14993,349 @@
         }
       }
     },
+    "/v1/sandboxes": {
+      "get": {
+        "tags": [
+          "sandboxes"
+        ],
+        "summary": "List the organization's Sandboxes across providers: running, paused, lost and deleted, with filters.",
+        "operationId": "list_sandboxes",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Comma-separated provider ids, such as `daytona,modal`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Only Sandboxes of Sessions that ran this Agent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sandbox_template_id",
+            "in": "query",
+            "description": "Only Sandboxes created from this Sandbox Template.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "needs_attention",
+            "in": "query",
+            "description": "Only Sandboxes with at least one attention reason.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Case-insensitive match on Session title, Agent, provider or provider resource id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_in_process",
+            "in": "query",
+            "description": "Include in-process targets (virtual filesystem, host), which have no provider resource.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Page size, 1 to 200. Defaults to 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Rows to skip.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxFleetPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/stats": {
+      "get": {
+        "tags": [
+          "sandboxes"
+        ],
+        "summary": "Summarize the organization's Sandboxes: counts by state and provider, recent creations, running time, recoveries and how many need attention.",
+        "operationId": "get_sandbox_fleet_stats",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Comma-separated provider ids, such as `daytona,modal`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Only Sandboxes of Sessions that ran this Agent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sandbox_template_id",
+            "in": "query",
+            "description": "Only Sandboxes created from this Sandbox Template.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "needs_attention",
+            "in": "query",
+            "description": "Only Sandboxes with at least one attention reason.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Case-insensitive match on Session title, Agent, provider or provider resource id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_in_process",
+            "in": "query",
+            "description": "Include in-process targets (virtual filesystem, host), which have no provider resource.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxFleetStats"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/timeline": {
+      "get": {
+        "tags": [
+          "sandboxes"
+        ],
+        "summary": "Show when each Sandbox was running, paused or lost over a time window, with how many ran at once.",
+        "operationId": "get_sandbox_timeline",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Comma-separated states: `running`, `paused`, `lost`, `starting`,\n`failed`, `not_started`, `deleted`, or `live` for the first five.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Comma-separated provider ids, such as `daytona,modal`.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "query",
+            "description": "Only Sandboxes of Sessions that ran this Agent.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sandbox_template_id",
+            "in": "query",
+            "description": "Only Sandboxes created from this Sandbox Template.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "needs_attention",
+            "in": "query",
+            "description": "Only Sandboxes with at least one attention reason.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Case-insensitive match on Session title, Agent, provider or provider resource id.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_in_process",
+            "in": "query",
+            "description": "Include in-process targets (virtual filesystem, host), which have no provider resource.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Window start (RFC 3339). Defaults to 24 hours before `to`.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Window end (RFC 3339). Defaults to now.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Lanes to return, 1 to 200. Defaults to 50.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxTimeline"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sandboxes/{id}": {
+      "get": {
+        "tags": [
+          "sandboxes"
+        ],
+        "summary": "Get one Sandbox with its provider resources and full state history.",
+        "operationId": "get_sandbox",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxFleetDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sandbox not found"
+          }
+        }
+      }
+    },
     "/v1/sessions": {
       "get": {
         "tags": [
@@ -42585,6 +42928,24 @@
           }
         }
       },
+      "SandboxConcurrencyPoint": {
+        "type": "object",
+        "description": "How many Sandboxes were running from `at` until the next point.",
+        "required": [
+          "at",
+          "running"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "running": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "SandboxContainment": {
         "type": "object",
         "description": "What commands may touch, and who enforces it.",
@@ -42638,6 +42999,25 @@
           }
         }
       },
+      "SandboxCount": {
+        "type": "object",
+        "description": "A count keyed by a label.",
+        "required": [
+          "key",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "example": 5
+          },
+          "key": {
+            "type": "string",
+            "example": "running"
+          }
+        }
+      },
       "SandboxDurability": {
         "type": "string",
         "description": "What survives physical compute loss.",
@@ -42669,6 +43049,294 @@
           }
         }
       },
+      "SandboxFleetDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/SandboxFleetItem"
+          },
+          {
+            "type": "object",
+            "required": [
+              "incarnations",
+              "history"
+            ],
+            "properties": {
+              "history": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SandboxStateSpan"
+                },
+                "description": "State history, oldest first."
+              },
+              "incarnations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SandboxIncarnation"
+                },
+                "description": "Provider resources, newest first."
+              }
+            }
+          }
+        ],
+        "description": "One Sandbox with its incarnations and lifecycle history."
+      },
+      "SandboxFleetItem": {
+        "type": "object",
+        "description": "One logical Sandbox in the organization.",
+        "required": [
+          "id",
+          "state",
+          "desired_state",
+          "provider",
+          "role",
+          "generation",
+          "checkpoint_count",
+          "attention",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent the Session ran."
+          },
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent display name.",
+            "example": "Coder"
+          },
+          "attention": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Why this Sandbox needs attention: `lost`, `failed`, `init_failed`,\n`idle_running` (running with no activity for an hour) or `cleanup_failed`."
+          },
+          "checkpoint_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Committed workspace checkpoints.",
+            "example": 12
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "desired_state": {
+            "type": "string",
+            "description": "Lifecycle intent the control plane is moving the Sandbox toward: `ready`, `paused` or `deleted`.",
+            "example": "ready"
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider's id for the latest physical resource.",
+            "example": "dtn-7f3a91c2"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Incarnation counter. Above 1 means the provider resource was lost and rebuilt.",
+            "example": 1
+          },
+          "id": {
+            "type": "string",
+            "description": "Durable logical Sandbox id. Stays the same when the provider resource is replaced.",
+            "example": "sandbox_01933b5a00007000800000000000001"
+          },
+          "idle_after_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Inactivity interval before the Sandbox is paused.",
+            "example": 300
+          },
+          "last_activity_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Last recorded tool activity or state change."
+          },
+          "last_init_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error from the latest init commands, if they failed."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider id, such as `daytona`, `modal` or `docker`.",
+            "example": "daytona"
+          },
+          "role": {
+            "type": "string",
+            "description": "`primary` (addressed implicitly by shell and file tools) or `resource`.",
+            "example": "primary"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Owning Session; absent once the Session is deleted."
+          },
+          "session_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session title, kept after the Session is deleted.",
+            "example": "Fix flaky CI"
+          },
+          "state": {
+            "type": "string",
+            "description": "`running`, `paused`, `lost`, `starting`, `failed`, `not_started` or `deleted`.",
+            "example": "running"
+          },
+          "target_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Target kind from the pinned specification: `managed`, `container`, `machine`, `vfs` or `host`.",
+            "example": "managed"
+          },
+          "template": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SandboxTemplateRef",
+                "description": "Template revision the Sandbox was created from."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "workspace_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Working directory inside the Sandbox.",
+            "example": "/home/daytona/workspace"
+          }
+        }
+      },
+      "SandboxFleetPage": {
+        "type": "object",
+        "description": "A page of the fleet.",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxFleetItem"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sandboxes matching the filters."
+          }
+        }
+      },
+      "SandboxFleetStats": {
+        "type": "object",
+        "description": "Roll-ups for the fleet summary.",
+        "required": [
+          "window_days",
+          "by_state",
+          "live_by_provider",
+          "created_in_window",
+          "created_in_prior_window",
+          "running_seconds_in_window",
+          "recoveries_in_window",
+          "needs_attention"
+        ],
+        "properties": {
+          "by_state": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxCount"
+            },
+            "description": "Sandboxes per state."
+          },
+          "created_in_prior_window": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Created in the window before, for a trend."
+          },
+          "created_in_window": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "live_by_provider": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxCount"
+            },
+            "description": "Live Sandboxes per provider."
+          },
+          "needs_attention": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sandboxes with at least one attention reason."
+          },
+          "recoveries_in_window": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Provider resources lost and rebuilt in the window."
+          },
+          "running_seconds_in_window": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total time Sandboxes spent running in the window."
+          },
+          "window_days": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Days covered by the `*_in_window` figures.",
+            "example": 7
+          }
+        }
+      },
       "SandboxIdleAction": {
         "type": "string",
         "enum": [
@@ -42676,6 +43344,47 @@
           "stop",
           "keep_running"
         ]
+      },
+      "SandboxIncarnation": {
+        "type": "object",
+        "description": "One physical provider resource behind a logical Sandbox.",
+        "required": [
+          "generation",
+          "external_id",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "external_id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "last_init_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retired_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When it was replaced or deleted."
+          },
+          "status": {
+            "type": "string",
+            "description": "Provider status the last time it was observed: `running`, `paused` or `lost`."
+          }
+        }
       },
       "SandboxLifecycle": {
         "type": "object",
@@ -42855,6 +43564,41 @@
           }
         ],
         "description": "Session-level selection: use an Agent template binding or provide an inline specification."
+      },
+      "SandboxStateSpan": {
+        "type": "object",
+        "description": "A span of time a Sandbox spent in one state.",
+        "required": [
+          "state",
+          "generation",
+          "start",
+          "end",
+          "current"
+        ],
+        "properties": {
+          "current": {
+            "type": "boolean",
+            "description": "The Sandbox is still in this state."
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Incarnation during the span."
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "state": {
+            "type": "string",
+            "description": "Fleet state during the span.",
+            "example": "running"
+          }
+        }
       },
       "SandboxTarget": {
         "type": "object",
@@ -43057,6 +43801,37 @@
           }
         }
       },
+      "SandboxTemplateRef": {
+        "type": "object",
+        "description": "Template revision a Sandbox was created from.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Template display name.",
+            "example": "Coding - Daytona"
+          },
+          "id": {
+            "type": "string",
+            "description": "Sandbox Template id.",
+            "example": "sbxtpl_01933b5a00007000800000000000001"
+          },
+          "revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Revision number pinned when the Session was created.",
+            "example": 4
+          }
+        }
+      },
       "SandboxTemplateRevision": {
         "type": "object",
         "description": "Immutable revision of a Sandbox Template.",
@@ -43140,6 +43915,84 @@
               "null"
             ],
             "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version."
+          }
+        }
+      },
+      "SandboxTimeline": {
+        "type": "object",
+        "description": "Lifecycle of the fleet over a window.",
+        "required": [
+          "from",
+          "to",
+          "lanes",
+          "total_lanes",
+          "concurrency",
+          "peak_running"
+        ],
+        "properties": {
+          "concurrency": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxConcurrencyPoint"
+            },
+            "description": "Step series of concurrently running Sandboxes across every lane."
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lanes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxTimelineLane"
+            },
+            "description": "Lanes ordered by running time, longest first."
+          },
+          "peak_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "peak_running": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "total_lanes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sandboxes with activity in the window, including those beyond `limit`."
+          }
+        }
+      },
+      "SandboxTimelineLane": {
+        "type": "object",
+        "description": "One Sandbox's lane on the timeline.",
+        "required": [
+          "sandbox",
+          "spans",
+          "running_seconds"
+        ],
+        "properties": {
+          "running_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds spent running within the window."
+          },
+          "sandbox": {
+            "$ref": "#/components/schemas/SandboxFleetItem"
+          },
+          "spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxStateSpan"
+            },
+            "description": "Spans clipped to the window, oldest first."
           }
         }
       },
