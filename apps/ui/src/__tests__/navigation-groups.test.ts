@@ -6,7 +6,7 @@ describe("navigationGroupForPath", () => {
   it("names the group that owns a list route", () => {
     expect(navigationGroupForPath("/sessions")).toBe("Operational");
     expect(navigationGroupForPath("/agents")).toBe("Building");
-    expect(navigationGroupForPath("/models")).toBe("Registries");
+    expect(navigationGroupForPath("/models")).toBe("Registers");
     expect(navigationGroupForPath("/evals")).toBe("Quality");
   });
 
@@ -42,5 +42,26 @@ describe("navigationGroupForPath", () => {
       section.label === "Building" ? { ...section, label: "Workshop" } : section,
     );
     expect(navigationGroupForPath("/agents/agent-1", regrouped)).toBe("Workshop");
+  });
+
+  it("keeps Building and Operational in the requested order", () => {
+    const itemsFor = (label: string) =>
+      defaultNavigationSections
+        .find((section) => section.label === label)
+        ?.items.map((item) => item.name);
+    expect(itemsFor("Building")).toEqual([
+      "Agents",
+      "Playground",
+      "Harnesses",
+      "Sandboxes",
+      "Virtual Users",
+    ]);
+    expect(itemsFor("Operational")).toEqual(["Sessions", "Exposures"]);
+    expect(navigationGroupForPath("/sandboxes")).toBe("Building");
+    expect(navigationGroupForPath("/sandbox-templates/template-1")).toBe("Registers");
+    expect(navigationGroupForPath("/knowledge-indexes")).toBe("Registers");
+    expect(navigationGroupForPath("/memory")).toBe("Registers");
+    expect(navigationGroupForPath("/approvals")).toBe("Quality");
+    expect(navigationGroupForPath("/reports")).toBe("Quality");
   });
 });

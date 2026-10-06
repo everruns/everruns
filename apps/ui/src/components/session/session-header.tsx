@@ -3,7 +3,7 @@
 import type { ComponentType } from "react";
 import Link from "next/link";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
-import { LinkButton, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SessionForkButton } from "@/components/session/session-fork-button";
@@ -14,7 +14,7 @@ import {
   DropdownMenuPositioner,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { IconTile, PageBreadcrumb } from "@/components/layout/page-layout";
+import { IconTile, PageBreadcrumb, SectionTabs } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { downloadSessionExport } from "@/lib/session-export";
 import { useLocale } from "@/providers/locale-provider";
@@ -227,7 +227,7 @@ export function buildSessionNavigation({
 
 /**
  * The escape hatches from a read-only recording (EVE-854): fork it into a chat
- * thread you can talk to, open the agent that ran it, or export the transcript.
+ * thread you can talk to, test its agent in Playground, or export the transcript.
  * Fork is the only request this page can issue, and it creates a new session
  * rather than changing this one.
  */
@@ -256,13 +256,6 @@ function SessionRecordingActions({
         agentId={agentId}
         platformChat={platformChat}
       />
-
-      {agentId && (
-        <LinkButton href={`/agents/${agentId}`} variant="outline" size="sm" className="gap-1">
-          <Bot className="icon-sharp h-4 w-4" />
-          Open agent
-        </LinkButton>
-      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -336,12 +329,6 @@ export function SessionHeader({
         })
       : null;
   const agentReferenceStatus = session.agent_id != null ? (agent?.status ?? "deleted") : null;
-  const getNavigationClassName = (isActive: boolean) =>
-    cn(
-      buttonVariants({ variant: "outline", size: "sm" }),
-      isActive ? "border-primary bg-card text-foreground" : "text-muted-foreground",
-    );
-
   return (
     <div className="border-b border-border/70 bg-background/80 px-4 py-3 backdrop-blur-[1px]">
       {/* EVE-869: the breadcrumb names the owning group and keeps the way back —
@@ -355,7 +342,7 @@ export function SessionHeader({
         ]}
       />
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div className="flex min-w-0 items-start gap-3">
           <IconTile size="md" icon={<MessageSquare />} className="mt-0.5" />
           <div className="min-w-0">
@@ -364,7 +351,7 @@ export function SessionHeader({
                 {session.title || `Session ${shortenId(session.id)}`}
               </EntityIdentity>
             </h1>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               {agentReferenceLabel &&
                 (agent && agentId ? (
                   <Link
@@ -390,7 +377,7 @@ export function SessionHeader({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           {liveUsage && <SessionUsageBadge usage={liveUsage} />}
 
           {llmModel && (
@@ -416,20 +403,18 @@ export function SessionHeader({
 
       {/* Tabs get their own row: five of them plus the escape hatches do not fit
           on one line, and crowding them squeezes the title out of legibility. */}
-      <nav className="mt-3 flex flex-wrap items-center gap-2">
-        {navigationItems.map((item) => (
-          <Link
-            key={item.key}
-            href={item.href}
-            className={getNavigationClassName(activeTab === item.key)}
-            aria-current={activeTab === item.key ? "page" : undefined}
-          >
-            <item.icon className="icon-sharp h-4 w-4" />
-            {item.label}
-            {item.badge && <span className="text-xs text-muted-foreground">{item.badge}</span>}
-          </Link>
-        ))}
-      </nav>
+      <SectionTabs
+        value={activeTab}
+        aria-label="Session views"
+        className="mt-3"
+        items={navigationItems.map((item) => ({
+          value: item.key,
+          label: item.label,
+          href: item.href,
+          icon: <item.icon className="icon-sharp size-4" />,
+          count: item.badge,
+        }))}
+      />
     </div>
   );
 }

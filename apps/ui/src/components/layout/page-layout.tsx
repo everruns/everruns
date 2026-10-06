@@ -289,50 +289,52 @@ export interface SectionTabItem {
   value: string;
   label: ReactNode;
   icon?: ReactNode;
-  count?: number;
+  count?: number | string;
+  href?: string;
+  disabled?: boolean;
 }
 
 /**
  * Underline section navigation used for the list status filter and the edit
- * section nav. Controlled — pair with local state and conditional panels.
+ * section nav. Route sections use real links; local sections use controlled buttons.
  */
 export function SectionTabs({
   value,
   onValueChange,
   items,
   className,
+  "aria-label": ariaLabel,
 }: {
   value: string;
-  onValueChange: (value: string) => void;
+  onValueChange?: (value: string) => void;
   items: SectionTabItem[];
   className?: string;
+  "aria-label"?: string;
 }) {
+  const Container = items.every((item) => item.href) ? "nav" : "div";
   return (
-    <div
+    <Container
       className={cn(
         "flex max-w-full items-center overflow-x-auto border-b border-border/50",
         className,
       )}
-      role="tablist"
+      role={Container === "nav" ? undefined : "tablist"}
+      aria-label={ariaLabel}
     >
       {items.map((item) => {
         const isActive = item.value === value;
-        return (
-          <button
-            key={item.value}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            aria-label={typeof item.label === "string" ? item.label : undefined}
-            aria-description={item.count !== undefined ? `${item.count} items` : undefined}
-            onClick={() => onValueChange(item.value)}
-            className={cn(
-              "-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3.5 py-2 text-[13px] font-medium transition-colors",
-              isActive
-                ? "border-primary font-semibold text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
+        const className = cn(
+          "-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3.5 py-2 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+          isActive
+            ? "border-primary font-semibold text-foreground"
+            : "border-transparent text-muted-foreground hover:text-foreground",
+        );
+        const accessibility = {
+          "aria-label": typeof item.label === "string" ? item.label : undefined,
+          "aria-description": item.count !== undefined ? `${item.count} items` : undefined,
+        };
+        const content = (
+          <>
             {item.icon}
             {item.label}
             {item.count !== undefined && (
@@ -340,10 +342,34 @@ export function SectionTabs({
                 {item.count}
               </span>
             )}
+          </>
+        );
+        return item.href ? (
+          <Link
+            key={item.value}
+            href={item.href}
+            aria-current={isActive ? "page" : undefined}
+            className={className}
+            {...accessibility}
+          >
+            {content}
+          </Link>
+        ) : (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            disabled={item.disabled}
+            onClick={() => onValueChange?.(item.value)}
+            className={className}
+            {...accessibility}
+          >
+            {content}
           </button>
         );
       })}
-    </div>
+    </Container>
   );
 }
 

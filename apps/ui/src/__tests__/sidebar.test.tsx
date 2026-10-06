@@ -378,7 +378,8 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
     expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
-    expect(screen.queryByText("Quality")).not.toBeInTheDocument();
+    expect(screen.getByText("Quality")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Approvals" })).toHaveAttribute("href", "/approvals");
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
   });
 
@@ -537,7 +538,7 @@ describe("Sidebar", () => {
 
     expect(screen.getByText("Operational")).toBeInTheDocument();
     expect(screen.getByText("Building")).toBeInTheDocument();
-    expect(screen.getByText("Registries")).toBeInTheDocument();
+    expect(screen.getByText("Registers")).toBeInTheDocument();
     expect(screen.getByText("Quality")).toBeInTheDocument();
     expect(screen.getByText("Durable Execution")).toBeInTheDocument();
   });

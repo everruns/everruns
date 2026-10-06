@@ -13,7 +13,7 @@ tags:
 ## Abstract
 
 The shell groups navigation by **what you do with a thing**, not by what the thing is.
-Five groups carry every destination: Chats, Operational, Building, Registries, Quality,
+Five groups carry every destination: Chats, Operational, Building, Registers, Quality,
 with Settings pinned below them. The data lives in
 [`navigation.ts`](../../apps/ui/src/lib/navigation.ts)
 and renders through the generic section renderer in
@@ -55,10 +55,10 @@ authoring is the activity that brings the user to the page.
 | Group | Assertion |
 |---|---|
 | **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. |
-| **Operational** | What ran. Recordings and views over them, read, not authored. |
-| **Building** | What you author. Editable definitions the user composes and owns. |
-| **Registries** | What you register once and reference by name. Mostly-write-once entries other things point at. |
-| **Quality** | How you check it. Instruments that judge or observe other entities. |
+| **Operational** | Recordings and external exposure: Sessions and Exposures. |
+| **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
+| **Registers** | Reusable entries and curated resources, including Sandbox Templates, Knowledge indexes, and Memory. |
+| **Quality** | Evaluation, observation, approvals, and reporting. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
 than being a thing the user works on. Durable Execution and Dev keep their existing
@@ -70,12 +70,14 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   reference it by name from an agent. You do not sit and author a skill as part of
   building a specific agent, and you do not read it back as a record of what ran.
   Registering-and-referencing beats its surface resemblance to Knowledge indexes.
-* **Memory is Building, not Operational.** Memory looks like a recording, but the user
-  authors what goes into it and curates it deliberately. The verb is authoring, so it
-  sits with the things you compose.
-* **Reports is Operational, not Quality.** A report reads what ran. Quality is reserved
-  for instruments that judge, Evals and Observers.
-* **Identities is Building, not Registries.** An identity is authored per agent
+* **Memory and Knowledge indexes are Registers.** They are curated resources referenced
+  by agents; keeping them with the other reusable entries leaves Building focused on
+  composing and trying agents.
+* **Sandboxes is Building; Sandbox Templates is Registers.** Live execution environments
+  sit beside agents and harnesses, while their reusable definitions stay in Registers.
+* **Reports and Approvals are Quality.** Reporting and review sit with Evals and Observers,
+  leaving Operational focused on recordings and external exposure.
+* **Identities is Building, not Registers.** An identity is authored per agent
   deployment with credentials and scope decisions, not registered once and forgotten.
 
 ## Playground
@@ -180,8 +182,9 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   snapshot at load; a live session's badges refresh when the session query does. A count
   the server cannot produce cheaply is omitted, and an absent badge is the honest
   answer — see [session counts](../operations/session-counts.md).
-* **Fork is what makes read-only acceptable.** The escape hatches from a recording are
-  Fork into chat, Open agent and Export, nothing else. Forking creates a *new* session
+* **Fork is what makes read-only acceptable.** The recording actions are Fork into chat
+  for personal Platform Chat, Test in Playground for other agents, and Export. The agent
+  name in the header links to its detail page. Forking creates a *new* session
   seeded with this one's conversation, workspace and durable storage
   ([forking sessions](../runtime-resources/forking-sessions.md)) and lands the user in it
   as a thread, so a recording can always be turned back into something you can talk to
