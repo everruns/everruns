@@ -258,6 +258,14 @@ impl WorkerServiceImpl {
             }
         };
 
+        if let Some(hand_off) = req.hand_off {
+            return self
+                .complete_durable_task_with_hand_off(
+                    task_id, worker_id, output, task_info, hand_off,
+                )
+                .await;
+        }
+
         // complete_task now verifies worker ownership to prevent duplicate scheduling
         match store
             .complete_task(task_id, worker_id, output.clone())
@@ -268,6 +276,7 @@ impl WorkerServiceImpl {
                     return Ok(Response::new(CompleteDurableTaskResponse {
                         success: true,
                         drained_signal_count: None,
+                        ..Default::default()
                     }));
                 };
                 let workflow_id = info.workflow_id;
@@ -296,6 +305,7 @@ impl WorkerServiceImpl {
                 Ok(Response::new(CompleteDurableTaskResponse {
                     success: true,
                     drained_signal_count,
+                    ..Default::default()
                 }))
             }
             Err(StoreError::TaskNotOwned(_)) => {
@@ -308,10 +318,115 @@ impl WorkerServiceImpl {
                 Ok(Response::new(CompleteDurableTaskResponse {
                     success: false,
                     drained_signal_count: None,
+                    ..Default::default()
                 }))
             }
             Err(e) => {
                 tracing::error!("Failed to complete task: {}", e);
+                Err(Status::internal("Failed to complete task"))
+            }
+        }
+    }
+
+    /// Complete a turn step and hand its workflow to the next step in one
+    /// atomic store write, recording the step's history events around it
+    /// (see `everruns_worker::turn_store::hand_off_and_record`).
+    async fn complete_durable_task_with_hand_off(
+        &self,
+        task_id: uuid::Uuid,
+        worker_id: &str,
+        output: serde_json::Value,
+        task_info: Option<everruns_durable::TaskInfo>,
+        hand_off: everruns_internal_protocol::proto::DurableHandOff,
+    ) -> Result<Response<CompleteDurableTaskResponse>, Status> {
+        use everruns_internal_protocol::proto::durable_hand_off::Next;
+        use everruns_internal_protocol::proto_struct_to_json;
+        use everruns_worker::turn_store::{TurnHandOff, TurnNext, hand_off_and_record};
+
+        let store = self.durable_store()?;
+        let (Some(info), Some(next)) = (task_info, hand_off.next) else {
+            return Err(Status::invalid_argument(
+                "A hand-off needs a workflow task and a next step",
+            ));
+        };
+        let Some(workflow_id) = info.workflow_id else {
+            return Err(Status::invalid_argument("A hand-off needs a workflow task"));
+        };
+        let json = |value: Option<prost_types::Struct>| {
+            value
+                .map(|value| proto_struct_to_json(&value))
+                .unwrap_or_else(|| serde_json::json!({}))
+        };
+        let (next, queued_type) = match next {
+            Next::Step(step) => {
+                let queued_type = step.activity_type.clone();
+                (
+                    TurnNext::Step {
+                        activity_id: step.activity_id,
+                        activity_type: step.activity_type,
+                        input: json(step.input),
+                        claim_for: step.claim_for_worker_id,
+                    },
+                    Some(queued_type),
+                )
+            }
+            Next::Complete(complete) => (
+                TurnNext::Complete {
+                    event_output: json(complete.event_output),
+                    stored_output: complete.stored_output.map(|s| proto_struct_to_json(&s)),
+                    error: complete.error.map(WorkflowError::new),
+                },
+                None,
+            ),
+        };
+        let hand_off = TurnHandOff {
+            workflow_id,
+            drain: hand_off
+                .drain_signal_type
+                .map(|signal_type| everruns_durable::SignalDrain {
+                    signal_type,
+                    limit: hand_off.drain_limit as usize,
+                }),
+            next,
+        };
+
+        match hand_off_and_record(
+            store.as_ref(),
+            None,
+            task_id,
+            &info.activity_id,
+            worker_id,
+            output,
+            hand_off,
+        )
+        .await
+        {
+            Ok(claimed) => {
+                // Notify NATS subscribers of a step left in the queue (no-op
+                // for PG backend — PG uses DB triggers).
+                if claimed.is_none()
+                    && let (Some(activity_type), Some(broadcaster)) =
+                        (queued_type, &self.task_broadcaster)
+                {
+                    broadcaster.notify_task_available(&activity_type).await;
+                }
+                Ok(Response::new(CompleteDurableTaskResponse {
+                    success: true,
+                    drained_signal_count: None,
+                    handed_off: true,
+                    claimed: claimed.map(claimed_task_to_proto),
+                }))
+            }
+            Err(StoreError::TaskNotOwned(_)) => {
+                tracing::info!(
+                    %task_id,
+                    %worker_id,
+                    "Hand-off rejected: task was reclaimed or already completed"
+                );
+                Ok(Response::new(CompleteDurableTaskResponse::default()))
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to complete task and hand off");
                 Err(Status::internal("Failed to complete task"))
             }
         }
@@ -483,7 +598,14 @@ impl WorkerServiceImpl {
             .map_err(|e| Status::invalid_argument(format!("Invalid workflow_id: {}", e)))?;
 
         let store = self.durable_store()?;
-        let signals = if req.signal_type.is_empty() {
+        let signals = if req.peek.unwrap_or(false) {
+            store.get_pending_signals(workflow_id).await.map(|signals| {
+                signals
+                    .into_iter()
+                    .filter(|s| req.signal_type.is_empty() || s.signal_type == req.signal_type)
+                    .collect()
+            })
+        } else if req.signal_type.is_empty() {
             store.consume_pending_signals(workflow_id).await
         } else {
             store

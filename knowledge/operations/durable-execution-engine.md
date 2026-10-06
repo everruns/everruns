@@ -328,6 +328,36 @@ replicas racing the same reap notify once. The server reaps every 10 s with a
 `WorkerPoolConfig::without_stale_reclaim` turns its loop off for a host that
 already runs a reaper with a real handler.
 
+### Step hand-off and stranded runs
+
+A turn step moves its workflow to the next step in one store write
+(`TaskQueue::complete_task_and_hand_off`, carried over gRPC as `hand_off` on
+`CompleteDurableTask`): the task completes, the steering wakes the next step
+was planned with are consumed, and the next step is enqueued (claimed when
+chaining) or the workflow completes, in one PostgreSQL transaction over the
+queue rows only. History events stay outside it, appended around it as before.
+Done as two writes, a worker exit or a lost reply between "complete and drain"
+and "enqueue" left the workflow `running` with no task: the drained steering
+was lost, and every later message became a wake no run drained.
+
+The driver plans before it commits, so the step's lifecycle effects (turn
+completed, session idle) run first and repeat if the hand-off never commits:
+at least once, never lost. It counts pending wakes without consuming them and
+the hand-off consumes exactly that many, so a wake that arrives meanwhile
+stays pending. One race remains, as before: a wake arriving after the count
+at a turn's final step is left pending on the completed workflow.
+
+A run can still be stranded by a client that hands off in separate writes (a
+control plane that predates `hand_off`, or a store without the atomic write).
+Two things resume it by enqueueing its completed last step again, which reruns
+as after a crash before its completion: the server's reaper pass sweeps
+`turn_workflow` runs left `running` with no live task a minute after their last
+step completed (`requeue_stranded_workflows`, `ReaperConfig::stranded_*`), and
+a run start on such a run resumes it at once (`start_run_with_task`) before the
+caller steers it. `crates/durable-engine/src/turn_recovery_matrix_tests.rs`
+crashes a turn at every step boundary, on both write shapes, in memory and on
+PostgreSQL.
+
 ### Forward-progress guard and Sealed terminal (EVE-534)
 
 `RetryPolicy.max_attempts` bounds *how many times* a task may run, but a turn

@@ -758,7 +758,11 @@ pub trait EventLog: Send + Sync + 'static {
     ///   `try_start_new_run` does (stale pending tasks are cancelled) and
     ///   enqueue `task`.
     /// - Active run (Running, or a task claimed): change nothing and return
-    ///   [`RunStart::Active`].
+    ///   [`RunStart::Active`]. A run that is Running with no pending or
+    ///   claimed task and a completed last task is stranded between steps:
+    ///   its last step is enqueued again (as
+    ///   [`TaskQueue::requeue_stranded_workflows`] does) so the run the
+    ///   caller then signals resumes.
     ///
     /// `task.workflow_id` is ignored; the task always belongs to `workflow_id`.
     async fn start_run_with_task(
@@ -867,6 +871,31 @@ pub trait TaskQueue: Send + Sync + 'static {
         worker_id: &str,
         result: serde_json::Value,
     ) -> Result<(), StoreError>;
+
+    /// Complete a workflow's task and hand the workflow to its next step in
+    /// one atomic write: complete (ownership checked as in
+    /// [`complete_task`](Self::complete_task)), consume `hand_off.drain`,
+    /// then enqueue the next task or complete the workflow. Nothing changes
+    /// on `TaskNotOwned`. See [`crate::HandOff`].
+    async fn complete_task_and_hand_off(
+        &self,
+        task_id: Uuid,
+        worker_id: &str,
+        result: serde_json::Value,
+        hand_off: crate::HandOff,
+    ) -> Result<crate::HandedOff, StoreError>;
+
+    /// Re-enqueue the last step of each `workflow_type` workflow left
+    /// `Running` with no pending or claimed task whose last task completed
+    /// more than `completed_before` ago, at most `limit` of them. The step
+    /// runs again from its own input, as after a crash before its completion.
+    /// Safe to run concurrently: a workflow is requeued once.
+    async fn requeue_stranded_workflows(
+        &self,
+        workflow_type: &str,
+        completed_before: Duration,
+        limit: usize,
+    ) -> Result<Vec<crate::RequeuedWorkflow>, StoreError>;
 
     /// Fail a task using its normal retry policy.
     async fn fail_task(

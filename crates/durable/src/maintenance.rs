@@ -28,7 +28,8 @@ use async_trait::async_trait;
 use tracing::{error, info, warn};
 
 use crate::persistence::{
-    DeadTaskInfo, ReclaimResult, SealedTaskInfo, StoreError, WorkflowEventStore, WorkflowStatus,
+    DeadTaskInfo, ReclaimResult, RequeuedWorkflow, SealedTaskInfo, StoreError, WorkflowEventStore,
+    WorkflowStatus,
 };
 use crate::task_events::{record_activity_failed, record_workflow_failed};
 use crate::workflow::WorkflowError;
@@ -181,6 +182,14 @@ pub struct ReaperConfig {
     pub stale_threshold: Duration,
     /// Time between reap passes.
     pub interval: Duration,
+    /// Also resume runs of this workflow type stranded between two steps
+    /// (see [`requeue_stranded_workflows`]). `None`, the default, sweeps
+    /// nothing: a workflow type may legitimately wait with no task.
+    pub stranded_workflow_type: Option<&'static str>,
+    /// How long a stranded run's last step must have been complete before a
+    /// pass resumes it. A hand-off in separate writes is not mistaken for a
+    /// stranded run while it is still under way.
+    pub stranded_after: Duration,
 }
 
 impl Default for ReaperConfig {
@@ -188,8 +197,43 @@ impl Default for ReaperConfig {
         Self {
             stale_threshold: Duration::from_secs(30),
             interval: Duration::from_secs(10),
+            stranded_workflow_type: None,
+            stranded_after: Duration::from_secs(60),
         }
     }
+}
+
+/// Most stranded runs one pass resumes.
+const STRANDED_SWEEP_LIMIT: usize = 100;
+
+/// Resume the runs of `workflow_type` stranded between two steps: Running,
+/// with no pending or claimed task, and a last task that completed more than
+/// `stranded_after` ago. Each one's last step is enqueued again
+/// ([`TaskQueue::requeue_stranded_workflows`]), so its turn continues.
+///
+/// A step hands off to the next atomically
+/// ([`TaskQueue::complete_task_and_hand_off`]), so this finds only runs a
+/// client handed off in separate writes and lost in between.
+///
+/// [`TaskQueue::requeue_stranded_workflows`]: crate::TaskQueue::requeue_stranded_workflows
+/// [`TaskQueue::complete_task_and_hand_off`]: crate::TaskQueue::complete_task_and_hand_off
+pub async fn requeue_stranded_workflows<S: WorkflowEventStore + ?Sized>(
+    store: &S,
+    workflow_type: &str,
+    stranded_after: Duration,
+) -> Result<Vec<RequeuedWorkflow>, StoreError> {
+    let requeued = store
+        .requeue_stranded_workflows(workflow_type, stranded_after, STRANDED_SWEEP_LIMIT)
+        .await?;
+    for run in &requeued {
+        warn!(
+            workflow_id = %run.workflow_id,
+            task_id = %run.task_id,
+            activity_type = %run.activity_type,
+            "Resumed a workflow stranded between steps"
+        );
+    }
+    Ok(requeued)
 }
 
 /// Runs [`reap_stale_tasks`] on an interval.
@@ -219,6 +263,17 @@ impl StaleTaskReaper {
     /// One reap pass. A store failure is logged and passed to
     /// [`ReapHandler::reap_failed`].
     pub async fn reap_once(&self) -> Option<ReclaimResult> {
+        if let Some(workflow_type) = self.config.stranded_workflow_type
+            && let Err(error) = requeue_stranded_workflows(
+                self.store.as_ref(),
+                workflow_type,
+                self.config.stranded_after,
+            )
+            .await
+        {
+            error!(%error, "Failed to resume stranded workflows");
+            self.handler.reap_failed(&error);
+        }
         match reap_stale_tasks(
             self.store.as_ref(),
             self.config.stale_threshold,
@@ -479,6 +534,7 @@ mod tests {
             ReaperConfig {
                 stale_threshold: Duration::ZERO,
                 interval: Duration::from_millis(10),
+                ..ReaperConfig::default()
             },
             handler.clone(),
         );

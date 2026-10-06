@@ -38,8 +38,8 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::turn_store::{
-    TurnStore, WorkflowEndSignal, WorkflowSnapshot, enqueue_claimed_task_in, enqueue_task_in,
-    start_turn_in,
+    TurnHandOff, TurnNext, TurnStore, WorkflowEndSignal, WorkflowSnapshot, enqueue_claimed_task_in,
+    enqueue_task_in, hand_off_and_record, start_turn_in,
 };
 
 /// One backend's share of a shared store: the task queue its tasks go to,
@@ -176,6 +176,39 @@ impl<S: WorkflowEventStore> TurnStore for RoutedStore<S> {
         output: serde_json::Value,
     ) -> Result<(), StoreError> {
         TurnStore::complete_task_and_record(&*self.store, task, worker_id, output).await
+    }
+
+    async fn complete_task_and_hand_off(
+        &self,
+        task: &ClaimedTask,
+        worker_id: &str,
+        output: serde_json::Value,
+        hand_off: TurnHandOff,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
+        let workflow_id = hand_off.workflow_id;
+        let ends = matches!(hand_off.next, TurnNext::Complete { .. });
+        let result = hand_off_and_record(
+            &*self.store,
+            Some(self.routing.queue()),
+            task.id,
+            &task.activity_id,
+            worker_id,
+            output,
+            hand_off,
+        )
+        .await;
+        if ends {
+            self.ended(Some(workflow_id));
+        }
+        result
+    }
+
+    async fn count_pending_signals(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<usize, StoreError> {
+        TurnStore::count_pending_signals(&*self.store, workflow_id, signal_type).await
     }
 
     async fn fail_task_and_record(

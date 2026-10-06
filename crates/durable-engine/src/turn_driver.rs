@@ -8,9 +8,19 @@
 //! drains, failure sealing and log lines are unchanged by the move.
 //!
 //! Model: queue plus per-step checkpoint. Each turn step (`process_input`,
-//! `reason`, `act`) is a queued task; after it completes, the engine plans
-//! the next step from the `DurableTurnInput` checkpoint and the driver enqueues
-//! it, or completes the workflow.
+//! `reason`, `act`) is a queued task; after its activity ran, the engine plans
+//! the next step from the `DurableTurnInput` checkpoint and the steering wakes
+//! pending at that boundary, and the driver hands off: one atomic store write
+//! completes the task, consumes the wakes it counted and enqueues the next
+//! step or completes the workflow ([`TurnStore::complete_task_and_hand_off`]).
+//!
+//! Decision: plan first, then commit the completion and the hand-off together.
+//! As two writes (complete and drain, then enqueue), a process exit or a lost
+//! reply between them left the workflow running with no task and its drained
+//! wakes lost. Planning runs the turn's lifecycle effects (turn completed,
+//! session idle), so a step whose hand-off never commits runs again and may
+//! repeat them: at least once, never lost. A planning failure fails the task
+//! the same way, so it is retried rather than left completed with no successor.
 //!
 //! Decision: with [`TurnTaskDriver::chain_steps`], the driver enqueues the
 //! next step already claimed by its own worker and runs it at once, so a
@@ -20,7 +30,7 @@
 //! stale reclaim, cancellation and history are unchanged; a store that
 //! cannot claim on enqueue (or a draining worker) leaves the step queued.
 
-use crate::durable::{ClaimedTask, TaskFailureOutcome, WorkflowStatus};
+use crate::durable::{ClaimedTask, SignalDrain, TaskFailureOutcome, WorkflowStatus};
 use crate::durable_runner::DurableTurnInput;
 use crate::engine::{ActInput, ActPlan, ReasonInput, ReasonResult, TurnExecution, TurnPlan};
 use crate::host::{
@@ -30,7 +40,7 @@ use crate::host::{
 use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
 use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
 use crate::turn_start;
-use crate::turn_store::TurnStore;
+use crate::turn_store::{TurnHandOff, TurnNext, TurnStore};
 use anyhow::Result;
 use async_trait::async_trait;
 use everruns_contracts::typed_id::MessageId;
@@ -81,9 +91,9 @@ pub trait TurnTaskHost: Clone + Send + Sync + 'static {
         Ok(Vec::new())
     }
 
-    /// Steering: called once a reason step completed, before the turn's next
-    /// step is planned, with the `USER_MESSAGE` wakes this boundary already
-    /// drained. Returns how many further user messages joined the turn; they
+    /// Steering: called once a reason step ran, before the turn's next step
+    /// is planned, with the `USER_MESSAGE` wakes this boundary counted (the
+    /// hand-off consumes them with the planned step). Returns how many further user messages joined the turn; they
     /// count with the wakes when the engine decides whether the turn
     /// continues. `input` is the turn state the reason ran from.
     ///
@@ -343,58 +353,75 @@ where
         }
     };
 
-    match result {
-        Ok(output) => {
-            // Complete the task (verifying ownership), draining wake signals
-            // in the same call when this boundary is a drain point.
-            let schedules = turn_input_opt.is_some() && task.workflow_id.is_some();
-            let final_answer = reason_final_answer(activity, &output).unwrap_or(false);
-            let drain = (schedules && drains_wake_signals_after(activity, final_answer))
-                .then_some(crate::durable_turn::USER_MESSAGE);
-            let complete_result = store
-                .complete_task_and_drain(task, worker_id, output.clone(), drain)
-                .await;
-
-            match complete_result {
-                Ok(drained) => {
-                    info!(
-                        task_id = %task.id,
-                        activity_type = %task.activity_type,
-                        "Task completed successfully"
-                    );
-
-                    // Schedule next activity if needed (only for workflow-bound tasks)
-                    if let (Some(turn_input), Some(wf_id)) = (turn_input_opt, task.workflow_id) {
-                        return schedule_next_activity(
-                            store,
-                            hosts,
-                            wf_id,
-                            activity,
-                            &turn_input,
-                            &output,
-                            drained,
-                            claim_for,
-                        )
-                        .await;
-                    }
-                }
-                Err(e) => {
-                    warn!(
-                        task_id = %task.id,
-                        error = %e,
-                        "Task completion rejected - skipping next activity"
-                    );
-                }
-            }
-        }
+    let output = match result {
+        Ok(output) => output,
         Err(e) => {
             fail_activity_task(store, hosts, task, turn_input_opt.as_ref(), &e).await?;
-
             return Err(e);
         }
-    }
+    };
 
-    Ok(None)
+    // A turn step plans its successor, then completes and hands off in one
+    // store write; any other task just completes.
+    let (Some(turn_input), Some(workflow_id)) = (turn_input_opt, task.workflow_id) else {
+        match store
+            .complete_task_and_record(task, worker_id, output)
+            .await
+        {
+            Ok(()) => info!(
+                task_id = %task.id,
+                activity_type = %task.activity_type,
+                "Task completed successfully"
+            ),
+            Err(e) => warn!(task_id = %task.id, error = %e, "Task completion rejected"),
+        }
+        return Ok(None);
+    };
+
+    let hand_off = match plan_next_step(
+        store,
+        hosts,
+        workflow_id,
+        activity,
+        &turn_input,
+        &output,
+        claim_for,
+    )
+    .await
+    {
+        Ok(hand_off) => hand_off,
+        Err(e) => {
+            // Nothing was handed off: the step runs again, as after a crash
+            // before its completion.
+            fail_activity_task(store, hosts, task, Some(&turn_input), &e).await?;
+            return Err(e);
+        }
+    };
+
+    match store
+        .complete_task_and_hand_off(task, worker_id, output, hand_off)
+        .await
+    {
+        Ok(next) => {
+            info!(
+                task_id = %task.id,
+                activity_type = %task.activity_type,
+                "Task completed successfully"
+            );
+            Ok(next)
+        }
+        Err(e) => {
+            // Rejected (the task was reclaimed) or unknown (the reply was
+            // lost): either way the store holds a claimed task to reclaim or
+            // the committed hand-off, never a run with no task.
+            warn!(
+                task_id = %task.id,
+                error = %e,
+                "Task completion rejected - skipping next activity"
+            );
+            Ok(None)
+        }
+    }
 }
 
 async fn fail_activity_task<S: TurnStore + ?Sized, H: TurnTaskHost>(
@@ -499,39 +526,41 @@ async fn execute_act_activity<H: TurnTaskHost>(
 // Activity Scheduling
 // =============================================================================
 
-/// Schedule the next activity based on current activity completion.
-///
-/// Returns the next step when it was enqueued claimed for `claim_for`.
-#[allow(clippy::too_many_arguments)]
-async fn schedule_next_activity<S: TurnStore + ?Sized, H: TurnTaskHost>(
+/// Plan the step after `completed_activity` from the turn checkpoint and
+/// the steering wakes pending at this boundary, as the hand-off that commits
+/// it.
+async fn plan_next_step<S: TurnStore + ?Sized, H: TurnTaskHost>(
     store: &Arc<S>,
     hosts: &H,
     workflow_id: Uuid,
     completed_activity: &str,
     input: &DurableTurnInput,
     output: &serde_json::Value,
-    drained: Option<usize>,
     claim_for: Option<&str>,
-) -> Result<Option<ClaimedTask>> {
+) -> Result<TurnHandOff> {
     let reason_final_answer = reason_final_answer(completed_activity, output)?;
 
-    // Drain queued USER_MESSAGE steering signals (task wakes) at the boundaries
-    // that precede another reason iteration. The already-persisted wake message
-    // is picked up by that reason (it re-reads full history); consuming the
-    // signal here is what governs turn continuation and, being destructive,
-    // gives exactly-once delivery — see `drains_wake_signals_after`.
-    let mut pending_user_message_count = match drained {
-        Some(count) => count,
-        None => {
-            count_drained_wakes(store, workflow_id, completed_activity, reason_final_answer).await?
-        }
+    // Count queued USER_MESSAGE steering signals (task wakes) at the
+    // boundaries that precede another reason iteration. The already-persisted
+    // wake message is picked up by that reason (it re-reads full history); the
+    // count governs turn continuation, and the hand-off consumes exactly the
+    // wakes counted, with the step it plans: exactly-once delivery, and a wake
+    // that arrives meanwhile stays for the next boundary. See
+    // `drains_wake_signals_after`.
+    let drains = drains_wake_signals_after(completed_activity, reason_final_answer);
+    let drained = if drains {
+        store
+            .count_pending_signals(workflow_id, crate::durable_turn::USER_MESSAGE)
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to read workflow wake signals: {}", error))?
+    } else {
+        0
     };
+    let mut pending_user_message_count = drained;
     if completed_activity == "reason" {
         let reason: ReasonResult = serde_json::from_value(output.clone())
             .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
-        pending_user_message_count += hosts
-            .after_reason(input, &reason, pending_user_message_count)
-            .await?;
+        pending_user_message_count += hosts.after_reason(input, &reason, drained).await?;
     }
 
     if completed_activity == "act" && pending_user_message_count > 0 {
@@ -553,39 +582,39 @@ async fn schedule_next_activity<S: TurnStore + ?Sized, H: TurnTaskHost>(
     .await?;
     let checkpoint = execution.into_state();
     hosts.turn_planned(&checkpoint, &plan, output).await?;
-    match plan {
-        TurnPlan::ScheduleReason(_) => {
-            return enqueue_reason_task(store, workflow_id, &checkpoint, claim_for).await;
-        }
-        TurnPlan::ScheduleAct(plan) => {
-            return enqueue_act_task(store, workflow_id, &plan, &checkpoint, claim_for).await;
-        }
-        TurnPlan::Complete { stop_reason, error } => {
-            let turn_output = turn_output_with_stop_reason(output.clone(), stop_reason);
-            store
-                .complete_workflow(
-                    workflow_id,
-                    turn_output,
-                    Some(serde_json::to_value(&checkpoint)?),
-                    error.map(crate::durable::WorkflowError::new),
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
-        }
-        TurnPlan::WaitForToolResults { .. } => {
-            store
-                .complete_workflow(
-                    workflow_id,
-                    output.clone(),
-                    Some(serde_json::to_value(&checkpoint)?),
-                    None,
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to persist wait-for-tools state: {}", e))?;
-        }
-    }
-
-    Ok(None)
+    let claim_for = claim_for.map(str::to_owned);
+    let next = match plan {
+        TurnPlan::ScheduleReason(_) => TurnNext::Step {
+            activity_id: format!("reason_{}", Uuid::now_v7()),
+            activity_type: "reason".to_string(),
+            input: serde_json::to_value(&checkpoint)?,
+            claim_for,
+        },
+        TurnPlan::ScheduleAct(plan) => TurnNext::Step {
+            activity_id: format!("act_{}", Uuid::now_v7()),
+            activity_type: "act".to_string(),
+            input: act_task_input(&plan, &checkpoint)?,
+            claim_for,
+        },
+        TurnPlan::Complete { stop_reason, error } => TurnNext::Complete {
+            event_output: turn_output_with_stop_reason(output.clone(), stop_reason),
+            stored_output: Some(serde_json::to_value(&checkpoint)?),
+            error: error.map(crate::durable::WorkflowError::new),
+        },
+        TurnPlan::WaitForToolResults { .. } => TurnNext::Complete {
+            event_output: output.clone(),
+            stored_output: Some(serde_json::to_value(&checkpoint)?),
+            error: None,
+        },
+    };
+    Ok(TurnHandOff {
+        workflow_id,
+        drain: drains.then(|| SignalDrain {
+            signal_type: crate::durable_turn::USER_MESSAGE.to_string(),
+            limit: drained,
+        }),
+        next,
+    })
 }
 
 /// Whether a completed `reason` produced a final answer (no tool calls, no
@@ -623,8 +652,8 @@ fn turn_output_with_stop_reason(
 /// - at a final-answer `reason` boundary decides continue-vs-idle for a wake
 ///   that arrived as the turn wound down.
 ///
-/// Because `consume_pending_signals` is a destructive read, a wake drained at
-/// the act boundary is not seen again by the end-of-turn drain — mid-turn XOR
+/// Because the hand-off consumes the wakes it counted, a wake drained at the
+/// act boundary is not seen again by the end-of-turn drain — mid-turn XOR
 /// next-turn, never both.
 fn drains_wake_signals_after(completed_activity: &str, reason_final_answer: bool) -> bool {
     match completed_activity {
@@ -632,96 +661,6 @@ fn drains_wake_signals_after(completed_activity: &str, reason_final_answer: bool
         "reason" => reason_final_answer,
         _ => false,
     }
-}
-
-/// Consume and count queued `USER_MESSAGE` wakes for `workflow_id` when this
-/// activity boundary is a drain point (see [`drains_wake_signals_after`]).
-/// Returns 0 without touching the store at non-drain boundaries.
-async fn count_drained_wakes<S: TurnStore + ?Sized>(
-    store: &Arc<S>,
-    workflow_id: Uuid,
-    completed_activity: &str,
-    reason_final_answer: bool,
-) -> Result<usize> {
-    if !drains_wake_signals_after(completed_activity, reason_final_answer) {
-        return Ok(0);
-    }
-    Ok(store
-        .consume_pending_signals_by_type(workflow_id, crate::durable_turn::USER_MESSAGE)
-        .await
-        .map_err(|error| anyhow::anyhow!("Failed to consume workflow wake signals: {}", error))?
-        .len())
-}
-
-async fn enqueue_reason_task<S: TurnStore + ?Sized>(
-    store: &Arc<S>,
-    workflow_id: Uuid,
-    input: &DurableTurnInput,
-    claim_for: Option<&str>,
-) -> Result<Option<ClaimedTask>> {
-    let activity_id = format!("reason_{}", Uuid::now_v7());
-    let input_json = serde_json::to_value(input)?;
-    enqueue_step(
-        store,
-        workflow_id,
-        activity_id,
-        "reason",
-        input_json,
-        claim_for,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))
-}
-
-/// Enqueue a turn step, claimed for `claim_for` when set.
-async fn enqueue_step<S: TurnStore + ?Sized>(
-    store: &Arc<S>,
-    workflow_id: Uuid,
-    activity_id: String,
-    activity_type: &str,
-    input: serde_json::Value,
-    claim_for: Option<&str>,
-) -> Result<Option<ClaimedTask>, crate::durable::StoreError> {
-    let activity_type = activity_type.to_string();
-    match claim_for {
-        Some(worker_id) => {
-            store
-                .enqueue_claimed_task_and_record(
-                    workflow_id,
-                    activity_id,
-                    activity_type,
-                    input,
-                    worker_id,
-                )
-                .await
-        }
-        None => store
-            .enqueue_task_and_record(workflow_id, activity_id, activity_type, input)
-            .await
-            .map(|_| None),
-    }
-}
-
-async fn enqueue_act_task<S: TurnStore + ?Sized>(
-    store: &Arc<S>,
-    workflow_id: Uuid,
-    plan: &ActPlan,
-    checkpoint: &DurableTurnInput,
-    claim_for: Option<&str>,
-) -> Result<Option<ClaimedTask>> {
-    let act_input_json = act_task_input(plan, checkpoint)?;
-
-    let activity_id = format!("act_{}", Uuid::now_v7());
-    enqueue_step(
-        store,
-        workflow_id,
-        activity_id,
-        "act",
-        act_input_json,
-        claim_for,
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))
 }
 
 pub(crate) fn act_task_input(
@@ -737,8 +676,8 @@ pub(crate) fn act_task_input(
 mod tests {
     use super::*;
     use crate::durable::{
-        ActivityOptions, DurableAdmin, EventLog, HeartbeatResponse, StoreError, TaskDefinition,
-        TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
+        ActivityOptions, DurableAdmin, EventLog, HeartbeatResponse, SignalStore, StoreError,
+        TaskDefinition, TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
     };
     use everruns_contracts::typed_id::TurnId;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -886,6 +825,18 @@ mod tests {
             Ok(self.signals.clone())
         }
 
+        async fn count_pending_signals(
+            &self,
+            _workflow_id: Uuid,
+            signal_type: &str,
+        ) -> Result<usize, StoreError> {
+            Ok(self
+                .signals
+                .iter()
+                .filter(|signal| signal.signal_type == signal_type)
+                .count())
+        }
+
         async fn consume_pending_signals_by_type(
             &self,
             _workflow_id: Uuid,
@@ -914,11 +865,8 @@ mod tests {
         assert!(!drains_wake_signals_after("input", false));
     }
 
-    #[tokio::test]
-    async fn completion_drains_only_where_the_store_folds_it_in() {
-        // `execute_task` asks the completion to drain at a final-answer reason
-        // and after act; a store that cannot fold the drain in returns None so
-        // `schedule_next_activity` consumes the wakes itself.
+    #[test]
+    fn only_a_successful_reason_without_tool_calls_is_a_final_answer() {
         let reason = |has_tool_calls| {
             serde_json::to_value(ReasonResult {
                 success: true,
@@ -931,14 +879,20 @@ mod tests {
         assert!(!reason_final_answer("reason", &reason(true)).unwrap());
         assert!(!reason_final_answer("act", &serde_json::json!({})).unwrap());
         assert!(reason_final_answer("reason", &serde_json::json!({})).is_err());
+    }
 
+    #[tokio::test]
+    async fn a_store_without_an_atomic_hand_off_makes_the_writes_in_steps() {
+        // The default hand-off completes, drains only when asked to, then
+        // enqueues; a drain the plan counted none for touches no signals.
         let store = RecordingStore {
             signals: vec![user_message_signal()],
             consume_calls: Arc::new(AtomicUsize::new(0)),
         };
+        let workflow_id = Uuid::now_v7();
         let task = ClaimedTask {
             id: Uuid::now_v7(),
-            workflow_id: Some(Uuid::now_v7()),
+            workflow_id: Some(workflow_id),
             activity_id: "act-1".into(),
             activity_type: "act".into(),
             input: serde_json::json!({}),
@@ -946,12 +900,30 @@ mod tests {
             max_attempts: 1,
             ..Default::default()
         };
-        let drained = store
-            .complete_task_and_drain(&task, "w", serde_json::json!({}), Some("user_message"))
+        let hand_off = |limit| TurnHandOff {
+            workflow_id,
+            drain: Some(SignalDrain {
+                signal_type: crate::durable_turn::USER_MESSAGE.into(),
+                limit,
+            }),
+            next: TurnNext::Step {
+                activity_id: "reason-2".into(),
+                activity_type: "reason".into(),
+                input: serde_json::json!({}),
+                claim_for: None,
+            },
+        };
+        let next = store
+            .complete_task_and_hand_off(&task, "w", serde_json::json!({}), hand_off(0))
             .await
             .unwrap();
-        assert_eq!(drained, None);
+        assert!(next.is_none());
         assert_eq!(store.consume_calls.load(Ordering::SeqCst), 0);
+        store
+            .complete_task_and_hand_off(&task, "w", serde_json::json!({}), hand_off(1))
+            .await
+            .unwrap();
+        assert_eq!(store.consume_calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -1038,50 +1010,153 @@ mod tests {
         assert!(input.get("request_id").is_none());
     }
 
-    #[tokio::test]
-    async fn act_boundary_drains_only_user_message_wakes() {
-        // Two wakes plus an unrelated signal accrued during the turn.
-        let store = Arc::new(RecordingStore {
-            signals: vec![
-                user_message_signal(),
-                crate::durable::WorkflowSignal::new(
-                    crate::durable::signal_types::CANCEL,
-                    serde_json::json!({}),
-                ),
-                user_message_signal(),
-            ],
-            consume_calls: Arc::new(AtomicUsize::new(0)),
-        });
-
-        let count = count_drained_wakes(&store, Uuid::now_v7(), "act", false)
+    /// A running workflow with one task claimed by `worker`, on the memory
+    /// store.
+    async fn claimed_turn_step(
+        store: &crate::durable::InMemoryWorkflowEventStore,
+        activity_type: &str,
+    ) -> (Uuid, ClaimedTask) {
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "turn", serde_json::json!({}), None)
             .await
-            .expect("act boundary drains");
-
-        // Only USER_MESSAGE wakes are consumed; the cancel signal remains pending
-        // for the normal signal dispatcher instead of being dropped.
-        assert_eq!(count, 2);
-        assert_eq!(store.consume_calls.load(Ordering::SeqCst), 1);
+            .unwrap();
+        EventLog::update_workflow_status(store, workflow_id, WorkflowStatus::Running, None, None)
+            .await
+            .unwrap();
+        TaskQueue::enqueue_task(
+            store,
+            TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: format!("{activity_type}-1"),
+                activity_type: activity_type.to_string(),
+                input: serde_json::json!({}),
+                options: ActivityOptions::default(),
+            },
+        )
+        .await
+        .unwrap();
+        let worker = crate::durable::WorkerInfo::new("worker", [activity_type]);
+        WorkerRegistry::register_worker(store, worker)
+            .await
+            .unwrap();
+        let claimed = TaskQueue::claim_task(store, "worker", &[activity_type.into()], 1).await;
+        (workflow_id, claimed.unwrap().pop().unwrap())
     }
 
     #[tokio::test]
-    async fn tool_calling_reason_does_not_drain_wakes() {
-        let store = Arc::new(RecordingStore {
-            signals: vec![user_message_signal()],
-            consume_calls: Arc::new(AtomicUsize::new(0)),
-        });
+    async fn a_hand_off_consumes_only_the_user_message_wakes_it_counted() {
+        let store = crate::durable::InMemoryWorkflowEventStore::new();
+        let (workflow_id, task) = claimed_turn_step(&store, "act").await;
+        // Two wakes and an unrelated signal accrued during the step; the plan
+        // counted one wake.
+        for signal in [
+            user_message_signal(),
+            crate::durable::WorkflowSignal::new(
+                crate::durable::signal_types::CANCEL,
+                serde_json::json!({}),
+            ),
+            user_message_signal(),
+        ] {
+            TurnStore::send_signal(&store, workflow_id, signal)
+                .await
+                .unwrap();
+        }
+        let counted = TurnStore::count_pending_signals(
+            &store,
+            workflow_id,
+            crate::durable_turn::USER_MESSAGE,
+        )
+        .await
+        .unwrap();
+        assert_eq!(counted, 2, "counting consumes nothing");
 
-        // A reason that emitted tool calls (`reason_final_answer = false`) must
-        // not consume signals — the following `act` boundary owns that drain,
-        // so the wake is delivered exactly once.
-        let count = count_drained_wakes(&store, Uuid::now_v7(), "reason", false)
+        let next = TurnStore::complete_task_and_hand_off(
+            &store,
+            &task,
+            "worker",
+            serde_json::json!({}),
+            TurnHandOff {
+                workflow_id,
+                drain: Some(SignalDrain {
+                    signal_type: crate::durable_turn::USER_MESSAGE.into(),
+                    limit: 1,
+                }),
+                next: TurnNext::Step {
+                    activity_id: "reason-2".into(),
+                    activity_type: "reason".into(),
+                    input: serde_json::json!({}),
+                    claim_for: Some("worker".into()),
+                },
+            },
+        )
+        .await
+        .unwrap()
+        .expect("the next step is claimed by the registered worker");
+        assert_eq!(next.activity_type, "reason");
+
+        // The uncounted wake and the cancel signal stay for later.
+        let left = SignalStore::consume_pending_signals(&store, workflow_id)
             .await
-            .expect("non-drain boundary");
-
-        assert_eq!(count, 0);
+            .unwrap();
+        let types: Vec<_> = left.iter().map(|s| s.signal_type.as_str()).collect();
         assert_eq!(
-            store.consume_calls.load(Ordering::SeqCst),
-            0,
-            "must not touch the signal store at a non-drain boundary"
+            types,
+            [
+                crate::durable::signal_types::CANCEL,
+                crate::durable_turn::USER_MESSAGE
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_rejected_hand_off_changes_nothing() {
+        let store = crate::durable::InMemoryWorkflowEventStore::new();
+        let (workflow_id, task) = claimed_turn_step(&store, "reason").await;
+        TurnStore::send_signal(&store, workflow_id, user_message_signal())
+            .await
+            .unwrap();
+
+        let rejected = TurnStore::complete_task_and_hand_off(
+            &store,
+            &task,
+            "another-worker",
+            serde_json::json!({}),
+            TurnHandOff {
+                workflow_id,
+                drain: Some(SignalDrain {
+                    signal_type: crate::durable_turn::USER_MESSAGE.into(),
+                    limit: 1,
+                }),
+                next: TurnNext::Complete {
+                    event_output: serde_json::json!({}),
+                    stored_output: None,
+                    error: None,
+                },
+            },
+        )
+        .await;
+
+        assert!(matches!(rejected, Err(StoreError::TaskNotOwned(_))));
+        assert_eq!(
+            EventLog::get_workflow_status(&store, workflow_id)
+                .await
+                .unwrap(),
+            WorkflowStatus::Running
+        );
+        assert_eq!(
+            TaskQueue::get_task(&store, task.id).await.unwrap().status,
+            crate::durable::TaskStatus::Claimed
+        );
+        assert_eq!(
+            TurnStore::count_pending_signals(
+                &store,
+                workflow_id,
+                crate::durable_turn::USER_MESSAGE
+            )
+            .await
+            .unwrap(),
+            1
         );
     }
 

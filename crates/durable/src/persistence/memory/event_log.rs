@@ -414,6 +414,11 @@ impl EventLog for InMemoryWorkflowEventStore {
                         .is_some_and(|t| t.status == TaskStatus::Claimed)
                 });
                 if workflow.status == WorkflowStatus::Running || has_claimed_task {
+                    // A run stranded between two steps resumes, so the
+                    // signal the caller sends next has a run to act on it.
+                    if workflow.status == WorkflowStatus::Running {
+                        tasks.requeue_stranded(workflow_id, now);
+                    }
                     return Ok(RunStart::Active);
                 }
                 workflow.status = WorkflowStatus::Running;

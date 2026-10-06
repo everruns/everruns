@@ -121,17 +121,19 @@ pub use engine::{
 };
 pub use maintenance::{
     NoopReapHandler, ReapHandler, ReaperConfig, StaleTaskReaper, reap_stale_tasks,
+    requeue_stranded_workflows,
 };
 pub use persistence::{
     CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
-    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HeartbeatResponse,
-    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ReclaimResult, RunStart,
-    ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter,
-    ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
-    SealedTaskInfo, SignalStore, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome,
-    TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter,
-    WorkerHeartbeat, WorkerInfo, WorkerRegistry, WorkflowEndSubscription, WorkflowEventInfo,
-    WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HandOff, HandedOff,
+    HeartbeatResponse, InMemoryWorkflowEventStore, NextStep, Pagination,
+    PostgresWorkflowEventStore, ReclaimResult, RequeuedWorkflow, RunStart, ScheduleExecutionFilter,
+    ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
+    ScheduleTargetType, SchedulerInstanceInfo, Schedules, SealedTaskInfo, SignalDrain, SignalStore,
+    StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue,
+    TaskStatus, TraceContext, UpdateSchedule, WorkerFilter, WorkerHeartbeat, WorkerInfo,
+    WorkerRegistry, WorkflowEndSubscription, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter,
+    WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,

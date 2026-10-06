@@ -18,6 +18,7 @@ mod admin;
 mod circuit_breakers;
 mod dlq;
 mod event_log;
+mod hand_off;
 mod schedules;
 mod schema;
 mod signals;

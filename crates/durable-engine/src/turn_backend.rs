@@ -187,7 +187,7 @@ impl DurableRunner {
             .store
             .start_turn(
                 workflow_id,
-                "turn_workflow",
+                crate::durable_turn::TURN_WORKFLOW_TYPE,
                 input_json,
                 activity_id,
                 activity_type.to_string(),

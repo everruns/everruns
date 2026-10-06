@@ -23,7 +23,9 @@ use everruns_durable::persistence::{
 };
 use everruns_durable::reliability::RetryPolicy;
 use everruns_durable::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
-use everruns_durable::{DeadLetters, EventLog, SignalStore, TaskQueue, WorkerRegistry};
+use everruns_durable::{
+    DeadLetters, EventLog, HandOff, NextStep, SignalDrain, SignalStore, TaskQueue, WorkerRegistry,
+};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -147,6 +149,11 @@ conformance!(
     concurrent_schedule_ensures_create_one_schedule,
     a_due_schedule_fires_once_across_schedulers,
     concurrent_reaps_settle_a_dead_task_once,
+    hand_off_completes_drains_and_claims_the_next_step,
+    hand_off_queues_the_next_step_or_completes_the_workflow,
+    rejected_hand_off_changes_nothing,
+    stranded_runs_are_requeued_once,
+    start_run_resumes_a_stranded_run,
 );
 
 // --- helpers ---------------------------------------------------------------
@@ -1212,4 +1219,253 @@ async fn concurrent_reaps_settle_a_dead_task_once<H: Harness>(h: H) {
         h.store().get_workflow_status(wf).await.expect("status"),
         WorkflowStatus::Failed
     );
+}
+
+// --- step hand-off and stranded runs ---------------------------------------------
+
+/// A Running workflow of its own type (so a stranded sweep of that type sees
+/// only this case's workflows) with one task claimed by a fresh worker.
+async fn running_step<H: Harness>(h: &H) -> (String, String, Uuid, Uuid) {
+    let ty = activity_type();
+    let w = worker(h, &ty).await;
+    let wf = Uuid::now_v7();
+    h.store()
+        .create_workflow(wf, &ty, json!({}), None)
+        .await
+        .expect("create workflow");
+    h.store()
+        .update_workflow_status(wf, WorkflowStatus::Running, None, None)
+        .await
+        .unwrap();
+    enqueue(h, task(Some(wf), &ty, "step-1")).await;
+    let claimed = claim(h, &w, &ty, 1).await;
+    (ty, w, wf, claimed[0])
+}
+
+fn wake() -> WorkflowSignal {
+    WorkflowSignal::new("wake", json!({}))
+}
+
+async fn pending_signal_types<H: Harness>(h: &H, wf: Uuid) -> Vec<String> {
+    h.store()
+        .get_pending_signals(wf)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|s| s.signal_type)
+        .collect()
+}
+
+async fn hand_off_completes_drains_and_claims_the_next_step<H: Harness>(h: H) {
+    let (ty, w, wf, step) = running_step(&h).await;
+    for signal in [
+        wake(),
+        WorkflowSignal::new("other", json!({})),
+        wake(),
+        wake(),
+    ] {
+        h.store().send_signal(wf, signal).await.unwrap();
+    }
+
+    let handed = h
+        .store()
+        .complete_task_and_hand_off(
+            step,
+            &w,
+            json!({}),
+            HandOff {
+                workflow_id: wf,
+                drain: Some(SignalDrain {
+                    signal_type: "wake".into(),
+                    limit: 2,
+                }),
+                next: NextStep::Enqueue {
+                    task: Box::new(task(None, &ty, "step-2")),
+                    claim_for: Some(w.clone()),
+                },
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(handed.drained, 2);
+    assert_eq!(status(&h, step).await, TaskStatus::Completed);
+    let next = handed
+        .next
+        .and_then(|next| next.into_claimed())
+        .expect("an active worker gets the next step claimed");
+    assert_eq!(next.workflow_id, Some(wf));
+    assert_eq!(next.activity_id, "step-2");
+    assert_eq!(next.attempt, 1);
+    assert_eq!(next.workflow_status, Some(WorkflowStatus::Running));
+    assert_eq!(status(&h, next.id).await, TaskStatus::Claimed);
+    // Only the counted wakes went, oldest first; the rest wait.
+    assert_eq!(pending_signal_types(&h, wf).await, ["other", "wake"]);
+    let started = h
+        .store()
+        .load_events(wf)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|(_, e)| matches!(e, WorkflowEvent::ActivityStarted { activity_id, .. } if activity_id == "step-2"))
+        .count();
+    assert_eq!(started, 1);
+}
+
+async fn hand_off_queues_the_next_step_or_completes_the_workflow<H: Harness>(h: H) {
+    let (ty, w, wf, step) = running_step(&h).await;
+    let other = worker(&h, &ty).await;
+
+    let handed = h
+        .store()
+        .complete_task_and_hand_off(
+            step,
+            &w,
+            json!({}),
+            HandOff {
+                workflow_id: wf,
+                drain: None,
+                next: NextStep::Enqueue {
+                    task: Box::new(task(None, &ty, "step-2")),
+                    claim_for: None,
+                },
+            },
+        )
+        .await
+        .unwrap();
+    let Some(everruns_durable::Enqueued::Queued(queued)) = handed.next else {
+        panic!("without a worker to claim for, the next step is queued");
+    };
+    assert_eq!(claim(&h, &other, &ty, 1).await, vec![queued]);
+
+    let handed = h
+        .store()
+        .complete_task_and_hand_off(
+            queued,
+            &other,
+            json!({}),
+            HandOff {
+                workflow_id: wf,
+                drain: None,
+                next: NextStep::Complete {
+                    result: Some(json!({ "checkpoint": 2 })),
+                    error: None,
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert!(handed.next.is_none());
+    let info = h.store().get_workflow_info(wf).await.unwrap();
+    assert_eq!(info.status, WorkflowStatus::Completed);
+    assert_eq!(info.result, Some(json!({ "checkpoint": 2 })));
+    assert_eq!(status(&h, queued).await, TaskStatus::Completed);
+}
+
+async fn rejected_hand_off_changes_nothing<H: Harness>(h: H) {
+    let (ty, w, wf, step) = running_step(&h).await;
+    let other = worker(&h, &ty).await;
+    h.store().send_signal(wf, wake()).await.unwrap();
+
+    let rejected = h
+        .store()
+        .complete_task_and_hand_off(
+            step,
+            &other,
+            json!({}),
+            HandOff {
+                workflow_id: wf,
+                drain: Some(SignalDrain {
+                    signal_type: "wake".into(),
+                    limit: 1,
+                }),
+                next: NextStep::Complete {
+                    result: None,
+                    error: None,
+                },
+            },
+        )
+        .await;
+
+    assert!(matches!(rejected, Err(StoreError::TaskNotOwned(id)) if id == step));
+    assert_eq!(status(&h, step).await, TaskStatus::Claimed);
+    assert_eq!(pending_signal_types(&h, wf).await, ["wake"]);
+    assert_eq!(
+        h.store().get_workflow_status(wf).await.unwrap(),
+        WorkflowStatus::Running
+    );
+    assert!(
+        h.store()
+            .heartbeat_task(step, &w, None)
+            .await
+            .unwrap()
+            .accepted
+    );
+}
+
+/// A Running workflow whose only task completed with no successor, as a
+/// client that completes and enqueues in separate writes leaves it when it
+/// dies in between.
+async fn stranded_run<H: Harness>(h: &H) -> (String, String, Uuid) {
+    let (ty, w, wf, step) = running_step(h).await;
+    h.store().complete_task(step, &w, json!({})).await.unwrap();
+    (ty, w, wf)
+}
+
+async fn stranded_runs_are_requeued_once<H: Harness>(h: H) {
+    let (ty, w, wf) = stranded_run(&h).await;
+    let sweep = |grace| h.store().requeue_stranded_workflows(&ty, grace, 10);
+
+    assert!(sweep(Duration::from_secs(3600)).await.unwrap().is_empty());
+    assert!(
+        h.store()
+            .requeue_stranded_workflows(&activity_type(), Duration::ZERO, 10)
+            .await
+            .unwrap()
+            .is_empty(),
+        "another workflow type is left alone"
+    );
+
+    let (a, b) = tokio::join!(sweep(Duration::ZERO), sweep(Duration::ZERO));
+    let requeued: Vec<_> = a.unwrap().into_iter().chain(b.unwrap()).collect();
+    assert_eq!(requeued.len(), 1, "{requeued:?}");
+    assert_eq!(requeued[0].workflow_id, wf);
+    assert_eq!(requeued[0].activity_type, ty);
+    assert!(sweep(Duration::ZERO).await.unwrap().is_empty());
+
+    let claimed = h
+        .store()
+        .claim_task(&w, std::slice::from_ref(&ty), 10)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].id, requeued[0].task_id);
+    assert_eq!(claimed[0].activity_id, "step-1");
+    assert_eq!(claimed[0].input, json!({ "activity": "step-1" }));
+    assert_eq!(claimed[0].attempt, 1);
+}
+
+async fn start_run_resumes_a_stranded_run<H: Harness>(h: H) {
+    let (ty, w, wf) = stranded_run(&h).await;
+    // A run that is merely Running with no task at all is not stranded.
+    let bare = Uuid::now_v7();
+    h.store()
+        .create_workflow(bare, &ty, json!({}), None)
+        .await
+        .unwrap();
+    h.store()
+        .update_workflow_status(bare, WorkflowStatus::Running, None, None)
+        .await
+        .unwrap();
+
+    assert_eq!(start_run(&h, wf, &ty, "next").await, RunStart::Active);
+    assert_eq!(start_run(&h, bare, &ty, "next").await, RunStart::Active);
+    let claimed = h
+        .store()
+        .claim_task(&w, std::slice::from_ref(&ty), 10)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1, "only the stranded run resumes");
+    assert_eq!(claimed[0].workflow_id, Some(wf));
+    assert_eq!(claimed[0].activity_id, "step-1");
 }

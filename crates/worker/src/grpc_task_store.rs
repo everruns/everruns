@@ -16,7 +16,10 @@ use std::time::Duration;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::{GrpcDurableStore, TaskNotificationEvent};
-use crate::turn_store::{TaskWakeups, TurnStore, WorkflowSnapshot};
+use crate::turn_store::{
+    TaskWakeups, TurnHandOff, TurnNext, TurnStore, WorkflowSnapshot, finish_hand_off_in_steps,
+};
+use everruns_internal_protocol::proto;
 
 #[async_trait]
 impl TurnStore for GrpcDurableStore {
@@ -104,22 +107,45 @@ impl TurnStore for GrpcDurableStore {
         worker_id: &str,
         output: serde_json::Value,
     ) -> Result<(), StoreError> {
-        self.complete_task_and_drain(task, worker_id, output, None)
+        let mut store = self.clone();
+        GrpcDurableStore::complete_task(&mut store, task.id, worker_id, output, None)
             .await
             .map(|_| ())
+            .map_err(store_error)
     }
 
-    async fn complete_task_and_drain(
+    async fn complete_task_and_hand_off(
         &self,
         task: &ClaimedTask,
         worker_id: &str,
         output: serde_json::Value,
-        drain: Option<&str>,
-    ) -> Result<Option<usize>, StoreError> {
+        hand_off: TurnHandOff,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
         let mut store = self.clone();
-        GrpcDurableStore::complete_task(&mut store, task.id, worker_id, output, drain)
+        let (handed_off, claimed) = GrpcDurableStore::complete_task(
+            &mut store,
+            task.id,
+            worker_id,
+            output,
+            Some(hand_off_to_proto(&hand_off)),
+        )
+        .await
+        .map_err(store_error)?;
+        if handed_off {
+            return Ok(claimed);
+        }
+        // A control plane that predates hand-offs only completed the task.
+        finish_hand_off_in_steps(self, hand_off).await
+    }
+
+    async fn count_pending_signals(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<usize, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::count_pending_signals(&mut store, workflow_id, signal_type)
             .await
-            .map(|drained| drained.map(|count| count as usize))
             .map_err(store_error)
     }
 
@@ -311,6 +337,43 @@ impl TurnStore for GrpcDurableStore {
             }
         });
         Ok(Some(rx))
+    }
+}
+
+fn hand_off_to_proto(hand_off: &TurnHandOff) -> proto::DurableHandOff {
+    use everruns_internal_protocol::json_to_proto_struct;
+    let next = match &hand_off.next {
+        TurnNext::Step {
+            activity_id,
+            activity_type,
+            input,
+            claim_for,
+        } => proto::durable_hand_off::Next::Step(proto::DurableHandOffStep {
+            activity_id: activity_id.clone(),
+            activity_type: activity_type.clone(),
+            input: Some(json_to_proto_struct(input)),
+            claim_for_worker_id: claim_for.clone(),
+        }),
+        TurnNext::Complete {
+            event_output,
+            stored_output,
+            error,
+        } => proto::durable_hand_off::Next::Complete(proto::DurableHandOffComplete {
+            event_output: Some(json_to_proto_struct(event_output)),
+            stored_output: stored_output.as_ref().map(json_to_proto_struct),
+            error: error.as_ref().map(|error| error.message.clone()),
+        }),
+    };
+    proto::DurableHandOff {
+        drain_signal_type: hand_off
+            .drain
+            .as_ref()
+            .map(|drain| drain.signal_type.clone()),
+        drain_limit: hand_off
+            .drain
+            .as_ref()
+            .map_or(0, |drain| u32::try_from(drain.limit).unwrap_or(u32::MAX)),
+        next: Some(next),
     }
 }
 
