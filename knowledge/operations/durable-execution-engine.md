@@ -81,7 +81,8 @@ reliability, `DurableScheduler`) is what Everruns runs in production: the
 worker and server drive the queue directly, and turns use durable-engine's
 checkpoints rather than replay. The generic workflow engine (`Workflow`,
 `Activity`, `WorkflowExecutor` with timers, child workflows and system tasks,
-`WorkerPool`, `TimeoutManager`) has no production caller in this repository.
+`TimeoutManager`) has no production caller in this repository. `WorkerPool`
+is core, not engine: the server's cluster-once maintenance jobs run on it.
 
 Decision: keep the engine, so the crate stays usable and optimizable in
 isolation, but put it behind the experimental `workflows` feature. The feature

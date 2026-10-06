@@ -228,7 +228,7 @@ impl StaleTaskReaper {
         {
             Ok(result) => Some(result),
             Err(error) => {
-                error!("Failed to reclaim stale tasks: {}", error);
+                error!(%error, "Failed to reclaim stale tasks");
                 self.handler.reap_failed(&error);
                 None
             }
@@ -446,7 +446,7 @@ mod tests {
 
         // Crash-loop without recording progress until the guard seals it.
         let handler = Recording::default();
-        let threshold = crate::no_progress_seal_threshold_from_env();
+        let threshold = crate::persistence::no_progress_seal_threshold_from_env();
         for _ in 0..threshold {
             store
                 .claim_task("w1", &["step".to_string()], 1)
