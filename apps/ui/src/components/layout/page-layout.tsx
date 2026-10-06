@@ -224,8 +224,8 @@ export function PageMasthead({
             compactActions && icon && "sm:col-start-2",
           )}
         >
-          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-            <h1 className="min-w-0 text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+          <div className="flex min-h-10 min-w-0 flex-wrap items-center gap-2.5">
+            <h1 className="flex min-w-0 items-center text-[28px] font-semibold leading-tight tracking-tight text-foreground">
               {entityId ? (
                 <EntityIdentity value={entityId} truncate={false}>
                   {title}
