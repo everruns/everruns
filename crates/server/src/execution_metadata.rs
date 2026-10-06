@@ -63,7 +63,7 @@ pub fn agent_trigger_message_metadata(
 /// Emits `type: "channel"`: these rows are written on every inbound Slack,
 /// AG-UI, FCP and A2A message, so a retired entity name here would keep
 /// accruing in fresh data rather than only in the archive. Channel is the
-/// management terminology (`knowledge/integrations/agent-exposure.md`); the
+/// management terminology; the
 /// Endpoint name this briefly carried was retired with the App surface.
 pub fn channel_message_metadata(
     channel_id: AppId,

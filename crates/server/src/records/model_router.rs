@@ -49,7 +49,7 @@ impl From<&str> for ModelRouterStatus {
     }
 }
 
-/// Selection strategy for a route. See `knowledge/integrations/model-router.md` for behavior.
+/// Selection strategy for a route.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelRouterStrategy {

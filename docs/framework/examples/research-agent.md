@@ -39,7 +39,7 @@ cargo run -p everruns-research-agent -- "Compare retry guarantees in Temporal Ac
 
 ## Build the agent
 
-This is the actual builder from `src/main.rs`. The prompt is `src/instructions.md`. Tools/capabilities supply evidence and actions; the model chooses how to use them.
+This builder combines the agent instructions, tools, and model. Tools/capabilities supply evidence and actions; the model chooses how to use them.
 
 ```rust ignore
 let agent = bound_external_calls(
@@ -64,7 +64,7 @@ fn bound_external_calls(builder: AgentBuilder) -> AgentBuilder {
 
 ## Send, observe, and wait
 
-The Framework interaction stays readable in `main.rs`. The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
+The shared demo helper subscribes before sending, filters events to this turn, shows bounded tool previews, waits for completion, and rejects unsuccessful turns. It changes presentation only; use `session.send_and_wait(question).await?` when you do not need the live tool timeline.
 
 ```rust ignore
 let engine = Engine::new();
@@ -112,7 +112,3 @@ Narrow the research question and source policy, add an evidence store if results
 ## Boundaries
 
 Requires both OpenRouter and Brave Search credentials plus outbound HTTPS. Search and fetch can fail; six agent iterations cap the loop, not the bill. Word limits are instructions, not a hard output validator. This is a small research workflow, not an exhaustive literature review.
-
-## Source map
-
-`src/main.rs`: agent, search/fetch capabilities, and session; `src/instructions.md`: primary-source and evidence policy. `examples/demo-support` handles bounded source previews and shared terminal presentation; `src/record.sh` and `src/render_demo.py` handle recording.

@@ -3,7 +3,7 @@ title: Event Reference
 description: "All Everruns event types, with schemas and SSE examples for the common ones: input, output, tool, lifecycle, and error events."
 ---
 
-This page lists every event type in the Everruns event protocol and documents the schema of the most common ones. Types without a section below are listed in the table with a short description; the authoritative list is the event type constants in `crates/contracts/src/runtime/events/mod.rs`.
+This page lists every event type in the Everruns event protocol and documents the schema of the most common ones. Types without a section below are listed in the table with a short description.
 
 ## All event types
 
@@ -517,7 +517,7 @@ Emitted when individual tool execution completes.
 | `result` | ContentPart[]? | Result content |
 | `error` | string? | Error message |
 | `duration_ms` | integer? | Duration |
-| `executed_arguments` | JSON? | Arguments the tool actually ran with. Present only when a `pre_tool_use` hook rewrote the arguments the model sent (those stay on `tool.started`). Values under credential-named keys such as `password`, `access_token`, or `Authorization` read `[REDACTED]`. Larger than 8 KiB serialized, it is a truncated JSON string. |
+| `executed_arguments` | JSON? | Arguments the tool actually ran with. Present only when a `pre_tool_use` hook rewrote the arguments the model sent (those stay on `tool.started`). Values under credential-named keys such as `password`, `access_token`, or `Authorization` read `[REDACTED]`, and credential-looking text inside other values (bearer tokens, common provider API keys, URL user info) is replaced with `[REDACTED]`. Larger than 8 KiB serialized, it is a truncated JSON string. |
 | `executed_arguments_truncated` | boolean? | `true` when `executed_arguments` is truncated |
 
 ```json

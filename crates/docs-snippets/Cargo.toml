@@ -21,7 +21,7 @@ description = "Compiles the Rust code blocks in the Everruns Framework docs"
 # Doctests link the package's dev-dependencies, so these are the crates the
 # snippets import, with the facade features the pages tell readers to enable.
 [dev-dependencies]
-everruns = { workspace = true, default-features = true, features = ["openai", "anthropic", "gemini", "bedrock", "openrouter", "typesafe", "local", "bashkit", "web-fetch", "duckduckgo", "host-shell", "mcp", "ag-ui-axum", "otel", "braintrust"] }
+everruns = { workspace = true, default-features = true, features = ["openai", "anthropic", "gemini", "bedrock", "openrouter", "typesafe", "local", "bashkit", "web-fetch", "duckduckgo", "host-shell", "mcp", "ag-ui-axum", "otel", "braintrust", "durable"] }
 everruns-drivers = { workspace = true, features = ["anthropic", "fireworks"] }
 everruns-llmsim.workspace = true
 # The pages tell readers to drop `hosted` for a Framework-only build.

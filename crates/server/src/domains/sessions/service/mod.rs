@@ -100,8 +100,7 @@ pub const SESSION_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgSessionsManage)],
 };
 
-/// Optional, caller-supplied overrides applied when forking a session
-/// (knowledge/runtime-resources/forking-sessions.md). Every field omitted (`None`) inherits the
+/// Optional, caller-supplied overrides applied when forking a session. Every field omitted (`None`) inherits the
 /// parent session's value.
 #[derive(Debug, Clone, Default)]
 pub struct ForkOverrides {

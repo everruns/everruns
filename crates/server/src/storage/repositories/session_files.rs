@@ -13,8 +13,7 @@ use crate::storage::blob_store::{BlobMetadata, content_sha256, workspace_file_ke
 use anyhow::Result;
 use uuid::Uuid;
 
-/// Disaster-recovery metadata stamped onto each offloaded file object
-/// (knowledge/runtime-resources/object-storage.md). Lets a recovery tool rebuild the `workspace_files`
+/// Disaster-recovery metadata stamped onto each offloaded file object. Lets a recovery tool rebuild the `workspace_files`
 /// row from the object alone.
 fn file_blob_metadata(
     workspace_id: Uuid,

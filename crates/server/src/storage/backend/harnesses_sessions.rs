@@ -377,8 +377,7 @@ impl StorageBackend {
         )
     }
 
-    /// Record fork provenance on an already-created session
-    /// (knowledge/runtime-resources/forking-sessions.md).
+    /// Record fork provenance on an already-created session.
     pub async fn set_session_fork_lineage(
         &self,
         session_id: SessionId,

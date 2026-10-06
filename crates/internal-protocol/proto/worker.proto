@@ -444,7 +444,7 @@ message Session {
     optional google.protobuf.Struct hints = 13;
     // Session-level system prompt override (prepended to agent prompt)
     optional string system_prompt = 14;
-    // Session-level initial files (JSON-encoded Vec<InitialFile>)
+    // Session-level initial files (JSON-encoded `Vec<InitialFile>`)
     string initial_files_json = 15;
     // Principal that owns the session for authorization and attribution
     optional Uuid owner_principal_id = 16;

@@ -1,38 +1,19 @@
-use super::common::{ApiResult, ErrorResponse, impl_auth_state};
-use crate::auth::{AuthState, ResolvedOrg};
+use super::common::{ApiResult, ErrorResponse};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
 use crate::domains::{
-    common::{Command, Ctx},
+    common::Command,
     health_issues::{types::*, *},
 };
-use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     routing::{get, post},
 };
 use serde::Deserialize;
-use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-    pub encryption: Option<Arc<EncryptionService>>,
-}
-impl AppState {
-    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(
-            everruns_core::Caller::from(org),
-            self.db.clone(),
-            self.encryption.clone(),
-            self.auth.permission_resolver.clone(),
-        )
-        .with_feature_flags(org.feature_flags.clone())
-    }
-}
-impl_auth_state!(AppState);
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/health-issues", get(list_health_issues))
         .route("/v1/health-issues/{issue_id}", get(get_health_issue))
@@ -60,7 +41,7 @@ pub struct HealthIssueQuery {
 /// List pending operational health issues visible to the caller in the current organization.
 pub async fn list_health_issues(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(q): Query<HealthIssueQuery>,
 ) -> ApiResult<HealthIssueList> {
     Ok(Json(
@@ -77,7 +58,7 @@ pub async fn list_health_issues(
 /// Get current issue evidence and recovery guidance in the current organization.
 pub async fn get_health_issue(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(issue_id): Path<Uuid>,
 ) -> ApiResult<HealthIssue> {
     Ok(Json(
@@ -88,7 +69,7 @@ pub async fn get_health_issue(
 /// Verify current installation permissions without changing provider data; requires agent management access and enforces a check cooldown.
 pub async fn check_health_issue(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(issue_id): Path<Uuid>,
 ) -> ApiResult<HealthIssue> {
     Ok(Json(
@@ -99,7 +80,7 @@ pub async fn check_health_issue(
 /// Snooze the authenticated user's reminders for one day while keeping the shared issue pending.
 pub async fn snooze_health_issue(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(issue_id): Path<Uuid>,
 ) -> ApiResult<HealthIssue> {
     Ok(Json(

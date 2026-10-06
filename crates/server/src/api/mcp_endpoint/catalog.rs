@@ -331,7 +331,7 @@ fn retype_aggregate_properties_in_place(
 /// their `--flag ''` → `None` behavior. The dispatcher applies the same trim
 /// rule for non-empty strings, so we only intervene when there is JSON to
 /// parse on the bash side.
-fn coerce_json_text_params(
+pub(crate) fn coerce_json_text_params(
     schema: &serde_json::Value,
     params: &mut serde_json::Value,
 ) -> Result<(), String> {
@@ -753,8 +753,7 @@ fn command_error_kind(err: &CommandError) -> &'static str {
 /// Format a dispatch failure as `<kind>: <message>`. Bashkit prefixes the
 /// builtin name on its own (e.g. `update_model: …`), so we deliberately do
 /// not duplicate it here. The result is the structured error contract for
-/// MCP-facing builtins; see the "Structured dispatch errors" section in
-/// `knowledge/foundations/domains.md` for the canonical contract and the kind token table.
+/// MCP-facing builtins.
 ///
 /// Agent-actionable extensions (`code`, `allowed_actions`, `retry_after_seconds`)
 /// flow through `CommandError` but are intentionally not appended here — the

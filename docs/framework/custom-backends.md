@@ -38,10 +38,17 @@ feature. Advanced hosts
 compose its `Execution` contract and serializable `TurnExecution` state machine,
 `InputAtom`/`ReasonAtom`/`ActAtom`, and phase values. The immediate implementation
 lives in `everruns_core::host`; the checkpointed implementation lives in
-`everruns-durable`. Both use narrow contracts from `everruns-core`. The engine feature has no dependency on host effects, platform, server, worker,
+`everruns-durable-engine`, on the generic `everruns-durable` engine. Both use narrow contracts from `everruns-core`. The engine feature has no dependency on host effects, platform, server, worker,
 or durable crates. Do not
 copy state advancement or the phase loop into a custom backend; implement the
 execution boundary and keep deployment-specific service selection in the host.
+
+Where a turn runs is a separate seam: `everruns_core::host::TurnBackend` starts,
+cancels, and observes a session's turns. `InProcessBackend` is the default, and
+the facade's experimental `durable` feature selects the queued, checkpointed
+backend from `everruns-durable-engine`. The trait is public and unsealed but
+experimental. The facade's [backend conformance suite](https://github.com/everruns/everruns/tree/main/crates/everruns/tests/backend_conformance)
+defines the behavior every backend must match.
 
 See [Framework Architecture](/framework/architecture/) for the complete layer
 map and the distinction between immediate and durable execution.

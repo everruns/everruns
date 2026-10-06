@@ -3465,7 +3465,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness: the answer's citations (see `knowledge/runtime-resources/citations.md`)\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
+              "description": "Citation faithfulness: the answer's citations\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
               "properties": {
                 "min_citations": {
                   "description": "Minimum number of citations the answer must carry.",
@@ -3499,7 +3499,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability. See `knowledge/runtime-resources/citations.md`.",
+              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability.",
               "properties": {
                 "model_id": {
                   "oneOf": [
@@ -4981,7 +4981,7 @@
           "type": "string"
         },
         "TextAnnotation": {
-          "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time. See `knowledge/runtime-resources/citations.md`.",
+          "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time.",
           "properties": {
             "end": {
               "description": "Exclusive end char offset.",
@@ -5036,7 +5036,7 @@
           "description": "Text content part",
           "properties": {
             "annotations": {
-              "description": "Claim-level citations attached to spans of `text`.\n\nThe narrow render contract shared by all citation capabilities (see\n`knowledge/runtime-resources/citations.md`). Empty for non-cited text, so the wire shape of\nexisting messages is unchanged.",
+              "description": "Claim-level citations attached to spans of `text`.\n\nThe narrow render contract shared by all citation capabilities. Empty for non-cited text, so the wire shape of\nexisting messages is unchanged.",
               "items": {
                 "$ref": "#/$defs/TextAnnotation"
               },
@@ -5176,7 +5176,7 @@
     "input_schema": {
       "$defs": {
         "ServiceKind": {
-          "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
+          "description": "A typed service a provider driver can offer.\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
           "enum": [
             "chat",
             "decisions",
@@ -5313,7 +5313,7 @@
           "type": "object"
         },
         "ObserverScope": {
-          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are specced in knowledge/evaluation/online-evals.md.",
+          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
           "enum": [
             "turn"
           ],
@@ -5576,7 +5576,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness: the answer's citations (see `knowledge/runtime-resources/citations.md`)\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
+              "description": "Citation faithfulness: the answer's citations\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
               "properties": {
                 "min_citations": {
                   "description": "Minimum number of citations the answer must carry.",
@@ -5610,7 +5610,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability. See `knowledge/runtime-resources/citations.md`.",
+              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability.",
               "properties": {
                 "model_id": {
                   "oneOf": [
@@ -9343,7 +9343,7 @@
     "input_schema": {
       "$defs": {
         "ForkSessionRequest": {
-          "description": "Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
+          "description": "Request to fork a session. Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
           "properties": {
             "agent_id": {
               "description": "Override the agent assigned to the fork.",
@@ -9409,7 +9409,7 @@
           "type": "object"
         }
       },
-      "description": "Fork a session into a new, independent session (knowledge/runtime-resources/forking-sessions.md).",
+      "description": "Fork a session into a new, independent session.",
       "properties": {
         "overrides": {
           "$ref": "#/$defs/ForkSessionRequest",
@@ -10868,7 +10868,7 @@
     "cli": null,
     "description": "Import ATIF trajectories as eval cases (upserted by name).",
     "input_schema": {
-      "description": "Import ATIF trajectories as eval cases (knowledge/evaluation/atif-adoption.md).\n\n`body` is the raw import payload: NDJSON (one trajectory per line), a JSON\narray of trajectories, a single trajectory object, or `{ \"trajectories\":\n[...] }`. Cases are upserted by name, so re-import is idempotent.",
+      "description": "Import ATIF trajectories as eval cases.\n\n`body` is the raw import payload: NDJSON (one trajectory per line), a JSON\narray of trajectories, a single trajectory object, or `{ \"trajectories\":\n[...] }`. Cases are upserted by name, so re-import is idempotent.",
       "properties": {
         "body": {
           "description": "Raw ATIF payload (NDJSON or JSON).",
@@ -11127,7 +11127,7 @@
           "$ref": "#/$defs/ImportEvalRunRequest"
         }
       ],
-      "description": "Import a full external run group (everruns as host/viewer for external eval\nsystems). See knowledge/evaluation/evals.md."
+      "description": "Import a full external run group (everruns as host/viewer for external eval\nsystems)."
     },
     "method": "POST",
     "name": "import_eval_run",
@@ -11161,7 +11161,7 @@
           "type": "object"
         }
       },
-      "description": "Import an OKF bundle into a knowledge base. See knowledge/runtime-resources/okf-adoption.md.",
+      "description": "Import an OKF bundle into a knowledge base.",
       "properties": {
         "bundle_base64": {
           "type": [
@@ -12302,7 +12302,7 @@
           "type": "string"
         },
         "ServiceKind": {
-          "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
+          "description": "A typed service a provider driver can offer.\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
           "enum": [
             "chat",
             "decisions",
@@ -13220,9 +13220,11 @@
       "description": "List skills. Supports search and include_archived.",
       "properties": {
         "include_archived": {
+          "description": "Include archived skills. Deleted skills never appear in lists.",
           "type": "boolean"
         },
         "search": {
+          "description": "Search by name or description (case-insensitive substring match).",
           "type": [
             "string",
             "null"
@@ -17696,7 +17698,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness: the answer's citations (see `knowledge/runtime-resources/citations.md`)\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
+              "description": "Citation faithfulness: the answer's citations\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
               "properties": {
                 "min_citations": {
                   "description": "Minimum number of citations the answer must carry.",
@@ -17730,7 +17732,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability. See `knowledge/runtime-resources/citations.md`.",
+              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability.",
               "properties": {
                 "model_id": {
                   "oneOf": [
@@ -19085,7 +19087,7 @@
     "input_schema": {
       "$defs": {
         "ServiceKind": {
-          "description": "A typed service a provider driver can offer (see knowledge/foundations/providers.md).\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
+          "description": "A typed service a provider driver can offer.\n\nDrivers declare supported services in code; catalog models persist their\nselected service. One provider account composes typed chat, decision and\nembedding drivers over shared authentication.",
           "enum": [
             "chat",
             "decisions",
@@ -19244,7 +19246,7 @@
           "type": "object"
         },
         "ObserverScope": {
-          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are specced in knowledge/evaluation/online-evals.md.",
+          "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
           "enum": [
             "turn"
           ],
@@ -19517,7 +19519,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness: the answer's citations (see `knowledge/runtime-resources/citations.md`)\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
+              "description": "Citation faithfulness: the answer's citations\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
               "properties": {
                 "min_citations": {
                   "description": "Minimum number of citations the answer must carry.",
@@ -19551,7 +19553,7 @@
               "type": "object"
             },
             {
-              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability. See `knowledge/runtime-resources/citations.md`.",
+              "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability.",
               "properties": {
                 "model_id": {
                   "oneOf": [

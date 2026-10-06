@@ -126,7 +126,12 @@ inputs.
 ```env
 PORT=9100
 HOSTNAME=0.0.0.0
+UI_SERVER_API_URL=http://${{ server.RAILWAY_PRIVATE_DOMAIN }}:9000/api
 ```
+
+`UI_SERVER_API_URL` is the trusted API base for server-rendered page data. The
+UI never derives it from the request `Host`; without it, pages skip server
+prefetch and load data in the browser.
 
 ## Cleanup Checklist
 

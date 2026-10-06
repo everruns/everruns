@@ -22,8 +22,8 @@ pub const KNOWLEDGE_INDEX_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgSettingsManage)],
 };
 
-/// Allowed source types. Mirrors the CHECK constraint in
-/// `crates/server/migrations/074_knowledge_indexes.sql`.
+/// Allowed source types. Matches the database CHECK constraint.
+// Migration: crates/server/migrations/074_knowledge_indexes.sql.
 pub const SOURCE_TYPES: &[&str] = &["github", "git"];
 
 /// Default source type when the request omits it.

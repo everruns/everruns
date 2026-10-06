@@ -27,6 +27,7 @@ pub mod mcp_elicitation_consent;
 pub mod mcp_executor;
 pub mod phase_reads;
 pub mod platform;
+pub mod turn_reads;
 pub use everruns_durable_engine::runner;
 pub mod runtime_host;
 pub mod session_lifecycle;

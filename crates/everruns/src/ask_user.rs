@@ -1,6 +1,6 @@
 //! Stable host contract and values for structured in-process questions.
 //!
-//! Embedded hosts implement [`AskUser`] and register the responder through
+//! Embedded hosts implement [`AskUser`](crate::ask_user::AskUser) and register the responder through
 //! [`AgentBuilder::ask_user`](crate::AgentBuilder::ask_user). Hosted clients use
 //! the same request and outcome values through a client-side capability.
 

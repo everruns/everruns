@@ -111,7 +111,8 @@ Production event routing therefore prefers:
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
-   - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`)
+   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); no `everruns-*` dependencies
+   - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
    - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
@@ -140,7 +141,8 @@ everruns/
 │   ├── host/             # Deprecated one-release host shim
 │   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
-│   ├── durable/          # Durable execution engine
+│   ├── durable/          # Generic durable execution engine
+│   ├── durable-engine/   # Durable turn backend over durable
 │   └── drivers/          # Consolidated official LLM drivers and standalone simulator
 ├── integrations/
 │   ├── docker/           # Docker container (inventory plugin)
@@ -167,6 +169,7 @@ graph TD
     drivers[drivers/*]
     protocol[internal-protocol]
     durable[durable]
+    durableEngine[durable-engine]
     worker[worker]
     server["server (control plane)"]
 
@@ -183,10 +186,11 @@ graph TD
     framework --> provider
     framework -.->|opt-in hosted composition| platform
     drivers --> provider
-    durable --> engine
-    durable --> provider
+    durableEngine --> durable
+    durableEngine --> host
+    framework -.->|opt-in durable feature| durableEngine
     worker --> host
-    worker --> durable
+    worker --> durableEngine
     worker --> protocol
     worker --> platform
     server --> host
@@ -256,7 +260,11 @@ integrations → hosted capabilities, so a hosted capability still wins a
 canonical-id collision.
 
 Adding a new integration crate requires:
-1. Create the crate under `integrations/`, publishing its plugin consts.
+1. Create the crate under `integrations/`, publishing its plugin consts. New
+   vendors may instead be a feature-gated module of `crates/integrations`
+   (`everruns-integrations`), which folds integrations the way
+   `everruns-drivers` folds drivers; its entry is named
+   `everruns-integrations::<module>` (Modal is the first).
 2. Add it as a dependency of `crates/integrations-catalog`.
 3. Add a `CatalogEntry` to `CATALOG`.
 
@@ -500,8 +508,9 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 state machine, concrete `InputAtom`, `ReasonAtom`, and `ActAtom` algorithms,
 their phase values, post-act helpers, tool scheduler, infrastructure hooks, and
 pure turn planner. There is no generic public `Atom` trait. `everruns-core` (`host` feature)
-retains state in `InProcessExecution`; `everruns-worker` checkpoints the same
-state through `DurableExecution` on the generic `everruns-durable` engine. Hosts inject core/provider contracts and keep
+retains state in `InProcessExecution`; `everruns-durable-engine` checkpoints the same
+state through `DurableExecution` on the generic `everruns-durable` engine, for
+the worker and for the facade's experimental durable backend. Hosts inject core/provider contracts and keep
 deployment composition outside the engine.
 
 4. **Concrete In-Memory Implementations**:

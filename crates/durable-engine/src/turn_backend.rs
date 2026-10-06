@@ -1,7 +1,7 @@
 //! [`DurableRunner`] as a [`TurnBackend`]: the server's durable turns through
 //! the framework's turn execution seam.
 //!
-//! Decisions (see `knowledge/framework/execution-backends.md`):
+//! Execution behavior:
 //! - The logic that starts, resumes and cancels a durable turn lives here, in
 //!   the `TurnBackend` implementation. `AgentRunner` is a shim over it
 //!   (`crate::runner`) until the server calls the seam directly.

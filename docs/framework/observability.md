@@ -180,7 +180,7 @@ if report.timed_out || report.stats.dropped() > 0 {
 
 ## Runnable example
 
-`crates/everruns/examples/framework_observability.rs` registers both
+The [Framework observability example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/framework_observability.rs) registers both
 integrations and runs a turn on a simulated model, so it needs no provider key:
 
 ```bash

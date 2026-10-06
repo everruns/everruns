@@ -408,8 +408,7 @@ impl Database {
         Ok(row)
     }
 
-    /// Record fork provenance on an already-created session
-    /// (knowledge/runtime-resources/forking-sessions.md). Set in a dedicated update so the normal
+    /// Record fork provenance on an already-created session. Set in a dedicated update so the normal
     /// `create_session` path and its many call sites stay untouched.
     pub async fn set_session_fork_lineage(
         &self,
@@ -438,7 +437,7 @@ impl Database {
     ///
     /// This is the session-detail read, so it is the one query that also joins
     /// the workspace for `file_count` (EVE-868). The join is a primary-key
-    /// lookup on `workspaces`, and it stays out of [`SESSION_COLUMNS`] — every
+    /// lookup on `workspaces`, and it stays out of `SESSION_COLUMNS` — every
     /// other caller selects `FROM sessions` unaliased and would not compile
     /// against a qualified list.
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {

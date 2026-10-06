@@ -342,6 +342,14 @@ jobs:
               # #4068 changed A2A policy here and the shards never ran.
               - 'crates/platform/**'
               - 'crates/durable/**'
+              # The durable shard also runs the PostgreSQL halves of the
+              # durable-engine backend tests and the facade's backend
+              # conformance suite. Facade-wide edits stay off this gate; the
+              # in-process and in-memory halves of that suite run in the
+              # facade's own job on every Rust change.
+              - 'crates/durable-engine/**'
+              - 'crates/everruns/src/durable.rs'
+              - 'crates/everruns/tests/backend_conformance/**'
               - 'crates/core/**'
               - 'crates/config/**'
               - 'crates/session-sqldb/**'
@@ -396,32 +404,46 @@ jobs:
             ard:
               - 'crates/ard/**'
 
-      # Exclusion filters need `predicate-quantifier: every`; with the default
-      # `some`, a rule like `!integrations/foo/**/*.md` matches almost every
-      # non-markdown file and incorrectly enables the live paid matrix.
+      # Live filters combine multiple provider/shared paths with exclusions.
+      # `some-with-excludes` matches any positive path while making every
+      # negated docs pattern final; `some` leaks exclusions and `every` makes
+      # disjoint positive paths impossible to match.
       - uses: dorny/paths-filter@v4
         id: live_filter
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         with:
-          predicate-quantifier: every
+          predicate-quantifier: some-with-excludes
           filters: |
             # Live API jobs (daytona/browserless/e2b) hit real external
             # services and cost real API budget. Exclude doc-only changes so
             # SPEC.md tweaks don't trigger the full paid matrix on every push
-            # to main. The weekly `integration-live-sweep.yml` backstop still
-            # catches shared-crate regressions that slip past these filters.
+            # to main. Changes to this workflow run all three jobs so their
+            # Doppler wiring proves itself on the merge that changes it.
+            # Daytona also implements the managed Session Sandbox contract, so
+            # changes to that shared contract/recovery path need its live test.
+            # The weekly `integration-live-sweep.yml` remains the backstop for
+            # other shared-crate and dependency regressions.
             daytona:
               - 'integrations/daytona/**'
               - '!integrations/daytona/**/*.md'
+              - 'crates/contracts/src/session_sandbox.rs'
+              - 'crates/contracts/src/sandbox_checkpoint.rs'
+              - 'crates/capabilities/src/session_sandbox.rs'
+              - 'crates/capabilities/src/session_sandbox/**'
+              - 'crates/capabilities/src/sandbox_checkpoint.rs'
+              - 'crates/capabilities/src/sandbox_state.rs'
+              - '.github/workflows/ci.yml'
             cursor:
               - 'integrations/cursor/**'
               - '!integrations/cursor/**/*.md'
             browserless:
               - 'integrations/browserless/**'
               - '!integrations/browserless/**/*.md'
+              - '.github/workflows/ci.yml'
             e2b:
               - 'integrations/e2b/**'
               - '!integrations/e2b/**/*.md'
+              - '.github/workflows/ci.yml'
 
   format:
     name: Format Check
@@ -504,6 +526,7 @@ jobs:
             -p everruns-durable \
             -p everruns-durable-engine \
             -p everruns-drivers \
+            -p everruns-integrations \
             -p everruns-turbopuffer \
             -p everruns-integrations-duckduckgo \
             -p everruns-integrations-github \
@@ -1102,6 +1125,11 @@ jobs:
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
+          # The modal feature with its mock-gRPC tool tests; live tests run in
+          # modal-integration.yml.
+          cargo test -p everruns-integrations --features modal,test-util
+          # The crate must also build with no vendor feature on.
+          cargo check -p everruns-integrations --no-default-features
           cargo test -p everruns-integrations-typesafe
           # The lib-only half (client, classifier, framework capability) must keep
           # compiling without `hosted`; that is the shape an embedder carries, and
@@ -1487,9 +1515,25 @@ jobs:
             --test strict_client_tools \
             -- --test-threads=1
 
+      # Also the PostgreSQL halves of the durable-engine backend tests (lib
+      # unit tests, `durable_backend_postgres_tests`) and the facade's
+      # `backend_conformance` suite. Elsewhere they run without DATABASE_URL and
+      # skip; EVERRUNS_REQUIRE_POSTGRES_TESTS turns that skip into a failure
+      # here. They ride this invocation rather than a new one: one feature
+      # resolution builds everruns-durable once, and `--lib` costs only the
+      # test-mode libs of the three packages (their unit tests take ~5s).
       - name: Run durable integration tests
         if: ${{ matrix.shard == 'durable' }}
-        run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test --test store_conformance_test --test timers_and_children_test --test schema_drift_test --features postgres-tests -- --test-threads=1
+        env:
+          EVERRUNS_REQUIRE_POSTGRES_TESTS: "1"
+        run: >-
+          cargo test -p everruns-durable -p everruns-durable-engine -p everruns
+          --features everruns-durable/postgres-tests,everruns/durable,everruns/ag-ui
+          --lib
+          --test postgres_integration_test --test postgres_repository_test --test heartbeat_cancel_test
+          --test store_conformance_test --test timers_and_children_test --test schema_drift_test
+          --test backend_conformance
+          -- --test-threads=1
 
       - name: Run durable failpoint tests
         if: ${{ matrix.shard == 'durable' }}

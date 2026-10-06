@@ -64,7 +64,7 @@ impl WorkerAppBuilder {
     /// Fatal `run()` failures are forwarded to the reporter with the worker
     /// component name in the scope. Panic interception and per-task /
     /// per-workflow scoping are wrapper responsibilities (e.g., by wrapping
-    /// task execution themselves). See `knowledge/foundations/embedding.md` for the contract.
+    /// task execution themselves).
     pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
         self.error_reporter = Some(reporter);
         self

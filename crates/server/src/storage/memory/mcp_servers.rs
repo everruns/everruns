@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use uuid::Uuid;
 
 /// Statuses that hold a name. Mirrors the partial unique index in
-/// `132_mcp_server_name_scope.sql`: archived and deleted servers release their
+/// Archived and deleted servers release their
 /// name, a disabled one keeps it because it can be re-enabled (EVE-964).
 fn holds_name(status: &str) -> bool {
     matches!(status, "active" | "disabled")

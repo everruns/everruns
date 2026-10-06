@@ -1,0 +1,115 @@
+# Everruns integrations, one module and one feature per vendor.
+#
+# Decision: new integrations land here as feature modules instead of their own
+# `integrations/<vendor>` packages, the same consolidation everruns-drivers did
+# for model vendors. A package costs a workspace member, isolation-guard
+# entries, a CI `-p` shard, a publish pin, and a crates.io name; a module costs
+# none of those. Each vendor's heavy dependencies sit behind its feature, so a
+# consumer compiles only the vendors it names. Existing `integrations/*`
+# packages fold in here over time.
+#
+# Decision: like every integration, this crate depends on everruns-contracts
+# only (the runtime SPI behind its `runtime` feature), never on everruns-core.
+
+[package]
+name = "everruns-integrations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations"
+description = "Everruns agent integrations: Modal VM sandboxes and more, one feature per vendor"
+keywords = ["everruns", "agents", "sandbox", "modal", "integrations"]
+categories = ["api-bindings", "development-tools"]
+readme = "README.md"
+build = "build.rs"
+
+# docs.rs otherwise builds the empty default feature set and hides every vendor.
+[package.metadata.docs.rs]
+all-features = true
+
+[package.metadata.cargo-machete]
+# Used only by build.rs (protox, tonic-prost-build) or by generated code (prost,
+# tonic-prost), which machete cannot see.
+ignored = ["prost", "protox", "tonic-prost", "tonic-prost-build"]
+
+[features]
+# No vendor is on by default: a consumer names the ones it serves.
+default = []
+# Modal sandboxes (https://modal.com), gVisor and VM runtimes, over Modal's gRPC API.
+modal = [
+    "dep:protox",
+    "dep:tonic-prost-build",
+    "dep:async-trait",
+    "dep:base64",
+    "dep:chrono",
+    "dep:futures",
+    "dep:hyper-util",
+    "dep:prost",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:tokio",
+    "dep:tonic",
+    "dep:tonic-prost",
+    "dep:tracing",
+    "dep:uuid",
+    # Managed Sandboxes provider (Sandbox Templates `managed` target).
+    "dep:inventory",
+]
+# Live tests against the real Modal API. Requires MODAL_TOKEN_ID and
+# MODAL_TOKEN_SECRET; fails closed when they are missing.
+modal-live-tests = ["modal"]
+# Test-only hook that lets tool tests point the client at a mock server.
+# Only this crate's own tests enable it; shipped builds never do.
+test-util = []
+
+[dependencies]
+everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
+inventory = { workspace = true, optional = true }
+
+# Per-vendor dependencies, each pulled in only by the features that need it.
+async-trait = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+# HTTP CONNECT tunnelling for gRPC: tonic does not read HTTPS_PROXY itself.
+hyper-util = { version = "0.1.21", optional = true, default-features = false, features = ["client-legacy", "client-proxy", "http2", "tokio"] }
+prost = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tonic = { workspace = true, optional = true, features = ["tls-native-roots", "tls-webpki-roots"] }
+tonic-prost = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+uuid = { workspace = true, optional = true }
+
+[build-dependencies]
+protox = { version = "0.9", optional = true }
+tonic-prost-build = { workspace = true, optional = true }
+
+[dev-dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["full", "test-util"] }
+tokio-stream = { workspace = true, features = ["net"] }
+serde_json.workspace = true
+everruns-core = { workspace = true, default-features = false, features = ["host"] }
+
+[[test]]
+name = "modal_tools"
+required-features = ["modal", "test-util"]
+
+[[test]]
+name = "modal_session_sandbox"
+required-features = ["modal", "test-util"]
+
+[[test]]
+name = "modal_live"
+required-features = ["modal"]
+
+[lints]
+workspace = true

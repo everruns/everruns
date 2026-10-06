@@ -6,6 +6,7 @@ use crate::records::{
     SandboxSelection, SandboxTargetKind, SandboxTemplateSpec,
 };
 use everruns_contracts::capability::CapabilityRef;
+use everruns_core::DeploymentGrade;
 use serde_json::{Map, Value, json};
 
 const MAX_SANDBOX_TEMPLATES: usize = 16;
@@ -21,6 +22,20 @@ const COMPUTE_CAPABILITY_IDS: &[&str] = &[
     "docker_container",
     "bashkit_shell",
 ];
+
+/// Providers a `managed` target may name. Each has its own `target.options`
+/// rules in `validate_target_options`.
+const MANAGED_PROVIDERS: &[&str] = &["daytona", "modal"];
+
+/// Managed providers offered only at development grade while their integration
+/// is experimental. The plugin is linked into every build, so registration
+/// alone does not decide availability.
+const EXPERIMENTAL_MANAGED_PROVIDERS: &[&str] = &["modal"];
+
+/// Whether this deployment grade offers `provider` as a managed target.
+pub(crate) fn managed_provider_offered(provider: &str, grade: DeploymentGrade) -> bool {
+    !EXPERIMENTAL_MANAGED_PROVIDERS.contains(&provider) || grade.experimental_features_enabled()
+}
 
 /// A Session-pinned specification plus its Agent binding name.
 #[derive(Debug, Clone, PartialEq)]
@@ -158,7 +173,15 @@ pub fn resolve_spec(authored: &SandboxTemplateSpec) -> Result<ResolvedSandboxSpe
         .unwrap_or_else(|| default_durability(authored.target.kind));
 
     validate_containment(&containment)?;
-    validate_target_contract(authored.target.kind, &containment, durability)?;
+    validate_target_contract(
+        authored.target.kind,
+        authored.target.provider.as_deref(),
+        &containment,
+        durability,
+    )?;
+    if is_modal(authored) {
+        modal_egress(authored, &containment)?;
+    }
 
     if authored.target.kind == SandboxTargetKind::Vfs && !authored.bootstrap.commands.is_empty() {
         return Err("bashkit bootstrap commands are not supported".to_string());
@@ -200,6 +223,9 @@ fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> 
                     profile.target.kind.as_str()
                 ));
             }
+        }
+        SandboxTargetKind::Managed if profile.target.provider.as_deref() == Some("modal") => {
+            validate_modal_options(profile, options)?;
         }
         SandboxTargetKind::Managed => {
             const ALLOWED: &[&str] = &[
@@ -263,6 +289,95 @@ fn validate_target_options(profile: &SandboxTemplateSpec) -> Result<(), String> 
             }
         }
         SandboxTargetKind::Machine | SandboxTargetKind::Container => {}
+    }
+    Ok(())
+}
+
+fn is_modal(profile: &SandboxTemplateSpec) -> bool {
+    profile.target.kind == SandboxTargetKind::Managed
+        && profile.target.provider.as_deref() == Some("modal")
+}
+
+/// The provider-config egress Modal enforces: the template's network policy
+/// plus any connections whose tokens Modal injects. Validated with the
+/// provider's own rules so a template cannot save what Modal would reject.
+fn modal_egress(
+    profile: &SandboxTemplateSpec,
+    containment: &SandboxContainmentSpec,
+) -> Result<(), String> {
+    let mut egress = Map::new();
+    egress.insert(
+        "network".to_string(),
+        modal_network_config(&containment.network),
+    );
+    if let Some(connections) = profile.target.options.get("inject_connections") {
+        egress.insert("inject_connections".to_string(), connections.clone());
+    }
+    everruns_integrations::modal::egress::EgressSpec::from_json(&Value::Object(egress))
+        .map(|_| ())
+        .map_err(|error| format!("modal egress: {error}"))
+}
+
+/// Modal options mirror what the provider reads; it validates them again.
+fn validate_modal_options(
+    profile: &SandboxTemplateSpec,
+    options: &Map<String, Value>,
+) -> Result<(), String> {
+    const ALLOWED: &[&str] = &[
+        "image",
+        "runtime",
+        "cpu",
+        "memory_mb",
+        "workspace_path",
+        "title",
+        "inject_connections",
+    ];
+    // Modal has no stop/start: pause is a provider filesystem snapshot, and
+    // there is no Everruns recovery volume to checkpoint into.
+    if profile.durability == Some(SandboxDurability::Checkpointed) {
+        return Err("modal durability must be provider_snapshot".to_string());
+    }
+    if let Some(key) = options.keys().find(|key| !ALLOWED.contains(&key.as_str())) {
+        return Err(format!(
+            "modal target.options.{key} is not caller-configurable"
+        ));
+    }
+    for key in ["image", "title"] {
+        if let Some(value) = options.get(key)
+            && value
+                .as_str()
+                .filter(|value| !value.trim().is_empty() && value.len() <= 256)
+                .is_none()
+        {
+            return Err(format!(
+                "modal target.options.{key} must be a non-empty string no longer than 256 bytes"
+            ));
+        }
+    }
+    if let Some(runtime) = options.get("runtime")
+        && !matches!(runtime.as_str(), Some("vm" | "gvisor"))
+    {
+        return Err("modal target.options.runtime must be vm or gvisor".to_string());
+    }
+    if let Some(cpu) = options.get("cpu")
+        && !cpu
+            .as_f64()
+            .is_some_and(|cpu| (0.125..=64.0).contains(&cpu))
+    {
+        return Err("modal target.options.cpu must be between 0.125 and 64".to_string());
+    }
+    if let Some(memory) = options.get("memory_mb")
+        && !matches!(memory.as_u64(), Some(128..=262_144))
+    {
+        return Err("modal target.options.memory_mb must be between 128 and 262144".to_string());
+    }
+    if let Some(path) = options.get("workspace_path")
+        && !path.as_str().is_some_and(is_normalized_absolute_path)
+    {
+        return Err(
+            "modal target.options.workspace_path must be a normalized absolute non-root path"
+                .to_string(),
+        );
     }
     Ok(())
 }
@@ -347,6 +462,13 @@ pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
                 .as_object()
                 .cloned()
                 .unwrap_or_default();
+            if profile.target.provider.as_deref() == Some("modal") {
+                // Server-written: `network` is not a caller option.
+                provider_config.insert(
+                    "network".to_string(),
+                    modal_network_config(&profile.containment.network),
+                );
+            }
             if profile.durability == SandboxDurability::Checkpointed {
                 provider_config
                     .entry("workspace_path".to_string())
@@ -376,6 +498,16 @@ pub fn capability_for_sandbox(profile: &ResolvedSandboxSpec) -> CapabilityRef {
     }
 }
 
+fn modal_network_config(network: &SandboxNetworkPolicy) -> Value {
+    match network {
+        SandboxNetworkPolicy::Allow => json!({"mode": "open"}),
+        SandboxNetworkPolicy::Deny => json!({"mode": "blocked"}),
+        SandboxNetworkPolicy::Allowlist { allowed_hosts } => {
+            json!({"mode": "allowlist", "domains": allowed_hosts})
+        }
+    }
+}
+
 fn validate_target_shape(profile: &SandboxTemplateSpec) -> Result<(), String> {
     let target = &profile.target;
     match target.kind {
@@ -393,7 +525,16 @@ fn validate_target_shape(profile: &SandboxTemplateSpec) -> Result<(), String> {
             }
         }
         SandboxTargetKind::Vfs => require_provider(target.provider.as_deref(), "bashkit")?,
-        SandboxTargetKind::Managed => require_provider(target.provider.as_deref(), "daytona")?,
+        SandboxTargetKind::Managed => match target.provider.as_deref() {
+            Some(provider) if MANAGED_PROVIDERS.contains(&provider) => {}
+            Some(provider) => {
+                return Err(format!(
+                    "provider '{provider}' is unsupported; expected one of: {}",
+                    MANAGED_PROVIDERS.join(", ")
+                ));
+            }
+            None => return Err("managed target requires a provider".to_string()),
+        },
         SandboxTargetKind::Container => require_provider(target.provider.as_deref(), "docker")?,
     }
     Ok(())
@@ -411,6 +552,7 @@ fn require_provider(actual: Option<&str>, expected: &str) -> Result<(), String> 
 
 fn validate_target_contract(
     kind: SandboxTargetKind,
+    provider: Option<&str>,
     containment: &SandboxContainmentSpec,
     durability: SandboxDurability,
 ) -> Result<(), String> {
@@ -432,9 +574,10 @@ fn validate_target_contract(
         }
         SandboxTargetKind::Managed => {
             require_isolated(containment, kind)?;
-            if containment.network != SandboxNetworkPolicy::Allow {
+            // Modal enforces deny and allowlists itself (`modal_egress`).
+            if provider != Some("modal") && containment.network != SandboxNetworkPolicy::Allow {
                 return Err(
-                    "daytona currently supports only network.mode=allow; an unenforced allowlist is rejected"
+                    "managed targets currently support only network.mode=allow; an unenforced allowlist is rejected"
                         .to_string(),
                 );
             }
@@ -503,8 +646,26 @@ fn default_durability(kind: SandboxTargetKind) -> SandboxDurability {
 }
 
 fn validate_target_available(profile: &ResolvedSandboxSpec) -> Result<(), String> {
+    validate_target_available_for_grade(profile, DeploymentGrade::from_env())
+}
+
+fn validate_target_available_for_grade(
+    profile: &ResolvedSandboxSpec,
+    grade: DeploymentGrade,
+) -> Result<(), String> {
     match profile.target.kind {
         SandboxTargetKind::Vfs => Ok(()),
+        SandboxTargetKind::Managed
+            if !managed_provider_offered(
+                profile.target.provider.as_deref().unwrap_or_default(),
+                grade,
+            ) =>
+        {
+            Err(format!(
+                "environment provider '{}' is experimental and offered only at development grade",
+                profile.target.provider.as_deref().unwrap_or("unknown")
+            ))
+        }
         SandboxTargetKind::Managed
             if everruns_capabilities::create_session_sandbox_provider(
                 profile.target.provider.as_deref().unwrap_or_default(),
@@ -749,6 +910,155 @@ mod tests {
         assert_eq!(
             capability.config_value()["provider_config"]["workspace_path"],
             "/home/daytona/workspace"
+        );
+    }
+
+    #[test]
+    fn modal_profile_maps_to_a_session_sandbox_with_its_options() {
+        let mut value = profile(SandboxTargetSpec::managed("modal"));
+        value.target.options = json!({
+            "runtime": "gvisor", "image": "node:22", "cpu": 0.5, "memory_mb": 1024,
+            "workspace_path": "/srv/app", "title": "web"
+        });
+        let resolved = resolve_spec(&value).unwrap();
+        assert_eq!(resolved.durability, SandboxDurability::ProviderSnapshot);
+        let capability = capability_for_sandbox(&resolved);
+        let config = capability.config_value();
+        assert_eq!(capability.id(), "session_sandbox");
+        assert_eq!(config["provider"], "modal");
+        assert_eq!(config["provider_config"]["runtime"], "gvisor");
+        assert_eq!(config["provider_config"]["workspace_path"], "/srv/app");
+        assert!(config["provider_config"].get("recovery").is_none());
+    }
+
+    #[test]
+    fn modal_profile_rejects_what_the_provider_cannot_do() {
+        let cases = [
+            (json!({"snapshot": "x"}), "not caller-configurable"),
+            (
+                json!({"_test_server_url": "http://x"}),
+                "not caller-configurable",
+            ),
+            (json!({"runtime": "firecracker"}), "vm or gvisor"),
+            (json!({"cpu": 0}), "cpu"),
+            (json!({"memory_mb": 64}), "memory_mb"),
+            (json!({"workspace_path": "/a/../b"}), "workspace_path"),
+            (json!({"image": ""}), "image"),
+        ];
+        for (options, expected) in cases {
+            let mut value = profile(SandboxTargetSpec::managed("modal"));
+            value.target.options = options.clone();
+            let error = resolve_spec(&value).unwrap_err();
+            assert!(error.contains(expected), "{options}: {error}");
+        }
+
+        let mut checkpointed = profile(SandboxTargetSpec::managed("modal"));
+        checkpointed.durability = Some(SandboxDurability::Checkpointed);
+        assert!(
+            resolve_spec(&checkpointed)
+                .unwrap_err()
+                .contains("provider_snapshot")
+        );
+
+        let unknown = profile(SandboxTargetSpec::managed("fly"));
+        assert!(
+            resolve_spec(&unknown)
+                .unwrap_err()
+                .contains("daytona, modal")
+        );
+    }
+
+    #[test]
+    fn modal_enforces_the_template_network_policy() {
+        let modal = |network: SandboxNetworkPolicy, options: Value| {
+            let mut value = profile(SandboxTargetSpec::managed("modal"));
+            value.containment = Some(SandboxContainmentSpec {
+                network,
+                ..SandboxContainmentSpec::isolated()
+            });
+            value.target.options = options;
+            resolve_spec(&value)
+        };
+        let config = |resolved: &ResolvedSandboxSpec| {
+            capability_for_sandbox(resolved).config_value()["provider_config"].clone()
+        };
+
+        let denied = modal(SandboxNetworkPolicy::Deny, json!({})).unwrap();
+        assert_eq!(config(&denied)["network"], json!({"mode": "blocked"}));
+        let listed = modal(
+            SandboxNetworkPolicy::Allowlist {
+                allowed_hosts: vec!["pypi.org".into(), "*.pythonhosted.org".into()],
+            },
+            json!({}),
+        )
+        .unwrap();
+        assert_eq!(
+            config(&listed)["network"],
+            json!({"mode": "allowlist", "domains": ["pypi.org", "*.pythonhosted.org"]})
+        );
+        let injected = modal(
+            SandboxNetworkPolicy::Allow,
+            json!({"inject_connections": ["github"]}),
+        )
+        .unwrap();
+        assert_eq!(config(&injected)["network"], json!({"mode": "open"}));
+        assert_eq!(config(&injected)["inject_connections"], json!(["github"]));
+
+        for (network, options, expected) in [
+            (
+                SandboxNetworkPolicy::Deny,
+                json!({"inject_connections": ["github"]}),
+                "needs network",
+            ),
+            (
+                SandboxNetworkPolicy::Allowlist {
+                    allowed_hosts: vec!["github.com".into()],
+                },
+                json!({"inject_connections": ["github"]}),
+                "limited to domains",
+            ),
+            (
+                SandboxNetworkPolicy::Allow,
+                json!({"inject_connections": ["slack"]}),
+                "cannot be injected",
+            ),
+            (
+                SandboxNetworkPolicy::Allowlist {
+                    allowed_hosts: vec!["localhost".into()],
+                },
+                json!({}),
+                "not a domain",
+            ),
+        ] {
+            let error = modal(network, options).unwrap_err();
+            assert!(error.contains(expected), "{error}");
+        }
+
+        // Daytona still cannot enforce anything but open egress.
+        let mut daytona = profile(SandboxTargetSpec::managed("daytona"));
+        daytona.containment = Some(SandboxContainmentSpec {
+            network: SandboxNetworkPolicy::Deny,
+            ..SandboxContainmentSpec::isolated()
+        });
+        assert!(
+            resolve_spec(&daytona)
+                .unwrap_err()
+                .contains("network.mode=allow")
+        );
+    }
+
+    #[test]
+    fn modal_is_offered_only_at_development_grade() {
+        assert!(managed_provider_offered("modal", DeploymentGrade::Dev));
+        assert!(!managed_provider_offered("modal", DeploymentGrade::Prod));
+        assert!(managed_provider_offered("daytona", DeploymentGrade::Prod));
+
+        let resolved = resolve_spec(&profile(SandboxTargetSpec::managed("modal"))).unwrap();
+        assert!(validate_target_available_for_grade(&resolved, DeploymentGrade::Dev).is_ok());
+        assert!(
+            validate_target_available_for_grade(&resolved, DeploymentGrade::Prod)
+                .unwrap_err()
+                .contains("development grade")
         );
     }
 

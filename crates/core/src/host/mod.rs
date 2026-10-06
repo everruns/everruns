@@ -2,7 +2,7 @@
 //!
 //! This module composes the portable [`crate::engine`] algorithms without
 //! selecting vendor drivers or environment integrations. Custom hosts supply
-//! [`HostComposition`] and [`HostBackends`]. Application presets and optional
+//! [`HostComposition`](crate::host::HostComposition) and [`HostBackends`](crate::host::HostBackends). Application presets and optional
 //! integration selection live in `everruns::batteries`.
 //!
 //! # Example

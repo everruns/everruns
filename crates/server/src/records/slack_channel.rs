@@ -1,7 +1,7 @@
 //! Typed configuration for a Slack endpoint.
 //!
-//! Split out of `app.rs` (EVE-1069): that file is on the size ratchet's debt
-//! list, and one-click install adds to this type rather than to the rest of it.
+// Split out of `app.rs` (EVE-1069): that file is on the size ratchet's debt
+// list, and one-click install adds to this type rather than to the rest of it.
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

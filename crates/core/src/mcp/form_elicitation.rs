@@ -7,7 +7,6 @@
 //! own surface collect the answer, and returning that answer as the
 //! `ElicitResult` of a retry.
 //!
-//! The design of record is `knowledge/integrations/mcp-form-elicitation.md`.
 //! Three rules shape this module:
 //!
 //! - **The server does not author the attribution.** Every question's header is

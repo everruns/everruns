@@ -60,8 +60,7 @@ into the target and the agent may change anything inside the mount.
 
 ## Build the agent
 
-The definition lives in `src/agent.rs`; the prompt and disposable repository
-live under `src/resources/`. Read-write access is explicit—the default workspace
+Read-write access is explicit—the default workspace
 policy is read-only.
 
 ```rust ignore
@@ -142,10 +141,3 @@ and verify consequential claims outside the model/tool boundary.
 This demonstrates one sandboxed repository mutation, not a general coding
 agent. It cannot fetch dependencies, run native programs, commit, or push. The
 Framework session is in-memory.
-
-## Source map
-
-`src/main.rs`: input, session, and verification flow; `src/agent.rs`: agent
-definition; `src/fixture.rs`: fixture materialization and assertions;
-`src/resources/`: prompt and sample repository; `demo/`: live VHS recording and
-transcript. `examples/demo-support::shell` provides terminal presentation.

@@ -82,6 +82,7 @@ mod provider_managed;
 pub mod reasoning;
 pub mod rt;
 pub mod runtime_provider;
+pub mod secret_scrub;
 pub mod stream_accumulator;
 mod stream_error;
 pub mod stream_event;

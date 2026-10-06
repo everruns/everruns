@@ -1,8 +1,9 @@
 // Knowledge Base CRUD HTTP routes. See knowledge/runtime-resources/knowledge-bases.md.
 
-use crate::auth::{AuthState, ResolvedOrg};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
+use crate::domains::common::Command;
 use crate::domains::common::classify_anyhow;
-use crate::domains::common::{Command, Ctx};
 use crate::domains::knowledge_bases::okf::{ImportOkfBundle, build_export_files, encode_tar_gz};
 pub use crate::domains::knowledge_bases::okf::{
     ImportOkfBundleRequest, OkfFileInput, OkfImportSummary,
@@ -17,43 +18,16 @@ use crate::domains::knowledge_bases::{
     GetKnowledgeBase, GetKnowledgeEntry, ListKnowledgeBases, ListKnowledgeEntries,
     UpdateKnowledgeBaseCmd, UpdateKnowledgeEntryCmd,
 };
-use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::Caller;
-use std::sync::Arc;
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiResult, ErrorResponse, ListResponse};
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-
-    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(
-            Caller::from(org),
-            self.db.clone(),
-            None,
-            self.auth.permission_resolver.clone(),
-        )
-        .with_feature_flags(org.feature_flags.clone())
-    }
-}
-
-impl_auth_state!(AppState);
-
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/knowledge-bases", post(create_kb).get(list_kbs))
         .route(
@@ -87,7 +61,7 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn create_kb(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreateKnowledgeBaseRequest>,
 ) -> Result<(StatusCode, Json<KnowledgeBaseResponse>), (StatusCode, Json<ErrorResponse>)> {
     let kb = CreateKnowledgeBase::from(req).run(&state.ctx(&org)).await?;
@@ -106,7 +80,7 @@ pub async fn create_kb(
 )]
 pub async fn list_kbs(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListKnowledgeBasesQuery>,
 ) -> ApiResult<ListResponse<KnowledgeBaseResponse>> {
     let kbs = ListKnowledgeBases::from(query)
@@ -128,7 +102,7 @@ pub async fn list_kbs(
 )]
 pub async fn get_kb(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(kb_id): Path<String>,
 ) -> ApiResult<KnowledgeBaseResponse> {
     Ok(Json(
@@ -152,7 +126,7 @@ pub async fn get_kb(
 )]
 pub async fn update_kb(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(kb_id): Path<String>,
     Json(request): Json<UpdateKnowledgeBaseRequest>,
 ) -> ApiResult<KnowledgeBaseResponse> {
@@ -176,7 +150,7 @@ pub async fn update_kb(
 )]
 pub async fn delete_kb(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(kb_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     DeleteKnowledgeBase { kb_id }.run(&state.ctx(&org)).await?;
@@ -185,7 +159,7 @@ pub async fn delete_kb(
 
 #[utoipa::path(
     description = "Import an Open Knowledge Format (OKF) bundle into a knowledge base. \
-Idempotent: re-importing converges entries without duplicates. See knowledge/runtime-resources/okf-adoption.md.",
+Idempotent: re-importing converges entries without duplicates.",
     post,
     path = "/v1/knowledge-bases/{kb_id}/okf_import",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),
@@ -199,7 +173,7 @@ Idempotent: re-importing converges entries without duplicates. See knowledge/run
 )]
 pub async fn import_okf(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(kb_id): Path<String>,
     Json(request): Json<ImportOkfBundleRequest>,
 ) -> ApiResult<OkfImportSummary> {
@@ -212,7 +186,7 @@ pub async fn import_okf(
 
 #[utoipa::path(
     description = "Export a knowledge base as an Open Knowledge Format (OKF) bundle \
-(a gzipped tarball of markdown files with YAML frontmatter). See knowledge/runtime-resources/okf-adoption.md.",
+(a gzipped tarball of markdown files with YAML frontmatter).",
     get,
     path = "/v1/knowledge-bases/{kb_id}/okf_export",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),
@@ -224,7 +198,7 @@ pub async fn import_okf(
 )]
 pub async fn export_okf(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(kb_id): Path<String>,
 ) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
     use axum::http::header;
@@ -272,7 +246,7 @@ pub async fn export_okf(
 )]
 pub async fn list_entries(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(kb_id): Path<String>,
     Query(query): Query<ListKnowledgeEntriesQuery>,
 ) -> ApiResult<ListResponse<KnowledgeEntryResponse>> {
@@ -297,7 +271,7 @@ pub async fn list_entries(
 )]
 pub async fn create_entry(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(kb_id): Path<String>,
     Json(req): Json<CreateKnowledgeEntryRequest>,
 ) -> Result<(StatusCode, Json<KnowledgeEntryResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -323,7 +297,7 @@ pub async fn create_entry(
 )]
 pub async fn get_entry(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((kb_id, entry_id)): Path<(String, String)>,
 ) -> ApiResult<KnowledgeEntryResponse> {
     Ok(Json(
@@ -351,7 +325,7 @@ pub async fn get_entry(
 )]
 pub async fn update_entry(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((kb_id, entry_id)): Path<(String, String)>,
     Json(request): Json<UpdateKnowledgeEntryRequest>,
 ) -> ApiResult<KnowledgeEntryResponse> {
@@ -382,7 +356,7 @@ pub async fn update_entry(
 )]
 pub async fn delete_entry(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((kb_id, entry_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     DeleteKnowledgeEntry { kb_id, entry_id }

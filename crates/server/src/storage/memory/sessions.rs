@@ -188,8 +188,7 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
-    /// Record fork provenance on an already-created session
-    /// (knowledge/runtime-resources/forking-sessions.md). No-op if the session id is unknown.
+    /// Record fork provenance on an already-created session. No-op if the session id is unknown.
     pub async fn set_session_fork_lineage(
         &self,
         session_id: SessionId,

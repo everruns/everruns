@@ -10,7 +10,7 @@
 //! Decision (EVE-1189): pages only ever live in a guarded browser context whose proxy is
 //!   dead, and every request they make is paused by `Fetch` and performed by
 //!   [`BrowserEgress`]. A background reader answers paused requests while commands wait,
-//!   so a page keeps loading during waits and long commands. See `browser_egress.rs`.
+//!   so a page keeps loading during waits and long commands.
 
 use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;

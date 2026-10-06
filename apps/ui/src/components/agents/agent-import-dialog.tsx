@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { inspectAgentPackage, type AgentPackagePreview } from "@/lib/api/agents";
 import { AgentPackageReview, PackageChangeReview } from "./agent-package-review";
 import { useImportAgent } from "@/hooks/use-agents";
-import type { Agent } from "@/lib/api/types";
+import type { Agent, Capability } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,11 +19,13 @@ import {
 export function AgentImportDialog({
   file,
   agents,
+  capabilities,
   onClose,
   onImported,
 }: {
   file: File | null;
   agents: Agent[];
+  capabilities?: Capability[];
   onClose: () => void;
   onImported: (agent: Agent) => void;
 }) {
@@ -95,47 +97,64 @@ export function AgentImportDialog({
         if (!open && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
+      <DialogContent
+        className={`flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl ${preview ? "h-[90vh]" : ""}`}
+      >
+        <DialogHeader className="shrink-0 border-b p-4 pr-12 sm:px-6">
           <DialogTitle>Import agent</DialogTitle>
           <DialogDescription>
             Review {file?.name} before importing. Starting files affect new sessions; existing
             session files stay intact.
           </DialogDescription>
         </DialogHeader>
-        <label className="grid gap-2 text-sm">
-          Destination
-          <select
-            aria-label="Import destination"
-            className="rounded border bg-background p-2"
-            value={target}
-            disabled={busy}
-            onChange={(e) => setTarget(e.target.value)}
-          >
-            <option value="">Create a new agent</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.name}>
-                Update {agent.display_name || agent.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {busy && (
-          <p role="status" className="text-sm text-muted-foreground">
-            Checking package…
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="whitespace-pre-wrap break-words text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        {valid && !busy && (
-          <p className="text-sm">Package and destination dependencies are valid.</p>
-        )}
-        {preview && !busy && <AgentPackageReview preview={preview} />}
-        {changes && <PackageChangeReview changes={changes} />}
-        <DialogFooter>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="grid gap-3 border-b bg-muted/30 p-4 sm:px-6">
+            <label className="grid gap-2 text-sm sm:grid-cols-[auto_minmax(0,320px)] sm:items-center sm:justify-start">
+              Destination
+              <select
+                aria-label="Import destination"
+                className="rounded border bg-background p-2"
+                value={target}
+                disabled={busy}
+                onChange={(e) => setTarget(e.target.value)}
+              >
+                <option value="">Create a new agent</option>
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.name}>
+                    Update {agent.display_name || agent.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {busy && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Checking package…
+              </p>
+            )}
+            {error && (
+              <p role="alert" className="whitespace-pre-wrap break-words text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            {valid && !busy && (
+              <p className="text-sm">Package and destination dependencies are valid.</p>
+            )}
+          </div>
+          {preview && !busy && (
+            <AgentPackageReview
+              key={`${file?.name}:${target}`}
+              preview={preview}
+              capabilities={capabilities}
+              changes={changes}
+            />
+          )}
+          {!preview && changes && (
+            <div className="p-4">
+              <PackageChangeReview changes={changes} />
+            </div>
+          )}
+        </div>
+        <DialogFooter className="shrink-0 border-t bg-background p-4 sm:px-6">
           <Button variant="outline" disabled={busy} onClick={onClose}>
             Cancel
           </Button>

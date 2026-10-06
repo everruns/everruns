@@ -1,4 +1,4 @@
-//! WorkerRegistry implementation (see `store.rs` for the trait contract).
+//! Implementation of [`crate::WorkerRegistry`].
 
 use super::*;
 

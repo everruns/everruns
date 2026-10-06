@@ -4,30 +4,25 @@
 // CRUD for Agent Skills (agentskills.io format).
 // Supports both SKILL.md text upload and ZIP archive upload.
 
-use crate::api::common::{
-    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
-};
-use crate::api::dispatch::{Dispatchable, impl_dispatchable};
+use crate::api::command_http::CommandRouterExt;
+use crate::api::common::{ErrorResponse, UrlBuilder, WithUrls};
+use crate::api::state::ApiState;
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::skills::types::{CreateSkillRequest, UpdateSkillRequest};
+use crate::domains::skills;
 use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
-use crate::records::{Skill, SkillUsage};
-use crate::services::CapabilityService;
-use crate::storage::StorageBackend;
+use crate::records::Skill;
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Path, Query, State},
+    extract::{DefaultBodyLimit, State},
     http::StatusCode,
     routing::{get, post},
 };
 use axum_extra::extract::Multipart;
 use everruns_core::{
-    Caller, ResourceConfigResponse, SkillContent, SkillValidationResult, evaluate_policies_with,
+    Caller, ResourceConfigResponse, SkillValidationResult, evaluate_policies_with,
     validate_skill_md,
 };
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 // ============================================
@@ -64,42 +59,6 @@ pub struct ListSkillsQuery {
     pub include_archived: Option<bool>,
 }
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub capability_service: Arc<CapabilityService>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        capability_service: Arc<CapabilityService>,
-        auth: AuthState,
-    ) -> Self {
-        Self {
-            db,
-            capability_service,
-            auth,
-        }
-    }
-
-    /// Build a domain Ctx from this AppState for the given org.
-    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
-        crate::domains::common::Ctx::new(
-            Caller::from(org),
-            self.db.clone(),
-            self.capability_service.clone(),
-            None,
-            self.auth.permission_resolver.clone(),
-        )
-        .with_feature_flags(org.feature_flags.clone())
-    }
-}
-
-impl_auth_state!(AppState);
-impl_dispatchable!(AppState);
-
 // ============================================
 // Helpers
 // ============================================
@@ -133,51 +92,28 @@ pub async fn skill_config(
 // Routes
 // ============================================
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
-        .route("/v1/skills", post(create_skill).get(list_skills))
         .route("/v1/skills/config", get(skill_config))
-        .route("/v1/skills/usage", get(list_skills_usage))
         .route(
             "/v1/skills/upload",
             post(upload_skill).layer(DefaultBodyLimit::max(MAX_ARCHIVE_UPLOAD)),
         )
         .route("/v1/skills/validate", post(validate_skill))
-        .route(
-            "/v1/skills/{skill_id}",
-            get(get_skill).patch(update_skill).delete(delete_skill),
-        )
-        .route("/v1/skills/{skill_id}/delete", post(destroy_skill))
-        .route("/v1/skills/{skill_id}/content", get(get_skill_content))
+        .command::<skills::CreateSkill>()
+        .command::<skills::ListSkills>()
+        .command::<skills::ListSkillsUsage>()
+        .command::<skills::GetSkill>()
+        .command::<skills::GetSkillContent>()
+        .command::<skills::UpdateSkillCmd>()
+        .command::<skills::DeleteSkill>()
+        .command::<skills::DestroySkill>()
         .with_state(state)
 }
 
 // ============================================
 // Handlers
 // ============================================
-
-/// POST /v1/skills - Create skill from SKILL.md
-#[utoipa::path(
-    post,
-    path = "/v1/skills",
-    request_body = CreateSkillRequest,
-    responses(
-        (status = 201, description = "Skill created", body = WithUrls<Skill>),
-        (status = 409, description = "Duplicate skill name", body = ErrorResponse),
-        (status = 422, description = "Invalid SKILL.md", body = ErrorResponse),
-    ),
-    tag = "skills"
-)]
-pub async fn create_skill(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Json(req): Json<CreateSkillRequest>,
-) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_created_with_urls(crate::domains::skills::CreateSkill(req))
-        .await
-}
 
 /// POST /v1/skills/upload - Create skill from ZIP archive
 #[utoipa::path(
@@ -193,7 +129,7 @@ pub async fn create_skill(
 )]
 pub async fn upload_skill(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
     if !org.feature_flags.skills {
@@ -254,157 +190,6 @@ pub async fn upload_skill(
     Ok((StatusCode::CREATED, Json(urls.wrap(skill))))
 }
 
-/// GET /v1/skills - List all skills
-#[utoipa::path(
-    get,
-    path = "/v1/skills",
-    responses(
-        (status = 200, description = "List of skills", body = ListResponse<WithUrls<Skill>>),
-    ),
-    params(ListSkillsQuery),
-    tag = "skills"
-)]
-pub async fn list_skills(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Query(query): Query<ListSkillsQuery>,
-) -> ApiResult<ListResponse<WithUrls<Skill>>> {
-    state
-        .dispatcher(&org)
-        .run_list_with_urls(crate::domains::skills::ListSkills {
-            search: query.search,
-            include_archived: query.include_archived.unwrap_or(false),
-        })
-        .await
-}
-
-/// GET /v1/skills/usage - Count agents/harnesses referencing each skill
-#[utoipa::path(
-    get,
-    path = "/v1/skills/usage",
-    responses(
-        (status = 200, description = "Usage map keyed by skill id", body = HashMap<String, SkillUsage>),
-    ),
-    tag = "skills"
-)]
-pub async fn list_skills_usage(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-) -> ApiResult<HashMap<String, SkillUsage>> {
-    state
-        .dispatcher(&org)
-        .run(crate::domains::skills::ListSkillsUsage {})
-        .await
-}
-
-/// GET /v1/skills/{skill_id} - Get skill by ID
-#[utoipa::path(
-    get,
-    path = "/v1/skills/{skill_id}",
-    params(
-        ("skill_id" = String, Path, description = "Skill ID (prefixed, e.g., skill_...)")
-    ),
-    responses(
-        (status = 200, description = "Skill found", body = WithUrls<Skill>),
-        (status = 404, description = "Skill not found"),
-    ),
-    tag = "skills"
-)]
-pub async fn get_skill(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(skill_id): Path<String>,
-) -> ApiResult<WithUrls<Skill>> {
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::skills::GetSkill { id: skill_id })
-        .await
-}
-
-/// GET /v1/skills/{skill_id}/content - Get full skill content
-#[utoipa::path(
-    get,
-    path = "/v1/skills/{skill_id}/content",
-    params(
-        ("skill_id" = String, Path, description = "Skill ID")
-    ),
-    responses(
-        (status = 200, description = "Skill content", body = SkillContent),
-        (status = 404, description = "Skill not found"),
-    ),
-    tag = "skills"
-)]
-pub async fn get_skill_content(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(skill_id): Path<String>,
-) -> ApiResult<SkillContent> {
-    state
-        .dispatcher(&org)
-        .run(crate::domains::skills::GetSkillContent { id: skill_id })
-        .await
-}
-
-/// PATCH /v1/skills/{skill_id} - Update skill
-#[utoipa::path(
-    patch,
-    path = "/v1/skills/{skill_id}",
-    request_body = UpdateSkillRequest,
-    responses(
-        (status = 200, description = "Skill updated", body = WithUrls<Skill>),
-        (status = 404, description = "Skill not found"),
-        (status = 409, description = "Duplicate skill name", body = ErrorResponse),
-        (status = 422, description = "Invalid SKILL.md", body = ErrorResponse),
-    ),
-    tag = "skills"
-)]
-pub async fn update_skill(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(skill_id): Path<String>,
-    Json(req): Json<UpdateSkillRequest>,
-) -> ApiResult<WithUrls<Skill>> {
-    state
-        .dispatcher(&org)
-        .run_with_urls(crate::domains::skills::UpdateSkillCmd { id: skill_id, req })
-        .await
-}
-
-/// DELETE /v1/skills/{skill_id} - Delete skill
-#[utoipa::path(
-    delete,
-    path = "/v1/skills/{skill_id}",
-    params(
-        ("skill_id" = String, Path, description = "Skill ID")
-    ),
-    responses(
-        (status = 204, description = "Skill deleted"),
-        (status = 404, description = "Skill not found"),
-    ),
-    tag = "skills"
-)]
-pub async fn delete_skill(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(skill_id): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(crate::domains::skills::DeleteSkill { id: skill_id })
-        .await
-}
-
-pub async fn destroy_skill(
-    org: ResolvedOrg,
-    State(state): State<AppState>,
-    Path(skill_id): Path<String>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .dispatcher(&org)
-        .run_no_content(crate::domains::skills::DestroySkill { id: skill_id })
-        .await
-}
-
 /// POST /v1/skills/validate - Validate SKILL.md content
 #[utoipa::path(
     post,
@@ -417,7 +202,7 @@ pub async fn destroy_skill(
 )]
 pub async fn validate_skill(
     org: ResolvedOrg,
-    State(_state): State<AppState>,
+    State(_state): State<ApiState>,
     Json(req): Json<ValidateSkillRequest>,
 ) -> Result<Json<SkillValidationResult>, (StatusCode, Json<ErrorResponse>)> {
     if !org.feature_flags.skills {

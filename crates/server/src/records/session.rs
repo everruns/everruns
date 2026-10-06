@@ -727,10 +727,10 @@ impl From<&Session> for everruns_core::AgentConfigOverlay {
 mod tests {
     use super::*;
 
-    /// The list filters activity in SQL and the in-memory backend filters it in
-    /// Rust, so this truth table is the contract both sides implement. It is
-    /// duplicated verbatim as a comment beside `ACTIVITY_SQL` in
-    /// `crates/server/src/storage/repositories/sessions.rs`.
+    // The list filters activity in SQL and the in-memory backend filters it in
+    // Rust, so this truth table is the contract both sides implement. It is
+    // duplicated verbatim as a comment beside ACTIVITY_SQL in
+    // crates/server/src/storage/repositories/sessions.rs.
     #[test]
     fn activity_derivation_truth_table() {
         use SessionActivity as A;

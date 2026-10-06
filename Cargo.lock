@@ -2771,6 +2771,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations"
+version = "0.41.0"
+dependencies = [
+ "async-trait",
+ "base64 0.23.1",
+ "chrono",
+ "everruns-contracts",
+ "everruns-core",
+ "futures",
+ "hyper-util",
+ "inventory",
+ "prost",
+ "protox",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
+ "tonic-prost-build",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-integrations-bashkit"
 version = "0.41.0"
 dependencies = [
@@ -2839,6 +2864,7 @@ dependencies = [
  "everruns-capabilities",
  "everruns-contracts",
  "everruns-core",
+ "everruns-integrations",
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
  "everruns-integrations-cursor",
@@ -3345,6 +3371,7 @@ dependencies = [
  "everruns-core",
  "everruns-drivers",
  "everruns-durable",
+ "everruns-integrations",
  "everruns-integrations-bashkit",
  "everruns-integrations-catalog",
  "everruns-integrations-github",
@@ -3352,6 +3379,7 @@ dependencies = [
  "everruns-integrations-web-fetch",
  "everruns-internal-protocol",
  "everruns-sdk",
+ "everruns-server-macros",
  "everruns-test-support",
  "everruns-turbopuffer",
  "everruns-worker",
@@ -3408,6 +3436,15 @@ dependencies = [
  "uuid",
  "wiremock",
  "zip",
+]
+
+[[package]]
+name = "everruns-server-macros"
+version = "0.41.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -3475,6 +3512,7 @@ dependencies = [
  "everruns-core",
  "everruns-drivers",
  "everruns-durable-engine",
+ "everruns-integrations",
  "everruns-integrations-bashkit",
  "everruns-integrations-browserless",
  "everruns-integrations-catalog",
@@ -8729,6 +8767,7 @@ dependencies = [
  "hyper-util",
  "percent-encoding",
  "pin-project",
+ "rustls-native-certs",
  "socket2 0.6.5",
  "sync_wrapper",
  "tokio",
@@ -8738,6 +8777,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

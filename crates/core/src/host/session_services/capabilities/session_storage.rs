@@ -57,6 +57,7 @@ const INTERNAL_SECRET_PREFIXES: &[&str] = &[
     "e2b_sandbox:",
     "deno_sandbox:",
     "sprites_sprite:",
+    "modal_sandbox:",
 ];
 // Exact reserved secret names. Unlike the prefixes above, this one cannot
 // reference its canonical constant: SESSION_SANDBOX_SECRET_NAME is defined in
@@ -754,6 +755,7 @@ mod tests {
         assert!(is_internal_session_secret_name("e2b_sandbox:i-abc"));
         assert!(is_internal_session_secret_name("deno_sandbox:sb_1"));
         assert!(is_internal_session_secret_name("sprites_sprite:sprite-1"));
+        assert!(is_internal_session_secret_name("modal_sandbox:sb-1"));
         assert!(is_internal_session_secret_name("session_sandbox"));
         assert!(!is_internal_session_secret_name("api_key"));
         assert!(!is_internal_session_secret_name("container_sandbox"));
@@ -962,6 +964,7 @@ mod tests {
             "e2b_sandbox:i-1",
             "deno_sandbox:sb_1",
             "sprites_sprite:sprite-1",
+            "modal_sandbox:sb-1",
         ] {
             storage
                 .set_secret(session_id, name, "trusted")
@@ -976,6 +979,7 @@ mod tests {
             "e2b_sandbox:i-1",
             "deno_sandbox:sb_1",
             "sprites_sprite:sprite-1",
+            "modal_sandbox:sb-1",
         ] {
             let set_result = tool
                 .execute_with_context(

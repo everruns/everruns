@@ -26,6 +26,8 @@ export interface TimelineToolRow {
   id: string;
   label: string;
   completedLabel?: string;
+  /** Model-authored arguments, kept so hook-rewritten `executed_arguments` can sit beside them. */
+  arguments?: Record<string, unknown>;
   result?: ToolCompletedData;
   state: "running" | "waiting" | "completed" | "error";
 }
@@ -179,6 +181,8 @@ export function buildToolActivityGroups(
           summariesById.get(call.id) ?? { id: call.id, name: call.name },
           "waiting",
         );
+        const row = group.rows.find((candidate) => candidate.id === call.id);
+        if (row) row.arguments = call.arguments;
       }
       // Keep mixed request events renderable so specialized cards (for example,
       // setup_connection or confirm_url_elicitation) can appear alongside the
@@ -202,6 +206,7 @@ export function buildToolActivityGroups(
         "running",
       );
       if (toolStarted.narration) row.label = toolStarted.narration;
+      row.arguments = toolStarted.tool_call.arguments;
       groupKeyByToolCallId.set(id, key);
       narratedToolCallIds.add(id);
       groupedEventIds.add(event.id);

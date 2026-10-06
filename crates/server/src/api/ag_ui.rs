@@ -1121,8 +1121,7 @@ struct AgUiStreamState {
 /// The public channel's projection: reasoning only when the channel opts in,
 /// tool activity as the channel's fixed text (never tool names or arguments),
 /// and failures through the shared `PublicError` sanitizer so internal codes,
-/// provider strings, model ids and quota state never reach the wire. See
-/// `knowledge/execution/public-endpoints.md`.
+/// provider strings, model ids and quota state never reach the wire.
 fn public_projection_policy(config: &AgUiChannelConfig) -> ProjectionPolicy {
     ProjectionPolicy {
         reasoning_visible: config.reasoning_summary_visible,
@@ -1184,8 +1183,8 @@ fn expired_age_seconds(
 }
 
 /// Adapt a sanitized `PublicError` into an AG-UI `RunError` event. All public
-/// error emission on this endpoint must go through here so the contract from
-/// `knowledge/execution/public-endpoints.md` is enforced in one place.
+/// error emission on this endpoint must go through here so sanitization is
+/// enforced in one place.
 fn public_run_error_event(error: PublicError) -> AgUiRunErrorEvent {
     public_run_error(error)
 }

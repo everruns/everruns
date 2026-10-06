@@ -1,11 +1,11 @@
 //! What one Braintrust delivery attempt produced, and how a permanent
 //! rejection is reported.
 //!
-//! Split out of `braintrust.rs`, which is on the source-size ratchet's debt
-//! list and may not grow. The concern is self-contained — one attempt's outcome
-//! plus the small state machine deciding whether a repeating rejection is worth
-//! another error-level event — so it tests without a listener, a mock server or
-//! a runtime clock.
+// Split out of `braintrust.rs`, which is on the source-size ratchet's debt
+// list and may not grow. The concern is self-contained — one attempt's outcome
+// plus the small state machine deciding whether a repeating rejection is worth
+// another error-level event — so it tests without a listener, a mock server or
+// a runtime clock.
 
 use std::sync::Mutex;
 use tokio::time::{self, Duration};

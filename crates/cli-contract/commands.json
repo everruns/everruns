@@ -8307,7 +8307,7 @@
         "long": "overrides",
         "kind": "json",
         "required": false,
-        "help": "Request to fork a session (knowledge/runtime-resources/forking-sessions.md)."
+        "help": "Request to fork a session."
       }
     ],
     "examples": [
@@ -9874,13 +9874,15 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include archived skills."
       },
       {
         "field": "search",
         "long": "search",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Search by name or description (case-insensitive substring match)."
       }
     ],
     "examples": [

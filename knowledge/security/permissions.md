@@ -176,7 +176,7 @@ Every non-GET domain command MUST declare `Command::policy() -> Option<&'static 
 
 1. Define view + manage policies (and dangerous if applicable) as `pub const` in the domain's `mod.rs`.
 2. Declare `fn policy() -> Option<&'static Policy>` on every `Command` impl that isn't a plain GET read.
-3. Thread the resolver through `AppState.ctx()`: pass `self.auth.permission_resolver.clone()` to `Ctx::new` / `Ctx::minimal`.
+3. Serve the module from the shared `ApiState` (`crates/server/src/api/state.rs`). Its `ctx()` takes the resolver from `auth.permission_resolver`, so SaaS overrides apply without per-module wiring.
 4. Add `GET /v1/{resource}/config` endpoint returning `ResourceConfigResponse` for UI gating.
 5. Wire UI with `usePolicies(resource)` hook.
 

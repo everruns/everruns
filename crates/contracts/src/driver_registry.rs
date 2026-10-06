@@ -402,7 +402,7 @@ pub use crate::provider::DriverId;
 
 /// Extra provider-specific authentication/metadata beyond an API key.
 ///
-/// Built-in providers ignore this; embedder-defined ([`DriverId::External`])
+/// Built-in providers ignore this; embedder-defined ([`DriverId::external`])
 /// providers use it to carry OAuth tokens, account ids, or arbitrary extras
 /// their driver factory needs.
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -639,8 +639,7 @@ pub enum EmbeddingsDriverError {
 /// Driver trait for text embedding services.
 ///
 /// Implementors call their provider's embedding API and return dense float
-/// vectors. Used by knowledge-base hybrid retrieval (see knowledge/runtime-resources/knowledge-bases.md
-/// and knowledge/foundations/providers.md phase 6).
+/// vectors. Used by knowledge-base hybrid retrieval.
 #[async_trait]
 pub trait EmbeddingsDriver: Send + Sync {
     /// Embed a batch of texts and return one vector per input.
@@ -873,7 +872,7 @@ impl ChatDriver for RequestOptionsDriver {
     }
 }
 
-/// A typed service a provider driver can offer (see knowledge/foundations/providers.md).
+/// A typed service a provider driver can offer.
 ///
 /// Declared in code by each driver, never stored in the database. Only `Chat`
 /// has a driver trait today; the set is additive and new kinds gain factories
@@ -915,8 +914,7 @@ pub type ProviderFactory = Arc<dyn Fn(&DriverConfig) -> crate::Provider + Send +
 /// A registered provider driver: identity, declared services, the credential
 /// shape its providers must supply, and per-service factories.
 ///
-/// The descriptor is the code-side unit of the providers domain model
-/// (knowledge/foundations/providers.md): one descriptor per driver id, instantiated as many
+/// The descriptor is the code-side unit of the providers domain model: one descriptor per driver id, instantiated as many
 /// org-scoped providers.
 #[derive(Clone)]
 pub struct DriverDescriptor {

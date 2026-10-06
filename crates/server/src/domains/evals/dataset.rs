@@ -5,11 +5,8 @@
 // each case's model-view messages, then calls into here to filter, redact, and
 // serialize one NDJSON record per surviving case.
 
-use std::sync::LazyLock;
-
 use crate::records::eval::{CaseResultStatus, EvalCaseResult, EvalRun};
 use everruns_core::message::{ContentPart, RuntimeMessage, RuntimeMessageRole};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use utoipa::ToSchema;
@@ -27,7 +24,7 @@ pub enum DatasetFormat {
     Sft,
     /// One complete ATIF (Agent Trajectory Interchange Format) trajectory per
     /// line, folded from the case session's event log, with reward and case
-    /// identity in root `extra`. See `knowledge/evaluation/atif-adoption.md`.
+    /// identity in root `extra`.
     Atif,
 }
 
@@ -81,69 +78,10 @@ const CONTENT_KEYS: [&str; 7] = [
     "base64",
 ];
 
-/// Structured JSON keys whose values are credentials even when the value itself
-/// does not match a standalone token pattern.
-/// Substrings (matched against the normalized, separator-stripped, lowercased
-/// key) that mark a JSON field as carrying a credential. `contains` matching is
-/// used so compound names like `openai_api_key`, `client_secret`, or `x-api-key`
-/// are covered, not just the bare words.
-const SECRET_KEY_SUBSTRINGS: [&str; 9] = [
-    "apikey",
-    "accesskey",
-    "secretkey",
-    "privatekey",
-    "secret",
-    "password",
-    "passwd",
-    "credential",
-    "authorization",
-];
-
-/// High-signal credential patterns scrubbed from every exported string, always.
-/// Deliberately conservative to avoid mangling legitimate content.
-static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    [
-        // OpenAI / Anthropic style keys: sk-..., sk-ant-...
-        r"\bsk-[A-Za-z0-9_-]{16,}\b",
-        // AWS access key id
-        r"\bAKIA[0-9A-Z]{16}\b",
-        // GitHub tokens
-        r"\bgh[pousr]_[A-Za-z0-9]{20,}\b",
-        // Bearer tokens
-        r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{16,}",
-        // key/secret/password/token assignments: api_key=..., "secret": "..."
-        r#"(?i)\b(api[_-]?key|secret|password|passwd|token|access[_-]?key)\b\s*["']?\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{6,}"#,
-    ]
-    .iter()
-    .map(|p| Regex::new(p).expect("valid secret regex"))
-    .collect()
-});
-
-pub(crate) const REDACTED: &str = "[REDACTED]";
-
-/// Scrub credential-looking substrings from a single string.
-pub fn scrub_secrets(input: &str) -> String {
-    let mut out = input.to_string();
-    for re in SECRET_PATTERNS.iter() {
-        out = re.replace_all(&out, REDACTED).into_owned();
-    }
-    out
-}
-
-fn is_secret_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
-    if SECRET_KEY_SUBSTRINGS
-        .iter()
-        .any(|needle| normalized.contains(needle))
-    {
-        return true;
-    }
-    // Redact `token` and any `*token` suffix (accesstoken, refreshtoken,
-    // idtoken, sessiontoken, apitoken, ...) while leaving token *count* fields
-    // like `input_tokens` / `output_tokens` (plural, `*tokens`) intact so we do
-    // not corrupt exported usage metadata.
-    normalized.ends_with("token")
-}
+// Value patterns and credential key names live in contracts so the engine
+// scrubs `tool.completed` executed arguments with the same lists (EVE-1216).
+use everruns_contracts::secret_scrub::is_credential_key;
+pub use everruns_contracts::secret_scrub::{REDACTED, scrub_secrets};
 
 /// Recursively scrub secrets in every string leaf of `value`. When
 /// `redact_content` is set, content-bearing fields are first replaced wholesale
@@ -159,7 +97,9 @@ pub(crate) fn sanitize_value(value: &mut Value, redact_content: bool) {
         }
         Value::Object(map) => {
             for (key, val) in map.iter_mut() {
-                if is_secret_key(key) || (redact_content && CONTENT_KEYS.contains(&key.as_str())) {
+                if is_credential_key(key)
+                    || (redact_content && CONTENT_KEYS.contains(&key.as_str()))
+                {
                     *val = Value::String(REDACTED.to_string());
                 } else {
                     sanitize_value(val, redact_content);
@@ -484,6 +424,58 @@ mod tests {
         assert!(scrubbed.contains(REDACTED));
         assert!(!scrubbed.contains("sk-abcdef0123456789"));
         assert!(!scrubbed.contains("AKIAABCDEFGHIJKLMNOP"));
+    }
+
+    #[test]
+    fn export_and_executed_arguments_redact_the_same_keys() {
+        // One credential-key list (EVE-1216): the export sanitizer and the
+        // engine's `tool.completed` executed arguments must agree key by key.
+        let keys = [
+            "api_key",
+            "X-Api-Key",
+            "access-key",
+            "secret_key",
+            "private_key",
+            "client_secret",
+            "password",
+            "passwd",
+            "credentials",
+            "Authorization",
+            "Cookie",
+            "access_token",
+            "refreshToken",
+            "max_tokens",
+            "input_tokens",
+            "url",
+            "command",
+        ];
+        let args = Value::Object(
+            keys.iter()
+                .map(|k| (k.to_string(), json!("plain")))
+                .collect(),
+        );
+
+        let mut exported = args.clone();
+        sanitize_value(&mut exported, false);
+        let recorded = everruns_core::events::ToolCompletedData::success(
+            "call_1".into(),
+            "tool".into(),
+            Vec::new(),
+            None,
+        )
+        .with_executed_arguments(&json!({}), &args)
+        .executed_arguments
+        .expect("rewritten arguments are recorded");
+
+        assert_eq!(exported, recorded);
+        for key in keys {
+            let expected = if ["max_tokens", "input_tokens", "url", "command"].contains(&key) {
+                "plain"
+            } else {
+                REDACTED
+            };
+            assert_eq!(exported[key], json!(expected), "{key}");
+        }
     }
 
     #[test]

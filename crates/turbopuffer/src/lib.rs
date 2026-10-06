@@ -4,7 +4,7 @@
 //! Implements [`everruns_contracts::vector_store::VectorStore`] against Turbopuffer's
 //! v2 HTTP API (<https://turbopuffer.com/docs>). This is the reference
 //! production backend; the in-memory store stays the default and Turbopuffer is
-//! opt-in via `TURBOPUFFER_API_KEY` (see `crates/server/src/platform.rs`).
+//! opt-in via `TURBOPUFFER_API_KEY`.
 //!
 //! Part of the [Everruns](https://everruns.com) ecosystem.
 //!
@@ -581,7 +581,7 @@ mod tests {
     /// Live test: hits the real Turbopuffer API. Gated behind the
     /// `turbopuffer-live-tests` feature so it never runs in the default suite.
     /// When the feature is on but `TURBOPUFFER_API_KEY` is missing/empty the
-    /// test fails closed (panics), per knowledge/integrations/integrations.md parity.
+    /// test fails closed (panics).
     #[cfg(feature = "turbopuffer-live-tests")]
     #[tokio::test]
     async fn live_roundtrip() {

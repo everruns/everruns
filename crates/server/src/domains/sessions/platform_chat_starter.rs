@@ -6,7 +6,7 @@ use crate::domains::common::{CommandError, classify_anyhow};
 
 pub(crate) const PLATFORM_CHAT_STARTER_TAG: &str = "platform-chat-starter";
 /// Unique index that settles concurrent starter creation
-/// (migrations/144_platform_chat_starter_unique.sql).
+/// The database enforces this uniqueness.
 pub(crate) const PLATFORM_CHAT_STARTER_UNIQUE_INDEX: &str =
     "idx_sessions_platform_chat_starter_owner";
 

@@ -23,8 +23,7 @@ use crate::runtime::user_hook_types::{HookEvent, HookId, HookOutcome};
 /// Envelope handed to every executor. For bash hooks this is serialized
 /// into `$EVERRUNS_HOOK_PAYLOAD_JSON` / `$EVERRUNS_HOOK_PAYLOAD_PATH`;
 /// other backends (webhook, wasm, blueprint) consume it in their own
-/// format. `data` is event-specific; see `knowledge/runtime-resources/user-hooks.md` for the
-/// per-event shape.
+/// format. `data` is event-specific.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookPayload {
     pub event: HookEvent,
@@ -139,8 +138,8 @@ pub const HOOK_PAYLOAD_WORKSPACE_DIR: &str = "/workspace/.hooks";
 pub const HOOK_PAYLOAD_DIR: &str = "/.hooks";
 
 /// Build the standard env vars every bash hook receives — the canonical
-/// `EVERRUNS_HOOK_PAYLOAD_JSON` plus the convenience scalars documented in
-/// `knowledge/runtime-resources/user-hooks.md`. Returns the env in declaration order so dispatcher
+/// `EVERRUNS_HOOK_PAYLOAD_JSON` plus convenience scalars for the session, agent,
+/// event, and tool. Returns the env in declaration order so dispatcher
 /// logs render deterministically.
 pub fn standard_hook_env(
     payload: &HookPayload,

@@ -150,10 +150,13 @@ channels survive.
 ## UI and HTTP API
 
 In **Agents → Import**, select a ZIP for a complete folder, or a self-contained
-TOML, YAML, JSON or Markdown file. Review instructions, model/harness defaults,
-capabilities, files and permissions, skills, MCP servers and channels before
-applying. For an existing destination, review the current/imported values and
-added, removed or updated files. Validation failures block importing. Export offers a complete ZIP or Markdown.
+TOML, YAML, JSON or Markdown file. The preview follows the Agent view: rendered
+instructions with a **Source** toggle, plus model/harness defaults and capabilities
+in the settings column. Open **Files** for starting files, permissions and skills,
+**Settings** for MCP servers and runtime settings, and **Integrations** for channels.
+For an existing destination, open **Changes** to review current/imported values
+and added, removed or updated files before applying. Validation failures block
+importing. Export offers a complete ZIP or Markdown.
 
 The HTTP import endpoint accepts raw text or ZIP bytes. Folder references must
 be materialized by a local loader or supplied in ZIP; the server never reads

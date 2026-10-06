@@ -3,19 +3,19 @@
 //! Shared turn planning and Input/Reason/Act execution for hosts in the
 //! [Everruns](https://everruns.com) ecosystem.
 //!
-//! [`TurnExecution`] owns the serializable state machine shared by every
-//! execution driver. Given a parsed [`ActivityOutcome`] and host-resolved
-//! [`HostFacts`], it returns the next [`TurnPlan`] and ordered
-//! [`TurnLifecycleEffect`]s. Framework applications use `everruns`; this
+//! [`TurnExecution`](crate::engine::TurnExecution) owns the serializable state machine shared by every
+//! execution driver. Given a parsed [`ActivityOutcome`](crate::engine::ActivityOutcome) and host-resolved
+//! [`HostFacts`](crate::engine::HostFacts), it returns the next [`TurnPlan`](crate::engine::TurnPlan) and ordered
+//! [`TurnLifecycleEffect`](crate::engine::TurnLifecycleEffect)s. Framework applications use `everruns`; this
 //! optional `engine` module lets in-process, durable, and custom hosts share
 //! one turn model.
 //!
 //! Planning is sans I/O: hosts pass resolved facts and perform returned
 //! lifecycle effects. The execution phases are portable async algorithms over
-//! injected core/provider contracts such as [`everruns_core::MessageRetriever`],
-//! [`everruns_core::EventEmitter`], and [`everruns_core::ToolExecutor`]. The
+//! injected core/provider contracts such as [`crate::MessageRetriever`],
+//! [`crate::EventEmitter`], and [`crate::ToolExecutor`]. The
 //! module does not select stores, transports, processes, or deployment services.
-//! [`Execution`] is the driver boundary. Core’s optional host module implements
+//! [`Execution`](crate::engine::Execution) is the driver boundary. Core’s optional host module implements
 //! it with process-local state; the worker’s durable driver checkpoints the
 //! same state between activities scheduled by `everruns-durable`. Both share
 //! phase behavior and turn transitions without an engine-to-host dependency.

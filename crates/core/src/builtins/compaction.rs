@@ -2,7 +2,7 @@
 //!
 //! Configurable context compaction strategy. Users choose between native provider
 //! compaction (e.g., OpenAI /responses/compact) and our own strategies (observation
-//! masking, LLM summarization). See knowledge/runtime-resources/compaction.md.
+//! masking, LLM summarization).
 //!
 //! Design decisions:
 //! - Strategy selection is per-agent/harness via `AgentCapabilityConfig`
@@ -963,7 +963,7 @@ use crate::builtins::driver_registry::{LlmContentPart, Message, MessageContent, 
 /// degrade agent behavior when masked, summarized, or trimmed. The agentskills.io
 /// client implementation guide recommends exempting skill content from pruning.
 ///
-/// See: knowledge/runtime-resources/compaction.md (Tier 3: tool-aware masking), knowledge/project/skills-registry.md
+// Design: knowledge/runtime-resources/compaction.md (Tier 3: tool-aware masking), knowledge/project/skills-registry.md
 const PROTECTED_TOOL_NAMES: &[&str] = &["activate_skill"];
 
 /// Check if a tool result message corresponds to a protected tool.

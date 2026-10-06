@@ -1,7 +1,7 @@
 //! Per-session host MCP tool-discovery cache.
 //!
 //! Mirrors the hosted server's stale-while-revalidate + single-flight tool
-//! cache (`crates/server`, #2131), adapted to the in-process runtime's
+//! cache, adapted to the in-process runtime's
 //! in-memory, per-session lifetime. The in-process runtime rediscovers a
 //! session's scoped MCP servers on every turn (`tools/list` per server). That
 //! is correct but costly: with many configured servers each turn pays repeated

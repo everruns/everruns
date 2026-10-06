@@ -4,9 +4,7 @@
 //! `#[unstable]` attributes (nightly-only `staged_api`), so this crate marks
 //! stability in rustdoc instead: each public module carries a one-line
 //! `Stability:` banner at the top of its docs, and this module defines what
-//! each tier means. `grep -rn "Stability:" crates/everruns/src` lists every
-//! marker; the maintained policy lives in
-//! `knowledge/framework/api-stability.md`.
+//! each tier means.
 //!
 //! | Tier | Promise |
 //! |------|---------|

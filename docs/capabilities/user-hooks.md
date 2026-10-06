@@ -13,7 +13,6 @@ appliesTo: [platform, cloud]
 | **Features** | None |
 | **Dependencies** | None |
 | **Risk** | High |
-| **Spec** | [knowledge/runtime-resources/user-hooks.md](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md) |
 
 User Hooks let you inject shell commands at six well-defined points in the
 agent execution lifecycle. The runtime hands each hook a structured JSON
@@ -66,8 +65,7 @@ wire-in lands in follow-up changes (see "What's not yet wired" below).
 | `turn_end` | Turn finishes | no | none |
 | `session_end` | Session close/archive | no | none |
 
-See [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md)
-for the per-event JSON payload shape and full block / mutate semantics.
+See [Bash hook contract](#bash-hook-contract) for block and mutation responses.
 
 ## Configuration
 
@@ -243,9 +241,7 @@ To mute a bundled hook, list its `HookId` under
 Any built-in capability can contribute hook specs to your agent by
 overriding `Capability::user_hooks_with_config` and returning a list of
 `UserHookSpec`s. The `guarded-bash-demo` seed agent is a live example:
-its `user_hooks` capability config (in
-[`crates/server/src/seed.rs`](https://github.com/everruns/everruns/blob/main/crates/server/src/seed.rs))
-ships a `pre_tool_use` hook that refuses destructive `rm -rf`
+its `user_hooks` capability config ships a `pre_tool_use` hook that refuses destructive `rm -rf`
 invocations before the bash tool ever runs, with no extra setup.
 
 Capability-contributed hooks ride the trust gate of enabling the
@@ -255,11 +251,9 @@ Operators can mute any individual contribution via
 
 > Declarative-capability hook bundles (one POST to register, many agents
 > to reuse) are on the roadmap and are not yet wired into the declarative
-> capability schema. See
-> [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md)
-> for the deferred contract.
+> capability schema.
 
-See [`examples/hook-bundles/`](https://github.com/everruns/everruns/tree/main/examples/hook-bundles)
+See the [hook bundle examples](https://github.com/everruns/everruns/tree/main/examples/hook-bundles)
 for ready-to-paste user-config bundle JSON.
 
 ## Examples
@@ -475,7 +469,6 @@ hook's `user_message`.
 
 ## See also
 
-- [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md), full contract
-- [`knowledge/execution/capabilities.md`](https://github.com/everruns/everruns/blob/main/knowledge/execution/capabilities.md), capability framework
-- [`knowledge/security/threat-model.md`](https://github.com/everruns/everruns/blob/main/knowledge/security/threat-model.md), TM-HOOK entries
+- [Capabilities](/capabilities/), compose tools and runtime behavior
+- [Guardrails](/capabilities/guardrails/), runtime safeguards
 - [Bashkit Shell](/capabilities/bashkit-shell/), the sandbox that runs hook commands

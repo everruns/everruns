@@ -2,7 +2,9 @@
 //! workflows a gone backend left behind.
 //!
 //! These run against `DATABASE_URL` and return early, passing, when it is
-//! unset; a set URL that does not connect fails them. They share the database
+//! unset, unless `EVERRUNS_REQUIRE_POSTGRES_TESTS` is set (CI's durable
+//! PostgreSQL shard sets it), which makes the missing URL a failure. A set
+//! URL that does not connect fails them. They share the database
 //! with whatever else uses it: every session and routing key is fresh, and
 //! nothing is truncated.
 
@@ -26,6 +28,10 @@ use crate::task_store::TaskStore;
 /// The test database, or `None` (the test skips) without `DATABASE_URL`.
 async fn store() -> Option<PostgresWorkflowEventStore> {
     let Ok(url) = std::env::var("DATABASE_URL") else {
+        assert!(
+            !require_postgres(),
+            "EVERRUNS_REQUIRE_POSTGRES_TESTS is set but DATABASE_URL is not"
+        );
         eprintln!("DATABASE_URL is unset; skipping the PostgreSQL durable backend test");
         return None;
     };
@@ -34,6 +40,19 @@ async fn store() -> Option<PostgresWorkflowEventStore> {
             .await
             .expect("DATABASE_URL connects and takes the durable schema"),
     )
+}
+
+/// Whether a missing `DATABASE_URL` fails instead of skipping. Decision: an
+/// env flag, the shape of `EVERRUNS_REQUIRE_LIVE_TESTS`, rather than a cargo
+/// feature, so the CI job that has a database cannot report a vacuous pass.
+/// The facade's `backend_conformance` suite reads the same flag; the check is
+/// repeated there instead of shared because the two crates have no common
+/// test-only dependency to host it.
+fn require_postgres() -> bool {
+    std::env::var("EVERRUNS_REQUIRE_POSTGRES_TESTS").is_ok_and(|v| {
+        let v = v.trim();
+        !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
+    })
 }
 
 async fn runtime(sim: LlmSimConfig) -> (InProcessRuntime, SessionId) {

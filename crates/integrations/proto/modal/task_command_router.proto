@@ -1,0 +1,80 @@
+// Trimmed subset of Modal's per-task command router API.
+//
+// Source: https://github.com/modal-labs/modal-client/blob/main/modal_proto/task_command_router.proto
+// (Apache-2.0). Same rule as api.proto: field numbers, names, and the package
+// are copied verbatim; only what the integration uses is kept. The router runs
+// next to the sandbox, at the URL TaskGetCommandRouterAccess returns, and
+// authenticates with the bearer JWT that call issues.
+
+syntax = "proto3";
+
+package modal.task_command_router;
+
+enum TaskExecStderrConfig {
+  TASK_EXEC_STDERR_CONFIG_DEVNULL = 0;
+  TASK_EXEC_STDERR_CONFIG_PIPE = 1;
+  TASK_EXEC_STDERR_CONFIG_STDOUT = 2;
+}
+
+enum TaskExecStdioFileDescriptor {
+  TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT = 0;
+  TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDERR = 1;
+}
+
+enum TaskExecStdoutConfig {
+  TASK_EXEC_STDOUT_CONFIG_DEVNULL = 0;
+  TASK_EXEC_STDOUT_CONFIG_PIPE = 1;
+}
+
+message TaskExecStartRequest {
+  string task_id = 1;
+  string exec_id = 2;
+  repeated string command_args = 3;
+  TaskExecStdoutConfig stdout_config = 4;
+  TaskExecStderrConfig stderr_config = 5;
+  optional uint32 timeout_secs = 6;
+  optional string workdir = 7;
+  map<string, string> env = 12;
+}
+
+message TaskExecStartResponse { }
+
+message TaskExecStdinWriteRequest {
+  string task_id = 1;
+  string exec_id = 2;
+  uint64 offset = 3;
+  bytes data = 4;
+  bool eof = 5;
+}
+
+message TaskExecStdinWriteResponse { }
+
+message TaskExecStdioReadRequest {
+  string task_id = 1;
+  string exec_id = 2;
+  uint64 offset = 3;
+  TaskExecStdioFileDescriptor file_descriptor = 4;
+}
+
+message TaskExecStdioReadResponse {
+  bytes data = 1;
+}
+
+message TaskExecWaitRequest {
+  string task_id = 1;
+  string exec_id = 2;
+}
+
+message TaskExecWaitResponse {
+  oneof exit_status {
+    int32 code = 1;
+    int32 signal = 2;
+  }
+}
+
+service TaskCommandRouter {
+  rpc TaskExecStart(TaskExecStartRequest) returns (TaskExecStartResponse);
+  rpc TaskExecStdinWrite(TaskExecStdinWriteRequest) returns (TaskExecStdinWriteResponse);
+  rpc TaskExecStdioRead(TaskExecStdioReadRequest) returns (stream TaskExecStdioReadResponse);
+  rpc TaskExecWait(TaskExecWaitRequest) returns (TaskExecWaitResponse);
+}

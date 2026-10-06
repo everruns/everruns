@@ -14,7 +14,6 @@ use std::sync::Arc;
 /// - Log events for debugging
 ///
 /// Events follow a consistent schema: id, type, ts, context, data.
-/// See knowledge/execution/events.md for the full event protocol specification.
 #[async_trait]
 pub trait EventEmitter: Send + Sync {
     /// Emit an event request

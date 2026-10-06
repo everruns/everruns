@@ -6,8 +6,7 @@
 //! runs at the same point and returns citation [`TextAnnotation`]s to attach to
 //! the message text — optionally rewriting the text first (e.g. to strip
 //! citation markers the model emitted). Contributed by citation capabilities
-//! via `Capability::post_output_annotation_hooks_with_config()`. See
-//! `knowledge/runtime-resources/citations.md`.
+//! via `Capability::post_output_annotation_hooks_with_config()`.
 //!
 //! Contract: implementations MUST be internally time-bounded and **fail open** —
 //! any error must yield an empty [`AnnotationResult`] so an annotator outage
@@ -138,7 +137,7 @@ pub async fn collect_annotations(
 /// Contributed by the `citation_verification` capability via
 /// `Capability::citation_verifier_with_config`. Runs once after all annotation
 /// feeds, over the collected annotations — decoupled from the feeds so any feed
-/// can be paired with any verifier (see `knowledge/runtime-resources/citations.md`).
+/// can be paired with any verifier.
 ///
 /// Contract: **fail open** — on any error, return the annotations unchanged
 /// (unverified) rather than dropping them. Implementations must preserve order

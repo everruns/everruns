@@ -1,6 +1,7 @@
 // Org-scoped runtime account management and self-service.
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie).
 
+use crate::api::state::ApiState;
 use crate::auth::runtime::RuntimeAccount;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::virtual_users::types::{
@@ -10,8 +11,6 @@ use crate::domains::virtual_users::{
     VIRTUAL_USER_DANGEROUS, VIRTUAL_USER_MANAGE, VIRTUAL_USER_VIEW,
 };
 use crate::records::VirtualUser;
-use crate::services::CapabilityService;
-use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -19,48 +18,12 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
-use std::sync::Arc;
 
-use super::common::{ErrorResponse, PaginatedResponse, impl_auth_state};
-use super::dispatch::{Dispatchable, impl_dispatchable};
+use super::common::{ErrorResponse, PaginatedResponse};
+use super::dispatch::Dispatchable;
 use crate::domains::common::Command;
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub capability_service: Arc<CapabilityService>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        capability_service: Arc<CapabilityService>,
-        auth: AuthState,
-    ) -> Self {
-        Self {
-            db,
-            capability_service,
-            auth,
-        }
-    }
-
-    /// Build a domain Ctx from this AppState for the given org.
-    pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
-        crate::domains::common::Ctx::new(
-            Caller::from(org),
-            self.db.clone(),
-            self.capability_service.clone(),
-            None,
-            self.auth.permission_resolver.clone(),
-        )
-    }
-}
-
-impl_auth_state!(AppState);
-impl_dispatchable!(AppState);
-
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/virtual-users/config", get(virtual_user_config))
         .route("/v1/virtual-users/me", get(get_me).patch(update_me))
@@ -123,7 +86,7 @@ pub async fn virtual_user_config(
 #[utoipa::path(summary = "Create virtual user.", post, path = "/v1/virtual-users",  request_body = CreateVirtualUserRequest, responses((status = 201, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn create_virtual_user(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreateVirtualUserRequest>,
 ) -> Result<(StatusCode, Json<VirtualUser>), (StatusCode, Json<ErrorResponse>)> {
     state
@@ -135,7 +98,7 @@ pub async fn create_virtual_user(
 #[utoipa::path(summary = "List virtual users.", get, path = "/v1/virtual-users", params(ListVirtualUsersQuery), responses((status = 200, description = "Success", body = PaginatedResponse<VirtualUser>), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn list_virtual_users(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListVirtualUsersQuery>,
 ) -> Result<Json<PaginatedResponse<VirtualUser>>, (StatusCode, Json<ErrorResponse>)> {
     let result = crate::domains::virtual_users::ListVirtualUsers {
@@ -158,7 +121,7 @@ pub async fn list_virtual_users(
 #[utoipa::path(summary = "Get virtual user.", get, path = "/v1/virtual-users/{identity_id}", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn get_virtual_user(
     account: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(identity_id): Path<String>,
 ) -> Result<Json<VirtualUser>, (StatusCode, Json<ErrorResponse>)> {
     if account.permits_self(&identity_id) {
@@ -176,7 +139,7 @@ pub async fn get_virtual_user(
 #[utoipa::path(summary = "Update virtual user.", patch, path = "/v1/virtual-users/{identity_id}", params(("identity_id" = String, Path)), request_body = UpdateVirtualUserRequest, responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn update_virtual_user(
     account: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(identity_id): Path<String>,
     Json(req): Json<UpdateVirtualUserRequest>,
 ) -> Result<Json<VirtualUser>, (StatusCode, Json<ErrorResponse>)> {
@@ -202,7 +165,7 @@ pub async fn update_virtual_user(
 #[utoipa::path(summary = "Delete virtual user.", delete, path = "/v1/virtual-users/{identity_id}", params(("identity_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn delete_virtual_user(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     state
@@ -214,7 +177,7 @@ pub async fn delete_virtual_user(
 #[utoipa::path(summary = "Destroy virtual user.", post, path = "/v1/virtual-users/{identity_id}/delete", params(("identity_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 pub async fn destroy_virtual_user(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     state
@@ -224,7 +187,7 @@ pub async fn destroy_virtual_user(
 }
 
 async fn authorized_profile(
-    state: &AppState,
+    state: &ApiState,
     org: &RuntimeAccount,
     raw: &str,
 ) -> Result<everruns_contracts::typed_id::VirtualUserId, (StatusCode, Json<ErrorResponse>)> {
@@ -261,7 +224,7 @@ async fn authorized_profile(
 #[utoipa::path(summary = "Read the authenticated consumer runtime account.", get, path = "/v1/virtual-users/me",   responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn get_me(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
 ) -> Result<Json<VirtualUser>, (StatusCode, Json<ErrorResponse>)> {
     let id = org.id;
     crate::domains::virtual_users::queries::get_by_id(&state.db, org.org_id, id)
@@ -278,7 +241,7 @@ async fn get_me(
 #[utoipa::path(summary = "Update the runtime profile without changing management identity or lifecycle.", patch, path = "/v1/virtual-users/me",  request_body = UpdateVirtualUserRequest, responses((status = 200, description = "Success", body = VirtualUser), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn update_me(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(mut req): Json<UpdateVirtualUserRequest>,
 ) -> Result<Json<VirtualUser>, (StatusCode, Json<ErrorResponse>)> {
     let id = org.id;
@@ -329,7 +292,7 @@ async fn update_me(
 #[utoipa::path(summary = "List verified external identity bindings.", get, path = "/v1/virtual-users/{identity_id}/bindings", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn list_bindings(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(raw): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let id = authorized_profile(&state, &org, &raw).await?;
@@ -346,7 +309,7 @@ async fn list_bindings(
 #[utoipa::path(summary = "List agent-facing preferences.", get, path = "/v1/virtual-users/{identity_id}/preferences", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn list_preferences(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(raw): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let id = authorized_profile(&state, &org, &raw).await?;
@@ -365,7 +328,7 @@ async fn list_preferences(
 #[utoipa::path(summary = "Read one agent-facing preference.", get, path = "/v1/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn get_preference(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((raw, key)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let id = authorized_profile(&state, &org, &raw).await?;
@@ -384,7 +347,7 @@ async fn get_preference(
 #[utoipa::path(summary = "Set a bounded agent-facing preference.", put, path = "/v1/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)), request_body = crate::api::user_preferences::SetPreferenceRequest, responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn set_preference(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((raw, key)): Path<(String, String)>,
     Json(body): Json<crate::api::user_preferences::SetPreferenceRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
@@ -412,7 +375,7 @@ async fn set_preference(
 #[utoipa::path(summary = "Delete an agent-facing preference.", delete, path = "/v1/virtual-users/{identity_id}/preferences/{key}", params(("identity_id" = String, Path),("key" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn delete_preference(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((raw, key)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let id = authorized_profile(&state, &org, &raw).await?;
@@ -430,7 +393,7 @@ async fn delete_preference(
 #[utoipa::path(summary = "Revoke an external binding and its runtime self authority.", delete, path = "/v1/virtual-users/{identity_id}/bindings/{binding_id}", params(("identity_id" = String, Path),("binding_id" = String, Path)),  responses((status = 204, description = "Success"), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn revoke_binding(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((raw, binding)): Path<(String, uuid::Uuid)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let id = authorized_profile(&state, &org, &raw).await?;
@@ -458,7 +421,7 @@ fn preference_response(row: crate::storage::models::VirtualUserPreferenceRow) ->
 #[utoipa::path(summary = "List recent sessions associated with the authorized virtual user.", get, path = "/v1/virtual-users/{identity_id}/sessions", params(("identity_id" = String, Path)),  responses((status = 200, description = "Success", body = serde_json::Value), (status = 401, description = "Authentication required"), (status = 403, description = "Permission denied")), tag = "virtual-users")]
 async fn list_sessions(
     org: RuntimeAccount,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(raw): Path<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     let id = authorized_profile(&state, &org, &raw).await?;

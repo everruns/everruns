@@ -1,60 +1,134 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 490" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 690" fill="none">
   <style>
     text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
     .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
     .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
-    .header-text { font-size: 11px; fill: #707070; font-weight: 500; letter-spacing: 0.08em; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
     .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
     .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
   </style>
-  <rect width="800" height="490" fill="#FFFFFF"/>
+  <rect width="800" height="690" fill="#FFFFFF"/>
 
-  <text x="190" y="30" text-anchor="middle" class="header-text">LIBRARY APPLICATION</text>
-  <rect x="40" y="45" width="300" height="100" fill="#F5F5F5" stroke="#0A0A0A"/>
-  <text x="190" y="82" text-anchor="middle" class="label">Everruns Framework</text>
-  <text x="190" y="105" text-anchor="middle" class="sublabel">Agent • Engine • Session</text>
-  <text x="190" y="124" text-anchor="middle" class="mono">application-owned, process-local</text>
+  <!-- Callers -->
+  <text x="40" y="30" class="header-text">CALLERS</text>
+  <rect x="40" y="40" width="220" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="150" y="66" text-anchor="middle" class="label">Framework app</text>
+  <text x="150" y="84" text-anchor="middle" class="sublabel">everruns::Engine • Session</text>
+  <text x="150" y="101" text-anchor="middle" class="mono">durable feature: opt-in</text>
 
-  <text x="610" y="30" text-anchor="middle" class="header-text">DISTRIBUTED PRODUCT</text>
-  <rect x="460" y="45" width="300" height="100" fill="#F5F5F5" stroke="#0A0A0A"/>
-  <text x="610" y="82" text-anchor="middle" class="label">Everruns Platform</text>
-  <text x="610" y="105" text-anchor="middle" class="sublabel">Server • Worker</text>
-  <text x="610" y="124" text-anchor="middle" class="mono">PostgreSQL-backed orchestration</text>
+  <rect x="290" y="40" width="220" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="66" text-anchor="middle" class="label">Platform server</text>
+  <text x="400" y="84" text-anchor="middle" class="sublabel">schedules turns</text>
+  <text x="400" y="101" text-anchor="middle" class="mono">AgentRunner → DurableRunner</text>
 
-  <line x1="190" y1="145" x2="190" y2="219" stroke="#0A1636" stroke-width="1.5"/>
-  <polygon points="185,219 190,229 195,219" fill="#0A1636"/>
-  <text x="202" y="188" class="arrow-label">create / resume / run</text>
+  <rect x="540" y="40" width="220" height="72" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="650" y="66" text-anchor="middle" class="label">Platform worker</text>
+  <text x="650" y="84" text-anchor="middle" class="sublabel">claims steps over gRPC</text>
+  <text x="650" y="101" text-anchor="middle" class="mono">WorkerRuntimeHost</text>
 
-  <line x1="610" y1="145" x2="610" y2="219" stroke="#0A1636" stroke-width="1.5"/>
-  <polygon points="605,219 610,229 615,219" fill="#0A1636"/>
-  <text x="622" y="181" class="arrow-label">schedule / checkpoint</text>
-  <text x="622" y="195" class="arrow-label">/ retry</text>
+  <!-- Callers to the seam -->
+  <line x1="200" y1="112" x2="200" y2="160" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="195,160 200,170 205,160" fill="#0A1636"/>
+  <text x="212" y="145" class="arrow-label">create / resume / send</text>
 
-  <text x="70" y="219" class="header-text" fill="#1B7F4B">IMMEDIATE</text>
-  <rect x="70" y="230" width="240" height="90" fill="#F5F5F5" stroke="#0A0A0A"/>
-  <rect x="70" y="230" width="5" height="90" fill="#1B7F4B"/>
-  <text x="190" y="266" text-anchor="middle" class="label">core::host</text>
-  <text x="190" y="290" text-anchor="middle" class="mono">InProcessExecution</text>
-  <text x="190" y="307" text-anchor="middle" class="sublabel">immediate adapter</text>
+  <line x1="400" y1="112" x2="400" y2="160" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,160 400,170 405,160" fill="#0A1636"/>
+  <text x="412" y="145" class="arrow-label">start_turn</text>
 
-  <text x="490" y="219" class="header-text" fill="#B45309">DURABLE</text>
-  <rect x="490" y="230" width="240" height="90" fill="#F5F5F5" stroke="#0A0A0A"/>
-  <rect x="490" y="230" width="5" height="90" fill="#B45309"/>
-  <text x="610" y="266" text-anchor="middle" class="label">everruns-durable</text>
-  <text x="610" y="290" text-anchor="middle" class="mono">DurableExecution</text>
-  <text x="610" y="307" text-anchor="middle" class="sublabel">checkpointed adapter</text>
+  <!-- TurnBackend seam -->
+  <text x="40" y="160" class="header-text">CORE HOST</text>
+  <rect x="40" y="170" width="470" height="70" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="40" y="170" width="470" height="4" fill="#0A1636"/>
+  <text x="275" y="198" text-anchor="middle" class="label">TurnBackend</text>
+  <text x="275" y="216" text-anchor="middle" class="sublabel">start_turn • cancel • is_running • active_count</text>
+  <text x="275" y="231" text-anchor="middle" class="mono">everruns-core host, experimental</text>
 
-  <line x1="190" y1="320" x2="190" y2="384" stroke="#0A1636" stroke-width="1.5"/>
-  <line x1="610" y1="320" x2="610" y2="384" stroke="#0A1636" stroke-width="1.5"/>
-  <polygon points="185,384 190,394 195,384" fill="#0A1636"/>
-  <polygon points="605,384 610,394 615,384" fill="#0A1636"/>
-  <text x="202" y="356" class="arrow-label">implements Execution</text>
-  <text x="622" y="356" class="arrow-label">implements Execution</text>
+  <!-- Seam to backends -->
+  <line x1="150" y1="240" x2="150" y2="290" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="145,290 150,300 155,290" fill="#0A1636"/>
+  <text x="162" y="262" class="arrow-label">default</text>
 
-  <text x="400" y="384" text-anchor="middle" class="header-text">SHARED EXECUTION KERNEL</text>
-  <rect x="130" y="395" width="540" height="80" fill="#F5F5F5" stroke="#0A0A0A"/>
-  <rect x="130" y="395" width="540" height="4" fill="#0A1636"/>
-  <text x="400" y="426" text-anchor="middle" class="label">core::engine</text>
-  <text x="400" y="449" text-anchor="middle" class="sublabel">Execution • TurnExecution • Input / Reason / Act</text>
-  <text x="400" y="466" text-anchor="middle" class="mono">one turn state machine and event order</text>
+  <line x1="400" y1="240" x2="400" y2="290" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,290 400,300 405,290" fill="#0A1636"/>
+  <text x="412" y="262" class="arrow-label">durable backend</text>
+
+  <!-- Immediate backend -->
+  <text x="162" y="292" class="header-text" style="fill:#1B7F4B">IMMEDIATE</text>
+  <rect x="40" y="300" width="220" height="80" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="40" y="300" width="5" height="80" fill="#1B7F4B"/>
+  <text x="150" y="330" text-anchor="middle" class="label">InProcessBackend</text>
+  <text x="150" y="349" text-anchor="middle" class="sublabel">runs on the caller's task</text>
+  <text x="150" y="366" text-anchor="middle" class="mono">InProcessRuntime</text>
+
+  <!-- Durable backend crate -->
+  <text x="412" y="292" class="header-text" style="fill:#B45309">DURABLE, EXPERIMENTAL</text>
+  <rect x="290" y="300" width="470" height="140" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="290" y="300" width="5" height="140" fill="#B45309"/>
+  <text x="482" y="324" text-anchor="middle" class="label">everruns-durable-engine</text>
+
+  <rect x="305" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="375" y="364" text-anchor="middle" class="label">DurableBackend</text>
+  <text x="375" y="383" text-anchor="middle" class="sublabel">facade sessions</text>
+  <text x="375" y="400" text-anchor="middle" class="mono">memory or postgres</text>
+
+  <rect x="455" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="525" y="364" text-anchor="middle" class="label">DurableRunner</text>
+  <text x="525" y="383" text-anchor="middle" class="sublabel">server-persisted input</text>
+  <text x="525" y="400" text-anchor="middle" class="mono">TurnBackend impl</text>
+
+  <!-- Worker straight to the driver (drawn over the crate box) -->
+  <line x1="675" y1="112" x2="675" y2="330" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="670,330 675,340 680,330" fill="#0A1636"/>
+  <text x="687" y="190" class="arrow-label">claims steps,</text>
+  <text x="687" y="204" class="arrow-label">gRPC TaskStore</text>
+
+  <rect x="605" y="340" width="140" height="85" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="675" y="364" text-anchor="middle" class="label">TurnTaskDriver</text>
+  <text x="675" y="383" text-anchor="middle" class="sublabel">one step per task</text>
+  <text x="675" y="400" text-anchor="middle" class="mono">input, reason, act</text>
+  <text x="675" y="414" text-anchor="middle" class="mono">checkpoint each step</text>
+
+  <!-- Shared kernel -->
+  <line x1="150" y1="380" x2="150" y2="470" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="145,470 150,480 155,470" fill="#0A1636"/>
+  <text x="162" y="420" class="arrow-label">drives each step</text>
+
+  <line x1="310" y1="440" x2="310" y2="460" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="310" y1="460" x2="210" y2="460" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="210" y1="460" x2="210" y2="480" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="218" y="453" class="mono">same kernel</text>
+
+  <text x="40" y="472" class="header-text">KERNEL</text>
+  <rect x="40" y="480" width="220" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <rect x="40" y="480" width="220" height="4" fill="#0A1636"/>
+  <text x="150" y="510" text-anchor="middle" class="label">core::engine</text>
+  <text x="150" y="530" text-anchor="middle" class="sublabel">Input / Reason / Act</text>
+  <text x="150" y="548" text-anchor="middle" class="mono">Execution • TurnExecution</text>
+
+  <!-- Generic durable engine -->
+  <line x1="525" y1="440" x2="525" y2="470" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="520,470 525,480 530,470" fill="#0A1636"/>
+  <text x="537" y="463" class="arrow-label">TaskStore / WorkflowEventStore</text>
+
+  <rect x="290" y="480" width="470" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="525" y="505" text-anchor="middle" class="label">everruns-durable</text>
+  <text x="525" y="524" text-anchor="middle" class="sublabel">task queue • event log • signals • timers • child workflows</text>
+  <text x="525" y="540" text-anchor="middle" class="sublabel">worker registry • DLQ • circuit breakers • schedules • Workflow executor</text>
+  <text x="525" y="558" text-anchor="middle" class="mono">generic engine, no everruns-* dependencies</text>
+
+  <!-- Stores -->
+  <line x1="400" y1="570" x2="400" y2="600" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="395,600 400,610 405,600" fill="#0A1636"/>
+  <line x1="650" y1="570" x2="650" y2="600" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="645,600 650,610 655,600" fill="#0A1636"/>
+
+  <text x="290" y="602" class="header-text">STORES</text>
+  <rect x="290" y="610" width="220" height="60" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="635" text-anchor="middle" class="label">In-memory store</text>
+  <text x="400" y="654" text-anchor="middle" class="mono">InMemoryWorkflowEventStore</text>
+
+  <rect x="540" y="610" width="220" height="60" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="650" y="635" text-anchor="middle" class="label">PostgreSQL store</text>
+  <text x="650" y="654" text-anchor="middle" class="mono">PostgresWorkflowEventStore</text>
 </svg>

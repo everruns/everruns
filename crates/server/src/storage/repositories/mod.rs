@@ -217,7 +217,7 @@ pub struct Database {
     background_pool: PgPool,
     /// Optional S3-compatible blob backend. When set, file/image content bytes
     /// are offloaded to the object store and these tables hold only metadata +
-    /// a pointer (knowledge/runtime-resources/object-storage.md). `None` keeps bytes inline in
+    /// a pointer. `None` keeps bytes inline in
     /// PostgreSQL (default behavior).
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
 }

@@ -257,48 +257,48 @@ cargo add everruns --features openai,bashkit,web-fetch,mcp
 
 ## Examples
 
-Every example imports only `everruns`. The [example catalog](examples/README.md)
+Every example imports only `everruns`. The [example catalog](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/README.md)
 includes the exact command for each one.
 
 ### Start here
 
-- [`hello`](examples/hello.rs) — a small GPT-5.6 Terra agent with a typed tool
+- [`hello`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) — a small GPT-5.6 Terra agent with a typed tool
   and live events.
-- [`production_agent`](examples/production_agent.rs) — defensive tool
+- [`production_agent`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/production_agent.rs) — defensive tool
   boundaries and a multi-turn support agent.
-- [`engine_sessions`](examples/engine_sessions.rs) — engine ownership,
+- [`engine_sessions`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/engine_sessions.rs) — engine ownership,
   isolated sessions, and resume.
-- [`live_session`](examples/live_session.rs) — non-blocking sends, steering,
+- [`live_session`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/live_session.rs) — non-blocking sends, steering,
   and waiting.
-- [`direct_llm`](examples/direct_llm.rs) — one-shot, builder, and streamed
+- [`direct_llm`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/direct_llm.rs) — one-shot, builder, and streamed
   model calls with no agent.
 
 ### Tools, capabilities, and orchestration
 
-- [`capability_configuration`](examples/capability_configuration.rs) — typed,
+- [`capability_configuration`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/capability_configuration.rs) — typed,
   code-defined, and dynamic capabilities through one API.
-- [`advanced_capability`](examples/advanced_capability.rs) — reusable tools,
+- [`advanced_capability`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/advanced_capability.rs) — reusable tools,
   metadata, progress, typed results, and structured errors.
-- [`subagents`](examples/subagents.rs) — concurrent child agents coordinated by
+- [`subagents`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/subagents.rs) — concurrent child agents coordinated by
   a parent agent.
-- [`github_monitor`](examples/github_monitor.rs) — background work that wakes
+- [`github_monitor`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/github_monitor.rs) — background work that wakes
   an agent when a pull request check completes.
-- [`session_work`](examples/session_work.rs) — session-owned tasks, delivery,
+- [`session_work`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/session_work.rs) — session-owned tasks, delivery,
   and completion wakes.
 
 ### Control, state, and observability
 
-- [`observe_and_cancel`](examples/observe_and_cancel.rs) — event streaming and
+- [`observe_and_cancel`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/observe_and_cancel.rs) — event streaming and
   cooperative cancellation.
-- [`canonical_events`](examples/canonical_events.rs) — bounded canonical event recording
+- [`canonical_events`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/canonical_events.rs) — bounded canonical event recording
   and typed rendering.
-- [`lifecycle_hooks`](examples/lifecycle_hooks.rs) — awaited agent, turn, tool,
+- [`lifecycle_hooks`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/lifecycle_hooks.rs) — awaited agent, turn, tool,
   and completion handlers.
-- [`session_history`](examples/session_history.rs) — durable resume and bounded
+- [`session_history`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/session_history.rs) — durable resume and bounded
   history pages.
-- [`workspace_policy`](examples/workspace_policy.rs) — portable read/write
+- [`workspace_policy`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_policy.rs) — portable read/write
   scopes and trusted starter files.
-- [`workspace_heads`](examples/workspace_heads.rs) — isolated Git heads,
+- [`workspace_heads`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_heads.rs) — isolated Git heads,
   environments, and durable workspace binding.
 
 ## Documentation

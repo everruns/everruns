@@ -18,6 +18,13 @@ the process, give it a directory that persists.
 `LocalConfig` needs the `local` feature. [Sessions](/framework/sessions/#persistence)
 covers the full trade-off.
 
+The experimental `durable` feature changes how turns run, not where sessions
+live: `durable::Backend::memory()` needs nothing extra, and
+`durable::Backend::postgres(store)` needs a PostgreSQL database for its turn
+queue. Engines in several processes may share that database; each one runs
+only its own sessions' steps. See
+[Durable turns (experimental)](/framework/sessions/#durable-turns-experimental).
+
 For a deployment that keeps local state:
 
 - **One process per data directory.** The local profile is built for one
@@ -87,7 +94,7 @@ process exits. See [Observability](/framework/observability/).
 
 A multi-stage build keeps the toolchain out of the runtime image. This follows
 the Dockerfile in
-[`examples/serve/agentcore`](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore):
+[AgentCore app](https://github.com/everruns/everruns/tree/main/examples/serve/agentcore):
 
 ```dockerfile
 FROM rust:1-bookworm AS build

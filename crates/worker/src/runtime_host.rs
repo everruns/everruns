@@ -283,6 +283,13 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
         self.write_behind.flush().await;
     }
 
+    /// Share the phase's setup reads with the turn's other phases on this
+    /// worker (see `turn_reads`). Call before `prefetching`.
+    pub fn with_turn_reads(mut self, turn: crate::turn_reads::TurnSlot) -> Self {
+        self.reads = self.reads.with_turn(turn);
+        self
+    }
+
     /// Start the phase's setup reads now, concurrently (see `phase_reads`).
     pub fn prefetching(self, ids: Option<crate::phase_reads::PhaseIds>) -> Self {
         if let Some(ids) = ids {

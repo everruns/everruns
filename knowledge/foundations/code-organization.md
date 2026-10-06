@@ -122,9 +122,9 @@ boundary and keeps Framework/provider dependency trees exporter-free.
 `everruns-durable` is a generic durable-execution engine with no `everruns-*`
 normal or build dependency; it knows workflows, activities, tasks, signals and
 schedules, not agents or turns. Agent semantics on top of it (the checkpointed
-`DurableExecution` turn driver, turn signal types, idempotent waiting-turn
-resolution tasks, and the `turn.sealed` projection of a sealed task) live in
-`everruns-worker` and `everruns-server`. `scripts/lib/check-durable-isolation.sh`
+`DurableExecution` turn driver and `TurnTaskDriver`, turn signal types, and
+idempotent waiting-turn resolution tasks) live in `everruns-durable-engine`;
+the `turn.sealed` projection of a sealed task lives in `everruns-server`. `scripts/lib/check-durable-isolation.sh`
 (pre-push + CI) enforces the boundary.
 
 Environment-backed capability implementations live outside `everruns-core`.

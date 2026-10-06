@@ -18,8 +18,8 @@ pub const KNOWLEDGE_BASE_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgSettingsManage)],
 };
 
-/// Allowed entry kinds. Mirrors the CHECK constraint in
-/// `crates/server/migrations/032_knowledge_bases.sql`.
+/// Allowed entry kinds. Matches the database CHECK constraint.
+// Migration: crates/server/migrations/032_knowledge_bases.sql.
 pub const ENTRY_KINDS: &[&str] = &["note", "table", "business", "query", "runbook"];
 
 /// Hard cap on entry body size, matching the SQL `octet_length(body) <= 65536`

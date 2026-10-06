@@ -1,10 +1,10 @@
 //! The worker's org-scoped command transport.
 //!
-//! `GrpcAdapter`'s bridge onto `ExecuteCommand`, shared by the two surfaces
-//! that reach the server through domain commands rather than bespoke RPCs:
-//! `grpc_sqldb_adapter` and `grpc_files_adapter`. Its own module because it is
-//! the mechanism both depend on, and because `grpc_adapters.rs` is on the
-//! source-size ratchet's debt list.
+// `GrpcAdapter`'s bridge onto `ExecuteCommand`, shared by the two surfaces
+// that reach the server through domain commands rather than bespoke RPCs:
+// `grpc_sqldb_adapter` and `grpc_files_adapter`. Its own module because it is
+// the mechanism both depend on, and because `grpc_adapters.rs` is on the
+// source-size ratchet's debt list.
 
 use crate::grpc_adapters::{
     COMMAND_API_VERSION_V1, GrpcAdapter, grpc_missing_field, grpc_status_to_error, uuid_to_proto,

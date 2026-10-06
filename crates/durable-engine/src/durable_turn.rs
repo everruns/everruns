@@ -24,8 +24,7 @@ pub const USER_MESSAGE: &str = "user_message";
 /// waiting resolution (tool results, approvals, answers) is claimed.
 ///
 /// Several paths may race to resume the same resolution, so these tasks
-/// enqueue idempotently per `(workflow_id, activity_id)`. Migration
-/// `143_parked_turn_resolution_recovery.sql` backs that with a unique index
+/// enqueue idempotently per `(workflow_id, activity_id)`. A unique index backs this
 /// over exactly this prefix, so the prefix is part of the data contract.
 pub const WAITING_TURN_RESOLUTION_ACTIVITY_PREFIX: &str = "waiting_turn_resolution_";
 

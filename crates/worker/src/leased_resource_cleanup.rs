@@ -24,6 +24,7 @@ const DAYTONA_SNAPSHOT_SECRET_PREFIX: &str = "daytona_sandbox:";
 const SPRITES_SECRET_PREFIX: &str = "sprites_sprite:";
 const E2B_SANDBOX_SECRET_PREFIX: &str = "e2b_sandbox:";
 const DENO_SNAPSHOT_SECRET_PREFIX: &str = "deno_sandbox:";
+const MODAL_SANDBOX_SECRET_PREFIX: &str = everruns_integrations::modal::MODAL_SANDBOX_SECRET_PREFIX;
 const BROWSERLESS_SESSION_KEY: &str = "browserless_browser_session";
 
 /// Durable activity input for leased-resource cleanup.
@@ -204,6 +205,7 @@ async fn cleanup_resource(
         ("e2b", "sandbox") => cleanup_e2b(resource, storage_store, &token).await,
         ("deno", "sandbox") => cleanup_deno(resource, storage_store, &token).await,
         ("sprites", "sprite") => cleanup_sprites(resource, storage_store, &token).await,
+        ("modal", "sandbox") => cleanup_modal(resource, storage_store, &token).await,
         ("browserless", "browser_session") => {
             cleanup_browserless(resource, storage_store, &token).await
         }
@@ -380,6 +382,47 @@ async fn cleanup_sprites(
     }
 
     Ok(format!("Deleted Sprites sprite {}", resource.external_id))
+}
+
+async fn cleanup_modal(
+    resource: &LeasedResource,
+    storage_store: &dyn SessionStorageStore,
+    token: &str,
+) -> Result<String> {
+    use everruns_integrations::modal::client::{ModalClient, ModalCredentials};
+
+    let credentials = ModalCredentials::parse(token)
+        .map_err(|error| anyhow!("Modal connection is not a token pair: {error}"))?;
+    let client = ModalClient::new(credentials).map_err(|error| anyhow!(error))?;
+    match client.terminate(&resource.external_id).await {
+        Ok(()) => {}
+        Err(error) if error.contains("not found") => {
+            warn!(
+                sandbox_id = %resource.external_id,
+                error = %error,
+                "Modal sandbox already gone during cleanup"
+            );
+        }
+        Err(error) => return Err(anyhow!("Modal cleanup failed: {error}")),
+    }
+    // Injected connection tokens live in a Modal Secret that outlives the
+    // sandbox unless deleted.
+    let egress_secret_id = resource
+        .metadata
+        .get("egress_secret_id")
+        .and_then(serde_json::Value::as_str);
+    everruns_integrations::modal::egress::delete_egress_secret(&client, egress_secret_id).await;
+
+    if let Some(session_id) = resource.session_id {
+        let _ = storage_store
+            .delete_secret(
+                session_id,
+                &format!("{MODAL_SANDBOX_SECRET_PREFIX}{}", resource.external_id),
+            )
+            .await;
+    }
+
+    Ok(format!("Terminated Modal sandbox {}", resource.external_id))
 }
 
 async fn cleanup_browserless(

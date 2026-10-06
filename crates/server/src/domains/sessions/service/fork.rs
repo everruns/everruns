@@ -3,7 +3,7 @@
 use super::*;
 
 impl SessionService {
-    /// Fork a session into a new, independent session (knowledge/runtime-resources/forking-sessions.md).
+    /// Fork a session into a new, independent session.
     ///
     /// Creates a fresh session that is config-identical to `parent_id` (modulo
     /// `overrides`), then deep-copies the parent's conversation history (events)

@@ -119,9 +119,6 @@ the feature. When migrating a deployment that offered org opt-in with `true`, us
 intentionally enables the feature by default for every organisation. Configure the same
 grades on the API, workers, and UI where they perform registration or ingress gating.
 
-The default grade for each feature is defined in the
-[feature catalog](https://github.com/everruns/everruns/blob/main/crates/platform/src/feature_flags.rs).
-
 ## API_PREFIX
 
 Path prefix for REST API routes.
@@ -165,6 +162,7 @@ PUBLIC_APP_URL=https://everruns.example.com
 - `AUTH_BASE_URL` defaults to `PUBLIC_APP_URL` plus `API_PREFIX` (for example, `https://everruns.example.com/api`)
 - Set `FRONTEND_URL` only when browser redirects must land on a different origin
 - Set `AUTH_BASE_URL` only when OAuth callbacks use a different public API base
+- In the UI runtime, it is the fallback API base for server-rendered pages; see [`UI_SERVER_API_URL`](#ui_server_api_url)
 
 ## AUTH_LOGIN_ORIGIN
 
@@ -188,6 +186,29 @@ AUTH_LOGIN_ORIGIN=https://id.example.com
 - The value is trusted deployment configuration; request/query input cannot override it
 - `return_to` remains a relative path and is still sanitized against open redirects
 - Configured absolute login redirects use full-page navigation
+
+## UI_SERVER_API_URL
+
+API base URL the UI server calls when it pre-renders a page (for example the
+agent, harness, session, and skill lists). Set it on the **UI** service. It may
+be an internal address that only the UI can reach.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `PUBLIC_APP_URL` (as set in the UI runtime) plus `/api`; unset when neither is set |
+
+**Example:**
+
+```bash
+UI_SERVER_API_URL=http://server:9000/api
+```
+
+**Notes:**
+- Include the API prefix (`/api` by default); supply an HTTP(S) URL with no credentials, query, or fragment
+- The UI forwards the signed-in user's cookies on these requests, so the destination comes only from deployment configuration; the request's `Host` header is never used
+- Redirects are not followed; a redirect response counts as a failed prefetch
+- If neither this nor `PUBLIC_APP_URL` is set in the UI runtime, or the value is invalid, the UI skips server prefetch and the browser loads the data after the page renders
 
 ## CORS_ALLOWED_ORIGINS
 
@@ -311,7 +332,7 @@ DATABASE_UNPOOLED_URL=postgres://app:secret@ep-foo.us-east-1.aws.neon.tech/everr
 Optional backend that offloads workspace-file and image *content bytes* to an
 S3-compatible object store while keeping all metadata in PostgreSQL. Everruns
 remains the proxy for every read/write, no presigned URLs are handed to
-clients or workers. See [knowledge/runtime-resources/object-storage.md](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/object-storage.md).
+clients or workers.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -516,7 +537,7 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 **Production:**
 - Configure your reverse proxy (nginx, Caddy, etc.) to route `/api/*`, `/oauth/*`, `/mcp`, and `/.well-known/*` to the API server
 - Disable response buffering for SSE endpoints
-- Example Caddy config: see `local/Caddyfile`
+- [Example Caddy configuration](https://github.com/everruns/everruns/blob/main/local/Caddyfile)
 
 ## Other Server Variables
 
@@ -786,7 +807,7 @@ OTEL_RECORD_CONTENT=true
 ```
 
 **Notes:**
-- When enabled, the chat span records `gen_ai.system_instructions`, `gen_ai.input.messages`, `gen_ai.output.messages`, and `gen_ai.tool.definitions` (plus the OpenInference `input.value`, `output.value`, and flattened `llm.input_messages.*`); tool spans record `gen_ai.tool.call.arguments` and `gen_ai.tool.call.result`; the turn root records the input message and final answer; the thinking span records the reasoning text
+- When enabled, the chat span records `gen_ai.system_instructions`, `gen_ai.input.messages`, `gen_ai.output.messages`, and `gen_ai.tool.definitions` (plus the OpenInference `input.value`, `output.value`, and flattened `llm.input_messages.*`); tool spans record `gen_ai.tool.call.arguments` and `gen_ai.tool.call.result` (plus `everruns.tool.executed_arguments` when a pre-tool hook rewrote the call); the turn root records the input message and final answer; the thinking span records the reasoning text
 - Disabled by default for privacy and data size concerns
 - Only enable in development or when debugging specific issues
 

@@ -96,7 +96,7 @@ Report `User` only when a person really answered. An agent that reads a fallback
 
 ## A worked responder
 
-[`examples/weekend-concierge-host`](https://github.com/everruns/everruns/tree/main/examples/weekend-concierge-host) implements `TerminalResponder` over stdin: numbered options, comma-separated toggles for a multi-select, a free-text path when the question allows one, and terminal echo turned off for a credential.
+[Weekend Concierge host](https://github.com/everruns/everruns/tree/main/examples/weekend-concierge-host) implements `TerminalResponder` over stdin: numbered options, comma-separated toggles for a multi-select, a free-text path when the question allows one, and terminal echo turned off for a credential.
 
 ```
 [Energy] How much energy does the group have on Friday?
@@ -140,7 +140,7 @@ Answer {
 # ;
 ```
 
-For the smallest possible version, [`crates/everruns/examples/ask_user.rs`](https://github.com/everruns/everruns/tree/main/crates/everruns/examples/ask_user.rs) runs a responder and the unattended path side by side and prints what each decided.
+For the smallest possible version, [Ask User example](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/ask_user.rs) runs a responder and the unattended path side by side and prints what each decided.
 
 ## Questions are not permission
 

@@ -52,7 +52,7 @@ const DEFAULT_MAX_DELETES_PER_RUN: usize = 10_000;
 const DEFAULT_MAX_LIST_PER_RUN: usize = 100_000;
 
 /// Top-level key prefixes the GC reconciles. These mirror the tenant-scoped key
-/// derivation in `blob_store.rs` (`workspaces/{id}/files/{id}`,
+/// object key derivation (`workspaces/{id}/files/{id}`,
 /// `images/org-{id}/{id}/{data,thumb}`).
 const SCAN_PREFIXES: &[&str] = &["workspaces/", "images/"];
 

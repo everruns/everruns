@@ -99,8 +99,12 @@ permission resolver, storage, feature flags, and cross-cutting facilities
 needed by domain orchestration. The exact dependency set changes as domains
 evolve and is intentionally not listed here.
 
-Context construction is centralized per transport. Tests use the supported
-minimal test constructor rather than assembling partial production context.
+Context construction is centralized. REST modules share one `ApiState`
+([`api/state.rs`](../../crates/server/src/api/state.rs)) built once at startup
+from the same services the MCP endpoint uses, so a command sees the same
+context whichever transport calls it. Modules still on their own state are
+being moved onto it. Tests use the supported minimal test constructor rather
+than assembling partial production context.
 
 Domain-specific algorithms remain in their domain; adding every helper as a
 context field would recreate the old service layer.
@@ -173,13 +177,28 @@ function live in the catalog source and common error mapping.
 
 ## HTTP adapters
 
-HTTP handlers own transport concerns: extractors, OpenAPI annotations, status
-and headers, URL decoration, and response serialization. They convert validated
-transport input into a domain command and run it through the HTTP dispatcher.
+New and migrated commands are declared with `#[command(...)]`
+([`crates/server-macros`](../../crates/server-macros/src/lib.rs)) on their
+`impl Command` block. One declaration carries the metadata, policy, CLI route
+and inventory registration. With `http = <mode>` it also serves the command
+over REST: a generic handler
+([`api/command_http.rs`](../../crates/server/src/api/command_http.rs)) merges
+path parameters, query string and JSON body into the command's params,
+coerces textual scalars against its param schema, and runs it through the HTTP
+dispatcher; the generated OpenAPI operation is added to the document at
+runtime. The REST path is therefore written once, in `CommandMeta::path`, and
+path parameters are named after command fields.
 
-Trivial handlers should use dispatcher helpers so response wrapping and future
-HTTP-only cross-cutting behavior stay centralized. A handler must not
-reimplement command validation or authorization.
+Hand-written handlers remain for real transport work: multipart upload,
+streaming, custom headers. They own extractors, OpenAPI annotations, status
+and headers, URL decoration, and response serialization, convert validated
+transport input into a domain command, and run it through the HTTP
+dispatcher. A handler must not reimplement command validation or
+authorization.
+
+Every command with a `/v1/` path must appear in the OpenAPI document.
+`openapi_coverage_test` enforces it with a shrink-only list of commands that
+predate the macro.
 
 Exact request and response bodies belong to handler types and the generated
 OpenAPI export, not this spec.
@@ -231,9 +250,10 @@ See [`permissions.md`](../security/permissions.md),
 2. Move canonical request/response types to the domain or adapter that owns
    their contract.
 3. Extract reusable persistence helpers without policy.
-4. Implement each public operation as a command with metadata, schema, and
+4. Implement each public operation as a `#[command]` with metadata, schema, and
    policy.
-5. Register the command and call `run` through the HTTP dispatcher.
+5. Serve it with `http = <mode>` (or a hand-written handler that calls `run`
+   through the HTTP dispatcher) and mount it with `.command::<C>()`.
 6. Add focused domain tests and rely on inventory tests for cross-transport
    coverage.
 7. Remove old service/catalog/dispatcher copies after all callers converge.

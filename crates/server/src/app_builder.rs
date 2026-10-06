@@ -366,7 +366,7 @@ impl ServerAppBuilder {
     ///
     /// Wrappers that integrate Sentry, Datadog, Rollbar, etc. implement
     /// `ErrorReporter` and install it here. OSS never imports vendor SDKs;
-    /// the reporter is the only contact surface. See `knowledge/foundations/embedding.md`.
+    /// the reporter is the only contact surface.
     pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
         self.error_reporter = Some(reporter);
         self
@@ -405,7 +405,7 @@ impl ServerAppBuilder {
     /// OSS `POST /v1/orgs` handler before any row is written, sees the user and requested
     /// name, and a rejection fails creation closed with a UI-facing status/body. Lets
     /// wrappers (e.g. SaaS) gate creation on product policy (verified email, limits)
-    /// without forking the handler. Unset keeps OSS behavior; see foundations/embedding.md.
+    /// without forking the handler. Unset keeps OSS behavior.
     pub fn org_create_policy(
         mut self,
         policy: Arc<dyn api::organizations::OrgCreatePolicy>,
@@ -419,7 +419,7 @@ impl ServerAppBuilder {
     /// provisioned, so a wrapper provisions per-org resources (managed provider, budget,
     /// tenant record) in creation rather than via a reconciler. Initializers run in
     /// registration order; a required one that fails rolls the org back, an optional one
-    /// only logs. None registered keeps OSS behavior; see `knowledge/foundations/embedding.md`.
+    /// only logs. None registered keeps OSS behavior.
     pub fn org_initializer(mut self, initializer: Arc<dyn org_init::OrgInitializer>) -> Self {
         self.org_initializers.push(initializer);
         self
@@ -998,12 +998,6 @@ impl ServerAppBuilder {
             )
             .with_virtual_registry(virtual_registry.clone()),
         );
-        let mcp_servers_state = api::mcp_servers::AppState::new(
-            db.clone(),
-            encryption.clone(),
-            capability_service.clone(),
-            auth_state.clone(),
-        );
         let plugins_state =
             api::plugins::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
         let capabilities_state = api::capabilities::AppState::new(
@@ -1046,16 +1040,6 @@ impl ServerAppBuilder {
         )
         .with_org_rate_limiter(org_rate_limiter.clone())
         .with_slack_provisioner(slack_provisioning.provisioner.clone());
-        let agent_credentials_state = api::agent_credentials::AppState::new(
-            db.clone(),
-            encryption.clone(),
-            auth_state.clone(),
-        );
-        let virtual_users_state = api::virtual_users::AppState::new(
-            db.clone(),
-            capability_service.clone(),
-            auth_state.clone(),
-        );
         let virtual_user_connections_state = api::virtual_user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1239,24 +1223,11 @@ impl ServerAppBuilder {
         )
         .with_virtual_registry(virtual_registry.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
-        let session_storage_state = api::session_storage::AppState::new(
-            core_deps.db.clone(),
-            core_deps.encryption.clone(),
-            core_deps.auth.clone(),
-        );
         let session_databases_state = api::session_databases::AppState::new(
             sqldb_store.clone(),
             db.clone(),
             auth_state.clone(),
         );
-        let users_state = api::users::UsersState {
-            db: db.clone(),
-            auth: auth_state.clone(),
-        };
-        let resolver_state = api::resolver::AppState {
-            db: db.clone(),
-            auth: auth_state.clone(),
-        };
         let durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> =
             if let Some(ref shared_store) = shared_durable_store {
                 tracing::info!("Using shared in-memory workflow event store for DEV MODE");
@@ -1323,10 +1294,6 @@ impl ServerAppBuilder {
             )
             .with_org_rate_limiter(org_rate_limiter.clone()),
         );
-        let skills_state =
-            api::skills::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
-        let files_state = api::files::AppState::new(db.clone(), auth_state.clone());
-        let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let mut organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
             auth_state.clone(),
@@ -1341,27 +1308,15 @@ impl ServerAppBuilder {
             email_sender.clone(),
             auth_config.frontend_url.clone(),
         );
-        let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
-        let workspaces_state = api::workspaces::AppState::new(db.clone(), auth_state.clone());
         let workspace_files_state =
             api::workspace_files::AppState::new(db.clone(), auth_state.clone())
                 .with_virtual_registry(virtual_registry.clone());
-        let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
-        let knowledge_bases_state =
-            api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
         let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
             db.clone(),
             auth_state.clone(),
             driver_registry.clone(),
         );
-        let payments_state =
-            api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
-        let audit_logs_state = api::audit_logs::AppState::new(
-            db.clone(),
-            capability_service.clone(),
-            auth_state.clone(),
-        );
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1375,8 +1330,6 @@ impl ServerAppBuilder {
         );
         let session_schedules_state =
             api::session_schedules::AppState::new(db.clone(), auth_state.clone());
-        let session_resources_state =
-            api::session_resources::AppState::new(db.clone(), auth_state.clone());
         let session_tasks_state = api::session_tasks::AppState::new(
             db.clone(),
             auth_state.clone(),
@@ -1424,6 +1377,7 @@ impl ServerAppBuilder {
             Some(svc) => mcp_endpoint_state.with_health_check_service(svc.clone()),
             None => mcp_endpoint_state,
         };
+        let api_state = api::state::ApiState::from_mcp(&mcp_endpoint_state);
 
         let health_state = HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
@@ -1463,14 +1417,14 @@ impl ServerAppBuilder {
         let mut api_routes = Router::new()
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
-            .merge(api::agent_credentials::routes(agent_credentials_state))
+            .merge(api::agent_credentials::routes(api_state.clone()))
             .merge(api::runtime_auth::routes(api::runtime_auth::AppState {
                 db: db.clone(),
                 auth: auth_state.clone(),
                 encryption: encryption.clone(),
                 verifier: api::channel_auth::ChannelAuthVerifier::new(),
             }))
-            .merge(api::virtual_users::routes(virtual_users_state))
+            .merge(api::virtual_users::routes(api_state.clone()))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))
@@ -1487,21 +1441,21 @@ impl ServerAppBuilder {
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
             .merge(api::providers::routes(providers_state))
-            .merge(api::mcp_servers::routes(mcp_servers_state))
+            .merge(api::mcp_servers::routes(api_state.clone()))
             .merge(api::plugins::routes(plugins_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::session_files::routes(session_files_state))
             .merge(api::session_git::routes(session_git_state))
-            .merge(api::session_resources::routes(session_resources_state))
+            .merge(api::session_resources::routes(api_state.clone()))
             .merge(api::session_tasks::routes(session_tasks_state))
-            .merge(api::session_storage::routes(session_storage_state))
+            .merge(api::session_storage::routes(api_state.clone()))
             .merge(api::session_databases::routes(session_databases_state))
-            .merge(api::users::routes(users_state))
-            .merge(api::resolver::routes(resolver_state))
+            .merge(api::users::routes(api_state.clone()))
+            .merge(api::resolver::routes(api_state.clone()))
             .merge(api::durable::routes(durable_state))
             .merge(schedules_state)
-            .merge(api::files::routes(files_state))
-            .merge(api::images::routes(images_state))
+            .merge(api::files::routes(api_state.clone()))
+            .merge(api::images::routes(api_state.clone()))
             .merge({
                 // Only mount presigned image routes when WORKER_GRPC_AUTH_TOKEN is set.
                 // Without a signing secret, presigned URLs would be trivially forgeable.
@@ -1518,12 +1472,10 @@ impl ServerAppBuilder {
                     None => Router::new(),
                 }
             })
-            .merge(api::skills::routes(skills_state))
+            .merge(api::skills::routes(api_state.clone()))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::org_invitations::routes(org_invitations_state))
-            .merge(api::task_webhooks::routes(
-                api::task_webhooks::AppState::new(db.clone(), auth_state.clone()),
-            ))
+            .merge(api::task_webhooks::routes(api_state.clone()))
             .merge(api::org_feature_flags::routes(
                 api::org_feature_flags::AppState::new(
                     db.clone(),
@@ -1531,28 +1483,22 @@ impl ServerAppBuilder {
                     feature_flag_policy.clone(),
                 ),
             ))
-            .merge(health::routes(
-                db.clone(),
-                auth_state.clone(),
-                encryption.clone(),
-            ))
-            .merge(api::memory::routes(memory_state))
-            .merge(api::workspaces::routes(workspaces_state))
+            .merge(api::health_issues::routes(api_state.clone()))
+            .merge(api::memory::routes(api_state.clone()))
+            .merge(api::workspaces::routes(api_state.clone()))
             .merge(api::workspace_files::routes(workspace_files_state))
-            .merge(api::memory_files::routes(memory_files_state))
-            .merge(api::knowledge_bases::routes(knowledge_bases_state))
+            .merge(api::memory_files::routes(api_state.clone()))
+            .merge(api::knowledge_bases::routes(api_state.clone()))
             .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
             .merge(api::payments::routes(
-                payments_state,
+                api_state.clone(),
                 feature_flags.machine_payments,
             ))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::user_connections::routes(user_connections_state))
-            .merge(api::user_preferences::routes(
-                api::user_preferences::AppState::new(db.clone(), auth_state.clone()),
-            ))
+            .merge(api::user_preferences::routes(api_state.clone()))
             .merge(api::session_schedules::routes(session_schedules_state))
-            .merge(api::audit_logs::routes(audit_logs_state))
+            .merge(api::audit_logs::routes(api_state.clone()))
             .merge(api::commands::routes(commands_state))
             .merge(api::command_dispatch::routes(mcp_endpoint_state.clone()))
             .merge(api::slack_events::routes(slack_state.clone()))
@@ -1588,8 +1534,7 @@ impl ServerAppBuilder {
         }
 
         if feature_flags.observers {
-            let observers_state = api::observers::AppState::new(db.clone(), auth_state.clone());
-            api_routes = api_routes.merge(api::observers::routes(observers_state));
+            api_routes = api_routes.merge(api::observers::routes(api_state.clone()));
         } else {
             tracing::info!("Observers disabled via feature flag");
         }

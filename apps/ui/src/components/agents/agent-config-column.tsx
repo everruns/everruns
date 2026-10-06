@@ -9,7 +9,7 @@
 // The controls are live in view mode too: changing one puts the page into
 // edit mode with that change pending, so nothing is saved until Save.
 
-import { ChevronRight, Pencil, Shield } from "lucide-react";
+import { ChevronRight, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TagInput } from "@/components/ui/tag-input";
@@ -18,10 +18,8 @@ import { ModelPicker } from "@/components/models/model-picker";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent, Capability, ModelWithProvider } from "@/lib/api/types";
-import { CapabilityIcon } from "@/lib/capability-icons";
-import { localizedCapabilityName } from "@/lib/capability-localization";
+import { AgentCapabilityList } from "./agent-capability-list";
 import { normalizeTags } from "@/lib/tags";
-import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 
 export interface AgentMoreRow {
@@ -63,9 +61,6 @@ export function AgentConfigColumn({
   onOpenRow,
   className,
 }: AgentConfigColumnProps) {
-  const { locale } = useLocale();
-  const capabilityById = new Map(allCapabilities.map((cap) => [cap.id, cap]));
-
   // Any control change starts (or continues) the page-level edit.
   const edit = <T,>(apply: (value: T) => void) => {
     return (value: T) => {
@@ -127,32 +122,10 @@ export function AgentConfigColumn({
                   </Button>
                 )}
               </div>
-              {draft.capabilities.length === 0 ? (
-                <p className="text-[13px] text-muted-foreground">No capabilities enabled.</p>
-              ) : (
-                <ol className="flex flex-col gap-1" aria-label="Enabled capabilities">
-                  {draft.capabilities.map((config) => {
-                    const cap = capabilityById.get(config.ref);
-                    return (
-                      <li
-                        key={config.ref}
-                        className="flex min-w-0 items-center gap-2 border bg-background p-2 text-[13px]"
-                      >
-                        {cap && <CapabilityIcon icon={cap.icon} className="size-3.5 shrink-0" />}
-                        <span className="min-w-0 flex-1 truncate">
-                          {cap ? localizedCapabilityName(cap, locale) : config.ref}
-                        </span>
-                        {cap?.is_guardrail && (
-                          <Badge variant="outline" className="gap-0.5">
-                            <Shield />
-                            Guardrail
-                          </Badge>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
+              <AgentCapabilityList
+                references={draft.capabilities.map((config) => config.ref)}
+                capabilities={allCapabilities}
+              />
             </>
           )}
         </div>

@@ -1,6 +1,6 @@
 //! The turn execution seam: where a host hands a turn to whatever runs it.
 //!
-//! Decisions (see `knowledge/framework/execution-backends.md`):
+//! Decisions:
 //! - One trait covers what the facade session actor and the worker's
 //!   `AgentRunner` share: start a turn, cancel it, and ask what runs. The
 //!   sans-IO `Execution` planner stays the inner seam; a backend decides only

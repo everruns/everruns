@@ -1,7 +1,8 @@
 // Skill commands — user-facing operations.
 //
 // Each struct is the request type, catalog entry, and execution logic.
-// inventory::submit! auto-registers for MCP catalog.
+// `#[command]` registers it for MCP, gRPC and the CLI contract and, with
+// `http = ..`, serves it over REST at its declared path.
 //
 // Note: SkillService retains a moka cache for list operations used by
 // the capability registry. Domain commands read from DB directly.
@@ -11,12 +12,12 @@ use super::types::{CreateSkillRequest, CreateSkillRow, UpdateSkill, UpdateSkillR
 use super::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    Policy, SKILL_CAPABILITY_PREFIX, Skill, SkillContent, SkillFileEntry, SkillStatus, SkillUsage,
+    SKILL_CAPABILITY_PREFIX, Skill, SkillContent, SkillFileEntry, SkillStatus, SkillUsage,
     contracts::typed_id::SkillId, parse_skill_md,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 // ============================================================================
 // CreateSkill
@@ -32,34 +33,23 @@ impl CommandSchema for CreateSkill {
     }
 }
 
+#[command(
+    name = "create_skill",
+    category = "skills",
+    description = "Create a new skill from SKILL.md content.",
+    method = "POST",
+    path = "/v1/skills",
+    policy = SKILL_MANAGE,
+    cli = CliRoute::new(&["skills"], "create").with_examples(&[CliExample::new("Add a skill from a local file", "everruns skills create --skill-md \"$(cat SKILL.md)\"",)]),
+    http = created_with_urls,
+    request_body(CreateSkillRequest),
+    responses(
+        (status = 409, description = "Duplicate skill name", body = crate::api::common::ErrorResponse),
+        (status = 422, description = "Invalid SKILL.md", body = crate::api::common::ErrorResponse),
+    ),
+)]
 impl Command for CreateSkill {
     type Output = Skill;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_skill",
-            category: "skills",
-            description: "Create a new skill from SKILL.md content.",
-            method: "POST",
-            path: "/v1/skills",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["skills"], "create").with_examples(&[CliExample::new(
-                "Add a skill from a local file",
-                "everruns skills create --skill-md \"$(cat SKILL.md)\"",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Skill, CommandError> {
         let req = self.0;
@@ -124,48 +114,34 @@ impl Command for CreateSkill {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateSkill>() }
-
 // ============================================================================
 // ListSkills
 // ============================================================================
 
 /// List skills. Supports search and include_archived.
-#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams, serde::Serialize)]
+#[into_params(parameter_in = Query)]
 pub struct ListSkills {
+    /// Search by name or description (case-insensitive substring match).
     pub search: Option<String>,
+    /// Include archived skills. Deleted skills never appear in lists.
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
 }
 
+#[command(
+    name = "list_skills",
+    category = "skills",
+    description = "List all active skills. Use search for name search, include_archived=true to include archived.",
+    method = "GET",
+    path = "/v1/skills",
+    policy = SKILL_VIEW,
+    cli = CliRoute::new(&["skills"], "list").with_examples(&[CliExample::new("Find skills by name when you do not know the id", "everruns skills list --search code-review",)]),
+    http = list_with_urls,
+    params(ListSkills),
+)]
 impl Command for ListSkills {
     type Output = Vec<Skill>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_skills",
-            category: "skills",
-            description: "List all active skills. Use search for name search, include_archived=true to include archived.",
-            method: "GET",
-            path: "/v1/skills",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["skills"], "list").with_examples(&[CliExample::new(
-                "Find skills by name when you do not know the id",
-                "everruns skills list --search code-review",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Skill>, CommandError> {
         let rows = ctx
@@ -176,8 +152,6 @@ impl Command for ListSkills {
         Ok(rows.iter().map(q::row_to_skill).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListSkills>() }
 
 // ============================================================================
 // GetSkill
@@ -190,39 +164,20 @@ pub struct GetSkill {
     pub id: String,
 }
 
+#[command(
+    name = "get_skill",
+    category = "skills",
+    description = "Get a single skill by ID.",
+    method = "GET",
+    path = "/v1/skills/{id}",
+    policy = SKILL_VIEW,
+    positional = "id",
+    cli = CliRoute::new(&["skills"], "get") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Show one skill's metadata without its body", "everruns skills get skl_01h9",)]),
+    http = with_urls,
+    responses((status = 404, description = "Skill not found")),
+)]
 impl Command for GetSkill {
     type Output = Skill;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_skill",
-            category: "skills",
-            description: "Get a single skill by ID.",
-            method: "GET",
-            path: "/v1/skills/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["skills"], "get")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Show one skill's metadata without its body",
-                "everruns skills get skl_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Skill, CommandError> {
         let skill_id: SkillId = self
@@ -242,8 +197,6 @@ impl Command for GetSkill {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSkill>() }
-
 // ============================================================================
 // GetSkillContent
 // ============================================================================
@@ -255,39 +208,20 @@ pub struct GetSkillContent {
     pub id: String,
 }
 
+#[command(
+    name = "get_skill_content",
+    category = "skills",
+    description = "Get full skill content (SKILL.md + files).",
+    method = "GET",
+    path = "/v1/skills/{id}/content",
+    policy = SKILL_VIEW,
+    positional = "id",
+    cli = CliRoute::new(&["skills"], "content") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Read a skill's body to see what it instructs", "everruns skills content skl_01h9",)]),
+    http = plain,
+    responses((status = 404, description = "Skill not found")),
+)]
 impl Command for GetSkillContent {
     type Output = SkillContent;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_skill_content",
-            category: "skills",
-            description: "Get full skill content (SKILL.md + files).",
-            method: "GET",
-            path: "/v1/skills/{id}/content",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["skills"], "content")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Read a skill's body to see what it instructs",
-                "everruns skills content skl_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SkillContent, CommandError> {
         let skill_id: SkillId = self
@@ -353,8 +287,6 @@ impl Command for GetSkillContent {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSkillContent>() }
-
 // ============================================================================
 // UpdateSkill
 // ============================================================================
@@ -368,39 +300,25 @@ pub struct UpdateSkillCmd {
     pub req: UpdateSkillRequest,
 }
 
+#[command(
+    name = "update_skill",
+    category = "skills",
+    description = "Update a skill. Only provided fields are changed.",
+    method = "PATCH",
+    path = "/v1/skills/{id}",
+    policy = SKILL_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["skills"], "update") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Replace a skill's content from a local file", "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\"",)]),
+    http = with_urls,
+    request_body(UpdateSkillRequest),
+    responses(
+        (status = 404, description = "Skill not found"),
+        (status = 409, description = "Duplicate skill name", body = crate::api::common::ErrorResponse),
+        (status = 422, description = "Invalid SKILL.md", body = crate::api::common::ErrorResponse),
+    ),
+)]
 impl Command for UpdateSkillCmd {
     type Output = Skill;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_skill",
-            category: "skills",
-            description: "Update a skill. Only provided fields are changed.",
-            method: "PATCH",
-            path: "/v1/skills/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["skills"], "update")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Replace a skill's content from a local file",
-                "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\"",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Skill, CommandError> {
         let skill_id: SkillId = self
@@ -522,8 +440,6 @@ impl Command for UpdateSkillCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateSkillCmd>() }
-
 // ============================================================================
 // DeleteSkill
 // ============================================================================
@@ -535,39 +451,20 @@ pub struct DeleteSkill {
     pub id: String,
 }
 
+#[command(
+    name = "delete_skill",
+    category = "skills",
+    description = "Archive a skill (soft delete). Can be restored.",
+    method = "DELETE",
+    path = "/v1/skills/{id}",
+    policy = SKILL_MANAGE,
+    positional = "id",
+    cli = CliRoute::new(&["skills"], "delete") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Archive a skill, keeping it restorable", "everruns skills delete skl_01h9",)]),
+    http = no_content,
+    responses((status = 404, description = "Skill not found")),
+)]
 impl Command for DeleteSkill {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_skill",
-            category: "skills",
-            description: "Archive a skill (soft delete). Can be restored.",
-            method: "DELETE",
-            path: "/v1/skills/{id}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["skills"], "delete")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Archive a skill, keeping it restorable",
-                "everruns skills delete skl_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let skill_id: SkillId = self
@@ -592,8 +489,6 @@ impl Command for DeleteSkill {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteSkill>() }
-
 // ============================================================================
 // DestroySkill (hard delete)
 // ============================================================================
@@ -605,39 +500,23 @@ pub struct DestroySkill {
     pub id: String,
 }
 
+#[command(
+    name = "destroy_skill",
+    category = "skills",
+    description = "Permanently delete an archived skill.",
+    method = "POST",
+    path = "/v1/skills/{id}/delete",
+    policy = SKILL_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["skills"], "destroy") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Permanently remove an already-archived skill", "everruns skills destroy skl_01h9",)]),
+    http = no_content,
+    responses(
+        (status = 400, description = "Skill is not archived", body = crate::api::common::ErrorResponse),
+        (status = 404, description = "Skill not found"),
+    ),
+)]
 impl Command for DestroySkill {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_skill",
-            category: "skills",
-            description: "Permanently delete an archived skill.",
-            method: "POST",
-            path: "/v1/skills/{id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute = CliRoute::new(&["skills"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove an already-archived skill",
-                "everruns skills destroy skl_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let skill_id: SkillId = self
@@ -672,8 +551,6 @@ impl Command for DestroySkill {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DestroySkill>() }
-
 // ============================================================================
 // ListSkillsUsage
 // ============================================================================
@@ -685,34 +562,18 @@ inventory::submit! { CommandDescriptor::of::<DestroySkill>() }
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSkillsUsage {}
 
+#[command(
+    name = "list_skills_usage",
+    category = "skills",
+    description = "Count agents and harnesses referencing each skill capability.",
+    method = "GET",
+    path = "/v1/skills/usage",
+    policy = SKILL_VIEW,
+    cli = CliRoute::new(&["skills"], "usage").with_examples(&[CliExample::new("See which agents use which skills", "everruns skills usage",)]),
+    http = plain,
+)]
 impl Command for ListSkillsUsage {
     type Output = HashMap<String, SkillUsage>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_skills_usage",
-            category: "skills",
-            description: "Count agents and harnesses referencing each skill capability.",
-            method: "GET",
-            path: "/v1/skills/usage",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["skills"], "usage").with_examples(&[CliExample::new(
-                "See which agents use which skills",
-                "everruns skills usage",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&SKILL_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<HashMap<String, SkillUsage>, CommandError> {
         let (visible_skill_ids, agent_counts, harness_counts) = tokio::try_join!(
@@ -747,5 +608,3 @@ impl Command for ListSkillsUsage {
         Ok(usage)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListSkillsUsage>() }

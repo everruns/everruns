@@ -57,7 +57,7 @@ pub trait IdMarker: Clone + Copy + Send + Sync + 'static {
     /// locality and sortability (events, sessions, agents, …). Id classes that
     /// are purely *public/correlation* identifiers with no DB sort/index
     /// dependency override this to a random UUIDv4 so no creation timestamp
-    /// leaks into a client-visible id. See `knowledge/foundations/id-schema.md`.
+    /// leaks into a client-visible id.
     fn generate_uuid() -> Uuid {
         Uuid::now_v7()
     }
@@ -534,14 +534,14 @@ impl IdMarker for NotificationIdMarker {
     const PREFIX: &'static str = "notification";
 }
 
-/// Marker for Memory IDs (org-scoped named Memories — see `knowledge/runtime-resources/memory.md`)
+/// Marker for Memory IDs (org-scoped named Memories)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MemoryIdMarker;
 impl IdMarker for MemoryIdMarker {
     const PREFIX: &'static str = "mem";
 }
 
-/// Marker for Workspace IDs (org-scoped named working areas — see `knowledge/runtime-resources/workspace.md`)
+/// Marker for Workspace IDs (org-scoped named working areas)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WorkspaceIdMarker;
 impl IdMarker for WorkspaceIdMarker {
@@ -569,8 +569,7 @@ impl IdMarker for EvalRunIdMarker {
     const PREFIX: &'static str = "evalrun";
 }
 
-/// Marker for Eval Run Dataset IDs (async dataset export handles — see
-/// `knowledge/evaluation/dataset-export.md`)
+/// Marker for Eval Run Dataset IDs (async dataset export handles)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EvalDatasetIdMarker;
 impl IdMarker for EvalDatasetIdMarker {
@@ -591,7 +590,7 @@ impl IdMarker for EvalResultIdMarker {
     const PREFIX: &'static str = "evalresult";
 }
 
-/// Marker for Observer IDs (online scoring of production sessions — see `knowledge/evaluation/online-evals.md`)
+/// Marker for Observer IDs (online scoring of production sessions)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ObserverIdMarker;
 impl IdMarker for ObserverIdMarker {
@@ -640,7 +639,7 @@ impl IdMarker for LedgerEntryIdMarker {
     const PREFIX: &'static str = "ledger";
 }
 
-/// Marker for Knowledge Base IDs (curated org knowledge — see `knowledge/runtime-resources/knowledge-bases.md`)
+/// Marker for Knowledge Base IDs (curated org knowledge)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KnowledgeBaseIdMarker;
 impl IdMarker for KnowledgeBaseIdMarker {
@@ -654,7 +653,7 @@ impl IdMarker for KnowledgeEntryIdMarker {
     const PREFIX: &'static str = "kbe";
 }
 
-/// Marker for Knowledge Index IDs (source-backed embedded collections — see `knowledge/runtime-resources/knowledge-indexes.md`)
+/// Marker for Knowledge Index IDs (source-backed embedded collections)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KnowledgeIndexIdMarker;
 impl IdMarker for KnowledgeIndexIdMarker {
@@ -675,21 +674,21 @@ impl IdMarker for KnowledgeIndexChunkIdMarker {
     const PREFIX: &'static str = "kchk";
 }
 
-/// Marker for Model Router IDs (semantic LLM selection — see `knowledge/integrations/model-router.md`)
+/// Marker for Model Router IDs (semantic LLM selection)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModelRouterIdMarker;
 impl IdMarker for ModelRouterIdMarker {
     const PREFIX: &'static str = "mrtr";
 }
 
-/// Marker for Plugin Marketplace IDs (see `knowledge/integrations/plugins.md`)
+/// Marker for Plugin Marketplace IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PluginMarketplaceIdMarker;
 impl IdMarker for PluginMarketplaceIdMarker {
     const PREFIX: &'static str = "plgmkt";
 }
 
-/// Marker for Plugin Install IDs (see `knowledge/integrations/plugins.md`)
+/// Marker for Plugin Install IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PluginInstallIdMarker;
 impl IdMarker for PluginInstallIdMarker {
@@ -752,9 +751,9 @@ pub type AppId = TypedId<AppIdMarker>;
 pub type AgentChannelId = TypedId<AgentChannelIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
-/// Memory ID (org-scoped named Memory — see `knowledge/runtime-resources/memory.md`)
+/// Memory ID (org-scoped named Memory)
 pub type MemoryId = TypedId<MemoryIdMarker>;
-/// Workspace ID (org-scoped named Workspace — see `knowledge/runtime-resources/workspace.md`)
+/// Workspace ID (org-scoped named Workspace)
 pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
 /// Reusable Sandbox Template ID.
 pub type SandboxTemplateId = TypedId<SandboxTemplateIdMarker>;
@@ -768,13 +767,13 @@ pub type EvalId = TypedId<EvalIdMarker>;
 pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
 /// Eval Run ID
 pub type EvalRunId = TypedId<EvalRunIdMarker>;
-/// Eval Run Dataset ID (async dataset export handle — see `knowledge/evaluation/dataset-export.md`)
+/// Eval Run Dataset ID (async dataset export handle)
 pub type EvalDatasetId = TypedId<EvalDatasetIdMarker>;
 /// Agent Health Check Run ID
 pub type HealthCheckRunId = TypedId<HealthCheckRunIdMarker>;
 /// Eval Case Result ID
 pub type EvalResultId = TypedId<EvalResultIdMarker>;
-/// Observer ID (online scoring — see `knowledge/evaluation/online-evals.md`)
+/// Observer ID (online scoring)
 pub type ObserverId = TypedId<ObserverIdMarker>;
 /// Trace Score ID (observer scoring output)
 pub type TraceScoreId = TypedId<TraceScoreIdMarker>;
@@ -788,21 +787,21 @@ pub type PaymentPolicyId = TypedId<PaymentPolicyIdMarker>;
 pub type PaymentAttemptId = TypedId<PaymentAttemptIdMarker>;
 /// Budget Ledger Entry ID
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
-/// Knowledge Base ID (curated org knowledge — see `knowledge/runtime-resources/knowledge-bases.md`)
+/// Knowledge Base ID (curated org knowledge)
 pub type KnowledgeBaseId = TypedId<KnowledgeBaseIdMarker>;
 /// Knowledge Entry ID (entry inside a Knowledge Base)
 pub type KnowledgeEntryId = TypedId<KnowledgeEntryIdMarker>;
-/// Knowledge Index ID (source-backed embedded collection — see `knowledge/runtime-resources/knowledge-indexes.md`)
+/// Knowledge Index ID (source-backed embedded collection)
 pub type KnowledgeIndexId = TypedId<KnowledgeIndexIdMarker>;
 /// Knowledge Index Document ID (an ingested source document)
 pub type KnowledgeIndexDocumentId = TypedId<KnowledgeIndexDocumentIdMarker>;
 /// Knowledge Index Chunk ID (the citable retrieval unit)
 pub type KnowledgeIndexChunkId = TypedId<KnowledgeIndexChunkIdMarker>;
-/// Model Router ID (semantic LLM selection — see `knowledge/integrations/model-router.md`)
+/// Model Router ID (semantic LLM selection)
 pub type ModelRouterId = TypedId<ModelRouterIdMarker>;
-/// Plugin Marketplace ID (see `knowledge/integrations/plugins.md`)
+/// Plugin Marketplace ID
 pub type PluginMarketplaceId = TypedId<PluginMarketplaceIdMarker>;
-/// Plugin Install ID (see `knowledge/integrations/plugins.md`)
+/// Plugin Install ID
 pub type PluginInstallId = TypedId<PluginInstallIdMarker>;
 
 // ============================================================================

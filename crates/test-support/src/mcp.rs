@@ -1,6 +1,6 @@
 //! In-memory MCP resource and OAuth authorization server for integration tests.
 //!
-//! The harness implements [`EgressService`] instead of opening a socket. Tests
+//! The harness implements [`EgressService`](everruns_core::EgressService) instead of opening a socket. Tests
 //! exercise the production egress boundary without DNS, credentials, fixed
 //! ports, shared global state, or ordering constraints.
 

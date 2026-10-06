@@ -95,7 +95,7 @@ pub fn escape_html(input: &str) -> String {
 /// the rendered size exceeds `MAX_CARD_BYTES`. Callers (currently
 /// `card_tool_content` → `tool_agent_get_card`) surface this as a tool
 /// error (`isError: true`) rather than truncating the document or
-/// silently degrading to a text-only result; see `knowledge/ui/mcp-cards.md`.
+/// silently degrading to a text-only result.
 pub fn render_html(card: &EntityCard) -> Option<String> {
     let mut html = String::with_capacity(2048);
 

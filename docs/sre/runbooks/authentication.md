@@ -241,8 +241,10 @@ must route this one path to the server explicitly. Without the rule the request
 falls through to the UI and returns its 404, and the endpoint is unreachable
 even though the server serves it.
 
-The bundled proxies (`local/Caddyfile`, `infra/railway/caddy/Caddyfile`, and
-`examples/docker-compose-full.yaml`) already include it. For a custom proxy,
+The bundled [local proxy](https://github.com/everruns/everruns/blob/main/local/Caddyfile),
+[Railway proxy](https://github.com/everruns/everruns/blob/main/infra/railway/caddy/Caddyfile), and
+[Docker Compose stack](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml)
+already include it. For a custom proxy,
 add `/auth.md` wherever `/.well-known/*` is routed:
 
 ```caddyfile

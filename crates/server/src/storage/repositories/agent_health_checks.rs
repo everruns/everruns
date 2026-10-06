@@ -103,7 +103,6 @@ impl Database {
     /// once on server boot: a fresh process has no run in flight, so any such
     /// row is an orphan left by a previous process that died mid-run and would
     /// otherwise show a perpetual spinner. Returns the number of rows reaped.
-    /// See knowledge/evaluation/agent-checks.md (durability) and EVE-586.
     pub async fn reap_running_agent_health_check_runs(&self) -> Result<u64> {
         let result = sqlx::query(
             r#"

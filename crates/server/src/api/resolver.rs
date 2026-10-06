@@ -7,7 +7,7 @@
 // already belongs to. See knowledge/security/multitenancy.md (Cross-Org Resource
 // Resolution).
 
-use std::sync::Arc;
+use crate::api::state::ApiState;
 
 use axum::{
     Json, Router,
@@ -18,18 +18,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::common::impl_auth_state;
-use crate::auth::middleware::{AuthState, AuthUser};
+use crate::auth::middleware::AuthUser;
 use crate::domains::org_resolver;
-use crate::storage::StorageBackend;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl_auth_state!(AppState);
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResolveOrgQuery {
@@ -68,7 +58,7 @@ pub struct ResolveOrgResponse {
     tag = "users"
 )]
 pub async fn resolve_org(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
     Query(query): Query<ResolveOrgQuery>,
 ) -> Result<Json<ResolveOrgResponse>, StatusCode> {
@@ -89,7 +79,7 @@ pub async fn resolve_org(
     Ok(Json(ResolveOrgResponse { org_id, org_name }))
 }
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/resolve-org", get(resolve_org))
         .with_state(state)

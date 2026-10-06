@@ -15,7 +15,7 @@
 //!   (`wasm-bindgen-futures`).
 //! - JavaScript-backed futures are `!Send`, while every engine contract is
 //!   `Send` so native hosts can use the multi-thread runtime. On the wasm
-//!   target there is exactly one thread, so [`AssertSend`] marks them `Send`
+//!   target there is exactly one thread, so a wrapper marks them `Send`
 //!   there and only there.
 
 pub use std::time::Duration;

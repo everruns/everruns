@@ -6,6 +6,7 @@ members = [
     "crates/worker",
     "crates/everruns",
     "crates/macros",
+    "crates/server-macros",
     "crates/core",
     "crates/test-support",
     "crates/capabilities",
@@ -23,6 +24,9 @@ members = [
     "crates/durable-engine",
     "crates/ard",
     "crates/integrations-catalog",
+    # Integrations, one feature module per vendor (everruns-integrations). New
+    # integrations land here; the integrations/* packages fold in over time.
+    "crates/integrations",
     "crates/docs-snippets",
     # serve: experimental agent framework (Alpha, published as everruns-serve*). See crates/serve/README.md.
     "crates/serve",
@@ -250,6 +254,7 @@ everruns-capabilities = { path = "crates/capabilities", version = "0.41.0", defa
 everruns-contracts = { path = "crates/contracts", version = "0.41.0", default-features = false }
 everruns-ard = { path = "crates/ard", version = "0.41.0" }
 everruns-drivers = { path = "crates/drivers/drivers", version = "0.41.0", default-features = false }
+everruns-integrations = { path = "crates/integrations", version = "0.41.0", default-features = false }
 everruns = { path = "crates/everruns", version = "0.41.0", default-features = false }
 everruns-macros = { path = "crates/macros", version = "0.41.0" }
 everruns-serve = { path = "crates/serve", version = "0.41.0" }

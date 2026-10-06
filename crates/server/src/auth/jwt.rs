@@ -238,7 +238,7 @@ impl JwtService {
     /// Validate and decode a regular access token (browser/session/API).
     ///
     /// Rejects MCP access tokens (`token_type == "mcp_access"`): they must only
-    /// be accepted by the `/mcp` endpoint via [`validate_mcp_access_token`].
+    /// be accepted by the `/mcp` endpoint via [`validate_mcp_access_token`](Self::validate_mcp_access_token).
     pub fn validate_access_token(&self, token: &str) -> Result<AccessTokenClaims> {
         // The `aud` claim is only set on MCP tokens. Disable the library's
         // audience check here so a stray/legacy `aud` never gates regular
@@ -261,7 +261,7 @@ impl JwtService {
 
     /// Validate and decode an MCP access token, enforcing the resource binding.
     ///
-    /// Accepts only tokens minted by [`generate_mcp_access_token`]: the
+    /// Accepts only tokens minted by [`generate_mcp_access_token`](Self::generate_mcp_access_token): the
     /// `token_type` must be `"mcp_access"` and the `aud` claim must equal the
     /// expected `/mcp` resource. Regular session/access tokens are rejected.
     pub fn validate_mcp_access_token(
@@ -313,7 +313,7 @@ impl JwtService {
     }
 
     /// Validate and decode an OAuth consent token minted by
-    /// [`generate_oauth_consent_token`].
+    /// [`generate_oauth_consent_token`](Self::generate_oauth_consent_token).
     ///
     /// Checks the signature, expiry, and token type. The caller MUST additionally
     /// confirm the returned `sub` matches the authenticated session user — the

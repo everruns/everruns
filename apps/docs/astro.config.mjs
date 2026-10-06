@@ -303,6 +303,7 @@ export default defineConfig({
                   items: [
                     { label: "Architecture", slug: "explanation/architecture" },
                     { label: "Physical Architecture", slug: "advanced/physical-architecture" },
+                    { label: "Command Path", slug: "advanced/command-path" },
                   ],
                 },
                 {
@@ -534,6 +535,7 @@ export default defineConfig({
                     { label: "Computer Use", slug: "capabilities/computer-use" },
                     { label: "Docker Container", slug: "capabilities/docker" },
                     { label: "DuckDuckGo", slug: "integrations/duckduckgo" },
+                    { label: "Modal", slug: "integrations/modal" },
                     { label: "Parallel", slug: "integrations/parallel" },
                     { label: "Sprites", slug: "integrations/sprites" },
                     { label: "TypeSafe", slug: "integrations/typesafe" },

@@ -282,7 +282,7 @@ pub struct ToolContext {
     /// `WorkspaceId::from_uuid(session_id.uuid())`; for a shared workspace it
     /// differs. File-system tools MUST key by this (via `workspace_fs_key`)
     /// rather than `session_id` so shared-workspace sessions read/write the
-    /// attached workspace's files. See knowledge/runtime-resources/workspace.md.
+    /// attached workspace's files.
     pub workspace_id: WorkspaceId,
 
     /// Optional file store for filesystem operations
@@ -346,8 +346,7 @@ pub struct ToolContext {
     /// Optional session resource registry — generic registry of active resources.
     pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
 
-    /// Optional session task registry — background work owned by the session
-    /// (knowledge/runtime-resources/session-tasks.md).
+    /// Optional session task registry — background work owned by the session.
     pub session_task_registry: Option<Arc<dyn crate::runtime::session_task::SessionTaskRegistry>>,
 
     /// Optional event emitter for tools that need to stream progress updates.

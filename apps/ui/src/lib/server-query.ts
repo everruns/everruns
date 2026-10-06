@@ -1,5 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { authQueryKeys } from "@/lib/auth-query-keys";
 import { createAppQueryClient } from "@/lib/query-client";
 import type {
@@ -13,7 +13,11 @@ import type {
 const DEFAULT_ORG_PUBLIC_ID = "org_00000000000000000000000000000001";
 
 export interface ServerRequestContext {
-  apiBaseUrl: string;
+  /**
+   * Deployment-trusted API base (`.../api`), or `null` when none is configured.
+   * `null` disables server prefetch; the client fetches after hydration.
+   */
+  apiBaseUrl: string | null;
   cookieHeader: string;
   orgCookieId: string | null;
 }
@@ -31,10 +35,57 @@ export function createServerQueryClient(context: ServerRequestContext) {
   return createAppQueryClient(() => context.orgCookieId);
 }
 
-export function getRequestOrigin(headersList: Headers): string {
-  const host = headersList.get("host") ?? "localhost";
-  const proto = process.env.NODE_ENV === "production" ? "https" : "http";
-  return `${proto}://${host}`;
+type TrustedApiEnv = Partial<Record<"UI_SERVER_API_URL" | "PUBLIC_APP_URL", string>>;
+
+function parseTrustedUrl(value: string | undefined): URL | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (url.username || url.password || url.search || url.hash) return null;
+  return url;
+}
+
+/**
+ * The API base that server renders call, taken only from deployment configuration.
+ *
+ * THREAT[TM-WEB-019]: server renders forward the browser's auth cookies, so the
+ * destination must never come from the request. The Host header is
+ * attacker-selectable (catch-all ingress routes forward any Host to the UI), and
+ * deriving the origin from it let a crafted request aim cookie-bearing fetches
+ * at an arbitrary service. Resolution order:
+ *   1. `UI_SERVER_API_URL`: full API base, may be internal
+ *      (e.g. `http://server:9000/api`).
+ *   2. `PUBLIC_APP_URL` + `/api`: the public app origin the server already uses,
+ *      exported to the UI by the local dev stack.
+ * Neither set (or invalid) returns `null`: fail closed and skip server prefetch,
+ * never fall back to Host.
+ */
+export function resolveTrustedApiBaseUrl(env: TrustedApiEnv): string | null {
+  const explicit = parseTrustedUrl(env.UI_SERVER_API_URL);
+  if (explicit) {
+    return `${explicit.origin}${explicit.pathname}`.replace(/\/+$/, "");
+  }
+  const publicApp = parseTrustedUrl(env.PUBLIC_APP_URL);
+  if (publicApp && publicApp.pathname === "/") {
+    return `${publicApp.origin}/api`;
+  }
+  return null;
+}
+
+function runtimeTrustedApiEnv(): TrustedApiEnv {
+  // Read through the environment object so standalone images pick the value up
+  // at runtime instead of baking in a build-time value (same as proxy.ts).
+  const runtimeEnv = process.env;
+  return {
+    UI_SERVER_API_URL: runtimeEnv.UI_SERVER_API_URL,
+    PUBLIC_APP_URL: runtimeEnv.PUBLIC_APP_URL,
+  };
 }
 
 export function resolveCurrentOrgId(
@@ -50,24 +101,36 @@ export function resolveCurrentOrgId(
 }
 
 export async function getServerRequestContext(): Promise<ServerRequestContext> {
-  const [headersList, cookieStore] = await Promise.all([headers(), cookies()]);
+  // Request headers (Host, X-Forwarded-*) are deliberately not consulted.
+  const cookieStore = await cookies();
 
   return {
-    apiBaseUrl: `${getRequestOrigin(headersList)}/api`,
+    apiBaseUrl: resolveTrustedApiBaseUrl(runtimeTrustedApiEnv()),
     cookieHeader: cookieStore.toString(),
     orgCookieId: cookieStore.get("everruns_org")?.value ?? null,
   };
 }
 
 async function serverRequestJson<T>(context: ServerRequestContext, endpoint: string): Promise<T> {
+  if (!context.apiBaseUrl) {
+    throw new Error("Server prefetch disabled: no trusted API base URL configured");
+  }
+
   const response = await fetch(`${context.apiBaseUrl}${endpoint}`, {
     cache: "no-store",
+    // A followed redirect could carry the forwarded cookie to another origin or
+    // steer the request at an internal target. Never follow; treat as failure.
+    redirect: "manual",
     headers: context.cookieHeader
       ? {
           cookie: context.cookieHeader,
         }
       : undefined,
   });
+
+  if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) {
+    throw new Error(`Server request for ${endpoint} was redirected; refusing to follow`);
+  }
 
   if (!response.ok) {
     throw new Error(

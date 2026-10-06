@@ -99,8 +99,9 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
         server.db.clone(),
         server.encryption.clone(),
     ));
-    let router = api::virtual_users::routes(api::virtual_users::AppState::new(
+    let router = api::virtual_users::routes(api::state::ApiState::basic(
         server.db.clone(),
+        server.encryption.clone(),
         capabilities,
         auth.clone(),
     ))

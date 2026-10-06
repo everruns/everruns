@@ -1,7 +1,7 @@
 //! Wire types for an MCP server's form mode elicitation, as it crosses from the
 //! MCP executor to the engine and the answer API.
 //!
-//! Spec: knowledge/integrations/mcp-form-elicitation.md. Re-exported from
+//! Re-exported from
 //! [`crate::tool_types`], next to the URL mode equivalents.
 
 use crate::tool_types::ToolResult;

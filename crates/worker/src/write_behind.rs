@@ -6,6 +6,10 @@
 // the tool. Every store is a control-plane round trip (tens of milliseconds in
 // production), and nothing on that path reads what the store returns.
 //
+// A turn's first phase also stores `session.activated` and `turn.started`
+// before its reason; the input step runs on the reason's host, so they join
+// the same queue, ahead of `reason.started`.
+//
 // Decision: those events are queued and stored in the background, in order,
 // and the caller gets the event back at once (the same synthetic event the
 // ephemeral path returns). Any other event waits for the queue to drain before
@@ -29,6 +33,8 @@ use tokio::sync::watch;
 type Store = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 const QUEUED: &[&str] = &[
+    crate::core::events::SESSION_ACTIVATED,
+    crate::core::events::TURN_STARTED,
     crate::core::events::REASON_STARTED,
     crate::core::events::CAPABILITY_USAGE,
     crate::core::events::OUTPUT_MESSAGE_STARTED,
@@ -178,6 +184,13 @@ mod tests {
             pending: None,
         };
         assert!(!WriteBehind::queues(&started(Some(state))));
+
+        // A turn's start events ride the same queue, ahead of its reason.
+        let mut turn_started = started(None);
+        turn_started.event_type = crate::core::events::TURN_STARTED.to_string();
+        assert!(WriteBehind::queues(&turn_started));
+        turn_started.event_type = crate::core::events::SESSION_ACTIVATED.to_string();
+        assert!(WriteBehind::queues(&turn_started));
 
         let mut completed = started(None);
         completed.event_type = crate::core::events::OUTPUT_MESSAGE_COMPLETED.to_string();

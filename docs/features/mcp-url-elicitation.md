@@ -147,7 +147,7 @@ open, so Everruns declares nothing regardless of what the host can do.
 
 ## Try it
 
-`examples/mcp-url-elicitation/` in the repository has a dependency-free MCP
+The [URL elicitation example](https://github.com/everruns/everruns/tree/main/examples/mcp-url-elicitation) has a dependency-free MCP
 server that elicits, and a script that drives the whole flow over the API.
 
 ## Related

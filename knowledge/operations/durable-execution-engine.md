@@ -15,13 +15,16 @@ Custom PostgreSQL-backed durable execution engine for workflow orchestration wit
 `everruns-durable` is a generic engine: workflows, activities, tasks, signals,
 and schedules, with no `everruns-*` dependency (enforced by
 `scripts/lib/check-durable-isolation.sh`). Agent semantics live above it. Turns
-use `everruns-durable-engine`'s `DurableExecution`, the checkpointed driver for
+use `everruns-durable-engine`: its `TurnTaskDriver` runs each claimed turn step
+over `DurableExecution`, the checkpointed driver for
 `everruns_core::engine::Execution`; its `durable_turn` module owns the
 turn-level conventions (the `user_message` signal, idempotent waiting-turn
 resolution tasks via `ActivityOptions::dedupe_by_activity_id`); and the server
 turns a sealed task into `turn.sealed`. The durable crate owns persistence,
-retries, and activity scheduling. The worker reaches these through the unpublished
-durable-engine entry. It owns no database driver; database connection construction
+retries, and activity scheduling. The worker reaches these through
+`everruns-durable-engine`, which is also published as the facade's experimental
+durable turn backend ([Execution Backends](../framework/execution-backends.md)).
+The worker owns no database driver; database connection construction
 belongs only to server and durable, enforced by
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh).
 
@@ -132,7 +135,11 @@ owners that must stay identical:
   `everruns-durable` create the tables without the server. It is one idempotent
   script (CREATE ... IF NOT EXISTS, CREATE OR REPLACE for trigger functions and
   triggers, counter seeding with ON CONFLICT DO NOTHING) run in a single
-  transaction under an advisory lock, uses only built-in PostgreSQL 14+
+  transaction under an advisory lock, and stamps a hash of the schema on a
+  table comment so a database that already took this exact schema is only
+  read, not locked or re-applied. `PostgresWorkflowEventStore::connect` wraps
+  pool creation plus `migrate` for callers with no pool of their own (the
+  facade's PostgreSQL durable backend). The script uses only built-in PostgreSQL 14+
   functions (its `uuidv7()` fallback avoids pgcrypto), and creates objects in
   the first `search_path` schema. Against a server-migrated database it changes
   nothing. Schema changes append idempotent statements rather than versioned
@@ -184,7 +191,11 @@ Why it matters: every turn phase (`process_input`, `reason`, `act`) is its own q
 
 Once a phase is claimed, its own setup is the next cost: before a reason phase calls the model, host setup reads the session, harness, and agent several times over (dependency check, capability loading, snapshot projection, tool augmentation), and each read from a gRPC worker is a control-plane round trip plus database queries. With the production database a few milliseconds away, that setup took about 600 ms of each ~700 ms hand-off, against about 130 ms locally. The worker memoizes those reads for the length of the setup (`crates/worker/src/phase_reads.rs`) and logs `phase setup` with `setup_ms` and the reads fetched and saved, once per phase.
 
+Because a chained turn's phases run on one worker, the setup reads also carry across phases: what one phase's setup read is kept per turn (org, session, input message) and the turn's next phase starts from it (`crates/worker/src/turn_reads.rs`). A turn's configuration is therefore pinned for the turn on that worker, the way its agent definition already was: an edit made mid-turn applies from the next turn. Conversation history is not part of it and is read fresh by every reason. Session writes made through the worker drop the session's entries; a turn's entries end when it completes or pauses, and age out after ten minutes otherwise. `phase setup` reports `reads_from_turn`.
+
 The first hand-off of a turn is gone: the `process_input` task runs the input step and then the turn's first reason in the same task, and is completed and scheduled as that `reason` (`crates/durable-engine/src/turn_start.rs`). The reason's setup reads start before the input runs, so they overlap. Locally this moved the first model call from 138-175 ms after `turn.started` to 32-46 ms; in production the saved hop was about 230 ms. The turn id comes from the task id, so a retried task reopens the same turn.
+
+The input step runs on the first reason's host, so its reads share the reason's setup memo and its `session.activated` and `turn.started` join the reason's ordered write-behind queue: they are stored in the background, ahead of `reason.started`, instead of before the model call. The input message read runs alongside the session status write. Locally this took claim-to-`reason.started` from 76-90 ms to 44-66 ms.
 
 The remaining hand-offs inside a turn (reason to act, act to reason) no longer go through the queue either. When a step completes, the worker enqueues the next step already claimed by itself (`TaskQueue::enqueue_claimed_task`, carried over gRPC as `claim_for_worker_id` on `EnqueueDurableTask`) and runs it at once, so a turn's steps run back to back on one worker without a notification, a poll wakeup or a claim between them (`crates/durable-engine/src/turn_driver.rs`). Each step is still its own task row: it heartbeats, retries, and is reclaimed when its worker dies, exactly like a claimed task, and the claimed insert records `ActivityStarted` the way a claim does. The store falls back to an ordinary pending task when the worker is draining or unregistered, and a control plane that predates the field ignores it, so mixed versions during a deploy keep working. `WORKER_CHAIN_STEPS=false` turns it off.
 

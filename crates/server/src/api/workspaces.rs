@@ -6,13 +6,13 @@
 // `workspace_id` equals its `session.id` for the default 1:1 case, we can
 // pass the resolved internal UUID directly to the session_files service.
 
-use crate::auth::{AuthState, ResolvedOrg};
+use crate::api::state::ApiState;
+use crate::auth::ResolvedOrg;
 use crate::domains::workspaces::types::workspace_response;
 pub use crate::domains::workspaces::types::{
     CreateWorkspaceRequest, ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
 };
 use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
-use crate::storage::StorageBackend;
 use crate::storage::models::{CreateWorkspaceRow, UpdateWorkspace};
 use axum::{
     Json, Router,
@@ -22,12 +22,11 @@ use axum::{
 };
 use everruns_contracts::typed_id::WorkspaceId;
 use everruns_core::{Caller, Policy};
-use std::sync::Arc;
 
-use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse};
 
 fn enforce(
-    state: &AppState,
+    state: &ApiState,
     org: &ResolvedOrg,
     policy: &Policy,
     operation: &str,
@@ -39,21 +38,7 @@ fn enforce(
         .map_policy_or_internal(operation)
 }
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-}
-
-impl_auth_state!(AppState);
-
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route(
             "/v1/workspaces",
@@ -80,7 +65,7 @@ pub fn routes(state: AppState) -> Router {
 )]
 pub async fn list_workspaces(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Query(query): Query<ListWorkspacesQuery>,
 ) -> ApiResult<ListResponse<WorkspaceResponse>> {
     enforce(&state, &org, &WORKSPACE_VIEW, "authorize list workspaces")?;
@@ -108,7 +93,7 @@ pub async fn list_workspaces(
 )]
 pub async fn create_workspace(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Json(req): Json<CreateWorkspaceRequest>,
 ) -> Result<(StatusCode, Json<WorkspaceResponse>), (StatusCode, Json<ErrorResponse>)> {
     enforce(
@@ -177,7 +162,7 @@ pub async fn create_workspace(
 )]
 pub async fn get_workspace(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(workspace_id): Path<String>,
 ) -> ApiResult<WorkspaceResponse> {
     enforce(&state, &org, &WORKSPACE_VIEW, "authorize get workspace")?;
@@ -207,7 +192,7 @@ pub async fn get_workspace(
 )]
 pub async fn update_workspace(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(workspace_id): Path<String>,
     Json(req): Json<UpdateWorkspaceRequest>,
 ) -> ApiResult<WorkspaceResponse> {
@@ -281,7 +266,7 @@ pub async fn update_workspace(
 )]
 pub async fn delete_workspace(
     org: ResolvedOrg,
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(workspace_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     enforce(

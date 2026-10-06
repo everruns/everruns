@@ -3,7 +3,7 @@
 //! Outbound (`services::mcp_events`) signs the deliveries Everruns sends to MCP
 //! clients; inbound (`domains::agent_triggers::mcp_event`) verifies the
 //! deliveries other MCP servers send to an agent's trigger. Both use the wire
-//! contract pinned in `knowledge/integrations/mcp-events.md`: a `whsec_` secret
+//! contract: a `whsec_` secret
 //! of 24 to 64 key bytes, `webhook-id` / `webhook-timestamp` /
 //! `webhook-signature` headers, and `v1,` + base64 HMAC-SHA256 over
 //! `"{id}.{timestamp}.{body}"`.

@@ -10,7 +10,7 @@
 //! entries on every call, so a refreshed OAuth token is picked up by the next
 //! request. The resolved headers exist only in that call's cloned
 //! [`LlmCallConfig`] on the way into the wire driver: the engine never sees
-//! them, so they cannot reach events, and [`McpServerTool`]'s `Debug` redacts
+//! them, so they cannot reach events, and [`McpServerTool`](crate::openai_hosted_tools::McpServerTool)'s `Debug` redacts
 //! them (THREAT TM-AGENT-029).
 
 use std::collections::BTreeMap;

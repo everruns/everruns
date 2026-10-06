@@ -10,8 +10,7 @@
 Schema and an async function adapter.
 
 It is an implementation crate in the [Everruns](https://everruns.com)
-ecosystem. Its repository directory is `crates/macros`, while its published
-package name remains `everruns-macros`. Applications depend on `everruns` and
+ecosystem. Applications depend on `everruns` and
 use the default-enabled `everruns::tool` re-export.
 
 ## Quick Example

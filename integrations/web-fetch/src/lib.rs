@@ -444,8 +444,7 @@ pub struct WebFetchTool {
     /// URL for a clear, distinct system-policy error. On the egress path the
     /// boundary independently re-enforces it (final enforcement point, every
     /// hop); on the direct path this pre-flight is the only enforcement.
-    /// `None` = no global enforcement. See `crate::system_allowlist` and
-    /// `knowledge/operations/system-allowlist.md`.
+    /// `None` = no global enforcement.
     system_allowlist: Option<Arc<crate::system_allowlist::SystemAllowlist>>,
 }
 

@@ -18,7 +18,8 @@ and `DurableBackend` beside it runs facade sessions behind the `everruns`
 `durable` feature, over an in-memory or a PostgreSQL store, for every
 framework input: new messages, steering, cancellation, parked client-side
 tool calls and interrupted turns. The cross-backend conformance suite passes
-on all three.
+on all three. The public [Framework Architecture](../../docs/framework/architecture.md)
+page diagrams these components for users.
 
 ## Problem
 
@@ -314,7 +315,9 @@ workflows that fit them; turns do not use them. The option is recorded in
   persisted event sequences. Park and resume runs both through a session's
   AG-UI runs and directly on the seam, where the resumed turn's result is
   visible. It passes on the in-process, the durable memory and, with
-  `DATABASE_URL` set, the durable PostgreSQL backend.
+  `DATABASE_URL` set, the durable PostgreSQL backend. CI's durable PostgreSQL
+  shard runs the PostgreSQL half with `EVERRUNS_REQUIRE_POSTGRES_TESTS` set,
+  so a job without a database fails instead of passing on two backends.
 - Core's default build stays wasm-safe: the seam spawns nothing.
 - The facade's default build compiles no durable engine; durable execution
   is the opt-in `durable` feature.

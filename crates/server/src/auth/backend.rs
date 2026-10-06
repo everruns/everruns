@@ -34,7 +34,7 @@ pub trait AuthBackend: Send + Sync + 'static {
     ///
     /// The default implementation fails closed (`401`). Backends that issue MCP
     /// OAuth tokens — the OSS `BuiltinAuthBackend` and SaaS wrappers — override
-    /// it; the mint side is [`JwtService::generate_mcp_access_token`].
+    /// it; the mint side is [`JwtService::generate_mcp_access_token`](crate::auth::jwt::JwtService::generate_mcp_access_token).
     async fn validate_mcp_token(
         &self,
         _token: &str,

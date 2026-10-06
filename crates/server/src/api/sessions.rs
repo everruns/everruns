@@ -43,7 +43,7 @@ use utoipa::{IntoParams, ToSchema};
 #[path = "sessions/create_request.rs"]
 mod create_request;
 pub use create_request::CreateSessionRequest;
-/// Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is
+/// Request to fork a session. Every field is
 /// optional; omitted fields inherit the parent session's value. Title defaults
 /// to "{parent title} (fork)" when omitted.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]

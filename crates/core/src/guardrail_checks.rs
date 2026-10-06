@@ -182,7 +182,7 @@ pub fn default_moderation_threshold() -> u8 {
 /// site has to parse, one request per check. Jev returns a calibrated
 /// probability directly, and every check on a stage rides one request.
 /// `utility_llm` stays the default so existing configs keep their current
-/// behavior; see `knowledge/execution/guardrails.md`.
+/// behavior.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]

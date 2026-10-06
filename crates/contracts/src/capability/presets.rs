@@ -1,8 +1,7 @@
 //! Built-in harness capability sets, as data both surfaces load.
 //!
-//! `generic` used to be written twice: once in `crates/server/src/harnesses/`
-//! for org provisioning, and again as a builder chain in every embedding
-//! application. They drifted, and nothing detected it (EVE-1041).
+//! Shared presets keep organization provisioning and embedded applications
+//! aligned on the same capability sets.
 //!
 //! This crate is the shared floor because it is the one both already depend
 //! on: the platform re-exports [`CapabilityRef`] as `BuiltInCapabilityDefinition`
@@ -12,8 +11,7 @@
 //! Only the capability set is shared. The base system prompt and the hosted
 //! record's presentation fields (`icon`, `starters`, `intro_markdown`) stay
 //! with the platform: a written world-description drifts from the world it
-//! describes, and presentation has no meaning in a library. See
-//! `knowledge/framework/harnesses.md` for the shared-preset boundary.
+//! describes, and presentation has no meaning in a library.
 
 use crate::capability::CapabilityRef;
 
@@ -105,9 +103,7 @@ impl BuiltInHarnessPreset {
 
 /// The name built-in harnesses are addressed by.
 ///
-/// A name, never a UUID: `knowledge/harnesses/harness-types.md` makes that the
-/// contract, and a shared definition that reintroduced a hardcoded id would
-/// break it for every deployment at once.
+/// Identifies a preset by name rather than by a deployment-specific UUID.
 pub const GENERIC_HARNESS_NAME: &str = "generic";
 
 /// Capabilities composing the `generic` harness.

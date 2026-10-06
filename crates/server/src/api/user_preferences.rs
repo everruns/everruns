@@ -6,8 +6,9 @@
 // agnostic about any individual preference's shape (e.g. a dismissed banner
 // flag).
 
-use crate::auth::middleware::{AuthState, AuthUser};
-use crate::storage::{StorageBackend, backend::USER_PREFERENCE_LIMIT_EXCEEDED};
+use crate::api::state::ApiState;
+use crate::auth::middleware::AuthUser;
+use crate::storage::backend::USER_PREFERENCE_LIMIT_EXCEEDED;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -16,10 +17,8 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 use utoipa::ToSchema;
 
-use super::common::impl_auth_state;
 use crate::storage::models::UserPreferenceRow;
 
 const MAX_PREFERENCES_PER_USER: usize = 100;
@@ -34,21 +33,6 @@ pub(crate) fn validate_preference(key: &str, value: &str) -> Result<(), StatusCo
     }
     Ok(())
 }
-
-/// App state for user preference routes.
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
-    }
-}
-
-impl_auth_state!(AppState);
 
 /// A single stored preference. `value` is arbitrary JSON.
 #[derive(Debug, Serialize, ToSchema)]
@@ -78,7 +62,7 @@ fn row_to_response(row: UserPreferenceRow) -> PreferenceResponse {
     }
 }
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/user/preferences", get(list_preferences))
         .route(
@@ -92,7 +76,7 @@ pub fn routes(state: AppState) -> Router {
 
 /// GET /v1/user/preferences — list all of the user's preferences.
 pub async fn list_preferences(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<PreferenceResponse>>, StatusCode> {
     let rows = state
@@ -109,7 +93,7 @@ pub async fn list_preferences(
 
 /// GET /v1/user/preferences/{key} — read a single preference by key.
 pub async fn get_preference(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
     Path(key): Path<String>,
 ) -> Result<Json<PreferenceResponse>, StatusCode> {
@@ -128,7 +112,7 @@ pub async fn get_preference(
 
 /// PUT /v1/user/preferences/{key} — create or update a preference value.
 pub async fn set_preference(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
     Path(key): Path<String>,
     Json(body): Json<SetPreferenceRequest>,
@@ -157,7 +141,7 @@ pub async fn set_preference(
 
 /// DELETE /v1/user/preferences/{key} — remove a preference.
 pub async fn delete_preference(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
     Path(key): Path<String>,
 ) -> Result<StatusCode, StatusCode> {

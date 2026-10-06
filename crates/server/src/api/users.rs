@@ -2,9 +2,9 @@
 // Decision: Expose user listing for admin settings page (member management)
 // Decision: Cookie-based org selection for consistent auth across all requests (including SSE)
 
+use crate::api::state::ApiState;
 use crate::auth::audit;
 use crate::records::{AuditEvent, ManagementAction, validate_org_public_id};
-use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Extension, Query, State},
@@ -14,25 +14,15 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
 
-use super::common::{ListResponse, impl_auth_state};
+use super::common::ListResponse;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::auth::middleware::{AuthState, AuthUser, ORG_COOKIE_MAX_AGE, ResolvedOrg};
+use crate::auth::middleware::{AuthUser, ORG_COOKIE_MAX_AGE, ResolvedOrg};
 use crate::storage::models::UpdateUser;
 
 pub use crate::auth::middleware::ORG_COOKIE_NAME;
-
-/// App state for users routes
-#[derive(Clone)]
-pub struct UsersState {
-    pub db: Arc<StorageBackend>,
-    pub auth: AuthState,
-}
-
-impl_auth_state!(UsersState);
 
 /// User response for listing
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -193,7 +183,7 @@ pub struct ExportUserDataResponse {
 }
 
 /// Create users routes
-pub fn routes(state: UsersState) -> Router {
+pub fn routes(state: ApiState) -> Router {
     Router::new()
         .route("/v1/users", get(list_users))
         .route("/v1/users/me", patch(update_profile).delete(delete_account))
@@ -220,7 +210,7 @@ pub fn routes(state: UsersState) -> Router {
     tag = "users"
 )]
 pub async fn list_users(
-    State(state): State<UsersState>,
+    State(state): State<ApiState>,
     org: ResolvedOrg,
     Query(query): Query<ListUsersQuery>,
 ) -> Result<Json<ListResponse<User>>, StatusCode> {
@@ -267,7 +257,7 @@ pub async fn list_users(
     tag = "users"
 )]
 pub async fn update_profile(
-    State(state): State<UsersState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
     org: ResolvedOrg,
     connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
@@ -329,7 +319,7 @@ pub async fn update_profile(
     tag = "users"
 )]
 pub async fn switch_org(
-    State(state): State<UsersState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
     jar: CookieJar,
     Json(req): Json<SwitchOrgRequest>,
@@ -406,7 +396,7 @@ pub async fn switch_org(
     tag = "users"
 )]
 pub async fn delete_account(
-    State(state): State<UsersState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
 ) -> Result<Json<DeleteAccountResponse>, StatusCode> {
     let deleted = state.db.delete_user_account(auth.id).await.map_err(|e| {
@@ -438,7 +428,7 @@ pub async fn delete_account(
     tag = "users"
 )]
 pub async fn export_user_data(
-    State(state): State<UsersState>,
+    State(state): State<ApiState>,
     auth: AuthUser,
 ) -> Result<Json<ExportUserDataResponse>, StatusCode> {
     let export_value = state

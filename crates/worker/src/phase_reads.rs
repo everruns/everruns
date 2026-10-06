@@ -49,11 +49,9 @@ use everruns_contracts::typed_id::SessionId;
 /// with a remote database).
 const FRESH_FOR: Duration = Duration::from_secs(2);
 
-type Key = (i64, Uuid);
-/// Org, session, and input message.
-type TurnKey = (i64, Uuid, Uuid);
-/// Org, provider, and the session whose overrides apply, if any.
-type ProviderKeyed = (i64, String, Option<Uuid>);
+use crate::turn_reads::{
+    Definition as TurnDefinition, Key, ProviderKeyed, Select, TurnKey, TurnSlot, TurnValues,
+};
 
 struct Entry<T> {
     at: Instant,
@@ -82,6 +80,8 @@ struct State {
     providers: HashMap<ProviderKeyed, Entry<Option<ProviderConfig>>>,
     fetched: u32,
     saved: u32,
+    /// Fetches the turn's earlier phases answered (counted in `fetched` too).
+    from_turn: u32,
     /// The phase started: stop memoizing.
     setup_done: bool,
 }
@@ -110,6 +110,30 @@ fn models(s: &mut State) -> &mut HashMap<Key, Entry<Option<ModelSpec>>> {
 
 fn providers(s: &mut State) -> &mut HashMap<ProviderKeyed, Entry<Option<ProviderConfig>>> {
     &mut s.providers
+}
+
+fn turn_agents(v: &mut TurnValues) -> &mut HashMap<Key, TurnDefinition<AgentDefinition>> {
+    &mut v.agents
+}
+
+fn turn_harnesses(v: &mut TurnValues) -> &mut HashMap<Key, TurnDefinition<HarnessDefinition>> {
+    &mut v.harnesses
+}
+
+fn turn_sessions(v: &mut TurnValues) -> &mut HashMap<Key, Option<ExecutionSession>> {
+    &mut v.sessions
+}
+
+fn turn_turn_contexts(v: &mut TurnValues) -> &mut HashMap<TurnKey, TurnContext> {
+    &mut v.turn_contexts
+}
+
+fn turn_models(v: &mut TurnValues) -> &mut HashMap<Key, Option<ModelSpec>> {
+    &mut v.models
+}
+
+fn turn_providers(v: &mut TurnValues) -> &mut HashMap<ProviderKeyed, Option<ProviderConfig>> {
+    &mut v.providers
 }
 
 /// The ids a phase's setup reads. Known when the worker claims the task.
@@ -151,6 +175,9 @@ impl PhaseIds {
 pub struct PhaseReads {
     started: Instant,
     state: Arc<Mutex<State>>,
+    /// What earlier phases of this turn read on this worker (see
+    /// `turn_reads`). Setup starts from it and adds what it fetches.
+    turn: Option<TurnSlot>,
 }
 
 impl Default for PhaseReads {
@@ -164,7 +191,15 @@ impl PhaseReads {
         Self {
             started: Instant::now(),
             state: Arc::default(),
+            turn: None,
         }
+    }
+
+    /// Share setup reads with the turn's other phases on this worker.
+    #[must_use]
+    pub fn with_turn(mut self, turn: TurnSlot) -> Self {
+        self.turn = Some(turn);
+        self
     }
 
     /// Start every read setup will make, concurrently, so setup waits on them
@@ -206,7 +241,9 @@ impl PhaseReads {
         id: Uuid,
     ) -> Result<Option<AgentDefinition>> {
         self.definition(agents, (org_id, id), || {
-            adapters.resolve_agent_read(org_id, id)
+            self.turn_definition(turn_agents, (org_id, id), || {
+                adapters.resolve_agent_read(org_id, id)
+            })
         })
         .await
     }
@@ -218,7 +255,9 @@ impl PhaseReads {
         id: Uuid,
     ) -> Result<Option<DependencyBlocker>> {
         self.blocker(agents, (org_id, id), || {
-            adapters.resolve_agent_read(org_id, id)
+            self.turn_definition(turn_agents, (org_id, id), || {
+                adapters.resolve_agent_read(org_id, id)
+            })
         })
         .await
     }
@@ -230,7 +269,9 @@ impl PhaseReads {
         id: Uuid,
     ) -> Result<Option<HarnessDefinition>> {
         self.definition(harnesses, (org_id, id), || {
-            adapters.resolve_harness_read(org_id, id)
+            self.turn_definition(turn_harnesses, (org_id, id), || {
+                adapters.resolve_harness_read(org_id, id)
+            })
         })
         .await
     }
@@ -242,7 +283,9 @@ impl PhaseReads {
         id: Uuid,
     ) -> Result<Option<DependencyBlocker>> {
         self.blocker(harnesses, (org_id, id), || {
-            adapters.resolve_harness_read(org_id, id)
+            self.turn_definition(turn_harnesses, (org_id, id), || {
+                adapters.resolve_harness_read(org_id, id)
+            })
         })
         .await
     }
@@ -253,8 +296,12 @@ impl PhaseReads {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<ExecutionSession>> {
-        self.read_through(sessions, (org_id, id), || adapters.get_session(org_id, id))
-            .await
+        self.read_through(sessions, (org_id, id), || {
+            self.turn_read(turn_sessions, (org_id, id), || {
+                adapters.get_session(org_id, id)
+            })
+        })
+        .await
     }
 
     /// The batched turn context a reason phase executes from.
@@ -268,7 +315,19 @@ impl PhaseReads {
         self.read_through(
             turn_contexts,
             (org_id, session_id, input_message_id),
-            || adapters.load_turn_context_for_execution(org_id, session_id, input_message_id),
+            || {
+                self.turn_read(
+                    turn_turn_contexts,
+                    (org_id, session_id, input_message_id),
+                    || {
+                        adapters.load_turn_context_for_execution(
+                            org_id,
+                            session_id,
+                            input_message_id,
+                        )
+                    },
+                )
+            },
         )
         .await
     }
@@ -280,7 +339,9 @@ impl PhaseReads {
         model_id: Uuid,
     ) -> Result<Option<ModelSpec>> {
         self.read_through(models, (org_id, model_id), || {
-            adapters.get_model_spec(org_id, model_id)
+            self.turn_read(turn_models, (org_id, model_id), || {
+                adapters.get_model_spec(org_id, model_id)
+            })
         })
         .await
     }
@@ -299,15 +360,17 @@ impl PhaseReads {
             provider.as_str().to_string(),
             session.map(|id| id.uuid()),
         );
-        self.read_through(providers, key, || async move {
-            match session {
-                Some(session) => {
-                    adapters
-                        .get_provider_config_for_session(org_id, provider, session)
-                        .await
+        self.read_through(providers, key.clone(), || {
+            self.turn_read(turn_providers, key, || async move {
+                match session {
+                    Some(session) => {
+                        adapters
+                            .get_provider_config_for_session(org_id, provider, session)
+                            .await
+                    }
+                    None => adapters.get_provider_config(org_id, provider).await,
                 }
-                None => adapters.get_provider_config(org_id, provider).await,
-            }
+            })
         })
         .await
     }
@@ -372,6 +435,9 @@ impl PhaseReads {
     /// Forget the session after a write, so the next read sees it. The turn
     /// context carries the session too.
     pub fn invalidate_session(&self, org_id: i64, id: Uuid) {
+        if let Some(turn) = &self.turn {
+            turn.invalidate_session(org_id, id);
+        }
         self.with_state(|s| {
             s.sessions.remove(&(org_id, id));
             s.turn_contexts
@@ -384,8 +450,13 @@ impl PhaseReads {
         if event_type != crate::core::REASON_STARTED && event_type != crate::core::ACT_STARTED {
             return;
         }
-        let (fetched, saved, first) = self.with_state(|s| {
-            let counts = (s.fetched, s.saved, !s.setup_done);
+        let (fetched, saved, from_turn, first) = self.with_state(|s| {
+            let counts = (
+                s.fetched.saturating_sub(s.from_turn),
+                s.saved,
+                s.from_turn,
+                !s.setup_done,
+            );
             *s = State {
                 setup_done: true,
                 ..State::default()
@@ -398,9 +469,66 @@ impl PhaseReads {
                 setup_ms = self.started.elapsed().as_millis() as u64,
                 reads_fetched = fetched,
                 reads_saved = saved,
+                reads_from_turn = from_turn,
                 "phase setup"
             );
         }
+    }
+
+    /// The turn's slot, while setup runs.
+    fn turn_slot(&self) -> Option<TurnSlot> {
+        let turn = self.turn.clone()?;
+        (!self.with_state(|s| s.setup_done)).then_some(turn)
+    }
+
+    /// `fetch`, answered from the turn's earlier phases when they read it.
+    async fn turn_read<K, T, F>(
+        &self,
+        select: Select<K, T>,
+        key: K,
+        fetch: impl FnOnce() -> F,
+    ) -> Result<T>
+    where
+        K: Hash + Eq,
+        T: Clone,
+        F: Future<Output = Result<T>>,
+    {
+        let Some(turn) = self.turn_slot() else {
+            return fetch().await;
+        };
+        if let Some(value) = turn.get(select, &key) {
+            self.with_state(|s| s.from_turn += 1);
+            return Ok(value);
+        }
+        let value = fetch().await?;
+        turn.put(select, key, value.clone());
+        Ok(value)
+    }
+
+    /// A definition read, answered from the turn's earlier phases when they
+    /// read it. A failed projection is not kept.
+    async fn turn_definition<T, F>(
+        &self,
+        select: Select<Key, TurnDefinition<T>>,
+        key: Key,
+        fetch: impl FnOnce() -> F,
+    ) -> Result<ResolvedRead<T>>
+    where
+        T: Clone,
+        F: Future<Output = Result<ResolvedRead<T>>>,
+    {
+        let Some(turn) = self.turn_slot() else {
+            return fetch().await;
+        };
+        if let Some((definition, blocker)) = turn.get(select, &key) {
+            self.with_state(|s| s.from_turn += 1);
+            return Ok((Ok(definition), blocker));
+        }
+        let (definition, blocker) = fetch().await?;
+        if let Ok(value) = &definition {
+            turn.put(select, key, (value.clone(), blocker));
+        }
+        Ok((definition, blocker))
     }
 
     async fn definition<T: Clone, F: Future<Output = Result<ResolvedRead<T>>>>(
@@ -606,6 +734,50 @@ mod tests {
                 Ok(Some(session()))
             })
             .await
+    }
+
+    /// Read `key` as `session` does: through the memo, then the turn.
+    async fn read_in_turn(
+        reads: &PhaseReads,
+        key: Key,
+        calls: &AtomicU32,
+    ) -> Result<Option<ExecutionSession>> {
+        reads
+            .read_through(sessions, key, || {
+                reads.turn_read(turn_sessions, key, || async {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    Ok(Some(session()))
+                })
+            })
+            .await
+    }
+
+    #[tokio::test]
+    async fn a_later_phase_starts_from_the_turns_reads() {
+        let turn = TurnSlot::default();
+        let calls = AtomicU32::new(0);
+        let key = (1, Uuid::now_v7());
+
+        let reason = PhaseReads::new().with_turn(turn.clone());
+        read_in_turn(&reason, key, &calls).await.unwrap();
+        reason.note_event(crate::core::REASON_STARTED);
+
+        // The act phase's setup reuses what the reason phase read.
+        let act = PhaseReads::new().with_turn(turn.clone());
+        read_in_turn(&act, key, &calls).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(act.with_state(|s| s.from_turn), 1);
+
+        // Once the phase started, reads go to the store again.
+        act.note_event(crate::core::ACT_STARTED);
+        read_in_turn(&act, key, &calls).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+        // A session write drops the turn's copy.
+        let next = PhaseReads::new().with_turn(turn);
+        next.invalidate_session(key.0, key.1);
+        read_in_turn(&next, key, &calls).await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
     }
 
     #[tokio::test]

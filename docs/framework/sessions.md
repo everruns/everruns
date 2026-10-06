@@ -364,15 +364,61 @@ typed recovery-limit error instead of allocating or scanning without bound.
 Do not design new application persistence around a legacy storage
 representation.
 
+### Durable turns (experimental)
+
+Persistence decides what survives; the execution backend decides how a turn
+runs. By default a turn runs in process, on the task that awaits it. The
+experimental `durable` Cargo feature adds `everruns::durable::Backend`, which
+runs every turn step (input, reason, act) as a task on a durable queue and
+checkpoints the turn's state after each step. A pool of workers in your
+process runs the steps on the session's own runtime, so answers, steering,
+cancellation, and the session's event sequence match the in-process backend.
+
+```rust
+use everruns::{Agent, Engine, Model, durable};
+
+# #[tokio::main]
+# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+let engine = Engine::builder()
+    .backend(durable::Backend::memory().workers(4))
+    .build();
+let agent = Agent::builder()
+    .instructions("You are concise.")
+    .model(Model::simulated("4"))
+    .build()?;
+
+let turn = engine.create(agent).send_and_wait("What is 2 + 2?").await?;
+assert_eq!(turn.response, "4");
+# Ok(())
+# }
+```
+
+- `Backend::memory()` keeps the queue in memory for as long as the engine
+  lives. Nothing beyond the session's own event log survives the process.
+- `Backend::postgres(store)` keeps the queue in PostgreSQL, which several
+  processes may share; each engine claims only its own sessions' steps.
+  `everruns::durable::PostgresWorkflowEventStore::connect(url)` connects and
+  applies the durable schema, which is safe on every start-up. When a session
+  is opened again after a process exit, its first turn ends the turn the old
+  process left running, and `Session::resume_interrupted_turn` continues a turn
+  cut off in its tool calls from the session log. That requires a session log
+  that also outlives the process, such as the [local profile](#local-crash-durable-events).
+
+The durable backend and the `TurnBackend` seam it implements are outside the
+Framework's API stability promises and may change between releases. Each
+durable step adds a few milliseconds over in process, and a round trip per
+store write on PostgreSQL.
+
 ### Platform: distributed durable execution
 
 The Everruns Platform uses the same `everruns-core` (`engine` feature) turn state machine as the
-Framework, but adapts it through `everruns-durable`. The server schedules work,
-workers execute phases and apply effects, and PostgreSQL stores workflow
+Framework and the same durable turn driver as the `durable` feature, from
+`everruns-durable-engine` on the `everruns-durable` engine. The server schedules work,
+workers claim each step over gRPC, execute it, and apply its effects, and PostgreSQL stores workflow
 checkpoints and canonical events. A worker can disappear between phases and a
 later worker can continue from the committed checkpoint.
 
-This is a deployment boundary, not another configuration mode on
+The Platform is a deployment boundary, not another configuration mode on
 `everruns::Engine`. Remote applications use the Platform API or an SDK; product
 hosts compose the lower-level durable crates. See [Framework
 Architecture](/framework/architecture/) for the layer map.

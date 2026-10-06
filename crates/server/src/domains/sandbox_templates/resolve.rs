@@ -257,9 +257,18 @@ pub fn sandbox_from_record(
 /// Availability is asked, never assumed: a managed provider counts only when
 /// its plugin is actually registered in this binary.
 pub fn sandbox_targets() -> Vec<SandboxTargetDescriptor> {
-    let daytona_registered =
-        everruns_capabilities::session_sandbox::create_session_sandbox_provider("daytona")
-            .is_some();
+    sandbox_targets_for_grade(everruns_core::DeploymentGrade::from_env())
+}
+
+fn sandbox_targets_for_grade(
+    grade: everruns_core::DeploymentGrade,
+) -> Vec<SandboxTargetDescriptor> {
+    let registered = |provider: &str| {
+        everruns_capabilities::session_sandbox::create_session_sandbox_provider(provider).is_some()
+    };
+    let daytona_registered = registered("daytona");
+    let modal_registered = registered("modal");
+    let modal_offered = super::resolution::managed_provider_offered("modal", grade);
 
     vec![
         SandboxTargetDescriptor {
@@ -280,6 +289,27 @@ pub fn sandbox_targets() -> Vec<SandboxTargetDescriptor> {
             capabilities: managed_capabilities(true),
             containment_levels: vec!["isolated".to_string()],
             durability: "checkpointed".to_string(),
+        },
+        // Modal pauses by snapshotting the filesystem into a provider image;
+        // nothing portable leaves Modal.
+        SandboxTargetDescriptor {
+            kind: "managed".to_string(),
+            provider: Some("modal".to_string()),
+            available: modal_registered && modal_offered,
+            reason: if !modal_registered {
+                Some("the Modal provider is not registered in this deployment".to_string())
+            } else if !modal_offered {
+                Some("Modal is experimental and offered only at development grade".to_string())
+            } else {
+                None
+            },
+            // Modal enforces deny and allowlists outside the sandbox.
+            capabilities: SandboxCapabilities {
+                network_enforced: true,
+                ..managed_capabilities(false)
+            },
+            containment_levels: vec!["isolated".to_string()],
+            durability: "provider_snapshot".to_string(),
         },
         SandboxTargetDescriptor {
             kind: "host".to_string(),
@@ -399,6 +429,25 @@ mod tests {
         )]);
         assert_eq!(with.durability, "checkpointed");
         assert!(with.capabilities.portable_checkpoint);
+    }
+
+    #[test]
+    fn modal_is_listed_but_offered_only_at_development_grade() {
+        let modal = |grade| {
+            sandbox_targets_for_grade(grade)
+                .into_iter()
+                .find(|target| target.provider.as_deref() == Some("modal"))
+                .expect("modal is listed")
+        };
+        let dev = modal(everruns_core::DeploymentGrade::Dev);
+        assert!(dev.available, "{:?}", dev.reason);
+        assert_eq!(dev.durability, "provider_snapshot");
+        assert!(!dev.capabilities.portable_checkpoint);
+        assert!(dev.capabilities.network_enforced);
+
+        let prod = modal(everruns_core::DeploymentGrade::Prod);
+        assert!(!prod.available);
+        assert!(prod.reason.unwrap().contains("development grade"));
     }
 
     #[test]

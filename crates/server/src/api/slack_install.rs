@@ -3,10 +3,7 @@
 //! Replaces three of the four values an operator used to copy out of
 //! api.slack.com. `apps.manifest.create` returns the signing secret and the
 //! client pair; the OAuth install returns the bot token and workspace id; the
-//! channel id was already optional. See
-//! `knowledge/integrations/slack-one-click-install.md` for the live PoC that
-//! established this, and `crate::records::slack_provisioning` for why app
-//! creation is a seam rather than something the OSS server does itself.
+//! channel id was already optional.
 //!
 //! Two routes with deliberately different auth:
 //!

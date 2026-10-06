@@ -1,4 +1,4 @@
-//! SignalStore implementation (see `store.rs` for the trait contract).
+//! Implementation of [`crate::SignalStore`].
 
 use super::*;
 

@@ -1,5 +1,4 @@
-//! Effort and output-cap rules for Claude's thinking models, split out of
-//! `driver.rs` to keep that file under its size ratchet.
+//! Effort and output-cap rules for Claude's thinking models.
 
 use everruns_contracts::LlmCallConfig;
 use everruns_contracts::model::{ModelProfile, ReasoningEffort};

@@ -1,5 +1,4 @@
-//! Multi-era MCP protocol support (knowledge/integrations/mcp-servers.md "Multi-era protocol
-//! support").
+//! Multi-era MCP protocol support.
 //!
 //! Everruns' MCP client speaks three eras with one code path:
 //!
@@ -84,8 +83,7 @@ impl ClientCapabilities {
 /// way to reach. Each `elicitation` mode is declared only when the host
 /// supplied the machinery that answers it *and* the server's
 /// `elicitation_policy` allows it. Form mode is opt-in per server because its
-/// answer is data a person types into a question a third party wrote
-/// (`knowledge/integrations/mcp-form-elicitation.md`).
+/// answer is data a person types into a question a third party wrote.
 pub fn client_capabilities(capabilities: ClientCapabilities) -> Value {
     let mut modes = Map::new();
     if capabilities.url_elicitation {

@@ -7,7 +7,7 @@
 //! conformance suite passes on every backend.
 //!
 //! By default an engine runs each turn in process, on the task that awaits
-//! it. [`Backend::memory`] or [`Backend::postgres`] selects the durable
+//! it. [`Backend::memory`](crate::durable::Backend::memory) or [`Backend::postgres`](crate::durable::Backend::postgres) selects the durable
 //! backend from `everruns-durable-engine` instead: every turn step (input,
 //! reason, act) is a task on an `everruns-durable` queue, its state
 //! checkpointed after each step, and a pool of workers in this process runs
@@ -24,14 +24,14 @@
 //! interrupted in their tool calls
 //! ([`Session::resume_interrupted_turn`](crate::Session::resume_interrupted_turn))
 //! continue on this backend exactly as in process; the backend conformance
-//! suite (`tests/backend_conformance/`) runs every scenario on every backend
+//! suite runs every scenario on every backend
 //! and requires the same outcome.
 //!
 //! # Stores
 //!
-//! - [`Backend::memory`] keeps the queue in memory, for as long as the
+//! - [`Backend::memory`](crate::durable::Backend::memory) keeps the queue in memory, for as long as the
 //!   engine lives: nothing beyond the session's own log survives the process.
-//! - [`Backend::postgres`] keeps it in PostgreSQL, which several processes may
+//! - [`Backend::postgres`](crate::durable::Backend::postgres) keeps it in PostgreSQL, which several processes may
 //!   share. A step needs its session's runtime, which lives only in the
 //!   engine that opened the session, so each engine claims only its own
 //!   sessions' steps. After a process exits, a session opened again (in a
@@ -67,7 +67,7 @@ use std::fmt;
 
 use everruns_durable_engine::DurableBackend;
 
-/// The PostgreSQL durable store [`Backend::postgres`] runs on; create it
+/// The PostgreSQL durable store [`Backend::postgres`](crate::durable::Backend::postgres) runs on; create it
 /// with [`PostgresWorkflowEventStore::connect`].
 pub use everruns_durable_engine::durable::PostgresWorkflowEventStore;
 

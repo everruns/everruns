@@ -1,7 +1,6 @@
 //! Outbound MCP Events (EVE-1121): webhook subscriptions for session
 //! completion, failure, and input required, delivered to MCP clients such as
-//! ChatGPT. See `knowledge/integrations/mcp-events.md` for the pinned spec
-//! revision and the design.
+//! ChatGPT.
 //!
 //! Decision: webhook delivery only. The draft spec also has in-band delivery on
 //! an open stream, but `/mcp` is stateless and ChatGPT asks for webhooks.

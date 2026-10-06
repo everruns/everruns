@@ -5,9 +5,6 @@
 //! This capability is auto-activated by core capability collection through the
 //! neutral [`Capability::auto_activates_for`] hook. It can also be selected explicitly by id
 //! (`"background_execution"`) — the auto-activator skips it in that case.
-//!
-//! See `knowledge/execution/background-execution.md` for the cross-cutting / meta-tool
-//! capability contract this implements.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::background_run::SpawnBackgroundTool;

@@ -79,8 +79,7 @@ impl Harness {
 
     /// Deprecated legacy Generic bundle, identical to the hosted legacy harness.
     ///
-    /// One definition, not a copy. Both this and `crates/server/src/harnesses/`
-    /// read `everruns_contracts::generic_capabilities`, so an application
+    /// Shares its capability definition with platform provisioning, so an application
     /// preserves its existing bundle without a separate builder list that drifts.
     ///
     /// What it does *not* carry is the platform's base system prompt or its

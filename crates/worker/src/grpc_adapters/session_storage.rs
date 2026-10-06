@@ -1,7 +1,7 @@
 //! The worker's `SessionStorageStore`, spoken over the gRPC control plane.
 //!
-//! Split out of `grpc_adapters.rs` to keep that file under the size guard. The
-//! implementation is unchanged by the move.
+// Split out of `grpc_adapters.rs` to keep that file under the size guard. The
+// implementation is unchanged by the move.
 
 use crate::core::session_services::{KeyInfo, SecretInfo, SessionStorageStore};
 use async_trait::async_trait;

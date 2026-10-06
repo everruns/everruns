@@ -5,7 +5,7 @@
 //! Agents API (`everruns_core::host::openai_agents_api`) instead of the native
 //! Reason loop. The platform strips it from the worker snapshot unless the org
 //! has the platform-managed `openai_agents_api` flag, so the default path is
-//! unchanged. See `knowledge/execution/openai-agents-api-runtime.md`.
+//! unchanged.
 
 use super::{Capability, CapabilityStatus, RiskLevel};
 use everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID;
