@@ -772,6 +772,7 @@ mod tests {
             _input: serde_json::Value,
             _activity_id: String,
             _activity_type: String,
+            _steer: Option<serde_json::Value>,
         ) -> Result<crate::durable::RunStart, StoreError> {
             Ok(crate::durable::RunStart::Active)
         }

@@ -178,6 +178,25 @@ pub struct TaskDefinition {
     pub options: ActivityOptions,
 }
 
+/// The steering a run start carries; see [`EventLog::start_run_with_task`].
+///
+/// Decision: a caller that finds a run active steers it with a signal, and
+/// that signal is written under the same workflow lock as the active-run
+/// check. Sent afterwards, in its own write, it could land after the run's
+/// last step drained its signals and completed the workflow, and nothing
+/// would act on it (a follow-up message sent right after a turn went idle
+/// was lost that way under load).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunSteering {
+    /// The signal type that steers this workflow's runs. When a new run
+    /// starts, pending signals of this type are consumed: they were sent to
+    /// a run that has ended, and the new run acts on what they announced.
+    pub signal_type: String,
+    /// Payload of the signal sent to the run when one is active. `None`
+    /// sends nothing.
+    pub payload: Option<serde_json::Value>,
+}
+
 /// Outcome of [`EventLog::start_run_with_task`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStart {
@@ -764,6 +783,11 @@ pub trait EventLog: Send + Sync + 'static {
     ///   [`TaskQueue::requeue_stranded_workflows`] does) so the run the
     ///   caller then signals resumes.
     ///
+    ///
+    /// With `steering`, an active run is sent its signal (when it has a
+    /// payload) and a new run consumes the pending signals of its type, both
+    /// under the same lock as the active-run check; see [`RunSteering`].
+    ///
     /// `task.workflow_id` is ignored; the task always belongs to `workflow_id`.
     async fn start_run_with_task(
         &self,
@@ -771,6 +795,7 @@ pub trait EventLog: Send + Sync + 'static {
         workflow_type: &str,
         input: serde_json::Value,
         task: TaskDefinition,
+        steering: Option<RunSteering>,
     ) -> Result<RunStart, StoreError>;
 
     /// Cancel a workflow

@@ -572,6 +572,7 @@ impl EventLog for PostgresWorkflowEventStore {
         workflow_type: &str,
         input: serde_json::Value,
         mut task: TaskDefinition,
+        steering: Option<RunSteering>,
     ) -> Result<RunStart, StoreError> {
         task.workflow_id = Some(workflow_id);
         let db = |action: &'static str| {
@@ -630,6 +631,24 @@ impl EventLog for PostgresWorkflowEventStore {
                         if status == "running" {
                             super::hand_off::resume_if_stranded(&mut tx, workflow_id).await?;
                         }
+                        if let Some(RunSteering {
+                            signal_type,
+                            payload: Some(payload),
+                        }) = &steering
+                        {
+                            sqlx::query(
+                                r#"
+                                INSERT INTO durable_signals (workflow_id, signal_type, payload, sent_at)
+                                VALUES ($1, $2, $3, NOW())
+                                "#,
+                            )
+                            .bind(workflow_id)
+                            .bind(signal_type)
+                            .bind(payload)
+                            .execute(&mut *tx)
+                            .await
+                            .map_err(db("Failed to steer the active run"))?;
+                        }
                         tx.commit()
                             .await
                             .map_err(db("Failed to commit active run check"))?;
@@ -668,6 +687,22 @@ impl EventLog for PostgresWorkflowEventStore {
             tx.rollback().await.ok();
             return Err(StoreError::WorkflowNotFound(workflow_id));
         };
+
+        // The new run acts on what signals sent to the previous one announced.
+        if let (Some(steering), false) = (&steering, created) {
+            sqlx::query(
+                r#"
+                UPDATE durable_signals
+                SET processed_at = NOW()
+                WHERE workflow_id = $1 AND processed_at IS NULL AND signal_type = $2
+                "#,
+            )
+            .bind(workflow_id)
+            .bind(&steering.signal_type)
+            .execute(&mut *tx)
+            .await
+            .map_err(db("Failed to consume the previous run's signals"))?;
+        }
 
         // Stale pending tasks were just cancelled (or the workflow is new),
         // so the per-workflow pending cap cannot be hit here.

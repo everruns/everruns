@@ -200,7 +200,7 @@ impl<S: WorkflowEventStore> TurnStore for RoutedStore<S> {
         if ends {
             self.ended(Some(workflow_id));
         }
-        result
+        result.map(|recorded| recorded.claimed)
     }
 
     async fn count_pending_signals(
@@ -273,6 +273,7 @@ impl<S: WorkflowEventStore> TurnStore for RoutedStore<S> {
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
+        steer: Option<serde_json::Value>,
     ) -> Result<RunStart, StoreError> {
         start_turn_in(
             &*self.store,
@@ -282,6 +283,7 @@ impl<S: WorkflowEventStore> TurnStore for RoutedStore<S> {
             input,
             activity_id,
             activity_type,
+            steer,
         )
         .await
     }
