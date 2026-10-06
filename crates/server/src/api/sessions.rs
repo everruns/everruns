@@ -35,8 +35,8 @@ use everruns_contracts::typed_id::{
     AgentId, HarnessId, ModelId, SessionId, VirtualUserId, WorkspaceId,
 };
 use everruns_core::host::HostComposition;
+use everruns_core::host::TurnBackend;
 use everruns_durable::UpdateField;
-use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -319,14 +319,14 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub event_service: EventService,
-    pub runner: Arc<dyn AgentRunner>,
+    pub runner: Arc<dyn TurnBackend>,
     pub auth: AuthState,
     pub fallback_default_harness_name: Option<String>,
     pub org_rate_limiter: OrgRateLimiter,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
+    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn TurnBackend>, auth: AuthState) -> Self {
         Self::with_host_composition(
             db,
             runner,
@@ -339,7 +339,7 @@ impl AppState {
 
     pub fn with_host_composition(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         host_composition: &HostComposition,
         built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],

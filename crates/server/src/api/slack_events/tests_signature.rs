@@ -7,7 +7,7 @@ use crate::storage::StorageBackend;
 use axum::http::HeaderMap;
 use axum::http::HeaderValue;
 use everruns_core::channel::{InboundAttachment, SessionBinding};
-use everruns_worker::AgentRunner;
+use everruns_core::host::TurnBackend;
 use std::sync::Arc;
 
 use super::tests_support::*;
@@ -829,7 +829,7 @@ mod pane_rename_tests {
         stored_title: &str,
     ) -> (SlackState, everruns_contracts::typed_id::SessionId) {
         let db = Arc::new(StorageBackend::in_memory());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let state = SlackState::new(
             db,
             None,

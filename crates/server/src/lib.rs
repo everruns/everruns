@@ -132,6 +132,9 @@ pub mod supervised_task;
 // Background sweep: time out sessions stuck in waiting_for_tool_results
 pub mod tool_result_timeout;
 
+// The server's turn requests on the `TurnBackend` entry point
+pub mod turns;
+
 // `--health-check` probe for distroless container healthchecks
 pub mod health_probe;
 

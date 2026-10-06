@@ -1410,7 +1410,7 @@ impl Command for CancelSession {
             });
         }
 
-        if let Err(error) = q::runner(ctx)?.cancel_run(session_id).await {
+        if let Err(error) = q::runner(ctx)?.cancel(session_id).await {
             tracing::error!(session_id = %session_id, error = %error, "Failed to cancel workflow");
         }
 

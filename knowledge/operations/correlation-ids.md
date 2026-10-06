@@ -108,7 +108,7 @@ one layer. `the_logged_request_id_is_the_one_the_response_echoes` in
 | `http_access_log_layer` middleware | `crates/server/src/middleware/access_log.rs` |
 | Middleware wiring + custom `TraceLayer` span | `crates/server/src/app_builder.rs` |
 | `request_id` in `CreateMessageContext` | `crates/server/src/domains/messages/service.rs` |
-| `request_id` in `AgentRunner::start_run` | `crates/worker/src/runner.rs` |
+| `request_id` on the server's `TurnRequest` | `crates/server/src/turns.rs` |
 | `request_id` in `DurableTurnInput` | `crates/durable-engine/src/durable_runner.rs` |
 | `session_id` span recording | `crates/server/src/api/messages.rs` |
 

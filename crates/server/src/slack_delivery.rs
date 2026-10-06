@@ -461,7 +461,7 @@ impl SlackDeliveryDispatcher {
                 // `input_message_id` for the synthetic event because neither knows the
                 // in-flight turn's id, so a per-turn match would never fire — which is
                 // exactly the registration leak EVE-966 describes. Cancellation is
-                // session-scoped anyway (`cancel_run` takes a session), so every
+                // session-scoped anyway (`TurnBackend::cancel` takes a session), so every
                 // delivery on this session is terminal once it arrives. The turn
                 // boundary prevents a cancellation from an earlier, persisted turn
                 // from matching a later registration that reuses the session.

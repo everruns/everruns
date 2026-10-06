@@ -43,11 +43,14 @@ or durable crates. Do not
 copy state advancement or the phase loop into a custom backend; implement the
 execution boundary and keep deployment-specific service selection in the host.
 
-Where a turn runs is a separate seam: `everruns_core::host::TurnBackend` starts,
-cancels, and observes a session's turns. `InProcessBackend` is the default, and
-the facade's experimental `durable` feature selects the queued, checkpointed
-backend from `everruns-durable-engine`. The trait is public and unsealed but
-experimental. The facade's [backend conformance suite](https://github.com/everruns/everruns/tree/main/crates/everruns/tests/backend_conformance)
+Where a turn runs is a separate interface: `everruns_core::host::TurnBackend`
+starts, cancels, and observes a session's turns. `InProcessBackend` is the
+default, and the facade's experimental `durable` feature selects the queued,
+checkpointed backend from `everruns-durable-engine`. A host that records input
+through its own event store starts turns from it with
+`TurnInput::StoredMessage` and continues a parked turn with
+`TurnInput::RecordedToolResults`, which every backend serves. The trait is
+public and unsealed but experimental. The facade's [backend conformance suite](https://github.com/everruns/everruns/tree/main/crates/everruns/tests/backend_conformance)
 defines the behavior every backend must match.
 
 See [Framework Architecture](/framework/architecture/) for the complete layer
