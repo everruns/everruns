@@ -110,33 +110,44 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return { data };
 }
 
+// Per-call options. Only headers for now: change intent (a reason) travels as
+// a request header on REST routes, see `./change-history`.
+export interface RequestOptions {
+  headers?: Record<string, string>;
+}
+
 // Axios-like API client
 export const api = {
   defaults: {
     baseURL: API_BASE,
   },
 
-  get: <T>(url: string) => request<T>(url, { method: "GET" }),
+  get: <T>(url: string, options?: RequestOptions) =>
+    request<T>(url, { method: "GET", headers: options?.headers }),
 
-  post: <T>(url: string, body?: unknown) =>
+  post: <T>(url: string, body?: unknown, options?: RequestOptions) =>
     request<T>(url, {
       method: "POST",
       body: body ? JSON.stringify(body) : undefined,
+      headers: options?.headers,
     }),
 
-  patch: <T>(url: string, body?: unknown) =>
+  patch: <T>(url: string, body?: unknown, options?: RequestOptions) =>
     request<T>(url, {
       method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
+      headers: options?.headers,
     }),
 
-  put: <T>(url: string, body?: unknown) =>
+  put: <T>(url: string, body?: unknown, options?: RequestOptions) =>
     request<T>(url, {
       method: "PUT",
       body: body ? JSON.stringify(body) : undefined,
+      headers: options?.headers,
     }),
 
-  delete: <T>(url: string) => request<T>(url, { method: "DELETE" }),
+  delete: <T>(url: string, options?: RequestOptions) =>
+    request<T>(url, { method: "DELETE", headers: options?.headers }),
 };
 
 /**

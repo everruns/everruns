@@ -12,24 +12,14 @@ import { exportAgentPackage } from "@/lib/api/agents";
 // land together. The old /edit route redirects here with `?mode=edit`.
 //
 // One tab row only: Agent · Preview · Integrations · Stats · Sessions. MCP and
-// Credentials are configuration (config column sheets); Versions and the old
-// danger zone live in the header overflow menu.
+// Credentials are configuration (config column sheets). Copy, export, History,
+// Manager notes, Archive and Delete live in the header EntityActionsMenu
+// (knowledge/ui/entity-actions-menu.md); History replaces Version history, and
+// old `?tab=versions` links open the History sheet.
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  Archive,
-  Check,
-  Copy,
-  Download,
-  GitBranch,
-  MessageCircle,
-  MoreHorizontal,
-  Pencil,
-  Telescope,
-  Trash2,
-} from "lucide-react";
+import { Check, Copy, Download, MessageCircle, Pencil, Telescope } from "lucide-react";
 import {
   useAgent,
   useAgentCredentials,
@@ -51,7 +41,7 @@ import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -62,13 +52,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuPositioner,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  EntityActionsMenu,
+  EntityRecordSheets,
+  entitySheetSearch,
+} from "@/components/entity-actions/entity-actions-menu";
+import { ChangeReasonField } from "@/components/entity-actions/change-reason-field";
+import { ManagerNotesHint } from "@/components/entity-actions/manager-notes-hint";
 import {
   BackLink,
   PageBreadcrumb,
@@ -144,8 +133,20 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   }
   const [editRequested, setEditRequested] = useState(() => searchParams.get("mode") === "edit");
   const [confirmAction, setConfirmAction] = useState<"archive" | "delete" | null>(null);
+  // Optional "Reason for this change", sent with Save and with Archive/Delete.
+  const [saveReason, setSaveReason] = useState("");
+  const [confirmReason, setConfirmReason] = useState("");
 
-  const agentVersionsEnabled = useFeatureFlag("agent_versions");
+  // Retired `?tab=versions` links open the History sheet.
+  useEffect(() => {
+    if (!deepLink.recordSheet) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("tab");
+    router.replace(`/agents/${agentId}${entitySheetSearch(params, deepLink.recordSheet)}`, {
+      scroll: false,
+    });
+  }, [agentId, deepLink.recordSheet, router, searchParams]);
+
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   const { data: harnesses = [] } = useHarnesses();
@@ -219,6 +220,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const handleDiscard = () => {
     draft.reset();
     updateAgent.reset();
+    setSaveReason("");
     exitEdit();
   };
 
@@ -230,8 +232,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       return;
     }
     try {
-      await updateAgent.mutateAsync({ agentId, request: result.request });
+      await updateAgent.mutateAsync({ agentId, request: result.request, reason: saveReason });
       draft.reset();
+      setSaveReason("");
       exitEdit();
     } catch (error) {
       console.error("Failed to update agent:", error);
@@ -313,10 +316,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const handleConfirm = async () => {
     try {
       if (confirmAction === "archive") {
-        await deleteAgent.mutateAsync(agentId);
+        await deleteAgent.mutateAsync({ id: agentId, reason: confirmReason });
         setConfirmAction(null);
+        setConfirmReason("");
       } else if (confirmAction === "delete") {
-        await destroyAgent.mutateAsync(agentId);
+        await destroyAgent.mutateAsync({ id: agentId, reason: confirmReason });
         router.push("/agents");
       }
     } catch (error) {
@@ -411,65 +415,55 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   const canArchive = isActive;
   const canDelete = agent.status === "archived" && can("agent.dangerous");
-  const sheetSection = openSection === "versions" && !agentVersionsEnabled ? null : openSection;
+  const canManage = can("agent.manage");
   const confirmError = confirmAction === "delete" ? destroyAgent.error : deleteAgent.error;
   const confirmPending = deleteAgent.isPending || destroyAgent.isPending;
+  const recordPermissions = { manage: canManage };
 
   const overflowMenu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        className={buttonVariants({ variant: "outline", size: "icon" })}
-        aria-label="More actions"
-      >
-        <MoreHorizontal className="size-4" />
-      </DropdownMenuTrigger>
-      <DropdownMenuPositioner align="end">
-        <DropdownMenuContent>
-          <DropdownMenuItem onClick={handleCopy} disabled={copyAgent.isPending}>
-            <Copy className="size-4" />
-            {copyAgent.isPending ? "Copying..." : "Copy"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleExport("zip")} disabled={exporting}>
-            <Download className="size-4" />
-            {exporting ? "Exporting..." : "Export package (ZIP)"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleExport("markdown")} disabled={exporting}>
-            <Download className="size-4" />
-            Export Markdown
-          </DropdownMenuItem>
-          {observersEnabled && isActive && (
-            <DropdownMenuItem
-              render={<Link href={{ pathname: "/observers/new", query: { agent_id: agentId } }} />}
-            >
-              <Telescope className="size-4" />
-              Observe this agent
-            </DropdownMenuItem>
-          )}
-          {agentVersionsEnabled && (
-            <DropdownMenuItem onClick={() => setOpenSection("versions")}>
-              <GitBranch className="size-4" />
-              Version history
-            </DropdownMenuItem>
-          )}
-          {(canArchive || canDelete) && <DropdownMenuSeparator />}
-          {canArchive && (
-            <DropdownMenuItem onClick={() => setConfirmAction("archive")}>
-              <Archive className="size-4" />
-              Archive agent
-            </DropdownMenuItem>
-          )}
-          {canDelete && (
-            <DropdownMenuItem
-              onClick={() => setConfirmAction("delete")}
-              className="text-destructive"
-            >
-              <Trash2 className="size-4" />
-              Delete agent
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenuPositioner>
-    </DropdownMenu>
+    <EntityActionsMenu
+      entityRef={agent.id}
+      kind="agent"
+      entityName={displayName}
+      permissions={recordPermissions}
+      actions={[
+        {
+          id: "copy",
+          label: copyAgent.isPending ? "Copying..." : "Copy",
+          icon: <Copy className="size-4" />,
+          onSelect: handleCopy,
+          disabled: copyAgent.isPending,
+        },
+        {
+          id: "export-zip",
+          label: exporting ? "Exporting..." : "Export package (ZIP)",
+          icon: <Download className="size-4" />,
+          onSelect: () => handleExport("zip"),
+          disabled: exporting,
+          disabledReason: "An export is running",
+        },
+        {
+          id: "export-markdown",
+          label: "Export Markdown",
+          icon: <Download className="size-4" />,
+          onSelect: () => handleExport("markdown"),
+          disabled: exporting,
+          disabledReason: "An export is running",
+        },
+        ...(observersEnabled && isActive
+          ? [
+              {
+                id: "observe",
+                label: "Observe this agent",
+                icon: <Telescope className="size-4" />,
+                href: { pathname: "/observers/new", query: { agent_id: agentId } },
+              },
+            ]
+          : []),
+      ]}
+      archive={canArchive ? { onSelect: () => setConfirmAction("archive") } : undefined}
+      delete={canDelete ? { onSelect: () => setConfirmAction("delete") } : undefined}
+    />
   );
 
   const actions = editing ? (
@@ -525,8 +519,22 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               ? "Changes apply to new sessions only. Running sessions keep the current definition."
               : undefined
           }
+          meta={
+            editing ? (
+              <ManagerNotesHint entityRef={agent.id} kind="agent" enabled={canManage} />
+            ) : undefined
+          }
           actions={actions}
         />
+
+        {editing && (
+          <ChangeReasonField
+            value={saveReason}
+            onChange={setSaveReason}
+            disabled={updateAgent.isPending}
+            className="max-w-xl"
+          />
+        )}
 
         {exportError && (
           <p role="alert" className="text-destructive">
@@ -630,8 +638,19 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         </PageFooter>
       </PageContainer>
 
+      {/* The menu (and its sheets) is hidden in edit mode; `?sheet=` links such
+          as the manager-notes hint still open there. */}
+      {editing && (
+        <EntityRecordSheets
+          entityRef={agent.id}
+          kind="agent"
+          entityName={displayName}
+          permissions={recordPermissions}
+        />
+      )}
+
       <AgentSettingsSheet
-        section={sheetSection}
+        section={openSection}
         onOpenChange={(open) => {
           if (!open) setOpenSection(null);
         }}
@@ -645,7 +664,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       <Dialog
         open={confirmAction !== null}
         onOpenChange={(open) => {
-          if (!open) setConfirmAction(null);
+          if (!open) {
+            setConfirmAction(null);
+            setConfirmReason("");
+          }
         }}
       >
         <DialogContent>
@@ -667,8 +689,19 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               />
             )}
           </DialogHeader>
+          <ChangeReasonField
+            value={confirmReason}
+            onChange={setConfirmReason}
+            disabled={confirmPending}
+          />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmAction(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setConfirmAction(null);
+                setConfirmReason("");
+              }}
+            >
               Cancel
             </Button>
             <Button

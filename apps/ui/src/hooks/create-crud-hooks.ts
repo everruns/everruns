@@ -85,6 +85,15 @@ interface CreateCrudHooksOptions<TItem, TCreate, TUpdate> {
 interface UpdateMutationVariables<TUpdate> {
   id: string;
   request: TUpdate;
+  /** Optional change reason, recorded in the entity's history. */
+  reason?: string;
+}
+
+/** An id, or an id with the optional change reason for the entity's history. */
+export type LifecycleMutationVariables = string | { id: string; reason?: string };
+
+function lifecycleArgs(variables: LifecycleMutationVariables): [string, string | undefined] {
+  return typeof variables === "string" ? [variables, undefined] : [variables.id, variables.reason];
 }
 
 export function createCrudHooks<TItem, TCreate, TUpdate>({
@@ -140,7 +149,7 @@ export function createCrudHooks<TItem, TCreate, TUpdate>({
     const queryClient = useQueryClient();
 
     return useMutation({
-      mutationFn: ({ id, request }) => api.update(id, request),
+      mutationFn: ({ id, request, reason }) => api.update(id, request, reason),
       onSuccess: (item, { id }) => {
         syncEntityCache?.(queryClient, item);
         invalidateCrudQueries(queryClient, queryKeys, id);
@@ -148,22 +157,24 @@ export function createCrudHooks<TItem, TCreate, TUpdate>({
     });
   }
 
-  function useDelete(): UseMutationResult<void, Error, string> {
+  function useDelete(): UseMutationResult<void, Error, LifecycleMutationVariables> {
     const queryClient = useQueryClient();
 
     return useMutation({
-      mutationFn: api.delete,
+      mutationFn: (variables: LifecycleMutationVariables) =>
+        api.delete(...lifecycleArgs(variables)),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.all });
       },
     });
   }
 
-  function useDestroy(): UseMutationResult<void, Error, string> {
+  function useDestroy(): UseMutationResult<void, Error, LifecycleMutationVariables> {
     const queryClient = useQueryClient();
 
     return useMutation({
-      mutationFn: api.destroy,
+      mutationFn: (variables: LifecycleMutationVariables) =>
+        api.destroy(...lifecycleArgs(variables)),
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: queryKeys.all });
       },
