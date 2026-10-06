@@ -2,6 +2,14 @@
 
 ## 2026-10-06
 
+* **OpenAI's Decisions API driver leaves preview.** The API reached public
+  beta with a published reference, and our key is enabled. The guessed wire
+  shape was replaced by the real one (one call carries every question;
+  predicate, choice and score are native and calibrated; refusals fail the
+  request), the `DECISIONS_OPENAI_PREVIEW` opt-in is gone, and a live smoke
+  runs in CI. It stays non-default: `DECISIONS_DRIVER=openai` selects it. See
+  [Decisions Service](operations/decisions-service.md#decision-drivers).
+
 * **Decision: user MCP servers.** Virtual users own MCP servers, agents opt
   in to use or manage them through a `user_mcp` capability, and agent servers
   gain a `user_or_service` auth mode. Accepted, implementation in progress.

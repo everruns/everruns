@@ -9,9 +9,11 @@
 //! - `UTILITY_TYPESAFE_API_KEY` registers the `typesafe` driver.
 //! - A configured utility LLM (`UTILITY_OPENAI_API_KEY` or
 //!   `UTILITY_OPENROUTER_API_KEY`) registers the `llm` driver.
-//! - `DECISIONS_OPENAI_PREVIEW=1` with `UTILITY_OPENAI_API_KEY` registers the
-//!   `openai` driver (OpenAI's Decisions API). Opt-in because the API is in
-//!   limited preview and the driver's wire shape is unverified (EVE-1118).
+//! - `UTILITY_OPENAI_API_KEY` makes the `openai` driver (OpenAI's Decisions
+//!   API) available. It answers only when `DECISIONS_DRIVER=openai` picks it,
+//!   so a deployment that already has an OpenAI utility key keeps its current
+//!   driver. The preview opt-in was dropped once the API reached public beta
+//!   and the wire shape was verified against it (2026-10-06).
 //! - `DECISIONS_DRIVER` picks the default driver. Unset keeps today's
 //!   behavior: `typesafe` when its key is present, otherwise disabled. The
 //!   `llm` fallback is opt-in, because it spends utility-model tokens on every
@@ -37,9 +39,6 @@ pub const DECISIONS_DRIVER_ENV: &str = "DECISIONS_DRIVER";
 
 /// Environment variable naming the default driver's model.
 pub const DECISIONS_MODEL_ENV: &str = "DECISIONS_MODEL";
-
-/// Environment variable that opts into the preview `openai` driver.
-pub const DECISIONS_OPENAI_PREVIEW_ENV: &str = "DECISIONS_OPENAI_PREVIEW";
 
 /// The deployment's OpenAI key, shared with the utility LLM.
 const UTILITY_OPENAI_API_KEY_ENV: &str = "UTILITY_OPENAI_API_KEY";
@@ -72,9 +71,7 @@ impl SystemDecisions {
         Self {
             typesafe: Some(SystemDecisionsConfig::from_env()),
             openrouter_key: env_value("UTILITY_OPENROUTER_API_KEY"),
-            openai_key: env_value(DECISIONS_OPENAI_PREVIEW_ENV)
-                .filter(|flag| matches!(flag.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
-                .and_then(|_| env_value(UTILITY_OPENAI_API_KEY_ENV)),
+            openai_key: env_value(UTILITY_OPENAI_API_KEY_ENV),
             driver: env_value(DECISIONS_DRIVER_ENV),
             model: env_value(DECISIONS_MODEL_ENV),
         }
@@ -86,8 +83,8 @@ impl SystemDecisions {
         self
     }
 
-    /// Enable the preview `openai` driver with a deployment-owned key.
-    pub fn openai_preview(mut self, api_key: impl Into<String>) -> Self {
+    /// Enable the `openai` driver with a deployment-owned key.
+    pub fn openai(mut self, api_key: impl Into<String>) -> Self {
         self.openai_key = Some(api_key.into());
         self
     }
@@ -145,9 +142,9 @@ impl SystemDecisions {
             None => return Ok(Arc::new(DisabledDecisionsService)),
         };
         if default == "openai" {
-            let key = self.openai_key.ok_or_else(|| {
-                "openai needs DECISIONS_OPENAI_PREVIEW=1 and UTILITY_OPENAI_API_KEY".to_string()
-            })?;
+            let key = self
+                .openai_key
+                .ok_or_else(|| "openai needs UTILITY_OPENAI_API_KEY".to_string())?;
             return Ok(Arc::new(OpenAIDecisions::new(key).model(
                 self.model.unwrap_or_else(|| {
                     everruns_integrations::openai_decisions::DEFAULT_MODEL.into()
@@ -281,20 +278,20 @@ mod tests {
     }
 
     #[test]
-    fn the_openai_driver_is_preview_opt_in() {
+    fn the_openai_driver_needs_only_the_utility_key() {
         let error = SystemDecisions::default()
             .driver("openai")
             .into_service(no_utility())
             .err()
             .expect("a configuration error");
-        assert!(error.contains("DECISIONS_OPENAI_PREVIEW=1"), "{error}");
+        assert!(error.contains("UTILITY_OPENAI_API_KEY"), "{error}");
 
         let service = SystemDecisions::default()
-            .openai_preview("sk-test")
+            .openai("sk-test")
             .driver("openai")
             .into_service(no_utility())
             .unwrap();
-        assert_eq!(service.name(), "OpenAIDecisionsPreview");
+        assert_eq!(service.name(), "OpenAIDecisions");
     }
 
     #[test]
