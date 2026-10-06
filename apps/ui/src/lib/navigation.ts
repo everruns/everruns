@@ -34,7 +34,6 @@ import {
   Telescope,
   UserRound,
   Workflow,
-  ShieldCheck,
 } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
 import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
@@ -174,7 +173,6 @@ export const defaultQualityNavigation: NavigationItem[] = [
     flag: "observers",
     experimental: true,
   },
-  { name: "Approvals", href: "/approvals", icon: ShieldCheck, minimumRole: "admin" },
   {
     name: "Reports",
     href: "/reports",

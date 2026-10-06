@@ -58,7 +58,7 @@ authoring is the activity that brings the user to the page.
 | **Operational** | Recordings and external exposure: Sessions and Exposures. |
 | **Building** | Agents, Playground, Harnesses, Sandboxes, and Virtual Users, in that order. |
 | **Registers** | Reusable entries and curated resources, including Sandbox Templates, Knowledge indexes, and Memory. |
-| **Quality** | Evaluation, observation, approvals, and reporting. |
+| **Quality** | Evaluation, observation, and reporting. |
 
 Settings sits below the groups and is not one of them: it configures the workspace rather
 than being a thing the user works on. Durable Execution and Dev keep their existing
@@ -75,8 +75,8 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   composing and trying agents.
 * **Sandboxes is Building; Sandbox Templates is Registers.** Live execution environments
   sit beside agents and harnesses, while their reusable definitions stay in Registers.
-* **Reports and Approvals are Quality.** Reporting and review sit with Evals and Observers,
-  leaving Operational focused on recordings and external exposure.
+* **Reports is Quality.** Reporting sits with Evals and Observers, leaving Operational
+  focused on recordings and external exposure. Approvals stays within its session.
 * **Identities is Building, not Registers.** An identity is authored per agent
   deployment with credentials and scope decisions, not registered once and forgotten.
 
@@ -163,7 +163,9 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   can see it.
 * **A session is a read-only recording.** Session detail inspects, it does not edit. Its default
   Transcript preserves the human-readable conversation; Timeline curates how the run executed;
-  Events remains the exact emitted ledger. Work, Files, and Cost appear when applicable to the
+  Events remains the exact emitted ledger. Approvals is always present: each card pairs a request
+  with the grant recorded for it, so an admin sees what was asked and what was written down as
+  approved, including who approved it. Work, Files, and Cost appear when applicable to the
   recording and its enabled capabilities. Watching any of these views stream live is not editing
   the session. Anything that would
   change the session (composing a message, editing a file, writing a secret, steering or
@@ -173,8 +175,9 @@ Implementation: [workspace](../../apps/ui/src/components/chat/chat-workspace.tsx
   [`session-header.tsx`](../../apps/ui/src/components/session/session-header.tsx) and
   gated on the session's capability features.
 * **The tab bar is a map of the recording, so tabs carry counts.** Work, Events and
-  Files are badged with what is behind them; Timeline (the whole run) and Cost (a
-  single figure already shown in the header) are not. An empty tab renders with no badge
+  Files are badged with what is behind them; Timeline (the whole run), Approvals and Cost (a
+  single figure already shown in the header) are not. Approvals has no denormalized counter, and
+  the tab does not scan the event log just to paint a number. An empty tab renders with no badge
   rather than a `0`, so absence reads as absence. The counts ride on the session payload
   the page already fetches — never a per-tab request — and are served from denormalized
   counters maintained by trigger (`sessions.event_count`, `sessions.task_count`,
@@ -213,6 +216,10 @@ These were considered and rejected. They are recorded so they are not re-propose
   authoring surface. Dismissed because modes hide things, and the builder switches
   between using and building too often for the hidden half to stay out of the way.
   Search does not rescue a hidden item for a user who does not yet know its name.
+* **An organisation-wide Approvals destination.** A sidebar list of every request and every
+  grant, as separate rows, does not say what was approved: the model phrases the ask and the
+  grant differently, and the two rows do not sit together. Dismissed. The pair is read on the
+  session it belongs to.
 * **No navigation**: search and in-context links only. Dismissed because it kills
   discovery for the first-time builder, who is the primary user. The idea survives in a
   narrower form: the inspector pattern is kept inside session detail, where the user

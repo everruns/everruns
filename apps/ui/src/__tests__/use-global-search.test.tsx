@@ -271,7 +271,6 @@ describe("useGlobalSearch", () => {
   it.each([
     ["chats", "/chats"],
     ["playground", "/playground"],
-    ["approvals", "/approvals"],
     ["exposures", "/exposures"],
     ["sandbox templates", "/sandbox-templates"],
     ["slack", "/settings/slack"],
@@ -345,6 +344,12 @@ describe("useGlobalSearch", () => {
     const { result } = renderHook(() => useGlobalSearch("apps"));
 
     expect(result.current.some((item) => item.href.startsWith("/apps"))).toBe(false);
+  });
+
+  it("does not offer the retired org-wide approvals destination", () => {
+    const { result } = renderHook(() => useGlobalSearch("approvals"));
+
+    expect(result.current.some((item) => item.href === "/approvals")).toBe(false);
   });
 
   it("hides Payments navigation when machine payments are disabled", () => {

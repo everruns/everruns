@@ -61,7 +61,12 @@ describe("navigationGroupForPath", () => {
     expect(navigationGroupForPath("/sandbox-templates/template-1")).toBe("Registers");
     expect(navigationGroupForPath("/knowledge-indexes")).toBe("Registers");
     expect(navigationGroupForPath("/memory")).toBe("Registers");
-    expect(navigationGroupForPath("/approvals")).toBe("Quality");
+    expect(navigationGroupForPath("/sessions/session-1/approvals")).toBe("Operational");
+    expect(
+      defaultNavigationSections
+        .flatMap((section) => section.items)
+        .some((item) => item.href === "/approvals"),
+    ).toBe(false);
     expect(navigationGroupForPath("/reports")).toBe("Quality");
   });
 });

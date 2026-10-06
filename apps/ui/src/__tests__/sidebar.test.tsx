@@ -378,8 +378,8 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Memory")).not.toBeInTheDocument();
     expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
-    expect(screen.getByText("Quality")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Approvals" })).toHaveAttribute("href", "/approvals");
+    expect(screen.queryByText("Quality")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Approvals" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute("href", "/chats");
   });
 

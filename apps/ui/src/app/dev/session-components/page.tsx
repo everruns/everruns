@@ -14,9 +14,12 @@ import {
   SessionUsageBadge,
   buildSessionNavigation,
 } from "@/components/session/session-header";
+import { SessionApprovals } from "@/components/session/session-approvals";
 import { SessionCard } from "@/components/session/session-card";
 import { SessionSandboxPanel } from "@/components/session/session-sandbox-panel";
 import { sessionSandboxScenarios } from "@/app/dev/_fixtures/session-sandbox-fixtures";
+import { buildApprovalEpisodes } from "@/lib/approval-episodes";
+import type { Event } from "@/lib/api/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // The panel fetches its own data, so the showcase seeds the cache instead of
@@ -121,6 +124,22 @@ export default function DevSessionComponentsPage() {
 
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">Session approvals</h2>
+            <p className="text-sm text-muted-foreground">
+              A request and the grant recorded for it, on one card. An open request and a grant with
+              no logged request sit beside it.
+            </p>
+          </div>
+          <div className="border border-border/70 bg-background p-4">
+            <SessionApprovals
+              sessionId="session_showcase_approvals"
+              episodes={approvalShowcaseEpisodes()}
+            />
+          </div>
+        </section>
+
+        <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+          <div className="space-y-1">
             <h2 className="text-lg font-semibold text-foreground">Session cards</h2>
             <p className="text-sm text-muted-foreground">
               The same list cards used on the sessions index, shown in running, idle, and new
@@ -144,5 +163,98 @@ export default function DevSessionComponentsPage() {
         </section>
       </div>
     </DevPageShell>
+  );
+}
+
+function approvalToolEvent(
+  id: string,
+  toolName: string,
+  payload: Record<string, unknown>,
+  sequence: number,
+): Event {
+  return {
+    id,
+    type: "tool.completed",
+    ts: `2026-10-02T22:56:${String(sequence).padStart(2, "0")}Z`,
+    sequence,
+    session_id: "session_showcase_approvals",
+    context: {},
+    data: {
+      tool_call_id: id,
+      tool_name: toolName,
+      success: true,
+      status: "success",
+      result: [{ type: "text", text: JSON.stringify(payload) }],
+    },
+  };
+}
+
+function approvalShowcaseEpisodes() {
+  const consent: Event = {
+    id: "event_msg_consent",
+    type: "input.message",
+    ts: "2026-10-02T22:56:40Z",
+    sequence: 3,
+    session_id: "session_showcase_approvals",
+    context: {},
+    metadata: { initiator: { type: "user", user_id: "user_mykhailo" } },
+    data: {
+      message: {
+        id: "msg_consent",
+        session_id: "session_showcase_approvals",
+        sequence: 3,
+        role: "user",
+        content: [{ type: "text", text: "Yes, create it." }],
+        tool_call_id: null,
+        created_at: "2026-10-02T22:56:40Z",
+      },
+    },
+  };
+  return buildApprovalEpisodes(
+    [
+      approvalToolEvent(
+        "grant-only",
+        "record_approval",
+        { action: "Commits on this branch need no further ask", detail: "Category exemption." },
+        1,
+      ),
+      approvalToolEvent(
+        "ask",
+        "request_approval",
+        {
+          action:
+            'Create the reusable organisation-wide agent "SRE Simulator" using the built-in Generic harness and the proposed simulation-only instructions',
+          question:
+            "Create the SRE Simulator agent with the proposed safe, simulation-only configuration?",
+        },
+        2,
+      ),
+      consent,
+      approvalToolEvent(
+        "grant",
+        "record_approval",
+        {
+          action:
+            "Create the organisation-wide SRE Simulator agent using the built-in Generic harness and simulation-only instructions",
+          detail:
+            "Approved configuration: safety-first, simulation-only SRE training and analysis agent with no external integrations.",
+          approved_in_message: "msg_consent",
+        },
+        4,
+      ),
+      approvalToolEvent(
+        "open-ask",
+        "request_approval",
+        {
+          action: "Publish the SRE Simulator harness to the organisation",
+          question: "Publish this harness for every team?",
+        },
+        5,
+      ),
+    ],
+    {
+      memberNames: new Map([["user_mykhailo", "Mykhailo Chalyi"]]),
+      inputsComplete: true,
+    },
   );
 }
