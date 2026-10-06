@@ -37,6 +37,11 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Cargo's sparse index still uses HTTP/2 by default. Independent main/PR
+  # jobs have failed before their checks ran with SSL EOF and HTTP/2 framing
+  # errors, so reuse crate publishing's bounded, fail-closed transport policy.
+  CARGO_NET_RETRY: 10
+  CARGO_HTTP_MULTIPLEXING: "false"
   RUST_BACKTRACE: 1
   # Incremental compilation only helps when recompiling edited source on a
   # persistent machine. CI runners are ephemeral (fresh checkout per job), so
@@ -727,7 +732,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 10
-
     steps:
       - uses: actions/checkout@v7
 
