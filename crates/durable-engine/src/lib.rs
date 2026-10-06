@@ -1,7 +1,7 @@
 //! Durable turn backend for the [Everruns](https://everruns.com) agent
 //! framework: agent turns as queued, checkpointed steps on
 //! [`everruns-durable`](everruns_durable), behind core's
-//! [`TurnBackend`](everruns_core::host::TurnBackend) seam.
+//! [`TurnBackend`](everruns_core::host::TurnBackend) turn entry point.
 //!
 //! **Status: experimental.** `TurnBackend` is outside the Everruns API
 //! stability promises until the backend conformance suite passes on every
@@ -14,7 +14,10 @@
 //! - [`DurableRunner`] implements [`TurnBackend`](everruns_core::host::TurnBackend):
 //!   it starts, cancels and observes a session's turns. Starting a turn creates
 //!   or claims the session's workflow and enqueues its first step before it
-//!   returns; the ticket resolves when the workflow ends.
+//!   returns; the ticket resolves when the workflow ends. It holds no session
+//!   runtime, so it starts turns only from input the caller stored
+//!   (`TurnInput::StoredMessage`, `TurnInput::RecordedToolResults`); the
+//!   platform server persists every input and then calls it.
 //! - [`DurableBackend`] runs a framework application's turns: in-process
 //!   workers drive each step on the session's own `InProcessRuntime`, over an
 //!   in-memory store ([`DurableBackend::memory`]) or a PostgreSQL one
@@ -35,12 +38,12 @@
 //! [`TurnStore`] for its own
 //! client type and builds its runner with [`DurableRunner::from_store`].
 //! Another process boundary plugs in the same way. [`AgentRunner`] is a shim
-//! over [`DurableRunner`]'s `TurnBackend` until the server calls the seam
+//! over [`DurableRunner`]'s `TurnBackend` until the server calls `TurnBackend`
 //! directly.
 //!
 //! # Example
 //!
-//! A turn started from a message the host already persisted, then cancelled,
+//! A turn started from a message the host already stored, then cancelled,
 //! on the in-memory store. With nothing driving the queue the turn waits at
 //! its first step, so cancelling it ends the ticket with `Cancelled`.
 //!
@@ -48,7 +51,7 @@
 //! use everruns_contracts::error::AgentLoopError;
 //! use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 //! use everruns_durable_engine::DurableRunner;
-//! use everruns_durable_engine::host::{PersistedTurn, TurnBackend, TurnInput, TurnRequest};
+//! use everruns_durable_engine::host::{TurnBackend, TurnInput, TurnRequest, TurnScope};
 //!
 //! # #[tokio::main(flavor = "current_thread")]
 //! # async fn main() -> everruns_contracts::error::Result<()> {
@@ -56,17 +59,17 @@
 //! let session_id = SessionId::new();
 //!
 //! let ticket = runner
-//!     .start_turn(TurnRequest::new(
-//!         session_id,
-//!         TurnId::new(),
-//!         TurnInput::Persisted(Box::new(PersistedTurn::Message {
-//!             org_id: 1,
-//!             harness_id: HarnessId::new(),
-//!             agent_id: None,
-//!             input_message_id: MessageId::new(),
-//!             request_id: None,
-//!         })),
-//!     ))
+//!     .start_turn(
+//!         TurnRequest::new(
+//!             session_id,
+//!             TurnId::new(),
+//!             TurnInput::StoredMessage {
+//!                 message_id: MessageId::new(),
+//!             },
+//!         )
+//!         // The runner cannot look the session up, so the request names it.
+//!         .with_scope(TurnScope::new(1, HarnessId::new(), None)),
+//!     )
 //!     .await?;
 //! assert!(runner.is_running(session_id).await);
 //!

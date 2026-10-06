@@ -18,7 +18,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::host::{PersistedTurn, TurnBackend, TurnInput, TurnRequest};
+use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnScope};
 use everruns_durable::InMemoryWorkflowEventStore;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -91,14 +91,16 @@ impl AgentRunner for DurableRunner {
         input_message_id: MessageId,
         request_id: Option<String>,
     ) -> Result<()> {
-        let turn = PersistedTurn::Message {
-            org_id,
-            harness_id,
-            agent_id,
-            input_message_id,
-            request_id,
-        };
-        start_persisted(self, session_id, turn).await
+        let request = TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::StoredMessage {
+                message_id: input_message_id,
+            },
+        )
+        .with_scope(TurnScope::new(org_id, harness_id, agent_id))
+        .with_request_id(request_id);
+        start(self, request).await
     }
 
     async fn resume_after_tool_results(
@@ -106,8 +108,12 @@ impl AgentRunner for DurableRunner {
         session_id: SessionId,
         resolution_id: Uuid,
     ) -> Result<()> {
-        let turn = PersistedTurn::ToolResolution { resolution_id };
-        start_persisted(self, session_id, turn).await
+        let request = TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::RecordedToolResults { resolution_id },
+        );
+        start(self, request).await
     }
 
     async fn cancel_run(&self, session_id: SessionId) -> Result<()> {
@@ -126,18 +132,9 @@ impl AgentRunner for DurableRunner {
     }
 }
 
-async fn start_persisted(
-    runner: &DurableRunner,
-    session_id: SessionId,
-    turn: PersistedTurn,
-) -> Result<()> {
+async fn start(runner: &DurableRunner, request: TurnRequest) -> Result<()> {
     // The server's turn id is assigned by the input step, so the request's
     // id only labels the dropped ticket.
-    let request = TurnRequest::new(
-        session_id,
-        TurnId::new(),
-        TurnInput::Persisted(Box::new(turn)),
-    );
     runner
         .start_turn(request)
         .await
@@ -146,7 +143,7 @@ async fn start_persisted(
 }
 
 /// Restore the message a store failure carried, which is what the server
-/// logged before the seam existed.
+/// logged before it called `TurnBackend`.
 fn runner_error(error: AgentLoopError) -> anyhow::Error {
     match error {
         AgentLoopError::MessageStore(message) => anyhow::anyhow!(message),

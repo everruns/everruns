@@ -13,8 +13,8 @@ use crate::core::InputMessage;
 use crate::core::turn::TurnStopReason;
 use crate::durable_backend::DurableBackend;
 use crate::host::{
-    AcceptedTurnInput, InProcessRuntime, PersistedTurn, TurnBackend, TurnInput, TurnRequest,
-    TurnSteering, TurnTicket,
+    AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnSteering,
+    TurnTicket,
 };
 
 async fn runtime(sim: LlmSimConfig) -> (InProcessRuntime, SessionId) {
@@ -78,6 +78,35 @@ async fn a_message_runs_to_its_answer_on_the_workers() {
     )
     .await;
     assert!(next.success);
+}
+
+#[tokio::test]
+async fn a_stored_message_runs_without_a_second_write() {
+    let (runtime, session_id) = runtime(LlmSimConfig::fixed("durably done")).await;
+    let backend = DurableBackend::memory(1);
+    let session = backend.attach(session_id, runtime.clone());
+    let message_id = runtime
+        .persist_accepted_input(session_id, AcceptedTurnInput::new(InputMessage::user("hi")))
+        .await
+        .unwrap();
+
+    let turn_id = TurnId::new();
+    let ticket = session
+        .start_turn(
+            TurnRequest::new(session_id, turn_id, TurnInput::StoredMessage { message_id })
+                .with_request_id(Some("req-1".to_string())),
+        )
+        .await
+        .unwrap();
+    let result = finish(ticket).await;
+    assert!(result.success, "{result:?}");
+    assert_eq!(result.response, "durably done");
+    assert_eq!(result.turn_id, turn_id, "the turn keeps the requested id");
+
+    // The stored input and the answer, and no second copy of the input.
+    let messages = runtime.messages(session_id).await.unwrap();
+    assert_eq!(messages.len(), 2, "{messages:?}");
+    assert_eq!(messages[0].id, message_id);
 }
 
 #[tokio::test]
@@ -185,14 +214,22 @@ async fn unsupported_and_empty_inputs_and_a_second_turn_are_rejected() {
             .await;
     let backend = DurableBackend::memory(1);
     let session = backend.attach(session_id, runtime);
-    let persisted = TurnInput::Persisted(Box::new(PersistedTurn::ToolResolution {
-        resolution_id: uuid::Uuid::now_v7(),
-    }));
     let error = session
-        .start_turn(TurnRequest::new(session_id, TurnId::new(), persisted))
+        .start_turn(TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::RecordedToolResults {
+                resolution_id: uuid::Uuid::now_v7(),
+            },
+        ))
         .await
-        .expect_err("server-persisted input is the runner's");
-    assert!(matches!(error, AgentLoopError::Configuration(_)), "{error}");
+        .expect_err("nothing is parked");
+    assert!(
+        error
+            .to_string()
+            .contains("no turn waiting for tool results"),
+        "{error}"
+    );
 
     // Continuations fail as in process when there is nothing to continue.
     let error = session

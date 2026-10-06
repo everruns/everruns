@@ -2,8 +2,8 @@
 //!
 //! Through a session, parking and resuming are AG-UI runs: the first run ends
 //! with the parked call pending, the next run's tool message is its result.
-//! The facade does not hand back the resumed turn's result, so the seam
-//! scenario below starts the same turns directly on each `TurnBackend` and
+//! The facade does not hand back the resumed turn's result, so the
+//! entry-point scenarios below starts the same turns directly on each `TurnBackend` and
 //! compares their `TurnResult`s too.
 
 use std::sync::Arc;
@@ -170,7 +170,7 @@ async fn a_session_parks_on_a_client_call_and_its_result_resumes_the_turn() {
     assert!(has_event(&outcome, "tool.completed"), "{outcome:?}");
 }
 
-// --- Directly on the backend seam -----------------------------------------------
+// --- Directly on the turn entry point -------------------------------------------
 
 /// A runtime whose one session has the client-side `confirm` tool and a client
 /// that answers a pause (the `setup_connection` hint).
@@ -240,65 +240,98 @@ fn shape(result: &TurnResult) -> Value {
     })
 }
 
+/// Whether the caller hands the backend input to record, or records the
+/// message and the tool results itself and starts the turn from them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputForm {
+    Handed,
+    Stored,
+}
+
+/// Park a turn on `kind`, resume it with the client-side call's result, and
+/// report what the caller can compare across backends.
+async fn park_and_resume(kind: BackendKind, form: InputForm) -> Value {
+    let (runtime, session_id) = client_tool_runtime().await;
+    let (backend, _durable) = seam_backend(kind, &runtime, session_id).await;
+    let finish = |ticket: TurnTicket| async move {
+        tokio::time::timeout(Duration::from_secs(10), ticket)
+            .await
+            .unwrap_or_else(|_| panic!("{kind:?} {form:?}: the turn ends"))
+            .unwrap_or_else(|error| panic!("{kind:?} {form:?}: the turn succeeds: {error}"))
+    };
+
+    let message = AcceptedTurnInput::new(everruns_core::InputMessage::user("Deploy."));
+    let input = match form {
+        InputForm::Handed => TurnInput::Message(Box::new(message)),
+        InputForm::Stored => TurnInput::StoredMessage {
+            message_id: runtime
+                .persist_accepted_input(session_id, message)
+                .await
+                .expect("the caller records the message"),
+        },
+    };
+    let request = TurnRequest::new(session_id, TurnId::new(), input);
+    let parked: TurnResult = finish(backend.start_turn(request).await.expect("starts")).await;
+    let calls = runtime
+        .parked_tool_calls(session_id)
+        .unwrap_or_else(|| panic!("{kind:?} {form:?}: the turn parked on the client-side call"));
+    assert_eq!(calls.turn_id, parked.turn_id, "{kind:?} {form:?}");
+    let call_ids: Vec<String> = calls
+        .tool_calls
+        .iter()
+        .map(|call| call.id.clone())
+        .collect();
+
+    let results = vec![ToolCompletedData::success(
+        "call_confirm".to_string(),
+        "confirm".to_string(),
+        vec![everruns_core::ContentPart::text("confirmed")],
+        None,
+    )];
+    let input = match form {
+        InputForm::Handed => TurnInput::ToolResults(results),
+        InputForm::Stored => {
+            runtime
+                .record_parked_tool_results(session_id, results)
+                .await
+                .expect("the caller records the results");
+            TurnInput::RecordedToolResults {
+                resolution_id: uuid::Uuid::now_v7(),
+            }
+        }
+    };
+    let request = TurnRequest::new(session_id, calls.turn_id, input);
+    let resumed: TurnResult = finish(backend.start_turn(request).await.expect("resumes")).await;
+    assert_eq!(
+        resumed.turn_id, parked.turn_id,
+        "{kind:?} {form:?}: the same turn"
+    );
+    assert!(
+        runtime.parked_tool_calls(session_id).is_none(),
+        "{kind:?} {form:?}"
+    );
+    assert!(!backend.is_running(session_id).await, "{kind:?} {form:?}");
+
+    let event_types: Vec<String> = runtime
+        .events()
+        .await
+        .expect("events")
+        .into_iter()
+        .map(|event| event.data.event_type().to_string())
+        .collect();
+    json!({
+        "parked": shape(&parked),
+        "parked_calls": call_ids,
+        "resumed": shape(&resumed),
+        "event_types": event_types,
+    })
+}
+
 #[tokio::test]
 async fn a_backend_parks_a_turn_and_tool_results_resume_it() {
     let mut outcomes = Vec::new();
     for kind in backends() {
-        let (runtime, session_id) = client_tool_runtime().await;
-        let (backend, _durable) = seam_backend(kind, &runtime, session_id).await;
-        let finish = |ticket: TurnTicket| async move {
-            tokio::time::timeout(Duration::from_secs(10), ticket)
-                .await
-                .unwrap_or_else(|_| panic!("{kind:?}: the turn ends"))
-                .unwrap_or_else(|error| panic!("{kind:?}: the turn succeeds: {error}"))
-        };
-
-        let request = TurnRequest::new(
-            session_id,
-            TurnId::new(),
-            TurnInput::Message(Box::new(AcceptedTurnInput::new(
-                everruns_core::InputMessage::user("Deploy."),
-            ))),
-        );
-        let parked: TurnResult = finish(backend.start_turn(request).await.expect("starts")).await;
-        let calls = runtime
-            .parked_tool_calls(session_id)
-            .unwrap_or_else(|| panic!("{kind:?}: the turn parked on the client-side call"));
-        assert_eq!(calls.turn_id, parked.turn_id, "{kind:?}");
-        let call_ids: Vec<String> = calls
-            .tool_calls
-            .iter()
-            .map(|call| call.id.clone())
-            .collect();
-
-        let results = vec![ToolCompletedData::success(
-            "call_confirm".to_string(),
-            "confirm".to_string(),
-            vec![everruns_core::ContentPart::text("confirmed")],
-            None,
-        )];
-        let request = TurnRequest::new(session_id, calls.turn_id, TurnInput::ToolResults(results));
-        let resumed: TurnResult = finish(backend.start_turn(request).await.expect("resumes")).await;
-        assert_eq!(resumed.turn_id, parked.turn_id, "{kind:?}: the same turn");
-        assert!(runtime.parked_tool_calls(session_id).is_none(), "{kind:?}");
-        assert!(!backend.is_running(session_id).await, "{kind:?}");
-
-        let event_types: Vec<String> = runtime
-            .events()
-            .await
-            .expect("events")
-            .into_iter()
-            .map(|event| event.data.event_type().to_string())
-            .collect();
-        outcomes.push((
-            kind,
-            json!({
-                "parked": shape(&parked),
-                "parked_calls": call_ids,
-                "resumed": shape(&resumed),
-                "event_types": event_types,
-            }),
-        ));
+        outcomes.push((kind, park_and_resume(kind, InputForm::Handed).await));
     }
     let (_, in_process) = outcomes.remove(0);
     for (kind, outcome) in outcomes {
@@ -310,4 +343,16 @@ async fn a_backend_parks_a_turn_and_tool_results_resume_it() {
     assert_eq!(in_process["resumed"]["response"], "Confirmed.");
     assert_eq!(in_process["resumed"]["iterations"], 1);
     assert_eq!(in_process["resumed"]["tool_calls"], 0);
+}
+
+/// A host that records input through its own store (the platform server
+/// does) starts and continues the same turn from what it stored, on every
+/// backend, with the outcome of handing the backend the input.
+#[tokio::test]
+async fn stored_input_runs_the_turn_handed_input_runs() {
+    for kind in backends() {
+        let handed = park_and_resume(kind, InputForm::Handed).await;
+        let stored = park_and_resume(kind, InputForm::Stored).await;
+        assert_eq!(stored, handed, "{kind:?}: stored input diverges");
+    }
 }

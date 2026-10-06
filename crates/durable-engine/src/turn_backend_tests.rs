@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::tool_types::ToolCall;
-use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use uuid::Uuid;
 
@@ -21,8 +21,8 @@ use crate::durable::{
 use crate::durable_runner::DurableRunner;
 use crate::engine::ReasonInput;
 use crate::host::{
-    AcceptedTurnInput, InProcessRuntime, PersistedTurn, RuntimeHostAdapter, TurnBackend, TurnInput,
-    TurnRequest, TurnTicket, in_process_internal_org_id,
+    AcceptedTurnInput, InProcessRuntime, RuntimeHostAdapter, TurnBackend, TurnInput, TurnRequest,
+    TurnScope, TurnTicket, in_process_internal_org_id,
 };
 use crate::runner::AgentRunner;
 use crate::task_heartbeat::CancelSignals;
@@ -48,18 +48,15 @@ impl TurnTaskHost for RuntimeHosts {
 
 const TURN_ACTIVITIES: [&str; 3] = ["process_input", "reason", "act"];
 
-fn persisted_message(session_id: SessionId) -> TurnRequest {
+fn stored_message(session_id: SessionId) -> TurnRequest {
     TurnRequest::new(
         session_id,
         TurnId::new(),
-        TurnInput::Persisted(Box::new(PersistedTurn::Message {
-            org_id: 1,
-            harness_id: HarnessId::new(),
-            agent_id: None,
-            input_message_id: MessageId::new(),
-            request_id: None,
-        })),
+        TurnInput::StoredMessage {
+            message_id: MessageId::new(),
+        },
     )
+    .with_scope(TurnScope::new(1, HarnessId::new(), None))
 }
 
 /// Polling the ticket briefly must not resolve it: the workflow still runs.
@@ -92,14 +89,11 @@ async fn claimed_activity_types(store: &InMemoryWorkflowEventStore) -> Vec<Strin
 }
 
 #[tokio::test]
-async fn persisted_message_starts_the_workflow_before_the_ticket_is_polled() {
+async fn stored_message_starts_the_workflow_before_the_ticket_is_polled() {
     let (store, runner) = shared_runner().await;
     let session_id = SessionId::new();
 
-    let ticket = runner
-        .start_turn(persisted_message(session_id))
-        .await
-        .unwrap();
+    let ticket = runner.start_turn(stored_message(session_id)).await.unwrap();
     // Dropped unpolled, as the server's fire-and-forget callers do.
     drop(ticket);
 
@@ -146,17 +140,20 @@ async fn ticket_resolves_with_the_turn_the_driver_completes() {
     let (store, runner) = shared_runner().await;
     let request_turn_id = TurnId::new();
     let mut ticket = runner
-        .start_turn(TurnRequest::new(
-            session_id,
-            request_turn_id,
-            TurnInput::Persisted(Box::new(PersistedTurn::Message {
-                org_id: in_process_internal_org_id(&snapshot.organization_id),
-                harness_id: snapshot.harness_id,
-                agent_id: snapshot.agent_id,
-                input_message_id,
-                request_id: None,
-            })),
-        ))
+        .start_turn(
+            TurnRequest::new(
+                session_id,
+                request_turn_id,
+                TurnInput::StoredMessage {
+                    message_id: input_message_id,
+                },
+            )
+            .with_scope(TurnScope::new(
+                in_process_internal_org_id(&snapshot.organization_id),
+                snapshot.harness_id,
+                snapshot.agent_id,
+            )),
+        )
         .await
         .unwrap();
     assert_eq!(ticket.session_id(), session_id);
@@ -203,10 +200,7 @@ async fn cancel_ends_the_ticket_with_cancelled() {
     let (store, runner) = shared_runner().await;
     let session_id = SessionId::new();
     let other = SessionId::new();
-    let mut ticket = runner
-        .start_turn(persisted_message(session_id))
-        .await
-        .unwrap();
+    let mut ticket = runner.start_turn(stored_message(session_id)).await.unwrap();
     assert_pending(&mut ticket).await;
 
     assert!(runner.cancel(session_id).await.unwrap());
@@ -227,10 +221,7 @@ async fn cancel_ends_the_ticket_with_cancelled() {
 async fn failed_workflow_resolves_as_a_failed_turn() {
     let (store, runner) = shared_runner().await;
     let session_id = SessionId::new();
-    let ticket = runner
-        .start_turn(persisted_message(session_id))
-        .await
-        .unwrap();
+    let ticket = runner.start_turn(stored_message(session_id)).await.unwrap();
 
     EventLog::update_workflow_status(
         &*store,
@@ -260,10 +251,7 @@ async fn completion_without_a_stop_reason_resolves_as_end_turn() {
     // the step's raw output, which carries no stop reason.
     let (store, runner) = shared_runner().await;
     let session_id = SessionId::new();
-    let ticket = runner
-        .start_turn(persisted_message(session_id))
-        .await
-        .unwrap();
+    let ticket = runner.start_turn(stored_message(session_id)).await.unwrap();
 
     TurnStore::complete_workflow(
         &*store,
@@ -282,7 +270,7 @@ async fn completion_without_a_stop_reason_resolves_as_end_turn() {
 }
 
 #[tokio::test]
-async fn unpersisted_inputs_are_rejected_without_starting_a_workflow() {
+async fn unstored_inputs_are_rejected_without_starting_a_workflow() {
     let (_store, runner) = shared_runner().await;
     let session_id = SessionId::new();
     let inputs = [
@@ -294,15 +282,68 @@ async fn unpersisted_inputs_are_rejected_without_starting_a_workflow() {
         let error = runner
             .start_turn(TurnRequest::new(session_id, TurnId::new(), input))
             .await
-            .expect_err("the durable runner serves only persisted input");
+            .expect_err("the durable runner serves only stored input");
         assert!(matches!(error, AgentLoopError::Configuration(_)), "{error}");
         assert!(
-            error.to_string().contains("TurnInput::Persisted"),
+            error.to_string().contains("TurnInput::StoredMessage"),
             "{error}"
         );
     }
     assert!(!TurnBackend::is_running(&runner, session_id).await);
     assert_eq!(TurnBackend::active_count(&runner).await, 0);
+}
+
+#[tokio::test]
+async fn stored_message_without_scope_is_rejected_without_starting_a_workflow() {
+    let (_store, runner) = shared_runner().await;
+    let session_id = SessionId::new();
+    let error = runner
+        .start_turn(TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::StoredMessage {
+                message_id: MessageId::new(),
+            },
+        ))
+        .await
+        .expect_err("the runner cannot look the session's scope up");
+    assert!(matches!(error, AgentLoopError::Configuration(_)), "{error}");
+    assert!(error.to_string().contains("TurnRequest::scope"), "{error}");
+    assert!(!TurnBackend::is_running(&runner, session_id).await);
+}
+
+#[tokio::test]
+async fn stored_message_carries_scope_and_request_id_into_the_checkpoint() {
+    let (store, runner) = shared_runner().await;
+    let session_id = SessionId::new();
+    let harness_id = HarnessId::new();
+    let agent_id = AgentId::new();
+    let message_id = MessageId::new();
+    runner
+        .start_turn(
+            TurnRequest::new(
+                session_id,
+                TurnId::new(),
+                TurnInput::StoredMessage { message_id },
+            )
+            .with_scope(TurnScope::new(7, harness_id, Some(agent_id)))
+            .with_request_id(Some("req-1".to_string())),
+        )
+        .await
+        .unwrap();
+    let task = TaskQueue::claim_task(&*store, "worker", &["process_input".to_string()], 1)
+        .await
+        .unwrap()
+        .pop()
+        .expect("the input step is queued");
+    let input: crate::DurableTurnInput = serde_json::from_value(task.input).unwrap();
+    assert_eq!(input.org_id, 7);
+    assert_eq!(input.harness_id, harness_id);
+    assert_eq!(input.agent_id, Some(agent_id));
+    assert_eq!(input.input_message_id, message_id);
+    assert_eq!(input.request_id.as_deref(), Some("req-1"));
+    // The input step mints the platform turn's id.
+    assert_eq!(input.turn_id, None);
 }
 
 #[tokio::test]
@@ -362,10 +403,7 @@ async fn settle() {
 async fn memory_ticket_wakes_on_completion_without_waiting_for_a_poll() {
     let (store, runner) = shared_runner().await;
     let session_id = SessionId::new();
-    let ticket = runner
-        .start_turn(persisted_message(session_id))
-        .await
-        .unwrap();
+    let ticket = runner.start_turn(stored_message(session_id)).await.unwrap();
     let ticket = tokio::spawn(ticket);
     settle().await;
     assert!(!ticket.is_finished(), "the workflow still runs");
@@ -397,10 +435,7 @@ async fn ticket_resolves_on_the_fallback_poll_when_no_wakeup_comes() {
     // this end lands on the store underneath, as another process's would.
     let runner = DurableRunner::from_store(RoutedStore::new(store.clone(), Routing::unique()));
     let session_id = SessionId::new();
-    let ticket = runner
-        .start_turn(persisted_message(session_id))
-        .await
-        .unwrap();
+    let ticket = runner.start_turn(stored_message(session_id)).await.unwrap();
     let ticket = tokio::spawn(ticket);
     settle().await;
     assert!(!ticket.is_finished(), "the workflow still runs");

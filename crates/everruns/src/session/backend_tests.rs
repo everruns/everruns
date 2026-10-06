@@ -9,7 +9,7 @@ use std::time::Duration;
 use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::typed_id::{SessionId, TurnId};
 use everruns_core::host::{
-    AcceptedTurnInput, HostBackends, InProcessBackend, PersistedTurn, TurnBackend, TurnInput,
+    AcceptedTurnInput, HostBackends, InProcessBackend, InProcessRuntime, TurnBackend, TurnInput,
     TurnRequest, TurnTicket,
 };
 use everruns_core::turn::TurnStopReason;
@@ -17,6 +17,11 @@ use everruns_core::turn::TurnStopReason;
 use crate::{Agent, Model};
 
 async fn backend(model: Model) -> (InProcessBackend, SessionId) {
+    let (backend, _runtime, session_id) = backend_with_runtime(model).await;
+    (backend, session_id)
+}
+
+async fn backend_with_runtime(model: Model) -> (InProcessBackend, InProcessRuntime, SessionId) {
     let agent = Agent::builder()
         .instructions("You are concise.")
         .model(model)
@@ -34,7 +39,7 @@ async fn backend(model: Model) -> (InProcessBackend, SessionId) {
         )
         .await
         .expect("runtime builds");
-    (InProcessBackend::new(runtime), session_id)
+    (InProcessBackend::new(runtime.clone()), runtime, session_id)
 }
 
 async fn start(backend: &InProcessBackend, session_id: SessionId, text: &str) -> TurnTicket {
@@ -179,24 +184,62 @@ async fn resuming_without_a_parked_turn_fails_through_the_ticket() {
 }
 
 #[tokio::test]
-async fn server_persisted_input_is_rejected_in_process() {
+async fn a_stored_message_starts_a_turn_without_writing_it_again() {
+    let (backend, runtime, session_id) = backend_with_runtime(Model::simulated("Sure.")).await;
+    let input = AcceptedTurnInput::new(everruns_core::InputMessage::user("hi"));
+    let message_id = runtime
+        .persist_accepted_input(session_id, input)
+        .await
+        .expect("the caller records the message");
+
+    let turn_id = TurnId::new();
+    let result = backend
+        .start_turn(TurnRequest::new(
+            session_id,
+            turn_id,
+            TurnInput::StoredMessage { message_id },
+        ))
+        .await
+        .expect("turn starts")
+        .await
+        .expect("turn completes");
+    assert!(result.success);
+    assert_eq!(result.response, "Sure.");
+    assert_eq!(result.turn_id, turn_id, "the turn keeps the requested id");
+    let copies = runtime
+        .messages(session_id)
+        .await
+        .expect("history loads")
+        .into_iter()
+        .filter(|message| message.id == message_id)
+        .count();
+    assert_eq!(
+        copies, 1,
+        "the backend wrote the stored message no second time"
+    );
+    assert!(!backend.is_running(session_id).await);
+}
+
+#[tokio::test]
+async fn recorded_tool_results_with_nothing_parked_fail_and_release_the_session() {
     let (backend, session_id) = backend(Model::simulated("Sure.")).await;
     let error = backend
         .start_turn(TurnRequest::new(
             session_id,
             TurnId::new(),
-            TurnInput::Persisted(Box::new(PersistedTurn::ToolResolution {
+            TurnInput::RecordedToolResults {
                 resolution_id: uuid::Uuid::now_v7(),
-            })),
+            },
         ))
         .await
-        .expect_err("only a durable backend reads server-persisted input");
-    assert!(matches!(error, AgentLoopError::Configuration(_)), "{error}");
-    assert!(error.to_string().contains("Persisted"), "{error}");
+        .expect("the turn starts")
+        .await
+        .expect_err("nothing is parked");
+    assert!(error.to_string().contains("no turn waiting"), "{error}");
     assert!(!backend.is_running(session_id).await);
     assert_eq!(backend.active_count().await, 0);
 
-    // The rejection registered nothing, so the session still takes a turn.
+    // The failed resume released the session, so it still takes a turn.
     start(&backend, session_id, "hi")
         .await
         .await
