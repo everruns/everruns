@@ -169,15 +169,15 @@ impl SessionSandboxService {
         context.leased_resource_store = Some(self.leased_resource_store.clone());
         context.session_resource_registry = Some(self.session_resource_registry.clone());
         context.connection_resolver = self.connection_resolver.clone();
-        if let Some(pool) = self.db.pool() {
-            let store = Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()));
-            context.extensions.insert(Arc::new(
-                everruns_capabilities::sandbox_state::SandboxStateStoreExt(store.clone()),
-            ));
-            context.extensions.insert(Arc::new(
-                everruns_capabilities::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
-            ));
-        }
+        let store = Arc::new(crate::storage::PgSandboxCheckpointStore::new(
+            self.db.pool().clone(),
+        ));
+        context.extensions.insert(Arc::new(
+            everruns_capabilities::sandbox_state::SandboxStateStoreExt(store.clone()),
+        ));
+        context.extensions.insert(Arc::new(
+            everruns_capabilities::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
+        ));
         context
     }
 }

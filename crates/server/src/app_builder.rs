@@ -1181,10 +1181,8 @@ impl ServerAppBuilder {
             if let Some(ref shared_store) = shared_durable_store {
                 Some(shared_store.clone() as Arc<dyn WorkflowEventStore + Send + Sync>)
             } else {
-                db.pool().cloned().map(|p| {
-                    Arc::new(PostgresWorkflowEventStore::new(p))
-                        as Arc<dyn WorkflowEventStore + Send + Sync>
-                })
+                Some(Arc::new(PostgresWorkflowEventStore::new(db.pool().clone()))
+                    as Arc<dyn WorkflowEventStore + Send + Sync>)
             };
         // TM-DURABLE-010: All durable endpoints require admin role
         let durable_state = api::durable::AppState::new(
@@ -1208,10 +1206,10 @@ impl ServerAppBuilder {
             if shared_durable_store.is_some() {
                 durable_store.clone()
             } else {
-                db.background_pool().cloned().map(|p| {
-                    Arc::new(PostgresWorkflowEventStore::new(p))
-                        as Arc<dyn WorkflowEventStore + Send + Sync>
-                })
+                Some(Arc::new(PostgresWorkflowEventStore::new(
+                    db.background_pool().clone(),
+                ))
+                    as Arc<dyn WorkflowEventStore + Send + Sync>)
             };
         let apps_state = api::apps::AppState::new(
             db.clone(),
@@ -1854,17 +1852,15 @@ impl ServerAppBuilder {
             );
 
             // -- Stale task reclamation (everruns_durable::maintenance) --
-            if let Some(pool) = db.pool() {
-                crate::durable_reaper::spawn_stale_task_reaper(
-                    &mut supervisor,
-                    pool.clone(),
-                    Arc::new(crate::durable_reaper::TurnReapHandler::new(
-                        event_service.clone(),
-                        reclaim_session_service.clone(),
-                        error_reporter.clone(),
-                    )),
-                );
-            }
+            crate::durable_reaper::spawn_stale_task_reaper(
+                &mut supervisor,
+                db.pool().clone(),
+                Arc::new(crate::durable_reaper::TurnReapHandler::new(
+                    event_service.clone(),
+                    reclaim_session_service.clone(),
+                    error_reporter.clone(),
+                )),
+            );
 
             // -- Model sync --
             {
@@ -2121,11 +2117,11 @@ impl ServerAppBuilder {
                 crate::blob_gc::BlobGcConfig::from_env(),
             ),
             crate::event_retention::retention_job(
-                db.background_pool().cloned(),
+                Some(db.background_pool().clone()),
                 crate::event_retention::retention_days_from_env(),
             ),
             crate::sandbox_history_retention::retention_job(
-                db.background_pool().cloned(),
+                Some(db.background_pool().clone()),
                 crate::sandbox_history_retention::retention_days_from_env(),
             ),
             crate::domains::memory::source_sync::memory_source_sync_job(

@@ -1,4 +1,4 @@
-//! Dual-backend conformance tests for storage behavior that has drifted before.
+//! Conformance tests for storage behavior that has drifted before.
 //!
 //! Run with: cargo test -p everruns-server --test server_integration repository_conformance_test:: -- --test-threads=1
 
@@ -19,7 +19,7 @@ use everruns_server::storage::{
     CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreateOrgInvitation,
     CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionRow,
     CreateUsageJournalRow, CreateUsageLedgerRow, CreateUserRow, Database, MESSAGE_SAFETY_LIMIT,
-    Repository, StorageBackend, UpdateAgentTrigger, UpdateSession, WaitingTurnResolutionPlan,
+    StorageBackend, UpdateAgentTrigger, UpdateSession, WaitingTurnResolutionPlan,
 };
 use test_harness::get_database_url;
 
@@ -30,7 +30,7 @@ async fn create_postgres_backend() -> StorageBackend {
     StorageBackend::from_database(Database::new(pool))
 }
 
-pub(crate) async fn create_test_principal(repo: &dyn Repository, label: &str) -> PrincipalId {
+pub(crate) async fn create_test_principal(repo: &StorageBackend, label: &str) -> PrincipalId {
     repo.create_principal(CreatePrincipalRow {
         id: PrincipalId::new(),
         org_id: DEFAULT_ORG_ID,
@@ -106,7 +106,7 @@ pub(crate) fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow
 }
 
 async fn assert_one_outbox(
-    repo: &dyn Repository,
+    repo: &StorageBackend,
     source_type: &str,
     source_id: &str,
     reason: &str,
@@ -123,7 +123,7 @@ async fn assert_one_outbox(
     assert_eq!(rows[0].status, "pending");
 }
 
-async fn run_repository_conformance(repo: &dyn Repository, label: &str, harness_id: HarnessId) {
+async fn run_repository_conformance(repo: &StorageBackend, label: &str, harness_id: HarnessId) {
     let principal_id = create_test_principal(repo, label).await;
 
     let session = repo
@@ -831,15 +831,6 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
     assert!(full_org_losing_row.accepted_at.is_none());
     assert!(full_org_losing_row.revoked_at.is_none());
     assert!(full_org_losing_row.expires_at > Utc::now());
-}
-
-#[tokio::test]
-async fn in_memory_repository_conformance() {
-    let backend = StorageBackend::test_database();
-    let harness_id = HarnessId::from_uuid(Uuid::nil());
-    run_repository_conformance(&backend, "memory", harness_id).await;
-    run_agent_trigger_conformance(&backend, "memory", harness_id).await;
-    run_org_invitation_conformance(&backend, "memory").await;
 }
 
 #[tokio::test]

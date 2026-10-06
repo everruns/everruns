@@ -65,15 +65,13 @@ impl StorageBackend {
     }
 
     /// The request pool.
-    // Still an Option from when an in-memory backend had no pool; callers
-    // are folded onto `&PgPool` separately.
-    pub fn pool(&self) -> Option<&PgPool> {
-        Some(self.db.pool())
+    pub fn pool(&self) -> &PgPool {
+        self.db.pool()
     }
 
     /// The pool reserved for background sweeps (EVE-1081).
-    pub fn background_pool(&self) -> Option<&PgPool> {
-        Some(self.db.background_pool())
+    pub fn background_pool(&self) -> &PgPool {
+        self.db.background_pool()
     }
 
     /// The same storage, routed onto the background pool.
