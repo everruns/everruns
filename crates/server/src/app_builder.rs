@@ -2127,14 +2127,11 @@ impl ServerAppBuilder {
             "mcp_event_trigger_refresher",
             mcp_event_triggers.spawn_refresher(),
         );
-        // -- Tool result timeout sweep (both prod and dev) --
-        supervisor.track(
-            "tool_result_timeout_sweep",
-            crate::tool_result_timeout::spawn_tool_result_timeout_sweep(
-                background_db.clone(),
-                background_runner.clone(),
-                event_delivery.clone(),
-            ),
+        // -- Tool result timeouts: a durable deadline task per parked turn, plus a backstop sweep --
+        let tool_result_timeouts = crate::tool_result_timeout::ToolResultTimeouts::new(
+            background_db.clone(),
+            background_runner.clone(),
+            event_delivery.clone(),
         );
 
         // -- Session schedule poller (both prod and dev) --
@@ -2195,12 +2192,15 @@ impl ServerAppBuilder {
                     .0
                     .clone(),
             ),
+            tool_result_timeouts.backstop_job(),
         ];
         if let Some(store) = cluster_jobs_store {
-            supervisor.track_optional(
-                "cluster_jobs",
-                crate::cluster_jobs::start(store, cluster_jobs).await,
-            );
+            let tasks = vec![tool_result_timeouts.deadline_task(store.clone())];
+            let pool = crate::cluster_jobs::start(store, cluster_jobs, tasks).await;
+            supervisor.track_optional("cluster_jobs", pool);
+        } else {
+            let sweep = tool_result_timeouts.spawn_local_sweep();
+            supervisor.track("tool_result_sweep", sweep);
         }
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --

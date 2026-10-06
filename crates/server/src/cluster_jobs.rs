@@ -20,6 +20,10 @@
 // loops did: a failed sweep waits for the next trigger instead of retrying.
 // A replica that dies mid-run leaves a stale claim, which the reaper hands to
 // another replica.
+//
+// The same pool also serves one-off tasks the server enqueues itself
+// (`ClusterTask`), such as a parked turn's tool-result deadline: a delayed
+// standalone task one replica claims when it comes due.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -35,6 +39,28 @@ use tokio::task::JoinHandle;
 /// One run of a job.
 pub type JobFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 type JobFn = Arc<dyn Fn() -> JobFuture + Send + Sync>;
+type TaskFn = Arc<dyn Fn(serde_json::Value) -> JobFuture + Send + Sync>;
+
+/// How many one-off tasks the pool runs at once, beyond one slot per job.
+const TASK_CONCURRENCY: usize = 8;
+
+/// A one-off task the server enqueues itself, run with the task's input.
+pub struct ClusterTask {
+    activity: &'static str,
+    run: TaskFn,
+}
+
+impl ClusterTask {
+    pub fn new<F>(activity: &'static str, run: F) -> Self
+    where
+        F: Fn(serde_json::Value) -> JobFuture + Send + Sync + 'static,
+    {
+        Self {
+            activity,
+            run: Arc::new(run),
+        }
+    }
+}
 
 /// A periodic job that runs once per cluster per period.
 pub struct ClusterJob {
@@ -96,12 +122,13 @@ impl ClusterJob {
 }
 
 /// Reconcile the jobs' schedules and start this replica's job pool. Returns
-/// the handle that keeps the pool alive, `None` when no job is enabled.
+/// the handle that keeps the pool alive, `None` when nothing is enabled.
 pub async fn start(
     store: Arc<dyn WorkflowEventStore + Send + Sync>,
     jobs: Vec<ClusterJob>,
+    tasks: Vec<ClusterTask>,
 ) -> Option<JoinHandle<()>> {
-    let mut handlers = Vec::new();
+    let mut handlers: Vec<(&'static str, TaskFn)> = Vec::new();
     for job in jobs {
         match (job.spec(), job.run) {
             (Some(spec), Some((_, run))) => {
@@ -110,7 +137,7 @@ pub async fn start(
                     // schedule in place.
                     tracing::error!(schedule = job.schedule, %error, "Failed to bootstrap cluster job schedule");
                 }
-                handlers.push((job.activity, run));
+                handlers.push((job.activity, Arc::new(move |_| run()) as TaskFn));
             }
             _ => {
                 if let Err(error) = disable_schedule(store.as_ref(), job.schedule).await {
@@ -119,6 +146,8 @@ pub async fn start(
             }
         }
     }
+    let jobs_enabled = handlers.len();
+    handlers.extend(tasks.into_iter().map(|task| (task.activity, task.run)));
     if handlers.is_empty() {
         return None;
     }
@@ -126,13 +155,13 @@ pub async fn start(
     let config = WorkerPoolConfig::new(handlers.iter().map(|(a, _)| a.to_string()).collect())
         .with_worker_id(format!("server-jobs-{}", uuid::Uuid::now_v7()))
         .with_worker_group("server-jobs")
-        .with_max_concurrency(handlers.len())
+        .with_max_concurrency(jobs_enabled + TASK_CONCURRENCY)
         // The server's stale-task reaper (durable_reaper.rs) owns reclaim.
         .without_stale_reclaim();
     let pool = WorkerPool::new(store, config);
     for (activity, run) in handlers {
-        pool.register_handler(activity, move |_task| {
-            let job = run();
+        pool.register_handler(activity, move |task| {
+            let job = run(task.input);
             async move {
                 job.await;
                 Ok(serde_json::Value::Null)
@@ -205,12 +234,20 @@ mod tests {
         let store = Arc::new(InMemoryWorkflowEventStore::new());
         let runs = Arc::new(AtomicUsize::new(0));
         let period = Duration::from_secs(1);
-        let replica_a = start(store.clone(), vec![counting_job(runs.clone(), period)])
-            .await
-            .expect("pool a");
-        let replica_b = start(store.clone(), vec![counting_job(runs.clone(), period)])
-            .await
-            .expect("pool b");
+        let replica_a = start(
+            store.clone(),
+            vec![counting_job(runs.clone(), period)],
+            vec![],
+        )
+        .await
+        .expect("pool a");
+        let replica_b = start(
+            store.clone(),
+            vec![counting_job(runs.clone(), period)],
+            vec![],
+        )
+        .await
+        .expect("pool b");
 
         let schedules = rows(&store).await;
         assert_eq!(schedules.len(), 1, "both replicas share one schedule");
@@ -242,6 +279,7 @@ mod tests {
         start(
             store.clone(),
             vec![counting_job(runs.clone(), Duration::from_secs(60))],
+            vec![],
         )
         .await
         .expect("pool")
@@ -251,6 +289,7 @@ mod tests {
         let none = start(
             store.clone(),
             vec![ClusterJob::disabled("test-cluster-job", "test_cluster_job")],
+            vec![],
         )
         .await;
         assert!(none.is_none(), "no enabled job, no pool");
@@ -265,6 +304,7 @@ mod tests {
             start(
                 store.clone(),
                 vec![counting_job(runs.clone(), Duration::from_secs(secs))],
+                vec![],
             )
             .await
             .expect("pool")
@@ -284,6 +324,8 @@ mod tests {
             crate::sandbox_history_retention::SANDBOX_HISTORY_RETENTION_ACTIVITY,
             crate::domains::memory::source_sync::MEMORY_SOURCE_SYNC_ACTIVITY,
             crate::domains::knowledge_indexes::source_sync::KNOWLEDGE_INDEX_SYNC_ACTIVITY,
+            crate::tool_result_timeout::TOOL_RESULT_TIMEOUT_SWEEP_ACTIVITY,
+            crate::tool_result_timeout::TOOL_RESULT_DEADLINE_ACTIVITY,
         ] {
             assert!(!types.iter().any(|t| t == activity), "{activity}");
         }

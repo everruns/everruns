@@ -136,9 +136,11 @@ applied, not consent, and only `answered_by` says so. A batch containing a text
 or secret question resolves `declined` instead — neither has a default worth
 applying.
 
-The sweep keeps its 30s periodic shape rather than per-session timers, so a
-deadline survives a restart; firing up to 30s late is acceptable, losing it on
-deploy is not. It resolves through the shared resolution operation rather than
+The deadline is a delayed durable task armed when the session parks, so it
+fires on time once per cluster and survives a restart. A backstop sweep
+(once a minute per cluster) catches a park that armed nothing; losing a
+deadline on deploy is not acceptable, firing a minute late in that rare case
+is. Either path resolves through the shared resolution operation rather than
 writing a completion event directly, so a human answering at the same instant
 races it on one claim and the first writer wins.
 

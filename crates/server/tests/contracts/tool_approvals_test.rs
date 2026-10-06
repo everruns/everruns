@@ -600,3 +600,133 @@ async fn an_unanswered_request_expires_as_not_approved() {
         PreToolUseDecision::Defer { .. }
     ));
 }
+
+/// The park arms a delayed durable task at the request's own deadline, and
+/// the server job pool that claims it resolves the request with no sweep.
+#[tokio::test]
+async fn an_unanswered_request_expires_from_its_deadline_task() {
+    let Fixture { server, resumes } = fixture().await;
+    let session_id = parked_session(&server).await;
+    let mut request = match gate(&server, session_id, send_email("toolu_1", "a@example.com")).await
+    {
+        PreToolUseDecision::Defer { result, .. } => {
+            ToolApprovalRequired::from_tool_result(&result).unwrap()
+        }
+        other => panic!("expected a deferral, got {other:?}"),
+    };
+    request.expires_at = (chrono::Utc::now() + chrono::Duration::milliseconds(300)).to_rfc3339();
+    server
+        .db
+        .create_event(everruns_server::storage::models::CreateEventRow {
+            session_id,
+            event_type: "tool.call_requested".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: json!({ "tool_calls": [request.request_call()] }),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("emit tool.call_requested");
+
+    let store = Arc::new(everruns_durable::InMemoryWorkflowEventStore::new());
+    everruns_server::tool_result_timeout::arm_parked_turn(
+        &server.db,
+        Some(store.as_ref()),
+        TEST_ORG_ID,
+        session_id,
+    )
+    .await;
+    let timeouts = everruns_server::tool_result_timeout::ToolResultTimeouts::new(
+        server.db.clone(),
+        server.runner.clone(),
+        everruns_server::EventDelivery::in_memory(),
+    );
+    let pool = everruns_server::cluster_jobs::start(
+        store.clone(),
+        Vec::new(),
+        vec![timeouts.deadline_task(store.clone())],
+    )
+    .await
+    .expect("job pool");
+
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while resumes.load(Ordering::SeqCst) == 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the deadline task resumes the turn");
+    pool.abort();
+
+    let completed = events_of(&server, session_id, "tool.completed").await;
+    let text = serde_json::to_string(completed.last().unwrap()).unwrap();
+    assert!(text.contains("expired"), "unexpected: {text}");
+}
+
+/// A deadline task armed for one park does nothing once a later tool call
+/// has replaced it: that park armed its own deadline.
+#[tokio::test]
+async fn a_deadline_task_for_a_replaced_park_does_nothing() {
+    let Fixture { server, resumes } = fixture().await;
+    let session_id = parked_session(&server).await;
+    let mut request = match gate(&server, session_id, send_email("toolu_1", "a@example.com")).await
+    {
+        PreToolUseDecision::Defer { result, .. } => {
+            ToolApprovalRequired::from_tool_result(&result).unwrap()
+        }
+        other => panic!("expected a deferral, got {other:?}"),
+    };
+    request.expires_at = (chrono::Utc::now() + chrono::Duration::milliseconds(200)).to_rfc3339();
+    let record = |data: Value| everruns_server::storage::models::CreateEventRow {
+        session_id,
+        event_type: "tool.call_requested".to_string(),
+        ts: chrono::Utc::now(),
+        context: json!({}),
+        data,
+        metadata: None,
+        tags: None,
+    };
+    server
+        .db
+        .create_event(record(json!({ "tool_calls": [request.request_call()] })))
+        .await
+        .expect("emit tool.call_requested");
+    let store = Arc::new(everruns_durable::InMemoryWorkflowEventStore::new());
+    everruns_server::tool_result_timeout::arm_parked_turn(
+        &server.db,
+        Some(store.as_ref()),
+        TEST_ORG_ID,
+        session_id,
+    )
+    .await;
+    // A client tool call with no deadline of its own replaces the request.
+    server
+        .db
+        .create_event(record(json!({
+            "tool_calls": [{ "id": "client_1", "name": "client_tool", "arguments": {} }]
+        })))
+        .await
+        .expect("emit tool.call_requested");
+
+    let timeouts = everruns_server::tool_result_timeout::ToolResultTimeouts::new(
+        server.db.clone(),
+        server.runner.clone(),
+        everruns_server::EventDelivery::in_memory(),
+    );
+    let pool = everruns_server::cluster_jobs::start(
+        store.clone(),
+        Vec::new(),
+        vec![timeouts.deadline_task(store.clone())],
+    )
+    .await
+    .expect("job pool");
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    pool.abort();
+    assert_eq!(resumes.load(Ordering::SeqCst), 0);
+    assert!(
+        events_of(&server, session_id, "tool.completed")
+            .await
+            .is_empty()
+    );
+}
