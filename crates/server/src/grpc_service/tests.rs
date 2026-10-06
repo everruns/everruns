@@ -8,7 +8,7 @@ pub(crate) async fn test_worker_service() -> WorkerServiceImpl {
     test_worker_service_with_runner(None).await
 }
 async fn test_worker_service_with_runner(
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
 ) -> WorkerServiceImpl {
     let db = Arc::new(StorageBackend::in_memory());
     let grade = everruns_core::DeploymentGrade::Dev;
@@ -32,15 +32,49 @@ struct CompletingTestRunner {
 }
 
 #[async_trait::async_trait]
-impl everruns_worker::AgentRunner for CompletingTestRunner {
-    async fn start_run(
+impl everruns_core::host::TurnBackend for CompletingTestRunner {
+    async fn start_turn(
+        &self,
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        let session_id = request.session_id;
+        if let Some(scope) = request.scope {
+            self.complete(scope.org_id, session_id)
+                .await
+                .map_err(|error| {
+                    everruns_contracts::error::AgentLoopError::store(error.to_string())
+                })?;
+        }
+        // The server drops its tickets; this one never resolves.
+        Ok(everruns_core::host::TurnTicket::new(
+            session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
+    }
+
+    async fn cancel(
+        &self,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
+    }
+
+    async fn is_running(&self, _session_id: everruns_contracts::typed_id::SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        0
+    }
+}
+
+impl CompletingTestRunner {
+    /// Finish the child's turn the way the production completion path does.
+    async fn complete(
         &self,
         org_id: i64,
         session_id: everruns_contracts::typed_id::SessionId,
-        _harness_id: everruns_contracts::typed_id::HarnessId,
-        _agent_id: Option<everruns_contracts::typed_id::AgentId>,
-        _input_message_id: everruns_contracts::typed_id::MessageId,
-        _request_id: Option<String>,
     ) -> anyhow::Result<()> {
         self.event_service
             .emit(everruns_core::EventRequest::new(
@@ -85,28 +119,6 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
             )
             .await?;
         Ok(())
-    }
-
-    async fn resume_after_tool_results(
-        &self,
-        _session_id: everruns_contracts::typed_id::SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-    async fn cancel_run(
-        &self,
-        _run_id: everruns_contracts::typed_id::SessionId,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn is_running(&self, _run_id: everruns_contracts::typed_id::SessionId) -> bool {
-        false
-    }
-
-    async fn active_count(&self) -> usize {
-        0
     }
 }
 

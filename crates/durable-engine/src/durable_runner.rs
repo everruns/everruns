@@ -27,8 +27,8 @@ pub struct DurableTurnOutput {
 ///
 /// This runner maps runtime turn state onto the durable engine.
 /// It implements [`TurnBackend`](everruns_core::host::TurnBackend) (see
-/// [`crate::turn_backend`]); its [`AgentRunner`](crate::AgentRunner)
-/// methods are a shim over that implementation.
+/// [`crate::turn_backend`]), the only way to start, continue or cancel its
+/// turns.
 pub struct DurableRunner {
     pub(crate) store: Arc<dyn crate::turn_store::TurnStore>,
     task_notifier: Option<Arc<dyn DurableTaskNotifier>>,
@@ -90,8 +90,8 @@ impl DurableRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runner::AgentRunner;
-    use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId};
+    use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, TurnId};
+    use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnScope};
     use everruns_durable::{EventLog, SignalStore, TaskQueue, WorkerRegistry, WorkflowStatus};
     use uuid::Uuid;
 
@@ -116,6 +116,66 @@ mod tests {
                 .lock()
                 .expect("recorded activity types lock poisoned")
                 .push(activity_type.to_string());
+        }
+    }
+
+    /// The platform server's calls: a stored message with its scope, a
+    /// recorded tool resolution, and a cancel, each on the `TurnBackend`.
+    #[async_trait]
+    trait ServerTurns {
+        async fn start_run(
+            &self,
+            org_id: i64,
+            session_id: SessionId,
+            harness_id: HarnessId,
+            agent_id: Option<AgentId>,
+            message_id: MessageId,
+            request_id: Option<String>,
+        ) -> everruns_contracts::error::Result<()>;
+        async fn resume_after_tool_results(
+            &self,
+            session_id: SessionId,
+            resolution_id: Uuid,
+        ) -> everruns_contracts::error::Result<()>;
+        async fn cancel_run(&self, session_id: SessionId) -> everruns_contracts::error::Result<()>;
+    }
+
+    #[async_trait]
+    impl ServerTurns for DurableRunner {
+        async fn start_run(
+            &self,
+            org_id: i64,
+            session_id: SessionId,
+            harness_id: HarnessId,
+            agent_id: Option<AgentId>,
+            message_id: MessageId,
+            request_id: Option<String>,
+        ) -> everruns_contracts::error::Result<()> {
+            let request = TurnRequest::new(
+                session_id,
+                TurnId::new(),
+                TurnInput::StoredMessage { message_id },
+            )
+            .with_scope(TurnScope::new(org_id, harness_id, agent_id))
+            .with_request_id(request_id);
+            self.start_turn(request).await.map(drop)
+        }
+
+        async fn resume_after_tool_results(
+            &self,
+            session_id: SessionId,
+            resolution_id: Uuid,
+        ) -> everruns_contracts::error::Result<()> {
+            let request = TurnRequest::new(
+                session_id,
+                TurnId::new(),
+                TurnInput::RecordedToolResults { resolution_id },
+            );
+            self.start_turn(request).await.map(drop)
+        }
+
+        async fn cancel_run(&self, session_id: SessionId) -> everruns_contracts::error::Result<()> {
+            self.cancel(session_id).await.map(drop)
         }
     }
 

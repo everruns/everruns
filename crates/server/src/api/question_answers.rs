@@ -331,7 +331,7 @@ pub struct QuestionResolver<'a> {
     pub(crate) db: &'a std::sync::Arc<crate::storage::StorageBackend>,
     pub(crate) session_service: &'a crate::domains::sessions::SessionService,
     pub(crate) event_service: &'a crate::services::EventService,
-    pub(crate) runner: std::sync::Arc<dyn everruns_worker::AgentRunner>,
+    pub(crate) runner: std::sync::Arc<dyn everruns_core::host::TurnBackend>,
 }
 
 pub async fn resolve_question_answers(

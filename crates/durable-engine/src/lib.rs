@@ -37,9 +37,9 @@
 //! stores and runner constructors live in `everruns-worker`, which implements
 //! [`TurnStore`] for its own
 //! client type and builds its runner with [`DurableRunner::from_store`].
-//! Another process boundary plugs in the same way. [`AgentRunner`] is a shim
-//! over [`DurableRunner`]'s `TurnBackend` until the server calls `TurnBackend`
-//! directly.
+//! Another process boundary plugs in the same way. The platform server calls
+//! [`DurableRunner`]'s `TurnBackend` directly; it has no other turn entry
+//! point.
 //!
 //! # Example
 //!
@@ -116,7 +116,6 @@ mod durable_backend_postgres_tests;
 mod durable_backend_tests;
 pub mod durable_runner;
 pub mod durable_turn;
-pub mod runner;
 pub mod task_error;
 pub mod task_heartbeat;
 #[cfg(test)]
@@ -136,6 +135,5 @@ pub use everruns_durable as durable;
 
 pub use durable_backend::{DurableBackend, DurableSessionBackend};
 pub use durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput, DurableTurnOutput};
-pub use runner::{AgentRunner, RunnerBackend, create_runner_with_backend};
 pub use turn_driver::{TurnTaskDriver, TurnTaskHost};
 pub use turn_store::{TurnStore, WorkflowEndSignal, WorkflowSnapshot};

@@ -59,7 +59,7 @@ impl ChannelApiState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Arc<dyn everruns_worker::AgentRunner>,
+        runner: Arc<dyn everruns_core::host::TurnBackend>,
         notifications_enabled: bool,
         event_delivery: EventDelivery,
         rate_limiter: ChannelRateLimiter,
@@ -751,8 +751,8 @@ pub(crate) async fn cancel_session_turn_for(
     use everruns_contracts::typed_id::{MessageId, TurnId};
     use everruns_core::events::{EventContext, EventRequest, TurnCancelledData};
 
-    if let Err(err) = message_service.runner().cancel_run(session_id).await {
-        tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel_run failed");
+    if let Err(err) = message_service.runner().cancel(session_id).await {
+        tracing::warn!(session_id = %session_id, error = %err, "{reason}: cancel failed");
     }
 
     // Skip emission if the turn already reached a terminal state, so a real

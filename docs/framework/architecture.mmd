@@ -1,6 +1,6 @@
 flowchart TB
     F["Framework app<br/>everruns::Engine • Session<br/>durable feature: opt-in"]
-    S["Platform server<br/>schedules turns<br/>AgentRunner → DurableRunner"]
+    S["Platform server<br/>schedules turns<br/>persist → DurableRunner"]
     W["Platform worker<br/>claims steps over gRPC<br/>WorkerRuntimeHost"]
 
     B["everruns-core host<br/>TurnBackend<br/>start_turn • cancel • is_running"]
@@ -9,7 +9,7 @@ flowchart TB
 
     subgraph DE["everruns-durable-engine (experimental)"]
         DB["DurableBackend<br/>facade sessions, memory or PostgreSQL"]
-        DR["DurableRunner<br/>server-persisted input, implements TurnBackend"]
+        DR["DurableRunner<br/>stored input only, implements TurnBackend"]
         TD["TurnTaskDriver<br/>process_input • reason • act, checkpoint each step"]
     end
 

@@ -208,7 +208,7 @@ async fn client_tool_runtime() -> (InProcessRuntime, SessionId) {
 }
 
 /// A backend over `runtime`, and what keeps it running.
-async fn seam_backend(
+async fn backend_on(
     kind: BackendKind,
     runtime: &InProcessRuntime,
     session_id: SessionId,
@@ -252,7 +252,7 @@ enum InputForm {
 /// report what the caller can compare across backends.
 async fn park_and_resume(kind: BackendKind, form: InputForm) -> Value {
     let (runtime, session_id) = client_tool_runtime().await;
-    let (backend, _durable) = seam_backend(kind, &runtime, session_id).await;
+    let (backend, _durable) = backend_on(kind, &runtime, session_id).await;
     let finish = |ticket: TurnTicket| async move {
         tokio::time::timeout(Duration::from_secs(10), ticket)
             .await

@@ -10,11 +10,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use axum::http::StatusCode;
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::typed_id::SessionId;
+use everruns_core::host::TurnBackend;
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_server::records::Session;
 use everruns_server::storage::models::{UpsertSessionKeyValue, UpsertSessionSecret};
-use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -27,32 +27,24 @@ const INTERNAL_SECRET: &str = "session_sandbox";
 struct IdleRunner;
 
 #[async_trait]
-impl AgentRunner for IdleRunner {
-    async fn start_run(
+impl TurnBackend for IdleRunner {
+    async fn start_turn(
         &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        _harness_id: HarnessId,
-        _agent_id: Option<AgentId>,
-        _input_message_id: MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        // The server drops its tickets; this one never resolves.
+        Ok(everruns_core::host::TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
     }
 
-    async fn resume_after_tool_results(
-        &self,
-        _session_id: SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
-        Ok(())
+    async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
     }
 
-    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn is_running(&self, _run_id: SessionId) -> bool {
+    async fn is_running(&self, _session_id: SessionId) -> bool {
         false
     }
 

@@ -1,4 +1,4 @@
-//! Bringing up storage, the durable event store, and the agent runner.
+//! Bringing up storage, the durable event store, and the turn backend.
 //!
 // Split out of `app_builder.rs` (EVE-1069): that file is on the size
 // ratchet's debt list, and this is the most self-contained unit in it —
@@ -8,18 +8,17 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 use crate::storage::StorageBackend;
+use everruns_core::host::TurnBackend;
 use everruns_durable::PostgresWorkflowEventStore;
-use everruns_worker::{
-    AgentRunner, DurableTaskNotifier, RunnerBackend, create_runner_with_backend,
-};
+use everruns_worker::{DurableRunner, DurableTaskNotifier};
 
 use crate::app_builder::MigrationFn;
 use crate::server::ServerConfig;
 
 pub(crate) struct StorageInit {
     pub(crate) db: Arc<StorageBackend>,
-    pub(crate) runner: Arc<dyn AgentRunner>,
-    pub(crate) background_runner: Arc<dyn AgentRunner>,
+    pub(crate) runner: Arc<dyn TurnBackend>,
+    pub(crate) background_runner: Arc<dyn TurnBackend>,
     pub(crate) shared_durable_store: Option<Arc<PostgresWorkflowEventStore>>,
     pub(crate) database_url: Option<String>,
     pub(crate) database_unpooled_url: Option<String>,
@@ -55,9 +54,8 @@ pub(crate) async fn init_storage(
             .context("embedded backend has a pool")?
             .clone();
         let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
-        let runner = create_runner_with_backend(RunnerBackend::Postgres(pool))
-            .await
-            .context("Failed to create agent runner")?;
+        tracing::info!("Creating Durable execution engine runner (PostgreSQL mode)");
+        let runner: Arc<dyn TurnBackend> = Arc::new(DurableRunner::new_with_pool(pool));
         return Ok(StorageInit {
             db: Arc::new(backend),
             background_runner: runner.clone(),
@@ -120,28 +118,8 @@ pub(crate) async fn init_storage(
     let task_notifier = task_broadcaster.clone().map(|broadcaster| {
         Arc::new(ServerTaskNotifier { broadcaster }) as Arc<dyn DurableTaskNotifier>
     });
-    let runner_backend = if let Some(task_notifier) = task_notifier.clone() {
-        RunnerBackend::PostgresWithNotifier {
-            pool: request_pool,
-            task_notifier,
-        }
-    } else {
-        RunnerBackend::Postgres(request_pool)
-    };
-    let runner = create_runner_with_backend(runner_backend)
-        .await
-        .context("Failed to create agent runner")?;
-    let background_runner_backend = if let Some(task_notifier) = task_notifier {
-        RunnerBackend::PostgresWithNotifier {
-            pool: background_pool,
-            task_notifier,
-        }
-    } else {
-        RunnerBackend::Postgres(background_pool)
-    };
-    let background_runner = create_runner_with_backend(background_runner_backend)
-        .await
-        .context("Failed to create background agent runner")?;
+    let runner = durable_runner(request_pool, task_notifier.clone());
+    let background_runner = durable_runner(background_pool, task_notifier);
 
     tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
     Ok(StorageInit {
@@ -153,6 +131,29 @@ pub(crate) async fn init_storage(
         database_unpooled_url,
         task_broadcaster,
     })
+}
+
+/// The durable turn backend over `pool`, publishing task availability through
+/// `task_notifier` when there is one.
+fn durable_runner(
+    pool: everruns_durable::PostgresPool,
+    task_notifier: Option<Arc<dyn DurableTaskNotifier>>,
+) -> Arc<dyn TurnBackend> {
+    match task_notifier {
+        Some(task_notifier) => {
+            tracing::info!(
+                "Creating Durable execution engine runner (PostgreSQL mode with task notifier)"
+            );
+            Arc::new(DurableRunner::new_with_pool_and_task_notifier(
+                pool,
+                task_notifier,
+            ))
+        }
+        None => {
+            tracing::info!("Creating Durable execution engine runner (PostgreSQL mode)");
+            Arc::new(DurableRunner::new_with_pool(pool))
+        }
+    }
 }
 
 async fn run_migrations(backend: &StorageBackend, migrations: Vec<MigrationFn>) -> Result<()> {

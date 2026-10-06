@@ -1,6 +1,6 @@
 //! `DurableRunner` as a `TurnBackend` on the in-memory durable store: turns
-//! start eagerly, tickets follow the workflow to its end, and the
-//! `AgentRunner` shim goes through the same path.
+//! start eagerly from stored input, and tickets follow the workflow to its
+//! end.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +24,6 @@ use crate::host::{
     AcceptedTurnInput, InProcessRuntime, RuntimeHostAdapter, TurnBackend, TurnInput, TurnRequest,
     TurnScope, TurnTicket, in_process_internal_org_id,
 };
-use crate::runner::AgentRunner;
 use crate::task_heartbeat::CancelSignals;
 use crate::turn_backend::TICKET_FALLBACK_POLL_INTERVAL;
 use crate::turn_driver::{TurnTaskDriver, TurnTaskHost};
@@ -347,45 +346,22 @@ async fn stored_message_carries_scope_and_request_id_into_the_checkpoint() {
 }
 
 #[tokio::test]
-async fn agent_runner_shim_runs_through_the_turn_backend() {
-    let (store, runner) = shared_runner().await;
-    let session_id = SessionId::new();
-
-    runner
-        .start_run(
-            1,
-            session_id,
-            HarnessId::new(),
-            None,
-            MessageId::new(),
-            None,
-        )
-        .await
-        .unwrap();
-    // The shim's start is the backend's: the same workflow, seen both ways.
-    assert!(TurnBackend::is_running(&runner, session_id).await);
-    assert!(AgentRunner::is_running(&runner, session_id).await);
-    assert_eq!(AgentRunner::active_count(&runner).await, 1);
-    assert_eq!(claimed_activity_types(&store).await, ["process_input"]);
-
-    AgentRunner::cancel_run(&runner, session_id).await.unwrap();
-    assert_eq!(
-        EventLog::get_workflow_status(&*store, session_id.uuid())
-            .await
-            .unwrap(),
-        WorkflowStatus::Cancelled
-    );
-    assert!(!TurnBackend::is_running(&runner, session_id).await);
-
-    // A store failure keeps the message the server always logged.
+async fn recorded_tool_results_without_a_workflow_fail_with_the_store_message() {
+    let (_store, runner) = shared_runner().await;
     let error = runner
-        .resume_after_tool_results(SessionId::new(), Uuid::now_v7())
+        .start_turn(TurnRequest::new(
+            SessionId::new(),
+            TurnId::new(),
+            TurnInput::RecordedToolResults {
+                resolution_id: Uuid::now_v7(),
+            },
+        ))
         .await
         .expect_err("no workflow to resume");
+    // The server unwraps this back into the message it always logged.
     assert!(
-        error
-            .to_string()
-            .starts_with("Failed to get workflow status"),
+        matches!(&error, AgentLoopError::MessageStore(message)
+            if message.starts_with("Failed to get workflow status")),
         "{error}"
     );
 }
