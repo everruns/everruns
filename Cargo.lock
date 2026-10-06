@@ -3278,6 +3278,7 @@ dependencies = [
  "sha2 0.11.0",
  "sha3",
  "sqlx",
+ "sqlx-core",
  "tar",
  "tempfile",
  "thiserror 2.0.21",

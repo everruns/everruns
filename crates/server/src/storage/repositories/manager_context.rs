@@ -13,18 +13,37 @@ impl Database {
         &self,
         key: &ManagerContextKey,
     ) -> Result<Option<ManagerContextRow>> {
-        let row = sqlx::query_as::<_, ManagerContextRow>(sql!(
+        self.get_manager_context_locked(key, false).await
+    }
+
+    /// Reads the row, with `FOR SHARE` when `share` is set.
+    pub async fn get_manager_context_locked(
+        &self,
+        key: &ManagerContextKey,
+        share: bool,
+    ) -> Result<Option<ManagerContextRow>> {
+        const SELECT: &str = sql!(
             r#"
             SELECT {ManagerContextRow}
             FROM entity_manager_context
             WHERE org_id = $1 AND entity_kind = $2 AND entity_ref = $3
             "#
-        ))
-        .bind(key.org_id)
-        .bind(&key.entity_kind)
-        .bind(&key.entity_ref)
-        .fetch_optional(&self.pool)
-        .await?;
+        );
+        const SELECT_FOR_SHARE: &str = sql!(
+            r#"
+            SELECT {ManagerContextRow}
+            FROM entity_manager_context
+            WHERE org_id = $1 AND entity_kind = $2 AND entity_ref = $3
+            FOR SHARE
+            "#
+        );
+        let row =
+            sqlx::query_as::<_, ManagerContextRow>(if share { SELECT_FOR_SHARE } else { SELECT })
+                .bind(key.org_id)
+                .bind(&key.entity_kind)
+                .bind(&key.entity_ref)
+                .fetch_optional(&self.pool)
+                .await?;
         Ok(row)
     }
 

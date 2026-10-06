@@ -211,7 +211,9 @@ fn build_search_sql(
 
 #[derive(Clone)]
 pub struct Database {
-    pool: PgPool,
+    /// The request pool. Queries on it join the current task's command
+    /// transaction when one is open (`crate::storage::transaction`).
+    pool: crate::storage::transaction::TxPool,
     /// Connections reserved for background sweeps (EVE-1081). Separate from
     /// `pool` so a request burst cannot starve them; equal to `pool` when the
     /// database was built without a background pool (tests, embedded uses).
@@ -253,7 +255,7 @@ impl Database {
     pub fn new(pool: PgPool) -> Self {
         Self {
             background_pool: pool.clone(),
-            pool,
+            pool: crate::storage::transaction::TxPool::new(pool),
             blob_store: None,
             test_database: None,
         }
@@ -384,7 +386,7 @@ impl Database {
         }
 
         Ok(Self {
-            pool,
+            pool: crate::storage::transaction::TxPool::new(pool),
             background_pool,
             blob_store: None,
             test_database: None,
@@ -392,7 +394,16 @@ impl Database {
     }
 
     /// The request pool: short acquire timeout, sized for HTTP handlers.
+    ///
+    /// Queries run on it directly bypass the current command transaction;
+    /// prefer the repository methods, which run on `tx_pool`.
     pub fn pool(&self) -> &PgPool {
+        self.pool.raw()
+    }
+
+    /// The request pool as repository methods use it: inside a command
+    /// transaction, queries run on that transaction's connection.
+    pub fn tx_pool(&self) -> &crate::storage::transaction::TxPool {
         &self.pool
     }
 
@@ -409,7 +420,7 @@ impl Database {
     /// touching a single query.
     pub fn for_background(&self) -> Self {
         Self {
-            pool: self.background_pool.clone(),
+            pool: crate::storage::transaction::TxPool::new(self.background_pool.clone()),
             background_pool: self.background_pool.clone(),
             blob_store: self.blob_store.clone(),
             test_database: self.test_database.clone(),

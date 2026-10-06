@@ -60,6 +60,7 @@ pub mod session_task_store;
 mod session_turn_claim;
 pub mod subagent_spawn_handles;
 pub mod test_database;
+pub mod transaction;
 
 #[cfg(test)]
 mod backend_tests;
