@@ -25,7 +25,7 @@ use everruns_core::builtins::ask_user::{AskUserAnsweredBy, AskUserStatus};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
 };
-use everruns_worker::AgentRunner;
+use everruns_core::host::TurnBackend;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -64,7 +64,7 @@ fn sweep_interval_secs_from_env() -> u64 {
 /// sweep, both over the background pool.
 pub struct ToolResultTimeouts {
     db: Arc<StorageBackend>,
-    runner: Arc<dyn AgentRunner>,
+    runner: Arc<dyn TurnBackend>,
     event_service: Arc<EventService>,
     event_delivery: crate::event_delivery::EventDelivery,
     timeout_secs: u64,
@@ -73,7 +73,7 @@ pub struct ToolResultTimeouts {
 impl ToolResultTimeouts {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
@@ -163,7 +163,7 @@ impl ToolResultTimeouts {
 
 fn spawn_tool_result_timeout_sweep(
     db: Arc<StorageBackend>,
-    runner: Arc<dyn AgentRunner>,
+    runner: Arc<dyn TurnBackend>,
     event_delivery: crate::event_delivery::EventDelivery,
 ) -> JoinHandle<()> {
     let timeout_secs = timeout_secs_from_env();
@@ -194,7 +194,7 @@ fn spawn_tool_result_timeout_sweep(
 /// waiting on the background interval.
 pub async fn sweep_timed_out_sessions(
     db: &Arc<StorageBackend>,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn TurnBackend>,
     event_service: &EventService,
     timeout_secs: u64,
 ) -> anyhow::Result<()> {
@@ -302,7 +302,7 @@ async fn pending_ask_user(
 async fn resolve_expired_question(
     db: &Arc<StorageBackend>,
     event_service: &EventService,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn TurnBackend>,
     session_id: SessionId,
     org_id: i64,
 ) -> anyhow::Result<()> {
@@ -380,7 +380,7 @@ async fn resolve_expired_question(
 async fn resolve_expired_approvals(
     db: &Arc<StorageBackend>,
     event_service: &EventService,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn TurnBackend>,
     session_id: SessionId,
     org_id: i64,
 ) -> anyhow::Result<()> {
@@ -430,7 +430,7 @@ async fn resolve_expired_approvals(
 async fn timeout_session(
     db: &Arc<StorageBackend>,
     event_service: &EventService,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn TurnBackend>,
     session_id: SessionId,
     org_id: i64,
 ) -> anyhow::Result<()> {
@@ -633,7 +633,7 @@ pub async fn arm_parked_turn<S>(
 /// while the same park is still waiting, `None` once it has ended.
 async fn settle_deadline(
     db: &Arc<StorageBackend>,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn TurnBackend>,
     event_service: &EventService,
     input: &DeadlineInput,
     timeout_secs: u64,

@@ -434,7 +434,7 @@ pub struct Ctx {
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-    pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    pub runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     pub fallback_harness_name: Option<String>,
     /// Outbound HTTP boundary for sanctioned egress (e.g. plugin sync from GitHub or a URL).
     pub egress_service: Option<Arc<dyn EgressService>>,

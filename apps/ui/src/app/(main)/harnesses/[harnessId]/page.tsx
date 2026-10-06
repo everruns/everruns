@@ -24,7 +24,9 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { IntegrationGuide } from "@/components/integration/integration-guide";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
-import { Pencil, Copy, Trash2, Eye, LayoutDashboard, BarChart3, Terminal } from "lucide-react";
+import { Pencil, Copy, Eye, LayoutDashboard, BarChart3, Terminal } from "lucide-react";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
+import { usePolicies } from "@/hooks/use-policies";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
@@ -69,6 +71,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const { data: stats, isLoading: statsLoading, error: statsError } = useHarnessStats(harnessId);
   const deleteHarness = useDeleteHarness();
   const copyHarness = useCopyHarness();
+  const { can } = usePolicies("harnesses");
 
   const modelMap = useMemo(() => {
     if (!models) return new Map<string, ModelWithProvider>();
@@ -199,16 +202,23 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                     Edit
                   </LinkButton>
                 )}
-                <Button
-                  variant="outline"
-                  onClick={handleDelete}
-                  disabled={deleteHarness.isPending || harness.status !== "active"}
-                >
-                  <Trash2 className="size-4" />
-                  {deleteHarness.isPending ? "Archiving..." : "Archive"}
-                </Button>
               </>
             )}
+            <EntityActionsMenu
+              entityRef={harness.id}
+              kind="harness"
+              entityName={getDisplayName(harness)}
+              permissions={{ manage: can("harness.manage") }}
+              archive={
+                !harness.is_built_in && harness.status === "active"
+                  ? {
+                      onSelect: handleDelete,
+                      label: deleteHarness.isPending ? "Archiving..." : "Archive harness",
+                      disabled: deleteHarness.isPending,
+                    }
+                  : undefined
+              }
+            />
           </>
         }
       />

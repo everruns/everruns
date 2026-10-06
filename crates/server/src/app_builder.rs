@@ -35,7 +35,7 @@ use axum::{Json, Router, extract::State, middleware::from_fn, routing::get};
 use everruns_core::host::observability::{BraintrustListener, OtelEventListener};
 use everruns_core::{ErrorReporter, EventListener, NoopErrorReporter, SharedErrorReporter};
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
-use everruns_worker::{AgentRunner, TaskWorker, TaskWorkerConfig};
+use everruns_worker::{TaskWorker, TaskWorkerConfig};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::future::Future;
@@ -64,7 +64,7 @@ type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
 #[derive(Clone)]
 struct CoreDeps {
     db: Arc<StorageBackend>,
-    runner: Arc<dyn AgentRunner>,
+    runner: Arc<dyn everruns_core::host::TurnBackend>,
     auth: auth::AuthState,
     encryption: Option<Arc<EncryptionService>>,
     event_delivery: EventDelivery,
@@ -73,7 +73,7 @@ struct CoreDeps {
 impl CoreDeps {
     fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn everruns_core::host::TurnBackend>,
         auth: auth::AuthState,
         encryption: Option<Arc<EncryptionService>>,
         event_delivery: EventDelivery,
@@ -166,7 +166,7 @@ pub struct ServerContext {
     pub event_service: Arc<services::EventService>,
     pub event_delivery: crate::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
-    pub runner: Arc<dyn AgentRunner>,
+    pub runner: Arc<dyn everruns_core::host::TurnBackend>,
     pub driver_registry: Arc<everruns_contracts::driver_registry::DriverRegistry>,
     pub host_composition: Arc<HostComposition>,
     /// System-wide email sender from the platform profile.

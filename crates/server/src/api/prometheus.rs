@@ -170,6 +170,9 @@ pub mod names {
     /// Entity history rows that could not be written after their mutation
     /// committed (see `domains::change_history`). Should stay at zero.
     pub const ENTITY_HISTORY_WRITE_FAILURES: &str = "everruns_entity_history_write_failures_total";
+    /// Agent-made changes recorded without a reason, while the org does not
+    /// require one. Label: entity_kind.
+    pub const ENTITY_CHANGES_WITHOUT_REASON: &str = "everruns_entity_changes_without_reason_total";
 
     /// Orphaned blob objects deleted by the object-storage GC sweep (objects
     /// present in the bucket with no live sidecar pointer, older than the grace

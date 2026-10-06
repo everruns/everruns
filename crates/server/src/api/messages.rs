@@ -30,7 +30,7 @@ use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use std::time::{Duration, Instant};
 
 use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
-use everruns_worker::AgentRunner;
+use everruns_core::host::TurnBackend;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use utoipa::{IntoParams, ToSchema};
@@ -276,7 +276,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,

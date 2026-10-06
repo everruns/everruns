@@ -28,6 +28,12 @@ pub(super) struct ParkedTurn {
 
 pub(super) type ParkedTurns = Arc<Mutex<std::collections::HashMap<SessionId, ParkedTurn>>>;
 
+fn no_parked_turn(session_id: SessionId) -> AgentLoopError {
+    AgentLoopError::store(format!(
+        "session {session_id} has no turn waiting for tool results"
+    ))
+}
+
 pub(super) fn lock_parked(
     parked: &ParkedTurns,
 ) -> std::sync::MutexGuard<'_, std::collections::HashMap<SessionId, ParkedTurn>> {
@@ -90,6 +96,53 @@ impl InProcessRuntime {
             .await
     }
 
+    /// Record `results` under the turn `session_id` parked on client-side
+    /// tool calls, without continuing it. The turn stays parked until a
+    /// [`TurnInput::RecordedToolResults`](crate::host::TurnInput::RecordedToolResults)
+    /// start (or [`resume_steerable_turn`](Self::resume_steerable_turn) with
+    /// no further results) continues it.
+    ///
+    /// The results land exactly where `resume_steerable_turn` records them,
+    /// so recording first and continuing later runs the turn as one call
+    /// would. A host that records results through its own event store does
+    /// the same and needs no call here.
+    ///
+    /// # Errors
+    ///
+    /// A store error when no turn of `session_id` is parked, or the results
+    /// cannot be recorded.
+    pub async fn record_parked_tool_results(
+        &self,
+        session_id: SessionId,
+        results: Vec<ToolCompletedData>,
+    ) -> Result<()> {
+        let (turn_id, input_message_id) = lock_parked(&self.parked_turns)
+            .get(&session_id)
+            .map(|parked| (parked.calls.turn_id, parked.resume.input_message_id))
+            .ok_or_else(|| no_parked_turn(session_id))?;
+        self.emit_tool_results(session_id, turn_id, input_message_id, results)
+            .await
+    }
+
+    async fn emit_tool_results(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+        results: Vec<ToolCompletedData>,
+    ) -> Result<()> {
+        for result in results {
+            self.event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::turn(turn_id, input_message_id),
+                    result,
+                ))
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Take the turn `session_id` parked on client-side tool calls and record
     /// `results` under it, as [`resume_steerable_turn`](Self::resume_steerable_turn)
     /// does before it continues the turn. Returns the engine state the turn
@@ -109,22 +162,13 @@ impl InProcessRuntime {
         session_id: SessionId,
         results: Vec<ToolCompletedData>,
     ) -> Result<TurnState> {
-        let parked = self.take_parked_turn(session_id).ok_or_else(|| {
-            AgentLoopError::store(format!(
-                "session {session_id} has no turn waiting for tool results"
-            ))
-        })?;
+        let parked = self
+            .take_parked_turn(session_id)
+            .ok_or_else(|| no_parked_turn(session_id))?;
         let turn_id = parked.calls.turn_id;
         let input_message_id = parked.resume.input_message_id;
-        for result in results {
-            self.event_emitter
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::turn(turn_id, input_message_id),
-                    result,
-                ))
-                .await?;
-        }
+        self.emit_tool_results(session_id, turn_id, input_message_id, results)
+            .await?;
         let mut resume = parked.resume;
         resume.turn_id = Some(turn_id);
         Ok(resume)

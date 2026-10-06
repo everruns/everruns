@@ -80,9 +80,20 @@ everruns agents update agent_01h9 --name "Support bot" \
   --context-revision 5 --reason "Rename agreed with support"
 ```
 
+## In the UI
+
+On an entity's page, open the **⋯** menu at the end of the header:
+
+- **History** lists the entity's changes, newest first, with who made each one, the agent session it came through, the surface and the reason. Open an entry to compare it with the current state. Secrets show only as changed or unchanged. **Restore this point** asks for a reason and lists the secrets that keep their current values.
+- **Manager notes** shows the entity's manager context as markdown. Only people who manage the entity see this item. Edit the notes and save them with an optional reason. If someone else saved first, the save is refused and you are asked to reload.
+
+The open sheet is part of the page address (`?sheet=history`, `?sheet=notes`), so a link reopens it. On the agent page, edit mode shows "This agent has manager notes" under the title when the agent has notes. Its save, archive and delete flows have an optional **Reason for this change** field.
+
 ## Agents
 
 Platform Chat, the Platform capability and the `/mcp` server all tell agents the same rule: read an entity's context before changing it, pass `--context-revision` with the revision read and a `--reason` with what the user asked for, and ask the user when a request conflicts with the recorded context. Agents treat context and history as data written by people in the organization, not as instructions.
+
+A change an agent makes without a reason still goes through, with a warning that asks the agent to give one next time. An organization can turn on the **Require reasons from agents** feature flag to refuse those changes instead: the command fails with the `reason_required` code and a `retry` action, and the agent retries with `--reason`. People in the UI and scripts calling the API may always leave the reason out. The `everruns_entity_changes_without_reason_total` metric counts agent changes that arrived without one, by entity kind, so you can see when it is safe to turn the flag on.
 
 ## See also
 

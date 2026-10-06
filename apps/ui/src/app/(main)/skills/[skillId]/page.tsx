@@ -8,6 +8,8 @@ import { ResourceNotFound } from "@/components/resource-not-found";
 import { SkillDetailView } from "@/components/skills/skill-detail-view";
 import { SkillUsageRow } from "@/components/skills/skill-usage-row";
 import { usePageTitle } from "@/hooks";
+import { usePolicies } from "@/hooks/use-policies";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { useSkill, useSkillContent, useSkillsUsage } from "@/hooks/use-skills";
 import {
   getDisplayName,
@@ -35,6 +37,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
     error: contentError,
   } = useSkillContent(skillId);
   const { data: usage } = useSkillsUsage();
+  const { can } = usePolicies("skills");
   usePageTitle(skill ? getDisplayName(skill) : null, "Skill");
 
   if (skillLoading) {
@@ -100,6 +103,14 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
               </span>
             </span>
           </>
+        }
+        actions={
+          <EntityActionsMenu
+            entityRef={skill.id}
+            kind="skill"
+            entityName={getDisplayName(skill)}
+            permissions={{ manage: can("skill.manage") }}
+          />
         }
       />
 

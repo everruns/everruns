@@ -181,31 +181,30 @@ async fn shared_playground_cannot_use_the_personal_operator_harness() {
 
 struct NoopRunner;
 #[async_trait::async_trait]
-impl everruns_worker::AgentRunner for NoopRunner {
-    async fn start_run(
+impl everruns_core::host::TurnBackend for NoopRunner {
+    async fn start_turn(
         &self,
-        _: i64,
-        _: everruns_contracts::typed_id::SessionId,
-        _: everruns_contracts::typed_id::HarnessId,
-        _: Option<everruns_contracts::typed_id::AgentId>,
-        _: everruns_contracts::typed_id::MessageId,
-        _: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        // The server drops its tickets; this one never resolves.
+        Ok(everruns_core::host::TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
     }
-    async fn resume_after_tool_results(
+
+    async fn cancel(
         &self,
-        _: everruns_contracts::typed_id::SessionId,
-        _: Uuid,
-    ) -> anyhow::Result<()> {
-        Ok(())
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
     }
-    async fn cancel_run(&self, _: everruns_contracts::typed_id::SessionId) -> anyhow::Result<()> {
-        Ok(())
-    }
-    async fn is_running(&self, _: everruns_contracts::typed_id::SessionId) -> bool {
+
+    async fn is_running(&self, _session_id: everruns_contracts::typed_id::SessionId) -> bool {
         false
     }
+
     async fn active_count(&self) -> usize {
         0
     }

@@ -151,13 +151,21 @@ export function useUpdateAgent() {
   return {
     ...mutation,
     mutate: (
-      variables: { agentId: string; request: UpdateAgentRequest },
+      variables: { agentId: string; request: UpdateAgentRequest; reason?: string },
       options?: Parameters<typeof mutation.mutate>[1],
-    ) => mutation.mutate({ id: variables.agentId, request: variables.request }, options),
+    ) =>
+      mutation.mutate(
+        { id: variables.agentId, request: variables.request, reason: variables.reason },
+        options,
+      ),
     mutateAsync: (
-      variables: { agentId: string; request: UpdateAgentRequest },
+      variables: { agentId: string; request: UpdateAgentRequest; reason?: string },
       options?: Parameters<typeof mutation.mutateAsync>[1],
-    ) => mutation.mutateAsync({ id: variables.agentId, request: variables.request }, options),
+    ) =>
+      mutation.mutateAsync(
+        { id: variables.agentId, request: variables.request, reason: variables.reason },
+        options,
+      ),
   };
 }
 

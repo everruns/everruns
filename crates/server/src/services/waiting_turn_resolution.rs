@@ -4,13 +4,13 @@ use crate::storage::models::{UpsertSessionKeyValue, WaitingTurnResolutionClaim};
 use anyhow::Result;
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::Event;
-use everruns_worker::AgentRunner;
+use everruns_core::host::TurnBackend;
 use std::sync::Arc;
 
 pub async fn execute_waiting_turn_resolution(
     db: &Arc<StorageBackend>,
     event_service: &EventService,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn TurnBackend>,
     org_id: i64,
     session_id: SessionId,
     claim: &WaitingTurnResolutionClaim,
@@ -34,9 +34,8 @@ pub async fn execute_waiting_turn_resolution(
             );
         }
 
-        runner
-            .resume_after_tool_results(session_id, claim.resolution_id)
-            .await?;
+        let request = crate::turns::recorded_tool_results(session_id, claim.resolution_id);
+        crate::turns::start(&**runner, request).await?;
         anyhow::ensure!(
             db.complete_waiting_turn_claim(
                 org_id,

@@ -2,6 +2,14 @@
 
 ## 2026-10-06
 
+* **One turn entry point for server and framework.** The server's
+  `AgentRunner` shim is gone: the server persists input, then starts,
+  continues and cancels turns through `TurnBackend` on `DurableRunner`, as the
+  facade does. The doc-hidden `TurnInput::Persisted` gave way to two documented
+  inputs every backend serves, `StoredMessage` (with an optional `TurnScope` on
+  the request) and `RecordedToolResults`, so a framework host that records
+  input through its own store uses the same path. See
+  [Execution Backends](framework/execution-backends.md).
 * **LLM edge cases are measured before they are fixed.** Drivers report the
   provider's raw stop reason (Bedrock now normalizes `max_tokens` to `length`)
   and count tool calls discarded or run from a truncated response;

@@ -14,11 +14,11 @@ use crate::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::channel::SessionBinding;
+use everruns_core::host::{TurnBackend, TurnRequest, TurnTicket};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
 use everruns_durable::{PostgresWorkflowEventStore, Schedules};
-use everruns_worker::AgentRunner;
 use std::sync::{Arc, Mutex};
 
 // Serializes the env-mutating cap tests.
@@ -30,30 +30,24 @@ struct RecordingRunner {
 }
 
 #[async_trait]
-impl AgentRunner for RecordingRunner {
-    async fn start_run(
+impl TurnBackend for RecordingRunner {
+    async fn start_turn(
         &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        harness_id: HarnessId,
-        _agent_id: Option<AgentId>,
-        _input_message_id: MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        self.harness_ids.lock().unwrap().push(harness_id);
-        Ok(())
+        request: TurnRequest,
+    ) -> everruns_contracts::error::Result<TurnTicket> {
+        if let Some(scope) = request.scope {
+            self.harness_ids.lock().unwrap().push(scope.harness_id);
+        }
+        // The server drops its tickets; this one never resolves.
+        Ok(TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
     }
 
-    async fn resume_after_tool_results(
-        &self,
-        _session_id: SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
+    async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
     }
 
     async fn is_running(&self, _session_id: SessionId) -> bool {

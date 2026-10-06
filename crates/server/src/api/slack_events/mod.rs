@@ -2,7 +2,7 @@ use axum::{
     Router,
     routing::{get, post},
 };
-use everruns_worker::AgentRunner;
+use everruns_core::host::TurnBackend;
 use hmac::Hmac;
 use moka::sync::Cache;
 use sha2::Sha256;
@@ -76,7 +76,7 @@ impl SlackState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<crate::storage::EncryptionService>>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,

@@ -10,8 +10,9 @@ tags:
 
 # Entity Actions Menu
 
-Status: proposed with [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md);
-the agent page's existing overflow menu is the first instance.
+Status: implemented with [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)
+phase 7 (`apps/ui/src/components/entity-actions/`). The bottom-sheet presentation on narrow
+screens and the page guard are not built yet.
 
 ## Problem
 

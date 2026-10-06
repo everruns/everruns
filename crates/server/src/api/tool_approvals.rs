@@ -289,7 +289,7 @@ pub(crate) enum ApprovalResolveError {
 pub(crate) struct ApprovalServices<'a> {
     pub(crate) db: &'a std::sync::Arc<StorageBackend>,
     pub(crate) event_service: &'a EventService,
-    pub(crate) runner: &'a std::sync::Arc<dyn everruns_worker::AgentRunner>,
+    pub(crate) runner: &'a std::sync::Arc<dyn everruns_core::host::TurnBackend>,
 }
 
 /// Settle every pending approval request on a parked session and resume it.

@@ -269,7 +269,7 @@ pub struct DirectWorkerAdapters {
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     /// Platform vector store for Knowledge Index retrieval (`search_index`).
     vector_store: Option<Arc<dyn everruns_contracts::vector_store::VectorStore>>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     encryption: Option<Arc<EncryptionService>>,
     in_memory_compaction_checkpoint_store:
         Option<Arc<everruns_core::host::InMemoryCompactionCheckpointStore>>,
@@ -501,7 +501,7 @@ impl DirectWorkerAdapters {
     }
 
     /// Set the agent runner for platform management tools (send_message, etc.)
-    pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
+    pub fn with_runner(mut self, runner: Arc<dyn everruns_core::host::TurnBackend>) -> Self {
         self.runner = Some(runner);
         self
     }
@@ -2000,7 +2000,7 @@ fn string_to_provider_type(s: &str) -> DriverId {
 struct DirectSessionTaskWaker {
     db: Arc<crate::storage::StorageBackend>,
     event_service: Arc<crate::services::EventService>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
 }
 
 #[async_trait::async_trait]
@@ -2052,13 +2052,10 @@ impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskW
 
         if let Some(runner) = &self.runner {
             let runner = runner.clone();
-            let agent_id = session.agent_id;
-            let org_id = session.org_id;
+            let scope = crate::turns::scope(session.org_id, harness_id, session.agent_id);
+            let request = crate::turns::stored_message(session_id, scope, message_id, None);
             tokio::spawn(async move {
-                if let Err(e) = runner
-                    .start_run(org_id, session_id, harness_id, agent_id, message_id, None)
-                    .await
-                {
+                if let Err(e) = crate::turns::start(&*runner, request).await {
                     tracing::warn!(
                         session_id = %session_id,
                         "SessionTaskWaker: failed to start turn workflow: {e}"
@@ -2259,11 +2256,11 @@ mod task_webhook_request_tests;
 // DirectPlatformStore - PlatformStore implementation for in-process worker
 // =============================================================================
 
-/// Direct PlatformStore backed by StorageBackend + EventService + AgentRunner.
+/// Direct PlatformStore backed by StorageBackend + EventService + the turn backend.
 // THREAT[TM-AGENT-017]: All ops org-scoped via org_id field
 struct DirectPlatformStoreDeps {
     event_service: Arc<EventService>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     capability_registry: CapabilityRegistry,
     connector_registry: everruns_contracts::connector::ConnectorRegistry,
     encryption: Option<Arc<EncryptionService>>,
@@ -2279,7 +2276,7 @@ pub struct DirectPlatformStore {
     org_id: i64,
     session_id: SessionId,
     db: Arc<StorageBackend>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     capability_service: Arc<crate::services::CapabilityService>,
     session_service: Arc<SessionService>,
     message_service: Option<Arc<MessageService>>,

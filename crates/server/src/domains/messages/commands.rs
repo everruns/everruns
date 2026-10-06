@@ -439,10 +439,10 @@ mod tests {
         SessionParticipantRow, SessionRow,
     };
     use async_trait::async_trait;
+    use everruns_contracts::typed_id::HarnessId;
     use everruns_contracts::typed_id::PrincipalId;
-    use everruns_contracts::typed_id::{HarnessId, MessageId};
+    use everruns_core::host::{TurnBackend, TurnRequest, TurnTicket};
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
-    use everruns_worker::AgentRunner;
     use std::sync::{Arc, Mutex};
     use tokio::time::{Duration, sleep};
     use uuid::Uuid;
@@ -459,30 +459,27 @@ mod tests {
     }
 
     #[async_trait]
-    impl AgentRunner for RecordingRunner {
-        async fn start_run(
+    impl TurnBackend for RecordingRunner {
+        async fn start_turn(
             &self,
-            _org_id: i64,
-            _session_id: SessionId,
-            _harness_id: HarnessId,
-            agent_id: Option<AgentId>,
-            _input_message_id: MessageId,
-            _request_id: Option<String>,
-        ) -> anyhow::Result<()> {
-            self.calls.lock().expect("runner calls lock").push(agent_id);
-            Ok(())
+            request: TurnRequest,
+        ) -> everruns_contracts::error::Result<TurnTicket> {
+            if let Some(scope) = request.scope {
+                self.calls
+                    .lock()
+                    .expect("runner calls lock")
+                    .push(scope.agent_id);
+            }
+            // The server drops its tickets; this one never resolves.
+            Ok(TurnTicket::new(
+                request.session_id,
+                request.turn_id,
+                std::future::pending(),
+            ))
         }
 
-        async fn resume_after_tool_results(
-            &self,
-            _session_id: SessionId,
-            _resolution_id: Uuid,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
-            Ok(())
+        async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+            Ok(false)
         }
 
         async fn is_running(&self, _session_id: SessionId) -> bool {
@@ -592,7 +589,7 @@ mod tests {
             .expect("user participant");
 
         let runner = Arc::new(RecordingRunner::default());
-        let runner_trait: Arc<dyn AgentRunner> = runner.clone();
+        let runner_trait: Arc<dyn TurnBackend> = runner.clone();
         let message_service = Arc::new(crate::domains::messages::MessageService::new(
             db.clone(),
             runner_trait,
@@ -836,7 +833,7 @@ mod tests {
             is_platform_user: false,
             is_internal: false,
         };
-        let runner: Arc<dyn AgentRunner> = Arc::new(RecordingRunner::default());
+        let runner: Arc<dyn TurnBackend> = Arc::new(RecordingRunner::default());
         let ctx = Ctx::minimal_for_test(caller, db.clone(), None)
             .with_session_service(Arc::new(SessionService::new(db.clone())))
             .with_message_service(Arc::new(crate::domains::messages::MessageService::new(

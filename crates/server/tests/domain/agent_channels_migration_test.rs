@@ -35,7 +35,7 @@ use everruns_server::domains::agent_channels::{hash_a2a_api_key, hash_channel_ap
 use everruns_server::records::ChannelType;
 use everruns_server::storage::Database;
 use everruns_server::storage::StorageBackend;
-use everruns_worker::{RunnerBackend, create_runner_with_backend};
+use everruns_worker::DurableRunner;
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use sha2::Sha256;
@@ -602,11 +602,9 @@ async fn seed_ingress_channel(
 }
 
 async fn ingress_router(db: Arc<StorageBackend>) -> Router {
-    let runner = create_runner_with_backend(RunnerBackend::SharedInMemory(Arc::new(
-        InMemoryWorkflowEventStore::new(),
-    )))
-    .await
-    .expect("create ingress test runner");
+    let runner: Arc<dyn everruns_core::host::TurnBackend> = Arc::new(
+        DurableRunner::new_with_shared_store(Arc::new(InMemoryWorkflowEventStore::new())),
+    );
     let event_delivery = EventDelivery::in_memory();
     let sse_tracker = Arc::new(api::sse::SseConnectionTracker::new(
         api::sse::SseConnectionLimits::default(),

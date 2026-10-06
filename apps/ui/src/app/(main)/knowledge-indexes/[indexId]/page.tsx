@@ -1,7 +1,9 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
-import { Archive, GitBranch, Library, Pencil, RefreshCw } from "lucide-react";
+import { GitBranch, Library, Pencil, RefreshCw } from "lucide-react";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
+import { useOrg } from "@/providers/org-provider";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { ArchiveKnowledgeIndexDialog } from "@/components/knowledge-indexes/archive-knowledge-index-dialog";
@@ -85,6 +87,9 @@ export default function KnowledgeIndexDetailPage({
   const updateIndex = useUpdateKnowledgeIndex();
   const syncIndex = useSyncKnowledgeIndex();
   const archiveIndex = useArchiveKnowledgeIndex();
+  // `knowledge_index.manage` is the org settings permission, held by owners and admins.
+  const { currentOrg } = useOrg();
+  const canManage = currentOrg?.role === "owner" || currentOrg?.role === "admin";
   const { data: models, isLoading: modelsLoading, error: modelsError } = useModels();
   usePageTitle(index ? index.name : null, "Knowledge Indexes");
 
@@ -168,12 +173,6 @@ export default function KnowledgeIndexDetailPage({
               <Pencil className="size-4" />
               Edit
             </Button>
-            {!isReadOnly && (
-              <Button variant="outline" onClick={() => setArchiveOpen(true)}>
-                <Archive className="size-4" />
-                Archive
-              </Button>
-            )}
             {canSync && (
               <Button
                 variant="accent"
@@ -188,6 +187,13 @@ export default function KnowledgeIndexDetailPage({
                 {knowledgeIndexSyncActionLabel(diagnostic)}
               </Button>
             )}
+            <EntityActionsMenu
+              entityRef={index.id}
+              kind="knowledge_index"
+              entityName={index.name}
+              permissions={{ manage: canManage }}
+              archive={isReadOnly ? undefined : { onSelect: () => setArchiveOpen(true) }}
+            />
           </>
         }
       />

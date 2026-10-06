@@ -30,7 +30,7 @@ use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
     ToolCompletedData, deserialize_event_data,
 };
-use everruns_worker::AgentRunner;
+use everruns_core::host::TurnBackend;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -40,7 +40,7 @@ pub struct MessageService {
     event_service: EventService,
     notification_service: NotificationService,
     notifications_enabled: bool,
-    runner: Arc<dyn AgentRunner>,
+    runner: Arc<dyn TurnBackend>,
     caps: OrgCaps,
 }
 
@@ -70,7 +70,7 @@ pub struct CreateMessagePrefetch {
 impl MessageService {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
@@ -416,23 +416,15 @@ impl MessageService {
             } else {
                 let stored_event = self.event_service.emit(input_event).await?;
                 let runner = self.runner.clone();
-                let org_id = ctx.org_id;
                 let harness_id = HarnessId::from_uuid(ctx.harness_id);
                 let agent_id = ctx.agent_id.map(AgentId::from_uuid);
+                let scope = crate::turns::scope(ctx.org_id, harness_id, agent_id);
                 let request_id = ctx.request_id.clone();
                 let request_id_log = request_id.as_deref().unwrap_or("").to_string();
+                let request =
+                    crate::turns::stored_message(session_id, scope, message_id_typed, request_id);
                 tokio::spawn(async move {
-                    if let Err(error) = runner
-                        .start_run(
-                            org_id,
-                            session_id,
-                            harness_id,
-                            agent_id,
-                            message_id_typed,
-                            request_id,
-                        )
-                        .await
-                    {
+                    if let Err(error) = crate::turns::start(&*runner, request).await {
                         tracing::error!(
                             session_id = %session_id,
                             input_message_id = %message_id_typed,
@@ -557,7 +549,7 @@ impl MessageService {
     /// Access the registered durable runner. Used by sibling callers that
     /// need to cancel an in-flight workflow without going through the
     /// session command surface.
-    pub fn runner(&self) -> &Arc<dyn AgentRunner> {
+    pub fn runner(&self) -> &Arc<dyn TurnBackend> {
         &self.runner
     }
 
@@ -760,35 +752,27 @@ mod tests {
         models::{CreateUserRow, UpdateSession},
     };
     use async_trait::async_trait;
-    use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+    use everruns_contracts::typed_id::SessionId;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     struct NoopRunner;
 
     #[async_trait]
-    impl AgentRunner for NoopRunner {
-        async fn start_run(
+    impl TurnBackend for NoopRunner {
+        async fn start_turn(
             &self,
-            _org_id: i64,
-            _session_id: SessionId,
-            _harness_id: HarnessId,
-            _agent_id: Option<AgentId>,
-            _input_message_id: MessageId,
-            _request_id: Option<String>,
-        ) -> anyhow::Result<()> {
-            Ok(())
+            request: everruns_core::host::TurnRequest,
+        ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+            // The server drops its tickets; this one never resolves.
+            Ok(everruns_core::host::TurnTicket::new(
+                request.session_id,
+                request.turn_id,
+                std::future::pending(),
+            ))
         }
 
-        async fn resume_after_tool_results(
-            &self,
-            _session_id: SessionId,
-            _resolution_id: uuid::Uuid,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
-            Ok(())
+        async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+            Ok(false)
         }
 
         async fn is_running(&self, _session_id: SessionId) -> bool {
@@ -805,32 +789,30 @@ mod tests {
     }
 
     #[async_trait]
-    impl AgentRunner for FailOnceResumeRunner {
-        async fn start_run(
+    impl TurnBackend for FailOnceResumeRunner {
+        async fn start_turn(
             &self,
-            _org_id: i64,
-            _session_id: SessionId,
-            _harness_id: HarnessId,
-            _agent_id: Option<AgentId>,
-            _input_message_id: MessageId,
-            _request_id: Option<String>,
-        ) -> anyhow::Result<()> {
-            Ok(())
-        }
-
-        async fn resume_after_tool_results(
-            &self,
-            _session_id: SessionId,
-            _resolution_id: uuid::Uuid,
-        ) -> anyhow::Result<()> {
-            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
-                anyhow::bail!("durable resume enqueue failed");
+            request: everruns_core::host::TurnRequest,
+        ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+            if matches!(
+                request.input,
+                everruns_core::host::TurnInput::RecordedToolResults { .. }
+            ) && self.calls.fetch_add(1, Ordering::SeqCst) == 0
+            {
+                return Err(everruns_contracts::error::AgentLoopError::store(
+                    "durable resume enqueue failed",
+                ));
             }
-            Ok(())
+            // The server drops its tickets; this one never resolves.
+            Ok(everruns_core::host::TurnTicket::new(
+                request.session_id,
+                request.turn_id,
+                std::future::pending(),
+            ))
         }
 
-        async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
-            Ok(())
+        async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+            Ok(false)
         }
 
         async fn is_running(&self, _session_id: SessionId) -> bool {
@@ -918,7 +900,7 @@ mod tests {
     #[tokio::test]
     async fn active_turn_cap_enforced() {
         let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
@@ -968,7 +950,7 @@ mod tests {
     #[tokio::test]
     async fn parked_turn_resumes_at_new_turn_capacity() {
         let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
@@ -1175,7 +1157,7 @@ mod tests {
     #[tokio::test]
     async fn create_message_without_user_id_uses_session_owner_participant_metadata() {
         let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
@@ -1240,7 +1222,7 @@ mod tests {
     #[tokio::test]
     async fn create_message_rejoins_user_who_left_session() {
         let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
@@ -1352,7 +1334,7 @@ mod tests {
     #[tokio::test]
     async fn active_turn_cap_reserves_started_session_before_persisting() {
         let db = Arc::new(StorageBackend::test_database());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
