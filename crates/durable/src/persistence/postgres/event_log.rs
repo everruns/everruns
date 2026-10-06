@@ -587,27 +587,43 @@ impl EventLog for PostgresWorkflowEventStore {
             .await
             .map_err(db("Failed to begin run start"))?;
 
-        // Lock the workflow row (or learn it is missing) and see whether a run
-        // is active, in one round trip. A start that loses the create race
-        // falls through to the second pass and finds the winner's run.
+        // Lock the workflow row (or learn it is missing), then see whether a
+        // run is active. A start that loses the create race falls through to
+        // the second pass and finds the winner's run.
+        //
+        // The claimed-task check is its own statement, after the lock: one
+        // that waited on the lock (behind a hand-off completing the run)
+        // re-reads only the locked row, and a subquery in the same statement
+        // would still see the hand-off's task as claimed, report the run
+        // active, and steer a run that has already completed.
         let mut started = None;
         for _ in 0..2 {
-            let row: Option<(String, bool)> = sqlx::query_as(
-                r#"
-                SELECT w.status,
-                       EXISTS(
-                           SELECT 1 FROM durable_task_queue t
-                           WHERE t.workflow_id = w.id AND t.status = 'claimed'
-                       )
-                FROM durable_workflow_instances w
-                WHERE w.id = $1
-                FOR UPDATE OF w
-                "#,
+            let status: Option<String> = sqlx::query_scalar(
+                "SELECT status FROM durable_workflow_instances WHERE id = $1 FOR UPDATE",
             )
             .bind(workflow_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(db("Failed to lock workflow for run start"))?;
+            let row = match status {
+                Some(status) if status == "running" => Some((status, false)),
+                Some(status) => {
+                    let has_claimed_task: bool = sqlx::query_scalar(
+                        r#"
+                        SELECT EXISTS(
+                            SELECT 1 FROM durable_task_queue
+                            WHERE workflow_id = $1 AND status = 'claimed'
+                        )
+                        "#,
+                    )
+                    .bind(workflow_id)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(db("Failed to check claimed tasks for run start"))?;
+                    Some((status, has_claimed_task))
+                }
+                None => None,
+            };
 
             match row {
                 None => {
