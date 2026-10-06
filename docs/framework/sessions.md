@@ -404,7 +404,7 @@ assert_eq!(turn.response, "4");
   cut off in its tool calls from the session log. That requires a session log
   that also outlives the process, such as the [local profile](#local-crash-durable-events).
 
-The durable backend and the `TurnBackend` seam it implements are outside the
+The durable backend and the `TurnBackend` trait it implements are outside the
 Framework's API stability promises and may change between releases. Each
 durable step adds a few milliseconds over in process, and a round trip per
 store write on PostgreSQL.

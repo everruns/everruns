@@ -15,7 +15,7 @@ use crate::kernel_imports::{
 };
 use crate::records::{SessionParticipant, SessionParticipantKind, SessionParticipantRole};
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 

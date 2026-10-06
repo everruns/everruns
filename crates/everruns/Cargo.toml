@@ -116,7 +116,7 @@ mcp-stdio = ["mcp", "everruns-core/mcp-stdio"]
 # message store here.
 local = [
     "dep:everruns-capabilities",
-    "dep:everruns-durable",
+    "dep:everruns-db",
     "dep:libc",
     "dep:chrono",
     "dep:chrono-tz",
@@ -209,7 +209,8 @@ tokio-util = { version = "0.7", default-features = false }
 everruns-macros = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
-everruns-durable = { workspace = true, features = ["sqlite"], optional = true }
+# SQLite connections for the `local` feature.
+everruns-db = { workspace = true, features = ["sqlite"], optional = true }
 # The durable turn backend behind the `durable` feature.
 everruns-durable-engine = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }

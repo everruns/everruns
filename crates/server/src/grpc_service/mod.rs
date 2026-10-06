@@ -84,6 +84,8 @@ use everruns_internal_protocol::proto::{
     // Session resource registry
     DeregisterSessionResourceRequest,
     DeregisterSessionResourceResponse,
+    DrainDurableWorkerRequest,
+    DrainDurableWorkerResponse,
     DurableWorkflowSignal as ProtoDurableWorkflowSignal,
     DurableWorkflowStatus,
     EmitEventRequest,
@@ -382,7 +384,7 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
 struct GrpcSessionTaskWaker {
     db: Arc<StorageBackend>,
     event_service: EventService,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
 }
 
 #[async_trait::async_trait]
@@ -433,13 +435,10 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 
         if let Some(runner) = &self.runner {
             let runner = runner.clone();
-            let agent_id = session.agent_id;
-            let org_id = session.org_id;
+            let scope = crate::turns::scope(session.org_id, harness_id, session.agent_id);
+            let request = crate::turns::stored_message(session_id, scope, message_id, None);
             tokio::spawn(async move {
-                if let Err(e) = runner
-                    .start_run(org_id, session_id, harness_id, agent_id, message_id, None)
-                    .await
-                {
+                if let Err(e) = crate::turns::start(&*runner, request).await {
                     tracing::warn!(
                         session_id = %session_id,
                         "GrpcSessionTaskWaker: failed to start turn workflow: {e}"
@@ -475,7 +474,7 @@ pub struct WorkerServiceImpl {
     /// Session SQL database store for session-scoped databases
     sqldb_store: Option<Arc<dyn everruns_contracts::session_sqldb::SessionSqlDbStore>>,
     /// Agent runner for triggering turn workflows (platform management send_message)
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
     connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
@@ -501,7 +500,7 @@ impl WorkerServiceImpl {
         event_service: EventService,
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+        runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
         host_composition: HostComposition,
     ) -> Self {
         Self::with_virtual_registry(
@@ -519,7 +518,7 @@ impl WorkerServiceImpl {
         event_service: EventService,
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+        runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
         host_composition: HostComposition,
         virtual_registry: Option<
             Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,

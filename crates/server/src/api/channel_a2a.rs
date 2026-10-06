@@ -112,7 +112,7 @@ impl ChannelA2aState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Arc<dyn everruns_worker::AgentRunner>,
+        runner: Arc<dyn everruns_core::host::TurnBackend>,
         notifications_enabled: bool,
         event_delivery: EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
@@ -1056,8 +1056,8 @@ async fn cancel_a2a_session_turn(
 
     // Best-effort cancel of the active workflow run. Errors are logged but
     // not surfaced — the turn-cancelled event is what tasks/get keys off.
-    if let Err(err) = state.message_service.runner().cancel_run(session_id).await {
-        tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel_run failed");
+    if let Err(err) = state.message_service.runner().cancel(session_id).await {
+        tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel failed");
     }
 
     // Re-check terminality before emitting a synthetic turn.cancelled event.

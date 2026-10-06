@@ -70,6 +70,43 @@ impl ActorKind {
     }
 }
 
+/// Error code: an agent changed an entity without saying why.
+pub const REASON_REQUIRED: &str = "reason_required";
+
+/// Agents must say why they change something; people may. Decision: while the
+/// org has not turned on `agent_change_reasons_required`, the change goes
+/// through with a warning, so agents that predate the rule keep working while
+/// the warning teaches them; with it on, the change is refused before it runs
+/// and the error says how to retry.
+fn missing_agent_reason(
+    ctx: &Ctx,
+    intent: &ChangeIntent,
+    kind: EntityKind,
+) -> Result<(), CommandError> {
+    let message = format!(
+        "Changes made by agents need a reason. Retry with --reason saying what the user \
+         asked for, so the {} history records why it changed.",
+        kind.as_str()
+    );
+    if ctx
+        .feature_flags
+        .is_enabled("agent_change_reasons_required")
+    {
+        return Err(CommandError::bad_request(message)
+            .with_code(REASON_REQUIRED)
+            .with_action(crate::api::common::AllowedAction::new("retry").with_hint(
+                "Retry the same command with --reason \"<what the user asked for>\".",
+            )));
+    }
+    metrics::counter!(
+        crate::api::prometheus::names::ENTITY_CHANGES_WITHOUT_REASON,
+        "entity_kind" => kind.as_str(),
+    )
+    .increment(1);
+    intent.notices.push(message);
+    Ok(())
+}
+
 /// The intent a command runs under: what its adapter set on `Ctx`, completed
 /// by what the HTTP layer captured for the request.
 pub fn effective_intent(ctx: &Ctx) -> ChangeIntent {
@@ -224,6 +261,9 @@ impl PendingChange {
             .as_deref()
             .map(intent::validate_reason)
             .transpose()?;
+        if reason.is_none() && ActorKind::of(ctx, &intent) == ActorKind::AgentSession {
+            missing_agent_reason(ctx, &intent, kind)?;
+        }
         Ok(Some(Self {
             kind,
             action,
@@ -346,14 +386,14 @@ pub mod update_field {
     pub use crate::api::common::deserialize_nullable_update_field as deserialize;
 
     pub fn serialize<T, S>(
-        field: &everruns_durable::UpdateField<T>,
+        field: &everruns_db::UpdateField<T>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
         T: serde::Serialize,
         S: serde::Serializer,
     {
-        use everruns_durable::UpdateField;
+        use everruns_db::UpdateField;
         match field {
             UpdateField::Set(value) => value.serialize(serializer),
             UpdateField::Clear => serializer.serialize_str("<cleared>"),

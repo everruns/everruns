@@ -9,6 +9,16 @@ const mockUseSyncMemory = jest.fn();
 const mockUseArchiveMemory = jest.fn();
 const mockUseUserConnections = jest.fn();
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+jest.mock("@/providers/org-provider", () => ({
+  useOrg: () => ({ currentOrg: { public_id: "org_1", role: "owner" }, isLoading: false }),
+}));
+
 jest.mock("@/hooks", () => ({
   useMemory: (...args: unknown[]) => mockUseMemory(...args),
   useUpdateMemory: () => mockUseUpdateMemory(),
@@ -109,7 +119,8 @@ describe("MemoryDetailPage", () => {
     mockUseArchiveMemory.mockReturnValue({ mutateAsync, isPending: false });
     await renderWithSuspense();
 
-    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    fireEvent.click(screen.getByRole("button", { name: /^More actions for / }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /^Archive / }));
     const dialog = screen.getByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Archive" }));
 
@@ -130,7 +141,9 @@ describe("MemoryDetailPage", () => {
     await renderWithSuspense();
 
     expect(screen.getByRole("button", { name: "Edit" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Archive" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^More actions for / }));
+    expect(await screen.findByRole("menuitem", { name: "History" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /^Archive / })).not.toBeInTheDocument();
   });
 
   it("renders not found state", async () => {

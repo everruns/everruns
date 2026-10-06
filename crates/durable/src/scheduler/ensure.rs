@@ -24,7 +24,7 @@ use crate::persistence::{
     CreateScheduleRow, Pagination, ScheduleFilter, ScheduleRow, ScheduleTargetType, Schedules,
     StoreError, UpdateSchedule,
 };
-use crate::update_field::UpdateField;
+use everruns_db::UpdateField;
 
 /// When a schedule fires.
 #[derive(Debug, Clone, PartialEq, Eq)]

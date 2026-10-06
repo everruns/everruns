@@ -18,11 +18,12 @@ use std::{
 use async_trait::async_trait;
 
 use axum::http::StatusCode;
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::error::{AgentLoopError, Result as TurnResult};
+use everruns_contracts::typed_id::SessionId;
 use everruns_core::builtins::normalize_ask_user_arguments;
+use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnTicket};
 use everruns_server::records::{Agent, Session};
 use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
-use everruns_worker::AgentRunner;
 use serde_json::json;
 use test_harness::TestServer;
 
@@ -359,6 +360,11 @@ struct BlockingRunner {
     releases: Arc<tokio::sync::Semaphore>,
 }
 
+/// The server drops its tickets; this one never resolves.
+fn idle_ticket(request: &TurnRequest) -> TurnTicket {
+    TurnTicket::new(request.session_id, request.turn_id, std::future::pending())
+}
+
 struct FastCompletingRunner {
     db: Mutex<Option<Arc<everruns_server::storage::StorageBackend>>>,
     completed_status: &'static str,
@@ -377,25 +383,9 @@ impl FastCompletingRunner {
     }
 }
 
-#[async_trait]
-impl AgentRunner for FastCompletingRunner {
-    async fn start_run(
-        &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        _harness_id: HarnessId,
-        _agent_id: Option<AgentId>,
-        _input_message_id: MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn resume_after_tool_results(
-        &self,
-        session_id: SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
+impl FastCompletingRunner {
+    /// What the server's tool-result resume does on this runner.
+    async fn resume(&self, session_id: SessionId) -> anyhow::Result<()> {
         let db = self
             .db
             .lock()
@@ -413,12 +403,24 @@ impl AgentRunner for FastCompletingRunner {
         .await?;
         Ok(())
     }
+}
 
-    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
+#[async_trait]
+impl TurnBackend for FastCompletingRunner {
+    async fn start_turn(&self, request: TurnRequest) -> TurnResult<TurnTicket> {
+        if let TurnInput::RecordedToolResults { .. } = request.input {
+            self.resume(request.session_id)
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        }
+        Ok(idle_ticket(&request))
     }
 
-    async fn is_running(&self, _run_id: SessionId) -> bool {
+    async fn cancel(&self, _session_id: SessionId) -> TurnResult<bool> {
+        Ok(false)
+    }
+
+    async fn is_running(&self, _session_id: SessionId) -> bool {
         false
     }
 
@@ -427,37 +429,33 @@ impl AgentRunner for FastCompletingRunner {
     }
 }
 
-#[async_trait]
-impl AgentRunner for BlockingRunner {
-    async fn start_run(
-        &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        _harness_id: HarnessId,
-        _agent_id: Option<AgentId>,
-        _input_message_id: MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn resume_after_tool_results(
-        &self,
-        session_id: SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
+impl BlockingRunner {
+    /// What the server's tool-result resume does on this runner.
+    async fn resume(&self, session_id: SessionId) -> anyhow::Result<()> {
         self.entered
             .send(session_id)
             .map_err(|_| anyhow::anyhow!("resume observer dropped"))?;
         self.releases.acquire().await?.forget();
         Ok(())
     }
+}
 
-    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
+#[async_trait]
+impl TurnBackend for BlockingRunner {
+    async fn start_turn(&self, request: TurnRequest) -> TurnResult<TurnTicket> {
+        if let TurnInput::RecordedToolResults { .. } = request.input {
+            self.resume(request.session_id)
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        }
+        Ok(idle_ticket(&request))
     }
 
-    async fn is_running(&self, _run_id: SessionId) -> bool {
+    async fn cancel(&self, _session_id: SessionId) -> TurnResult<bool> {
+        Ok(false)
+    }
+
+    async fn is_running(&self, _session_id: SessionId) -> bool {
         false
     }
 
@@ -641,35 +639,31 @@ async fn tool_result_succeeds_for_fast_worker_advanced_statuses() {
     }
 }
 
-#[async_trait]
-impl AgentRunner for RecordingRunner {
-    async fn start_run(
-        &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        _harness_id: HarnessId,
-        _agent_id: Option<AgentId>,
-        _input_message_id: MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn resume_after_tool_results(
-        &self,
-        session_id: SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
+impl RecordingRunner {
+    /// What the server's tool-result resume does on this runner.
+    async fn resume(&self, session_id: SessionId) -> anyhow::Result<()> {
         self.resumed_sessions
             .send(session_id)
             .map_err(|_| anyhow::anyhow!("resume observer dropped"))
     }
+}
 
-    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
+#[async_trait]
+impl TurnBackend for RecordingRunner {
+    async fn start_turn(&self, request: TurnRequest) -> TurnResult<TurnTicket> {
+        if let TurnInput::RecordedToolResults { .. } = request.input {
+            self.resume(request.session_id)
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        }
+        Ok(idle_ticket(&request))
     }
 
-    async fn is_running(&self, _run_id: SessionId) -> bool {
+    async fn cancel(&self, _session_id: SessionId) -> TurnResult<bool> {
+        Ok(false)
+    }
+
+    async fn is_running(&self, _session_id: SessionId) -> bool {
         false
     }
 

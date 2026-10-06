@@ -25,7 +25,7 @@ retries, and activity scheduling. The worker reaches these through
 `everruns-durable-engine`, which is also published as the facade's experimental
 durable turn backend ([Execution Backends](../framework/execution-backends.md)).
 The worker owns no database driver; database connection construction
-belongs only to server and durable, enforced by
+belongs only to server, durable, and `everruns-db` (embedded SQLite), enforced by
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh).
 
 ## Goals
@@ -252,6 +252,7 @@ External/gRPC workers and the in-process worker both run `crates/worker/src/unif
 | Fallback poll interval | `WORKER_POLL_INTERVAL_MS` | `100` | Base interval when push notifications are unavailable. |
 | Fallback poll backoff cap | `WORKER_POLL_BACKOFF_MAX_MS` | `5000` | Idle polling backs off exponentially from the base up to this cap. |
 | Step chaining | `WORKER_CHAIN_STEPS` | `true` | Run a turn's next step on the same worker, enqueued already claimed, instead of through the queue. |
+| Shutdown grace | `WORKER_SHUTDOWN_GRACE_SECS` | `25` | How long a stopping worker lets in-flight tasks finish before it aborts them. Keep it under the orchestrator's kill timeout. |
 
 Guidance:
 
@@ -260,6 +261,15 @@ Guidance:
 - **Pool sizing, not pool inflation, is the lever.** Size against `pg_max_connections / replicas − margin`; do not raise the pool to mask worker over-claiming. Worker-side concurrency and claim batch should be tuned down first for small instances.
 - **Size against the total, not `DATABASE_POOL_MAX` alone (EVE-1081).** A control-plane instance opens two pools: the request pool (`DATABASE_POOL_MAX`) and a smaller background pool for sweeps (`DATABASE_BACKGROUND_POOL_MAX`, default 8). The number to compare against `pg_max_connections / replicas` is their sum — `DatabasePoolConfig::total_max_connections()` in `crates/server/src/storage/repositories/mod.rs`, which is also what the startup sizing warning uses. An instance previously tuned so `DATABASE_POOL_MAX` exactly filled the budget will over-subscribe Postgres by the background pool's size per replica and start getting connection refusals, so reduce `DATABASE_POOL_MAX` by that much when upgrading. Setting `DATABASE_BACKGROUND_POOL_MAX=0` restores the single-pool budget exactly, at the cost of the isolation it buys.
 - Effective worker settings (id, concurrency, claim batch, poll interval/backoff) are logged at worker init for troubleshooting.
+
+### Worker Drain and Shutdown
+
+A worker is drained two ways, and both end in the same registry state (`status = 'draining'`), so the queue hands it no new claims and no chained steps:
+
+- **Operator drain.** `POST /v1/durable/workers/{id}/drain` (and `/resume`) flips the registry row. The worker learns it from its next heartbeat, whose reply carries `draining`, and stops claiming; a heartbeat that reports the drain lifted wakes the poll loop at once. Running tasks are left alone.
+- **Shutdown.** SIGTERM or Ctrl+C stops the poll loop, and the worker drains itself (`DrainDurableWorker`), so the next step of every in-flight turn goes back to the queue for another worker instead of staying here. It keeps heartbeating while in-flight tasks finish, waits up to `WORKER_SHUTDOWN_GRACE_SECS`, aborts what is left, then deregisters, which returns the aborted tasks to the queue. A second signal exits at once.
+
+The grace period must fit inside the orchestrator's kill timeout (Kubernetes `terminationGracePeriodSeconds`, Compose `stop_grace_period`), or the worker is killed mid-drain and its tasks wait for claim expiry instead. See `crates/worker/src/unified_worker.rs` and `crates/worker/src/app_builder.rs`.
 
 ### Generic Queue (Standalone Tasks)
 

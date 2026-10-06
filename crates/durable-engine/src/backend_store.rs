@@ -32,7 +32,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use async_trait::async_trait;
 use everruns_durable::{
     ClaimedTask, HeartbeatResponse, RunStart, StoreError, TaskFailureOutcome, TaskQueue,
-    WorkerInfo, WorkflowError, WorkflowEventStore, WorkflowSignal, WorkflowStatus,
+    WorkerHeartbeat, WorkerInfo, WorkflowError, WorkflowEventStore, WorkflowSignal, WorkflowStatus,
 };
 use tokio::sync::watch;
 use uuid::Uuid;
@@ -128,8 +128,12 @@ impl<S: WorkflowEventStore> TurnStore for RoutedStore<S> {
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<WorkerHeartbeat, StoreError> {
         TurnStore::worker_heartbeat(&*self.store, worker_id, current_load, accepting_tasks).await
+    }
+
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError> {
+        TurnStore::drain_worker(&*self.store, worker_id).await
     }
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {

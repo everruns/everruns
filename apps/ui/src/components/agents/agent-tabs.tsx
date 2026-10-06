@@ -70,16 +70,19 @@ export function agentTabHref(
 
 /**
  * Resolves a `?tab=` deep link. Tabs that became config-column sheets (MCP,
- * Credentials, Versions) still resolve, so existing return URLs keep working:
- * they land on the Agent tab with that sheet open.
+ * Credentials) still resolve, so existing return URLs keep working: they land
+ * on the Agent tab with that sheet open. The retired Versions tab opens the
+ * History record sheet (`?sheet=history`) instead.
  */
 export function resolveAgentTab(param: string | null): {
   tab: AgentTab;
-  section: "mcp" | "credentials" | "versions" | null;
+  section: "mcp" | "credentials" | null;
+  recordSheet: "history" | null;
 } {
-  if (param === "mcp" || param === "credentials" || param === "versions") {
-    return { tab: "agent", section: param };
+  if (param === "mcp" || param === "credentials") {
+    return { tab: "agent", section: param, recordSheet: null };
   }
-  if (param && TABS.has(param)) return { tab: param as AgentTab, section: null };
-  return { tab: "agent", section: null };
+  if (param === "versions") return { tab: "agent", section: null, recordSheet: "history" };
+  if (param && TABS.has(param)) return { tab: param as AgentTab, section: null, recordSheet: null };
+  return { tab: "agent", section: null, recordSheet: null };
 }

@@ -111,7 +111,8 @@ Production event routing therefore prefers:
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
-   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); no `everruns-*` dependencies
+   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); its only `everruns-*` dependency is `everruns-db`
+   - `db/` → `everruns-db` - Database utilities with no `everruns-*` dependency: embedded SQLite construction (`sqlite` feature) for the facade's `local` feature and the serve hosts, and `UpdateField`
    - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
@@ -141,6 +142,7 @@ everruns/
 │   ├── host/             # Deprecated one-release host shim
 │   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
+│   ├── db/               # Database utilities: embedded SQLite, UpdateField
 │   ├── durable/          # Generic durable execution engine
 │   ├── durable-engine/   # Durable turn backend over durable
 │   └── drivers/          # Consolidated official LLM drivers and standalone simulator
@@ -338,7 +340,7 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 ### Execution Layer
 
-1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface
+1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `DurableRunner` implements it ([Execution Backends](../framework/execution-backends.md))
 2. **Durable Execution**: Workflows run via PostgreSQL-backed durable execution engine
 3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: SSE for real-time event delivery via PostgreSQL-backed durable events plus `EventDelivery` push channels

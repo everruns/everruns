@@ -4,7 +4,7 @@ use super::*;
 use crate::api::messages::InputContentPart;
 use crate::records::ConversationStarter;
 use crate::storage::StorageBackend;
-use everruns_worker::AgentRunner;
+use everruns_core::host::TurnBackend;
 use std::sync::Arc;
 
 use super::tests_support::*;
@@ -1033,7 +1033,7 @@ fn test_should_not_skip_thread_reply_for_human_message() {
 async fn test_inject_thread_context_empty_replies() {
     // When fetch returns empty, inject_thread_context should succeed as no-op
     let db = Arc::new(StorageBackend::in_memory());
-    let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+    let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
     let state = SlackState::new(
         db,
         None,

@@ -26,6 +26,7 @@ use crate::storage::{DbSessionTaskRegistry, StorageBackend};
 use chrono::Utc;
 use everruns_contracts::typed_id::{MessageId, SessionId};
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
+use everruns_core::host::TurnBackend;
 use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_MONITOR,
@@ -33,7 +34,6 @@ use everruns_core::session_task::{
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolRegistry;
 use everruns_core::{ContentPart, RuntimeMessage, RuntimeMessageRole, TextContentPart};
-use everruns_worker::AgentRunner;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -82,7 +82,7 @@ pub fn spawn_session_scheduler(
     db: Arc<StorageBackend>,
     schedule_service: Arc<SessionScheduleService>,
     event_service: Arc<EventService>,
-    runner: Arc<dyn AgentRunner>,
+    runner: Arc<dyn TurnBackend>,
     probe_tool_registry: Option<Arc<ToolRegistry>>,
     poll_interval: Duration,
 ) -> JoinHandle<()> {
@@ -141,7 +141,7 @@ async fn poll_and_trigger(
     scheduler_id: &str,
     schedule_service: &Arc<SessionScheduleService>,
     event_service: &Arc<EventService>,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn TurnBackend>,
     probe_tool_registry: Option<&ToolRegistry>,
 ) -> anyhow::Result<()> {
     // Build the task registry once per poll iteration; reused for all fired schedules.
@@ -292,19 +292,10 @@ async fn poll_and_trigger(
 
         // Trigger the turn workflow
         let runner = runner.clone();
-        let agent_id = session.agent_id;
+        let scope = crate::turns::scope(org_id, harness_id, session.agent_id);
+        let request = crate::turns::stored_message(session_id_typed, scope, message_id_typed, None);
         tokio::spawn(async move {
-            if let Err(e) = runner
-                .start_run(
-                    org_id,
-                    session_id_typed,
-                    harness_id,
-                    agent_id,
-                    message_id_typed,
-                    None,
-                )
-                .await
-            {
+            if let Err(e) = crate::turns::start(&*runner, request).await {
                 tracing::error!(
                     schedule_id = %schedule_id,
                     session_id = %session_id,

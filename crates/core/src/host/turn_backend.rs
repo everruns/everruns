@@ -1,29 +1,39 @@
-//! The turn execution seam: where a host hands a turn to whatever runs it.
+//! The turn entry point: where a host hands a turn to whatever runs it.
 //!
 //! Decisions:
-//! - One trait covers what the facade session actor and the worker's
-//!   `AgentRunner` share: start a turn, cancel it, and ask what runs. The
-//!   sans-IO `Execution` planner stays the inner seam; a backend decides only
-//!   where and how durably the planned steps run.
+//! - One trait covers every way a turn starts, for the framework and the
+//!   platform server alike: start a turn, cancel it, and ask what runs. The
+//!   sans-IO `Execution` planner stays the inner turn interface; a backend
+//!   decides only where and how durably the planned steps run.
 //! - Completion is the ticket itself, a future, rather than a `wait` method:
 //!   the caller can select on it beside its own mailbox, and each backend
 //!   decides how completion arrives without a registry lookup per poll.
 //! - Client-side tool results and interrupted turns are inputs of a start,
 //!   not separate methods: in process both continue a turn on the caller's
-//!   behalf exactly as a new message starts one. The worker's
-//!   `resume_after_tool_results(resolution_id)` reads a persisted resolution
-//!   instead, so it joins as its own input variant with the durable backend:
-//!   the doc-hidden [`TurnInput::Persisted`], which only a durable backend
-//!   serves. [`InProcessBackend`] rejects it.
+//!   behalf exactly as a new message starts one.
+//! - Input comes in two forms. [`TurnInput::Message`] and
+//!   [`TurnInput::ToolResults`] hand the backend input to record; the
+//!   backend writes it to the session's log and then runs the turn.
+//!   [`TurnInput::StoredMessage`] and [`TurnInput::RecordedToolResults`] name
+//!   input the caller already wrote, for a host that records input through
+//!   its own store (the platform server persists every message and tool
+//!   resolution before it starts a turn). Every backend serves the stored
+//!   forms; a backend with no session runtime to write through (the
+//!   platform's `DurableRunner`) serves only them. There is no server-only
+//!   variant: stored input is a framework capability.
+//! - A backend that cannot look the session up (one that reaches the
+//!   session only through a durable queue) needs the session's organization,
+//!   harness and agent on the request: [`TurnRequest::scope`]. A backend that
+//!   resolves the session itself ignores it.
 //! - Crash recovery (`recover`) is left out: the in-process runtime keeps no
 //!   queue to recover from, and an interrupted turn is resumed per session
 //!   through [`TurnInput::ResumeInterrupted`], from the session log, on any
 //!   backend. The durable memory backend needs nothing more: its queue dies
 //!   with the process.
 //! - [`InProcessBackend`] drives the turn on the task that polls its ticket,
-//!   so swapping the facade onto the seam changed no concurrency: a turn makes
-//!   progress only while its owner polls it, and dropping the ticket stops it,
-//!   as dropping the runtime's future always did.
+//!   so moving the facade onto this entry point changed no concurrency: a
+//!   turn makes progress only while its owner polls it, and dropping the
+//!   ticket stops it, as dropping the runtime's future always did.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -42,6 +52,9 @@ use super::runtime::{AcceptedTurnInput, InProcessRuntime, TurnResult, TurnSteeri
 use crate::events::ToolCompletedData;
 
 /// Runs a session's turns: in this process, or on a durable queue.
+///
+/// The one entry point for turns, used by the framework's sessions and the
+/// platform server alike.
 ///
 /// **Experimental.** The trait is public and unsealed so a third-party
 /// backend can implement it, but its shape may change without a major
@@ -115,53 +128,73 @@ pub trait TurnBackend: Send + Sync {
 /// What starts or continues a turn.
 ///
 /// **Experimental**, with [`TurnBackend`].
+///
+/// [`Message`](Self::Message) and [`ToolResults`](Self::ToolResults) carry
+/// input for the backend to record before the turn runs.
+/// [`StoredMessage`](Self::StoredMessage) and
+/// [`RecordedToolResults`](Self::RecordedToolResults) name input the caller
+/// already recorded in the session's log; every backend serves them.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum TurnInput {
-    /// A new message starts the turn.
+    /// A new message starts the turn. The backend records it as the
+    /// session's `input.message` event first.
     Message(Box<AcceptedTurnInput>),
+    /// A message the caller already recorded as the session's
+    /// `input.message` event starts the turn (see
+    /// [`InProcessRuntime::run_stored_turn`]). The backend writes nothing
+    /// before the turn's input step.
+    StoredMessage {
+        /// The recorded message's id.
+        message_id: MessageId,
+    },
     /// The turn a process exit cut off in its tool calls runs them again,
     /// then carries on (see [`InProcessRuntime::resume_interrupted_turn`]).
     ResumeInterrupted,
     /// Client-side tool results continue the turn that parked on them (see
-    /// [`InProcessRuntime::resume_steerable_turn`]).
+    /// [`InProcessRuntime::resume_steerable_turn`]). The backend records
+    /// them under the parked turn first.
     ToolResults(Vec<ToolCompletedData>),
-    /// Input the platform server already persisted: a stored message, or a
-    /// stored client-side tool resolution.
-    ///
-    /// Not part of the framework surface: it exists so the server's
-    /// `AgentRunner` can run on a durable backend through this seam. Only a
-    /// durable backend serves it; [`InProcessBackend`] rejects it.
-    #[doc(hidden)]
-    Persisted(Box<PersistedTurn>),
-}
-
-/// What [`TurnInput::Persisted`] carries: a reference to input the platform
-/// server already stored, plus the routing a durable turn needs.
-///
-/// Not part of the framework surface; see [`TurnInput::Persisted`].
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PersistedTurn {
-    /// A stored message starts the turn, or joins the running one as steering.
-    Message {
-        /// The organization the session belongs to.
-        org_id: i64,
-        /// The harness the session runs.
-        harness_id: HarnessId,
-        /// The agent the session runs, when it has one.
-        agent_id: Option<AgentId>,
-        /// The stored message that starts the turn.
-        input_message_id: MessageId,
-        /// The request that caused the turn, for correlation.
-        request_id: Option<String>,
-    },
-    /// A stored client-side tool resolution continues the turn that parked
-    /// waiting for it.
-    ToolResolution {
-        /// The stored resolution's id.
+    /// The client-side tool results the caller already recorded under the
+    /// parked turn (with [`InProcessRuntime::record_parked_tool_results`],
+    /// or through its own event store) continue it, as
+    /// [`ToolResults`](Self::ToolResults) does once it has recorded its own.
+    RecordedToolResults {
+        /// Keys this continuation. A durable backend enqueues the turn's next
+        /// step under it, so continuing twice with one id runs the step once.
         resolution_id: Uuid,
     },
+}
+
+/// The session a turn runs for, for a backend that cannot look it up.
+///
+/// **Experimental**, with [`TurnBackend`].
+///
+/// A backend that holds the session's runtime resolves these itself and
+/// ignores the request's scope. One that reaches the session only through a
+/// durable queue (the platform's `DurableRunner`) needs it to start a turn
+/// from a [`TurnInput::StoredMessage`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TurnScope {
+    /// The organization the session belongs to, by its internal id.
+    pub org_id: i64,
+    /// The harness the session runs.
+    pub harness_id: HarnessId,
+    /// The agent the session runs, when it has one.
+    pub agent_id: Option<AgentId>,
+}
+
+impl TurnScope {
+    /// The scope of a session in `org_id` that runs `harness_id` and,
+    /// optionally, `agent_id`.
+    pub fn new(org_id: i64, harness_id: HarnessId, agent_id: Option<AgentId>) -> Self {
+        Self {
+            org_id,
+            harness_id,
+            agent_id,
+        }
+    }
 }
 
 /// A turn to run: which session, under which id, from which input.
@@ -182,17 +215,38 @@ pub struct TurnRequest {
     /// input mid-turn closes it, and a rejected push then belongs to the
     /// next turn, as it does once a turn commits to completion.
     pub steering: TurnSteering,
+    /// The session's organization, harness and agent, for a backend that
+    /// cannot look them up; see [`TurnScope`].
+    pub scope: Option<TurnScope>,
+    /// The request that caused the turn, for correlation. The durable
+    /// backends carry it in the turn's checkpoint; the in-process backend
+    /// does not record it.
+    pub request_id: Option<String>,
 }
 
 impl TurnRequest {
-    /// A request with fresh, open steering.
+    /// A request with fresh, open steering, no scope and no request id.
     pub fn new(session_id: SessionId, turn_id: TurnId, input: TurnInput) -> Self {
         Self {
             session_id,
             turn_id,
             input,
             steering: TurnSteering::new(),
+            scope: None,
+            request_id: None,
         }
+    }
+
+    /// Name the session's scope, for a backend that cannot look it up.
+    pub fn with_scope(mut self, scope: TurnScope) -> Self {
+        self.scope = Some(scope);
+        self
+    }
+
+    /// Correlate the turn with the request `request_id` names.
+    pub fn with_request_id(mut self, request_id: Option<String>) -> Self {
+        self.request_id = request_id;
+        self
     }
 
     /// Steer the turn through `steering`, a handle the caller keeps a clone of.
@@ -332,14 +386,6 @@ impl Drop for Registration {
     }
 }
 
-/// The in-process runtime has no server store to read persisted input from.
-fn persisted_unsupported() -> AgentLoopError {
-    AgentLoopError::config(
-        "the in-process backend cannot run TurnInput::Persisted; \
-         it reads server-persisted input only a durable backend serves",
-    )
-}
-
 #[async_trait]
 impl TurnBackend for InProcessBackend {
     async fn start_turn(&self, request: TurnRequest) -> Result<TurnTicket> {
@@ -348,10 +394,8 @@ impl TurnBackend for InProcessBackend {
             turn_id,
             input,
             steering,
+            ..
         } = request;
-        if matches!(input, TurnInput::Persisted(_)) {
-            return Err(persisted_unsupported());
-        }
         let cancel = CancellationToken::new();
         let registration = {
             let mut turns = self.turns();
@@ -392,7 +436,19 @@ impl TurnBackend for InProcessBackend {
                         .resume_steerable_turn(session_id, results, steering)
                         .await
                 }
-                TurnInput::Persisted(_) => Err(persisted_unsupported()),
+                TurnInput::StoredMessage { message_id } => {
+                    runtime
+                        .run_stored_turn(session_id, message_id, turn_id, steering)
+                        .await
+                }
+                // One turn parks per session and resuming takes it, so the
+                // runtime already continues it at most once; the id keys
+                // nothing here.
+                TurnInput::RecordedToolResults { resolution_id: _ } => {
+                    runtime
+                        .resume_steerable_turn(session_id, Vec::new(), steering)
+                        .await
+                }
             }
         };
         let completion = async move {

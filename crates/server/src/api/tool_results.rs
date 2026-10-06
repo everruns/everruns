@@ -20,8 +20,8 @@ use axum::{
 };
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
+use everruns_core::host::TurnBackend;
 use everruns_core::message::ContentPart;
-use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
 use crate::services::waiting_turn_resolution::execute_waiting_turn_resolution;
@@ -70,14 +70,14 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub event_service: EventService,
-    pub runner: Arc<dyn AgentRunner>,
+    pub runner: Arc<dyn TurnBackend>,
     pub auth: AuthState,
 }
 
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {

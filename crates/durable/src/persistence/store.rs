@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::update_field::UpdateField;
 use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
+use everruns_db::UpdateField;
 
 /// Default snapshot interval: save a snapshot every N events.
 /// Configurable via `DURABLE_SNAPSHOT_INTERVAL` env var.
@@ -240,6 +240,15 @@ pub struct HeartbeatResponse {
 
     /// Whether cancellation was requested
     pub should_cancel: bool,
+}
+
+/// What the registry tells a worker in reply to its heartbeat.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WorkerHeartbeat {
+    /// The worker is draining (an operator drained it, or it is shutting
+    /// down): the queue hands it no new tasks, so it should stop claiming.
+    /// False for a worker the registry does not know.
+    pub draining: bool,
 }
 
 /// Outcome of failing a task
@@ -990,13 +999,13 @@ pub trait WorkerRegistry: Send + Sync + 'static {
     /// Register a worker
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError>;
 
-    /// Update worker heartbeat and load
+    /// Update worker heartbeat and load, and report whether it is draining
     async fn worker_heartbeat(
         &self,
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError>;
+    ) -> Result<WorkerHeartbeat, StoreError>;
 
     /// Get all active workers
     async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError>;

@@ -12,7 +12,7 @@ pub use rusqlite::{Error, OptionalExtension, Result, Row, TransactionBehavior, p
 // The wrapper owns construction while preserving that callback type identity.
 pub use rusqlite::Connection as QueryConnection;
 
-/// An embedded database connection owned by durable's database API.
+/// An embedded database connection opened through this crate.
 pub struct Connection(rusqlite::Connection);
 
 impl Deref for Connection {

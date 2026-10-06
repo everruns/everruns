@@ -1,13 +1,13 @@
 # everruns-durable-engine
 
 > Durable turn backend for Everruns: agent turns as queued, checkpointed steps on
-> `everruns-durable`, behind core's `TurnBackend` seam.
+> `everruns-durable`, behind core's `TurnBackend` turn entry point.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-durable-engine.svg)](https://crates.io/crates/everruns-durable-engine)
 [![Documentation](https://docs.rs/everruns-durable-engine/badge.svg)](https://docs.rs/everruns-durable-engine)
 [![License](https://img.shields.io/crates/l/everruns-durable-engine.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-**Status: experimental.** The `TurnBackend` seam this crate implements is
+**Status: experimental.** The `TurnBackend` trait this crate implements is
 outside the Everruns API stability promises until the backend conformance suite
 passes on every backend. Expect breaking changes between releases.
 
@@ -28,6 +28,9 @@ cargo add everruns-durable-engine
   turn, cancel it, and ask whether a session runs one. Starting a turn creates
   or claims the session's workflow and enqueues its first step before it
   returns; the `TurnTicket` it hands back resolves when the workflow ends.
+  It holds no session runtime, so it starts turns only from input the caller
+  already stored (`TurnInput::StoredMessage` with the request's `TurnScope`,
+  `TurnInput::RecordedToolResults`).
 - `DurableBackend`, which runs a framework application's turns with workers in
   its own process, each step on the session's `InProcessRuntime`:
   `DurableBackend::memory` over an in-memory store, `DurableBackend::postgres`
@@ -50,7 +53,7 @@ boundary plugs in the same way.
 
 ## Quick start
 
-A turn started from a message the host already persisted, then cancelled,
+A turn started from a message the host already stored, then cancelled,
 against the in-memory store. With nothing driving the queue the turn waits at
 its first step, so cancelling it ends the ticket with `Cancelled`.
 
@@ -58,7 +61,7 @@ its first step, so cancelling it ends the ticket with `Cancelled`.
 use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_durable_engine::DurableRunner;
-use everruns_durable_engine::host::{PersistedTurn, TurnBackend, TurnInput, TurnRequest};
+use everruns_durable_engine::host::{TurnBackend, TurnInput, TurnRequest, TurnScope};
 
 # #[tokio::main(flavor = "current_thread")]
 # async fn main() -> everruns_contracts::error::Result<()> {
@@ -66,17 +69,17 @@ let runner = DurableRunner::new_in_memory();
 let session_id = SessionId::new();
 
 let ticket = runner
-    .start_turn(TurnRequest::new(
-        session_id,
-        TurnId::new(),
-        TurnInput::Persisted(Box::new(PersistedTurn::Message {
-            org_id: 1,
-            harness_id: HarnessId::new(),
-            agent_id: None,
-            input_message_id: MessageId::new(),
-            request_id: None,
-        })),
-    ))
+    .start_turn(
+        TurnRequest::new(
+            session_id,
+            TurnId::new(),
+            TurnInput::StoredMessage {
+                message_id: MessageId::new(),
+            },
+        )
+        // The runner cannot look the session up, so the request names it.
+        .with_scope(TurnScope::new(1, HarnessId::new(), None)),
+    )
     .await?;
 assert!(runner.is_running(session_id).await);
 

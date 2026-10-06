@@ -105,10 +105,11 @@ everruns-cli-contract.workspace = true
 everruns-integrations-catalog.workspace = true
 # Sandbox Templates validate Modal egress with the provider's own rules.
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
-everruns-worker = { path = "../worker" }  # For AgentRunner trait
+everruns-worker = { path = "../worker" }  # DurableRunner, worker adapters, in-process worker
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-durable.workspace = true  # For durable execution gRPC service
+everruns-db.workspace = true  # UpdateField for storage updates
 image.workspace = true  # For image thumbnail generation
 
 # gRPC

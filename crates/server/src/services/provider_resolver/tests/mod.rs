@@ -863,7 +863,7 @@ async fn set_service_default(
     db.patch_organization_settings(
         DEFAULT_ORG_ID,
         crate::storage::models::UpdateOrganizationSettings {
-            default_provider_per_service: everruns_durable::UpdateField::Set(defaults),
+            default_provider_per_service: everruns_db::UpdateField::Set(defaults),
             ..Default::default()
         },
     )

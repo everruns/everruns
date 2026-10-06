@@ -20,6 +20,16 @@ jest.mock("next/link", () => ({
   ),
 }));
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
+  usePathname: () => "/settings/providers/provider-1",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+jest.mock("@/hooks/use-policies", () => ({
+  usePolicies: () => ({ can: () => true }),
+}));
+
 const mockProvider = {
   id: "provider-1",
   name: "OpenAI Production",

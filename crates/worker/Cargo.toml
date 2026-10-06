@@ -48,6 +48,7 @@ everruns-drivers = { workspace = true, features = [
     "gemini",
     "mai",
     "meta",
+    "mistral",
     "openai",
     "openrouter",
     "vercel",

@@ -901,6 +901,60 @@ fn test_kimi_k3_profile() {
 }
 
 #[test]
+fn test_mistral_large_4_profile() {
+    // The first-party id, its dated alias, and the gateway slugs all resolve
+    // to one profile on every surface Mistral is served through.
+    for (provider, id) in [
+        ("mistral", "mistral-large-4"),
+        ("mistral", "mistral-large-4-0"),
+        ("openai_completions", "mistral-large-4"),
+        ("openrouter", "mistralai/mistral-large-4-0"),
+        ("openrouter", "mistral/mistral-large-4"),
+    ] {
+        let profile = get_model_profile(provider, id)
+            .unwrap_or_else(|| panic!("missing profile for {provider}:{id}"));
+        assert_eq!(profile.name, "Mistral Large 4", "{provider}:{id}");
+        assert_eq!(
+            get_model_profile_key(provider, id).as_deref(),
+            Some("mistral/mistral-large-4")
+        );
+        assert_eq!(get_model_vendor(provider, id), Some(ModelVendor::Mistral));
+    }
+    // Mistral does not serve the Responses API, and Azure never hosts it.
+    for provider in ["openai", "azure_openai", "anthropic"] {
+        assert!(
+            get_model_profile(provider, "mistral-large-4").is_none(),
+            "{provider}"
+        );
+    }
+
+    let profile = get_model_profile("mistral", "mistral-large-4").unwrap();
+    assert_eq!(profile.family, "mistral-large");
+    assert!(profile.reasoning && profile.tool_call && profile.structured_output);
+    assert!(profile.attachment && profile.temperature);
+    assert!(!profile.open_weights, "weights are not out yet");
+    // List price, not the launch discount.
+    let cost = profile.cost.as_ref().unwrap();
+    assert_eq!((cost.input, cost.output), (1.36, 4.18));
+    assert_eq!(cost.cache_read, Some(0.14));
+    let limits = profile.limits.as_ref().unwrap();
+    assert_eq!((limits.context, limits.output), (524_288, 262_144));
+    assert_eq!(
+        profile.modalities.as_ref().unwrap().input,
+        vec![Modality::Text, Modality::Image]
+    );
+    // The API takes only "none" and "high"; offering a middle grade would be a
+    // 400 at request time.
+    let effort = profile.reasoning_effort.as_ref().unwrap();
+    assert_eq!(
+        effort.values.iter().map(|v| v.value).collect::<Vec<_>>(),
+        vec![ReasoningEffort::None, ReasoningEffort::High]
+    );
+    assert_eq!(effort.default, ReasoningEffort::None);
+    assert!(!profile.supports_phases && !profile.tool_search);
+}
+
+#[test]
 fn test_grok_4_3_has_context_tier() {
     let profile = get_model_profile("openai_completions", "grok-4.3").unwrap();
     let cost = profile.cost.as_ref().unwrap();

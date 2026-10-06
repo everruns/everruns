@@ -2,7 +2,7 @@
 //! server, no HTTP, no database. Each sample gets a fresh [`Agent`] and
 //! [`Session`] built from the matrix case:
 //!
-//! - target → Framework model id + provider (`anthropic`, `openai`, `openrouter`)
+//! - target → Framework model id + provider (`anthropic`, `openai`, `openrouter`, `mistral`)
 //! - `harness` axis → a [`HarnessProfile`](crate::profiles::HarnessProfile)
 //!   (system prompt + capability set)
 //! - `config` axis → a [`ConfigProfile`](crate::profiles::ConfigProfile)
@@ -426,9 +426,15 @@ fn provider(target: &Target) -> Result<Provider, String> {
                 std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
             everruns_drivers::openrouter::provider("openrouter", key)
         }
+        "mistral" => {
+            let key_name = "MISTRAL_API_KEY";
+            let key =
+                std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
+            everruns_drivers::mistral::provider("mistral", key)
+        }
         other => {
             return Err(format!(
-                "unsupported provider '{other}' (supported: anthropic, openai, openrouter)"
+                "unsupported provider '{other}' (supported: anthropic, openai, openrouter, mistral)"
             ));
         }
     };

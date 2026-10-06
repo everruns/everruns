@@ -50,6 +50,8 @@ impl DriverId {
     pub const Cloudflare: Self = Self(std::borrow::Cow::Borrowed("cloudflare"));
     #[allow(non_upper_case_globals)]
     pub const Vercel: Self = Self(std::borrow::Cow::Borrowed("vercel"));
+    #[allow(non_upper_case_globals)]
+    pub const Mistral: Self = Self(std::borrow::Cow::Borrowed("mistral"));
 
     /// Construct an external driver id from its canonical wire id.
     ///
@@ -120,6 +122,9 @@ impl DriverId {
         if matches("fireworks.ai") {
             return Some(DriverId::Fireworks);
         }
+        if host == "api.mistral.ai" {
+            return Some(DriverId::Mistral);
+        }
         // Matched on the gateway host only. `vercel.app` serves everything
         // Vercel hosts, so a broader match would claim ordinary customer
         // origins as LLM endpoints. Cloudflare has no arm at all: its AI
@@ -143,6 +148,7 @@ impl DriverId {
             "anthropic" => Some("https://api.anthropic.com"),
             "gemini" => Some("https://generativelanguage.googleapis.com"),
             "fireworks" => Some("https://api.fireworks.ai/inference/v1"),
+            "mistral" => Some("https://api.mistral.ai/v1"),
             // Cloudflare is absent on purpose: its base URL embeds the account
             // and gateway ids, so there is no vendor-wide default.
             "vercel" => Some("https://ai-gateway.vercel.sh/v1"),
@@ -231,6 +237,7 @@ mod tests {
             (DriverId::Meta, "meta"),
             (DriverId::Cloudflare, "cloudflare"),
             (DriverId::Vercel, "vercel"),
+            (DriverId::Mistral, "mistral"),
         ] {
             assert_eq!(driver.as_str(), wire);
             assert_eq!(driver.to_string(), wire);
@@ -284,6 +291,7 @@ mod tests {
                 DriverId::Gemini,
             ),
             ("https://api.fireworks.ai/inference/v1", DriverId::Fireworks),
+            ("https://api.mistral.ai/v1", DriverId::Mistral),
             (
                 "https://contoso.openai.azure.com/openai",
                 DriverId::AzureOpenAI,
@@ -312,6 +320,9 @@ mod tests {
         // Suffix matching is on domain boundaries, so a host that merely ends
         // in the vendor's name does not match it.
         assert_eq!(DriverId::for_base_url("https://notopenai.com/v1"), None);
+        // Mistral matches on the API host alone: `mistral.ai` also serves the
+        // marketing site and Le Chat, which are not LLM endpoints.
+        assert_eq!(DriverId::for_base_url("https://mistral.ai/v1"), None);
         assert_eq!(
             DriverId::for_base_url("https://eu.api.openai.com/v1"),
             Some(DriverId::OpenAI)
@@ -323,6 +334,10 @@ mod tests {
         assert_eq!(
             DriverId::OpenRouter.default_base_url(),
             Some("https://openrouter.ai/api/v1")
+        );
+        assert_eq!(
+            DriverId::Mistral.default_base_url(),
+            Some("https://api.mistral.ai/v1")
         );
         // Per-deployment endpoints have no canonical default to report.
         assert_eq!(DriverId::AzureOpenAI.default_base_url(), None);
@@ -349,7 +364,7 @@ impl utoipa::PartialSchema for DriverId {
             .description(Some(
                 "LLM provider type. Built-in: openai, openrouter, azure_openai, \
                  openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, \
-                 cloudflare, vercel. \
+                 mistral, cloudflare, vercel. \
                  Any other string is treated as an embedder-defined external provider.",
             ))
             .build()

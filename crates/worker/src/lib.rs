@@ -26,13 +26,12 @@ pub mod mcp_elicitation_consent;
 pub mod mcp_executor;
 pub mod phase_reads;
 pub mod platform;
-pub mod turn_reads;
-pub use everruns_durable_engine::runner;
 pub mod runtime_host;
 pub mod session_lifecycle;
 pub mod session_task_reaper;
 mod stream_heartbeater;
 mod system_decisions;
+pub mod turn_reads;
 pub use everruns_durable_engine::task_error;
 pub use everruns_durable_engine::task_heartbeat;
 pub use everruns_durable_engine::turn_store;
@@ -49,14 +48,11 @@ pub mod write_behind;
 
 // Re-export main types
 pub use durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput, DurableTurnOutput};
-pub use grpc_durable_runner::{
-    connect_grpc_durable_runner, create_runner, grpc_durable_runner_from_env,
-};
+pub use grpc_durable_runner::{connect_grpc_durable_runner, grpc_durable_runner_from_env};
 pub use grpc_durable_store::{
     GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,
     WorkflowStatus as GrpcWorkflowStatus,
 };
-pub use runner::{AgentRunner, RunnerBackend, create_runner_with_backend};
 
 // Re-export LLM driver factory helpers
 pub use adapters::{create_chat_driver, create_driver_registry};

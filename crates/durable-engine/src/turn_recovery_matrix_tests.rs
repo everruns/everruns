@@ -312,9 +312,14 @@ impl<S: WorkflowEventStore> TurnStore for CrashingStore<S> {
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<crate::durable::WorkerHeartbeat, StoreError> {
         self.alive()?;
         TurnStore::worker_heartbeat(&*self.inner, worker_id, current_load, accepting_tasks).await
+    }
+
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError> {
+        self.alive()?;
+        TurnStore::drain_worker(&*self.inner, worker_id).await
     }
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
@@ -1070,7 +1075,7 @@ async fn steering_wake_is_not_lost_when_the_hand_off_after_its_drain_never_happe
 
 #[tokio::test]
 async fn a_later_message_starts_a_turn_on_a_session_stuck_between_complete_and_enqueue() {
-    use crate::runner::AgentRunner;
+    use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnScope};
 
     // Strand the run (separate writes, crash between them), and recover
     // without the stranded-run sweep: the reaper and the queue alone leave
@@ -1101,17 +1106,15 @@ async fn a_later_message_starts_a_turn_on_a_session_stuck_between_complete_and_e
         .await
         .unwrap();
     let runner = crate::DurableRunner::new_with_shared_store(turn.store.clone());
-    runner
-        .start_run(
-            turn.org_id,
-            turn.session_id,
-            turn.harness_id,
-            turn.agent_id,
-            later_id,
-            None,
-        )
-        .await
-        .unwrap();
+    let request = TurnRequest::new(
+        turn.session_id,
+        TurnId::new(),
+        TurnInput::StoredMessage {
+            message_id: later_id,
+        },
+    )
+    .with_scope(TurnScope::new(turn.org_id, turn.harness_id, turn.agent_id));
+    runner.start_turn(request).await.unwrap();
     let wakes_after_send = outcome(&turn, false).await.pending_wakes;
     recover_with(&turn, Mode::Queued, false).await;
 

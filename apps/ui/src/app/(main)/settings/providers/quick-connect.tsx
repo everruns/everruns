@@ -47,6 +47,7 @@ const QUICK_CONNECT_DRIVERS: DriverId[] = [
   "chatgpt",
   "gemini",
   "openrouter",
+  "mistral",
   "meta",
 ];
 
@@ -68,6 +69,7 @@ const KEY_CONSOLES: Partial<Record<DriverId, { label: string; href: string }>> =
   openai: { label: "platform.openai.com", href: "https://platform.openai.com/api-keys" },
   gemini: { label: "aistudio.google.com", href: "https://aistudio.google.com/apikey" },
   openrouter: { label: "openrouter.ai/keys", href: "https://openrouter.ai/keys" },
+  mistral: { label: "console.mistral.ai", href: "https://console.mistral.ai/api-keys" },
   meta: { label: "llama.developer.meta.com", href: "https://llama.developer.meta.com/api-keys" },
 };
 

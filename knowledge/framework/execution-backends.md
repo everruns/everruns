@@ -1,7 +1,7 @@
 ---
 type: Decision
 title: "Execution Backends"
-description: "Why turns run through one experimental TurnBackend seam, why the in-process runtime is its default, and why the durable backend keeps queue plus per-step checkpoint instead of Workflow replay."
+description: "Why turns run through one experimental TurnBackend entry point, why the in-process runtime is its default, and why the durable backend keeps queue plus per-step checkpoint instead of Workflow replay."
 tags:
   - everruns
   - framework
@@ -11,9 +11,10 @@ tags:
 
 # Execution Backends
 
-**Status: experimental.** The seam exists and the facade runs on it. The
-in-process backend implements it in full; `DurableRunner` in the published
-`everruns-durable-engine` crate implements it for server-persisted input only,
+**Status: experimental.** The entry point exists, and the facade and the
+platform server both run on it. The in-process backend implements it in full;
+`DurableRunner` in the published `everruns-durable-engine` crate implements it
+for stored input only (the server's path),
 and `DurableBackend` beside it runs facade sessions behind the `everruns`
 `durable` feature, over an in-memory or a PostgreSQL store, for every
 framework input: new messages, steering, cancellation, parked client-side
@@ -32,23 +33,21 @@ survives a crash: in process the turn lives and dies with the caller's task; on
 the platform each step is a task on `everruns-durable`'s queue, checkpointed in
 PostgreSQL.
 
-An application that outgrows in-process execution has no way across that line
-today. The worker's entry (`AgentRunner` in
-[`runner.rs`](../../crates/durable-engine/src/runner.rs)) and the facade's
-session actor ([`session.rs`](../../crates/everruns/src/session.rs)) call turns
-through different surfaces, so durability is a property of which product you
-run, not a choice an embedder makes.
+An application that outgrows in-process execution had no way across that line.
+The server's entry (a server-only runner trait) and the facade's session actor
+([`session.rs`](../../crates/everruns/src/session.rs)) called turns through
+different surfaces, so durability was a property of which product you run, not
+a choice an embedder makes.
 
 ## Decision
 
-### One seam: `TurnBackend`
+### One entry point: `TurnBackend`
 
 [`TurnBackend`](../../crates/core/src/host/turn_backend.rs) in core's host is
-the one place a host hands a turn to whatever runs it. It carries only what the
-facade session actor and the worker's `AgentRunner` share: start a turn, cancel
-it, and ask whether a session runs one and how many run. `Execution` stays the
-inner seam; a backend never plans, it decides where planned steps run and how
-durably.
+the one place a host hands a turn to whatever runs it, for the facade session
+actor and the platform server alike: start a turn, cancel it, and ask whether a
+session runs one and how many run. `Execution` stays the inner turn interface;
+a backend never plans, it decides where planned steps run and how durably.
 
 - **Completion is the ticket.** Starting a turn returns a `TurnTicket`, a
   future of the turn's result. The caller selects on it beside its own mailbox
@@ -57,6 +56,13 @@ durably.
 - **Continuations are inputs.** A new message, client-side tool results, and a
   turn a process exit cut off are variants of the turn input, because in
   process each one continues a turn exactly as a message starts one.
+- **Input is handed or stored.** A caller either hands the backend input to
+  record (a message, tool results) or names input it already recorded through
+  its own store (a stored message, recorded tool results keyed by a resolution
+  id). Every backend serves the stored forms, so a host that persists input
+  itself, as the platform server does, starts and continues turns the way a
+  framework host can. A backend that cannot look the session up takes its
+  organization, harness and agent from the request's scope.
 - **Steering travels with the request.** The caller keeps a clone of the
   steering handle. A backend that cannot deliver input mid-turn closes it, and
   the rejected input becomes the next turn, the same rule that holds once a
@@ -66,9 +72,11 @@ durably.
   the backend conformance suite (below) is the bar a backend meets.
 
 Deliberately absent: a separate `resume_after_tool_results(resolution_id)`
-and a crash `recover()`. The worker resumes from a persisted resolution id the
-in-process path has no store for, so it is a doc-hidden `Persisted` input
-variant instead, which the in-process backend rejects. A turn a process exit
+and a crash `recover()`. Resuming from a stored resolution is the recorded
+tool-results input, which the in-process backend serves too (the caller records
+results under the parked turn, then continues it); an earlier design kept it as
+a doc-hidden, server-only input variant that no backend served together with
+the rest, and that split is gone. A turn a process exit
 cut off is resumed per session from the session log through
 `ResumeInterrupted`, on any backend. The durable memory backend needs no
 `recover()` for it: its queue dies with the process, so the log is all that
@@ -82,14 +90,14 @@ same way.
 `InProcessBackend` wraps `InProcessRuntime` and is what every facade session
 uses. The turn runs on the task that polls its ticket, as awaiting the runtime
 directly always did: nothing advances an unpolled ticket, and dropping it drops
-the turn mid-step. Routing the session actor through the seam therefore changed
+the turn mid-step. Routing the session actor through `TurnBackend` therefore changed
 no concurrency and no observable behavior. An engine keeps it unless its
 builder selects the durable backend.
 
 ### The durable backend
 
 `everruns-durable-engine` is a published crate (see
-[Crate Layout](../project/crate-layout.md)), experimental like the seam, whose
+[Crate Layout](../project/crate-layout.md)), experimental like the trait, whose
 runner implements `TurnBackend` over `everruns-durable`'s memory or PostgreSQL
 store. It drives the facade's own runtime, so no second adapter is needed,
 and the platform's worker is one more user of the same driver.
@@ -109,16 +117,18 @@ loop, registration and configuration, and supplies `WorkerRuntimeHost` plus
 its cleanup, reaper and scheduled activities; a test drives a whole tool turn
 through the driver on the memory store with the in-process runtime as host.
 
-### The server's runner on the seam
+### The server's runner
 
 [`DurableRunner`](../../crates/durable-engine/src/turn_backend.rs) implements
-`TurnBackend`, and the server's `AgentRunner` is a shim over it until the
-server calls the seam directly. It serves only server-persisted input: a stored
-message (which steers the running workflow, as the server always did, rather
-than failing as a second turn) and a stored tool resolution. Unpersisted
-messages, client-side tool results and interrupted-turn resumption fail on the
-runner; a facade session's messages go through the facade option below, which
-persists them itself.
+`TurnBackend`, and the server calls it directly
+([`turns.rs`](../../crates/server/src/turns.rs) builds its requests). The
+server persists every input first, then starts the turn from it: a stored
+message with the session's scope (which steers the running workflow, as the
+server always did, rather than failing as a second turn) and recorded tool
+results keyed by the waiting-turn resolution id. The runner holds no session
+runtime, so handed messages, handed tool results and interrupted-turn
+resumption fail on it; a facade session's input goes through the facade option
+below, which records it itself.
 
 The workflow starts before `start_turn` returns, so a dropped ticket changes
 nothing. The ticket waits until the workflow ends and maps the end to a turn
@@ -129,9 +139,8 @@ a wakeup is lost. The memory store has one at its status writes, the single
 point every path that ends a workflow (driver completion, failed or dead task,
 cancel) passes through, so the facade's durable turns report back as soon as
 they end. PostgreSQL has none, because another process can end the workflow,
-so its tickets keep the short poll; nothing awaits the server's tickets today
-(the `AgentRunner` shim drops them), and a cross-process wakeup can come with
-the first caller that does.
+so its tickets keep the short poll; the server drops its tickets today, and a
+cross-process wakeup can come with the first caller that awaits one.
 
 ### The facade option
 
@@ -180,8 +189,10 @@ platform.
   - A continued turn's result counts only the steps that run took, as in
     process: the ticket subtracts what the turn had counted before.
 
-Not served on the durable backend: server-persisted input, a configuration
-error.
+Stored input takes the same paths: a stored message starts the same workflow
+without writing it again, and recorded tool results continue the parked turn
+under the caller's resolution id. The request's scope is ignored, since the
+attached runtime resolves the session.
 
 ### PostgreSQL
 
@@ -316,12 +327,13 @@ workflows that fit them; turns do not use them. The option is recorded in
   resume with its result, a turn cut off mid-act then resumed from the log)
   on every backend and requires identical answers, turn shapes, notes and
   persisted event sequences. Park and resume runs both through a session's
-  AG-UI runs and directly on the seam, where the resumed turn's result is
-  visible. It passes on the in-process, the durable memory and, with
+  AG-UI runs and directly on `TurnBackend`, where the resumed turn's result
+  is visible, and directly once more with input the caller stored itself,
+  which must match handed input on every backend. It passes on the in-process, the durable memory and, with
   `DATABASE_URL` set, the durable PostgreSQL backend. CI's durable PostgreSQL
   shard runs the PostgreSQL half with `EVERRUNS_REQUIRE_POSTGRES_TESTS` set,
   so a job without a database fails instead of passing on two backends.
-- Core's default build stays wasm-safe: the seam spawns nothing.
+- Core's default build stays wasm-safe: `TurnBackend` spawns nothing.
 - The facade's default build compiles no durable engine; durable execution
   is the opt-in `durable` feature.
 

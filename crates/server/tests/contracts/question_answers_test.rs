@@ -10,9 +10,9 @@ use crate::test_harness;
 use async_trait::async_trait;
 
 use axum::http::StatusCode;
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::typed_id::SessionId;
+use everruns_core::host::TurnBackend;
 use everruns_server::records::{Agent, Session};
-use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use std::sync::{
     Arc,
@@ -28,33 +28,30 @@ struct RecordingRunner {
 }
 
 #[async_trait]
-impl AgentRunner for RecordingRunner {
-    async fn start_run(
+impl TurnBackend for RecordingRunner {
+    async fn start_turn(
         &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        _harness_id: HarnessId,
-        _agent_id: Option<AgentId>,
-        _input_message_id: MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        if matches!(
+            request.input,
+            everruns_core::host::TurnInput::RecordedToolResults { .. }
+        ) {
+            self.resume_calls.fetch_add(1, Ordering::SeqCst);
+        }
+        // The server drops its tickets; this one never resolves.
+        Ok(everruns_core::host::TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
     }
 
-    async fn resume_after_tool_results(
-        &self,
-        _session_id: SessionId,
-        _resolution_id: Uuid,
-    ) -> anyhow::Result<()> {
-        self.resume_calls.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+    async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
     }
 
-    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn is_running(&self, _run_id: SessionId) -> bool {
+    async fn is_running(&self, _session_id: SessionId) -> bool {
         false
     }
 
@@ -130,7 +127,7 @@ async fn platform_chat_waiting_session(server: &TestServer, owner: Uuid) -> Sess
                         .parse()
                         .expect("platform-chat harness id"),
                 ),
-                resolved_owner_user_id: everruns_durable::UpdateField::Set(owner),
+                resolved_owner_user_id: everruns_db::UpdateField::Set(owner),
                 ..Default::default()
             },
         )

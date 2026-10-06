@@ -72,6 +72,7 @@ const DECLARED: &[(DriverId, &[&str])] = &[
         ],
     ),
     (DriverId::Vercel, &["AI_GATEWAY_API_KEY"]),
+    (DriverId::Mistral, &["MISTRAL_API_KEY", "MISTRAL_BASE_URL"]),
 ];
 
 #[test]

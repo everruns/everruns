@@ -23,6 +23,13 @@ pub fn is_openai_model_not_found(status: reqwest::StatusCode, error_text: &str) 
         }
     }
 
+    // Mistral gates models by plan with a 403 whose type is `tier_not_allowed`
+    // ("This model is not available in your subscription tier"). Like OpenAI's
+    // tier-gated 403 above, the key is fine and the model is out of reach.
+    if status == reqwest::StatusCode::FORBIDDEN && error_lower.contains("tier_not_allowed") {
+        return true;
+    }
+
     // 404 with generic model-not-found patterns
     if status == reqwest::StatusCode::NOT_FOUND {
         if error_lower.contains("does not exist") {
@@ -203,6 +210,12 @@ mod tests {
                 r#"{"error":{"message":"Invalid authentication credentials","type":"authentication_error"}}"#,
                 false,
             ),
+            (
+                403,
+                r#"{"object":"error","message":"This model is not available in your subscription tier","type":"tier_not_allowed","param":null,"code":"1910","raw_status_code":403}"#,
+                true,
+            ),
+            (401, "tier_not_allowed", false),
             (401, "model_not_found", false),
             (500, "model_not_found", false),
             (400, "model does not exist", false),

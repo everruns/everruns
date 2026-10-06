@@ -61,10 +61,10 @@ use axum::{
 };
 use everruns_contracts::session_sqldb::SessionSqlDbStore;
 use everruns_core::host::HostComposition;
+use everruns_core::host::TurnBackend;
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
 use everruns_core::{Caller, OrgRole};
 use everruns_durable::WorkflowEventStore;
-use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -317,7 +317,7 @@ pub struct AppState {
     pub connector_registry: everruns_contracts::connector::ConnectorRegistry,
     pub budget_service: Arc<BudgetService>,
     pub reporting_service: Arc<ReportingService>,
-    pub runner: Arc<dyn AgentRunner>,
+    pub runner: Arc<dyn TurnBackend>,
     pub auth: AuthState,
     pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -355,7 +355,7 @@ impl AppState {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         auth: AuthState,
         host_composition: &HostComposition,
         built_in_harnesses: &[crate::records::BuiltInHarnessDefinition],

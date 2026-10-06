@@ -16,7 +16,7 @@
 use crate::durable::WorkerInfo;
 use anyhow::Result;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::{Notify, watch};
 use tokio::task::JoinSet;
@@ -99,7 +99,16 @@ pub struct TaskWorkerConfig {
     /// claimed, instead of through the queue (`WORKER_CHAIN_STEPS`, on by
     /// default). See the turn driver's module notes.
     pub chain_steps: bool,
+    /// How long a shutting-down worker lets in-flight tasks finish before it
+    /// aborts them (`WORKER_SHUTDOWN_GRACE_SECS`). Keep it under the
+    /// orchestrator's kill timeout; aborted tasks go back to the queue when
+    /// the worker deregisters.
+    pub shutdown_grace: Duration,
 }
+
+/// Default for [`TaskWorkerConfig::shutdown_grace`]: inside Kubernetes'
+/// default 30 s termination grace period.
+pub const DEFAULT_SHUTDOWN_GRACE: Duration = Duration::from_secs(25);
 
 impl Default for TaskWorkerConfig {
     fn default() -> Self {
@@ -123,6 +132,7 @@ impl Default for TaskWorkerConfig {
             grpc_address: "127.0.0.1:9001".to_string(),
             connect_timeout: Duration::from_secs(30),
             chain_steps: true,
+            shutdown_grace: DEFAULT_SHUTDOWN_GRACE,
         }
     }
 }
@@ -189,6 +199,10 @@ impl TaskWorkerConfig {
                 defaults.connect_timeout,
             ),
             chain_steps: env_or("WORKER_CHAIN_STEPS", defaults.chain_steps),
+            shutdown_grace: env_duration_secs(
+                "WORKER_SHUTDOWN_GRACE_SECS",
+                defaults.shutdown_grace,
+            ),
             ..defaults
         }
     }
@@ -219,6 +233,9 @@ where
     in_flight: Arc<AtomicUsize>,
     /// Cuts the poll backoff short when new work may be claimable.
     wake: Arc<Notify>,
+    /// The registry reported this worker draining (operator drain): claim
+    /// nothing until a heartbeat says it is resumed.
+    draining: Arc<AtomicBool>,
 }
 
 impl<S, A> TaskWorker<S, A>
@@ -257,6 +274,7 @@ where
             shutdown_rx,
             in_flight: Arc::new(AtomicUsize::new(0)),
             wake: Arc::new(Notify::new()),
+            draining: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -292,32 +310,24 @@ where
             info!(worker_id = %self.config.worker_id, "Worker registered");
         }
 
-        // Spawn heartbeat task
-        let heartbeat_store = self.store.clone();
-        let heartbeat_worker_id = self.config.worker_id.clone();
-        let heartbeat_interval = self.config.heartbeat_interval;
-        let mut heartbeat_shutdown_rx = self.shutdown_rx.clone();
-        let in_flight_for_heartbeat = self.in_flight.clone();
-
-        let heartbeat_handle = tokio::spawn(async move {
-            loop {
-                tokio::select! {
-                    _ = tokio::time::sleep(heartbeat_interval) => {
-                        let current_load = in_flight_for_heartbeat.load(Ordering::SeqCst);
-                        if let Err(e) = heartbeat_store.worker_heartbeat(
-                            &heartbeat_worker_id,
-                            current_load,
-                            true
-                        ).await {
-                            warn!(error = %e, "Failed to send heartbeat");
-                        }
-                    }
-                    _ = heartbeat_shutdown_rx.changed() => {
-                        break;
-                    }
-                }
-            }
-        });
+        // Heartbeat task. It outlives the poll loop: a shutting-down worker
+        // keeps heartbeating (not accepting) while in-flight tasks finish, so
+        // the registry does not reap it mid-drain. The reply says whether an
+        // operator drained the worker.
+        let (heartbeat_stop_tx, mut heartbeat_stop_rx) = watch::channel(false);
+        let shutting_down = Arc::new(AtomicBool::new(false));
+        let heartbeat_handle = tokio::spawn(heartbeat_loop(
+            self.store.clone(),
+            self.config.worker_id.clone(),
+            self.config.heartbeat_interval,
+            self.in_flight.clone(),
+            self.draining.clone(),
+            shutting_down.clone(),
+            self.wake.clone(),
+            async move {
+                let _ = heartbeat_stop_rx.changed().await;
+            },
+        ));
 
         let wakeup_handle = spawn_wakeup_listener(
             self.store.clone(),
@@ -369,19 +379,15 @@ where
             }
         }
 
-        task_handles.abort_all();
-        while let Some(result) = task_handles.join_next().await {
-            if let Err(error) = result
-                && !error.is_cancelled()
-            {
-                warn!(error = %error, "Worker task join failed during shutdown");
-            }
-        }
         let _ = self.shutdown_tx.send(true);
+        shutting_down.store(true, Ordering::SeqCst);
+        self.finish_in_flight(&mut task_handles).await;
+        let _ = heartbeat_stop_tx.send(true);
         let _ = heartbeat_handle.await;
         let _ = wakeup_handle.await;
 
-        // Deregister on shutdown
+        // Deregister on shutdown; the registry returns tasks still claimed by
+        // this worker (aborted after the grace period) to the queue.
         if let Err(e) = self.store.deregister_worker(&self.config.worker_id).await {
             warn!(error = %e, "Failed to deregister worker");
         }
@@ -402,6 +408,41 @@ where
         }
     }
 
+    /// Graceful stop: mark this worker draining so the queue routes new tasks
+    /// and chained steps elsewhere, give in-flight tasks `shutdown_grace` to
+    /// finish, then abort what is left.
+    async fn finish_in_flight(&self, task_handles: &mut JoinSet<()>) {
+        if let Err(e) = self.store.drain_worker(&self.config.worker_id).await {
+            warn!(error = %e, "Failed to mark worker draining for shutdown");
+        }
+        let in_flight = task_handles.len();
+        if in_flight > 0 {
+            info!(
+                in_flight,
+                grace_secs = self.config.shutdown_grace.as_secs_f64(),
+                "Waiting for in-flight tasks before stopping"
+            );
+        }
+        let finished = tokio::time::timeout(self.config.shutdown_grace, async {
+            while let Some(result) = task_handles.join_next().await {
+                if let Err(error) = result
+                    && !error.is_cancelled()
+                {
+                    warn!(error = %error, "Worker task join failed during shutdown");
+                }
+            }
+        })
+        .await;
+        if finished.is_err() {
+            warn!(
+                aborted = task_handles.len(),
+                "Shutdown grace period elapsed, aborting in-flight tasks"
+            );
+            task_handles.abort_all();
+            while task_handles.join_next().await.is_some() {}
+        }
+    }
+
     fn drain_finished_tasks(task_handles: &mut JoinSet<()>) {
         while let Some(result) = task_handles.try_join_next() {
             if let Err(error) = result
@@ -414,6 +455,9 @@ where
 
     /// Poll for tasks and execute them
     async fn poll_and_execute(&self, task_handles: &mut JoinSet<()>) -> Result<usize> {
+        if self.draining.load(Ordering::SeqCst) {
+            return Ok(0);
+        }
         let current_in_flight = self.in_flight.load(Ordering::SeqCst);
         let available_slots = self
             .config
@@ -496,6 +540,45 @@ where
     }
 }
 
+/// Heartbeats until `stop` resolves, recording whether the registry reports
+/// the worker draining and waking the poll loop when a drain is lifted.
+#[allow(clippy::too_many_arguments)]
+async fn heartbeat_loop<S: TurnStore>(
+    store: Arc<S>,
+    worker_id: String,
+    interval: Duration,
+    in_flight: Arc<AtomicUsize>,
+    draining: Arc<AtomicBool>,
+    shutting_down: Arc<AtomicBool>,
+    wake: Arc<Notify>,
+    stop: impl std::future::Future<Output = ()>,
+) {
+    tokio::pin!(stop);
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {}
+            _ = &mut stop => break,
+        }
+        let current_load = in_flight.load(Ordering::SeqCst);
+        let accepting = !shutting_down.load(Ordering::SeqCst);
+        match store
+            .worker_heartbeat(&worker_id, current_load, accepting)
+            .await
+        {
+            Ok(reply) => {
+                let was = draining.swap(reply.draining, Ordering::SeqCst);
+                if reply.draining && !was {
+                    info!(worker_id = %worker_id, "Worker drained, no longer claiming tasks");
+                } else if was && !reply.draining {
+                    info!(worker_id = %worker_id, "Worker resumed, claiming tasks again");
+                    wake.notify_one();
+                }
+            }
+            Err(e) => warn!(error = %e, "Failed to send heartbeat"),
+        }
+    }
+}
+
 /// Handle for triggering worker shutdown
 #[derive(Clone)]
 pub struct ShutdownHandle {
@@ -535,7 +618,6 @@ mod tests {
         ClaimedTask, HeartbeatResponse, StoreError, TaskFailureOutcome, WorkflowError,
         WorkflowStatus,
     };
-    use std::sync::atomic::AtomicBool;
 
     #[test]
     fn test_config_default() {
@@ -598,188 +680,203 @@ mod tests {
         assert_eq!(next_poll_backoff(Duration::MAX, base, max, false), max);
     }
 
+    /// Hands out two tasks on the first claim; each fails after `fail_delay`.
+    #[derive(Clone, Default)]
+    struct ConcurrentStore {
+        claimed: Arc<AtomicBool>,
+        current: Arc<AtomicUsize>,
+        max: Arc<AtomicUsize>,
+        fail_delay: Duration,
+        /// Tasks that ran to the end (not aborted).
+        finished: Arc<AtomicUsize>,
+        /// Registry calls in order, to check drain-before-deregister.
+        calls: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl TurnStore for ConcurrentStore {
+        async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        async fn worker_heartbeat(
+            &self,
+            _worker_id: &str,
+            _current_load: usize,
+            _accepting_tasks: bool,
+        ) -> Result<crate::durable::WorkerHeartbeat, StoreError> {
+            Ok(Default::default())
+        }
+
+        async fn drain_worker(&self, _worker_id: &str) -> Result<(), StoreError> {
+            self.calls.lock().expect("calls lock").push("drain");
+            Ok(())
+        }
+
+        async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
+            self.calls.lock().expect("calls lock").push("deregister");
+            Ok(0)
+        }
+
+        async fn claim_task(
+            &self,
+            _worker_id: &str,
+            _activity_types: &[String],
+            _max_tasks: usize,
+        ) -> Result<Vec<ClaimedTask>, StoreError> {
+            if self.claimed.swap(true, Ordering::SeqCst) {
+                return Ok(vec![]);
+            }
+
+            Ok((0..2)
+                .map(|_| ClaimedTask {
+                    id: Uuid::now_v7(),
+                    workflow_id: None,
+                    activity_id: format!("unknown_{}", Uuid::now_v7()),
+                    activity_type: "unknown".to_string(),
+                    input: serde_json::json!({}),
+                    attempt: 1,
+                    max_attempts: 1,
+                    ..Default::default()
+                })
+                .collect())
+        }
+
+        async fn heartbeat_task(
+            &self,
+            _task_id: Uuid,
+            _worker_id: &str,
+            _details: Option<serde_json::Value>,
+        ) -> Result<HeartbeatResponse, StoreError> {
+            Ok(HeartbeatResponse {
+                accepted: true,
+                should_cancel: false,
+            })
+        }
+
+        async fn get_workflow(
+            &self,
+            _workflow_id: Uuid,
+        ) -> Result<everruns_durable_engine::turn_store::WorkflowSnapshot, StoreError> {
+            Ok(everruns_durable_engine::turn_store::WorkflowSnapshot {
+                status: WorkflowStatus::Running,
+                output: None,
+                error: None,
+            })
+        }
+
+        async fn start_turn(
+            &self,
+            _workflow_id: Uuid,
+            _workflow_type: &str,
+            _input: serde_json::Value,
+            _activity_id: String,
+            _activity_type: String,
+        ) -> Result<crate::durable::RunStart, StoreError> {
+            Ok(crate::durable::RunStart::Active)
+        }
+
+        async fn cancel_pending_tasks(&self, _workflow_id: Uuid) -> Result<u64, StoreError> {
+            Ok(0)
+        }
+
+        async fn count_active_workflows(&self) -> Result<usize, StoreError> {
+            Ok(0)
+        }
+
+        async fn count_pending_signals(
+            &self,
+            _workflow_id: Uuid,
+            _signal_type: &str,
+        ) -> Result<usize, StoreError> {
+            Ok(0)
+        }
+
+        async fn send_signal(
+            &self,
+            _workflow_id: Uuid,
+            _signal: crate::durable::WorkflowSignal,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}
+
+        async fn complete_task_and_record(
+            &self,
+            _task: &ClaimedTask,
+            _worker_id: &str,
+            _output: serde_json::Value,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        async fn fail_task_and_record(
+            &self,
+            _task: &ClaimedTask,
+            _error: &str,
+            _retryable: bool,
+        ) -> Result<TaskFailureOutcome, StoreError> {
+            let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max.fetch_max(current, Ordering::SeqCst);
+            tokio::time::sleep(self.fail_delay).await;
+            self.current.fetch_sub(1, Ordering::SeqCst);
+            self.finished.fetch_add(1, Ordering::SeqCst);
+            Ok(TaskFailureOutcome::MovedToDlq)
+        }
+
+        async fn enqueue_task_and_record(
+            &self,
+            _workflow_id: Uuid,
+            _activity_id: String,
+            _activity_type: String,
+            _input: serde_json::Value,
+        ) -> Result<Uuid, StoreError> {
+            Ok(Uuid::now_v7())
+        }
+
+        async fn update_workflow_status(
+            &self,
+            _workflow_id: Uuid,
+            _status: WorkflowStatus,
+            _output: Option<serde_json::Value>,
+            _error: Option<WorkflowError>,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        async fn complete_workflow(
+            &self,
+            _workflow_id: Uuid,
+            _event_output: serde_json::Value,
+            _stored_output: Option<serde_json::Value>,
+            _error: Option<WorkflowError>,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+
+        async fn consume_pending_signals(
+            &self,
+            _workflow_id: Uuid,
+        ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
+            Ok(vec![])
+        }
+
+        async fn consume_pending_signals_by_type(
+            &self,
+            _workflow_id: Uuid,
+            _signal_type: &str,
+        ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
+            Ok(vec![])
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn poll_and_execute_allows_concurrent_store_calls() {
-        #[derive(Clone, Default)]
-        struct ConcurrentStore {
-            claimed: Arc<AtomicBool>,
-            current: Arc<AtomicUsize>,
-            max: Arc<AtomicUsize>,
-        }
-
-        #[async_trait::async_trait]
-        impl TurnStore for ConcurrentStore {
-            async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
-                Ok(())
-            }
-
-            async fn worker_heartbeat(
-                &self,
-                _worker_id: &str,
-                _current_load: usize,
-                _accepting_tasks: bool,
-            ) -> Result<(), StoreError> {
-                Ok(())
-            }
-
-            async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
-                Ok(0)
-            }
-
-            async fn claim_task(
-                &self,
-                _worker_id: &str,
-                _activity_types: &[String],
-                _max_tasks: usize,
-            ) -> Result<Vec<ClaimedTask>, StoreError> {
-                if self.claimed.swap(true, Ordering::SeqCst) {
-                    return Ok(vec![]);
-                }
-
-                Ok((0..2)
-                    .map(|_| ClaimedTask {
-                        id: Uuid::now_v7(),
-                        workflow_id: None,
-                        activity_id: format!("unknown_{}", Uuid::now_v7()),
-                        activity_type: "unknown".to_string(),
-                        input: serde_json::json!({}),
-                        attempt: 1,
-                        max_attempts: 1,
-                        ..Default::default()
-                    })
-                    .collect())
-            }
-
-            async fn heartbeat_task(
-                &self,
-                _task_id: Uuid,
-                _worker_id: &str,
-                _details: Option<serde_json::Value>,
-            ) -> Result<HeartbeatResponse, StoreError> {
-                Ok(HeartbeatResponse {
-                    accepted: true,
-                    should_cancel: false,
-                })
-            }
-
-            async fn get_workflow(
-                &self,
-                _workflow_id: Uuid,
-            ) -> Result<everruns_durable_engine::turn_store::WorkflowSnapshot, StoreError>
-            {
-                Ok(everruns_durable_engine::turn_store::WorkflowSnapshot {
-                    status: WorkflowStatus::Running,
-                    output: None,
-                    error: None,
-                })
-            }
-
-            async fn start_turn(
-                &self,
-                _workflow_id: Uuid,
-                _workflow_type: &str,
-                _input: serde_json::Value,
-                _activity_id: String,
-                _activity_type: String,
-            ) -> Result<crate::durable::RunStart, StoreError> {
-                Ok(crate::durable::RunStart::Active)
-            }
-
-            async fn cancel_pending_tasks(&self, _workflow_id: Uuid) -> Result<u64, StoreError> {
-                Ok(0)
-            }
-
-            async fn count_active_workflows(&self) -> Result<usize, StoreError> {
-                Ok(0)
-            }
-
-            async fn count_pending_signals(
-                &self,
-                _workflow_id: Uuid,
-                _signal_type: &str,
-            ) -> Result<usize, StoreError> {
-                Ok(0)
-            }
-
-            async fn send_signal(
-                &self,
-                _workflow_id: Uuid,
-                _signal: crate::durable::WorkflowSignal,
-            ) -> Result<(), StoreError> {
-                Ok(())
-            }
-
-            async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}
-
-            async fn complete_task_and_record(
-                &self,
-                _task: &ClaimedTask,
-                _worker_id: &str,
-                _output: serde_json::Value,
-            ) -> Result<(), StoreError> {
-                Ok(())
-            }
-
-            async fn fail_task_and_record(
-                &self,
-                _task: &ClaimedTask,
-                _error: &str,
-                _retryable: bool,
-            ) -> Result<TaskFailureOutcome, StoreError> {
-                let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
-                self.max.fetch_max(current, Ordering::SeqCst);
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                self.current.fetch_sub(1, Ordering::SeqCst);
-                Ok(TaskFailureOutcome::MovedToDlq)
-            }
-
-            async fn enqueue_task_and_record(
-                &self,
-                _workflow_id: Uuid,
-                _activity_id: String,
-                _activity_type: String,
-                _input: serde_json::Value,
-            ) -> Result<Uuid, StoreError> {
-                Ok(Uuid::now_v7())
-            }
-
-            async fn update_workflow_status(
-                &self,
-                _workflow_id: Uuid,
-                _status: WorkflowStatus,
-                _output: Option<serde_json::Value>,
-                _error: Option<WorkflowError>,
-            ) -> Result<(), StoreError> {
-                Ok(())
-            }
-
-            async fn complete_workflow(
-                &self,
-                _workflow_id: Uuid,
-                _event_output: serde_json::Value,
-                _stored_output: Option<serde_json::Value>,
-                _error: Option<WorkflowError>,
-            ) -> Result<(), StoreError> {
-                Ok(())
-            }
-
-            async fn consume_pending_signals(
-                &self,
-                _workflow_id: Uuid,
-            ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
-                Ok(vec![])
-            }
-
-            async fn consume_pending_signals_by_type(
-                &self,
-                _workflow_id: Uuid,
-                _signal_type: &str,
-            ) -> Result<Vec<crate::durable::WorkflowSignal>, StoreError> {
-                Ok(vec![])
-            }
-        }
-
-        let store = Arc::new(ConcurrentStore::default());
+        let store = Arc::new(ConcurrentStore {
+            fail_delay: Duration::from_millis(50),
+            ..Default::default()
+        });
         let config = TaskWorkerConfig {
             max_concurrent_tasks: 2,
             claim_batch_size: 2,
@@ -802,5 +899,103 @@ mod tests {
             store.max.load(Ordering::SeqCst) > 1,
             "store calls were serialized"
         );
+    }
+
+    fn shutdown_config(grace: Duration) -> TaskWorkerConfig {
+        TaskWorkerConfig {
+            max_concurrent_tasks: 2,
+            claim_batch_size: 2,
+            heartbeat_interval: Duration::from_secs(60),
+            shutdown_grace: grace,
+            ..Default::default()
+        }
+    }
+
+    async fn wait_until(what: &str, check: impl Fn() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !check() {
+            assert!(std::time::Instant::now() < deadline, "timed out: {what}");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_lets_in_flight_tasks_finish_then_deregisters() {
+        let store = Arc::new(ConcurrentStore {
+            fail_delay: Duration::from_millis(300),
+            ..Default::default()
+        });
+        let mut worker = TaskWorker::new(
+            shutdown_config(Duration::from_secs(10)),
+            store.clone(),
+            NoopAdapters,
+        );
+        let shutdown = worker.shutdown_handle();
+        let run = tokio::spawn(async move { worker.run().await });
+
+        wait_until("both tasks running", || {
+            store.current.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        shutdown.shutdown();
+        run.await.expect("join").expect("worker run");
+
+        assert_eq!(
+            store.finished.load(Ordering::SeqCst),
+            2,
+            "in-flight tasks finish before the worker stops"
+        );
+        assert_eq!(
+            *store.calls.lock().expect("calls lock"),
+            vec!["drain", "deregister"]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shutdown_aborts_tasks_still_running_after_the_grace_period() {
+        let store = Arc::new(ConcurrentStore {
+            fail_delay: Duration::from_secs(60),
+            ..Default::default()
+        });
+        let mut worker = TaskWorker::new(
+            shutdown_config(Duration::from_millis(100)),
+            store.clone(),
+            NoopAdapters,
+        );
+        let shutdown = worker.shutdown_handle();
+        let run = tokio::spawn(async move { worker.run().await });
+
+        wait_until("both tasks running", || {
+            store.current.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        shutdown.shutdown();
+        tokio::time::timeout(Duration::from_secs(5), run)
+            .await
+            .expect("worker stops after the grace period")
+            .expect("join")
+            .expect("worker run");
+
+        assert_eq!(store.finished.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            *store.calls.lock().expect("calls lock"),
+            vec!["drain", "deregister"]
+        );
+    }
+
+    #[tokio::test]
+    async fn drained_worker_claims_nothing() {
+        let store = Arc::new(ConcurrentStore::default());
+        let worker = TaskWorker::new(shutdown_config(Duration::ZERO), store.clone(), NoopAdapters);
+        worker.draining.store(true, Ordering::SeqCst);
+        let mut task_handles = JoinSet::new();
+
+        let claimed = worker
+            .poll_and_execute(&mut task_handles)
+            .await
+            .expect("poll succeeds");
+
+        assert_eq!(claimed, 0);
+        assert!(!store.claimed.load(Ordering::SeqCst), "no claim was sent");
     }
 }

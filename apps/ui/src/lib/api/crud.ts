@@ -1,4 +1,5 @@
 import { api } from "./client";
+import { changeReasonOptions } from "./change-history";
 import type { ListResponse } from "./types";
 
 function withArchivedQuery(basePath: string, includeArchived: boolean): string {
@@ -14,9 +15,10 @@ export interface CrudApi<TItem, TCreate, TUpdate> {
   create(request: TCreate): Promise<TItem>;
   list(includeArchived?: boolean): Promise<TItem[]>;
   get(id: string): Promise<TItem>;
-  update(id: string, request: TUpdate): Promise<TItem>;
-  delete(id: string): Promise<void>;
-  destroy(id: string): Promise<void>;
+  /** `reason` is the optional change reason recorded in the entity's history. */
+  update(id: string, request: TUpdate, reason?: string): Promise<TItem>;
+  delete(id: string, reason?: string): Promise<void>;
+  destroy(id: string, reason?: string): Promise<void>;
 }
 
 export function createCrudApi<TItem, TCreate, TUpdate>(
@@ -40,17 +42,21 @@ export function createCrudApi<TItem, TCreate, TUpdate>(
       return response.data;
     },
 
-    async update(id: string, request: TUpdate): Promise<TItem> {
-      const response = await api.patch<TItem>(`${basePath}/${id}`, request);
+    async update(id: string, request: TUpdate, reason?: string): Promise<TItem> {
+      const response = await api.patch<TItem>(
+        `${basePath}/${id}`,
+        request,
+        changeReasonOptions(reason),
+      );
       return response.data;
     },
 
-    async delete(id: string): Promise<void> {
-      await api.delete(`${basePath}/${id}`);
+    async delete(id: string, reason?: string): Promise<void> {
+      await api.delete(`${basePath}/${id}`, changeReasonOptions(reason));
     },
 
-    async destroy(id: string): Promise<void> {
-      await api.post(`${basePath}/${id}/delete`);
+    async destroy(id: string, reason?: string): Promise<void> {
+      await api.post(`${basePath}/${id}/delete`, undefined, changeReasonOptions(reason));
     },
   };
 }

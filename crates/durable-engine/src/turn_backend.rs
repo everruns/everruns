@@ -1,23 +1,28 @@
-//! [`DurableRunner`] as a [`TurnBackend`]: the server's durable turns through
-//! the framework's turn execution seam.
+//! [`DurableRunner`] as a [`TurnBackend`]: the platform server's durable
+//! turns through the framework's turn entry point.
 //!
 //! Execution behavior:
-//! - The logic that starts, resumes and cancels a durable turn lives here, in
-//!   the `TurnBackend` implementation. `AgentRunner` is a shim over it
-//!   (`crate::runner`) until the server calls the seam directly.
-//! - Only [`TurnInput::Persisted`] is served: the server persists the message
-//!   or the tool resolution before it starts the turn, and the turn task
-//!   reads it from the session store. Unpersisted input (`Message`,
-//!   `ToolResults`) and `ResumeInterrupted` fail with a configuration error;
-//!   a framework session's messages go through
-//!   [`DurableBackend`](crate::DurableBackend), which persists them itself.
-//! - A persisted message for a session whose workflow still runs joins that
+//! - The server calls this `TurnBackend` directly; there is no other entry
+//!   point for its turns.
+//! - Only stored input is served: [`TurnInput::StoredMessage`] and
+//!   [`TurnInput::RecordedToolResults`]. The server persists the message or
+//!   the tool resolution before it starts the turn, and the turn task reads
+//!   it from the session store. The runner holds no session runtime to write
+//!   input through, so `Message`, `ToolResults` and `ResumeInterrupted` fail
+//!   with a configuration error; a framework session's input goes through
+//!   [`DurableBackend`](crate::DurableBackend), which records it itself.
+//! - A stored message needs the request's [`TurnScope`]: the runner cannot
+//!   look the session's organization, harness and agent up. The turn's id is
+//!   minted by its input step, as the platform's turns always were; the
+//!   request's id only labels the ticket until the checkpoint names the
+//!   turn.
+//! - A stored message for a session whose workflow still runs joins that
 //!   turn as a `USER_MESSAGE` signal, the server's steering, instead of
 //!   failing as the trait describes for a second turn. The returned ticket
 //!   then follows the running workflow.
 //! - `start_turn` creates or claims the workflow and enqueues its first task
 //!   before it returns. The ticket only observes, so a caller that drops it
-//!   (the `AgentRunner` shim always does) changes nothing.
+//!   (the server usually does) changes nothing.
 //! - The ticket wakes on the store's workflow-end signal
 //!   ([`TurnStore::workflow_end_signal`]) when the store has one,
 //!   re-reading the status every [`TICKET_FALLBACK_POLL_INTERVAL`] in case a
@@ -27,7 +32,7 @@
 //!   [`DurableBackend`](crate::DurableBackend) turn reports back as soon as
 //!   it ends. The PostgreSQL store has none, since another process may end
 //!   the workflow, so its tickets poll every [`TICKET_POLL_INTERVAL`]; the
-//!   server drops those tickets anyway (the `AgentRunner` shim).
+//!   server mostly drops those tickets.
 //! - The request's steering handle is closed at start: durable turns take
 //!   mid-turn input only as persisted messages plus wake signals.
 //!
@@ -51,8 +56,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_contracts::error::{AgentLoopError, Result};
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::host::{PersistedTurn, TurnBackend, TurnInput, TurnRequest, TurnTicket};
+use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_core::host::{TurnBackend, TurnInput, TurnRequest, TurnScope, TurnTicket};
 use everruns_core::turn::TurnStopReason;
 use everruns_durable::{
     EventLog, RunStart, StoreError, WorkflowError, WorkflowEvent, WorkflowSignal, WorkflowStatus,
@@ -83,16 +88,20 @@ pub const TICKET_FALLBACK_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const COMPLETION_EVENT_TAIL: i32 = 8;
 
 impl DurableRunner {
-    /// Start a turn from a persisted message, or steer the running one.
-    async fn start_persisted_message(
+    /// Start a turn from a stored message, or steer the running one.
+    async fn start_stored_message(
         &self,
         session_id: SessionId,
-        org_id: i64,
-        harness_id: HarnessId,
-        agent_id: Option<AgentId>,
+        scope: TurnScope,
         input_message_id: MessageId,
         request_id: Option<String>,
     ) -> anyhow::Result<()> {
+        let TurnScope {
+            org_id,
+            harness_id,
+            agent_id,
+            ..
+        } = scope;
         info!(
             org_id,
             session_id = %session_id,
@@ -330,43 +339,35 @@ impl DurableRunner {
 #[async_trait]
 impl TurnBackend for DurableRunner {
     /// Start the turn on the durable queue and return a ticket that
-    /// resolves when it ends. Serves only [`TurnInput::Persisted`]; see the module
-    /// notes for the steering and mapping rules.
+    /// resolves when it ends. Serves only stored input; see the module notes
+    /// for the scope, steering and mapping rules.
     async fn start_turn(&self, request: TurnRequest) -> Result<TurnTicket> {
         let TurnRequest {
             session_id,
             turn_id,
             input,
             steering,
+            scope,
+            request_id,
             ..
         } = request;
         steering.close();
-        let persisted = match input {
-            TurnInput::Persisted(persisted) => *persisted,
-            other => return Err(unsupported_input(&other)),
-        };
-        match persisted {
-            PersistedTurn::Message {
-                org_id,
-                harness_id,
-                agent_id,
-                input_message_id,
-                request_id,
-            } => {
-                self.start_persisted_message(
-                    session_id,
-                    org_id,
-                    harness_id,
-                    agent_id,
-                    input_message_id,
-                    request_id,
-                )
-                .await
+        match input {
+            TurnInput::StoredMessage { message_id } => {
+                let scope = scope.ok_or_else(|| {
+                    AgentLoopError::config(
+                        "the durable runner needs TurnRequest::scope to start a turn from \
+                         TurnInput::StoredMessage; it cannot look the session up",
+                    )
+                })?;
+                self.start_stored_message(session_id, scope, message_id, request_id)
+                    .await
             }
-            PersistedTurn::ToolResolution { resolution_id } => {
+            TurnInput::RecordedToolResults { resolution_id } => {
                 self.resume_persisted_resolution(session_id, resolution_id)
                     .await
             }
+            other => return Err(unsupported_input(&other)),
         }
         .map_err(store_error)?;
         Ok(self.ticket(session_id, turn_id))
@@ -407,13 +408,13 @@ fn unsupported_input(input: &TurnInput) -> AgentLoopError {
         _ => "this turn input",
     };
     AgentLoopError::config(format!(
-        "the durable runner cannot run {name} yet; it serves only server-persisted input \
-         (TurnInput::Persisted)"
+        "the durable runner cannot run {name}; it has no session runtime to record input \
+         through and serves only stored input (TurnInput::StoredMessage, \
+         TurnInput::RecordedToolResults)"
     ))
 }
 
-/// Carry a store failure's full message. The `AgentRunner` shim unwraps it
-/// back into the message the server always logged.
+/// Carry a store failure's full message.
 fn store_error(error: anyhow::Error) -> AgentLoopError {
     AgentLoopError::store(format!("{error:#}"))
 }

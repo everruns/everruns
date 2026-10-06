@@ -33,9 +33,9 @@ use super::store::{
     ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType,
     SchedulerInstanceInfo, Schedules, SealedTaskInfo, SignalStore, StoreError, SystemHealth,
     TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext,
-    UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo, WorkerRegistry,
-    WorkflowEventInfo, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
-    no_progress_seal_threshold_from_env,
+    UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerHeartbeat, WorkerInfo,
+    WorkerRegistry, WorkflowEventInfo, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
+    WorkflowStatus, no_progress_seal_threshold_from_env,
 };
 use crate::reliability::{CircuitBreakerConfig, CircuitState};
 use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};

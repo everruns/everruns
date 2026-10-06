@@ -10,6 +10,7 @@ everruns-cli
 everruns-cli-contract
 everruns-contracts
 everruns-core
+everruns-db
 everruns-drivers
 everruns-durable
 everruns-durable-engine

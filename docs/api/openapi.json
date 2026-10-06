@@ -29214,7 +29214,7 @@
       },
       "DriverId": {
         "type": "string",
-        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, cloudflare, vercel. Any other string is treated as an embedder-defined external provider."
+        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, mistral, cloudflare, vercel. Any other string is treated as an embedder-defined external provider."
       },
       "ElicitationConsentRequest": {
         "type": "object",
@@ -39151,6 +39151,7 @@
           "microsoft",
           "meta",
           "minimax",
+          "mistral",
           "moonshot",
           "typesafe",
           "xai",

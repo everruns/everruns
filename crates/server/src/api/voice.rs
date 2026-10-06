@@ -75,12 +75,12 @@ pub struct AppState {
     pub provider_resolver: Arc<ProviderResolverService>,
     pub leased_resource_store: Arc<dyn LeasedResourceStore>,
     pub feature_flags: FeatureFlags,
-    pub runner: Arc<dyn everruns_worker::AgentRunner>,
+    pub runner: Arc<dyn everruns_core::host::TurnBackend>,
     pub fallback_default_harness_name: Option<String>,
 }
 
 pub struct AppDependencies {
-    pub runner: Arc<dyn everruns_worker::AgentRunner>,
+    pub runner: Arc<dyn everruns_core::host::TurnBackend>,
     pub message_service: Arc<MessageService>,
     pub provider_resolver: Arc<ProviderResolverService>,
     pub event_delivery: EventDelivery,

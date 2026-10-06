@@ -24,7 +24,7 @@ use crate::storage::{
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use std::sync::Arc;
 use uuid::Uuid;
 

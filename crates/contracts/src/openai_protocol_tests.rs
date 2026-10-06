@@ -21,6 +21,62 @@ fn choice(json_str: &str) -> OpenAiStreamChoice {
     serde_json::from_str(json_str).unwrap()
 }
 
+/// `process_stream_choice` for chunks that emit at most one event.
+fn single_event(
+    choice: &OpenAiStreamChoice,
+    total_tokens: &mut u32,
+    acc: &mut StreamToolCallAccumulator,
+    finish_reason: &mut Option<String>,
+) -> Option<LlmStreamEvent> {
+    let mut events = process_stream_choice(choice, total_tokens, acc, finish_reason);
+    assert!(events.len() <= 1, "expected one event, got {events:?}");
+    events.pop()
+}
+
+/// Mistral streams reasoning as typed content chunks, and its last chunk can
+/// carry an (empty) thinking chunk beside the answer text and the finish
+/// reason. Verbatim shapes from `mistral-large-4` with `reasoning_effort:
+/// "high"`; before these parsed, every such chunk failed to deserialize and
+/// the answer was dropped.
+#[test]
+fn mistral_typed_content_chunks_split_into_reasoning_and_text() {
+    let mut total_tokens = 0u32;
+    let mut acc = StreamToolCallAccumulator::new();
+    let mut finish_reason: Option<String> = None;
+
+    let thinking = choice(
+        r#"{"index":0,"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"17 x 23"}],"closed":true}]},"finish_reason":null}"#,
+    );
+    let events = process_stream_choice(&thinking, &mut total_tokens, &mut acc, &mut finish_reason);
+    assert!(
+        matches!(events.as_slice(), [LlmStreamEvent::ReasoningDelta { delta, summary: false }] if delta == "17 x 23"),
+        "{events:?}"
+    );
+
+    let last = choice(
+        r#"{"index":0,"delta":{"content":[{"type":"thinking","thinking":[]},{"type":"text","text":"391"}]},"finish_reason":"stop"}"#,
+    );
+    let events = process_stream_choice(&last, &mut total_tokens, &mut acc, &mut finish_reason);
+    assert!(
+        matches!(events.as_slice(), [LlmStreamEvent::TextDelta(text)] if text == "391"),
+        "{events:?}"
+    );
+    assert_eq!(finish_reason.as_deref(), Some("stop"));
+
+    let both = choice(
+        r#"{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"done"}]},{"type":"text","text":"answer"},{"type":"reference","reference_ids":[1]}]}}"#,
+    );
+    let events = process_stream_choice(&both, &mut total_tokens, &mut acc, &mut finish_reason);
+    assert!(
+        matches!(
+            events.as_slice(),
+            [LlmStreamEvent::ReasoningDelta { delta, .. }, LlmStreamEvent::TextDelta(text)]
+                if delta == "done" && text == "answer"
+        ),
+        "{events:?}"
+    );
+}
+
 /// EVE-522 regression: providers such as OpenRouter/DeepInfra send an empty
 /// `content: ""` in the same chunk that carries `finish_reason: "tool_calls"`.
 /// The accumulated tool calls must still be emitted exactly once.
@@ -31,7 +87,7 @@ fn test_empty_content_finish_chunk_still_emits_tool_calls() {
     let mut finish_reason: Option<String> = None;
 
     // Chunk 2: tool_calls delta opens the call (id + name).
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(
             r#"{"delta":{"content":null,"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_file","arguments":""}}]},"finish_reason":null}"#,
         ),
@@ -42,7 +98,7 @@ fn test_empty_content_finish_chunk_still_emits_tool_calls() {
     assert!(e.is_none());
 
     // Chunk 3: tool_calls delta streams the arguments.
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(
             r#"{"delta":{"content":null,"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"Cargo.toml\"}"}}]},"finish_reason":null}"#,
         ),
@@ -54,7 +110,7 @@ fn test_empty_content_finish_chunk_still_emits_tool_calls() {
 
     // Chunk 4: content:"" alongside finish_reason:"tool_calls" — must NOT
     // short-circuit; emits the accumulated call with parsed JSON arguments.
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(r#"{"delta":{"content":""},"finish_reason":"tool_calls"}"#),
         &mut total_tokens,
         &mut acc,
@@ -73,7 +129,7 @@ fn test_empty_content_finish_chunk_still_emits_tool_calls() {
 
     // Chunk 5: second finish chunk with content:"" — the accumulator was
     // drained, so the same call must not be emitted again.
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(r#"{"delta":{"content":""},"finish_reason":"tool_calls"}"#),
         &mut total_tokens,
         &mut acc,
@@ -89,7 +145,7 @@ fn test_non_empty_content_is_emitted() {
     let mut acc = StreamToolCallAccumulator::new();
     let mut finish_reason: Option<String> = None;
 
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(r#"{"delta":{"content":"hello"},"finish_reason":null}"#),
         &mut total_tokens,
         &mut acc,
@@ -109,7 +165,7 @@ fn test_tool_call_arguments_accumulate_across_many_chunks() {
     let mut finish_reason: Option<String> = None;
 
     // Open the call (id + name, empty initial arguments).
-    process_stream_choice(
+    single_event(
         &choice(
             r#"{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"write_file","arguments":""}}]},"finish_reason":null}"#,
         ),
@@ -128,7 +184,7 @@ fn test_tool_call_arguments_accumulate_across_many_chunks() {
             "finish_reason": null
         })
         .to_string();
-        process_stream_choice(
+        single_event(
             &choice(&chunk),
             &mut total_tokens,
             &mut acc,
@@ -141,7 +197,7 @@ fn test_tool_call_arguments_accumulate_across_many_chunks() {
     // here we assert the observable finish-chunk result concatenates exactly.
 
     // Finish chunk: parsed exactly once into the structured value.
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(r#"{"delta":{},"finish_reason":"tool_calls"}"#),
         &mut total_tokens,
         &mut acc,
@@ -169,7 +225,7 @@ fn test_finish_chunk_without_content_emits_tool_calls() {
     let mut acc = StreamToolCallAccumulator::new();
     let mut finish_reason: Option<String> = None;
 
-    process_stream_choice(
+    single_event(
         &choice(
             r#"{"delta":{"tool_calls":[{"index":0,"id":"call_9","function":{"name":"list_dir","arguments":"{}"}}]},"finish_reason":null}"#,
         ),
@@ -178,7 +234,7 @@ fn test_finish_chunk_without_content_emits_tool_calls() {
         &mut finish_reason,
     );
 
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(r#"{"delta":{},"finish_reason":"tool_calls"}"#),
         &mut total_tokens,
         &mut acc,
@@ -253,7 +309,7 @@ fn test_non_tool_finish_reason_leaves_pending_calls_for_done_discard() {
     let mut acc = StreamToolCallAccumulator::new();
     let mut finish_reason: Option<String> = None;
 
-    process_stream_choice(
+    single_event(
         &choice(
             r#"{"delta":{"tool_calls":[{"index":0,"id":"call_cut","function":{"name":"read_file","arguments":"{\"path\":"}}]},"finish_reason":null}"#,
         ),
@@ -262,7 +318,7 @@ fn test_non_tool_finish_reason_leaves_pending_calls_for_done_discard() {
         &mut finish_reason,
     );
 
-    let e = process_stream_choice(
+    let e = single_event(
         &choice(r#"{"delta":{},"finish_reason":"length"}"#),
         &mut total_tokens,
         &mut acc,
@@ -436,6 +492,37 @@ async fn non_streaming_completion_waits_for_full_json_response() {
     let sent = requests[0].body_json::<Value>().unwrap();
     assert_eq!(sent["stream"], json!(false));
     assert!(sent.get("stream_options").is_none());
+}
+
+/// Mistral's non-streamed reasoning answer: `content` is a chunk array with
+/// the thinking first. Verbatim shape from `mistral-large-4`.
+#[tokio::test]
+async fn non_streaming_completion_reads_mistral_thinking_chunks() {
+    let (_server, provider) = mock_json_provider(json!({
+        "id": "3ffd67b5",
+        "model": "mistral-large-4",
+        "choices": [{
+            "index": 0,
+            "finish_reason": "stop",
+            "message": {"role": "assistant", "tool_calls": null, "content": [
+                {"type": "thinking", "thinking": [{"type": "text", "text": "17 x 23 = 391"}], "closed": true},
+                {"type": "text", "text": "391"}
+            ]}
+        }],
+        "usage": {"prompt_tokens": 24, "completion_tokens": 136}
+    }))
+    .await;
+    let messages = vec![Message::text(MessageRole::User, "17*23?")];
+    let response = provider
+        .chat_completion_non_streaming(messages, &call_config())
+        .await
+        .unwrap();
+    assert_eq!(response.text, "391");
+    assert_eq!(response.reasoning.len(), 1);
+    assert_eq!(
+        response.reasoning[0].display_text().as_deref(),
+        Some("17 x 23 = 391")
+    );
 }
 
 #[tokio::test]

@@ -58,6 +58,19 @@ fn reasoning_effort_high_only() -> ReasoningEffortConfig {
     }
 }
 
+/// On/off reasoning for models whose API takes only `none` and `high`
+/// (Mistral Large 4). Default: none, matching the API, which answers without
+/// thinking when the field is omitted.
+fn reasoning_effort_toggle() -> ReasoningEffortConfig {
+    ReasoningEffortConfig {
+        values: vec![
+            effort(ReasoningEffort::None, "Off"),
+            effort(ReasoningEffort::High, "On"),
+        ],
+        default: ReasoningEffort::None,
+    }
+}
+
 /// Reasoning effort for pre-gpt-5.1 models (gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-codex)
 /// Default: medium, supports: low, medium, high (no none)
 fn reasoning_effort_gpt5_pre51() -> ReasoningEffortConfig {
@@ -261,6 +274,10 @@ const MICROSOFT_MAI: &[&str] = &["mai", "openai", "openrouter", "openai_completi
 // the same discount on either route. Surface still gates *capabilities*: a
 // gateway route loses phases and tool search, which `profile_data` handles.
 const META_MUSE: &[&str] = &["meta", "openai", "openrouter", "openai_completions"];
+// Mistral models are served first-party by the `mistral` driver (La Plateforme,
+// Chat Completions) and through gateways. Never through the OpenAI Responses
+// surface: Mistral does not implement it.
+const MISTRAL: &[&str] = &["mistral", "openrouter", "openai_completions"];
 
 static REGISTRY: &[ModelDescriptor] = &[
     md_service(
@@ -434,6 +451,17 @@ static REGISTRY: &[ModelDescriptor] = &[
         &["kimi-k3", "moonshotai/kimi-k3"],
         ModelVendor::Moonshot,
         OPENAI_COMPAT,
+    ),
+    md(
+        &[
+            "mistral-large-4",
+            "mistral-large-4-0",
+            "mistralai/mistral-large-4-0",
+            "mistralai/mistral-large-4",
+            "mistral/mistral-large-4",
+        ],
+        ModelVendor::Mistral,
+        MISTRAL,
     ),
     md(
         &["grok-4.3", "x-ai/grok-4.3", "xai/grok-4.3"],

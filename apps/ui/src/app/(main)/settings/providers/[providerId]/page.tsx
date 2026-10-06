@@ -16,6 +16,8 @@ import { EntityIdentity } from "@/components/ui/entity-identity";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { useModels, useProvider, useUpdateProvider } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
+import { usePolicies } from "@/hooks/use-policies";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { formatCountLabel } from "@/lib/formatting";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { managedProviderCopy } from "@/lib/managed-provider-copy";
@@ -29,6 +31,8 @@ export default function ProviderDetailPage({
   params: Promise<{ providerId: string }>;
 }) {
   const { providerId } = use(params);
+  const { can } = usePolicies("providers");
+  const canManage = can("provider.manage");
   const { data: provider, isLoading } = useProvider(providerId);
   const { data: models = [], isLoading: modelsLoading } = useModels();
   const updateProvider = useUpdateProvider(providerId);
@@ -118,13 +122,21 @@ export default function ProviderDetailPage({
         }
         description={getProviderLabel(provider.provider_type)}
         actions={
-          <LinkButton
-            variant="outline"
-            href={`/models?provider=${encodeURIComponent(provider.id)}`}
-          >
-            <Boxes className="h-4 w-4 mr-2" />
-            View Models
-          </LinkButton>
+          <>
+            <LinkButton
+              variant="outline"
+              href={`/models?provider=${encodeURIComponent(provider.id)}`}
+            >
+              <Boxes className="h-4 w-4 mr-2" />
+              View Models
+            </LinkButton>
+            <EntityActionsMenu
+              entityRef={provider.id}
+              kind="provider"
+              entityName={provider.name}
+              permissions={{ manage: canManage }}
+            />
+          </>
         }
       />
 
