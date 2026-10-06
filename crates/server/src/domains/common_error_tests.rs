@@ -19,7 +19,6 @@ fn command_metadata_declares_feature_gated_surfaces() {
             "payments",
             Some("machine_payments"),
         ),
-        ("create_agent_version", "agents", Some("agent_versions")),
         ("list_agents", "agents", None),
     ] {
         let meta = CommandMeta {

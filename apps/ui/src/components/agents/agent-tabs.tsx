@@ -3,7 +3,7 @@ import type { SectionTabItem } from "@/components/layout";
 
 // One tab row for the agent page. MCP and Credentials are configuration, so
 // they moved into the Agent tab's config column; Sessions got its own tab
-// instead of a card on the overview; Versions lives in the header overflow.
+// instead of a card on the overview; History lives in the header overflow.
 // "Triggers" and "Integrate" folded into Integrations in EVE-1009: both
 // described how an agent is reached and when it runs.
 export type AgentTab = "agent" | "preview" | "integrations" | "stats" | "sessions";

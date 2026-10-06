@@ -327,7 +327,7 @@ impl DirectWorkerAdapters {
     ///
     /// `WorkerAdapters::get_session` projects this into the portable
     /// `ExecutionSession`; internal paths that need platform-only fields
-    /// (agent version pinning, scoped-MCP wiring) read the record here.
+    /// (scoped-MCP wiring) read the record here.
     pub(crate) async fn get_stored_session(
         &self,
         org_id: i64,
@@ -363,7 +363,7 @@ impl DirectWorkerAdapters {
                 .map(AgentId::from_uuid);
 
             if r.agent_id != responder {
-                r.agent_version_id = None;
+                r.agent_revision = None;
             }
 
             r.agent_id = responder;
@@ -410,7 +410,7 @@ impl DirectWorkerAdapters {
                 workspace_id: everruns_contracts::typed_id::WorkspaceId::from_uuid(r.workspace_id),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
-                agent_version_id: r.agent_version_id,
+                agent_revision: r.agent_revision,
                 virtual_user_id: r.virtual_user_id,
                 playground_user_id: r.playground_user_id,
                 owner_principal_id: r.owner_principal_id,
@@ -1149,16 +1149,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .await?
         {
             runtime_agent_id = session.agent_id;
-            let mut agent = match session.agent_id {
+            let agent = match session.agent_id {
                 Some(agent_id) => self.get_agent_record(org_id, agent_id.uuid()).await?,
                 None => None,
             };
-            if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
-                && let Some(version_row) = self.db.get_agent_version(org_id, version_id).await?
-            {
-                let version = crate::domains::agents::queries::row_to_agent_version(version_row);
-                *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
-            }
 
             if let Some(resolved) = self
                 .resolve_turn_mcp_server(org_id, &harness, agent.as_ref(), &session, server_prefix)
@@ -1247,8 +1241,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await
     }
     async fn load_turn_context(&self, org_id: i64, session_id: Uuid) -> Result<TurnContext> {
-        // Load the stored record: the platform-only fields (agent version
-        // pinning, scoped-MCP wiring) are consumed here, at the loading seam,
+        // Load the stored record: the platform-only fields (scoped-MCP
+        // wiring) are consumed here, at the loading seam,
         // and only the projected execution view leaves in the TurnContext.
         let session = self
             .get_stored_session(org_id, session_id)
@@ -1278,21 +1272,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 let hydrated_capabilities = self
                     .hydrate_capability_rows(org_id, capability_rows)
                     .await?;
-                let mut agent = Self::row_to_agent(row, hydrated_capabilities);
-                if let Some(version_id) = session.agent_version_id
-                    && let Some(version_row) = self
-                        .db
-                        .get_agent_version(org_id, version_id)
-                        .await
-                        .map_err(|e| {
-                        tracing::error!("Failed to get agent version: {}", e);
-                        store_error("Failed to get agent version")
-                    })?
-                {
-                    let version =
-                        crate::domains::agents::queries::row_to_agent_version(version_row);
-                    agent = crate::domains::agents::queries::version_to_agent(&agent, &version);
-                }
+                let agent = Self::row_to_agent(row, hydrated_capabilities);
 
                 (Some(agent), mcp_tools)
             } else {

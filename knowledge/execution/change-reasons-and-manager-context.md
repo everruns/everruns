@@ -12,9 +12,9 @@ tags:
 # Change Reasons and Manager Context
 
 Status: in progress. Phases 1 (reasons and history), 2 (manager context),
-3 (agents know), 4 (revisions and restore) and 7 (UI) are implemented, and
-so is phase 6 (reason enforcement, and the atomic history write for
-transactional commands); phase 5 is design. For what has landed, the Rust source
+3 (agents know), 4 (revisions and restore), 5 (agent versions retired) and
+7 (UI) are implemented, and so is phase 6 (reason enforcement, and the atomic
+history write for transactional commands). For what has landed, the Rust source
 (`crates/server/src/domains/change_history/`), migrations and OpenAPI export
 own the exact fields and this concept keeps only the intent, contracts and
 success bars.
@@ -24,8 +24,8 @@ success bars.
 Agents now change the platform as often as people do. Platform Chat edits an
 agent because a user asked, and a week later another thread is asked why the
 agent behaves differently. Today nothing records the why: the audit log says
-`management.agent.updated` and who, agent versions record what, and the reason
-lives only in a chat transcript that the next thread cannot see.
+`management.agent.updated` and who, agent versions recorded what, and the
+reason lives only in a chat transcript that the next thread cannot see.
 
 This design adds two generic things, one per question a manager asks:
 
@@ -39,9 +39,9 @@ This design adds two generic things, one per question a manager asks:
    the history of a decision. It is never part of the entity's own definition
    or runtime. "What must I keep in mind before changing this?" becomes a read.
 
-The history also replaces [Agent Versions](../runtime-resources/agent-versions.md):
-every entry carries a snapshot, any point can be restored, and public
-versions, semver and pinning go away (see Revisions, restore and secrets).
+The history also replaced Agent Versions (retired in phase 5): every entry
+carries a snapshot, any point can be restored, and public versions, semver
+and pinning are gone (see Revisions, restore and secrets).
 
 Both are generic. They hang off the command contract that every surface
 already shares ([Command Tree](command-tree.md),
@@ -176,9 +176,9 @@ go away: no publishing, no semver, no default version, no pinning. What
 people actually use them for is "go back to how it was", and history does
 that for every entity.
 
-### What agent versions mix today
+### What agent versions mixed
 
-One `agent_versions` row currently plays three roles at once:
+One `agent_versions` row played three roles at once:
 
 1. **Change log.** Every agent update writes an automatic draft snapshot
    (`change_kind = auto`, `is_published = false`, label `draft.N`), pruned to
@@ -263,6 +263,15 @@ reports how many exposures are pinned per org before it runs; pinned
 exposures switch to current, and the agent's history keeps the pinned
 snapshot as a revision, so "restore the pinned config" is one command.
 
+As built, the migration (`crates/server/migrations/184_retire_agent_versions.sql`)
+raises one notice per org with its pin counts, copies each version as an
+`agent` entry by the `system` actor (command `migrate_agent_versions`, the
+version's summary or label as the reason), renumbers each affected agent's
+revisions by creation time so migrated versions and later history form one
+timeline, and sets `agent_revision` on sessions that had captured a version.
+New sessions take the agent's latest revision at creation. Endpoints, triggers
+and participants that were pinned run the current agent.
+
 ### Retention
 
 No-op updates create no revisions, which keeps the TM-DOS-013 concern (hidden
@@ -271,16 +280,16 @@ growth from repeated identical updates) closed. Real changes are kept: up to
 their entries and reasons stay. Restore names the oldest revision still
 available when asked for an older one.
 
-### What goes away
+### What went away
 
 `agent_versions` and its commands (`create`, `list`, `diff`, `rollback`,
 `fork`, `set-default`), `agents.default_version_id`, the `agent_version_*`
 columns on endpoints, triggers and participants, `sessions.agent_version_id`
-(replaced by `agent_revision`), the version policy validation, the version UI
-tab (replaced by the History tab), and the `agent_versions` feature flag.
-`agents copy` already covers forking the current state; `agents copy --revision
-N` covers forking a past one. Fork lineage (`forked_from_agent_id`,
-`root_agent_id`) stays.
+(replaced by `agent_revision`), the version policy validation, the version
+history UI (replaced by the History sheet), and the `agent_versions` feature
+flag. `agents copy` covers forking the current state; forking a past one
+means restoring it first (`agents copy --revision N` is not built). Fork
+lineage (`forked_from_agent_id`, `root_agent_id`) stays.
 
 ## Coverage
 
@@ -641,9 +650,10 @@ Each phase is one PR-sized change.
 4. **Snapshots, restore and secrets** (implemented). Snapshot rendering with `Secret`
    markers for every kind in the coverage table, `history show`, `diff` and
    `restore`, the seeded-secret guard.
-5. **Retire agent versions.** Data migration into history, pins removed,
+5. **Retire agent versions** (implemented). Data migration into history, pins removed,
    `agent_revision` on sessions, version commands, UI tab and feature flag
-   deleted. The Agent Versions concept is retired.
+   deleted. The Agent Versions concept is retired. `agents copy --revision N`
+   is not built yet: copying a past state means restoring it first.
 6. **Enforcement and atomicity.** `reason_required` for agent callers
    (implemented: warning by default, error behind the
    `agent_change_reasons_required` flag). History write inside the mutation
@@ -671,6 +681,5 @@ Each phase is one PR-sized change.
 - [Command Tree](command-tree.md): the shared grammar and Mapper this extends.
 - [Domain Modules](../foundations/domains.md): `Command::run` as the chokepoint.
 - [Audit Logging](../security/audit-logging.md): the security record, unchanged.
-- [Agent Versions](../runtime-resources/agent-versions.md): the model phase 5 retires.
 - [Platform Chat](../harnesses/platform-chat.md): the main agent caller.
 - [Permissions](../security/permissions.md): read and manage policies per kind.

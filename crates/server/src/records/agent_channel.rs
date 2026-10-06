@@ -4,11 +4,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-pub use crate::records::agent_version_policy::AgentVersionPolicy;
 #[cfg(test)]
 use crate::records::app::{App, AppStatus};
 use crate::records::exposure::{DEFAULT_PUBLIC_TOOL_ACTIVITY_TEXT, PublicToolVisibility};
-use everruns_contracts::typed_id::{AgentChannelId, AgentVersionId};
+use everruns_contracts::typed_id::AgentChannelId;
 #[cfg(test)]
 use everruns_contracts::typed_id::{AgentId, AppId, HarnessId, PrincipalId};
 pub use everruns_core::channel::SessionBinding;
@@ -180,13 +179,6 @@ pub struct AgentChannel {
     /// is retained for the App API's existing shape.
     #[serde(default)]
     pub status: ChannelStatus,
-    /// Which Agent version sessions started through this channel run.
-    #[serde(default)]
-    pub agent_version_policy: AgentVersionPolicy,
-    /// Pinned Agent version. Set only when `agent_version_policy` is `pinned`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
-    pub agent_version_id: Option<AgentVersionId>,
     /// Timestamp when this channel was created.
     pub created_at: DateTime<Utc>,
     /// Timestamp when this channel was last updated.
@@ -1053,8 +1045,6 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(Uuid::nil()),
             agent_id: Some(AgentId::from_uuid(Uuid::nil())),
-            agent_version_policy: AgentVersionPolicy::Default,
-            agent_version_id: None,
             virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -1079,8 +1069,6 @@ mod tests {
             auth: None,
             enabled: true,
             status: ChannelStatus::Live,
-            agent_version_policy: AgentVersionPolicy::Default,
-            agent_version_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

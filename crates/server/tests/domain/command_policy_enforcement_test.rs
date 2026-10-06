@@ -757,7 +757,7 @@ const ALLOWED_PUBLIC: &[&str] = &[
 // A guard that must be remembered will be forgotten the next time someone adds
 // an agent command. This test walks the inventory instead: every mutating
 // command in the `agents` category must be classified as either guarded
-// against built-in agents or deliberately exempt. Adding an eleventh agent
+// against built-in agents or deliberately exempt. Adding another agent
 // command fails CI here until its author decides which it is.
 //
 // This is a classification check, not a behavioral one — the behavior is
@@ -767,11 +767,8 @@ const ALLOWED_PUBLIC: &[&str] = &[
 /// Agent commands that reject built-in agents via `q::ensure_not_built_in`.
 /// Each has a matching `built_in_agent_rejects_*` test.
 const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
-    "create_agent_version",
     "delete_agent",
     "destroy_agent",
-    "rollback_agent_version",
-    "set_default_agent_version",
     "update_agent",
     "upsert_agent",
 ];
@@ -794,11 +791,6 @@ const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
     // The escape hatch. Blocking copy would leave built-in agents unusable as
     // a starting point, and the rejection message tells users to copy first.
     "copy_agent",
-    // Forks a *source version* into a brand-new agent. It reads the built-in
-    // and writes elsewhere, so it is a copy, not a mutation — same reasoning
-    // as copy_agent. (EVE-865 listed this as needing a guard; the code shows
-    // it never writes to the source row.)
-    "fork_agent_version",
     // --- Bindings, not definition -------------------------------------------
     // These live in adjacent domains and never touch the agents row. An org
     // must be able to wire a built-in agent into its own environment; a

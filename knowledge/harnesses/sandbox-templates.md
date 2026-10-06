@@ -36,7 +36,7 @@ What exists in code today:
   the `command`/`commands` argument alias that lets an agent move between it and
   `bashkit_shell`. Behind `everruns-core/host-shell`, and deliberately absent
   from the hosted catalog, see [Where it lives](#where-the-host-shell-lives);
-- Agent-version Sandbox policies with named template bindings, session-time named
+- Agent Sandbox policies with named template bindings, session-time named
   or inline selection, strict target-policy validation, and an immutable resolved
   specification pinned to the logical Sandbox;
 - a control-plane surface, `GET /v1/sessions/{id}/sandbox` and
@@ -238,7 +238,7 @@ not look like a Linux shell that happens to be failing.
 
 ## Domain model
 
-Configuration is authored on the Agent version and is *desired* state.
+Configuration is authored on the Agent and is *desired* state.
 Everything below the Session line is *observed* state the control plane owns.
 
 ```mermaid
@@ -251,8 +251,7 @@ erDiagram
     ORG ||--o{ MACHINE : registers
 
     HARNESS ||--o{ AGENT : "layered under"
-    AGENT ||--o{ AGENT_VERSION : versions
-    AGENT_VERSION ||--o{ ENVIRONMENT_PROFILE : "declares, one default"
+    AGENT ||--o{ ENVIRONMENT_PROFILE : "declares, one default"
 
     SESSION ||--|| ENVIRONMENT : owns
     SESSION }o--|| WORKSPACE_HEAD : binds
@@ -272,7 +271,7 @@ Entities, and which of them are rows:
 
 | Entity | Kind | Owns |
 |---|---|---|
-| `ENVIRONMENT_PROFILE` | embedded value on the Agent version | target, containment, durability, lifecycle, bootstrap |
+| `ENVIRONMENT_PROFILE` | embedded value on the Agent | target, containment, durability, lifecycle, bootstrap |
 | `ENVIRONMENT` (`env_`) | durable row, one per Session | pinned profile snapshot, desired/observed state, generation, current checkpoint |
 | `ENVIRONMENT_INSTANCE` | disposable row, many per Environment | provider resource id, provider state, generation, observed state |
 | `ENVIRONMENT_CHECKPOINT` | row | kind (`provider_native` or `portable`), workspace revision, source tool call |
@@ -284,7 +283,7 @@ Entities, and which of them are rows:
 Four rules the shape encodes:
 
 **A profile is pinned, not referenced.** `ENVIRONMENT` stores a snapshot of the
-profile it resolved at session start. Editing the Agent version afterwards
+profile it resolved at session start. Editing the Agent afterwards
 cannot change the environment a running session is executing in; the next
 session picks up the new one.
 
@@ -333,7 +332,7 @@ only thing that differed between them was the environment.
 Decision: the **caller**, when creating the session, or the **agent**, as
 configuration. Never the model at runtime.
 
-An agent version declares named environments and a default:
+An agent declares named environments and a default:
 
 ```json
 {
@@ -965,7 +964,7 @@ phase: Bashkit and Daytona fix their own boundary, so nothing in the first
 release needs Seatbelt or Landlock. Exit: an Everruns session runs `bash` on the
 worker host, and the API refuses to pin a durable agent to it.
 
-**P2, environment sets.** Named environments on the agent version and selection
+**P2, environment sets.** Named environments on the agent and selection
 at session creation, inherited, named, or inlined. No switch operation, no
 model-facing control tool. Exit: two sessions bound to one Workspace, one on
 Bashkit and one on Daytona, read and write the same files.

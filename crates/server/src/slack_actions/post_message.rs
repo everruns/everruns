@@ -62,7 +62,7 @@ impl DbSlackActionInvoker {
             channel_liveness(&context, &endpoint)
                 .map_err(|_| SlackActionError::ChannelUnavailable)?;
             let app_id = context.public_id;
-            return Ok((app_id, endpoint.into_channel(&context)));
+            return Ok((app_id, endpoint.into_channel()));
         };
         // Decide which endpoint before loading the app, so the tag fallback and
         // the FK agree on a single target.

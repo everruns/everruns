@@ -2,7 +2,7 @@
 
 // Cost — what the run consumed and what produced it (EVE-854): token totals,
 // retries, the context breakdown (folded in from the retired Context tab), and
-// the definition block that pins the recording to the exact agent version,
+// the definition block that pins the recording to the exact agent revision,
 // harness, model and identity that ran it.
 //
 // Every number here is derived from the event stream or from read endpoints;
@@ -12,7 +12,6 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { Bot, Boxes, Fingerprint, RefreshCcw, Sparkles, Zap } from "lucide-react";
 import { useVirtualUser } from "@/hooks/use-virtual-users";
-import { useAgentVersions } from "@/hooks/use-agents";
 import { useHarness } from "@/hooks/use-harnesses";
 import { useSessionContextReport } from "@/hooks/use-sessions";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -67,7 +66,6 @@ export default function CostPage() {
   const { sessionId, session, agent, agentId, llmModel, liveUsage, events } = useSessionContext();
   const { data: report, isLoading: reportLoading } = useSessionContextReport(sessionId);
   const { data: harness } = useHarness(session?.harness_id ?? "");
-  const { data: versions } = useAgentVersions(agentId);
   const { data: identity } = useVirtualUser(session?.virtual_user_id ?? undefined);
 
   // Retries are not a first-class event: they are the failed attempts the run
@@ -86,11 +84,6 @@ export default function CostPage() {
     }
     return { failedTurns, failedGenerations, toolFailures };
   }, [events]);
-
-  const agentVersion = useMemo(
-    () => (versions ?? []).find((version) => version.id === session?.agent_version_id),
-    [versions, session?.agent_version_id],
-  );
 
   const total = report?.estimated_input_tokens ?? 0;
   const windowTokens = report?.context_window_tokens;
@@ -136,15 +129,11 @@ export default function CostPage() {
             ) : (
               <span className="text-muted-foreground">None</span>
             )}
-            {agentVersion ? (
+            {session?.agent_revision != null && (
               <span className="ml-2 font-mono text-xs text-muted-foreground">
-                v{agentVersion.version}
+                revision {session.agent_revision}
               </span>
-            ) : session?.agent_version_id ? (
-              <span className="ml-2 font-mono text-xs text-muted-foreground">
-                <EntityIdentity value={session.agent_version_id}>pinned version</EntityIdentity>
-              </span>
-            ) : null}
+            )}
           </DefinitionRow>
 
           <DefinitionRow icon={Boxes} label="Harness">

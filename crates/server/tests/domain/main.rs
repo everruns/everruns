@@ -25,6 +25,7 @@ mod ag_ui_interrupts_test;
 mod agent_budget_subject_test;
 mod agent_channels_migration_test;
 mod agent_trigger_invocation_integration_test;
+mod agent_versions_retirement_migration_test;
 mod app_budget_retirement_test;
 mod app_invocation_channels_integration_test;
 mod auth_integration_test;

@@ -80,8 +80,6 @@ async fn endpoint(ctx: &Ctx, agent: &Agent, app: Option<&str>, encrypted: bool) 
                 enabled: true,
                 status: "live".into(),
                 virtual_user_id: None,
-                agent_version_policy: "latest".into(),
-                agent_version_id: None,
                 owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1).uuid(),
                 resolved_owner_user_id: None,
             },

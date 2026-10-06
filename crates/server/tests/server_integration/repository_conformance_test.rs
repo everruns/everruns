@@ -55,8 +55,7 @@ pub(crate) fn session_input(owner_principal_id: PrincipalId, label: &str) -> Cre
         trigger_id: None,
         harness_id: None,
         agent_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id,
         resolved_owner_user_id: None,
@@ -395,8 +394,6 @@ async fn run_agent_trigger_conformance(
             execution_app_id: None,
             legacy_alias_id: None,
             legacy_alias_name: None,
-            agent_version_policy: None,
-            agent_version_id: None,
         })
         .await
         .expect("create agent trigger");

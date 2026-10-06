@@ -1,14 +1,13 @@
 "use client";
 
-// Side sheet behind the agent page's "More" rows (and the Version history
-// overflow item). Large editors (Branding, Files) need room a narrow
+// Side sheet behind the agent page's "More" rows. Large editors (Branding, Files) need room a narrow
 // column or an accordion cannot give, so each opens here, over the page.
 //
 // Two kinds of section live here and the sheet says which:
 // - Draft sections (Branding, Files, Network access) edit the page's
 //   draft. A change puts the page into edit mode; nothing saves until the
 //   header's Save changes.
-// - Live sections (MCP servers, Credentials, Version history) manage their own
+// - Live sections (MCP servers, Credentials) manage their own
 //   resources and save as they go, as they did when they were tabs.
 
 import { Check, Loader2, X, Zap } from "lucide-react";
@@ -33,7 +32,6 @@ import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
-import { AgentVersionHistory } from "@/components/agents/agent-version-history";
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent } from "@/lib/api/types";
 import { formatTokens, pluralize } from "@/lib/formatting";
@@ -47,8 +45,7 @@ export type AgentSettingsSection =
   | "network"
   | "sandbox"
   | "usage"
-  | "health"
-  | "versions";
+  | "health";
 
 const SECTIONS: Record<
   AgentSettingsSection,
@@ -99,12 +96,6 @@ const SECTIONS: Record<
     title: "Health check",
     description: "Generated smoke tests run against the agent's saved configuration.",
     kind: "info",
-  },
-  versions: {
-    title: "Version history",
-    description: "Published versions and snapshots of this agent.",
-    kind: "live",
-    wide: true,
   },
 };
 
@@ -189,7 +180,6 @@ export function AgentSettingsSheet({
                 ))}
               {section === "usage" && <UsageSection agent={agent} />}
               {section === "health" && <AgentHealthCheck agentId={agent.id} />}
-              {section === "versions" && <AgentVersionHistory agent={agent} />}
             </div>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">

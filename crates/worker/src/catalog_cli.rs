@@ -116,7 +116,7 @@ mod tests {
         assert!(
             specs
                 .iter()
-                .any(|spec| spec.path == ["agents", "versions"] && spec.verb == "rollback")
+                .any(|spec| spec.path == ["agents", "channels"] && spec.verb == "publish")
         );
     }
 }

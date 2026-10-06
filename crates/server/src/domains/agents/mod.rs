@@ -22,7 +22,6 @@ pub mod preview;
 pub mod queries;
 pub(crate) mod sandbox_policy;
 pub mod types;
-pub(crate) mod version_policy;
 
 pub use commands::*;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};

@@ -30,6 +30,15 @@
   runs in CI. It stays non-default: `DECISIONS_DRIVER=openai` selects it. See
   [Decisions Service](operations/decisions-service.md#decision-drivers).
 
+* **Agent versions retired.** Entity history replaces them: migration 184
+  copies every version into the agent's history as a revision (reason from
+  its summary, `system` actor) in one created_at-ordered timeline, records
+  `agent_revision` on sessions, and drops the pins on channels, triggers,
+  apps and participants, `default_version_id`, `forked_from_version_id` and
+  the table. Version commands, the `agent_versions` flag, the version UI and
+  the Agent Versions concept are gone; fork lineage stays. See
+  [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md#runtime-binding-without-versions).
+
 * **Cut-off tool calls never run, and the turn decides what next.** OpenAI
   Responses and Bedrock drop a call whose arguments never finished or do not
   parse instead of running it with `{}`, like the other drivers. A generation

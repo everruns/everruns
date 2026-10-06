@@ -152,8 +152,6 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
                 description: None,
                 harness_id: Uuid::nil(),
                 agent_id: Some(agent.id.uuid()),
-                agent_version_policy: "default".into(),
-                agent_version_id: None,
                 virtual_user_id: None,
                 owner_principal_id: PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
