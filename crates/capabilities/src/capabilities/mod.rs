@@ -10,7 +10,6 @@ pub mod a2a_delegation;
 pub mod ag_ui_delegation;
 pub mod agent_handoff;
 pub mod background_execution;
-pub mod user_mcp;
 pub mod citation_retrieval;
 pub mod citation_verification;
 pub mod data_knowledge;
@@ -32,6 +31,7 @@ pub mod session_tasks;
 pub mod slack;
 pub mod subagents;
 pub mod user_hooks;
+pub mod user_mcp;
 pub mod util;
 
 pub use everruns_core::capabilities::{
@@ -51,7 +51,6 @@ pub use agent_handoff::{
     AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, SpawnAgentHandoffTool,
 };
 pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
-pub use user_mcp::{USER_MCP_CAPABILITY_ID, UserMcpCapability, user_mcp_use_enabled};
 pub use citation_retrieval::{
     CITATION_RETRIEVAL_CAPABILITY_ID, CitationRetrievalCapability, CitationRetrievalConfig,
 };
@@ -111,6 +110,7 @@ pub use subagents::{
     SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
 };
 pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
+pub use user_mcp::{USER_MCP_CAPABILITY_ID, UserMcpCapability, user_mcp_use_enabled};
 
 /// Register the hosted platform-management capabilities on a registry.
 pub fn register_platform_capabilities(

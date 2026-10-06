@@ -168,12 +168,14 @@ impl RuntimeAccount {
         // those servers: a custom server signs in under its own id, a
         // catalog-sourced one under its preset's.
         let uses_user_servers = expanded.iter().any(|config| {
-            config.capability_id()
-                == everruns_capabilities::capabilities::USER_MCP_CAPABILITY_ID
+            config.capability_id() == everruns_capabilities::capabilities::USER_MCP_CAPABILITY_ID
                 && everruns_capabilities::capabilities::user_mcp_use_enabled(config.config_value())
         });
         if uses_user_servers {
-            for server in db.list_user_mcp_servers(self.org_id, self.id.uuid()).await? {
+            for server in db
+                .list_user_mcp_servers(self.org_id, self.id.uuid())
+                .await?
+            {
                 let id = server.catalog_mcp_server_id.unwrap_or(server.row.id.uuid());
                 providers.insert(everruns_core::mcp_oauth_provider_id_for_uuid(id));
             }

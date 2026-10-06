@@ -261,7 +261,12 @@ async fn unattended_and_shared_turns_get_no_personal_servers() {
     // No input message: a schedule or trigger, nobody is chatting.
     assert!(fixture.layer_for(None).await.is_empty());
     // A message nobody recorded as theirs.
-    assert!(fixture.layer_for(Some(Uuid::from_u128(92))).await.is_empty());
+    assert!(
+        fixture
+            .layer_for(Some(Uuid::from_u128(92)))
+            .await
+            .is_empty()
+    );
 
     // Two people in the session: neither person's servers apply.
     fixture.join(201).await;

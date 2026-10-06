@@ -379,7 +379,10 @@ pub(crate) fn test_agent() -> Agent {
     }
 }
 
-pub(crate) fn test_session(harness_id: HarnessId, agent_id: everruns_contracts::typed_id::AgentId) -> Session {
+pub(crate) fn test_session(
+    harness_id: HarnessId,
+    agent_id: everruns_contracts::typed_id::AgentId,
+) -> Session {
     let session_id = SessionId::new();
     Session {
         playground_user_id: None,

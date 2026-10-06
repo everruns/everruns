@@ -100,8 +100,20 @@ mod tests {
         assert!(user_mcp_use_enabled(&json!({})));
         assert!(user_mcp_use_enabled(&Value::Null));
         assert!(!user_mcp_use_enabled(&json!({"use": false})));
-        assert!(UserMcpCapability.validate_config(&json!({"use": true})).is_ok());
-        assert!(UserMcpCapability.validate_config(&json!({"use": "yes"})).is_err());
-        assert!(UserMcpCapability.validate_config(&json!({"manage": true})).is_err());
+        assert!(
+            UserMcpCapability
+                .validate_config(&json!({"use": true}))
+                .is_ok()
+        );
+        assert!(
+            UserMcpCapability
+                .validate_config(&json!({"use": "yes"}))
+                .is_err()
+        );
+        assert!(
+            UserMcpCapability
+                .validate_config(&json!({"manage": true}))
+                .is_err()
+        );
     }
 }

@@ -130,15 +130,18 @@ async fn scoped_server(
         else {
             return Ok(None);
         };
-        let acts_as = if McpServerService::settings_from_row(&preset).auth_mode
-            == McpServerAuthMode::OAuth
-        {
-            McpServerActsAs::User
-        } else {
-            McpServerActsAs::None
-        };
+        let acts_as =
+            if McpServerService::settings_from_row(&preset).auth_mode == McpServerAuthMode::OAuth {
+                McpServerActsAs::User
+            } else {
+                McpServerActsAs::None
+            };
         return Ok(Some(ScopedMcpServer {
-            preset: Some(format!("catalog:{}", preset.name).parse().map_err(anyhow::Error::msg)?),
+            preset: Some(
+                format!("catalog:{}", preset.name)
+                    .parse()
+                    .map_err(anyhow::Error::msg)?,
+            ),
             acts_as,
             ..Default::default()
         }));
@@ -161,7 +164,8 @@ async fn scoped_server(
             server.oauth_provider_id = Some(mcp_oauth_provider_id_for_uuid(row.id.uuid()));
         }
         McpServerAuthMode::ApiKey => {
-            let (Some(encrypted), Some(encryption)) = (row.api_key_encrypted.as_deref(), turn.encryption)
+            let (Some(encrypted), Some(encryption)) =
+                (row.api_key_encrypted.as_deref(), turn.encryption)
             else {
                 return Ok(None);
             };
@@ -197,7 +201,10 @@ pub fn merge_turn_scoped_mcp_servers(
     );
     let contributed =
         collect_capability_mcp_servers(&resolved.resolved_capability_configs, registry);
-    merge_scoped_mcp_servers(&merge_scoped_mcp_servers(user_layer, &contributed), &explicit)
+    merge_scoped_mcp_servers(
+        &merge_scoped_mcp_servers(user_layer, &contributed),
+        &explicit,
+    )
 }
 
 #[cfg(test)]
