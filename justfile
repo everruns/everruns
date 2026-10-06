@@ -232,3 +232,11 @@ load-test profile="medium" *args:
             exit 1
             ;;
     esac
+
+# Starts the server and a gRPC worker in process against PostgreSQL
+# (migrated on start), llmsim answering instantly. Example: --smoke
+# Server end-to-end turn latency bench (p50/p95 per turn)
+[no-cd]
+bench-turn-latency *args:
+    DATABASE_URL="${DATABASE_URL:-postgres://everruns:everruns@localhost:${DB_PORT:-9332}/everruns_test}" \
+        cargo bench --package everruns-server --bench turn_latency -- {{args}}

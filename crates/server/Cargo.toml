@@ -137,3 +137,10 @@ tar.workspace = true
 [[bench]]
 name = "load_test"
 harness = false
+
+# End-to-end turn latency through the real server and a gRPC worker
+# (`benches/turn_latency.rs`); needs DATABASE_URL. Run weekly by
+# `durable-bench.yml`, never by `cargo test`.
+[[bench]]
+name = "turn_latency"
+harness = false

@@ -20,6 +20,12 @@
 # this job's moniker: the committed turn_backends_baseline.jsonl was taken on
 # a 4-core container (`local`), so until a run's summary.jsonl replaces it the
 # job reports and does not gate.
+#
+# The `server-turn-latency` job runs `crates/server/benches/turn_latency.rs`:
+# the real server and a gRPC worker in process, one chat turn at a time
+# (HTTP message, worker claims over gRPC, turn.completed), p50/p95 per turn.
+# The bench migrates the service database itself. It has no baseline yet, so
+# it reports only.
 name: Durable Benchmarks
 
 on:
@@ -170,5 +176,62 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: turn-backends-bench
+          path: ${{ runner.temp }}/summary.jsonl
+          if-no-files-found: warn
+
+  server-turn-latency:
+    name: Server Turn Latency (HTTP, gRPC worker, PostgreSQL)
+    runs-on: ubuntu-latest
+    # A release build of the whole server (thin LTO) is most of the time.
+    timeout-minutes: 75
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: server-turn-latency-bench
+
+      - name: Run turn_latency
+        run: |
+          cargo bench -p everruns-server --bench turn_latency -- \
+            --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
+
+      - name: Report
+        run: |
+          echo "::group::summary.jsonl"; cat "$RUNNER_TEMP/summary.jsonl"; echo "::endgroup::"
+          {
+            echo "### Server turn latency"
+            echo
+            echo "| Scenario | Turns | Turns/s | e2e p50 ms | e2e p95 ms | server p50 ms | server p95 ms | pickup p50 ms |"
+            echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            jq -r '"| \(.scenario) | \(.tasks) | \(.tasks_per_sec) | \(.e2e_p50_ms) | \(.e2e_p95_ms) | \(.server_p50_ms) | \(.server_p95_ms) | \(.s2s_p50_ms) |"' \
+              "$RUNNER_TEMP/summary.jsonl"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: server-turn-latency-bench
           path: ${{ runner.temp }}/summary.jsonl
           if-no-files-found: warn
