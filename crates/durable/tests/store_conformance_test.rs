@@ -136,6 +136,7 @@ conformance!(
     events_append_in_order_with_optimistic_concurrency,
     signals_are_consumed_once,
     dead_letters_can_be_requeued,
+    requeued_dead_letters_keep_their_queue_and_options,
     cancel_workflow_cancels_pending_tasks_once,
     drained_workers_stop_claiming_until_resumed,
     start_run_creates_an_unknown_workflow,
@@ -156,6 +157,11 @@ conformance!(
     stranded_runs_are_requeued_once,
     start_run_resumes_a_stranded_run,
 );
+
+// Dead-letter cases live in their own file to keep this one under the size cap.
+#[path = "store_conformance/dead_letters.rs"]
+mod dead_letters;
+use dead_letters::*;
 
 // --- helpers ---------------------------------------------------------------
 
@@ -707,40 +713,6 @@ async fn signals_are_consumed_once<H: Harness>(h: H) {
     assert_eq!(rest.len(), 1);
     assert_eq!(rest[0].signal_type, "comment");
     assert!(h.store().get_pending_signals(wf).await.unwrap().is_empty());
-}
-
-async fn dead_letters_can_be_requeued<H: Harness>(h: H) {
-    let ty = activity_type();
-    let w = worker(&h, &ty).await;
-    let wf = workflow(&h).await;
-    let id = enqueue(&h, task(Some(wf), &ty, "flaky")).await;
-    claim(&h, &w, &ty, 1).await;
-    h.store()
-        .fail_task_with_retry(id, "boom", false)
-        .await
-        .unwrap();
-    h.store()
-        .move_to_dlq(id, vec!["boom".to_string()])
-        .await
-        .unwrap();
-
-    let entries = h
-        .store()
-        .list_dlq(
-            everruns_durable::persistence::DlqFilter {
-                workflow_id: Some(wf),
-                activity_type: None,
-            },
-            Default::default(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].original_task_id, id);
-
-    let requeued = h.store().requeue_from_dlq(entries[0].id).await.unwrap();
-    assert_ne!(requeued, id);
-    assert_eq!(claim(&h, &w, &ty, 1).await, vec![requeued]);
 }
 
 // --- cancellation, draining ----------------------------------------------------

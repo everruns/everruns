@@ -26,26 +26,27 @@ impl DeadLetters for InMemoryWorkflowEventStore {
             error_history,
             dead_at: Utc::now(),
         };
+        // Kept beside the entry so a requeue restores the task's queue and retries.
+        let options = task.definition.options.clone();
 
         drop(tasks);
-        self.dlq.write().insert(entry.id, entry);
+        self.dlq.write().insert(entry.id, (entry, options));
         Ok(())
     }
 
     async fn requeue_from_dlq(&self, dlq_id: Uuid) -> Result<Uuid, StoreError> {
         let mut dlq = self.dlq.write();
-        let entry = dlq
+        let (entry, mut options) = dlq
             .remove(&dlq_id)
             .ok_or(StoreError::TaskNotFound(dlq_id))?;
 
         drop(dlq);
 
-        // Create new task from DLQ entry
+        // Same contract as the PostgreSQL store: the task keeps its enqueue
+        // options (queue, retries), and runs now rather than after a delay.
+        options.start_delay = None;
         let task_id = Uuid::now_v7();
         let mut tasks = self.tasks.write();
-
-        // We need to recreate options - use defaults for simplicity in test
-        let options = crate::workflow::ActivityOptions::default();
 
         tasks.insert(
             task_id,
@@ -69,6 +70,7 @@ impl DeadLetters for InMemoryWorkflowEventStore {
         let dlq = self.dlq.read();
         let mut entries: Vec<_> = dlq
             .values()
+            .map(|(entry, _)| entry)
             .filter(|e| {
                 if let Some(wid) = filter.workflow_id
                     && e.workflow_id != Some(wid)
