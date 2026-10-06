@@ -11,16 +11,16 @@ that need no code changes are not listed. For every release, see the
 
 ## 0.42 (planned)
 
-### SQLite connections move to `everruns-db`
+### SQLite connections move to `everruns::sqlite`
 
-The embedded SQLite wrapper moved out of `everruns-durable` into the new
-`everruns-db` crate, so the `everruns` `local` feature no longer compiles the
-durable engine. `everruns-durable`'s `sqlite` feature and `sqlite` module are
-removed. Replace `everruns-durable = { features = ["sqlite"] }` with
-`everruns-db = { features = ["sqlite"] }` and `everruns_durable::sqlite` with
-`everruns_db::sqlite`; the functions and types are unchanged. `UpdateField` is
-now `everruns_db::UpdateField`; `everruns_durable::UpdateField` still names it,
-and the `everruns_durable::update_field` module is removed.
+The embedded SQLite wrapper moved out of `everruns-durable` into the `everruns`
+facade, so the `local` feature no longer compiles the durable engine.
+`everruns-durable`'s `sqlite` feature and `sqlite` module are removed. Replace
+`everruns-durable = { features = ["sqlite"] }` with
+`everruns = { features = ["local"] }` and `everruns_durable::sqlite` with
+`everruns::sqlite`; the functions and types are unchanged.
+`everruns_durable::UpdateField` still names `UpdateField`; the
+`everruns_durable::update_field` module is no longer public.
 
 ## 0.41 (planned)
 
@@ -31,7 +31,7 @@ typed as `&rusqlite::Connection`, `rusqlite::params!`, and `OptionalExtension`.
 Connections now open through `everruns-durable`'s optional `sqlite` feature.
 Framework applications keep the same local stores and schemas; no data migration
 is needed. Hosts opening independent handles should use
-`everruns_durable::sqlite::open` or `open_in_memory` (`everruns_db::sqlite`
+`everruns_durable::sqlite::open` or `open_in_memory` (`everruns::sqlite`
 from 0.42). To add application tables to
 the Framework database, retain `SqliteDb` and use its `with_conn` callbacks.
 

@@ -534,7 +534,6 @@ jobs:
         run: |
           cargo check --locked --all-features \
             -p everruns-core \
-            -p everruns-db \
             -p everruns-durable \
             -p everruns-durable-engine \
             -p everruns-drivers \
@@ -1114,7 +1113,9 @@ jobs:
           # Relocated host acceptance tests include process-global fixtures; preserve
           # their serial execution in this existing single facade invocation.
           cargo test -p everruns -p everruns-docs-snippets --all-features -- --test-threads=1
-          cargo check -p everruns --no-default-features
+          # clippy, not check: lints such as never_loop only fire on cfg-gated
+          # code in the bare build, and every other clippy run uses --all-features.
+          cargo clippy -p everruns --no-default-features -- -D warnings
           # Dynamically inventories every crates/everruns/examples/*.rs target,
           # rejects internal-crate imports, and compiles the complete set offline.
           bash scripts/lib/check-everruns-examples.sh

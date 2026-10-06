@@ -840,7 +840,7 @@ pub async fn upsert_agent(
                 .map_err(crate::domains::common::classify_anyhow)?
                 .ok_or_else(|| crate::domains::common::CommandError::not_found("Agent"))?;
                 let update_req = UpdateAgentRequest {
-                    service_virtual_user_id: everruns_db::UpdateField::Unchanged,
+                    service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
                     name: Some(req.name),
                     display_name: req.display_name,

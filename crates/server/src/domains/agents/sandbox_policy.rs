@@ -2,7 +2,7 @@
 
 use crate::domains::common::CommandError;
 use crate::records::SandboxPolicy;
-use everruns_db::UpdateField;
+use crate::storage::UpdateField;
 use serde_json::Value;
 
 pub(super) fn validate(value: Option<&SandboxPolicy>) -> Result<(), CommandError> {

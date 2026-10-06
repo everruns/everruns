@@ -10,6 +10,7 @@ use crate::records::{
     AuditEvent, BuiltInHarnessDefinition, ManagementAction, Organization, generate_org_public_id,
     validate_org_public_id,
 };
+use crate::storage::UpdateField;
 use crate::storage::{
     StorageBackend,
     models::{AddOrganizationMemberOutcome, UpdateOrganizationSettings},
@@ -21,7 +22,6 @@ use axum::{
     routing::get,
 };
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
-use everruns_db::UpdateField;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,

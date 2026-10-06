@@ -17,9 +17,9 @@ use uuid::Uuid;
 
 use crate::session_row_fixture::base_session_row;
 use everruns_core::message_filter::MessageQuery;
-use everruns_db::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
+use everruns_server::storage::UpdateField;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
     CreateDeclarativeCapabilityRow, CreateEvalRow, CreateEventRow, CreateHarnessRow,
@@ -1377,7 +1377,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         Some("call-final")
     );
 
-    let pool = backend.pool().expect("postgres pool");
+    let pool = backend.pool();
     let (index_ddl, index_target, predicate): (String, String, Option<String>) = sqlx::query_as(
         r#"
         SELECT pg_get_indexdef(i.indexrelid),

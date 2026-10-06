@@ -336,7 +336,7 @@ async fn run_background_sweep_regression() {
         .await
         .expect("save parked turn input");
 
-    let _burst = saturate(context.db.pool().expect("request pool"), 4).await;
+    let _burst = saturate(context.db.pool(), 4).await;
     let request_error = context
         .db
         .get_session(DEFAULT_ORG_ID, scheduled_session.id)

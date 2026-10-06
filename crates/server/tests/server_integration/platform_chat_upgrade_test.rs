@@ -3,8 +3,8 @@
 use super::session_row_fixture::base_session_row;
 use crate::test_harness;
 use everruns_contracts::typed_id::{AgentId, PrincipalId};
-use everruns_db::UpdateField;
 use everruns_server::domains::session_files::{CreateFileInput, WorkspaceFileService};
+use everruns_server::storage::UpdateField;
 use everruns_server::{
     org_init,
     storage::{Database, StorageBackend, models::*},

@@ -1446,10 +1446,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn sandbox_persistence_store(
         &self,
     ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
-        self.db.pool().map(|pool| {
-            Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()))
-                as Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>
-        })
+        Some(Arc::new(crate::storage::PgSandboxCheckpointStore::new(
+            self.db.pool().clone(),
+        )))
     }
 
     fn native_async_store(
@@ -1646,19 +1645,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn durable_tool_result_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
-        self.db.pool().map(|pool| {
-            Arc::new(crate::storage::PgDurableToolResultStore::new(pool.clone()))
-                as Arc<dyn everruns_core::durability::DurableToolResultStore>
-        })
+        Some(Arc::new(crate::storage::PgDurableToolResultStore::new(
+            self.db.pool().clone(),
+        )))
     }
 
     fn subagent_spawn_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
-        self.db.pool().map(|pool| {
-            Arc::new(crate::storage::PgSubagentSpawnStore::new(pool.clone()))
-                as Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>
-        })
+        Some(Arc::new(crate::storage::PgSubagentSpawnStore::new(
+            self.db.pool().clone(),
+        )))
     }
 
     async fn invoke_scheduled_channel(

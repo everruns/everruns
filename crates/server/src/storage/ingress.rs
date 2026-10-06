@@ -1,5 +1,5 @@
+use crate::storage::UpdateField;
 use chrono::{DateTime, Utc};
-use everruns_db::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 

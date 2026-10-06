@@ -10,7 +10,8 @@ tags:
 ---
 # Agent MCP Attachments (acts-as semantics)
 
-> Status: **Proposed.** Supersedes nothing yet. [mcp-servers.md](mcp-servers.md) and
+> Status: **Proposed.** Supersedes nothing yet. Extended by the
+> [user MCP servers](user-mcp-servers.md) proposal. [mcp-servers.md](mcp-servers.md) and
 > [runtime-mcp.md](runtime-mcp.md) remain authoritative for what exists today.
 >
 > Runtime ownership and credential authority are now defined by

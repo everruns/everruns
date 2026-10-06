@@ -293,7 +293,14 @@ compares). `-- --smoke` runs it in seconds. The bench target sets
 `test = true`, so the facade CI job's existing
 `cargo test -p everruns ... --all-features` runs the smoke at the cost of one
 more link and no extra cargo invocation (see
-[CI Build Time](../project/ci-build-time.md)); there is no scheduled full run.
+[CI Build Time](../project/ci-build-time.md)). The full run, PostgreSQL rows
+included, runs weekly as the `turn-backends` job of
+[`durable-bench.yml`](../../.github/workflows/durable-bench.yml) against a
+PostgreSQL service container. It fails when the PostgreSQL rows are missing
+and gates throughput only against baseline rows with its own moniker
+(`github-ubuntu-latest`); the committed baseline is from a container
+(`local`), so the job reports without gating until a CI run's
+`turn-backends-bench` artifact replaces it.
 
 ### Queue plus per-step checkpoint, not Workflow replay
 

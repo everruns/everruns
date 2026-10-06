@@ -109,7 +109,6 @@ everruns-worker = { path = "../worker" }  # DurableRunner, worker adapters, in-p
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-durable.workspace = true  # For durable execution gRPC service
-everruns-db.workspace = true  # UpdateField for storage updates
 image.workspace = true  # For image thumbnail generation
 
 # gRPC
@@ -136,4 +135,11 @@ tar.workspace = true
 
 [[bench]]
 name = "load_test"
+harness = false
+
+# End-to-end turn latency through the real server and a gRPC worker
+# (`benches/turn_latency.rs`); needs DATABASE_URL. Run weekly by
+# `durable-bench.yml`, never by `cargo test`.
+[[bench]]
+name = "turn_latency"
 harness = false

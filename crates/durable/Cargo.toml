@@ -29,12 +29,9 @@ categories = ["asynchronous", "database", "development-tools"]
 exclude = ["benches/checkpoints/", "benches/baseline.jsonl"]
 
 [dependencies]
-# Decision: no `everruns-*` normal dependencies except the leaf `everruns-db`
-# (no Everruns dependencies of its own; it defines `UpdateField`, which
-# `ScheduleUpdate` exposes). This crate is a generic durable-execution engine;
-# agent/turn semantics live in the worker and server.
+# Decision: no `everruns-*` normal dependencies. This crate is a generic
+# durable-execution engine; agent/turn semantics live in the worker and server.
 # Enforced by `scripts/lib/check-durable-isolation.sh`.
-everruns-db.workspace = true
 
 # Async runtime
 tokio = { workspace = true }

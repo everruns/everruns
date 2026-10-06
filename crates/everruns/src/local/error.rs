@@ -1,8 +1,8 @@
 // Error type for the local crate. Converts cleanly into the core
 // `AgentLoopError` so trait implementations can return `everruns_contracts::error::Result`.
 
+use crate::sqlite as rusqlite;
 use everruns_contracts::error::AgentLoopError;
-use everruns_db::sqlite as rusqlite;
 
 #[derive(Debug, thiserror::Error)]
 /// Failure produced while configuring or operating local persistence.

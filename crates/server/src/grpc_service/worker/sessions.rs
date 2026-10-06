@@ -140,7 +140,7 @@ impl WorkerServiceImpl {
                 crate::api::sessions::UpdateSessionRequest {
                     title: Some(req.title),
                     goal: None,
-                    virtual_user_id: everruns_db::UpdateField::Unchanged,
+                    virtual_user_id: crate::storage::UpdateField::Unchanged,
                     locale: None,
                     tags: None,
                 },

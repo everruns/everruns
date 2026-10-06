@@ -14,7 +14,7 @@ impl WorkerServiceImpl {
     ) -> Result<Response<CreateSessionScheduleResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.schedule_store(req.org_id)?;
+        let store = self.schedule_store(req.org_id);
 
         let scheduled_at = req
             .scheduled_at
@@ -52,7 +52,7 @@ impl WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let schedule_id = parse_uuid(req.schedule_id.as_ref())?;
-        let store = self.schedule_store(req.org_id)?;
+        let store = self.schedule_store(req.org_id);
 
         let schedule = store
             .cancel_schedule(
@@ -76,7 +76,7 @@ impl WorkerServiceImpl {
     ) -> Result<Response<ListSessionSchedulesResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.schedule_store(req.org_id)?;
+        let store = self.schedule_store(req.org_id);
 
         let schedules = store.list_schedules(session_id.into()).await.map_err(|e| {
             tracing::error!("Failed to list schedules: {}", e);
@@ -96,7 +96,7 @@ impl WorkerServiceImpl {
     ) -> Result<Response<CountActiveSessionSchedulesResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let store = self.schedule_store(req.org_id)?;
+        let store = self.schedule_store(req.org_id);
 
         let count = store
             .count_active_schedules(session_id.into())
@@ -114,7 +114,7 @@ impl WorkerServiceImpl {
         request: Request<CountActiveOrgSchedulesRequest>,
     ) -> Result<Response<CountActiveOrgSchedulesResponse>, Status> {
         let req = request.into_inner();
-        let store = self.schedule_store(req.org_id)?;
+        let store = self.schedule_store(req.org_id);
 
         let count = store.count_active_org_schedules().await.map_err(|e| {
             tracing::error!("Failed to count active org schedules: {}", e);

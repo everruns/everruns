@@ -132,34 +132,33 @@ impl AgentBuilder {
             Some(servers) => servers.clone(),
             None => package.0.bind_mcp(|_| None)?,
         };
+        // Without the `mcp` feature, any declared server is an error. Checked
+        // outside the loop: a loop that always returns trips clippy's never_loop.
+        #[cfg(not(feature = "mcp"))]
+        if !servers.is_empty() {
+            return Err(failure("mcpServers", "enable the mcp Cargo feature"));
+        }
+        #[cfg(feature = "mcp")]
         for (name, server) in servers {
-            #[cfg(not(feature = "mcp"))]
-            {
-                let _ = (name, server);
-                return Err(failure("mcpServers", "enable the mcp Cargo feature"));
-            }
-            #[cfg(feature = "mcp")]
-            {
-                if let Some(preset) = &server.preset {
-                    if self.mcp_servers.iter().any(|bound| bound.name == name) {
-                        continue;
-                    }
-                    return Err(failure(
-                        "mcpServers",
-                        format!(
-                            "{preset}: bind {name} with AgentBuilder::mcp_server before applying the package"
-                        ),
-                    ));
+            if let Some(preset) = &server.preset {
+                if self.mcp_servers.iter().any(|bound| bound.name == name) {
+                    continue;
                 }
-                #[cfg(not(feature = "mcp-stdio"))]
-                if server.transport_type == everruns_core::McpServerTransportType::Stdio {
-                    return Err(failure("mcpServers", "enable the mcp-stdio Cargo feature"));
-                }
-                self = self.mcp_server(crate::McpServer {
-                    name,
-                    inner: server,
-                });
+                return Err(failure(
+                    "mcpServers",
+                    format!(
+                        "{preset}: bind {name} with AgentBuilder::mcp_server before applying the package"
+                    ),
+                ));
             }
+            #[cfg(not(feature = "mcp-stdio"))]
+            if server.transport_type == everruns_core::McpServerTransportType::Stdio {
+                return Err(failure("mcpServers", "enable the mcp-stdio Cargo feature"));
+            }
+            self = self.mcp_server(crate::McpServer {
+                name,
+                inner: server,
+            });
         }
         self.name = Some(m.name.clone());
         self.instructions = Some(m.instructions.clone());

@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 490" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+  <rect width="800" height="490" fill="#FFFFFF"/>
+
+  <text x="130" y="40" text-anchor="middle" class="header-text">Agent</text>
+  <text x="400" y="40" text-anchor="middle" class="header-text">MCP servers</text>
+  <text x="670" y="40" text-anchor="middle" class="header-text">Accounts and logins</text>
+
+  <!-- Row 1 -->
+  <rect x="30" y="60" width="200" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="130" y="84" text-anchor="middle" class="label">Agent</text>
+  <text x="130" y="102" text-anchor="middle" class="sublabel">behavior and configuration</text>
+
+  <rect x="570" y="60" width="200" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="670" y="84" text-anchor="middle" class="label">Virtual user (service)</text>
+  <text x="670" y="102" text-anchor="middle" class="sublabel">the agent's own account</text>
+
+  <!-- Row 2 -->
+  <rect x="30" y="200" width="200" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="130" y="224" text-anchor="middle" class="label">Capability</text>
+  <text x="130" y="242" text-anchor="middle" class="mono">user_mcp, github, ...</text>
+
+  <rect x="300" y="200" width="200" height="56" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="400" y="224" text-anchor="middle" class="label">User MCP server</text>
+  <text x="400" y="242" text-anchor="middle" class="sublabel">always acts as its owner</text>
+
+  <rect x="570" y="200" width="200" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="670" y="224" text-anchor="middle" class="label">Virtual user (end user)</text>
+  <text x="670" y="242" text-anchor="middle" class="sublabel">the person chatting</text>
+
+  <!-- Row 3 -->
+  <rect x="30" y="340" width="200" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="130" y="364" text-anchor="middle" class="label">Agent MCP server</text>
+  <text x="130" y="382" text-anchor="middle" class="mono">actsAs: none|service|user|...</text>
+
+  <rect x="300" y="340" width="200" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="364" text-anchor="middle" class="label">Org catalog server</text>
+  <text x="400" y="382" text-anchor="middle" class="sublabel">URL, OAuth client, policies</text>
+
+  <rect x="570" y="340" width="200" height="56" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="670" y="364" text-anchor="middle" class="label">Connection</text>
+  <text x="670" y="382" text-anchor="middle" class="sublabel">OAuth, API key, GitHub App</text>
+
+  <!-- Agent -> service account -->
+  <line x1="230" y1="88" x2="560" y2="88" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="560,83 570,88 560,93" fill="#0A1636"/>
+  <text x="400" y="80" text-anchor="middle" class="arrow-label">runs as (service account)</text>
+
+  <!-- Agent -> capability -->
+  <line x1="130" y1="116" x2="130" y2="190" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="125,190 130,200 135,190" fill="#0A1636"/>
+  <text x="138" y="162" class="arrow-label">enables</text>
+
+  <!-- Capability -> agent MCP server -->
+  <line x1="130" y1="256" x2="130" y2="330" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="125,330 130,340 135,330" fill="#0A1636"/>
+  <text x="138" y="302" class="arrow-label">contributes</text>
+
+  <!-- Agent -> agent MCP server (left route) -->
+  <polyline points="30,104 22,104 22,363" stroke="#0A1636" stroke-width="1.5"/>
+  <polyline points="22,363 22,368 20,368" stroke="#0A1636" stroke-width="1.5"/><polygon points="20,363 30,368 20,373" fill="#0A1636"/>
+  <text x="17" y="236" text-anchor="middle" class="arrow-label" transform="rotate(-90 17 236)">attaches</text>
+
+  <!-- Agent MCP server -> catalog -->
+  <line x1="230" y1="368" x2="290" y2="368" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="290,363 300,368 290,373" fill="#0A1636"/>
+  <text x="265" y="360" text-anchor="middle" class="arrow-label">uses</text>
+
+  <!-- Capability user_mcp -> user MCP server (new) -->
+  <line x1="230" y1="228" x2="290" y2="228" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <polygon points="290,223 300,228 290,233" fill="#0A1636"/>
+  <text x="265" y="220" text-anchor="middle" class="arrow-label">use, manage</text>
+
+  <!-- End user -> user MCP server (new) -->
+  <line x1="570" y1="228" x2="510" y2="228" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <polygon points="510,223 500,228 510,233" fill="#0A1636"/>
+  <text x="535" y="220" text-anchor="middle" class="arrow-label">owns</text>
+
+  <!-- User MCP server -> catalog (optional) -->
+  <line x1="380" y1="256" x2="380" y2="330" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <polygon points="375,330 380,340 385,330" fill="#0A1636"/>
+  <text x="372" y="302" text-anchor="end" class="arrow-label">may use</text>
+
+  <!-- User MCP server -> connection (grant) -->
+  <polyline points="460,256 460,300 610,300 610,330" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <polygon points="605,330 610,340 615,330" fill="#0A1636"/>
+  <text x="535" y="292" text-anchor="middle" class="arrow-label">login stored as</text>
+
+  <!-- End user -> connection -->
+  <line x1="700" y1="256" x2="700" y2="330" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="695,330 700,340 705,330" fill="#0A1636"/>
+  <text x="708" y="302" class="arrow-label">owns</text>
+
+  <!-- Service account -> connection (right route) -->
+  <polyline points="770,104 778,104 778,368 780,368" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="780,363 770,368 780,373" fill="#0A1636"/>
+  <text x="783" y="236" text-anchor="middle" class="arrow-label" transform="rotate(90 783 236)">owns</text>
+
+  <!-- Notes -->
+  <rect x="30" y="420" width="740" height="58" fill="#FFFFFF" stroke="#404040" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="44" y="440" class="sublabel">A server acting as the user takes the login of the person who sent the message; acting as the service, the agent's account.</text>
+  <text x="44" y="456" class="sublabel">Scheduled and triggered runs have no person, so only service logins work there. User MCP servers are never shared.</text>
+  <text x="44" y="472" class="sublabel">Dashed: User MCP servers, added in this feature.</text>
+</svg>

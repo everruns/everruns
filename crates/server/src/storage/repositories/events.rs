@@ -102,6 +102,9 @@ impl Database {
         // job exists yet (tracked separately); until it lands, a failed
         // enqueue means the corresponding fact will remain stale until the
         // canonical row is touched again and the next enqueue succeeds.
+        if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
+            return Ok(row);
+        }
         if let Err(e) = sqlx::query(
             r#"
             INSERT INTO reporting_outbox (
@@ -187,6 +190,9 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         if let Some(row) = inserted {
+            if !crate::storage::reporting::outbox::event_needs_projection(&row.event_type) {
+                return Ok((row, true));
+            }
             if let Err(error) = sqlx::query(
                 r#"
                 INSERT INTO reporting_outbox (

@@ -99,6 +99,7 @@ All configuration via environment variables, overridden by CLI args where applic
 | `MESSAGES_PER_SESSION` | `50` | Messages per session |
 | `MAX_CONCURRENT` | `50` | Max concurrent sessions |
 | `TIMEOUT_SECS` | `300` | Per-request timeout |
+| `MODEL_ID` | llmsim-latency seed | Model for the load test agent; the zero-latency `llmsim` seed isolates platform overhead |
 | `TARGET` | auto-detected | Target label (e.g., `dev`, `docker-example`) |
 
 The HTTP client is configured with HTTP/2 flow control windows matching the server defaults (2 MB per-stream, 16 MB per-connection, adaptive window enabled) to prevent flow control exhaustion under high SSE concurrency.
@@ -123,6 +124,38 @@ Named benches distinguish different test scenarios. Comparisons only match runs 
 | `horizontal-scale` | Worker scaling | Fixed load, vary workers |
 | `burst` | Burst capacity | High concurrency, low messages |
 | `subagent-fanout` | Governed subagent tree fan-out: root sessions spawn background child tasks, selected children spawn grandchildren, and all tasks settle or fail through the session-task registry. Track root turn latency, task terminal latency, orphan/reaper counts, and cap-rejection rate. | Small tree first (for example 10 roots x 4 children x 2 grandchildren), then scale breadth until `max_active_descendant_tasks` is approached |
+
+## Self-hosted Turn Latency Bench
+
+[`crates/server/benches/turn_latency.rs`](../../crates/server/benches/turn_latency.rs)
+is the load test's counterpart that needs no running stack: it starts the
+production server (`ServerAppBuilder`) and a standalone worker
+(`WorkerAppBuilder`, over gRPC as in a deployment) in one process against
+PostgreSQL, which it migrates, then drives turns over HTTP with an llmsim
+model that answers at once. One turn is `POST /v1/sessions/{id}/messages`, the
+worker claiming its steps over gRPC, and `turn.completed`. It reports per turn,
+as p50/p95/p99, the client's wall time to seeing `turn.completed` (`e2e`,
+events polled every 5 ms), `input.message` to `turn.completed` from the event
+timestamps (`server`), and `input.message` to `turn.started` (`pickup`), at one
+session and at eight concurrent sessions of five turns each.
+
+Why it exists: the durable benches measure the queue and the facade's
+`turn_backends` measures the turn backends in process, but neither crosses
+HTTP, the server's persistence and the gRPC hop to the worker, which is where a
+platform turn's overhead lives.
+
+```bash
+DATABASE_URL=postgres://... cargo bench -p everruns-server --bench turn_latency
+just bench-turn-latency --smoke    # five turns; DATABASE_URL defaults to the local test DB
+```
+
+`--summary <file>` appends one JSON line per scenario (bench
+`server_turn_latency`) in the shape of the durable benches' baseline, and
+`--moniker` labels it. It is a bench target, so `cargo test` never runs it;
+the `server-turn-latency` job of
+[`durable-bench.yml`](../../.github/workflows/durable-bench.yml) runs it
+weekly against a PostgreSQL service container and reports without gating
+until a baseline exists.
 
 ## Justfile Profiles
 
@@ -210,7 +243,7 @@ just load-test heavy --save --moniker ci-4cpu-8gb
 
 ## Latency Simulation
 
-Load tests always use the `llmsim-latency` seed model, which simulates realistic LLM streaming behavior:
+Load tests use the `llmsim-latency` seed model by default (override with `MODEL_ID`), which simulates realistic LLM streaming behavior:
 
 - **TTFT (Time To First Token)**: Sampled from `LatencyProfile::fast()` before the first token
 - **TBT (Time Between Tokens)**: Sampled from `LatencyProfile::fast()` between each streamed word

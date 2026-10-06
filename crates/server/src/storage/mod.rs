@@ -38,6 +38,9 @@ mod message_history_timing;
 pub mod message_store;
 pub mod models;
 pub mod native_async_store;
+// Server storage updates share durable's `UpdateField`: the server already
+// depends on `everruns-durable` and passes these fields to its schedule store.
+pub use everruns_durable::UpdateField;
 pub mod org_slack_connections;
 pub mod partial_stream;
 pub mod password;

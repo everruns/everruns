@@ -5,8 +5,8 @@ use super::types::{
     TriggerResponse, UpdateScheduleRequest,
 };
 use crate::domains::common::*;
+use crate::storage::UpdateField;
 use chrono::Utc;
-use everruns_db::UpdateField;
 use everruns_durable::{
     CreateScheduleRow, Pagination, ScheduleExecutionFilter, ScheduleFilter, UpdateSchedule,
 };

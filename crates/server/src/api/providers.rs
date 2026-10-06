@@ -543,7 +543,7 @@ pub async fn provider_config(
             if id.as_str() == "openai-codex" {
                 return None;
             }
-            if id.as_str() == "chatgpt" && !org.feature_flags.chatgpt_plan {
+            if !org.feature_flags.is_driver_offered(id.as_str()) {
                 return None;
             }
             let descriptor = state.driver_registry.descriptor(&id)?;

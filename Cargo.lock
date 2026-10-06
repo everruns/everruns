@@ -2342,7 +2342,6 @@ dependencies = [
  "everruns-capabilities",
  "everruns-contracts",
  "everruns-core",
- "everruns-db",
  "everruns-drivers",
  "everruns-durable-engine",
  "everruns-integrations",
@@ -2602,13 +2601,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-db"
-version = "0.41.0"
-dependencies = [
- "rusqlite",
-]
-
-[[package]]
 name = "everruns-docs-snippets"
 version = "0.41.0"
 dependencies = [
@@ -2662,7 +2654,6 @@ dependencies = [
  "chrono",
  "cron",
  "everruns-core",
- "everruns-db",
  "fail",
  "hostname",
  "indicatif",
@@ -3125,7 +3116,6 @@ dependencies = [
  "clap",
  "cron",
  "everruns",
- "everruns-db",
  "everruns-sdk",
  "everruns-serve-macros",
  "futures",
@@ -3151,7 +3141,6 @@ dependencies = [
  "axum",
  "clap",
  "everruns",
- "everruns-db",
  "everruns-serve",
  "futures-util",
  "reqwest",
@@ -3178,7 +3167,6 @@ dependencies = [
  "axum",
  "clap",
  "everruns",
- "everruns-db",
  "everruns-serve",
  "reqwest",
  "serde_json",
@@ -3222,7 +3210,6 @@ dependencies = [
  "everruns-cli-contract",
  "everruns-contracts",
  "everruns-core",
- "everruns-db",
  "everruns-drivers",
  "everruns-durable",
  "everruns-integrations",
@@ -7670,7 +7657,7 @@ dependencies = [
 name = "serve-example-revenue-analyst"
 version = "0.1.0"
 dependencies = [
- "everruns-db",
+ "everruns",
  "everruns-serve",
  "everruns-serve-build",
  "serde",
