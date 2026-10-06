@@ -1446,7 +1446,7 @@ Ephemeral messages can be injected into the result set without persistence (summ
 | Order of application? | By `priority()` value (lower = earlier) |
 | Can filters be stacked? | Yes - multiple capabilities can each contribute filters |
 | Database efficiency? | Most filters map to SQL; only `Custom` requires in-memory filtering |
-| DEV_MODE parity? | In-memory storage implements the same filter semantics |
+| DEV_MODE parity? | DEV_MODE runs the same PostgreSQL queries (embedded server) |
 
 ### Output Guardrails
 

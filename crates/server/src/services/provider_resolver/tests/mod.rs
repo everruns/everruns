@@ -95,7 +95,7 @@ use crate::storage::models::{CreateModelRow, CreateProviderRow};
 /// Helper: create resolver with in-memory storage and seed a provider + model.
 /// Returns (resolver, model_uuid).
 async fn setup_resolver_with_model() -> (ProviderResolverService, Uuid) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db.clone(), None);
     let org_id = DEFAULT_ORG_ID;
 
@@ -170,7 +170,7 @@ async fn test_resolve_model_cache_miss_then_hit() {
 
 #[tokio::test]
 async fn test_resolve_model_not_found_is_cached() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db, None);
 
     let missing_id = Uuid::new_v4();
@@ -213,7 +213,7 @@ async fn test_invalidate_cache_clears_entries() {
 
 #[tokio::test]
 async fn test_different_models_cached_independently() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db.clone(), None);
     let org_id = DEFAULT_ORG_ID;
 
@@ -285,7 +285,7 @@ async fn test_different_models_cached_independently() {
 
 #[tokio::test]
 async fn test_resolve_default_model_cached() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db.clone(), None);
     let org_id = DEFAULT_ORG_ID;
 
@@ -347,7 +347,7 @@ async fn test_resolve_default_model_cached() {
 
 #[tokio::test]
 async fn test_invalidation_forces_fresh_resolution() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db.clone(), None);
     let org_id = DEFAULT_ORG_ID;
 
@@ -391,7 +391,7 @@ fn test_encryption() -> Arc<EncryptionService> {
 
 #[tokio::test]
 async fn resolve_provider_api_key_decrypts_from_db() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
 
     let encrypted = encryption.encrypt_string("sk-from-db").unwrap();
@@ -415,7 +415,7 @@ async fn resolve_provider_api_key_decrypts_from_db() {
 
 #[tokio::test]
 async fn resolve_provider_api_key_falls_back_without_encryption() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
 
     let provider = db
         .create_provider(
@@ -438,7 +438,7 @@ async fn resolve_provider_api_key_falls_back_without_encryption() {
 
 #[tokio::test]
 async fn resolve_provider_api_key_no_db_key_returns_none() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
 
     let provider = db
         .create_provider(
@@ -464,7 +464,7 @@ async fn resolve_provider_api_key_no_db_key_returns_none() {
 /// against the old env-fallback implementation.
 #[tokio::test]
 async fn resolve_provider_api_key_env_key_set_does_not_leak() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
 
     let provider = db
         .create_provider(
@@ -502,7 +502,7 @@ async fn resolve_provider_api_key_env_key_set_does_not_leak() {
 /// Sets DEFAULT_OPENAI_API_KEY to verify it is never consulted.
 #[tokio::test]
 async fn resolve_provider_credentials_env_key_set_does_not_leak() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db.clone(), None);
 
     // No provider configured for this org at all.
@@ -526,7 +526,7 @@ async fn resolve_provider_credentials_env_key_set_does_not_leak() {
 
 #[tokio::test]
 async fn resolve_provider_credentials_ignores_disabled_provider() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "azure_openai").await;
     db.update_provider(
@@ -574,7 +574,7 @@ async fn resolve_model_scoped_to_org() {
 /// Regression: resolve_default_model must scope to the given org_id.
 #[tokio::test]
 async fn resolve_default_model_scoped_to_org() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = ProviderResolverService::new(db.clone(), None);
     let org_id = DEFAULT_ORG_ID;
 
@@ -669,7 +669,7 @@ async fn seed_active_provider(
 
 #[tokio::test]
 async fn exact_runtime_provider_resolution_is_org_scoped() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "openai").await;
     let resolver = ProviderResolverService::new(db, Some(encryption));
@@ -694,7 +694,7 @@ async fn exact_runtime_provider_resolution_is_org_scoped() {
 async fn runtime_provider_config_preserves_credentialless_drivers() {
     use crate::storage::models::CreateProviderRow;
 
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let provider = db
         .create_provider(
             DEFAULT_ORG_ID,
@@ -730,7 +730,7 @@ async fn runtime_provider_config_preserves_credentialless_drivers() {
 
 #[tokio::test]
 async fn resolve_service_selects_active_provider_declaring_service() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     seed_active_provider(&db, &encryption, "openai").await;
     let resolver = service_resolver(db, Some(encryption));
@@ -745,7 +745,7 @@ async fn resolve_service_selects_active_provider_declaring_service() {
 
 #[tokio::test]
 async fn resolve_service_fails_closed_when_no_provider() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let resolver = service_resolver(db, Some(test_encryption()));
 
     let err = resolver
@@ -762,7 +762,7 @@ async fn resolve_service_fails_closed_when_no_provider() {
 async fn resolve_service_skips_driver_without_service() {
     // OpenRouter is chat-only; it must not satisfy a Realtime request,
     // but it must still serve Chat.
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     seed_active_provider(&db, &encryption, "openrouter").await;
     let resolver = service_resolver(db, Some(encryption));
@@ -784,7 +784,7 @@ async fn resolve_service_skips_driver_without_service() {
 
 #[tokio::test]
 async fn resolve_service_binding_requires_service_support() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let openrouter = seed_active_provider(&db, &encryption, "openrouter").await;
     let resolver = service_resolver(db, Some(encryption));
@@ -802,7 +802,7 @@ async fn resolve_service_binding_requires_service_support() {
 
 #[tokio::test]
 async fn resolve_service_binding_fails_closed_when_provider_disabled() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "openai").await;
     db.update_provider(
@@ -830,7 +830,7 @@ async fn resolve_service_binding_fails_closed_when_provider_disabled() {
 
 #[tokio::test]
 async fn resolve_service_binding_selects_explicit_provider() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     // Two realtime-capable providers; the binding must pick the named one,
     // not just the first active match.
@@ -889,7 +889,7 @@ fn service_provider_defaults_json_round_trips() {
 async fn resolve_service_uses_org_default_before_active_fallback() {
     // Two realtime-capable providers; the org default (tier 2) must win over
     // the first-active scan (tier 3).
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let _first = seed_active_provider(&db, &encryption, "openai").await;
     let second = seed_active_provider(&db, &encryption, "openai").await;
@@ -906,7 +906,7 @@ async fn resolve_service_uses_org_default_before_active_fallback() {
 #[tokio::test]
 async fn resolve_service_binding_overrides_org_default() {
     // Precedence: explicit binding (tier 1) wins over the org default (tier 2).
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let bound = seed_active_provider(&db, &encryption, "openai").await;
     let default = seed_active_provider(&db, &encryption, "openai").await;
@@ -929,7 +929,7 @@ async fn resolve_service_binding_overrides_org_default() {
 async fn resolve_service_org_default_fails_closed_when_missing() {
     // A default that points at a non-existent provider must error, not
     // silently fall through to an otherwise-usable active provider.
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     seed_active_provider(&db, &encryption, "openai").await;
     set_service_default(
@@ -949,7 +949,7 @@ async fn resolve_service_org_default_fails_closed_when_missing() {
 
 #[tokio::test]
 async fn resolve_service_org_default_fails_closed_when_inactive() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "openai").await;
     set_service_default(&db, ServiceKind::Realtime, provider).await;
@@ -957,7 +957,7 @@ async fn resolve_service_org_default_fails_closed_when_inactive() {
         DEFAULT_ORG_ID,
         provider.uuid(),
         crate::storage::models::UpdateProvider {
-            status: Some("inactive".to_string()),
+            status: Some("disabled".to_string()),
             ..Default::default()
         },
     )
@@ -975,7 +975,7 @@ async fn resolve_service_org_default_fails_closed_when_inactive() {
 #[tokio::test]
 async fn resolve_service_org_default_fails_closed_when_service_unsupported() {
     // openrouter is chat-only; pinning it as the Realtime default is invalid.
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "openrouter").await;
     set_service_default(&db, ServiceKind::Realtime, provider).await;
@@ -990,12 +990,13 @@ async fn resolve_service_org_default_fails_closed_when_service_unsupported() {
 
 #[tokio::test]
 async fn decision_binding_is_exact_org_scoped_and_fails_closed() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = test_encryption();
     let provider = seed_active_provider(&db, &encryption, "openrouter").await;
     let session = db
         .create_session(crate::storage::models::CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await

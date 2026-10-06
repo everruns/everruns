@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::records::reporting::{ReportQuery, ReportResult, ReportScope, ReportingQueryBackend};
 use chrono::{DateTime, Utc};
 use everruns_db::UpdateField;
-use parking_lot::RwLock;
 use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
@@ -24,21 +23,11 @@ const MAX_SAVED_REPORTS_LIST: usize = 1_000;
 #[derive(Clone)]
 pub struct ReportingService {
     db: Arc<StorageBackend>,
-    memory_saved_reports: Arc<RwLock<Vec<SavedReportRecord>>>,
-}
-
-#[derive(Debug, Clone)]
-struct SavedReportRecord {
-    org_id: i64,
-    report: SavedReport,
 }
 
 impl ReportingService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
-        Self {
-            db,
-            memory_saved_reports: Arc::new(RwLock::new(Vec::new())),
-        }
+        Self { db }
     }
 
     pub async fn query(
@@ -47,60 +36,33 @@ impl ReportingService {
         query: ReportQuery,
     ) -> Result<ReportResult, CommandError> {
         catalog::validate_query(&query)?;
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => PostgresReportingQueryBackend::new(db.pool().clone())
+        {
+            let db = self.db.database();
+            PostgresReportingQueryBackend::new(db.pool().clone())
                 .query(scope, query)
                 .await
-                .map_err(classify_anyhow),
-            StorageBackend::InMemory(_) => Ok(ReportResult {
-                as_of: chrono::Utc::now(),
-                freshness_lag_ms: None,
-                columns: query
-                    .dimensions
-                    .iter()
-                    .map(|name| crate::records::reporting::ReportColumn {
-                        name: name.clone(),
-                        kind: crate::records::reporting::ReportColumnKind::Dimension,
-                    })
-                    .chain(query.measures.iter().map(|name| {
-                        crate::records::reporting::ReportColumn {
-                            name: name.clone(),
-                            kind: crate::records::reporting::ReportColumnKind::Measure,
-                        }
-                    }))
-                    .collect(),
-                rows: Vec::new(),
-            }),
+                .map_err(classify_anyhow)
         }
     }
 
     pub async fn list_saved_reports(&self, org_id: i64) -> Result<Vec<SavedReport>, CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => {
-                let rows = sqlx::query(
-                    r#"
+        {
+            let db = self.db.database();
+            let rows = sqlx::query(
+                r#"
                     SELECT id, name, description, query, dashboard, created_at, updated_at
                       FROM reporting_saved_reports
                      WHERE org_id = $1
                   ORDER BY updated_at DESC, name ASC
                      LIMIT $2
                     "#,
-                )
-                .bind(org_id)
-                .bind(MAX_SAVED_REPORTS_LIST as i64)
-                .fetch_all(db.pool())
-                .await
-                .map_err(|err| classify_anyhow(err.into()))?;
-                rows.into_iter().map(saved_report_from_row).collect()
-            }
-            StorageBackend::InMemory(_) => Ok(self
-                .memory_saved_reports
-                .read()
-                .iter()
-                .filter(|row| row.org_id == org_id)
-                .take(MAX_SAVED_REPORTS_LIST)
-                .map(|row| row.report.clone())
-                .collect()),
+            )
+            .bind(org_id)
+            .bind(MAX_SAVED_REPORTS_LIST as i64)
+            .fetch_all(db.pool())
+            .await
+            .map_err(|err| classify_anyhow(err.into()))?;
+            rows.into_iter().map(saved_report_from_row).collect()
         }
     }
 
@@ -109,30 +71,22 @@ impl ReportingService {
         org_id: i64,
         report_id: Uuid,
     ) -> Result<SavedReport, CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => {
-                let row = sqlx::query(
-                    r#"
+        {
+            let db = self.db.database();
+            let row = sqlx::query(
+                r#"
                     SELECT id, name, description, query, dashboard, created_at, updated_at
                       FROM reporting_saved_reports
                      WHERE org_id = $1 AND id = $2
                     "#,
-                )
-                .bind(org_id)
-                .bind(report_id)
-                .fetch_optional(db.pool())
-                .await
-                .map_err(|err| classify_anyhow(err.into()))?
-                .ok_or_else(|| CommandError::not_found("Saved report"))?;
-                saved_report_from_row(row)
-            }
-            StorageBackend::InMemory(_) => self
-                .memory_saved_reports
-                .read()
-                .iter()
-                .find(|row| row.org_id == org_id && row.report.id == report_id)
-                .map(|row| row.report.clone())
-                .ok_or_else(|| CommandError::not_found("Saved report")),
+            )
+            .bind(org_id)
+            .bind(report_id)
+            .fetch_optional(db.pool())
+            .await
+            .map_err(|err| classify_anyhow(err.into()))?
+            .ok_or_else(|| CommandError::not_found("Saved report"))?;
+            saved_report_from_row(row)
         }
     }
 
@@ -148,9 +102,9 @@ impl ReportingService {
         )?;
         catalog::validate_query(&request.query)?;
 
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => {
-                let row = sqlx::query(
+        {
+            let db = self.db.database();
+            let row = sqlx::query(
                     r#"
                     INSERT INTO reporting_saved_reports (org_id, name, description, query, dashboard)
                     VALUES ($1, $2, $3, $4, $5)
@@ -171,25 +125,7 @@ impl ReportingService {
                 .fetch_one(db.pool())
                 .await
                 .map_err(|err| classify_anyhow(err.into()))?;
-                saved_report_from_row(row)
-            }
-            StorageBackend::InMemory(_) => {
-                let now = Utc::now();
-                let report = SavedReport {
-                    id: Uuid::now_v7(),
-                    name: request.name,
-                    description: request.description,
-                    query: request.query,
-                    dashboard: request.dashboard,
-                    created_at: now,
-                    updated_at: now,
-                };
-                self.memory_saved_reports.write().push(SavedReportRecord {
-                    org_id,
-                    report: report.clone(),
-                });
-                Ok(report)
-            }
+            saved_report_from_row(row)
         }
     }
 
@@ -201,17 +137,17 @@ impl ReportingService {
     ) -> Result<SavedReport, CommandError> {
         validate_query_update(&request.query)?;
 
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => {
-                let current = self.get_saved_report(org_id, report_id).await?;
-                let name = request.name.unwrap_or(current.name);
-                let description = apply_update_field(current.description, request.description);
-                let query = apply_query_update(current.query, request.query)?;
-                let dashboard = apply_update_field(current.dashboard, request.dashboard);
-                validate_saved_report_request(&name, description.as_deref(), dashboard.as_ref())?;
+        {
+            let db = self.db.database();
+            let current = self.get_saved_report(org_id, report_id).await?;
+            let name = request.name.unwrap_or(current.name);
+            let description = apply_update_field(current.description, request.description);
+            let query = apply_query_update(current.query, request.query)?;
+            let dashboard = apply_update_field(current.dashboard, request.dashboard);
+            validate_saved_report_request(&name, description.as_deref(), dashboard.as_ref())?;
 
-                let row = sqlx::query(
-                    r#"
+            let row = sqlx::query(
+                r#"
                     UPDATE reporting_saved_reports
                        SET name = $3,
                            description = $4,
@@ -221,46 +157,23 @@ impl ReportingService {
                      WHERE org_id = $1 AND id = $2
                  RETURNING id, name, description, query, dashboard, created_at, updated_at
                     "#,
-                )
-                .bind(org_id)
-                .bind(report_id)
-                .bind(name)
-                .bind(description)
-                .bind(
-                    serde_json::to_value(query)
-                        .map_err(|err| CommandError::internal(err.into()))?,
-                )
-                .bind(
-                    dashboard
-                        .map(serde_json::to_value)
-                        .transpose()
-                        .map_err(|err| CommandError::internal(err.into()))?,
-                )
-                .fetch_optional(db.pool())
-                .await
-                .map_err(|err| classify_anyhow(err.into()))?
-                .ok_or_else(|| CommandError::not_found("Saved report"))?;
-                saved_report_from_row(row)
-            }
-            StorageBackend::InMemory(_) => {
-                let mut rows = self.memory_saved_reports.write();
-                let row = rows
-                    .iter_mut()
-                    .find(|row| row.org_id == org_id && row.report.id == report_id)
-                    .ok_or_else(|| CommandError::not_found("Saved report"))?;
-                let name = request.name.unwrap_or_else(|| row.report.name.clone());
-                let description =
-                    apply_update_field(row.report.description.clone(), request.description);
-                let query = apply_query_update(row.report.query.clone(), request.query)?;
-                let dashboard = apply_update_field(row.report.dashboard.clone(), request.dashboard);
-                validate_saved_report_request(&name, description.as_deref(), dashboard.as_ref())?;
-                row.report.name = name;
-                row.report.description = description;
-                row.report.query = query;
-                row.report.dashboard = dashboard;
-                row.report.updated_at = Utc::now();
-                Ok(row.report.clone())
-            }
+            )
+            .bind(org_id)
+            .bind(report_id)
+            .bind(name)
+            .bind(description)
+            .bind(serde_json::to_value(query).map_err(|err| CommandError::internal(err.into()))?)
+            .bind(
+                dashboard
+                    .map(serde_json::to_value)
+                    .transpose()
+                    .map_err(|err| CommandError::internal(err.into()))?,
+            )
+            .fetch_optional(db.pool())
+            .await
+            .map_err(|err| classify_anyhow(err.into()))?
+            .ok_or_else(|| CommandError::not_found("Saved report"))?;
+            saved_report_from_row(row)
         }
     }
 
@@ -269,30 +182,19 @@ impl ReportingService {
         org_id: i64,
         report_id: Uuid,
     ) -> Result<(), CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => {
-                let result = sqlx::query(
-                    "DELETE FROM reporting_saved_reports WHERE org_id = $1 AND id = $2",
-                )
-                .bind(org_id)
-                .bind(report_id)
-                .execute(db.pool())
-                .await
-                .map_err(|err| classify_anyhow(err.into()))?;
-                if result.rows_affected() == 0 {
-                    return Err(CommandError::not_found("Saved report"));
-                }
-                Ok(())
+        {
+            let db = self.db.database();
+            let result =
+                sqlx::query("DELETE FROM reporting_saved_reports WHERE org_id = $1 AND id = $2")
+                    .bind(org_id)
+                    .bind(report_id)
+                    .execute(db.pool())
+                    .await
+                    .map_err(|err| classify_anyhow(err.into()))?;
+            if result.rows_affected() == 0 {
+                return Err(CommandError::not_found("Saved report"));
             }
-            StorageBackend::InMemory(_) => {
-                let mut rows = self.memory_saved_reports.write();
-                let before = rows.len();
-                rows.retain(|row| !(row.org_id == org_id && row.report.id == report_id));
-                if rows.len() == before {
-                    return Err(CommandError::not_found("Saved report"));
-                }
-                Ok(())
-            }
+            Ok(())
         }
     }
 
@@ -329,40 +231,20 @@ impl ReportingService {
     }
 
     pub async fn diagnostics(&self, org_id: i64) -> Result<ReportingDiagnostics, CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => {
-                let generated_at = Utc::now();
-                let outbox = reporting_outbox_diagnostics(db.pool(), org_id).await?;
-                let mut projector_lag = Vec::new();
-                for dataset in catalog::datasets() {
-                    projector_lag
-                        .push(dataset_lag(db.pool(), dataset.name, dataset.table, org_id).await?);
-                }
-                Ok(ReportingDiagnostics {
-                    generated_at,
-                    projector_lag,
-                    outbox,
-                })
+        {
+            let db = self.db.database();
+            let generated_at = Utc::now();
+            let outbox = reporting_outbox_diagnostics(db.pool(), org_id).await?;
+            let mut projector_lag = Vec::new();
+            for dataset in catalog::datasets() {
+                projector_lag
+                    .push(dataset_lag(db.pool(), dataset.name, dataset.table, org_id).await?);
             }
-            StorageBackend::InMemory(_) => Ok(ReportingDiagnostics {
-                generated_at: Utc::now(),
-                projector_lag: catalog::datasets()
-                    .iter()
-                    .map(|dataset| DatasetProjectorLag {
-                        dataset: dataset.name.to_string(),
-                        latest_projected_at: None,
-                        freshness_lag_ms: None,
-                    })
-                    .collect(),
-                outbox: ReportingOutboxDiagnostics {
-                    pending: 0,
-                    processing: 0,
-                    failed: 0,
-                    completed: 0,
-                    oldest_pending_at: None,
-                    failed_rows: Vec::new(),
-                },
-            }),
+            Ok(ReportingDiagnostics {
+                generated_at,
+                projector_lag,
+                outbox,
+            })
         }
     }
 
@@ -371,40 +253,32 @@ impl ReportingService {
         org_id: i64,
         limit: i64,
     ) -> Result<ProjectorRunResult, CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
+        {
+            let db = self.db.database();
+            PostgresReportingProjector::new(db.pool().clone())
                 .run_once(org_id, limit)
                 .await
-                .map_err(classify_anyhow),
-            StorageBackend::InMemory(_) => Ok(ProjectorRunResult {
-                claimed: 0,
-                completed: 0,
-                failed: 0,
-            }),
+                .map_err(classify_anyhow)
         }
     }
 
     pub async fn run_projector_due(&self, limit: i64) -> Result<ProjectorRunResult, CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
+        {
+            let db = self.db.database();
+            PostgresReportingProjector::new(db.pool().clone())
                 .run_due(limit)
                 .await
-                .map_err(classify_anyhow),
-            StorageBackend::InMemory(_) => Ok(ProjectorRunResult {
-                claimed: 0,
-                completed: 0,
-                failed: 0,
-            }),
+                .map_err(classify_anyhow)
         }
     }
 
     pub async fn repair_missing_event_projections(&self, limit: i64) -> Result<i64, CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
+        {
+            let db = self.db.database();
+            PostgresReportingProjector::new(db.pool().clone())
                 .repair_missing_event_projections(limit)
                 .await
-                .map_err(classify_anyhow),
-            StorageBackend::InMemory(_) => Ok(0),
+                .map_err(classify_anyhow)
         }
     }
 
@@ -413,18 +287,12 @@ impl ReportingService {
         org_id: Option<i64>,
         limit: i64,
     ) -> Result<ReportingBackfillResult, CommandError> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
+        {
+            let db = self.db.database();
+            PostgresReportingProjector::new(db.pool().clone())
                 .backfill_missing(org_id, limit)
                 .await
-                .map_err(classify_anyhow),
-            StorageBackend::InMemory(_) => Ok(ReportingBackfillResult {
-                enqueued: 0,
-                events: 0,
-                sessions: 0,
-                llm_generations: 0,
-                usage_ledger: 0,
-            }),
+                .map_err(classify_anyhow)
         }
     }
 }

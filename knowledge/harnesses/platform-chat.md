@@ -113,7 +113,7 @@ harness definitions retain ownership of that composition.
 * Repeated reconciliation makes no further changes or duplicate starters.
 
 [Upgrade tests](../../crates/server/tests/server_integration/platform_chat_upgrade_test.rs)
-exercise both PostgreSQL and in-memory storage. Behavioral cases remain in
+run on PostgreSQL (a per-test database from the embedded cluster). Behavioral cases remain in
 [Platform Chat test cases](../test-cases/agents/platform_chat/) and
 [UI chat test cases](../test-cases/ui/chats/).
 

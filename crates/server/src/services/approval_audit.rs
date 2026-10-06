@@ -361,9 +361,9 @@ mod tests {
         use crate::storage::models::CreateEventRow;
         use chrono::Utc;
 
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let listener = ApprovalAuditListener::new(db.clone());
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
         let first_message = MessageId::new();
         let second_message = MessageId::new();
         let first_user = Uuid::new_v4();

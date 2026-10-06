@@ -351,7 +351,7 @@ mod tests {
     use tower::ServiceExt;
 
     fn test_app(machine_payments_enabled: bool) -> Router {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let encryption =
             EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap();

@@ -70,7 +70,7 @@ async fn register_test_delivery(
 
 #[tokio::test]
 async fn blocked_session_does_not_stall_unrelated_delivery() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let blocked_session = terminal_state_tests::seed_session(&db).await;
     let unrelated_session = terminal_state_tests::seed_session(&db).await;
     let blocked = Arc::new(Notify::new());

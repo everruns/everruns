@@ -71,8 +71,8 @@ fn session_row(owner: Uuid) -> CreateSessionRow {
 /// A default 1:1 workspace whose session is owned by `owner`, with the owner's
 /// user-scoped Memory live-mounted at `/memory/user` and one shared file.
 async fn fixture() -> Fixture {
-    let db = Arc::new(StorageBackend::in_memory());
-    let owner = Uuid::new_v4();
+    let db = Arc::new(StorageBackend::test_database());
+    let owner = db.create_test_user(Uuid::new_v4()).await;
     db.create_memory(
         DEFAULT_ORG_ID,
         CreateMemoryRow {

@@ -245,10 +245,16 @@ mod tests {
     }
 
     fn test_storage_store(db: &Arc<StorageBackend>) -> Arc<dyn SessionStorageStore> {
-        match db.as_ref() {
-            StorageBackend::InMemory(mem_db) => mem_db.clone(),
-            StorageBackend::Postgres(_) => unreachable!(),
-        }
+        // Sandbox state carries secrets, so the store must encrypt.
+        let encryption = crate::storage::EncryptionService::new(
+            "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            &[],
+        )
+        .expect("test encryption key");
+        Arc::new(crate::storage::DbSessionStorageStore::new(
+            db.database().clone(),
+            encryption,
+        ))
     }
 
     async fn create_test_harness(db: &StorageBackend) -> everruns_contracts::typed_id::HarnessId {
@@ -343,7 +349,7 @@ mod tests {
 
     #[tokio::test]
     async fn manage_session_sandbox_resume_then_delete() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session_id = create_test_session(&db).await;
         let service = Arc::new(SessionSandboxService::new(
             db.clone(),

@@ -313,7 +313,7 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_list_and_release_round_trip() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session_id = create_test_session(db.as_ref()).await;
         let store = DbLeasedResourceStore::new(db.clone());
 
@@ -374,7 +374,7 @@ mod tests {
 
     #[tokio::test]
     async fn stale_cleanup_transition_is_rejected_after_refresh() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session_id = create_test_session(db.as_ref()).await;
         let store = DbLeasedResourceStore::new(db.clone());
 
@@ -386,11 +386,16 @@ mod tests {
                 external_id: "wss://example.com/browser/abc".to_string(),
                 display_name: Some("Persistent browser".to_string()),
                 owner_user_id: None,
-                lease_duration_seconds: 0,
+                lease_duration_seconds: 1,
                 metadata: json!({ "ws_channel": "wss://example.com/browser/abc" }),
             })
             .await
             .expect("leased resource should be created");
+        sqlx::query("UPDATE leased_resources SET lease_expires_at = NOW() - INTERVAL '1 minute' WHERE id = $1")
+            .bind(created.id.uuid())
+            .execute(db.database().pool())
+            .await
+            .expect("expire the lease");
 
         let claimed = db
             .claim_due_leased_resources(10, 300)
@@ -434,7 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_registers_external_id_metadata_in_session_resources() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session_id = create_test_session(db.as_ref()).await;
         let registry = Arc::new(crate::storage::DbSessionResourceRegistry::new(db.clone()));
         let store = DbLeasedResourceStore::new(db.clone()).with_registry(registry.clone());

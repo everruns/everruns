@@ -70,8 +70,6 @@ See `crates/server/migrations/` for the `session_resources` table DDL.
 
 Key constraints: `UNIQUE(session_id, resource_id)`, `ON DELETE CASCADE` from sessions (registry entries removed with session; leased resources table continues cleanup independently).
 
-In-memory: `HashMap<SessionId, HashMap<String, SessionResourceEntry>>`.
-
 ### Agent visibility
 
 Agents query via the registry through `ToolContext.session_resource_registry`.
@@ -108,7 +106,7 @@ V1 limitation:
 | Mode   | Backend                                          |
 |--------|--------------------------------------------------|
 | Full   | PostgreSQL `session_resources` table              |
-| Dev    | In-memory HashMap                                 |
+| Dev    | Same table, on embedded PostgreSQL                |
 | gRPC   | `RegisterSessionResource`, `UpdateSessionResourceStatus`, `ListSessionResources`, `DeregisterSessionResource` RPCs |
 
 ### Auto-registration from LeasedResourceStore

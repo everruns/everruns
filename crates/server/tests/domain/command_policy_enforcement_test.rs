@@ -63,7 +63,7 @@ fn caller_with_role(role: OrgRole) -> Caller {
 }
 
 fn make_ctx(caller: Caller, resolver: Arc<dyn PermissionResolver>) -> Ctx {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
     Ctx::new(caller, db, capability_service, None, resolver)
 }

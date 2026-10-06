@@ -1427,7 +1427,7 @@ mod tests {
         let context = CatalogContext {
             domain_ctx: crate::domains::common::Ctx::minimal_for_test(
                 everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID),
-                std::sync::Arc::new(crate::storage::StorageBackend::in_memory()),
+                std::sync::Arc::new(crate::storage::StorageBackend::test_database()),
                 None,
             ),
             link_builder: crate::api::common::UrlBuilder::new(

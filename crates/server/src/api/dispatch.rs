@@ -163,7 +163,7 @@ mod tests {
         Dispatcher {
             ctx: Ctx::minimal_for_test(
                 everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID),
-                Arc::new(StorageBackend::in_memory()),
+                Arc::new(StorageBackend::test_database()),
                 None,
             ),
             url_builder: UrlBuilder::new("https://api.example/api", "https://app.example"),

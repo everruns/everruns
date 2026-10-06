@@ -12,7 +12,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub(super) fn make_db() -> Arc<StorageBackend> {
-    Arc::new(StorageBackend::in_memory())
+    Arc::new(StorageBackend::test_database())
 }
 
 fn make_service() -> (BudgetService, Arc<StorageBackend>) {
@@ -46,11 +46,12 @@ async fn create_session_with_owner_tags_and_channel(
     tags: Vec<String>,
     channel_id: Option<Uuid>,
 ) -> SessionRow {
+    db.create_test_users(resolved_owner_user_id).await;
     db.create_session(CreateSessionRow {
         org_id,
         channel_id,
         agent_id,
-        owner_principal_id: PrincipalId::new(),
+        owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id,
         title: Some("Budget test session".into()),
         tags,
@@ -114,7 +115,6 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
 
 async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
     let (svc, db) = make_service();
-    let harness_id = everruns_contracts::typed_id::HarnessId::new();
     let agent = db
         .create_agent(
             1,
@@ -128,7 +128,7 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
                 starters: serde_json::json!([]),
                 system_prompt: String::new(),
                 default_model_id: None,
-                harness_id,
+                harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(Uuid::nil()),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -150,12 +150,12 @@ async fn assert_channel_budget_exhausts_and_stops(channel_type: &str) {
                 public_id: format!("app_{}", Uuid::new_v4().simple()),
                 name: format!("{channel_type} budget test app"),
                 description: None,
-                harness_id: harness_id.uuid(),
+                harness_id: Uuid::nil(),
                 agent_id: Some(agent.id.uuid()),
                 agent_version_policy: "default".into(),
                 agent_version_id: None,
                 virtual_user_id: None,
-                owner_principal_id: PrincipalId::new(),
+                owner_principal_id: PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 channel_type: None,
                 channel_config: serde_json::json!({}),

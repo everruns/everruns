@@ -52,7 +52,7 @@ fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
 
 /// Build a DirectWorkerAdapters with in-memory backends for unit tests.
 fn test_adapters() -> DirectWorkerAdapters {
-    let db = Arc::new(crate::storage::StorageBackend::in_memory());
+    let db = Arc::new(crate::storage::StorageBackend::test_database());
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
         crate::event_delivery::EventDelivery::in_memory(),
@@ -342,7 +342,7 @@ async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &
 #[tokio::test]
 async fn grep_files_returns_bounded_merged_context() {
     let adapters = test_adapters();
-    let session_id = Uuid::new_v4();
+    let session_id = adapters.db.create_test_session().await.uuid();
     seed_file(
         &adapters.db,
         session_id,
@@ -818,7 +818,7 @@ fn test_encryption() -> Arc<crate::storage::EncryptionService> {
 
 fn test_adapters_with_encryption() -> DirectWorkerAdapters {
     let encryption = test_encryption();
-    let db = Arc::new(crate::storage::StorageBackend::in_memory());
+    let db = Arc::new(crate::storage::StorageBackend::test_database());
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
         crate::event_delivery::EventDelivery::in_memory(),
@@ -897,7 +897,7 @@ async fn seed_mcp_server(
                 name: name.to_string(),
                 description: None,
                 url: "https://example.com/mcp".to_string(),
-                transport_type: "streamable_http".to_string(),
+                transport_type: "http".to_string(),
                 api_key_encrypted,
                 headers: None,
                 settings: None,
@@ -947,7 +947,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_single_match() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/hello.rs", "fn main() {\n    hello();\n}\n").await;
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "hello", None)
@@ -962,7 +962,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_no_match_returns_empty() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/code.rs", "let x = 1;\n").await;
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "no_such_pattern", None)
@@ -974,7 +974,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_multiple_files_and_lines() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/a.txt", "ERR line1\nok\nERR line3\n").await;
                 seed_file(&db, sid, "/b.txt", "ok\nERR line2\n").await;
                 let results = adapters
@@ -994,7 +994,7 @@ macro_rules! adapter_contract_tests {
             #[tokio::test]
             async fn grep_regex_pattern() {
                 let (adapters, db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let sid = db.create_test_session().await.uuid();
                 seed_file(&db, sid, "/nums.txt", "val 1\nval 22\nval 333\n").await;
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, r"\d{2,}", None)
@@ -1005,8 +1005,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn grep_invalid_regex_is_error() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 assert!(
                     adapters
                         .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "[bad", None)
@@ -1017,8 +1017,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn grep_empty_session_returns_empty() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 let results = adapters
                     .grep_files(everruns_core::DEFAULT_ORG_ID, sid, "anything", None)
                     .await
@@ -1028,8 +1028,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn write_then_read_file() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 let written = adapters
                     .write_file(
                         everruns_core::DEFAULT_ORG_ID,
@@ -1051,8 +1051,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn read_nonexistent_file_returns_none() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 assert!(
                     adapters
                         .read_file(everruns_core::DEFAULT_ORG_ID, sid, "/nope.txt")
@@ -1064,8 +1064,8 @@ macro_rules! adapter_contract_tests {
 
             #[tokio::test]
             async fn delete_file_returns_true() {
-                let (adapters, _db) = $make_adapters;
-                let sid = Uuid::new_v4();
+                let (adapters, db) = $make_adapters;
+                let sid = db.create_test_session().await.uuid();
                 adapters
                     .write_file(
                         everruns_core::DEFAULT_ORG_ID,

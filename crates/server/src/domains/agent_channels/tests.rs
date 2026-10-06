@@ -13,7 +13,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
         .create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
-                name: "channel-harness".to_string(),
+                name: format!("channel-harness-{}", uuid::Uuid::now_v7().simple()),
                 display_name: Some("Channel Harness".to_string()),
                 icon: None,
                 description: None,
@@ -38,7 +38,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
         DEFAULT_ORG_ID,
         CreateAgentRow {
             public_id: public_id.clone(),
-            name: "channel-agent".to_string(),
+            name: format!("channel-agent-{}", uuid::Uuid::now_v7().simple()),
             display_name: Some("Channel Agent".to_string()),
             description: None,
             intro_markdown: None,
@@ -69,7 +69,7 @@ fn test_ctx(db: Arc<StorageBackend>) -> Ctx {
 
 #[tokio::test]
 async fn endpoint_commands_cover_the_management_lifecycle() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let ctx = test_ctx(db);
 
@@ -164,7 +164,7 @@ async fn endpoint_commands_cover_the_management_lifecycle() {
 
 #[tokio::test]
 async fn native_schedule_creation_uses_agent_triggers_instead() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let ctx = test_ctx(db);
 
@@ -205,12 +205,19 @@ async fn seed_version(
         .expect("load agent")
         .expect("agent exists");
     let id = everruns_contracts::typed_id::AgentVersionId::new();
+    let version_number: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(version_number), 0) + 1 FROM agent_versions WHERE agent_id = $1",
+    )
+    .bind(agent.id.uuid())
+    .fetch_one(db.database().pool())
+    .await
+    .expect("next version number");
     db.create_agent_version(crate::storage::models::CreateAgentVersionRow {
         id,
         public_id: id.to_string(),
         org_id: DEFAULT_ORG_ID,
         agent_id: agent.id,
-        version_number: 1,
+        version_number,
         semver_major: 0,
         semver_minor: 1,
         semver_patch: 0,
@@ -246,7 +253,7 @@ fn webhook_create(
 #[tokio::test]
 async fn endpoint_version_pin_round_trips_and_unpins() {
     use crate::records::AgentVersionPolicy;
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
     let ctx = test_ctx(db);
@@ -305,7 +312,7 @@ async fn endpoint_version_pin_round_trips_and_unpins() {
 #[tokio::test]
 async fn endpoint_version_pin_rejects_invalid_selections() {
     use crate::records::AgentVersionPolicy;
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let other_agent_id = seed_agent(&db).await;
     let foreign_version = seed_version(&db, &other_agent_id, true).await;
@@ -360,7 +367,7 @@ async fn endpoint_version_pin_rejects_invalid_selections() {
 #[tokio::test]
 async fn endpoint_version_pin_requires_agent_versions_feature() {
     use crate::records::AgentVersionPolicy;
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let version = seed_version(&db, &agent_id, true).await;
     let mut flags = crate::domains::common::all_feature_flags_for_test();
@@ -460,7 +467,7 @@ fn config_update(channel_config: serde_json::Value) -> UpdateAgentChannelRequest
 #[tokio::test]
 async fn live_channel_exposure_changes_require_dangerous_permission() {
     use everruns_core::OrgRole;
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let role_ctx = role_ctxs(db);
     let owner = role_ctx(OrgRole::Owner);
@@ -603,7 +610,7 @@ async fn live_channel_exposure_changes_require_dangerous_permission() {
 #[tokio::test]
 async fn draft_channel_edits_stay_available_to_managers() {
     use everruns_core::OrgRole;
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let member = role_ctxs(db)(OrgRole::Member);
     let channel_id = create_channel(
@@ -641,7 +648,7 @@ async fn draft_channel_edits_stay_available_to_managers() {
 
 #[tokio::test]
 async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let public_id = seed_agent(&db).await;
     let agent = db
         .get_agent_by_public_id(DEFAULT_ORG_ID, &public_id)
@@ -657,7 +664,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
             DEFAULT_ORG_ID,
             crate::storage::CreateAgentChannelRow {
                 agent_id: agent.id.uuid(),
-                public_id: format!("aep_{kind}"),
+                public_id: format!("appchan_{}", uuid::Uuid::now_v7().simple()),
                 channel_type: kind.into(),
                 channel_config: json!({"token": "must-not-be-projected"}),
                 channel_config_encrypted: None,
@@ -668,7 +675,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
                 virtual_user_id: None,
                 agent_version_policy: "default".into(),
                 agent_version_id: None,
-                owner_principal_id: uuid::Uuid::now_v7(),
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1).uuid(),
                 resolved_owner_user_id: None,
             },
         )
@@ -680,7 +687,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
         .await
         .unwrap();
     assert_eq!(rows.len(), 2);
-    assert_eq!(rows[0].public_id, "aep_webhook");
+    assert_eq!(rows[0].channel_type, "webhook");
     assert!(rows[0].enabled);
     assert_eq!(rows[0].status, "live");
     assert_eq!(rows[1].channel_type, "api_endpoint");
@@ -708,7 +715,7 @@ async fn agent_channel_summaries_are_page_scoped_and_exclude_triggers() {
 
 #[tokio::test]
 async fn slack_response_policies_are_available_without_feature_enrollment() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_id = seed_agent(&db).await;
     let ctx = test_ctx(db).with_feature_flags(crate::records::FeatureFlags::default());
     let create = |policy: &str| CreateAgentChannel {
@@ -743,7 +750,7 @@ async fn slack_response_policies_are_available_without_feature_enrollment() {
 #[tokio::test]
 async fn native_slack_channel_reads_normalize_stored_progress_mode() {
     for encrypted in [false, true] {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let agent_id = seed_agent(&db).await;
         let encryption = encrypted.then(|| {
             Arc::new(

@@ -10,7 +10,7 @@ pub(crate) async fn test_worker_service() -> WorkerServiceImpl {
 async fn test_worker_service_with_runner(
     runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
 ) -> WorkerServiceImpl {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::Dev;
     let host_composition = crate::oss_host_composition_for_grade(grade);
     let encryption = Some(Arc::new(
@@ -123,7 +123,7 @@ impl CompletingTestRunner {
 }
 
 async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::Dev;
     let host_composition = crate::oss_host_composition_for_grade(grade);
     let encryption = Some(Arc::new(
@@ -1333,7 +1333,7 @@ async fn test_list_orphaned_session_tasks_returns_stale_task() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_contracts::typed_id::SessionId::new();
+    let session_id = db.create_test_session().await;
 
     let task_id = create_test_session_task(
         &db,
@@ -1382,7 +1382,7 @@ async fn test_list_orphaned_session_tasks_excludes_fresh_heartbeat() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_contracts::typed_id::SessionId::new();
+    let session_id = db.create_test_session().await;
 
     let task_id = create_test_session_task(
         &db,
@@ -1430,7 +1430,7 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_contracts::typed_id::SessionId::new();
+    let session_id = db.create_test_session().await;
 
     // Create a task with no heartbeat (foreground/subagent tasks).
     let task_id = create_test_session_task(

@@ -665,7 +665,7 @@ mod tests {
     use uuid::Uuid;
 
     fn test_ctx() -> Ctx {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
             Caller {

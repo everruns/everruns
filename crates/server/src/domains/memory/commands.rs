@@ -565,7 +565,7 @@ mod tests {
                 is_platform_user: false,
                 is_internal: false,
             },
-            Arc::new(StorageBackend::in_memory()),
+            Arc::new(StorageBackend::test_database()),
             None,
         )
     }
@@ -672,7 +672,7 @@ mod tests {
 
     #[tokio::test]
     async fn memory_ids_do_not_cross_orgs() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_one = ctx_with_db(1, db.clone());
         let org_two = ctx_with_db(2, db);
 
@@ -765,7 +765,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_source_backed_memory_requeues_sync() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
 
         let created = CreateMemory {
@@ -824,7 +824,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_memory_now_requeues_source_volume() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
 
         let manual = CreateMemory {
@@ -883,7 +883,7 @@ mod tests {
 
     #[tokio::test]
     async fn due_sync_interval_claims_source_volume() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
 
         let created = CreateMemory {

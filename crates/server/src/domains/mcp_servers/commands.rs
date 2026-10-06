@@ -752,7 +752,7 @@ mod credential_origin_tests {
                 name: "secured".into(),
                 description: None,
                 url: ORIGINAL_URL.into(),
-                transport_type: "streamable_http".into(),
+                transport_type: "http".into(),
                 api_key_encrypted: with_key.then(|| encryption.encrypt_string(SECRET).unwrap()),
                 headers: Some(serde_json::to_value(headers).unwrap()),
                 settings: Some(serde_json::to_value(settings).unwrap()),
@@ -786,7 +786,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn url_only_patch_to_new_origin_rejects_retained_api_key() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
         let ctx = test_ctx(db.clone(), enc.clone());
@@ -811,7 +811,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn url_only_patch_to_new_origin_rejects_retained_headers() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(
             &db,
@@ -836,7 +836,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn port_and_scheme_changes_count_as_new_origin() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
         let ctx = test_ctx(db.clone(), enc);
@@ -858,7 +858,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn same_origin_edit_keeps_credentials() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(
             &db,
@@ -890,7 +890,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn new_origin_with_fresh_credentials_is_allowed() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(
             &db,
@@ -926,7 +926,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn new_origin_switching_away_from_api_key_clears_key() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::ApiKey, true, &[]).await;
         let ctx = test_ctx(db.clone(), enc);
@@ -943,7 +943,7 @@ mod credential_origin_tests {
 
     #[tokio::test]
     async fn credential_free_server_can_move_origin() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc = test_encryption();
         let id = seed(&db, &enc, McpServerAuthMode::None, false, &[]).await;
         let ctx = test_ctx(db.clone(), enc);

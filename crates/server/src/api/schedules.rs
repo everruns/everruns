@@ -878,7 +878,7 @@ mod tests {
         let config = AuthConfig::default(); // mode = None
         AuthState::builtin(
             config,
-            Arc::new(crate::storage::StorageBackend::in_memory()),
+            Arc::new(crate::storage::StorageBackend::test_database()),
         )
     }
 
@@ -894,14 +894,14 @@ mod tests {
         };
         AuthState::builtin(
             config,
-            Arc::new(crate::storage::StorageBackend::in_memory()),
+            Arc::new(crate::storage::StorageBackend::test_database()),
         )
     }
 
     /// Build schedule router with given auth state (no backing store)
     fn app_with_auth(auth: AuthState) -> Router {
         routes(ScheduleAppState::new(
-            Arc::new(crate::storage::StorageBackend::in_memory()),
+            Arc::new(crate::storage::StorageBackend::test_database()),
             None,
             auth,
         ))
@@ -1055,7 +1055,7 @@ mod tests {
         };
         let auth = AuthState::new(config, Arc::new(MockAuthBackend { is_platform_user }));
         routes(ScheduleAppState::new(
-            Arc::new(crate::storage::StorageBackend::in_memory()),
+            Arc::new(crate::storage::StorageBackend::test_database()),
             None,
             auth,
         ))

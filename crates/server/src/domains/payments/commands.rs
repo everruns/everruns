@@ -654,7 +654,7 @@ mod tests {
                 .unwrap();
         Ctx::minimal_for_test(
             Caller::internal(DEFAULT_ORG_ID),
-            Arc::new(StorageBackend::in_memory()),
+            Arc::new(StorageBackend::test_database()),
             Some(Arc::new(encryption)),
         )
     }

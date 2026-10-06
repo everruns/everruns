@@ -17,7 +17,7 @@ struct Fixture {
 }
 
 async fn fixture() -> Fixture {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let org = db
         .create_organization(CreateOrganizationRow {
             public_id: "org_00000000000000000000000000001187".to_string(),

@@ -23,7 +23,7 @@ use everruns_server::storage::StorageBackend;
 
 /// Build a mini router with auth routes backed by in-memory storage.
 async fn auth_router() -> (Router, Arc<StorageBackend>) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::from_env();
     seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
         .await
@@ -752,7 +752,7 @@ async fn custom_platform_auth_router(
 ) -> (Router, Arc<StorageBackend>) {
     let host_composition =
         HostComposition::new(CapabilityRegistry::new(), DriverRegistry::default());
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
 
     // Deliberately do NOT call `seed::seed_all` — this simulates the cold-boot
     // window before the async seed task has provisioned harnesses for

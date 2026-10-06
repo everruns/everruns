@@ -59,7 +59,7 @@ Observability comes from three places:
 ## Runtime Modes
 
 - Full mode: leased resources and the durable schedule survive restarts because both persist in PostgreSQL.
-- Dev mode: the same leased-resource APIs, worker activity, and scheduler logic run against the in-memory backends, so behavior is functionally equivalent while the process is alive. Dev mode remains restart-ephemeral because the repo’s existing dev storage is intentionally in-memory.
+- Dev mode: the same leased-resource APIs, worker activity, and scheduler logic run against the same PostgreSQL-backed storage, on an embedded PostgreSQL server that lives only as long as the process, so dev mode remains restart-ephemeral.
 - External workers: the same contract is available over gRPC, so remote workers can register leases during tool execution and run cleanup activity without direct database access.
 
 ## Provider Integration Contract

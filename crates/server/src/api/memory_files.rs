@@ -629,7 +629,7 @@ mod tests {
     }
 
     fn app_state() -> ApiState {
-        let db = std::sync::Arc::new(crate::storage::StorageBackend::in_memory());
+        let db = std::sync::Arc::new(crate::storage::StorageBackend::test_database());
         let auth = crate::auth::AuthState::builtin(AuthConfig::default(), db.clone());
         ApiState::for_test(db, None, auth)
     }

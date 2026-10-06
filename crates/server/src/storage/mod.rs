@@ -34,7 +34,6 @@ pub mod leased_resource_store;
 pub mod mcp_catalog;
 pub mod mcp_event_subscriptions;
 pub mod mcp_tool_cache;
-pub mod memory;
 mod message_history_timing;
 pub mod message_store;
 pub mod models;
@@ -57,7 +56,10 @@ pub mod session_store;
 pub mod session_task_store;
 mod session_turn_claim;
 pub mod subagent_spawn_handles;
+pub mod test_database;
 
+#[cfg(test)]
+mod backend_tests;
 #[cfg(test)]
 mod event_tests;
 
@@ -84,7 +86,6 @@ pub use leased_resource_store::{
 pub use mcp_catalog::*;
 pub use mcp_event_subscriptions::*;
 pub use mcp_tool_cache::*;
-pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
 pub use native_async_store::PgNativeAsyncStore;

@@ -248,7 +248,7 @@ mod tests {
 
     #[tokio::test]
     async fn creates_notification_for_long_running_turn() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let service = Arc::new(NotificationService::new(db.clone()));
         let listener = NotificationEventListener::new(service.clone());
 
@@ -332,11 +332,11 @@ mod tests {
 
     #[tokio::test]
     async fn skips_short_turns() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let service = Arc::new(NotificationService::new(db.clone()));
         let listener = NotificationEventListener::new(service.clone());
-        let user_id = Uuid::now_v7();
-        let session_id = SessionId::new();
+        let user_id = db.create_test_user(Uuid::now_v7()).await;
+        let session_id = db.create_test_session().await;
         let input_message_id = MessageId::new();
 
         service
@@ -358,11 +358,11 @@ mod tests {
 
     #[tokio::test]
     async fn dedupes_same_turn_notification_and_marks_viewed() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let service = Arc::new(NotificationService::new(db.clone()));
         let listener = NotificationEventListener::new(service.clone());
-        let user_id = Uuid::now_v7();
-        let session_id = SessionId::new();
+        let user_id = db.create_test_user(Uuid::now_v7()).await;
+        let session_id = db.create_test_session().await;
         let input_message_id = MessageId::new();
 
         service

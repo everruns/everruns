@@ -65,13 +65,13 @@ impl StorageBackend {
     ) -> Result<SandboxTemplate> {
         crate::domains::sandbox_templates::resolution::resolve_spec(spec)
             .map_err(anyhow::Error::msg)?;
-        match self {
-            Self::Postgres(db) => {
-                let id = SandboxTemplateId::new();
-                let revision_id = SandboxTemplateRevisionId::new();
-                let now = chrono::Utc::now();
-                let mut tx = db.pool().begin().await?;
-                sqlx::query(
+        {
+            let db = self.database();
+            let id = SandboxTemplateId::new();
+            let revision_id = SandboxTemplateRevisionId::new();
+            let now = chrono::Utc::now();
+            let mut tx = db.pool().begin().await?;
+            sqlx::query(
                     "INSERT INTO execution_environments (id, org_id, name, display_name, description, is_managed, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$7)",
                 )
                 .bind(id.uuid())
@@ -83,68 +83,32 @@ impl StorageBackend {
                 .bind(now)
                 .execute(&mut *tx)
                 .await?;
-                sqlx::query("INSERT INTO execution_environment_revisions (id, environment_id, revision, profile, created_at) VALUES ($1,$2,1,$3,$4)")
+            sqlx::query("INSERT INTO execution_environment_revisions (id, environment_id, revision, profile, created_at) VALUES ($1,$2,1,$3,$4)")
                     .bind(revision_id.uuid()).bind(id.uuid()).bind(serde_json::to_value(spec)?).bind(now)
                     .execute(&mut *tx).await?;
-                sqlx::query("UPDATE execution_environments SET current_revision_id=$2 WHERE id=$1")
-                    .bind(id.uuid())
-                    .bind(revision_id.uuid())
-                    .execute(&mut *tx)
-                    .await?;
-                tx.commit().await?;
-                Ok(SandboxTemplate {
-                    public_id: id,
-                    name: name.to_string(),
-                    display_name: display_name.to_string(),
-                    description: description.map(str::to_string),
-                    is_managed,
-                    status: "active".into(),
-                    current_revision: SandboxTemplateRevision {
-                        public_id: revision_id,
-                        sandbox_template_id: id,
-                        revision: 1,
-                        spec: spec.clone(),
-                        created_at: now,
-                    },
-                    created_at: now,
-                    updated_at: now,
-                })
-            }
-            Self::InMemory(db) => {
-                if db.sandbox_templates.read().values().any(|(owner, item)| {
-                    *owner == org_id && item.status == "active" && item.name == name
-                }) {
-                    anyhow::bail!("Sandbox Template name already exists");
-                }
-                let id = SandboxTemplateId::new();
-                let revision_id = SandboxTemplateRevisionId::new();
-                let now = chrono::Utc::now();
-                let revision = SandboxTemplateRevision {
+            sqlx::query("UPDATE execution_environments SET current_revision_id=$2 WHERE id=$1")
+                .bind(id.uuid())
+                .bind(revision_id.uuid())
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            Ok(SandboxTemplate {
+                public_id: id,
+                name: name.to_string(),
+                display_name: display_name.to_string(),
+                description: description.map(str::to_string),
+                is_managed,
+                status: "active".into(),
+                current_revision: SandboxTemplateRevision {
                     public_id: revision_id,
                     sandbox_template_id: id,
                     revision: 1,
                     spec: spec.clone(),
                     created_at: now,
-                };
-                let template = SandboxTemplate {
-                    public_id: id,
-                    name: name.to_string(),
-                    display_name: display_name.to_string(),
-                    description: description.map(str::to_string),
-                    is_managed,
-                    status: "active".into(),
-                    current_revision: revision.clone(),
-                    created_at: now,
-                    updated_at: now,
-                };
-                db.sandbox_template_revisions
-                    .write()
-                    .insert(revision_id, (org_id, revision));
-                db.sandbox_templates
-                    .write()
-                    .insert(id, (org_id, template.clone()));
-                Ok(template)
-            }
+                },
+                created_at: now,
+                updated_at: now,
+            })
         }
     }
 
@@ -153,33 +117,23 @@ impl StorageBackend {
         org_id: i64,
         include_archived: bool,
     ) -> Result<Vec<SandboxTemplate>> {
-        match self {
-            Self::Postgres(db) => {
-                let sql = format!(
-                    "{SANDBOX_TEMPLATE_SELECT} WHERE e.org_id=$1 {} ORDER BY e.is_managed DESC, e.display_name",
-                    if include_archived {
-                        ""
-                    } else {
-                        "AND e.status='active'"
-                    }
-                );
-                sqlx::query_as::<_, SandboxTemplateDbRow>(sqlx::AssertSqlSafe(sql.as_str()))
-                    .bind(org_id)
-                    .fetch_all(db.pool())
-                    .await?
-                    .into_iter()
-                    .map(sandbox_template_from_row)
-                    .collect()
-            }
-            Self::InMemory(db) => Ok(db
-                .sandbox_templates
-                .read()
-                .values()
-                .filter(|(owner, item)| {
-                    *owner == org_id && (include_archived || item.status == "active")
-                })
-                .map(|(_, item)| item.clone())
-                .collect()),
+        {
+            let db = self.database();
+            let sql = format!(
+                "{SANDBOX_TEMPLATE_SELECT} WHERE e.org_id=$1 {} ORDER BY e.is_managed DESC, e.display_name",
+                if include_archived {
+                    ""
+                } else {
+                    "AND e.status='active'"
+                }
+            );
+            sqlx::query_as::<_, SandboxTemplateDbRow>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(org_id)
+                .fetch_all(db.pool())
+                .await?
+                .into_iter()
+                .map(sandbox_template_from_row)
+                .collect()
         }
     }
 
@@ -188,23 +142,16 @@ impl StorageBackend {
         org_id: i64,
         id: SandboxTemplateId,
     ) -> Result<Option<SandboxTemplate>> {
-        match self {
-            Self::Postgres(db) => {
-                let sql = format!("{SANDBOX_TEMPLATE_SELECT} WHERE e.org_id=$1 AND e.id=$2");
-                sqlx::query_as::<_, SandboxTemplateDbRow>(sqlx::AssertSqlSafe(sql.as_str()))
-                    .bind(org_id)
-                    .bind(id.uuid())
-                    .fetch_optional(db.pool())
-                    .await?
-                    .map(sandbox_template_from_row)
-                    .transpose()
-            }
-            Self::InMemory(db) => Ok(db
-                .sandbox_templates
-                .read()
-                .get(&id)
-                .filter(|(owner, _)| *owner == org_id)
-                .map(|(_, item)| item.clone())),
+        {
+            let db = self.database();
+            let sql = format!("{SANDBOX_TEMPLATE_SELECT} WHERE e.org_id=$1 AND e.id=$2");
+            sqlx::query_as::<_, SandboxTemplateDbRow>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(org_id)
+                .bind(id.uuid())
+                .fetch_optional(db.pool())
+                .await?
+                .map(sandbox_template_from_row)
+                .transpose()
         }
     }
 
@@ -213,30 +160,23 @@ impl StorageBackend {
         org_id: i64,
         id: SandboxTemplateRevisionId,
     ) -> Result<Option<SandboxTemplateRevision>> {
-        match self {
-            Self::Postgres(db) => {
-                let row: Option<(uuid::Uuid, uuid::Uuid, i32, serde_json::Value, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+        {
+            let db = self.database();
+            let row: Option<(uuid::Uuid, uuid::Uuid, i32, serde_json::Value, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
                     "SELECT r.id,r.environment_id,r.revision,r.profile,r.created_at FROM execution_environment_revisions r JOIN execution_environments e ON e.id=r.environment_id WHERE e.org_id=$1 AND r.id=$2",
                 ).bind(org_id).bind(id.uuid()).fetch_optional(db.pool()).await?;
-                row.map(
-                    |(revision_id, environment_id, revision, profile, created_at)| {
-                        Ok(SandboxTemplateRevision {
-                            public_id: SandboxTemplateRevisionId::from_uuid(revision_id),
-                            sandbox_template_id: SandboxTemplateId::from_uuid(environment_id),
-                            revision,
-                            spec: serde_json::from_value(profile)?,
-                            created_at,
-                        })
-                    },
-                )
-                .transpose()
-            }
-            Self::InMemory(db) => Ok(db
-                .sandbox_template_revisions
-                .read()
-                .get(&id)
-                .filter(|(owner, _)| *owner == org_id)
-                .map(|(_, revision)| revision.clone())),
+            row.map(
+                |(revision_id, environment_id, revision, profile, created_at)| {
+                    Ok(SandboxTemplateRevision {
+                        public_id: SandboxTemplateRevisionId::from_uuid(revision_id),
+                        sandbox_template_id: SandboxTemplateId::from_uuid(environment_id),
+                        revision,
+                        spec: serde_json::from_value(profile)?,
+                        created_at,
+                    })
+                },
+            )
+            .transpose()
         }
     }
 
@@ -250,64 +190,29 @@ impl StorageBackend {
     ) -> Result<Option<SandboxTemplate>> {
         crate::domains::sandbox_templates::resolution::resolve_spec(spec)
             .map_err(anyhow::Error::msg)?;
-        match self {
-            Self::Postgres(db) => {
-                let mut tx = db.pool().begin().await?;
-                let current: Option<(bool, String, i32)> = sqlx::query_as(
+        {
+            let db = self.database();
+            let mut tx = db.pool().begin().await?;
+            let current: Option<(bool, String, i32)> = sqlx::query_as(
                     "SELECT e.is_managed,e.status,r.revision FROM execution_environments e JOIN execution_environment_revisions r ON r.id=e.current_revision_id WHERE e.org_id=$1 AND e.id=$2 FOR UPDATE OF e",
                 ).bind(org_id).bind(id.uuid()).fetch_optional(&mut *tx).await?;
-                let Some((managed, status, revision)) = current else {
-                    return Ok(None);
-                };
-                if managed {
-                    anyhow::bail!("managed Sandbox Templates cannot be revised");
-                }
-                if status != "active" {
-                    anyhow::bail!("archived Sandbox Templates cannot be revised");
-                }
-                let revision_id = SandboxTemplateRevisionId::new();
-                sqlx::query("INSERT INTO execution_environment_revisions (id,environment_id,revision,profile) VALUES ($1,$2,$3,$4)")
+            let Some((managed, status, revision)) = current else {
+                return Ok(None);
+            };
+            if managed {
+                anyhow::bail!("managed Sandbox Templates cannot be revised");
+            }
+            if status != "active" {
+                anyhow::bail!("archived Sandbox Templates cannot be revised");
+            }
+            let revision_id = SandboxTemplateRevisionId::new();
+            sqlx::query("INSERT INTO execution_environment_revisions (id,environment_id,revision,profile) VALUES ($1,$2,$3,$4)")
                     .bind(revision_id.uuid()).bind(id.uuid()).bind(revision + 1).bind(serde_json::to_value(spec)?).execute(&mut *tx).await?;
-                sqlx::query("UPDATE execution_environments SET current_revision_id=$3, display_name=COALESCE($4,display_name), description=CASE WHEN $5 THEN $6 ELSE description END, updated_at=now() WHERE org_id=$1 AND id=$2")
+            sqlx::query("UPDATE execution_environments SET current_revision_id=$3, display_name=COALESCE($4,display_name), description=CASE WHEN $5 THEN $6 ELSE description END, updated_at=now() WHERE org_id=$1 AND id=$2")
                     .bind(org_id).bind(id.uuid()).bind(revision_id.uuid()).bind(display_name)
                     .bind(description.is_some()).bind(description.flatten()).execute(&mut *tx).await?;
-                tx.commit().await?;
-                self.get_sandbox_template(org_id, id).await
-            }
-            Self::InMemory(db) => {
-                let mut definitions = db.sandbox_templates.write();
-                let Some((owner, item)) = definitions.get_mut(&id) else {
-                    return Ok(None);
-                };
-                if *owner != org_id {
-                    return Ok(None);
-                }
-                if item.is_managed {
-                    anyhow::bail!("managed Sandbox Templates cannot be revised");
-                }
-                if item.status != "active" {
-                    anyhow::bail!("archived Sandbox Templates cannot be revised");
-                }
-                let revision = SandboxTemplateRevision {
-                    public_id: SandboxTemplateRevisionId::new(),
-                    sandbox_template_id: id,
-                    revision: item.current_revision.revision + 1,
-                    spec: spec.clone(),
-                    created_at: chrono::Utc::now(),
-                };
-                if let Some(value) = display_name {
-                    item.display_name = value.to_string();
-                }
-                if let Some(value) = description {
-                    item.description = value.map(str::to_string);
-                }
-                item.current_revision = revision.clone();
-                item.updated_at = chrono::Utc::now();
-                db.sandbox_template_revisions
-                    .write()
-                    .insert(revision.public_id, (org_id, revision));
-                Ok(Some(item.clone()))
-            }
+            tx.commit().await?;
+            self.get_sandbox_template(org_id, id).await
         }
     }
 
@@ -316,17 +221,10 @@ impl StorageBackend {
         org_id: i64,
         id: SandboxTemplateId,
     ) -> Result<bool> {
-        match self {
-            Self::Postgres(db) => Ok(sqlx::query("UPDATE execution_environments SET status='archived',updated_at=now() WHERE org_id=$1 AND id=$2 AND status='active' AND NOT is_managed")
-                .bind(org_id).bind(id.uuid()).execute(db.pool()).await?.rows_affected() == 1),
-            Self::InMemory(db) => {
-                let mut definitions = db.sandbox_templates.write();
-                let Some((owner, item)) = definitions.get_mut(&id) else { return Ok(false); };
-                if *owner != org_id || item.is_managed || item.status != "active" { return Ok(false); }
-                item.status = "archived".into();
-                item.updated_at = chrono::Utc::now();
-                Ok(true)
-            }
+        {
+            let db = self.database();
+            Ok(sqlx::query("UPDATE execution_environments SET status='archived',updated_at=now() WHERE org_id=$1 AND id=$2 AND status='active' AND NOT is_managed")
+                .bind(org_id).bind(id.uuid()).execute(db.pool()).await?.rows_affected() == 1)
         }
     }
 
@@ -360,46 +258,12 @@ impl StorageBackend {
         binding_name: &str,
         spec: &ResolvedSandboxSpec,
     ) -> Result<PrimarySandboxRecord> {
-        match self {
-            Self::Postgres(db) => PgSandboxCheckpointStore::new(db.pool().clone())
+        {
+            let db = self.database();
+            PgSandboxCheckpointStore::new(db.pool().clone())
                 .pin_primary_sandbox(session_id, binding_name, spec)
                 .await
-                .map_err(Into::into),
-            Self::InMemory(db) => {
-                if !db.sessions.read().contains_key(&session_id) {
-                    anyhow::bail!("session not found while pinning primary Sandbox");
-                }
-                let provider = spec
-                    .target
-                    .provider
-                    .clone()
-                    .unwrap_or_else(|| spec.target.kind.as_str().to_string());
-                let mut primary_sandboxes = db.primary_sandboxes.write();
-                if let Some(existing) = primary_sandboxes.get(&session_id) {
-                    if existing.binding_name == binding_name
-                        && existing.spec == *spec
-                        && existing.provider == provider
-                    {
-                        return Ok(existing.clone());
-                    }
-                    anyhow::bail!("session Sandbox is already pinned to a different specification");
-                }
-                let record = PrimarySandboxRecord {
-                    id: uuid::Uuid::now_v7(),
-                    session_id,
-                    provider,
-                    binding_name: binding_name.to_string(),
-                    spec: spec.clone(),
-                    sandbox_template_revision_id: spec.template_revision_id,
-                    desired_state: "ready".to_string(),
-                    observed_state: "absent".to_string(),
-                    generation: 1,
-                    current_checkpoint_id: None,
-                    last_activity_at: None,
-                };
-                primary_sandboxes.insert(session_id, record.clone());
-                Ok(record)
-            }
+                .map_err(Into::into)
         }
     }
 
@@ -408,12 +272,12 @@ impl StorageBackend {
         &self,
         session_id: SessionId,
     ) -> Result<Option<PrimarySandboxRecord>> {
-        match self {
-            Self::Postgres(db) => PgSandboxCheckpointStore::new(db.pool().clone())
+        {
+            let db = self.database();
+            PgSandboxCheckpointStore::new(db.pool().clone())
                 .get_primary_sandbox(session_id)
                 .await
-                .map_err(Into::into),
-            Self::InMemory(db) => Ok(db.primary_sandboxes.read().get(&session_id).cloned()),
+                .map_err(Into::into)
         }
     }
 }
@@ -424,7 +288,7 @@ mod tests {
 
     #[tokio::test]
     async fn sandbox_template_revisions_are_immutable_and_managed_is_idempotent() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let org_id = 7;
         let original =
             crate::domains::sandbox_templates::resolution::managed_bashkit_sandbox_spec();

@@ -1732,7 +1732,7 @@ mod tests {
     use crate::storage::models::CreateSessionFileRow;
     use std::sync::Arc;
 
-    /// Seed a text file into the in-memory store.
+    /// Seed a text file into the session's store.
     async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &str) {
         db.create_session_file(CreateSessionFileRow {
             session_id: SessionId::from_uuid(session_id),
@@ -1747,8 +1747,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_returns_matching_lines() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         seed_file(&db, sid, "/src/main.rs", "fn main() {\n    hello();\n}\n").await;
 
         let results = grep_session_files(&db, sid, "hello", None).await.unwrap();
@@ -1760,8 +1760,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_filters_paths_with_globs() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         seed_file(&db, sid, "/src/main.rs", "needle").await;
         seed_file(&db, sid, "/src/nested/lib.rs", "needle").await;
         seed_file(&db, sid, "/docs/readme.md", "needle").await;
@@ -1777,8 +1777,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_returns_empty_for_no_match() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         seed_file(
             &db,
             sid,
@@ -1795,8 +1795,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_supports_regex() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         seed_file(&db, sid, "/data.txt", "line 100\nline abc\nline 200\n").await;
 
         let results = grep_session_files(&db, sid, r"\d{3}", None).await.unwrap();
@@ -1806,8 +1806,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_rejects_invalid_regex() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
 
         let result = grep_session_files(&db, sid, "[invalid", None).await;
         assert!(result.is_err());
@@ -1815,8 +1815,8 @@ mod tests {
 
     #[tokio::test]
     async fn create_duplicate_file_returns_already_exists_error() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db.clone()));
 
         let input = CreateFileInput {
@@ -1842,8 +1842,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_rejects_overlong_pattern() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
 
         let long_pattern = "a".repeat(MAX_GREP_PATTERN_LEN + 1);
         let result = grep_session_files(&db, sid, &long_pattern, None).await;
@@ -1854,8 +1854,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_rejects_overlong_path_pattern() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
 
         let long_path = "a".repeat(MAX_GREP_PATTERN_LEN + 1);
         let result = grep_session_files(&db, sid, "hello", Some(&long_path)).await;
@@ -1869,8 +1869,8 @@ mod tests {
         // The regex crate uses a Thompson NFA and cannot backtrack catastrophically.
         // This pattern would hang a PCRE/backtracking engine on "aaa...a!" but must
         // complete in bounded time here.
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let content = "a".repeat(30);
         seed_file(&db, sid, "/bomb.txt", &content).await;
 
@@ -1882,8 +1882,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_skips_oversized_file() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         // Write a small file and one large file (simulated as exceeding the limit in the row).
         // The in-memory store stores actual bytes so we use the size threshold from the constant.
         let small = "match me";
@@ -1901,8 +1901,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_session_files_enforces_total_scan_limit() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         // Write enough files to exceed the total scan cap without any single file
         // exceeding the per-file cap.
         let chunk = "x".repeat(MAX_GREP_FILE_BYTES as usize);
@@ -1925,8 +1925,8 @@ mod tests {
 
     #[tokio::test]
     async fn grep_excludes_private_subtree_before_scan_limit_accounting() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let chunk = "x".repeat(MAX_GREP_FILE_BYTES as usize);
         let files_at_limit = MAX_GREP_TOTAL_SCAN_BYTES / MAX_GREP_FILE_BYTES as usize;
         for i in 0..files_at_limit {
@@ -1954,8 +1954,8 @@ mod tests {
 
     #[tokio::test]
     async fn update_file_if_content_matches_updates_when_snapshot_matches() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db.clone()));
         seed_file(&db, sid, "/notes.txt", "hello").await;
 
@@ -1970,8 +1970,8 @@ mod tests {
 
     #[tokio::test]
     async fn update_file_if_content_matches_rejects_stale_snapshot() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db.clone()));
         seed_file(&db, sid, "/notes.txt", "hello").await;
 
@@ -1987,11 +1987,11 @@ mod tests {
 
     use everruns_core::capability_types::VirtualFileTree;
 
-    fn make_virtual_svc() -> (WorkspaceFileService, Arc<VirtualMountRegistry>, Uuid) {
-        let db = StorageBackend::in_memory();
+    async fn make_virtual_svc() -> (WorkspaceFileService, Arc<VirtualMountRegistry>, Uuid) {
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let registry = Arc::new(VirtualMountRegistry::new());
         let svc = WorkspaceFileService::new(Arc::new(db)).with_virtual_registry(registry.clone());
-        let sid = Uuid::new_v4();
         (svc, registry, sid)
     }
 
@@ -2004,7 +2004,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_read_file_returns_content() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
 
         let file = svc
@@ -2019,7 +2019,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_read_directory_returns_none_content() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
 
         let dir = svc.read_file(sid, "/docs").await.unwrap().unwrap();
@@ -2029,7 +2029,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_stat_returns_metadata() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
 
         let stat = svc.stat(sid, "/docs/readme.md").await.unwrap().unwrap();
@@ -2040,7 +2040,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_list_directory_returns_entries() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
 
         let entries = svc.list_directory(sid, "/docs").await.unwrap();
@@ -2051,7 +2051,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_list_directory_sorted_dirs_first() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         let mut tree = VirtualFileTree::new();
         tree.insert_text("/mnt/file.txt", "content");
         tree.insert_directory("/mnt/subdir");
@@ -2063,7 +2063,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_wins_on_name_conflict() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
 
         // Create a DB file at /docs/readme.md
         svc.create_directory(
@@ -2093,7 +2093,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_update_file_rejected() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
 
         let err = svc
@@ -2116,7 +2116,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_create_file_rejected() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
 
         let err = svc
@@ -2139,7 +2139,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_create_directory_rejected() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
         registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
 
         let err = svc
@@ -2159,7 +2159,7 @@ mod tests {
 
     #[tokio::test]
     async fn virtual_cas_update_rejected() {
-        let (svc, registry, sid) = make_virtual_svc();
+        let (svc, registry, sid) = make_virtual_svc().await;
 
         svc.create_directory(
             sid,
@@ -2210,8 +2210,8 @@ mod tests {
 
     #[tokio::test]
     async fn create_file_under_readonly_directory_rejected() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db.clone()));
 
         svc.create_directory(
@@ -2252,8 +2252,8 @@ mod tests {
 
     #[tokio::test]
     async fn create_directory_under_readonly_directory_rejected() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db.clone()));
 
         svc.create_directory(
@@ -2293,8 +2293,8 @@ mod tests {
 
     #[tokio::test]
     async fn create_file_enforces_per_file_limit() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 10,
             per_session_bytes: 500 * 1024 * 1024,
@@ -2320,8 +2320,8 @@ mod tests {
 
     #[tokio::test]
     async fn create_file_enforces_session_total_limit() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 15,
             per_session_bytes: 20,
@@ -2361,8 +2361,8 @@ mod tests {
 
     #[tokio::test]
     async fn update_file_enforces_per_file_limit() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 10,
             per_session_bytes: 500 * 1024 * 1024,
@@ -2400,8 +2400,8 @@ mod tests {
 
     #[tokio::test]
     async fn copy_file_enforces_session_total_limit() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 15,
             per_session_bytes: 20,
@@ -2437,8 +2437,8 @@ mod tests {
 
     #[tokio::test]
     async fn update_file_if_content_matches_enforces_per_file_limit() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 10,
             per_session_bytes: 500 * 1024 * 1024,
@@ -2468,8 +2468,8 @@ mod tests {
 
     #[tokio::test]
     async fn update_file_if_content_matches_enforces_session_total_limit() {
-        let db = StorageBackend::in_memory();
-        let sid = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let sid = db.create_test_session().await.uuid();
         let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 15,
             per_session_bytes: 20,

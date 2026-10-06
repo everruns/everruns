@@ -310,7 +310,7 @@ just test-unit  # Runs in ~30s, no Docker needed
 
 **Test files:**
 - `crates/server/tests/server_integration/api_integration_test.rs` - HTTP API tests (in-process, no TCP)
-- `crates/server/tests/server_integration/repository_conformance_test.rs` - Shared PostgreSQL/in-memory storage contract tests
+- `crates/server/tests/server_integration/repository_conformance_test.rs` - Storage conformance tests on PostgreSQL
 - `crates/server/tests/server_integration/repository_integration_test.rs` - Direct repository layer tests
 - `crates/server/tests/domain/ag_ui_integration_test.rs` - AG-UI embedding + publish gating
 - `crates/server/tests/domain/auth_integration_test.rs` - Refresh/revocation, cookie flags, JWT paths

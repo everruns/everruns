@@ -648,7 +648,7 @@ mod tests {
     impl Fixture {
         pub(super) fn new() -> Self {
             Self {
-                db: Arc::new(StorageBackend::in_memory()),
+                db: Arc::new(StorageBackend::test_database()),
             }
         }
 

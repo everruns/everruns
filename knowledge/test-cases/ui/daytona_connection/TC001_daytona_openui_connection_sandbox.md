@@ -56,7 +56,7 @@ executes through the provider-neutral tool surface.
 
 - Environment lifecycle is control-plane-owned. The model is not given a
   provider-specific delete tool.
-- Use the canonical PostgreSQL stack; the in-memory development store does not
+- Use the canonical PostgreSQL stack; the DEV_MODE embedded database is deleted on exit and does not
   prove connection persistence or durable Environment recovery.
 
 ## Expected Result

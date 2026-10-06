@@ -2199,7 +2199,7 @@ mod tests {
 
         const ORG_APP_OWNER: i64 = 10;
         const ORG_ATTACKER: i64 = 20;
-        const LEGIT_APP_PUBLIC_ID: &str = "app_legit_test";
+        const LEGIT_APP_PUBLIC_ID: &str = "app_000000000000000000000000000000ee";
 
         async fn seed_slack_app(db: &StorageBackend, org_id: i64, public_id: &str) -> uuid::Uuid {
             db.create_app(
@@ -2301,7 +2301,7 @@ mod tests {
 
         #[tokio::test]
         async fn recover_ignores_cross_org_slack_app_tag() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;
             // Attacker session sits in a different org but tags a real app's public id.
             seed_active_slack_delivery_session(&db, ORG_ATTACKER, None, LEGIT_APP_PUBLIC_ID).await;
@@ -2318,7 +2318,7 @@ mod tests {
 
         #[tokio::test]
         async fn recover_ignores_session_with_unknown_app_tag() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             // No app exists with this public id anywhere.
             seed_active_slack_delivery_session(&db, ORG_ATTACKER, None, "app_does_not_exist").await;
 
@@ -2340,7 +2340,7 @@ mod tests {
         async fn recover_treats_a_cancelled_turn_as_finished() {
             use crate::storage::models::CreateEventRow;
 
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let app_id = seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;
             let session_id = seed_active_slack_delivery_session(
                 &db,
@@ -2378,7 +2378,7 @@ mod tests {
 
         #[tokio::test]
         async fn recover_uses_session_app_id_instead_of_slack_app_tag() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let app_id = seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;
             seed_active_slack_delivery_session(&db, ORG_APP_OWNER, Some(app_id), "app_forged_tag")
                 .await;
@@ -2508,7 +2508,7 @@ mod tests {
 
         #[tokio::test]
         async fn dispatcher_delivers_through_the_adapter() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session_id = terminal_state_tests::seed_session(&db).await;
 
             // A live Slack mock that must never be called: the dispatcher's only
@@ -2854,7 +2854,7 @@ mod tests {
 
         #[tokio::test]
         async fn pane_reply_streams_then_stops() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let dispatcher =
@@ -2894,7 +2894,7 @@ mod tests {
 
         #[tokio::test]
         async fn guardrail_replacement_removes_streamed_text() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let dispatcher =
@@ -2927,7 +2927,7 @@ mod tests {
         /// `sent` is therefore claimed under the lock before the network call.
         #[tokio::test]
         async fn concurrent_flushes_do_not_duplicate_text() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let dispatcher =
@@ -2957,7 +2957,7 @@ mod tests {
 
         #[tokio::test]
         async fn channel_surface_does_not_stream() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let dispatcher =
@@ -2977,7 +2977,7 @@ mod tests {
 
         #[tokio::test]
         async fn several_output_messages_are_several_streams() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let dispatcher =
@@ -3009,7 +3009,7 @@ mod tests {
         #[tokio::test]
         async fn every_terminal_state_stops_an_open_stream() {
             for terminal in ["turn.completed", "turn.failed", "turn.cancelled"] {
-                let db = Arc::new(StorageBackend::in_memory());
+                let db = Arc::new(StorageBackend::test_database());
                 let session = terminal_state_tests::seed_session(&db).await;
                 let calls = Arc::new(Mutex::new(Vec::new()));
                 let dispatcher =
@@ -3039,7 +3039,7 @@ mod tests {
         /// If the platform will not open a stream, the reply must still arrive.
         #[tokio::test]
         async fn failed_start_falls_back_to_a_discrete_reply() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let dispatcher = dispatcher_with(
@@ -3065,7 +3065,7 @@ mod tests {
 
         #[tokio::test]
         async fn flush_sends_only_what_is_new() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let dispatcher =
@@ -3304,7 +3304,7 @@ mod tests {
             reply_mode: SlackReplyMode,
             events: &[(&str, serde_json::Value)],
         ) -> Vec<Surfaced> {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let session = terminal_state_tests::seed_session(&db).await;
             let calls = Arc::new(Mutex::new(Vec::new()));
             let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);

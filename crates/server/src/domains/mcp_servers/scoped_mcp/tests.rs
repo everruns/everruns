@@ -209,7 +209,7 @@ fn detects_authorization_header_case_insensitively() {
 }
 #[tokio::test]
 async fn inline_identity_attachment_discards_authorization_headers_after_resolution() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = McpServerService::new(db, None);
 
     for acts_as in [McpServerActsAs::User, McpServerActsAs::Service] {
@@ -657,7 +657,7 @@ fn validate_scoped_mcp_servers_rejects_inline_identity_and_preset_fields() {
 
 #[tokio::test]
 async fn catalog_validation_requires_live_existing_oauth_presets() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let org_id = everruns_core::DEFAULT_ORG_ID;
     let missing = ScopedMcpServers::from([(
         "docs".into(),
@@ -738,7 +738,7 @@ async fn catalog_validation_requires_live_existing_oauth_presets() {
 
 #[tokio::test]
 async fn two_logical_names_can_resolve_the_same_catalog_preset() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let preset_id = seed_catalog_server(&db, "linear", true).await;
     let service = McpServerService::new(db, None);
     let harness = test_harness();
@@ -797,7 +797,7 @@ async fn two_logical_names_can_resolve_the_same_catalog_preset() {
 async fn user_attachment_discards_preset_api_key_and_authorization_header() {
     // A preset carrying service auth, of the shape a config written before
     // validation existed could still have.
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let settings = crate::domains::mcp_servers::service::McpServerSettings {
         auth_mode: McpServerAuthMode::OAuth,
         protocol_mode: McpProtocolMode::V2025June,
@@ -854,7 +854,7 @@ async fn user_attachment_discards_preset_api_key_and_authorization_header() {
 
 #[tokio::test]
 async fn none_attachment_keeps_preset_transport_and_literal_headers() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     seed_catalog_server(&db, "linear", false).await;
     let service = McpServerService::new(db, None);
     let harness = test_harness();
@@ -886,7 +886,7 @@ async fn none_attachment_keeps_preset_transport_and_literal_headers() {
 }
 #[tokio::test]
 async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     seed_catalog_server(&db, "linear", true).await;
     let resolver = Arc::new(CountingConnectionResolver::default());
     let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
@@ -931,7 +931,7 @@ async fn catalog_preview_discovery_never_uses_legacy_connection_tokens() {
 }
 #[tokio::test]
 async fn runtime_catalog_discovery_without_cache_identity_fails_closed() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     seed_catalog_server(&db, "linear", true).await;
     let resolver = Arc::new(CountingConnectionResolver::default());
     let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
@@ -1217,7 +1217,7 @@ fn scoped_mcp_validation_rejections_classify_as_bad_request() {
 
 #[tokio::test]
 async fn scoped_mcp_catalog_preset_rejections_classify_as_bad_request() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let org_id = everruns_core::DEFAULT_ORG_ID;
 
     let missing = ScopedMcpServers::from([(

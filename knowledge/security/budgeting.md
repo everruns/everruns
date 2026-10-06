@@ -27,7 +27,7 @@ See source files for full definitions:
 - Core types: `crates/contracts/src/runtime/budget.rs`
 - Typed IDs: `crates/contracts/src/typed_id.rs` (`BudgetId`, `LedgerEntryId`)
 - Events: `crates/core/src/events.rs` (budget event constants and `BudgetEventData`)
-- Storage: `crates/server/src/storage/repositories/budgets.rs`, `crates/server/src/storage/memory/budgets.rs`
+- Storage: `crates/server/src/storage/repositories/budgets.rs`
 - Service: `crates/server/src/domains/budgets/service.rs`
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/builtins/budgeting.rs`
@@ -91,7 +91,7 @@ The four App-era prefixes stay in `RESERVED_SESSION_TAG_PREFIXES` regardless of 
 
 **Currencies**: Strings (not enum), new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
-**Balance**: `limit - SUM(debits) + SUM(credits)`. Denormalized on `budgets.balance`, updated atomically with each budget-scoped ledger insert (Postgres: transaction + `SELECT ... FOR UPDATE`; in-memory: lock + update).
+**Balance**: `limit - SUM(debits) + SUM(credits)`. Denormalized on `budgets.balance`, updated atomically with each budget-scoped ledger insert (transaction + `SELECT ... FOR UPDATE`).
 
 **Status lifecycle**: `active` → `paused` (soft limit reached) → `exhausted` (balance ≤ 0) → `disabled` (soft-deleted). Budget can be resumed by top-up or limit increase.
 

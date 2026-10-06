@@ -1,23 +1,81 @@
-// In-memory SubagentSpawnStore unit tests (EVE-535).
+// SubagentSpawnStore tests (EVE-535).
 //
-// Tests the CAS semantics of InMemorySubagentSpawnStore without a database.
+// Tests the CAS semantics of PgSubagentSpawnStore on a private test database.
 
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::{
     delegation_services::SpawnClaimResult, delegation_services::SubagentSpawnStore,
 };
-use everruns_server::storage::memory::subagent_spawn_handles::InMemorySubagentSpawnStore;
+use everruns_server::storage::{CreateSessionRow, PgSubagentSpawnStore, StorageBackend};
 use uuid::Uuid;
 
-fn make_store() -> InMemorySubagentSpawnStore {
-    InMemorySubagentSpawnStore::new()
+/// A spawn store plus the database its sessions live in.
+struct Fixture {
+    db: StorageBackend,
+    store: PgSubagentSpawnStore,
+}
+
+impl std::ops::Deref for Fixture {
+    type Target = PgSubagentSpawnStore;
+    fn deref(&self) -> &Self::Target {
+        &self.store
+    }
+}
+
+impl Fixture {
+    /// A real session: spawn handles reference parent and child by foreign key.
+    async fn session(&self) -> SessionId {
+        self.db
+            .create_session(CreateSessionRow {
+                playground_user_id: None,
+                source: everruns_server::records::SessionSource::Api,
+                workspace_id: None,
+                org_id: 1,
+                app_id: None,
+                channel_id: None,
+                trigger_id: None,
+                harness_id: None,
+                agent_id: None,
+                agent_version_id: None,
+                agent_config_hash: None,
+                virtual_user_id: None,
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: Some("Test Session".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::Value::Array(vec![]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+            })
+            .await
+            .expect("create session")
+            .id
+    }
+}
+
+fn make_store() -> Fixture {
+    let db = StorageBackend::test_database();
+    let store = PgSubagentSpawnStore::new(db.database().pool().clone());
+    Fixture { db, store }
 }
 
 /// First claim for a new (parent, tool_call_id) pair returns Claimed.
 #[tokio::test]
 async fn test_spawn_handle_claimed_on_first_call() {
     let store = make_store();
-    let parent = SessionId::new();
+    let parent = store.session().await;
     let token = Uuid::new_v4();
 
     let result = store
@@ -41,7 +99,7 @@ async fn test_spawn_handle_claimed_on_first_call() {
 #[tokio::test]
 async fn test_spawn_handle_reattach_pending() {
     let store = make_store();
-    let parent = SessionId::new();
+    let parent = store.session().await;
     let token = Uuid::new_v4();
 
     // First call: claim (no register_child_session — simulates crash before register)
@@ -72,8 +130,8 @@ async fn test_spawn_handle_reattach_pending() {
 #[tokio::test]
 async fn test_spawn_handle_reattach_running() {
     let store = make_store();
-    let parent = SessionId::new();
-    let child = SessionId::new();
+    let parent = store.session().await;
+    let child = store.session().await;
     let token = Uuid::new_v4();
 
     // Claim
@@ -124,8 +182,8 @@ async fn test_spawn_handle_reattach_running() {
 #[tokio::test]
 async fn test_spawn_handle_reattach_settled() {
     let store = make_store();
-    let parent = SessionId::new();
-    let child = SessionId::new();
+    let parent = store.session().await;
+    let child = store.session().await;
     let token = Uuid::new_v4();
 
     // Claim + register
@@ -175,8 +233,8 @@ async fn test_spawn_handle_reattach_settled() {
 #[tokio::test]
 async fn test_settle_wrong_token_is_ignored() {
     let store = make_store();
-    let parent = SessionId::new();
-    let child = SessionId::new();
+    let parent = store.session().await;
+    let child = store.session().await;
     let token = Uuid::new_v4();
     let wrong_token = Uuid::new_v4();
 
@@ -220,9 +278,9 @@ async fn test_settle_wrong_token_is_ignored() {
 #[tokio::test]
 async fn test_different_tool_call_ids_are_independent() {
     let store = make_store();
-    let parent = SessionId::new();
-    let child_a = SessionId::new();
-    let child_b = SessionId::new();
+    let parent = store.session().await;
+    let child_a = store.session().await;
+    let child_b = store.session().await;
     let token_a = Uuid::new_v4();
     let token_b = Uuid::new_v4();
 

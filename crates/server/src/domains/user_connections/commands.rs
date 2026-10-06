@@ -177,9 +177,9 @@ mod tests {
 
     #[tokio::test]
     async fn user_connections_are_current_user_scoped_and_secret_free() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let current_user = Uuid::new_v4();
-        let other_user = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let current_user = db.create_test_virtual_user(7).await.uuid();
+        let other_user = db.create_test_virtual_user(7).await.uuid();
         seed_connection(&db, current_user, "resend").await;
         seed_connection(&db, other_user, "other-provider").await;
         let ctx = Ctx::minimal_for_test(caller(7, current_user), db, None);
@@ -203,7 +203,7 @@ mod tests {
 
     #[tokio::test]
     async fn connection_listing_requires_a_user_principal() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = Ctx::minimal_for_test(Caller::internal(7), db, None);
         let error = ListUserConnections::default()
             .execute(&ctx)
@@ -214,8 +214,8 @@ mod tests {
 
     #[tokio::test]
     async fn plugin_oauth_provider_and_current_user_connection_are_independent() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let user_id = db.create_test_virtual_user(7).await.uuid();
         let mut servers = CapabilityMcpServers::new();
         servers.insert(
             "resend".to_string(),

@@ -815,7 +815,7 @@ mod tests {
                 is_platform_user: false,
                 is_internal: false,
             },
-            Arc::new(StorageBackend::in_memory()),
+            Arc::new(StorageBackend::test_database()),
             None,
         )
     }
@@ -1019,7 +1019,7 @@ mod tests {
 
     #[tokio::test]
     async fn knowledge_bases_do_not_cross_orgs() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let org_one = ctx_with_db(1, db.clone());
         let org_two = ctx_with_db(2, db);
 
@@ -1078,7 +1078,7 @@ mod tests {
 
     #[tokio::test]
     async fn embedding_model_must_use_embeddings_provider_on_create() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
         let chat_only_model = seed_model(&db, DEFAULT_ORG_ID, "anthropic", "claude-sonnet").await;
 
@@ -1102,7 +1102,7 @@ mod tests {
 
     #[tokio::test]
     async fn embedding_model_must_use_embeddings_provider_on_update() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
         let chat_only_model = seed_model(&db, DEFAULT_ORG_ID, "anthropic", "claude-sonnet").await;
         let kb = CreateKnowledgeBase {
@@ -1137,7 +1137,7 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_embedding_model_from_embeddings_provider() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
         let embedding_model =
             seed_model(&db, DEFAULT_ORG_ID, "openai", "text-embedding-3-small").await;

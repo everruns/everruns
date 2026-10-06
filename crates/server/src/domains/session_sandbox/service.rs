@@ -497,10 +497,16 @@ mod tests {
     }
 
     fn test_storage_store(db: &Arc<StorageBackend>) -> Arc<dyn SessionStorageStore> {
-        match db.as_ref() {
-            StorageBackend::InMemory(mem_db) => mem_db.clone(),
-            StorageBackend::Postgres(_) => unreachable!(),
-        }
+        // Sandbox state carries secrets, so the store must encrypt.
+        let encryption = crate::storage::EncryptionService::new(
+            "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            &[],
+        )
+        .expect("test encryption key");
+        Arc::new(crate::storage::DbSessionStorageStore::new(
+            db.database().clone(),
+            encryption,
+        ))
     }
 
     async fn create_test_harness(db: &StorageBackend) -> everruns_contracts::typed_id::HarnessId {
@@ -532,7 +538,7 @@ mod tests {
 
     #[tokio::test]
     async fn auto_start_creates_session_sandbox_state() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let harness_id = create_test_harness(db.as_ref()).await;
         db.set_harness_capabilities(
             harness_id.uuid(),
@@ -599,7 +605,7 @@ mod tests {
 
     #[tokio::test]
     async fn idle_pause_marks_state_paused() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let harness_id = create_test_harness(db.as_ref()).await;
         db.set_harness_capabilities(
             harness_id.uuid(),
@@ -666,7 +672,7 @@ mod tests {
 
     #[tokio::test]
     async fn auto_start_can_use_connection_resolver_when_service_provides_one() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let harness_id = create_test_harness(db.as_ref()).await;
         db.set_harness_capabilities(
             harness_id.uuid(),

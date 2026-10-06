@@ -800,10 +800,16 @@ mod tests {
 
     #[tokio::test]
     async fn message_events_attach_active_participant_metadata() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let host_agent_id = AgentId::new();
-        let guest_agent_id = AgentId::new();
+        let host_agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
+        let guest_agent_id = AgentId::from_uuid(
+            db.create_test_agent(DEFAULT_ORG_ID, uuid::Uuid::now_v7())
+                .await,
+        );
         let session = db
             .create_session(test_session_input(host_agent_id))
             .await
@@ -877,9 +883,9 @@ mod tests {
 
     #[tokio::test]
     async fn service_mcp_event_preserves_initiator_and_overrides_acting_principal() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let identity_id = VirtualUserId::new();
+        let identity_id = db.create_test_virtual_user(DEFAULT_ORG_ID).await;
         db.create_principal(CreatePrincipalRow {
             id: PrincipalId::new(),
             org_id: DEFAULT_ORG_ID,
@@ -936,10 +942,12 @@ mod tests {
 
     #[tokio::test]
     async fn service_mcp_event_rejects_session_lookup_failure() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
         let session = db
-            .create_session(service_session_input(Some(VirtualUserId::new())))
+            .create_session(service_session_input(Some(
+                db.create_test_virtual_user(DEFAULT_ORG_ID).await,
+            )))
             .await
             .unwrap();
         // Warm optional version metadata so the one-shot fault targets the
@@ -961,9 +969,9 @@ mod tests {
 
     #[tokio::test]
     async fn service_mcp_event_rejects_principal_lookup_failure() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
-        let identity_id = VirtualUserId::new();
+        let identity_id = db.create_test_virtual_user(DEFAULT_ORG_ID).await;
         let session = db
             .create_session(service_session_input(Some(identity_id)))
             .await
@@ -984,10 +992,12 @@ mod tests {
 
     #[tokio::test]
     async fn service_mcp_event_rejects_missing_identity_principal() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
         let session = db
-            .create_session(service_session_input(Some(VirtualUserId::new())))
+            .create_session(service_session_input(Some(
+                db.create_test_virtual_user(DEFAULT_ORG_ID).await,
+            )))
             .await
             .unwrap();
 

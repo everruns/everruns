@@ -653,7 +653,7 @@ fn test_build_session_tags_uses_generic_routing() {
 
 #[tokio::test]
 async fn test_has_event_with_slack_ts_no_match() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let session_id = setup_test_session(&db).await;
     let result = db
         .has_event_with_slack_ts(session_id, "1234567890.123456")
@@ -666,7 +666,7 @@ async fn test_has_event_with_slack_ts_no_match() {
 async fn test_has_event_with_slack_ts_match() {
     use crate::storage::models::CreateEventRow;
 
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let session_id = setup_test_session(&db).await;
 
     // Insert an input.message event with slack_ts in metadata
@@ -712,7 +712,7 @@ async fn test_has_event_with_slack_ts_match() {
 async fn test_has_event_with_slack_ts_wrong_session() {
     use crate::storage::models::CreateEventRow;
 
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let session_id = setup_test_session(&db).await;
     let other_session_id = everruns_contracts::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
 
@@ -748,7 +748,7 @@ async fn test_has_event_with_slack_ts_wrong_session() {
 async fn test_has_event_with_slack_ts_ignores_non_input_events() {
     use crate::storage::models::CreateEventRow;
 
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let session_id = setup_test_session(&db).await;
 
     // Insert an output.message.completed event (not input.message)
@@ -828,7 +828,7 @@ mod pane_rename_tests {
         app: &TestIngress,
         stored_title: &str,
     ) -> (SlackState, everruns_contracts::typed_id::SessionId) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn TurnBackend> = Arc::new(NoopRunner);
         let state = SlackState::new(
             db,
@@ -855,7 +855,8 @@ mod pane_rename_tests {
                 source: crate::records::SessionSource::Api,
                 workspace_id: None,
                 org_id: app.org_id,
-                app_id: Some(app.internal_id),
+                // Set below: the fixture app is never stored.
+                app_id: None,
                 channel_id: None,
                 trigger_id: None,
                 harness_id: Some(everruns_contracts::typed_id::HarnessId::from_uuid(
@@ -887,6 +888,14 @@ mod pane_rename_tests {
             })
             .await
             .expect("create pane session");
+        // The lookup matches on the fixture app's id; point the session at
+        // it past the foreign key, since that app row does not exist.
+        sqlx::query("UPDATE sessions SET app_id = $2 WHERE id = $1")
+            .bind(session.id.uuid())
+            .bind(app.historical_app_id)
+            .execute(&mut state.db.unchecked_connection().await)
+            .await
+            .expect("tag pane session with the fixture app");
         (state, session.id)
     }
 

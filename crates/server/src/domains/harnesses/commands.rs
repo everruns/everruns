@@ -1204,7 +1204,7 @@ mod tests {
 
     #[tokio::test]
     async fn harness_creation_rejected_at_limit_and_allowed_below() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = test_ctx(db, 2);
 
         CreateHarness(basic_request("h1"))
@@ -1226,7 +1226,7 @@ mod tests {
 
     #[tokio::test]
     async fn soft_deleted_harnesses_do_not_count_toward_limit() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = test_ctx(db, 1);
 
         let h1 = CreateHarness(basic_request("h1"))
@@ -1264,7 +1264,7 @@ mod tests {
 
     #[tokio::test]
     async fn built_in_harnesses_do_not_count_toward_limit() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = test_ctx(db.clone(), 1);
 
         // Seed a system harness (is_built_in = true), as platform bootstrap does.

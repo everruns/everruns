@@ -18,7 +18,7 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::channel::SessionBinding;
 use everruns_core::host::{TurnBackend, TurnRequest, TurnTicket};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole};
-use everruns_durable::{InMemoryWorkflowEventStore, Schedules};
+use everruns_durable::{PostgresWorkflowEventStore, Schedules};
 use std::sync::{Arc, Mutex};
 
 // Serializes the env-mutating cap tests.
@@ -114,7 +114,11 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_contracts::ty
     (public_id, harness.id)
 }
 
-fn test_ctx(db: Arc<StorageBackend>, store: Arc<InMemoryWorkflowEventStore>) -> Ctx {
+fn workflow_store(db: &StorageBackend) -> Arc<PostgresWorkflowEventStore> {
+    PostgresWorkflowEventStore::new(db.database().pool().clone()).into()
+}
+
+fn test_ctx(db: Arc<StorageBackend>, store: Arc<PostgresWorkflowEventStore>) -> Ctx {
     Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None)
         .with_workflow_store(Some(store))
 }
@@ -166,7 +170,7 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
 #[tokio::test]
 async fn webhook_publication_requires_dangerous_permission() {
     for role in [OrgRole::Member, OrgRole::Admin] {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let (agent_id, _) = seed_agent(&db).await;
         let ctx = role_ctx(db, role);
 
@@ -180,7 +184,7 @@ async fn webhook_publication_requires_dangerous_permission() {
         assert_eq!(error.status(), axum::http::StatusCode::FORBIDDEN);
     }
 
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let (agent_id, _) = seed_agent(&db).await;
     let member_ctx = role_ctx(db.clone(), OrgRole::Member);
     let disabled = CreateAgentTrigger {
@@ -244,7 +248,7 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
 
 #[tokio::test]
 async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent_harness_id = everruns_contracts::typed_id::HarnessId::from_seed(10);
     let app_harness_id = everruns_contracts::typed_id::HarnessId::from_seed(20);
     let owner_principal_id = everruns_contracts::typed_id::PrincipalId::from_seed(30);
@@ -343,7 +347,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
 
 #[tokio::test]
 async fn dispatch_trigger_message_uses_preserved_harness() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let (agent_public_id, _) = seed_agent(&db).await;
     let agent = db
         .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_public_id)
@@ -482,8 +486,8 @@ async fn create_enforces_per_org_enabled_cap() {
     // Safety: ENV_LOCK serializes env-mutating tests in this module.
     unsafe { std::env::set_var("AGENT_TRIGGER_MAX_PER_ORG", "1") };
 
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store);
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -519,8 +523,8 @@ async fn create_enforces_per_org_enabled_cap() {
 #[tokio::test]
 async fn native_trigger_version_pin_is_written_surfaced_and_honoured() {
     use crate::records::AgentVersionPolicy;
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store);
     let (agent_id, _) = seed_agent(&db).await;
     let agent = db
@@ -596,8 +600,8 @@ async fn native_trigger_version_pin_is_written_surfaced_and_honoured() {
 
 #[tokio::test]
 async fn responses_use_public_agent_id_not_internal_fk() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store);
     let (agent_id, _) = seed_agent(&db).await;
     let public_agent_id: AgentId = agent_id.parse().expect("public agent id parses");
@@ -645,8 +649,8 @@ async fn responses_use_public_agent_id_not_internal_fk() {
 
 #[tokio::test]
 async fn binding_created_on_enabled_create() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store.clone());
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -675,8 +679,8 @@ async fn binding_created_on_enabled_create() {
 
 #[tokio::test]
 async fn recent_runs_use_the_trigger_schedule_execution_history() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store.clone());
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -719,8 +723,8 @@ async fn recent_runs_use_the_trigger_schedule_execution_history() {
 
 #[tokio::test]
 async fn binding_absent_on_disabled_create() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store.clone());
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -749,8 +753,8 @@ async fn binding_absent_on_disabled_create() {
 
 #[tokio::test]
 async fn binding_torn_down_on_disable() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store.clone());
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -798,8 +802,8 @@ async fn binding_torn_down_on_disable() {
 
 #[tokio::test]
 async fn binding_torn_down_on_delete() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store.clone());
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -854,7 +858,7 @@ async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::models::Age
 
 #[tokio::test]
 async fn ensure_identity_for_agent_creates_and_links_when_none() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent = seed_agent_row(&db).await;
     assert!(agent.virtual_user_id.is_none());
 
@@ -875,7 +879,7 @@ async fn ensure_identity_for_agent_creates_and_links_when_none() {
 
 #[tokio::test]
 async fn ensure_identity_for_agent_is_idempotent_across_fires() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent = seed_agent_row(&db).await;
 
     let (first, _) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
@@ -899,7 +903,7 @@ async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
     use crate::storage::models::CreateVirtualUserRow;
     use everruns_contracts::typed_id::VirtualUserId;
 
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut agent = seed_agent_row(&db).await;
 
     let explicit = VirtualUserId::new();
@@ -953,7 +957,7 @@ async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
     use crate::storage::models::CreateVirtualUserRow;
     use everruns_contracts::typed_id::VirtualUserId;
 
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut agent = seed_agent_row(&db).await;
 
     let identity_id = VirtualUserId::new();
@@ -991,8 +995,8 @@ async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
 /// no `per_thread` to express — has to be enforced at write time instead.
 #[tokio::test]
 async fn create_trigger_rejects_message_keyed_bindings() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store);
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -1029,8 +1033,8 @@ async fn create_trigger_rejects_message_keyed_bindings() {
 /// The same guard on the update path, which merges onto a stored config.
 #[tokio::test]
 async fn update_trigger_rejects_message_keyed_bindings() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let db = Arc::new(StorageBackend::test_database());
+    let store = workflow_store(&db);
     let ctx = test_ctx(db.clone(), store);
     let (agent_id, _) = seed_agent(&db).await;
 
@@ -1084,7 +1088,7 @@ fn pr_event(
 
 #[tokio::test]
 async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let (agent_id, _) = seed_agent(&db).await;
     let ctx = role_ctx(db.clone(), OrgRole::Owner);
     let trigger = CreateAgentTrigger {
@@ -1219,7 +1223,7 @@ async fn webhook_events_are_filtered_deduplicated_and_routed_per_subject() {
 
 #[tokio::test]
 async fn per_thread_requires_a_subject_template() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let (agent_id, _) = seed_agent(&db).await;
     let ctx = role_ctx(db, OrgRole::Owner);
     let error = CreateAgentTrigger {
@@ -1237,7 +1241,7 @@ async fn per_thread_requires_a_subject_template() {
 
 #[tokio::test]
 async fn filter_conditions_need_a_path_and_values() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let (agent_id, _) = seed_agent(&db).await;
     let ctx = role_ctx(db, OrgRole::Owner);
     let error = CreateAgentTrigger {
@@ -1260,8 +1264,16 @@ async fn filter_conditions_need_a_path_and_values() {
 
 #[tokio::test]
 async fn delivery_history_is_bounded_per_trigger() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let trigger_id = TriggerId::new();
+    let db = Arc::new(StorageBackend::test_database());
+    let (agent_id, _) = seed_agent(&db).await;
+    let trigger_id = CreateAgentTrigger {
+        agent_id,
+        req: webhook_req(false),
+    }
+    .run(&role_ctx(db.clone(), OrgRole::Owner))
+    .await
+    .expect("create trigger")
+    .id;
     for index in 0..5 {
         db.record_agent_trigger_delivery(
             crate::storage::agent_trigger_deliveries::CreateAgentTriggerDeliveryRow {
@@ -1330,7 +1342,7 @@ async fn github_trigger_needs_the_identitys_app_and_routes_its_deliveries() {
     use crate::domains::agent_triggers::github::dispatch_github_delivery;
     use crate::storage::github_app_rows::CreateGitHubAppRow;
 
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let (agent_id, _) = seed_agent(&db).await;
     let ctx = role_ctx(db.clone(), OrgRole::Owner);
 

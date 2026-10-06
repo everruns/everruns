@@ -27,7 +27,7 @@ async fn create_postgres_backend() -> StorageBackend {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("Failed to connect to PostgreSQL");
-    StorageBackend::Postgres(Database::new(pool))
+    StorageBackend::from_database(Database::new(pool))
 }
 
 pub(crate) async fn create_test_principal(repo: &dyn Repository, label: &str) -> PrincipalId {
@@ -835,7 +835,7 @@ async fn run_org_invitation_conformance(backend: &StorageBackend, label: &str) {
 
 #[tokio::test]
 async fn in_memory_repository_conformance() {
-    let backend = StorageBackend::in_memory();
+    let backend = StorageBackend::test_database();
     let harness_id = HarnessId::from_uuid(Uuid::nil());
     run_repository_conformance(&backend, "memory", harness_id).await;
     run_agent_trigger_conformance(&backend, "memory", harness_id).await;
@@ -989,7 +989,7 @@ async fn run_waiting_turn_claim_recovery_conformance(backend: &StorageBackend, l
 
 #[tokio::test]
 async fn in_memory_waiting_turn_claim_recovery() {
-    let backend = StorageBackend::in_memory();
+    let backend = StorageBackend::test_database();
     run_waiting_turn_claim_recovery_conformance(&backend, "memory").await;
 }
 
@@ -1016,7 +1016,7 @@ async fn postgres_sandbox_checkpoint_rollback() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect to PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let owner = create_test_principal(&backend, "sandbox-rollback").await;
     let session = backend
         .create_session(session_input(owner, "sandbox-rollback"))
@@ -1210,7 +1210,7 @@ async fn run_run_summary_fence_conformance(backend: &StorageBackend, label: &str
 
 #[tokio::test]
 async fn in_memory_run_summary_fence() {
-    let backend = StorageBackend::in_memory();
+    let backend = StorageBackend::test_database();
     run_run_summary_fence_conformance(&backend, "memory").await;
 }
 
@@ -1232,7 +1232,7 @@ async fn postgres_native_async_lease_recovery_and_tenant_fencing() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let principal = create_test_principal(&backend, "native-async").await;
     let session = backend
         .create_session(session_input(principal, "native-async"))
@@ -1368,7 +1368,7 @@ async fn postgres_agents_api_lease_recovery_and_tenant_fencing() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let principal = create_test_principal(&backend, "agents-api").await;
     let session = backend
         .create_session(session_input(principal, "agents-api"))

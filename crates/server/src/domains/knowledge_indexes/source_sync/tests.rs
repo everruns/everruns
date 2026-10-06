@@ -193,7 +193,7 @@ fn one_doc(name: &str, text: &str) -> ExtractedDocument {
 
 #[tokio::test]
 async fn enqueue_claim_complete_round_trip() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap();
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
     let index_id = seed_index(&db, DEFAULT_ORG_ID, model_id).await;
@@ -258,7 +258,7 @@ async fn enqueue_claim_complete_round_trip() {
 
 #[tokio::test]
 async fn complete_rejects_stale_claim() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap();
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
     let index_id = seed_index(&db, DEFAULT_ORG_ID, model_id).await;
@@ -302,7 +302,7 @@ async fn complete_rejects_stale_claim() {
 
 #[tokio::test]
 async fn fail_rejects_stale_claim_and_preserves_status() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap();
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
     let index_id = seed_index(&db, DEFAULT_ORG_ID, model_id).await;
@@ -384,7 +384,7 @@ fn test_driver_registry() -> Arc<DriverRegistry> {
 
 #[tokio::test]
 async fn embed_persists_documents_chunks_and_vectors() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption =
         Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;

@@ -1246,7 +1246,7 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_installs_for_one_channel_are_serialized() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let channel_id = uuid::Uuid::now_v7();
         let first = db.lock_slack_install(channel_id).await.expect("first lock");
 

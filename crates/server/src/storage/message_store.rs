@@ -362,9 +362,9 @@ mod tests {
 
     #[tokio::test]
     async fn load_filtered_applies_custom_filter_before_latest_limit() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = db.create_test_session().await;
         let retriever = DbMessageRetriever::new(db);
-        let session_id = SessionId::new();
 
         add_user_messages(
             &retriever,
@@ -387,9 +387,9 @@ mod tests {
 
     #[tokio::test]
     async fn load_filtered_offset_not_applied_twice_for_db_mappable_query() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = db.create_test_session().await;
         let retriever = DbMessageRetriever::new(db);
-        let session_id = SessionId::new();
 
         add_user_messages(&retriever, session_id, &["m1", "m2", "m3", "m4", "m5"]).await;
 
@@ -403,9 +403,9 @@ mod tests {
 
     #[tokio::test]
     async fn load_filtered_offset_and_limit_not_applied_twice_for_db_mappable_query() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = db.create_test_session().await;
         let retriever = DbMessageRetriever::new(db);
-        let session_id = SessionId::new();
 
         add_user_messages(&retriever, session_id, &["m1", "m2", "m3", "m4", "m5"]).await;
 
@@ -418,9 +418,9 @@ mod tests {
     }
     #[tokio::test]
     async fn load_filtered_notice_counts_filtered_candidates_before_limit() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = db.create_test_session().await;
         let retriever = DbMessageRetriever::new(db);
-        let session_id = SessionId::new();
 
         add_user_messages(
             &retriever,

@@ -670,7 +670,7 @@ mod tests {
 
     #[tokio::test]
     async fn knowledge_index_lifecycle_round_trip() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -754,7 +754,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_source_urls_are_normalized_before_storage() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -781,7 +781,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_source_rejects_unsupported_urls() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -804,7 +804,7 @@ mod tests {
 
     #[tokio::test]
     async fn github_source_rejects_inline_credential_fields() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -832,7 +832,7 @@ mod tests {
 
     #[tokio::test]
     async fn source_config_update_rebinds_sync_owner_to_caller() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let creator_user_id = Uuid::new_v4();
         let updater_user_id = Uuid::new_v4();
@@ -877,7 +877,7 @@ mod tests {
 
     #[tokio::test]
     async fn metadata_update_preserves_sync_owner() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let creator_user_id = Uuid::new_v4();
         let updater_user_id = Uuid::new_v4();
@@ -919,7 +919,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_requires_existing_embedding_model() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
         let err = CreateKnowledgeIndex {
@@ -944,7 +944,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_rejects_chat_model_from_embeddings_capable_provider() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let provider = db
             .create_provider(
                 DEFAULT_ORG_ID,
@@ -993,7 +993,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_rejects_embedding_tag_when_provider_lacks_service() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let provider = db
             .create_provider(
                 DEFAULT_ORG_ID,
@@ -1041,7 +1041,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_rejects_chat_model_and_preserves_valid_configuration() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let embedding_model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let embedding_model = db
             .get_model(DEFAULT_ORG_ID, embedding_model_id.uuid())
@@ -1100,7 +1100,7 @@ mod tests {
 
     #[tokio::test]
     async fn valid_model_repair_requeues_failed_index_and_clears_error() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
         let created = CreateKnowledgeIndex {
@@ -1144,7 +1144,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_invalid_source_type() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -1169,7 +1169,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_cross_org_embedding_model() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         // Model belongs to org 2; org 1 must not be able to reference it, and the
         // error must not leak that it exists in another org.
         let foreign_model = seed_model(&db, 2).await;
@@ -1197,7 +1197,7 @@ mod tests {
 
     #[tokio::test]
     async fn knowledge_indexes_do_not_cross_orgs() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_one = seed_model(&db, 1).await;
         let org_one = ctx_with_db(1, db.clone());
         let org_two = ctx_with_db(2, db);
@@ -1230,7 +1230,7 @@ mod tests {
 
     #[tokio::test]
     async fn duplicate_active_index_names_conflict() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
@@ -1266,7 +1266,7 @@ mod tests {
 
     #[tokio::test]
     async fn archived_index_rejects_updates() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
         let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
 
