@@ -1,6 +1,7 @@
 // Org-configurable agent check rule storage (PostgreSQL). See knowledge/evaluation/agent-checks.md.
 
 use anyhow::Result;
+use everruns_server_macros::sql;
 
 use crate::storage::Database;
 use crate::storage::models::*;
@@ -9,16 +10,15 @@ const MAX_AGENT_CHECK_RULE_ROWS_PER_ORG_READ: i64 = 256;
 
 impl Database {
     pub async fn list_agent_check_rules(&self, org_id: i64) -> Result<Vec<AgentCheckRuleRow>> {
-        let rows = sqlx::query_as::<_, AgentCheckRuleRow>(
+        let rows = sqlx::query_as::<_, AgentCheckRuleRow>(sql!(
             r#"
-            SELECT id, org_id, rule_id, kind, enabled, severity_override, config,
-                   created_at, updated_at
+            SELECT {AgentCheckRuleRow}
             FROM agent_check_rules
             WHERE org_id = $1
             ORDER BY rule_id
             LIMIT $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(MAX_AGENT_CHECK_RULE_ROWS_PER_ORG_READ)
         .fetch_all(&self.pool)
@@ -53,7 +53,7 @@ impl Database {
         input: UpsertAgentCheckRuleRow,
     ) -> Result<AgentCheckRuleRow> {
         let row = sqlx::query_as::<_, AgentCheckRuleRow>(
-            r#"
+            sql!(r#"
             INSERT INTO agent_check_rules (org_id, rule_id, kind, enabled, severity_override, config)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (org_id, rule_id) DO UPDATE SET
@@ -62,9 +62,8 @@ impl Database {
                 severity_override = EXCLUDED.severity_override,
                 config = EXCLUDED.config,
                 updated_at = NOW()
-            RETURNING id, org_id, rule_id, kind, enabled, severity_override, config,
-                      created_at, updated_at
-            "#,
+            RETURNING {AgentCheckRuleRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.rule_id)

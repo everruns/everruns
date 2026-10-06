@@ -3,11 +3,12 @@
 
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::TriggerId;
+use everruns_server_macros::Columns;
 use sqlx::FromRow;
 use uuid::Uuid;
 
 /// One event delivery recorded by the trigger event pipeline.
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Columns)]
 pub struct AgentTriggerDeliveryRow {
     pub id: Uuid,
     pub org_id: i64,

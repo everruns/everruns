@@ -4,6 +4,7 @@ use super::super::models::*;
 use super::Database;
 use anyhow::Result;
 use everruns_contracts::typed_id::{AgentId, VirtualUserId};
+use everruns_server_macros::sql;
 
 impl Database {
     // ============================================
@@ -18,7 +19,7 @@ impl Database {
         input: CreateVirtualUserConnectionRow,
     ) -> Result<VirtualUserConnectionRow> {
         let row = sqlx::query_as::<_, VirtualUserConnectionRow>(
-            r#"
+            sql!(r#"
             INSERT INTO virtual_user_connections
                 (virtual_user_id, provider, connection_type, provider_user_id, provider_username,
                  access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata)
@@ -34,10 +35,8 @@ impl Database {
                 installation_id = EXCLUDED.installation_id,
                 provider_metadata = EXCLUDED.provider_metadata,
                 updated_at = NOW()
-            RETURNING id, virtual_user_id, provider, connection_type, provider_user_id,
-                      provider_username, access_token_encrypted, refresh_token_encrypted,
-                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
-            "#,
+            RETURNING {VirtualUserConnectionRow}
+            "#),
         )
         .bind(input.virtual_user_id)
         .bind(&input.provider)
@@ -64,7 +63,7 @@ impl Database {
         input: CreateVirtualUserConnectionRow,
     ) -> Result<Option<VirtualUserConnectionRow>> {
         let row = sqlx::query_as::<_, VirtualUserConnectionRow>(
-            r#"
+            sql!(r#"
             WITH eligible AS (
                 SELECT a.virtual_user_id
                 FROM agents AS a
@@ -94,10 +93,8 @@ impl Database {
                 installation_id = EXCLUDED.installation_id,
                 provider_metadata = EXCLUDED.provider_metadata,
                 updated_at = NOW()
-            RETURNING id, virtual_user_id, provider, connection_type, provider_user_id,
-                      provider_username, access_token_encrypted, refresh_token_encrypted,
-                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
-            "#,
+            RETURNING {VirtualUserConnectionRow}
+            "#),
         )
         .bind(org_id)
         .bind(agent_id)
@@ -137,14 +134,14 @@ impl Database {
         identity_id: VirtualUserId,
         provider: &str,
     ) -> Result<Option<VirtualUserConnectionRow>> {
-        let row = sqlx::query_as::<_, VirtualUserConnectionRow>(
+        let row = sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
             r#"
-            SELECT id, virtual_user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
+            SELECT {VirtualUserConnectionRow}
             FROM virtual_user_connections
             WHERE virtual_user_id = $1 AND provider = $2
             LIMIT 1
-            "#,
-        )
+            "#
+        ))
         .bind(identity_id)
         .bind(provider)
         .fetch_optional(&self.pool)
@@ -158,14 +155,14 @@ impl Database {
         &self,
         identity_id: VirtualUserId,
     ) -> Result<Vec<VirtualUserConnectionRow>> {
-        let rows = sqlx::query_as::<_, VirtualUserConnectionRow>(
+        let rows = sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
             r#"
-            SELECT id, virtual_user_id, provider, connection_type, provider_user_id, provider_username, access_token_encrypted, refresh_token_encrypted, scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
+            SELECT {VirtualUserConnectionRow}
             FROM virtual_user_connections
             WHERE virtual_user_id = $1
             ORDER BY provider ASC
-            "#,
-        )
+            "#
+        ))
         .bind(identity_id)
         .fetch_all(&self.pool)
         .await?;
@@ -177,7 +174,7 @@ impl Database {
         &self,
         input: UpdateOAuthConnectionTokens,
     ) -> Result<Option<VirtualUserConnectionRow>> {
-        let row = sqlx::query_as::<_, VirtualUserConnectionRow>(
+        let row = sqlx::query_as::<_, VirtualUserConnectionRow>(sql!(
             r#"
             UPDATE virtual_user_connections
             SET access_token_encrypted = $2,
@@ -186,11 +183,9 @@ impl Database {
                 scopes = COALESCE($5, scopes),
                 updated_at = NOW()
             WHERE id = $1 AND connection_type = 'oauth'
-            RETURNING id, virtual_user_id, provider, connection_type, provider_user_id,
-                      provider_username, access_token_encrypted, refresh_token_encrypted,
-                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
-            "#,
-        )
+            RETURNING {VirtualUserConnectionRow}
+            "#
+        ))
         .bind(input.connection_id)
         .bind(input.access_token_encrypted)
         .bind(input.refresh_token_encrypted)

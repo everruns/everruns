@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use everruns_server_macros::sql;
 
 impl Database {
     // ============================================
@@ -15,15 +16,15 @@ impl Database {
         virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         limit: usize,
     ) -> Result<Vec<VirtualUserPreferenceRow>> {
-        let rows = sqlx::query_as::<_, VirtualUserPreferenceRow>(
+        let rows = sqlx::query_as::<_, VirtualUserPreferenceRow>(sql!(
             r#"
-            SELECT id, virtual_user_id, key, value, created_at, updated_at
+            SELECT {VirtualUserPreferenceRow}
             FROM virtual_user_preferences
             WHERE virtual_user_id = $1
             ORDER BY key ASC
             LIMIT $2
-            "#,
-        )
+            "#
+        ))
         .bind(virtual_user_id)
         .bind(limit as i64)
         .fetch_all(&self.pool)
@@ -38,13 +39,13 @@ impl Database {
         virtual_user_id: everruns_contracts::typed_id::VirtualUserId,
         key: &str,
     ) -> Result<Option<VirtualUserPreferenceRow>> {
-        let row = sqlx::query_as::<_, VirtualUserPreferenceRow>(
+        let row = sqlx::query_as::<_, VirtualUserPreferenceRow>(sql!(
             r#"
-            SELECT id, virtual_user_id, key, value, created_at, updated_at
+            SELECT {VirtualUserPreferenceRow}
             FROM virtual_user_preferences
             WHERE virtual_user_id = $1 AND key = $2
-            "#,
-        )
+            "#
+        ))
         .bind(virtual_user_id)
         .bind(key)
         .fetch_optional(&self.pool)
@@ -86,15 +87,15 @@ impl Database {
             }
         }
 
-        let row = sqlx::query_as::<_, VirtualUserPreferenceRow>(
+        let row = sqlx::query_as::<_, VirtualUserPreferenceRow>(sql!(
             r#"
             INSERT INTO virtual_user_preferences (virtual_user_id, key, value)
             VALUES ($1, $2, $3)
             ON CONFLICT (virtual_user_id, key)
             DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-            RETURNING id, virtual_user_id, key, value, created_at, updated_at
-            "#,
-        )
+            RETURNING {VirtualUserPreferenceRow}
+            "#
+        ))
         .bind(virtual_user_id)
         .bind(key)
         .bind(value)

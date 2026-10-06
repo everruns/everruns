@@ -4,6 +4,7 @@
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -207,10 +208,10 @@ impl Database {
         &self,
         index_id: Uuid,
     ) -> Result<Vec<KnowledgeIndexChunkRow>> {
-        let rows = sqlx::query_as::<_, KnowledgeIndexChunkRow>(
-            "SELECT id, document_id, index_id, public_id, ordinal, text, location, token_count, created_at \
-             FROM knowledge_index_chunks WHERE index_id = $1 ORDER BY document_id, ordinal",
-        )
+        let rows = sqlx::query_as::<_, KnowledgeIndexChunkRow>(sql!(
+            "SELECT {KnowledgeIndexChunkRow} \
+             FROM knowledge_index_chunks WHERE index_id = $1 ORDER BY document_id, ordinal"
+        ))
         .bind(index_id)
         .fetch_all(&self.pool)
         .await?;

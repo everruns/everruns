@@ -157,6 +157,9 @@ syn = { version = "3.0", features = ["full"] }
 trybuild = "1.0"
 
 # Database
+# Compile-time string concatenation: splices `#[derive(Columns)]` lists into
+# static SQL.
+const_format = "0.2"
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres", "migrate", "uuid", "chrono", "macros"] }
 
 # UUID and time

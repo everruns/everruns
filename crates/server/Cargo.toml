@@ -48,6 +48,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 utoipa.workspace = true
 sqlx.workspace = true
+const_format.workspace = true
 chrono.workspace = true
 dotenvy.workspace = true
 clap.workspace = true

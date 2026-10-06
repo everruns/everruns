@@ -65,6 +65,8 @@ pub mod test_database;
 mod backend_tests;
 #[cfg(test)]
 mod event_tests;
+#[cfg(test)]
+mod sql_columns_tests;
 
 pub use a2a_push_configs::*;
 pub use agent_avatars::*;
