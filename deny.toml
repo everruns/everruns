@@ -42,7 +42,11 @@ allow = [
 confidence-threshold = 0.8
 
 # Allow specific exceptions (add as needed)
-exceptions = []
+exceptions = [
+    # PostgreSQL License: OSI-approved, permissive (BSD/MIT-like). Covers the
+    # dev/test-only embedded cluster in crates/pg-embedded.
+    { allow = ["PostgreSQL"], crate = "postgresql_archive" },
+]
 
 # Clarify specific dependencies if needed
 [[licenses.clarify]]
