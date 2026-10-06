@@ -29,7 +29,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
-use everruns_durable::sysstat;
 use everruns_sdk::sse::StreamOptions;
 use everruns_sdk::{CreateAgentRequest, Everruns};
 use futures::stream::{self, StreamExt};
@@ -134,6 +133,62 @@ impl CliArgs {
 // Checkpoint Types
 // ============================================================================
 
+/// Host facts for the checkpoint's environment block, read from `/proc` and
+/// `/etc/os-release`. Every reading is `None` where those files are absent.
+mod host {
+    use std::fs;
+
+    fn read(path: &str) -> Option<String> {
+        fs::read_to_string(path).ok()
+    }
+
+    fn field(content: &str, separator: char, key: &str) -> Option<String> {
+        content.lines().find_map(|line| {
+            let (found, value) = line.split_once(separator)?;
+            let value = value.trim().trim_matches('"');
+            (found.trim() == key && !value.is_empty()).then(|| value.to_string())
+        })
+    }
+
+    pub struct Memory {
+        pub total_bytes: u64,
+    }
+
+    pub fn memory() -> Option<Memory> {
+        let total_kb = field(&read("/proc/meminfo")?, ':', "MemTotal")?;
+        let total_kb: u64 = total_kb.split_whitespace().next()?.parse().ok()?;
+        Some(Memory {
+            total_bytes: total_kb * 1024,
+        })
+    }
+
+    pub fn cpu_cores() -> usize {
+        std::thread::available_parallelism().map_or(1, |count| count.get())
+    }
+
+    /// `model name` is the x86 key; ARM kernels report `Model` or `Hardware`.
+    pub fn cpu_brand() -> Option<String> {
+        let cpuinfo = read("/proc/cpuinfo")?;
+        ["model name", "Model", "Hardware", "cpu model"]
+            .into_iter()
+            .find_map(|key| field(&cpuinfo, ':', key))
+    }
+
+    pub fn os_name() -> Option<String> {
+        field(&read("/etc/os-release")?, '=', "NAME")
+    }
+
+    pub fn os_version() -> Option<String> {
+        field(&read("/etc/os-release")?, '=', "VERSION_ID")
+    }
+
+    pub fn host_name() -> Option<String> {
+        let name = read("/proc/sys/kernel/hostname")?;
+        let name = name.trim();
+        (!name.is_empty()).then(|| name.to_string())
+    }
+}
+
 /// Environment information for a benchmark run
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct EnvironmentInfo {
@@ -154,18 +209,18 @@ struct EnvironmentInfo {
 impl EnvironmentInfo {
     /// Detect environment information automatically
     fn detect() -> Self {
-        let cpu_name = sysstat::cpu_brand().unwrap_or_else(|| "Unknown CPU".to_string());
-        let cpu_cores = sysstat::cpu_cores();
-        let memory_gb = sysstat::memory()
+        let cpu_name = host::cpu_brand().unwrap_or_else(|| "Unknown CPU".to_string());
+        let cpu_cores = host::cpu_cores();
+        let memory_gb = host::memory()
             .map(|memory| memory.total_bytes as f64 / (1024.0 * 1024.0 * 1024.0))
             .unwrap_or(0.0);
 
         let os = format!(
             "{} {}",
-            sysstat::os_name().unwrap_or_default(),
-            sysstat::os_version().unwrap_or_default()
+            host::os_name().unwrap_or_default(),
+            host::os_version().unwrap_or_default()
         );
-        let hostname = sysstat::host_name();
+        let hostname = host::host_name();
 
         // Generate default moniker from environment
         let moniker = Self::generate_moniker(&cpu_name, cpu_cores, memory_gb);

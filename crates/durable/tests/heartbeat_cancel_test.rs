@@ -14,7 +14,6 @@ use everruns_durable::persistence::{
     InMemoryWorkflowEventStore, TaskDefinition, WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::workflow::ActivityOptions;
-use everruns_durable::{EventLog, TaskQueue, WorkerRegistry};
 
 async fn cancelled_turn_reaches_the_owning_worker(store: &impl WorkflowEventStore) {
     let workflow_id = Uuid::now_v7();
@@ -68,6 +67,7 @@ async fn in_memory_store_reports_a_cancelled_turn() {
 #[tokio::test]
 async fn postgres_store_reports_a_cancelled_turn_and_ownership_loss_apart() {
     use everruns_durable::persistence::{PostgresWorkflowEventStore, WorkerInfo};
+    use everruns_durable::{EventLog, TaskQueue, WorkerRegistry};
     let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
         let port = std::env::var("DB_PORT").unwrap_or_else(|_| "9332".to_string());
         format!("postgres://postgres:postgres@localhost:{port}/everruns_test")

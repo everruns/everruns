@@ -2,6 +2,13 @@
 
 ## 2026-10-05
 
+* **The generic workflow engine is an opt-out feature.** `everruns-durable`'s
+  `Workflow`/`Activity` traits, `WorkflowExecutor`, `WorkerPool` and
+  `TimeoutManager` sit behind the experimental `workflows` feature, on by
+  default for crates.io users and off for every workspace crate, none of which
+  runs it. `examples/order_pipeline.rs` is its isolated consumer and runs in
+  CI. See [Durable Execution Engine](operations/durable-execution-engine.md#workflow-engine-feature).
+
 * **Modal sandboxes, in a new everruns-integrations crate.** The `modal`
   capability runs agent code in Modal VM sandboxes (own kernel) or gVisor
   containers over Modal's gRPC API, with files, snapshots and tunnels.

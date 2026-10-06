@@ -190,6 +190,8 @@ pub type ActivityHandler = Arc<
 
 /// Worker pool for executing activities
 ///
+/// **Experimental** (`workflows` feature): the API may change in any release.
+///
 /// The pool polls the store for its activity types, runs handlers with
 /// bounded concurrency, heartbeats its tasks, reclaims stale work and stops
 /// claiming under backpressure. It completes or fails tasks in the store; it

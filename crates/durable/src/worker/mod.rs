@@ -1,5 +1,8 @@
 //! Worker pool for task execution
 //!
+//! **Experimental** (`workflows` feature): the API may change in any release.
+//! Everruns' own workers claim tasks through their own loop, not this pool.
+//!
 //! This module provides:
 //! - [`WorkerPool`] - Main worker pool with concurrent task execution
 //! - [`BackpressureConfig`] - Load-aware task acceptance configuration
