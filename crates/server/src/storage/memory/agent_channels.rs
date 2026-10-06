@@ -239,7 +239,10 @@ impl InMemoryDatabase {
             org_id,
             agent_id: input.agent_id,
             agent_public_id: agent.public_id,
-            agent_name: agent.display_name.unwrap_or(agent.name),
+            agent_name: agent
+                .display_name
+                .filter(|name| !name.is_empty())
+                .unwrap_or(agent.name),
             agent_description: agent.description,
             harness_id: agent.harness_id.uuid(),
             agent_status: agent.status,
@@ -352,7 +355,10 @@ impl InMemoryDatabase {
             org_id: app.org_id,
             agent_id,
             agent_public_id: agent.public_id,
-            agent_name: agent.display_name.unwrap_or(agent.name),
+            agent_name: agent
+                .display_name
+                .filter(|name| !name.is_empty())
+                .unwrap_or(agent.name),
             agent_description: agent.description,
             harness_id: agent.harness_id.uuid(),
             agent_status: agent.status,

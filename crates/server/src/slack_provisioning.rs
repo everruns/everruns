@@ -1,3 +1,5 @@
+mod branding;
+
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -448,6 +450,9 @@ impl SlackApiProvisioner {
             SlackProvisioningError::Unreachable(format!("request failed: {error}"))
         })?;
         let status = response.status();
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(SlackProvisioningError::Rejected("ratelimited".into()));
+        }
         let value: serde_json::Value = response.json().await.map_err(|error| {
             SlackProvisioningError::Unreachable(format!("malformed response: {error}"))
         })?;
@@ -513,6 +518,40 @@ struct CreateAppCredentials {
 
 #[async_trait]
 impl SlackAppProvisioner for SlackApiProvisioner {
+    async fn update_branding(
+        &self,
+        org_id: i64,
+        team_id: Option<&str>,
+        app_id: &str,
+        name: &str,
+        description: Option<&str>,
+    ) -> SlackProvisioningResult<()> {
+        let row = self.connection_for(org_id, team_id).await?;
+        let exported = self
+            .manifest_call(
+                row,
+                "/apps.manifest.export",
+                serde_json::json!({"app_id":app_id}),
+            )
+            .await?;
+        let mut manifest = exported
+            .get("manifest")
+            .filter(|m| m.is_object())
+            .cloned()
+            .ok_or_else(|| malformed_response("apps.manifest.export"))?;
+        branding::patch(&mut manifest, name, description)?;
+        let manifest = serde_json::to_string(&manifest)
+            .map_err(|_| malformed_response("apps.manifest.export"))?;
+        let row = self.connection_for(org_id, team_id).await?;
+        self.manifest_call(
+            row,
+            "/apps.manifest.update",
+            serde_json::json!({"app_id":app_id,"manifest":manifest}),
+        )
+        .await?;
+        Ok(())
+    }
+
     async fn set_app_icon(
         &self,
         org_id: i64,
@@ -725,7 +764,7 @@ mod tests {
         )
     }
 
-    fn provisioner(server: &MockServer) -> (SlackApiProvisioner, Arc<StorageBackend>) {
+    pub(super) fn provisioner(server: &MockServer) -> (SlackApiProvisioner, Arc<StorageBackend>) {
         let db = Arc::new(StorageBackend::in_memory());
         (
             SlackApiProvisioner::with_api_base(db.clone(), encryption(), &server.uri())
@@ -734,7 +773,7 @@ mod tests {
         )
     }
 
-    fn stored(
+    pub(super) fn stored(
         org_id: i64,
         team_id: &str,
         expires_in: chrono::Duration,

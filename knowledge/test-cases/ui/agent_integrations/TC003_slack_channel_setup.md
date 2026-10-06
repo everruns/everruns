@@ -78,3 +78,14 @@ into a chosen workspace on save, and receives a signed inbound event.
 - A failed install leaves the saved channel reachable with the failure reason and **Add to
   Slack** visible.
 - The inbound test message reaches the agent and the connection status records **Message received**, even when no separate URL challenge was recorded.
+
+## Identity updates
+
+With two provisioned Slack channels installed for one agent, change its display
+name and description in Branding. Verify both Slack app manifests and enabled
+agent descriptions reflect the saved values without reinstalling. Confirm
+permissions, callback URLs, custom suggested prompts and agent-surface settings
+remain unchanged. Change only the system prompt and verify no identity update.
+Repeat using an agent upsert and a version rollback; when display name is absent,
+verify the canonical agent name is used. A manually configured channel and an
+app belonging to another agent or organization must remain unchanged.

@@ -489,6 +489,7 @@ pub struct WorkerServiceImpl {
     /// Central org rate limiter for gRPC-backed outbound tool calls.
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
     /// Active permission resolver for user-scoped command execution over gRPC.
+    slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     /// System utility LLM for sanctioned internal analysis commands.
     utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
@@ -632,6 +633,7 @@ impl WorkerServiceImpl {
             presign_secret,
             budget_service,
             org_rate_limiter: None,
+            slack_provisioner: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             utility_llm_service,
             connector_registry,
@@ -672,6 +674,13 @@ impl WorkerServiceImpl {
         self.sqldb_store = Some(store);
     }
 
+    pub fn set_slack_provisioner(
+        &mut self,
+        provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
+    ) {
+        self.slack_provisioner = provisioner;
+    }
+
     pub fn set_permission_resolver(&mut self, resolver: Arc<dyn PermissionResolver>) {
         self.permission_resolver = resolver;
     }
@@ -702,6 +711,7 @@ impl WorkerServiceImpl {
             self.encryption.clone(),
             resolver,
         )
+        .with_slack_provisioner(self.slack_provisioner.clone())
         .with_connector_registry(self.connector_registry.clone())
         .with_utility_llm_service(self.utility_llm_service.clone())
         .with_workflow_store(

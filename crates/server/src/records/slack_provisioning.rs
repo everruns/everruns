@@ -161,6 +161,18 @@ pub trait SlackAppProvisioner: Send + Sync {
         Err(SlackProvisioningError::Unavailable)
     }
 
+    /// Update an app's identity while preserving its exported Slack configuration.
+    async fn update_branding(
+        &self,
+        _org_id: i64,
+        _team_id: Option<&str>,
+        _app_id: &str,
+        _name: &str,
+        _description: Option<&str>,
+    ) -> SlackProvisioningResult<()> {
+        Err(SlackProvisioningError::Unavailable)
+    }
+
     /// Set the icon of an app created by `create_app` (Slack's `apps.icon.set`).
     ///
     /// A manifest cannot carry an icon, so this is how an agent's avatar

@@ -1,3 +1,5 @@
+mod context;
+
 // MCP Endpoint — exposes Everruns as an MCP server (Streamable HTTP transport)
 //
 // Design decisions:
@@ -328,6 +330,7 @@ pub struct AppState {
     /// Agent health check service, so the
     /// health-check commands work over MCP, not just HTTP.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
@@ -402,6 +405,7 @@ impl AppState {
             .map(|h| h.name.clone()),
             sqldb_store,
             utility_llm_service: host_composition.utility_llm_service(),
+            slack_provisioner: None,
             health_check_service: None,
             resource_metadata_url: None,
             mcp_resource: None,
@@ -778,6 +782,7 @@ fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
     )
     .with_feature_flags(org.feature_flags.clone())
     .with_org_rate_limiter(state.org_rate_limiter.clone())
+    .with_slack_provisioner(state.slack_provisioner.clone())
     .with_utility_llm_service(state.utility_llm_service.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
@@ -1545,35 +1550,7 @@ pub(crate) fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::C
     }
 }
 
-pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains::common::Ctx {
-    let mut ctx = crate::domains::common::Ctx::new(
-        caller,
-        state.db.clone(),
-        state.capability_service.clone(),
-        state.encryption.clone(),
-        state.auth.permission_resolver.clone(),
-    )
-    .with_connector_registry(state.connector_registry.clone())
-    .with_org_rate_limiter(state.org_rate_limiter.clone())
-    .with_session_service(state.session_service.clone())
-    .with_message_service(state.message_service.clone())
-    .with_event_service(state.event_service.clone())
-    .with_reporting_service(state.reporting_service.clone())
-    .with_session_file_service(state.session_file_service.clone())
-    .with_runner(state.runner.clone())
-    .with_fallback_harness_name(state.fallback_default_harness_name.clone())
-    .with_utility_llm_service(state.utility_llm_service.clone());
-    if let Some(service) = &state.health_check_service {
-        ctx = ctx.with_health_check_service(service.clone());
-    }
-    if let Some(service) = &state.session_sandbox_service {
-        ctx = ctx.with_session_sandbox_service(service.clone());
-    }
-    if let Some(store) = &state.sqldb_store {
-        ctx = ctx.with_sqldb_store(store.clone());
-    }
-    ctx.with_workflow_store(state.workflow_store.clone())
-}
+pub(crate) use context::domain_context;
 
 #[cfg(test)]
 mod org_override_scope_tests {

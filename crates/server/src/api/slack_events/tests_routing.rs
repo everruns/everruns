@@ -538,9 +538,9 @@ fn test_build_long_description_meets_minimum() {
     // No description — should still be >= 174
     let desc = build_long_description("Bot", None);
     assert!(
-        desc.len() >= SLACK_LONG_DESC_MIN,
+        desc.chars().count() >= SLACK_LONG_DESC_MIN,
         "Long description is {} chars, need at least {}",
-        desc.len(),
+        desc.chars().count(),
         SLACK_LONG_DESC_MIN
     );
 }
@@ -549,7 +549,7 @@ fn test_build_long_description_meets_minimum() {
 fn test_build_long_description_with_app_desc() {
     let desc = build_long_description("Bot", Some("My awesome bot"));
     assert!(desc.contains("My awesome bot"));
-    assert!(desc.len() >= SLACK_LONG_DESC_MIN);
+    assert!(desc.chars().count() >= SLACK_LONG_DESC_MIN);
 }
 
 #[test]
@@ -557,14 +557,14 @@ fn test_build_long_description_empty_desc_treated_as_none() {
     let desc = build_long_description("Bot", Some("   "));
     // Empty/whitespace description is ignored
     assert!(!desc.contains("   |"));
-    assert!(desc.len() >= SLACK_LONG_DESC_MIN);
+    assert!(desc.chars().count() >= SLACK_LONG_DESC_MIN);
 }
 
 #[test]
 fn test_build_long_description_truncates_at_max() {
-    let long = "x".repeat(5000);
+    let long = "名".repeat(5000);
     let desc = build_long_description("Bot", Some(&long));
-    assert!(desc.len() <= SLACK_LONG_DESC_MAX);
+    assert_eq!(desc.chars().count(), SLACK_LONG_DESC_MAX);
 }
 
 #[test]
