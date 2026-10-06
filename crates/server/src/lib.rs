@@ -101,6 +101,9 @@ pub mod agents_api_lifecycle;
 // Object-storage blob garbage collector
 pub mod blob_gc;
 
+// Cluster-once maintenance jobs on durable schedules
+pub mod cluster_jobs;
+
 // Surface sealed durable turns (forward-progress guard, EVE-534) to sessions.
 pub mod durable_failure;
 pub mod durable_reaper;

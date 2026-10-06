@@ -7,9 +7,9 @@ use everruns_core::connection_services::UserConnectionResolver;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use tokio::task;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+use crate::cluster_jobs::ClusterJob;
 use crate::domains::git_fetch::{self, FetchRequest};
 use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::domains::memory::types::{
@@ -132,51 +132,64 @@ impl VolumeSourceSyncService {
     }
 }
 
-pub fn spawn_memory_source_sync_task(
+/// Durable schedule name of the Memory source sync.
+pub const MEMORY_SOURCE_SYNC_SCHEDULE: &str = "memory-source-sync";
+/// Activity type the Memory source sync schedule enqueues.
+pub const MEMORY_SOURCE_SYNC_ACTIVITY: &str = "memory_source_sync";
+
+/// Memory source sync as a cluster-once job (`cluster_jobs.rs`): each run
+/// claims and syncs one due memory, as each interval tick did.
+pub fn memory_source_sync_job(
     db: Arc<StorageBackend>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
-) -> Option<JoinHandle<()>> {
+) -> ClusterJob {
+    let disabled = ClusterJob::disabled(MEMORY_SOURCE_SYNC_SCHEDULE, MEMORY_SOURCE_SYNC_ACTIVITY);
     if !env_bool("VOLUME_SOURCE_SYNC_ENABLED", true) {
         tracing::info!("Memory source sync background task disabled");
-        return None;
+        return disabled;
     }
 
     let config = VolumeSourceSyncConfig::from_env();
     if config.poll_interval.is_zero() {
         tracing::info!("Memory source sync background task disabled by zero interval");
-        return None;
+        return disabled;
     }
+    tracing::info!(
+        interval_secs = config.poll_interval.as_secs(),
+        max_files = config.max_files,
+        max_file_bytes = config.max_file_bytes,
+        max_total_bytes = config.max_total_bytes,
+        "Scheduling memory source sync"
+    );
 
-    let service = VolumeSourceSyncService::new(db, connection_resolver, config.clone());
-    Some(tokio::spawn(async move {
-        let mut interval = tokio::time::interval(config.poll_interval);
-        tracing::info!(
-            interval_secs = config.poll_interval.as_secs(),
-            max_files = config.max_files,
-            max_file_bytes = config.max_file_bytes,
-            max_total_bytes = config.max_total_bytes,
-            "Started memory source sync background task"
-        );
-
-        loop {
-            interval.tick().await;
-            match service.run_once().await {
-                Ok(Some(VolumeSyncOutcome::Synced {
-                    memory_id,
-                    file_count,
-                })) => {
-                    tracing::info!(%memory_id, file_count, "Memory source sync completed");
+    let period = config.poll_interval;
+    let service = VolumeSourceSyncService::new(db, connection_resolver, config);
+    ClusterJob::every(
+        MEMORY_SOURCE_SYNC_SCHEDULE,
+        MEMORY_SOURCE_SYNC_ACTIVITY,
+        "Syncs the next due source-backed Memory.",
+        period,
+        move || {
+            let service = service.clone();
+            Box::pin(async move {
+                match service.run_once().await {
+                    Ok(Some(VolumeSyncOutcome::Synced {
+                        memory_id,
+                        file_count,
+                    })) => {
+                        tracing::info!(%memory_id, file_count, "Memory source sync completed");
+                    }
+                    Ok(Some(VolumeSyncOutcome::Failed { memory_id, error })) => {
+                        tracing::warn!(%memory_id, %error, "Memory source sync failed");
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::error!(%error, "Memory source sync task failed");
+                    }
                 }
-                Ok(Some(VolumeSyncOutcome::Failed { memory_id, error })) => {
-                    tracing::warn!(%memory_id, %error, "Memory source sync failed");
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    tracing::error!(%error, "Memory source sync task failed");
-                }
-            }
-        }
-    }))
+            })
+        },
+    )
 }
 
 async fn snapshot_memory_source(

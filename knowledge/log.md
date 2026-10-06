@@ -9,6 +9,11 @@
   runs it. `examples/order_pipeline.rs` is its isolated consumer and runs in
   CI. See [Durable Execution Engine](operations/durable-execution-engine.md#workflow-engine-feature).
 
+* **Maintenance sweeps run once per cluster.** Blob GC, event and Sandbox
+  history retention and the Memory and Knowledge index source syncs moved from per-replica
+  interval loops to durable `@every` schedules served by a server-side job
+  pool. See [Scheduled Tasks](operations/scheduled-tasks.md#cluster-once-maintenance-jobs).
+
 * **Stale-task reaping and schedule bootstrap moved into durable.** The
   reclaim loop and dead/sealed-task terminalization the server ran inline
   are now `everruns_durable::maintenance`, with a `ReapHandler` for the turn

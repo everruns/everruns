@@ -1996,27 +1996,6 @@ impl ServerAppBuilder {
                     );
                 }
             }
-
-            // -- Event and Sandbox history retention --
-            if let Some(pool) = db.background_pool() {
-                use crate::{event_retention as ev, sandbox_history_retention as sb};
-                let ev_task = ev::spawn_retention_task(pool.clone(), ev::retention_days_from_env());
-                supervisor.track_optional("event_retention", ev_task);
-                let sb_task = sb::spawn_retention_task(pool.clone(), sb::retention_days_from_env());
-                supervisor.track_optional("sandbox_history_retention", sb_task);
-            }
-
-            // -- Object-storage blob GC --
-            // Reconciles bucket contents against the sidecar pointer tables and
-            // reclaims orphaned objects. No-ops for the inline (db) backend
-            // (no external objects to collect). See knowledge/runtime-resources/object-storage.md.
-            supervisor.track_optional(
-                "blob_gc",
-                crate::blob_gc::spawn_blob_gc_task(
-                    background_db.clone(),
-                    crate::blob_gc::BlobGcConfig::from_env(),
-                ),
-            );
         } else {
             // DEV MODE: Start in-process task worker
             if let Some(shared_store) = shared_durable_store {
@@ -2130,6 +2109,7 @@ impl ServerAppBuilder {
         }
 
         // -- Durable task scheduler (both prod and dev) --
+        let cluster_jobs_store = background_scheduler_store.clone();
         if let Some(store) = background_scheduler_store {
             crate::system_schedules::ensure_worker_schedules(&store).await;
             let scheduler = everruns_durable::DurableScheduler::with_defaults(
@@ -2174,27 +2154,37 @@ impl ServerAppBuilder {
             ),
         );
 
-        // -- Source-backed Memory sync (both prod and dev) --
+        // -- GitHub connection resolver for the source syncs below --
         let memory_connection_resolver = optional_connection_resolver(
             &db,
             &encryption,
             &auth_config,
             host_composition.egress_service(),
         );
-        supervisor.track_optional(
-            "memory_source_sync",
-            crate::domains::memory::source_sync::spawn_memory_source_sync_task(
+        // -- Cluster-once maintenance jobs on durable schedules (crate::cluster_jobs) --
+        // Blob GC, event and Sandbox history retention, both source syncs: one run per cluster
+        // per interval, whatever the replica count.
+        let cluster_jobs = vec![
+            crate::blob_gc::blob_gc_job(
+                background_db.clone(),
+                crate::blob_gc::BlobGcConfig::from_env(),
+            ),
+            crate::event_retention::retention_job(
+                db.background_pool().cloned(),
+                crate::event_retention::retention_days_from_env(),
+            ),
+            crate::sandbox_history_retention::retention_job(
+                db.background_pool().cloned(),
+                crate::sandbox_history_retention::retention_days_from_env(),
+            ),
+            crate::domains::memory::source_sync::memory_source_sync_job(
                 background_db.clone(),
                 memory_connection_resolver.clone(),
             ),
-        );
-
-        // -- Knowledge Index Syncout (both prod and dev) --
-        // Reuses Memory sync's GitHub connection resolver, the provider resolver, the driver
-        // registry (embeddings), and the vector store: knowledge/runtime-resources/knowledge-indexes.md
-        supervisor.track_optional(
-            "knowledge_index_sync",
-            crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
+            // Reuses Memory sync's GitHub connection resolver, the provider resolver, the
+            // driver registry (embeddings), and the vector store:
+            // knowledge/runtime-resources/knowledge-indexes.md
+            crate::domains::knowledge_indexes::source_sync::knowledge_index_sync_job(
                 background_db.clone(),
                 memory_connection_resolver,
                 provider_resolver.clone(),
@@ -2205,7 +2195,13 @@ impl ServerAppBuilder {
                     .0
                     .clone(),
             ),
-        );
+        ];
+        if let Some(store) = cluster_jobs_store {
+            supervisor.track_optional(
+                "cluster_jobs",
+                crate::cluster_jobs::start(store, cluster_jobs).await,
+            );
+        }
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --
         for handle in crate::domains::reporting::background::spawn_reporting_background_task(

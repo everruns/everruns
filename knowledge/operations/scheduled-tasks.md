@@ -135,6 +135,25 @@ survives restarts; a replica that loses the unique-name race reports
 its job. The worker-run specs (leased-resource cleanup, session-task reaper)
 live in `crates/server/src/system_schedules.rs`.
 
+### Cluster-Once Maintenance Jobs
+
+Blob GC, event retention, Sandbox history retention, Memory source sync and
+Knowledge index sync used to be a `tokio::interval` on every replica, so N replicas ran each N times per
+interval. Each is now a `ClusterJob` (`crates/server/src/cluster_jobs.rs`) on an
+`@every` schedule at its configured interval (`STORAGE_BLOB_GC_INTERVAL_SECONDS`,
+hourly for both retentions, `VOLUME_SOURCE_SYNC_INTERVAL_SECS`,
+`KNOWLEDGE_INDEX_SYNC_INTERVAL_SECS`). The scheduler fires it once per cluster;
+each replica runs a small `WorkerPool` that serves only these activity types,
+and one replica claims the task. They run in the server, not on workers,
+because they need the database pools, object store, connection resolver,
+embeddings and vector store. The env switches still disable each job, and a
+disabled job's schedule is disabled. A job logs its own failure and completes,
+so a failed run waits for the next trigger, as before; a replica that dies
+mid-run leaves a stale claim for the reaper to hand to another replica.
+Behaviour notes: the first run is one interval after the schedule is created
+(the interval loops of the syncs fired at start-up), and a source sync claims
+one row per run cluster-wide rather than one per replica per tick.
+
 ### Multi-Instance Safety
 
 The scheduler uses `SELECT ... FOR UPDATE SKIP LOCKED` to claim due schedules, ensuring only one instance processes each due schedule. Stale claims (no update for 30s) are reclaimed.
