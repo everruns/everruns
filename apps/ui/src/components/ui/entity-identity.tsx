@@ -28,7 +28,7 @@ export function EntityIdentity({
     return (
       <span
         data-slot="entity-identity"
-        className={cn("min-w-0 max-w-full align-middle", className)}
+        className={cn("inline-flex min-w-0 max-w-full items-center gap-1.5", className)}
       >
         <span
           data-slot="entity-identity-label"
@@ -36,12 +36,7 @@ export function EntityIdentity({
         >
           {children}
         </span>
-        <CopyButton
-          value={value}
-          label={`Copy ID: ${value}`}
-          kind="id"
-          className="ml-1.5 align-middle"
-        />
+        <CopyButton value={value} label={`Copy ID: ${value}`} kind="id" />
       </span>
     );
   }

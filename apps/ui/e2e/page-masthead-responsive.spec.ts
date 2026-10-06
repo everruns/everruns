@@ -4,7 +4,7 @@ const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
 const HARNESS_ID = "harness_019fd9b43fa37512b8f25226b21c2c8b";
 
-async function mockAgentDetailApi(page: Page) {
+async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
   await page.route("**/api/v1/**", async (route) => {
     const pathname = new URL(route.request().url()).pathname;
     let json: unknown;
@@ -65,7 +65,7 @@ async function mockAgentDetailApi(page: Page) {
         id: AGENT_ID,
         name: "jokes-agent",
         harness_id: "harness_test",
-        display_name: "Jokes Agent",
+        display_name: displayName,
         description:
           "A cheerful agent with a deliberately longer localized description for responsive layout testing.",
         system_prompt: "Tell a joke.",
@@ -143,6 +143,52 @@ test.describe("Page masthead responsive layout", () => {
     await mockAgentDetailApi(page);
   });
 
+  test("aligns the agent title, avatar, copy action, and badges on one center line", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/agents/${AGENT_ID}`);
+    const masthead = page.locator('[data-slot="page-masthead"]');
+    await expect(masthead.getByRole("heading", { name: "Jokes Agent" })).toBeVisible();
+
+    const centers = await masthead.evaluate((element) => {
+      const selectors = [
+        '[data-slot="icon-tile"]',
+        '[data-slot="entity-identity-label"]',
+        'button[aria-label^="Copy ID:"]',
+        ".font-mono",
+        '[data-slot="badge"]',
+      ];
+      return selectors.map((selector) => {
+        const box = element.querySelector(selector)!.getBoundingClientRect();
+        return box.y + box.height / 2;
+      });
+    });
+    expect(Math.max(...centers) - Math.min(...centers)).toBeLessThanOrEqual(1);
+  });
+
+  test("wraps a long agent title while keeping its copy action contained on mobile", async ({
+    page,
+  }) => {
+    const displayName = "A deliberately long readable agent heading for a narrow viewport";
+    await mockAgentDetailApi(page, displayName);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/agents/${AGENT_ID}`);
+
+    const title = page.getByRole("heading", { name: displayName });
+    const copy = title.getByRole("button", { name: `Copy ID: ${AGENT_ID}` });
+    await expect(title).toBeVisible();
+    await expect(copy).toBeVisible();
+    const titleBox = (await title.boundingBox())!;
+    const copyBox = (await copy.boundingBox())!;
+
+    expect(titleBox.height).toBeGreaterThan(40);
+    expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(titleBox.x + titleBox.width);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      390,
+    );
+  });
+
   // The agent page keeps a three-action header at every width (Edit, the
   // overflow menu, Test in Playground); secondary actions live in the overflow.
   test("keeps the agent actions contained with secondary actions in the overflow at mobile width", async ({
@@ -170,8 +216,12 @@ test.describe("Page masthead responsive layout", () => {
     await moreActions.click({ trial: true });
     await moreActions.click();
     await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Export package (ZIP)", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Export Markdown", exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Export package (ZIP)", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("menuitem", { name: "Export Markdown", exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Version history" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Archive agent" })).toBeVisible();
