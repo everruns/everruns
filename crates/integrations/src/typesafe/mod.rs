@@ -59,7 +59,7 @@ mod framework;
 
 pub use capability::JevCapability;
 #[cfg(feature = "typesafe-hosted")]
-pub use capability::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
+pub use capability::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS, FEATURE_FLAGS};
 #[cfg(feature = "typesafe-hosted")]
 pub use connection::TypeSafeAIConnector;
 pub use evaluate::EvaluateInput;

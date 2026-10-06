@@ -31,13 +31,15 @@ use std::sync::Arc;
 ///
 /// ```ignore
 /// pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-///     experimental_only: true,
+///     feature_flag: Some("daytona_connection"),
 ///     factory: || Box::new(DaytonaConnector),
 /// }];
 /// ```
 pub struct ConnectorPlugin {
-    /// If true, only registered when experimental features are enabled.
-    pub experimental_only: bool,
+    /// If set, only registered when the named feature flag is available on the
+    /// deployment, and only offered to organisations where it is effective.
+    /// `None` means the connector is generally available.
+    pub feature_flag: Option<&'static str>,
     /// Factory function that creates the provider instance.
     pub factory: fn() -> Box<dyn Connector>,
 }

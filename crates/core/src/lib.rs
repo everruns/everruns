@@ -578,8 +578,10 @@ pub use deployment::DeploymentGrade;
 // Execution feature decisions (EVE-878): `FeatureFlags` and the management
 // catalog live in `crates/server/src/records`; core re-exports only the resolved
 // execution-facing values.
-pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
-pub use feature_flag_grade::FeatureFlagGrade;
+pub use execution_features::{
+    ExecutionFeatureDecisions, InternalFeatureFlags, feature_flag_available,
+};
+pub use feature_flag_grade::{FeatureFlagDefinition, FeatureFlagGrade};
 
 pub use everruns_contracts::runtime::sandbox_context;
 

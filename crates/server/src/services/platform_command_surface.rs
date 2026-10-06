@@ -458,6 +458,7 @@ mod tests {
             reports: true,
             machine_payments: true,
             openai_agents_api: true,
+            integrations: Default::default(),
         }
     }
 
@@ -487,6 +488,7 @@ mod tests {
                 reports: true,
                 machine_payments: true,
                 openai_agents_api: true,
+                integrations: Default::default(),
             },
         )
     }

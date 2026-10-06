@@ -38,7 +38,7 @@ use std::time::Duration;
 /// a registry through `inventory::submit!`, which meant it appeared in any
 /// binary that happened to link test-support and in none that did not.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: true,
+    feature_flag: None,
     factory: || Box::new(FakeAwsConnector),
 }];
 

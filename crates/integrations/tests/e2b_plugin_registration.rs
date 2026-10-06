@@ -8,13 +8,15 @@ use everruns_contracts::runtime::deployment::DeploymentGrade;
 use everruns_integrations::e2b::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| decisions.is_enabled(flag))
+        plugin.feature_flag.is_none_or(|flag| {
+            everruns_contracts::runtime::feature_flag_available(
+                flag,
+                everruns_integrations::e2b::FEATURE_FLAGS,
+                grade,
+            )
+        })
     });
     registry
 }
@@ -32,7 +34,7 @@ fn test_e2b_plugin_is_published() {
 }
 
 #[test]
-fn test_e2b_plugin_is_not_experimental() {
+fn test_e2b_plugin_is_not_behind_a_feature_flag() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let e2b = plugins
         .iter()
@@ -43,8 +45,8 @@ fn test_e2b_plugin_is_not_experimental() {
         .expect("E2B plugin not found");
 
     assert!(
-        !e2b.experimental_only,
-        "E2B should NOT be marked experimental_only"
+        e2b.feature_flag.is_none(),
+        "e2b should not be behind a feature flag"
     );
 }
 
@@ -86,14 +88,13 @@ fn test_e2b_connection_provider_is_published() {
 }
 
 #[test]
-fn test_desktop_computer_use_is_experimental_only() {
+fn test_desktop_computer_use_is_behind_its_feature_flag() {
     let id = everruns_integrations::e2b::computer::DESKTOP_COMPUTER_USE_CAPABILITY_ID;
     let plugin = CAPABILITY_PLUGINS
         .iter()
         .find(|p| (p.factory)().id() == id)
         .expect("desktop computer use plugin not found");
-    assert!(plugin.experimental_only);
-    assert!(plugin.feature_flag.is_none());
+    assert_eq!(plugin.feature_flag, Some("e2b_computer_use"));
 
     let dev = registry_for_grade(DeploymentGrade::Dev);
     let cap = dev
@@ -105,6 +106,6 @@ fn test_desktop_computer_use_is_experimental_only() {
     assert_eq!(tools[0].name(), "computer");
     assert!(
         !registry_for_grade(DeploymentGrade::Prod).has(id),
-        "desktop computer use must stay out of prod while experimental"
+        "desktop computer use must stay out of prod while its flag is at dev grade"
     );
 }

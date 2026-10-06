@@ -19,7 +19,7 @@ Settings → My agent experience, validates it, and returns calibrated numbers f
 ## Preconditions
 
 - Server running in a dev-grade deployment (`just start-all` recommended); the
-  capability is `experimental_only` and is not registered in prod
+  capability is behind the dev-grade `typesafe` feature flag and is not registered in prod
 - User logged in
 - LLM API key configured
 - No existing TypeSafe connection in Settings → My agent experience

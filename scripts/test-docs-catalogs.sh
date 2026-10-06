@@ -78,7 +78,7 @@ sed -i 's/^| \[Daytona\](\/capabilities\/daytona\/) | `daytona` | 10 |/| [Dayton
 expect_drift "index states a wrong tool count" '`daytona` lists 9 tools, the registry has 10'
 
 scratch
-sed -i 's/| 1 (dev-only) |/| 1 |/' "$WORK/repo/$INDEX"
+sed -i 's/| 1 (dev-only); /| 1; /' "$WORK/repo/$INDEX"
 expect_drift "index drops a dev-only marker" '`computer_use` is registered only at dev grade'
 
 scratch

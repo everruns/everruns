@@ -40,19 +40,28 @@ use serde_json::{Value, json};
 use connection::ParallelConnector;
 pub use payments::ParallelPaymentsCapability;
 
+/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
+    &[everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "parallel_search",
+        label: "Parallel search",
+        description: "Web search and research through Parallel, with a Parallel connection.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+    }];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: None,
+        feature_flag: Some("parallel_search"),
         factory: || Box::new(ParallelCapability),
     },
     // Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
     // the deployment-controlled `machine_payments` feature flag (off by default on all envs,
-    // including dev, because spend is irreversible) rather than the experimental
-    // grade gate, so it can be enabled deliberately in any environment.
+    // including dev, because spend is irreversible), so it can be enabled deliberately
+    // in any environment.
     IntegrationPlugin {
-        experimental_only: false,
         feature_flag: Some("machine_payments"),
         factory: || Box::new(ParallelPaymentsCapability),
     },
@@ -60,7 +69,7 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: true,
+    feature_flag: Some("parallel_search"),
     factory: || Box::new(ParallelConnector),
 }];
 pub const PARALLEL_CAPABILITY_ID: &str = "parallel_search";

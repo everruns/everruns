@@ -51,27 +51,43 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
+/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[
+    everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "browserless_computer_use",
+        label: "Browserless computer use",
+        description: "Let agents operate a remote browser through Browserless computer use.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+    },
+    everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "browserless_connection",
+        label: "Browserless connection",
+        description: "Connect your own Browserless account for browser tools.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+    },
+];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
-        experimental_only: false,
         feature_flag: None,
         factory: || Box::new(BrowserlessCapability),
     },
-    // Computer use ships behind experimental mode. The native OpenAI and
-    // Anthropic adapters are in with soft approval only, no hard gate
-    // (EVE-1133); it leaves experimental once the native OpenAI path is
+    // Computer use ships behind the `browserless_computer_use` feature flag.
+    // The native OpenAI and Anthropic adapters are in with soft approval only,
+    // no hard gate (EVE-1133); promote the flag once the native OpenAI path is
     // verified live.
     IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: None,
+        feature_flag: Some("browserless_computer_use"),
         factory: || Box::new(computer::BrowserlessComputerUseCapability),
     },
 ];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: true,
+    feature_flag: Some("browserless_connection"),
     factory: || Box::new(BrowserlessConnector),
 }];
 // ============================================================================

@@ -183,7 +183,7 @@ mod tests {
     }
 
     /// The `jev` capability reaches the hosted registry in a dev deployment and
-    /// stays out of a prod one, which is what `experimental_only` promises.
+    /// stays out of a prod one, which is what its dev-grade `typesafe` flag promises.
     #[test]
     fn jev_capability_is_registered_for_dev_deployments_only() {
         assert!(

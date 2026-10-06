@@ -8,13 +8,15 @@ use everruns_core::deployment::DeploymentGrade;
 use everruns_ard::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| decisions.is_enabled(flag))
+        plugin.feature_flag.is_none_or(|flag| {
+            everruns_contracts::runtime::feature_flag_available(
+                flag,
+                everruns_ard::FEATURE_FLAGS,
+                grade,
+            )
+        })
     });
     registry
 }
@@ -37,7 +39,7 @@ fn capability_is_experimental_dev_only() {
         .iter()
         .find(|p| (p.factory)().id() == "resource_discovery")
         .expect("plugin not found");
-    assert!(plugin.experimental_only);
+    assert_eq!(plugin.feature_flag, Some("ard"));
 
     let dev = registry_for_grade(DeploymentGrade::Dev);
     assert!(dev.has("resource_discovery"), "should be in dev registry");
@@ -71,7 +73,7 @@ fn connector_is_submitted_with_form_schema() {
         .iter()
         .find(|p| (p.factory)().provider_id() == "ard")
         .expect("ard ConnectorPlugin should be published in CONNECTOR_PLUGINS");
-    assert!(plugin.experimental_only);
+    assert_eq!(plugin.feature_flag, Some("ard"));
     let provider = (plugin.factory)();
     let schema = provider.form_schema().expect("should have form schema");
     assert_eq!(schema.fields[0].name, "api_key");

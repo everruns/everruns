@@ -14,13 +14,11 @@ fn lock_env() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        plugin.feature_flag.map_or_else(
-            || !plugin.experimental_only || grade.experimental_features_enabled(),
-            |flag| decisions.is_enabled(flag),
-        )
+        plugin.feature_flag.is_none_or(|flag| {
+            everruns_contracts::runtime::feature_flag_available(flag, std::iter::empty(), grade)
+        })
     });
     registry
 }
@@ -34,23 +32,6 @@ fn test_docker_plugin_is_published() {
             cap.id() == "docker_container"
         }),
         "Docker Container IntegrationPlugin should be published in CAPABILITY_PLUGINS"
-    );
-}
-
-#[test]
-fn test_docker_plugin_is_experimental() {
-    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
-    let docker = plugins
-        .iter()
-        .find(|p| {
-            let cap = (p.factory)();
-            cap.id() == "docker_container"
-        })
-        .expect("Docker Container plugin not found");
-
-    assert!(
-        docker.experimental_only,
-        "Docker Container should be marked experimental_only"
     );
 }
 
@@ -110,7 +91,7 @@ fn test_docker_not_registered_in_prod_registry() {
 #[test]
 fn test_docker_grade_override_allows_production_registration() {
     let _lock = lock_env();
-    // The feature rollout grade owns availability even for experimental plugins.
+    // The feature rollout grade owns availability.
     unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "prod") };
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(

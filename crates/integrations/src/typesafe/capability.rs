@@ -16,12 +16,24 @@ use crate::typesafe::{
     CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER, evaluate,
 };
 
+/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+#[cfg(feature = "typesafe-hosted")]
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] = &[
+    everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "typesafe",
+        label: "Jev decisions",
+        description: "Ask TypeSafe's System One model typed questions and get calibrated answers back, with a TypeSafe AI connection.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+    },
+];
+
 /// This crate's capability contributions, named by `everruns-integrations-catalog`.
 #[cfg(feature = "typesafe-hosted")]
 pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::IntegrationPlugin] = &[
     everruns_contracts::runtime::capabilities::IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: None,
+        feature_flag: Some("typesafe"),
         factory: || Box::new(JevCapability),
     },
 ];
@@ -30,7 +42,7 @@ pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::Integ
 #[cfg(feature = "typesafe-hosted")]
 pub const CONNECTOR_PLUGINS: &[everruns_contracts::connector::ConnectorPlugin] =
     &[everruns_contracts::connector::ConnectorPlugin {
-        experimental_only: true,
+        feature_flag: Some("typesafe"),
         factory: || Box::new(crate::typesafe::TypeSafeAIConnector),
     }];
 

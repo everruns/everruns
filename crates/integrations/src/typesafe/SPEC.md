@@ -37,8 +37,8 @@ Framework adapter (`TypeSafeAI::new`) instead keeps an application-owned
 credential inside the client, where it never reaches capability config or
 metadata.
 
-The capability is `experimental_only`: dev deployments register it, prod ones do
-not.
+The capability and connector are behind the `typesafe` feature flag at the `dev`
+rollout grade: dev deployments register them, prod ones do not.
 
 ## Connection
 

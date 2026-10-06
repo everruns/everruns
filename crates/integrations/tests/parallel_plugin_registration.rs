@@ -8,13 +8,15 @@ use everruns_contracts::runtime::deployment::DeploymentGrade;
 use everruns_integrations::parallel::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        plugin.feature_flag.map_or_else(
-            || !plugin.experimental_only || grade.experimental_features_enabled(),
-            |flag| decisions.is_enabled(flag),
-        )
+        plugin.feature_flag.is_none_or(|flag| {
+            everruns_contracts::runtime::feature_flag_available(
+                flag,
+                everruns_integrations::parallel::FEATURE_FLAGS,
+                grade,
+            )
+        })
     });
     registry
 }
@@ -32,7 +34,7 @@ fn parallel_plugin_is_published() {
 }
 
 #[test]
-fn parallel_plugin_is_experimental() {
+fn parallel_plugin_is_behind_its_feature_flag() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
@@ -42,7 +44,7 @@ fn parallel_plugin_is_experimental() {
         })
         .expect("Parallel plugin not found");
 
-    assert!(plugin.experimental_only);
+    assert_eq!(plugin.feature_flag, Some("parallel_search"));
 }
 
 #[test]
@@ -69,16 +71,15 @@ fn restore_env(key: &str, prev: Option<String>) {
 }
 
 #[test]
-fn payments_plugin_is_flag_gated_not_experimental() {
+fn payments_plugin_is_gated_by_machine_payments() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
         .find(|p| (p.factory)().id() == "parallel")
         .expect("Parallel payments plugin not found");
 
-    // Gated by the machine_payments flag rather than the experimental grade, so it
+    // Gated by the machine_payments flag, so it
     // can be enabled deliberately in any environment but never registers by default.
-    assert!(!plugin.experimental_only);
     assert_eq!(plugin.feature_flag, Some("machine_payments"));
 }
 

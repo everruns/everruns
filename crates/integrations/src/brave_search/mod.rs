@@ -41,18 +41,29 @@ use tools::BraveWebSearchTool;
 // Plugin Registration
 // ============================================================================
 
+/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+#[cfg(feature = "brave-search-hosted")]
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
+    &[everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "brave_search",
+        label: "Brave Search",
+        description: "Web search through the Brave Search API, with a Brave Search connection.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+    }];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 #[cfg(feature = "brave-search-hosted")]
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: true,
-    feature_flag: None,
+    feature_flag: Some("brave_search"),
     factory: || Box::new(BraveSearchCapability),
 }];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 #[cfg(feature = "brave-search-hosted")]
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: true,
+    feature_flag: Some("brave_search"),
     factory: || Box::new(BraveSearchConnector),
 }];
 // ============================================================================

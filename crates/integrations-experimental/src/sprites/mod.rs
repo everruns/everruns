@@ -39,21 +39,31 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
+/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
+    &[everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "sprites",
+        label: "Sprites sandboxes",
+        description: "Run agent sandboxes on Sprites, with a Sprites connection.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+    }];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 ///
-/// Experimental (dev grade only): Sprites is no longer part of the supported
-/// sandbox set. Its live coverage runs only on manual dispatch, and an outage of
-/// the vendor control plane had been turning `main` red, so prod registries
-/// leave it out the way they do other experimental integrations.
+/// Gated by the `sprites` feature flag (dev grade by default): Sprites is no
+/// longer part of the supported sandbox set. Its live coverage runs only on
+/// manual dispatch, and an outage of the vendor control plane had been turning
+/// `main` red, so prod registries leave it out.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: true,
-    feature_flag: None,
+    feature_flag: Some("sprites"),
     factory: || Box::new(SpritesCapability),
 }];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: true,
+    feature_flag: Some("sprites"),
     factory: || Box::new(SpritesConnector),
 }];
 // ============================================================================

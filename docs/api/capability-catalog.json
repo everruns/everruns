@@ -162,7 +162,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "brave_search",
       "features": [],
       "grades": [
         "dev"
@@ -320,7 +320,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": null,
+      "feature_flag": "browserless_computer_use",
       "features": [
         "leased_resources"
       ],
@@ -340,7 +340,7 @@
         "session_storage"
       ],
       "docs_slug": "computer-use",
-      "feature_flag": null,
+      "feature_flag": "e2b_computer_use",
       "features": [
         "leased_resources"
       ],
@@ -524,7 +524,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "duckduckgo",
       "features": [],
       "grades": [
         "dev"
@@ -686,7 +686,7 @@
       "category": "Reasoning",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "typesafe",
       "features": [],
       "grades": [
         "dev"
@@ -789,7 +789,7 @@
         "session_storage"
       ],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "modal",
       "features": [
         "leased_resources"
       ],
@@ -961,7 +961,7 @@
       "category": "Network",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "parallel_search",
       "features": [],
       "grades": [
         "dev"
@@ -1086,7 +1086,7 @@
       "category": "Discovery",
       "dependencies": [],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "ard",
       "features": [],
       "grades": [
         "dev"
@@ -1368,7 +1368,7 @@
         "session_storage"
       ],
       "docs_slug": null,
-      "feature_flag": null,
+      "feature_flag": "sprites",
       "features": [
         "leased_resources"
       ],
