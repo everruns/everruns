@@ -150,6 +150,8 @@ mod orgs_images;
 mod resources_tasks;
 pub mod sandbox_fleet;
 mod sandbox_templates;
+mod user_mcp_servers;
+pub use crate::storage::repositories::{OwnedMcpServerRow, UserMcpServerRow};
 
 #[cfg(test)]
 mod retention_tests {

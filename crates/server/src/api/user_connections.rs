@@ -825,12 +825,21 @@ async fn authorize_connection_inner(
             format!("Unknown OAuth provider: {provider}"),
         ));
     };
-    let row = state
+    let owned = state
         .db
-        .get_mcp_server(authority.org_id, server_id)
+        .get_mcp_server_with_owner(authority.org_id, server_id)
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
+    let mode = normalize_oauth_mode(query.mode.as_deref())?;
+    // THREAT[TM-AUTHZ-018]: a user MCP server is connectable only by its owner,
+    // and only for that owner's own grant. Anyone else sees it as missing.
+    if let Some(owner) = owned.owner_virtual_user_id
+        && (owner != authority.target_id || mode == "identity")
+    {
+        return Err((StatusCode::NOT_FOUND, "MCP server not found".to_string()));
+    }
+    let row = owned.row;
     if row.status != "active" {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -850,7 +859,6 @@ async fn authorize_connection_inner(
         &format!("/settings/connections?connected={provider}"),
     );
     let popup = query.popup.unwrap_or(false);
-    let mode = normalize_oauth_mode(query.mode.as_deref())?;
     let session_id = match mode.as_str() {
         "session" => Some(query.session_id.ok_or((
             StatusCode::BAD_REQUEST,
@@ -900,13 +908,10 @@ async fn authorize_connection_inner(
         ensure_mcp_oauth_registration(&state, &row, settings, &provider).await?;
     state
         .db
-        .update_mcp_server(
+        .update_mcp_server_settings_any_owner(
             authority.org_id,
             server_id,
-            crate::storage::models::UpdateMcpServer {
-                settings: Some(serde_json::to_value(&updated_settings).unwrap_or_default()),
-                ..Default::default()
-            },
+            serde_json::to_value(&updated_settings).unwrap_or_default(),
         )
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
@@ -1041,12 +1046,25 @@ pub async fn connection_oauth_callback(
         "OAuth callback is missing the authorization code".to_string(),
     ))?;
 
-    let row = state
+    let owned = state
         .db
-        .get_mcp_server(authority.org_id, server_id)
+        .get_mcp_server_with_owner(authority.org_id, server_id)
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
+    // Re-check ownership against the subject the grant will be written for;
+    // the state cookie is browser-bound but not signed.
+    if let Some(owner) = owned.owner_virtual_user_id {
+        let subject = pending
+            .virtual_user_id
+            .as_deref()
+            .and_then(|id| id.parse::<VirtualUserId>().ok())
+            .map(|id| id.uuid());
+        if pending.mode == "identity" || subject != Some(owner) {
+            return Err((StatusCode::NOT_FOUND, "MCP server not found".to_string()));
+        }
+    }
+    let row = owned.row;
     if row.status != "active" {
         return Err((
             StatusCode::BAD_REQUEST,

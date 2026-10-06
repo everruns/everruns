@@ -20925,6 +20925,248 @@
         }
       }
     },
+    "/v1/virtual-users/{identity_id}/mcp-servers": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List the person's own MCP servers.",
+        "operationId": "list_user_mcp_servers",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Add an MCP server for the person, from the catalog or by URL.",
+        "operationId": "add_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddUserMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Name already used"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Read one of the person's MCP servers.",
+        "operationId": "get_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Remove one of the person's MCP servers and its sign-in.",
+        "operationId": "remove_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Rename, enable, disable or replace the API key of one of the person's MCP servers.",
+        "operationId": "update_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Name already used"
+          }
+        }
+      }
+    },
     "/v1/virtual-users/{identity_id}/preferences": {
       "get": {
         "tags": [
@@ -22051,6 +22293,80 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "AddUserMcpServerRequest": {
+        "type": "object",
+        "description": "Add a user MCP server. Give `catalog` to add a catalog preset, or `name`\nand `url` to add a custom server.",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for a custom `api_key` server. Never returned."
+          },
+          "auth_mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpServerAuthMode",
+                "description": "Sign-in for a custom server. Defaults to `api_key` when `api_key` is\ngiven, otherwise `none`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "catalog": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog preset name to add.",
+            "example": "linear"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Defaults to true."
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Literal headers for a custom server. Never returned.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name for a custom server; also the tool prefix agents see.",
+            "example": "my-notes"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTPS endpoint of a custom server.",
+            "example": "https://mcp.example.com/mcp"
           }
         }
       },
@@ -50665,6 +50981,37 @@
           }
         }
       },
+      "UpdateUserMcpServerRequest": {
+        "type": "object",
+        "description": "Change a user MCP server. The URL cannot change; remove and re-add the\nserver instead.",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replace the API key of an `api_key` server."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateVirtualUserRequest": {
         "type": "object",
         "description": "Update a runtime account profile or its management lifecycle.",
@@ -50851,6 +51198,15 @@
           }
         }
       },
+      "UserMcpConnectionStatus": {
+        "type": "string",
+        "description": "Whether the person has signed in to a user MCP server.",
+        "enum": [
+          "connected",
+          "not_connected",
+          "not_needed"
+        ]
+      },
       "UserMcpConnectionsResponse": {
         "type": "object",
         "description": "One page of the current user's MCP connections in the selected organization.",
@@ -50884,6 +51240,123 @@
             ],
             "description": "Cursor for the next page, or null when this is the final page.",
             "example": "01933b5a-0000-7000-8000-000000000002"
+          }
+        }
+      },
+      "UserMcpServer": {
+        "type": "object",
+        "description": "An MCP server a person added for themselves.",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "source",
+          "auth_mode",
+          "enabled",
+          "connection",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "auth_mode": {
+            "$ref": "#/components/schemas/McpServerAuthMode"
+          },
+          "catalog_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog preset name, for servers added from the catalog."
+          },
+          "connection": {
+            "$ref": "#/components/schemas/UserMcpServerConnection"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Disabled servers are kept but never offered to agents."
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the literal headers sent with each request. Values are\nwrite-only."
+          },
+          "id": {
+            "type": "string",
+            "example": "mcp_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/UserMcpServerSource"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "UserMcpServerConnection": {
+        "type": "object",
+        "description": "Sign-in state of a user MCP server.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Connection provider to pass to the authorize endpoint\n(`/v1/virtual-users/{id}/connections/{provider}/authorize`) when the\nserver signs in with OAuth."
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserMcpConnectionStatus"
+          }
+        }
+      },
+      "UserMcpServerSource": {
+        "type": "string",
+        "description": "Where a user MCP server came from.",
+        "enum": [
+          "catalog",
+          "custom"
+        ]
+      },
+      "UserMcpServersResponse": {
+        "type": "object",
+        "description": "List response for user MCP servers.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMcpServer"
+            }
           }
         }
       },
