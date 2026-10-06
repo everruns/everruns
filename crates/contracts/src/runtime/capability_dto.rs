@@ -219,6 +219,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "openai_server_tools" => Some("openai-server-tools"),
         "openrouter_server_tools" => Some("openrouter-server-tools"),
         "parallel_tool_calls" => Some("parallel-tool-calls"),
+        "output_truncation" => Some("output-truncation"),
         "platform" => Some("platform"),
         "tool_approval" => Some("tool-approval"),
         "tool_call_repair" => Some("tool-call-repair"),

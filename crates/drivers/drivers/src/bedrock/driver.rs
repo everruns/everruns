@@ -30,7 +30,7 @@ use everruns_contracts::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_contracts::llm_telemetry;
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
 
@@ -322,6 +322,9 @@ impl ChatDriver for BedrockChatDriver {
 
         tokio::spawn(async move {
             let mut pending: HashMap<usize, PartialToolCall> = HashMap::new();
+            // Content blocks Bedrock closed with `contentBlockStop`: a tool
+            // block that never closed was cut off mid-input.
+            let mut stopped: HashSet<usize> = HashSet::new();
             let mut meta = LlmCompletionMetadata::default();
 
             loop {
@@ -360,52 +363,37 @@ impl ChatDriver for BedrockChatDriver {
                                 );
                             }
                         }
+                        ConverseStreamOutput::ContentBlockStop(e) => {
+                            stopped.insert(e.content_block_index() as usize);
+                        }
                         ConverseStreamOutput::MessageStop(e) => {
                             let raw = e.stop_reason().as_str();
                             meta.finish_reason = Some(normalize_stop_reason(raw));
                             meta.provider_finish_reason = Some(raw.to_string());
-                            // Bedrock runs pending calls whatever the stop
-                            // reason. Off a `tool_use` stop their input may be
-                            // cut short (an empty one becomes `{}`): count it.
-                            // Gating it is a separate change.
-                            if raw != "tool_use" {
-                                let count = u32::try_from(pending.len()).unwrap_or(u32::MAX);
-                                meta.tool_calls_truncated_executed = count;
-                                llm_telemetry::warn_tool_calls_truncated_executed(
-                                    "bedrock", &model_id, count, raw,
-                                );
-                            }
-                            // Emit accumulated tool calls now; Done is emitted on stream end.
-                            if !pending.is_empty() {
-                                let mut ordered: Vec<(usize, PartialToolCall)> =
-                                    pending.drain().collect();
-                                ordered.sort_by_key(|(idx, _)| *idx);
-                                let result: Result<Vec<ToolCall>> = ordered
-                                    .into_iter()
-                                    .map(|(_, ptc)| {
-                                        let arguments = tool_arguments(&ptc.input_json)?;
-                                        Ok(ToolCall {
-                                            id: ptc.id,
-                                            name: ptc.name,
-                                            arguments,
-                                        })
-                                    })
-                                    .collect();
-                                match result {
-                                    Ok(calls) => {
-                                        if tx
-                                            .send(Ok(LlmStreamEvent::ToolCalls(calls)))
-                                            .await
-                                            .is_err()
-                                        {
-                                            return;
-                                        }
-                                    }
-                                    Err(e) => {
-                                        let _ = tx.send(Err(e)).await;
-                                        return;
-                                    }
-                                }
+                            let settled =
+                                settle_tool_calls(std::mem::take(&mut pending), &stopped, raw);
+                            meta.tool_calls_dropped = settled.dropped;
+                            meta.tool_calls_truncated_executed = settled.truncated_executed;
+                            llm_telemetry::warn_tool_calls_dropped(
+                                "bedrock",
+                                &model_id,
+                                settled.dropped,
+                                raw,
+                            );
+                            llm_telemetry::warn_tool_calls_truncated_executed(
+                                "bedrock",
+                                &model_id,
+                                settled.truncated_executed,
+                                raw,
+                            );
+                            // Emit settled tool calls now; Done is emitted on stream end.
+                            if !settled.calls.is_empty()
+                                && tx
+                                    .send(Ok(LlmStreamEvent::ToolCalls(settled.calls)))
+                                    .await
+                                    .is_err()
+                            {
+                                return;
                             }
                         }
                         ConverseStreamOutput::Metadata(e) => {
@@ -418,7 +406,7 @@ impl ChatDriver for BedrockChatDriver {
                                 meta.total_tokens = Some(prompt + completion);
                             }
                         }
-                        _ => {} // MessageStart, ContentBlockStop, Unknown — no action needed
+                        _ => {} // MessageStart, Unknown: no action needed
                     },
                     Ok(None) => {
                         // Stream ended — emit Done with accumulated metadata.
@@ -859,25 +847,100 @@ fn is_too_large(msg: &str) -> bool {
 /// Parse a streamed tool call's accumulated input. Bedrock sends no
 /// `toolUse` delta at all for a call with no arguments, so an empty input is
 /// the empty object, not a parse error.
-fn tool_arguments(input_json: &str) -> Result<Value> {
-    if input_json.trim().is_empty() {
-        return Ok(Value::Object(Default::default()));
+/// The tool calls one response settled on, and the ones it could not run.
+#[derive(Debug, Default)]
+struct SettledToolCalls {
+    calls: Vec<ToolCall>,
+    /// Started but unusable: input cut off mid-block, or not JSON.
+    dropped: u32,
+    /// Handed on from a response that did not stop on `tool_use`; their own
+    /// input is complete.
+    truncated_executed: u32,
+}
+
+/// Decide which pending calls may run.
+///
+/// A `tool_use` stop means the model ended on its calls: each runs if its input
+/// parses (no input is a no-argument call, `{}`). Any other stop (`max_tokens`,
+/// a guardrail, ...) can cut a call off mid-input, so a call runs only if its
+/// block closed and its input parses. Everything else is dropped and counted,
+/// never run with `{}` standing in for input the model did not finish, and
+/// never failing the whole stream over one bad call.
+fn settle_tool_calls(
+    pending: HashMap<usize, PartialToolCall>,
+    stopped: &HashSet<usize>,
+    stop_reason: &str,
+) -> SettledToolCalls {
+    let ended_on_calls = stop_reason == "tool_use";
+    let mut ordered: Vec<(usize, PartialToolCall)> = pending.into_iter().collect();
+    ordered.sort_by_key(|(idx, _)| *idx);
+    let mut settled = SettledToolCalls::default();
+    for (idx, call) in ordered {
+        let finished = ended_on_calls || stopped.contains(&idx);
+        let arguments = if call.input_json.trim().is_empty() {
+            Some(Value::Object(Default::default()))
+        } else {
+            serde_json::from_str(&call.input_json).ok()
+        };
+        match arguments.filter(|_| finished) {
+            Some(arguments) => {
+                settled.truncated_executed += u32::from(!ended_on_calls);
+                settled.calls.push(ToolCall {
+                    id: call.id,
+                    name: call.name,
+                    arguments,
+                });
+            }
+            None => settled.dropped += 1,
+        }
     }
-    serde_json::from_str(input_json)
-        .map_err(|e| AgentLoopError::llm(format!("invalid Bedrock tool arguments JSON: {e}")))
+    settled
 }
 
 #[cfg(test)]
+mod wire_tests;
+
+#[cfg(test)]
 mod tests {
+    fn partial(id: &str, input: &str) -> PartialToolCall {
+        PartialToolCall {
+            id: id.into(),
+            name: "bash".into(),
+            input_json: input.into(),
+        }
+    }
+
     #[test]
-    fn tool_call_without_input_deltas_has_empty_object_arguments() {
-        assert_eq!(super::tool_arguments("").unwrap(), serde_json::json!({}));
-        assert_eq!(super::tool_arguments("  ").unwrap(), serde_json::json!({}));
-        assert_eq!(
-            super::tool_arguments(r#"{"a":1}"#).unwrap(),
-            serde_json::json!({"a": 1})
+    fn settled_calls_never_run_cut_off_or_unparseable_input() {
+        let pending = || {
+            HashMap::from([
+                (0, partial("closed", r#"{"a":1}"#)),
+                (1, partial("no_args", "")),
+                (2, partial("open", r#"{"command":"rm -rf"#)),
+                (3, partial("open_parses", r#"{"a":2}"#)),
+            ])
+        };
+        let stopped = HashSet::from([0, 1]);
+
+        // A `tool_use` stop: every call parses except the cut body.
+        let settled = super::settle_tool_calls(pending(), &stopped, "tool_use");
+        let ids: Vec<_> = settled.calls.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["closed", "no_args", "open_parses"]);
+        assert_eq!(settled.calls[1].arguments, serde_json::json!({}));
+        assert_eq!((settled.dropped, settled.truncated_executed), (1, 0));
+
+        // `max_tokens`: only closed blocks run; open ones are dropped even
+        // when their partial input happens to parse.
+        let settled = super::settle_tool_calls(pending(), &stopped, "max_tokens");
+        let ids: Vec<_> = settled.calls.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["closed", "no_args"]);
+        assert_eq!((settled.dropped, settled.truncated_executed), (2, 2));
+        assert!(
+            settled
+                .calls
+                .iter()
+                .all(|call| call.id != "open" && call.id != "open_parses")
         );
-        assert!(super::tool_arguments("{").is_err());
     }
 
     #[test]

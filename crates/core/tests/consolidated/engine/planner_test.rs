@@ -65,6 +65,7 @@ fn reason_result() -> ReasonResult {
         network_access: None,
         parallel_tool_calls: None,
         waiting_for_tool_results: false,
+        truncation_retry: false,
     }
 }
 
@@ -617,4 +618,85 @@ fn turn_completed_carries_the_final_generation_stop_reason() {
         let json = serde_json::to_value(data).unwrap();
         assert_eq!(json.get("stop_reason").is_some(), expected.is_some());
     }
+}
+
+/// A generation that lost its tool calls to truncation, under the `continue`
+/// policy, has nothing runnable but still schedules another reason step: the
+/// model was told its calls did not run. The retry does not chain onto the
+/// cut-off response.
+#[test]
+fn truncation_retry_without_calls_schedules_another_reason() {
+    let mut state = turn_state();
+    state.previous_response_id = Some("resp_before".into());
+    let result = ReasonResult {
+        text: "partial".into(),
+        finish_reason: Some("length".into()),
+        truncation_retry: true,
+        ..reason_result()
+    };
+    assert!(!reason_schedules_act(&state, &result));
+    let (plan, effects) = plan_after_reason(&state, result, 0, fixed_now(), None);
+    let TurnPlan::ScheduleReason(next) = plan else {
+        panic!("expected another reason step, got {plan:?}");
+    };
+    assert_eq!(next.iteration, 2);
+    assert_eq!(next.previous_response_id, None);
+    assert!(effects.is_empty());
+}
+
+/// Calls that survived the cut run first; the retry happens after the act.
+#[test]
+fn truncation_retry_with_surviving_calls_schedules_act() {
+    let state = turn_state();
+    let result = ReasonResult {
+        tool_calls: vec![tool_call("call_ok", "read_file")],
+        has_tool_calls: true,
+        finish_reason: Some("length".into()),
+        truncation_retry: true,
+        ..reason_result()
+    };
+    let (plan, _) = plan_after_reason(&state, result, 0, fixed_now(), None);
+    let TurnPlan::ScheduleAct(act) = plan else {
+        panic!("expected act, got {plan:?}");
+    };
+    assert_eq!(act.input.tool_calls.len(), 1);
+    assert_eq!(act.previous_response_id, None);
+}
+
+/// The iteration budget still bounds retries.
+#[test]
+fn truncation_retry_at_max_iterations_surfaces_max_turn_requests() {
+    let state = turn_state(); // iteration = 1
+    let result = ReasonResult {
+        max_iterations: 1,
+        finish_reason: Some("length".into()),
+        truncation_retry: true,
+        ..reason_result()
+    };
+    let (plan, _) = plan_after_reason(&state, result, 0, fixed_now(), None);
+    assert!(matches!(
+        plan,
+        TurnPlan::Complete {
+            stop_reason: TurnStopReason::MaxTurnRequests,
+            error: None,
+        }
+    ));
+}
+
+/// Without the retry flag (`off` policy, or nothing lost) a cut-off answer
+/// completes the turn as before, reporting `MaxTokens`.
+#[test]
+fn truncated_answer_without_retry_completes_the_turn() {
+    let result = ReasonResult {
+        finish_reason: Some("length".into()),
+        ..reason_result()
+    };
+    let (plan, _) = plan_after_reason(&turn_state(), result, 0, fixed_now(), None);
+    assert!(matches!(
+        plan,
+        TurnPlan::Complete {
+            stop_reason: TurnStopReason::MaxTokens,
+            error: None,
+        }
+    ));
 }

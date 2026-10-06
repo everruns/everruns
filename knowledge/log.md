@@ -2,6 +2,16 @@
 
 ## 2026-10-06
 
+* **Cut-off tool calls never run, and the turn decides what next.** OpenAI
+  Responses and Bedrock drop a call whose arguments never finished or do not
+  parse instead of running it with `{}`, like the other drivers. A generation
+  that lost calls to the output limit goes through the `output_truncation`
+  policy: `continue` (default) tells the model and retries up to twice in a
+  row, `fail` ends the turn, `off` keeps the old behaviour. `llm.generation`
+  records `truncation_gate`. See
+  [Capabilities](execution/capabilities.md#outputtruncation) and
+  [Observability Providers](operations/observability.md#llm-edge-case-telemetry).
+
 * **Database utilities have their own crate.** `everruns-db` (a leaf with no
   `everruns-*` dependency) now owns the embedded SQLite wrapper and
   `UpdateField`, taken out of `everruns-durable`. The facade's `local` feature

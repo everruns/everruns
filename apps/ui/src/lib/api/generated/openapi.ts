@@ -14212,12 +14212,22 @@ export interface components {
       tool_calls_dropped?: number;
       /**
        * Format: int32
-       * @description Tool calls handed on for execution although the response was truncated
-       *     or their arguments did not parse, so they may run with incomplete
-       *     (`{}`) arguments. Omitted when zero.
+       * @description Tool calls handed on for execution from a response that was cut off.
+       *     Their own arguments are complete: a call whose arguments were cut off
+       *     or do not parse is dropped (`tool_calls_dropped`), never run with `{}`.
+       *     Omitted when zero.
        * @example 1
        */
       tool_calls_truncated_executed?: number;
+      /**
+       * @description What the output-truncation gate did because this generation lost tool
+       *     calls (`finish_reason` `length`, or arguments that did not parse):
+       *     `retried` (the model was told and the turn ran another generation) or
+       *     `failed` (the turn ended with an error). Omitted when the gate did not
+       *     act.
+       * @example retried
+       */
+      truncation_gate?: string | null;
       usage?: components["schemas"]["TokenUsage"] | null;
     };
     /** @description LLM generation output */
