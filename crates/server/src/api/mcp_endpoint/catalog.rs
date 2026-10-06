@@ -494,7 +494,7 @@ fn property_has_json_scalar_type(
 /// schema's own `properties` are visited first, then `$ref` resolution and
 /// composition branches; combined with `or_insert_with` this gives outer
 /// declarations precedence over nested copies on key conflicts.
-fn collect_all_properties(
+pub(crate) fn collect_all_properties(
     schema: &serde_json::Value,
     defs: Option<&serde_json::Map<String, serde_json::Value>>,
     out: &mut serde_json::Map<String, serde_json::Value>,

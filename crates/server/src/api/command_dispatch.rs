@@ -97,6 +97,18 @@ pub fn routes(state: AppState) -> Router {
             get(super::history::list_entity_history),
         )
         .route(
+            "/v1/history/{entity_ref}/revisions/{revision}",
+            get(super::history::show_entity_revision),
+        )
+        .route(
+            "/v1/history/{entity_ref}/diff",
+            get(super::history::diff_entity_revisions),
+        )
+        .route(
+            "/v1/history/{entity_ref}/restore",
+            post(super::history::restore_entity_revision),
+        )
+        .route(
             "/v1/context/{entity_ref}",
             get(super::manager_context::get_manager_context)
                 .put(super::manager_context::set_manager_context)

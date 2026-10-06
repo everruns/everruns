@@ -1,10 +1,13 @@
 // Entity history over REST.
 //
-//   GET /v1/history                 changes across the organization
-//   GET /v1/history/{entity_ref}    changes to one entity
+//   GET  /v1/history                                   changes across the organization
+//   GET  /v1/history/{entity_ref}                      changes to one entity
+//   GET  /v1/history/{entity_ref}/revisions/{revision} the entity at one revision
+//   GET  /v1/history/{entity_ref}/diff                 two revisions compared
+//   POST /v1/history/{entity_ref}/restore              bring a revision back
 //
-// Thin routes over the `list_org_history` and `list_entity_history` commands
-// (`domains::change_history::commands`), dispatched through the same pipeline
+// Thin routes over the history commands (`domains::change_history::commands`
+// and `::revisions`), dispatched through the same pipeline
 // as `/v1/commands`, so policy and output are identical on every surface.
 // Mounted by `command_dispatch::routes`, which owns the shared command state.
 
@@ -22,6 +25,8 @@ use super::common::ErrorResponse;
 use super::mcp_endpoint::{AppState, catalog, catalog_context};
 use crate::auth::ResolvedOrg;
 use crate::domains::change_history::commands::EntityChange;
+use crate::domains::change_history::revisions::{EntityRevision, RestoreResult};
+use crate::domains::change_history::snapshot::FieldDiff;
 
 type HistoryResult = Result<Json<Vec<EntityChange>>, (StatusCode, Json<ErrorResponse>)>;
 
@@ -60,19 +65,123 @@ pub struct OrgHistoryQuery {
     pub limit: Option<i64>,
 }
 
-async fn dispatch(
+type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
+
+async fn dispatch<T: serde::de::DeserializeOwned>(
     org: &ResolvedOrg,
     state: &AppState,
     name: &str,
     params: serde_json::Value,
-) -> HistoryResult {
+) -> ApiResult<T> {
     let output = catalog::dispatch_named(name, params, &catalog_context(org, state)).await?;
-    let entries = serde_json::from_value(output).map_err(|error| {
+    let output = serde_json::from_value(output).map_err(|error| {
         crate::domains::common::CommandError::internal(anyhow::anyhow!(
-            "history output is not a list of changes: {error}"
+            "{name} output has an unexpected shape: {error}"
         ))
     })?;
-    Ok(Json(entries))
+    Ok(Json(output))
+}
+
+/// Which entity, for ids without a prefix.
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct RevisionKindQuery {
+    /// Entity kind, needed only for kinds whose ids have no prefix.
+    pub kind: Option<String>,
+}
+
+/// The two revisions to compare.
+#[derive(Debug, Default, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct DiffQuery {
+    /// Entity kind, needed only for kinds whose ids have no prefix.
+    pub kind: Option<String>,
+    /// The older revision.
+    pub from: i64,
+    /// The newer revision; the latest when omitted.
+    pub to: Option<i64>,
+}
+
+/// The revision to bring back.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct RestoreRequest {
+    pub revision: i64,
+    /// Entity kind, needed only for kinds whose ids have no prefix.
+    pub kind: Option<String>,
+}
+
+/// GET /v1/history/{entity_ref}/revisions/{revision} - The entity at one revision
+#[utoipa::path(
+    get,
+    path = "/v1/history/{entity_ref}/revisions/{revision}",
+    params(
+        ("entity_ref" = String, Path, description = "The entity's public id"),
+        ("revision" = i64, Path, description = "Revision number"),
+        RevisionKindQuery,
+    ),
+    responses(
+        (status = 200, description = "The entity as it stood after that change", body = EntityRevision),
+        (status = 404, description = "No such revision", body = ErrorResponse),
+    ),
+    tag = "history"
+)]
+pub async fn show_entity_revision(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((entity_ref, revision)): Path<(String, i64)>,
+    Query(query): Query<RevisionKindQuery>,
+) -> ApiResult<EntityRevision> {
+    let params =
+        serde_json::json!({ "entity_ref": entity_ref, "kind": query.kind, "revision": revision });
+    dispatch(&org, &state, "show_entity_revision", params).await
+}
+
+/// GET /v1/history/{entity_ref}/diff - Two revisions compared field by field
+#[utoipa::path(
+    get,
+    path = "/v1/history/{entity_ref}/diff",
+    params(("entity_ref" = String, Path, description = "The entity's public id"), DiffQuery),
+    responses(
+        (status = 200, description = "Fields that differ", body = Vec<FieldDiff>),
+        (status = 404, description = "No such revision", body = ErrorResponse),
+    ),
+    tag = "history"
+)]
+pub async fn diff_entity_revisions(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(entity_ref): Path<String>,
+    Query(query): Query<DiffQuery>,
+) -> ApiResult<Vec<FieldDiff>> {
+    let params = serde_json::json!({
+        "entity_ref": entity_ref, "kind": query.kind, "from": query.from, "to": query.to,
+    });
+    dispatch(&org, &state, "diff_entity_revisions", params).await
+}
+
+/// POST /v1/history/{entity_ref}/restore - Bring a revision back as a new change
+#[utoipa::path(
+    post,
+    path = "/v1/history/{entity_ref}/restore",
+    params(("entity_ref" = String, Path, description = "The entity's public id")),
+    request_body = RestoreRequest,
+    responses(
+        (status = 200, description = "Restored", body = RestoreResult),
+        (status = 404, description = "No such revision, or the entity was deleted", body = ErrorResponse),
+        (status = 409, description = "The entity's manager context changed since it was read", body = ErrorResponse),
+    ),
+    tag = "history"
+)]
+pub async fn restore_entity_revision(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(entity_ref): Path<String>,
+    Json(request): Json<RestoreRequest>,
+) -> ApiResult<RestoreResult> {
+    let params = serde_json::json!({
+        "entity_ref": entity_ref, "kind": request.kind, "revision": request.revision,
+    });
+    dispatch(&org, &state, "restore_entity_revision", params).await
 }
 
 /// GET /v1/history/{entity_ref} - Changes to one entity

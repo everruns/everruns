@@ -24,6 +24,11 @@ mod context_tests;
 pub mod intent;
 pub mod registry;
 pub mod rest;
+pub mod revisions;
+#[cfg(test)]
+#[path = "revisions_tests.rs"]
+mod revisions_tests;
+pub mod snapshot;
 
 use serde_json::Value;
 
@@ -248,12 +253,13 @@ impl PendingChange {
             .as_ref()
             .filter(|pending| pending.action == ChangeAction::Deleted)
             .and_then(|pending| pending.context_key(ctx));
-        let row = pending.map(|pending| {
-            let output = serde_json::to_value(output).unwrap_or(Value::Null);
-            pending.row(meta, ctx, &output)
-        });
+        let output = serde_json::to_value(output).unwrap_or(Value::Null);
+        let subject = pending
+            .as_ref()
+            .map(|pending| (pending.kind, pending.action));
+        let row = pending.map(|pending| pending.row(meta, ctx, &output));
         async move {
-            let row = match row {
+            let mut row = match row {
                 None => return,
                 Some(Some(row)) => row,
                 Some(None) => {
@@ -266,6 +272,13 @@ impl PendingChange {
                     return;
                 }
             };
+            if let Some((kind, action)) = subject
+                && let Some((snapshot, hash)) =
+                    snapshot::capture(ctx, kind, action, &row.entity_ref, &output).await
+            {
+                row.snapshot = Some(snapshot);
+                row.snapshot_hash = Some(hash);
+            }
             if let Err(error) = ctx.db.record_entity_change(row).await {
                 tracing::error!(command, error = %error, "entity history write failed");
                 metrics::counter!(crate::api::prometheus::names::ENTITY_HISTORY_WRITE_FAILURES)
@@ -290,12 +303,17 @@ impl PendingChange {
             .intent
             .via_session_id
             .or_else(|| ctx.acting_for_session.map(|session| session.uuid()));
+        // The update a restore runs records as the restore.
+        let action = match (self.intent.restoring, self.action) {
+            (Some(_), ChangeAction::Updated) => ChangeAction::Restored,
+            (_, action) => action,
+        };
         Some(NewEntityChange {
             org_id: ctx.org_id(),
             entity_kind: self.kind.as_str().to_string(),
             entity_ref: entity_ref.clone(),
             command: meta.name.to_string(),
-            action: self.action.as_str().to_string(),
+            action: action.as_str().to_string(),
             reason: self.reason,
             changed_fields: changed_fields(&self.params, &entity_ref),
             actor_kind: actor_kind.as_str().to_string(),
@@ -310,6 +328,9 @@ impl PendingChange {
                 .to_string(),
             request_id: self.intent.request_id,
             idempotency_key: self.intent.idempotency_key,
+            snapshot: None,
+            snapshot_hash: None,
+            restored_from_revision: self.intent.restoring,
         })
     }
 }

@@ -65,6 +65,11 @@ pub struct EntityChange {
     pub surface: String,
     /// Correlation id of the HTTP request, when there was one.
     pub request_id: Option<String>,
+    /// The entity's revision after this change; absent when the change left
+    /// the entity as it was, or its kind keeps no snapshots.
+    pub revision: Option<i64>,
+    /// For a restore, the revision it brought back.
+    pub restored_from_revision: Option<i64>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -86,6 +91,8 @@ impl From<EntityChangeRow> for EntityChange {
             via_agent_id: row.via_agent_id,
             surface: row.surface,
             request_id: row.request_id,
+            revision: row.revision,
+            restored_from_revision: row.restored_from_revision,
             created_at: row.created_at,
         }
     }
@@ -103,6 +110,33 @@ pub(super) fn parse_kind(kind: &str) -> Result<EntityKind, CommandError> {
             known.join(", ")
         ))
     })
+}
+
+/// Resolve `entity_ref` and check the caller may read its history: the
+/// kind's view policy, the self rule, and for a session, that the caller can
+/// open it.
+pub(super) async fn readable(
+    ctx: &Ctx,
+    entity_ref: &str,
+    kind: Option<&str>,
+) -> Result<(String, EntityKind), CommandError> {
+    let entity_ref = entity_ref.trim().to_string();
+    let kind = super::context::resolve_kind(&entity_ref, kind)?;
+    kind.view_policy()
+        .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+        .map_err(|e| CommandError::forbidden(e.message))?;
+    super::context::deny_self(ctx, &entity_ref).await?;
+    if kind == EntityKind::Session {
+        // Session visibility is per participant, which no role policy
+        // states: the caller must be able to open the session itself.
+        // A deleted session's history is reachable through `history org`.
+        crate::domains::sessions::commands::GetSession {
+            session_id: entity_ref.clone(),
+        }
+        .execute(ctx)
+        .await?;
+    }
+    Ok((entity_ref, kind))
 }
 
 fn parse_action(action: Option<String>) -> Result<Option<String>, CommandError> {
@@ -174,33 +208,7 @@ impl Command for ListEntityHistory {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EntityChange>, CommandError> {
-        let entity_ref = self.entity_ref.trim().to_string();
-        if entity_ref.is_empty() {
-            return Err(CommandError::bad_request("entity_ref is required"));
-        }
-        let kind = match self.kind.as_deref() {
-            Some(kind) => parse_kind(kind)?,
-            None => EntityKind::from_ref(&entity_ref).ok_or_else(|| {
-                CommandError::bad_request(format!(
-                    "Cannot tell the kind of `{entity_ref}` from its id; pass --kind"
-                ))
-            })?,
-        };
-        kind.view_policy()
-            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-            .map_err(|e| CommandError::forbidden(e.message))?;
-        super::context::deny_self(ctx, &entity_ref).await?;
-        if kind == EntityKind::Session {
-            // Session visibility is per participant, which no role policy
-            // states: the caller must be able to open the session itself.
-            // A deleted session's history is reachable through `history org`.
-            crate::domains::sessions::commands::GetSession {
-                session_id: entity_ref.clone(),
-            }
-            .execute(ctx)
-            .await?;
-        }
-
+        let (entity_ref, kind) = readable(ctx, &self.entity_ref, self.kind.as_deref()).await?;
         let rows = ctx
             .db
             .list_entity_changes(&EntityChangeQuery {
