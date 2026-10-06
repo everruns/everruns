@@ -5,6 +5,7 @@ use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
 use everruns_contracts::typed_id::{AgentId, HarnessId};
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -14,11 +15,11 @@ impl Database {
 
     pub async fn create_app(&self, org_id: i64, input: CreateAppRow) -> Result<AppRow> {
         let row = sqlx::query_as::<_, AppRow>(
-            r#"
+            sql!(r#"
             INSERT INTO apps (org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'draft')
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {AppRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -45,13 +46,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<AppRow>> {
-        let row = sqlx::query_as::<_, AppRow>(
+        let row = sqlx::query_as::<_, AppRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {AppRow}
             FROM apps
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -61,13 +62,13 @@ impl Database {
     }
 
     pub async fn get_app_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<AppRow>> {
-        let row = sqlx::query_as::<_, AppRow>(
+        let row = sqlx::query_as::<_, AppRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {AppRow}
             FROM apps
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -88,13 +89,13 @@ impl Database {
 
     /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
     pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
-        let row = sqlx::query_as::<_, AppRow>(
+        let row = sqlx::query_as::<_, AppRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {AppRow}
             FROM apps
             WHERE public_id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(public_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -198,7 +199,7 @@ impl Database {
         id: Uuid,
         input: UpdateApp,
     ) -> Result<Option<AppRow>> {
-        let row = sqlx::query_as::<_, AppRow>(
+        let row = sqlx::query_as::<_, AppRow>(sql!(
             r#"
             UPDATE apps
             SET
@@ -218,9 +219,9 @@ impl Database {
                 published_at = CASE WHEN $19 THEN $20 ELSE published_at END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, harness_id, agent_id, agent_version_policy, agent_version_id, virtual_user_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {AppRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.name)

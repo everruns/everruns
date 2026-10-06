@@ -22506,6 +22506,11 @@
             "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
             "example": "Hey, I'm Ava. Ask me anything about your account."
           },
+          "is_built_in": {
+            "type": "boolean",
+            "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
+            "example": false
+          },
           "max_iterations": {
             "type": [
               "integer",
@@ -33724,6 +33729,11 @@
                   ],
                   "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
                   "example": "Hey, I'm Ava. Ask me anything about your account."
+                },
+                "is_built_in": {
+                  "type": "boolean",
+                  "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
+                  "example": false
                 },
                 "max_iterations": {
                   "type": [
@@ -52231,6 +52241,11 @@
                 ],
                 "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
                 "example": "Hey, I'm Ava. Ask me anything about your account."
+              },
+              "is_built_in": {
+                "type": "boolean",
+                "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
+                "example": false
               },
               "max_iterations": {
                 "type": [

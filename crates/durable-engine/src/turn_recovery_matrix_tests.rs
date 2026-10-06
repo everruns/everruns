@@ -476,6 +476,7 @@ impl<S: WorkflowEventStore> TurnStore for CrashingStore<S> {
         _input: serde_json::Value,
         _activity_id: String,
         _activity_type: String,
+        _steer: Option<serde_json::Value>,
     ) -> Result<RunStart, StoreError> {
         unreachable!("the crashing process only runs turn steps")
     }
@@ -1356,17 +1357,11 @@ async fn postgres_run_start_resumes_a_stranded_run() {
         serde_json::json!({}),
         format!("input_{}", Uuid::now_v7()),
         "process_input".into(),
+        Some(serde_json::json!({})),
     )
     .await
     .unwrap();
     assert_eq!(started, RunStart::Active);
-    TurnStore::send_signal(
-        &*turn.store,
-        turn.workflow_id(),
-        WorkflowSignal::new(crate::durable_turn::USER_MESSAGE, serde_json::json!({})),
-    )
-    .await
-    .unwrap();
     recover_with(&turn, Mode::Queued, false).await;
     let outcome = outcome(&turn, false).await;
     schema.drop().await;

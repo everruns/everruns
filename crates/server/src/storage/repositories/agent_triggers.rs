@@ -5,6 +5,7 @@ use super::super::models::*;
 use super::Database;
 use crate::kernel_imports::{contracts::typed_id::AgentId, contracts::typed_id::TriggerId};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 const COLUMNS: &str = "id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at";
@@ -19,11 +20,11 @@ impl Database {
         input: CreateAgentTriggerRow,
     ) -> Result<AgentTriggerRow> {
         let row = sqlx::query_as::<_, AgentTriggerRow>(
-            r#"
+            sql!(r#"
             INSERT INTO agent_triggers (org_id, id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'active')
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {AgentTriggerRow}
+            "#),
         )
         .bind(input.org_id)
         .bind(input.id)
@@ -112,7 +113,7 @@ impl Database {
         id: TriggerId,
         input: UpdateAgentTrigger,
     ) -> Result<Option<AgentTriggerRow>> {
-        let row = sqlx::query_as::<_, AgentTriggerRow>(
+        let row = sqlx::query_as::<_, AgentTriggerRow>(sql!(
             r#"
             UPDATE agent_triggers
             SET
@@ -126,9 +127,9 @@ impl Database {
                 agent_version_id = CASE WHEN $11 THEN $12 ELSE agent_version_id END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {AgentTriggerRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.trigger_type)
@@ -155,14 +156,14 @@ impl Database {
         id: TriggerId,
         durable_schedule_id: Option<Uuid>,
     ) -> Result<Option<AgentTriggerRow>> {
-        let row = sqlx::query_as::<_, AgentTriggerRow>(
+        let row = sqlx::query_as::<_, AgentTriggerRow>(sql!(
             r#"
             UPDATE agent_triggers
             SET durable_schedule_id = $3, updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, agent_id, trigger_type, ingress_id, config, config_encrypted, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_virtual_user_id, execution_app_id, legacy_alias_id, legacy_alias_name, agent_version_policy, agent_version_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {AgentTriggerRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(durable_schedule_id)
@@ -200,14 +201,14 @@ impl Database {
         input: CreateAgentTriggerDeliveryRow,
     ) -> Result<Option<AgentTriggerDeliveryRow>> {
         let row = sqlx::query_as::<_, AgentTriggerDeliveryRow>(
-            r#"
+            sql!(r#"
             INSERT INTO agent_trigger_deliveries (org_id, trigger_id, source, event_id, event_type, subject, status, reason)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (trigger_id, event_id)
                 WHERE event_id IS NOT NULL AND status IN ('dispatched', 'filtered')
                 DO NOTHING
-            RETURNING id, org_id, trigger_id, source, event_id, event_type, subject, status, reason, session_id, created_at
-            "#,
+            RETURNING {AgentTriggerDeliveryRow}
+            "#),
         )
         .bind(input.org_id)
         .bind(input.trigger_id)
@@ -251,15 +252,15 @@ impl Database {
         trigger_id: TriggerId,
         limit: i64,
     ) -> Result<Vec<AgentTriggerDeliveryRow>> {
-        Ok(sqlx::query_as::<_, AgentTriggerDeliveryRow>(
+        Ok(sqlx::query_as::<_, AgentTriggerDeliveryRow>(sql!(
             r#"
-            SELECT id, org_id, trigger_id, source, event_id, event_type, subject, status, reason, session_id, created_at
+            SELECT {AgentTriggerDeliveryRow}
             FROM agent_trigger_deliveries
             WHERE org_id = $1 AND trigger_id = $2
             ORDER BY created_at DESC, id DESC
             LIMIT $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(trigger_id)
         .bind(limit)

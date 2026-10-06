@@ -353,7 +353,7 @@ That is the whole selection mechanism, and it keeps the model's tool schema
 fixed for the life of a session.
 
 In the first-party UI, this choice belongs to **Playground** setup. Personal
-**Chats** use the managed Platform Chat Agent and its fixed runtime; they do not
+**Chats** use the managed Platform Chat and its fixed runtime; they do not
 offer an Agent, harness, or Environment selector.
 
 The rejected alternative is worth recording, because it is the obvious next

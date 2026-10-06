@@ -80,6 +80,11 @@ export interface Agent {
   forked_from_version_id?: string | null;
   root_agent_id?: string | null;
   tags: string[];
+  /**
+   * Built-in agents (Platform Chat) are managed by the platform and read-only:
+   * the API rejects edits, archive and delete. Copy one for an editable version.
+   */
+  is_built_in?: boolean;
   /** Capabilities with per-agent configuration */
   capabilities: AgentCapabilityConfig[];
   /** Initial files. Optional: older records and serializers that strip empty arrays may omit this field. */

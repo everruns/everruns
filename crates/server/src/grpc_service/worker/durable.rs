@@ -401,12 +401,17 @@ impl WorkerServiceImpl {
         )
         .await
         {
-            Ok(claimed) => {
+            Ok(recorded) => {
+                let claimed = recorded.claimed;
                 // Notify NATS subscribers of a step left in the queue (no-op
                 // for PG backend — PG uses DB triggers).
-                if claimed.is_none()
-                    && let (Some(activity_type), Some(broadcaster)) =
-                        (queued_type, &self.task_broadcaster)
+                let queued_type = if recorded.follow_up_started {
+                    Some("process_input".to_string())
+                } else {
+                    queued_type.filter(|_| claimed.is_none())
+                };
+                if let (Some(activity_type), Some(broadcaster)) =
+                    (queued_type, &self.task_broadcaster)
                 {
                     broadcaster.notify_task_available(&activity_type).await;
                 }

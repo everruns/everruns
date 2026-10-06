@@ -71,6 +71,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<everruns_contracts::Capabil
         forked_from_version_id: row.forked_from_version_id,
         root_agent_id: row.root_agent_id,
         tags: row.tags,
+        is_built_in: row.is_built_in,
         capabilities,
         sandbox_policy: row
             .environments

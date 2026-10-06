@@ -53,6 +53,6 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
   editor; the behavioral health check is a More row.
 - **Button tiers.** Gold is only **Test in Playground**. It opens Playground setup with the Agent
   selected; no session or Environment starts until the operator confirms the setup. Personal
-  Chats remain bound to the managed Platform Chat Agent. In edit mode navy Save changes replaces
+  Chats remain bound to the managed Platform Chat. In edit mode navy Save changes replaces
   the action, with Discard beside it, and the header states that changes apply to new sessions
   only.

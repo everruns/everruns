@@ -6,6 +6,7 @@ use crate::kernel_imports::{
 use crate::records::{SessionParticipantKind, SessionParticipantRole};
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};
+use everruns_server_macros::sql;
 
 impl Database {
     pub async fn create_session_participant(
@@ -14,17 +15,16 @@ impl Database {
     ) -> Result<SessionParticipantRow> {
         let joined_at = input.joined_at.unwrap_or_else(chrono::Utc::now);
 
-        sqlx::query_as::<_, SessionParticipantRow>(
+        sqlx::query_as::<_, SessionParticipantRow>(sql!(
             r#"
             INSERT INTO session_participants (
                 id, org_id, session_id, kind, agent_id, agent_version_id,
                 principal_id, display_name, role, joined_at
             )
             VALUES (uuidv7(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, org_id, session_id, kind, agent_id, agent_version_id,
-                      principal_id, display_name, role, joined_at, left_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {SessionParticipantRow}
+            "#
+        ))
         .bind(input.org_id)
         .bind(input.session_id.uuid())
         .bind(input.kind.to_string())
@@ -53,7 +53,7 @@ impl Database {
 
         let joined_at = input.joined_at.unwrap_or_else(chrono::Utc::now);
 
-        sqlx::query_as::<_, SessionParticipantRow>(
+        sqlx::query_as::<_, SessionParticipantRow>(sql!(
             r#"
             INSERT INTO session_participants (
                 id, org_id, session_id, kind, agent_id, agent_version_id,
@@ -67,10 +67,9 @@ impl Database {
                               session_participants.display_name
                           ),
                           updated_at = NOW()
-            RETURNING id, org_id, session_id, kind, agent_id, agent_version_id,
-                      principal_id, display_name, role, joined_at, left_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {SessionParticipantRow}
+            "#
+        ))
         .bind(input.org_id)
         .bind(input.session_id.uuid())
         .bind(input.principal_id)
@@ -86,16 +85,15 @@ impl Database {
         org_id: i64,
         session_id: SessionId,
     ) -> Result<Vec<SessionParticipantRow>> {
-        sqlx::query_as::<_, SessionParticipantRow>(
+        sqlx::query_as::<_, SessionParticipantRow>(sql!(
             r#"
-            SELECT id, org_id, session_id, kind, agent_id, agent_version_id,
-                   principal_id, display_name, role, joined_at, left_at, created_at, updated_at
+            SELECT {SessionParticipantRow}
             FROM session_participants
             WHERE org_id = $1 AND session_id = $2
             ORDER BY joined_at ASC, created_at ASC, id ASC
             LIMIT $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(session_id.uuid())
         .bind((MAX_SESSION_PARTICIPANT_HISTORY + 1) as i64)
@@ -110,16 +108,15 @@ impl Database {
         session_id: SessionId,
         participant_id: SessionParticipantId,
     ) -> Result<Option<SessionParticipantRow>> {
-        sqlx::query_as::<_, SessionParticipantRow>(
+        sqlx::query_as::<_, SessionParticipantRow>(sql!(
             r#"
             UPDATE session_participants
             SET left_at = COALESCE(left_at, NOW()),
                 updated_at = NOW()
             WHERE org_id = $1 AND session_id = $2 AND id = $3
-            RETURNING id, org_id, session_id, kind, agent_id, agent_version_id,
-                      principal_id, display_name, role, joined_at, left_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {SessionParticipantRow}
+            "#
+        ))
         .bind(org_id)
         .bind(session_id.uuid())
         .bind(participant_id.uuid())

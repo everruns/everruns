@@ -268,15 +268,20 @@ impl TurnStore for GrpcDurableStore {
 
     async fn start_turn(
         &self,
-        _workflow_id: Uuid,
+        workflow_id: Uuid,
         _workflow_type: &str,
         _input: serde_json::Value,
         _activity_id: String,
         _activity_type: String,
+        steer: Option<serde_json::Value>,
     ) -> Result<RunStart, StoreError> {
         // Turns start on the control plane, which owns the store. A worker's
         // runner only steers runs that already exist, so it reports one as
-        // active and the runner signals it.
+        // active and signals it.
+        if let Some(payload) = steer {
+            let signal = WorkflowSignal::new(crate::durable_turn::USER_MESSAGE, payload);
+            TurnStore::send_signal(self, workflow_id, signal).await?;
+        }
         Ok(RunStart::Active)
     }
 

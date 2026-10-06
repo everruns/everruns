@@ -437,6 +437,23 @@ describe("AgentPage layout", () => {
     expect(screen.queryByLabelText("Default model")).not.toBeInTheDocument();
     expect(screen.getByText("Organization default")).toBeInTheDocument();
   });
+
+  it("keeps a built-in agent read-only and offers Copy but not Archive", async () => {
+    mockUseAgent.mockReturnValue({ data: { ...mockAgent, is_built_in: true }, isLoading: false });
+    mockSearchParams = new URLSearchParams("mode=edit");
+    await renderPage();
+
+    expect(screen.getByText("Built-in")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save changes/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit prompt" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    const items = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(items).toContain("Copy");
+    expect(items).not.toContain("Archive agent");
+    expect(items).not.toContain("Delete agent");
+  });
 });
 
 describe("AgentPage edit mode", () => {

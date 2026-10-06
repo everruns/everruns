@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use everruns_server_macros::sql;
 use sqlx::{PgPool, Postgres, pool::PoolConnection};
 use std::time::Instant;
 use uuid::Uuid;
@@ -98,7 +99,7 @@ impl PostgresReportingProjector {
     }
 
     async fn claim_pending(&self, org_id: i64, limit: i64) -> Result<Vec<ReportingOutboxRow>> {
-        let rows = sqlx::query_as::<_, ReportingOutboxRow>(
+        let rows = sqlx::query_as::<_, ReportingOutboxRow>(sql!(
             r#"
             UPDATE reporting_outbox
                SET status = 'processing',
@@ -115,10 +116,9 @@ impl PostgresReportingProjector {
                  LIMIT $2
                  FOR UPDATE SKIP LOCKED
              )
-         RETURNING id, org_id, source_type, source_id, source_version, reason, status,
-                   attempts, next_attempt_at, last_error, created_at, updated_at
-            "#,
-        )
+         RETURNING {ReportingOutboxRow}
+            "#
+        ))
         .bind(org_id)
         .bind(limit.clamp(1, 1_000))
         .fetch_all(&self.pool)
@@ -127,7 +127,7 @@ impl PostgresReportingProjector {
     }
 
     async fn claim_pending_any_org(&self, limit: i64) -> Result<Vec<ReportingOutboxRow>> {
-        let rows = sqlx::query_as::<_, ReportingOutboxRow>(
+        let rows = sqlx::query_as::<_, ReportingOutboxRow>(sql!(
             r#"
             UPDATE reporting_outbox
                SET status = 'processing',
@@ -143,10 +143,9 @@ impl PostgresReportingProjector {
                  LIMIT $1
                  FOR UPDATE SKIP LOCKED
              )
-         RETURNING id, org_id, source_type, source_id, source_version, reason, status,
-                   attempts, next_attempt_at, last_error, created_at, updated_at
-            "#,
-        )
+         RETURNING {ReportingOutboxRow}
+            "#
+        ))
         .bind(limit.clamp(1, 5_000))
         .fetch_all(&self.pool)
         .await?;

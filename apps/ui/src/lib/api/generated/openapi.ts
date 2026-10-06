@@ -5849,6 +5849,13 @@ export interface components {
        */
       intro_markdown?: string | null;
       /**
+       * @description Built-in agents (Platform Chat) are provisioned by the platform and
+       *     are read-only: they cannot be modified or deleted via the API. Copy
+       *     one to get an editable version.
+       * @example false
+       */
+      is_built_in?: boolean;
+      /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50
        */
@@ -12126,6 +12133,13 @@ export interface components {
          * @example Hey, I'm Ava. Ask me anything about your account.
          */
         intro_markdown?: string | null;
+        /**
+         * @description Built-in agents (Platform Chat) are provisioned by the platform and
+         *     are read-only: they cannot be modified or deleted via the API. Copy
+         *     one to get an editable version.
+         * @example false
+         */
+        is_built_in?: boolean;
         /**
          * @description Maximum number of LLM iterations per turn for this agent.
          * @example 50
@@ -22265,6 +22279,13 @@ export interface components {
        * @example Hey, I'm Ava. Ask me anything about your account.
        */
       intro_markdown?: string | null;
+      /**
+       * @description Built-in agents (Platform Chat) are provisioned by the platform and
+       *     are read-only: they cannot be modified or deleted via the API. Copy
+       *     one to get an editable version.
+       * @example false
+       */
+      is_built_in?: boolean;
       /**
        * @description Maximum number of LLM iterations per turn for this agent.
        * @example 50

@@ -5,6 +5,7 @@ use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
 use everruns_contracts::typed_id::HarnessId;
+use everruns_server_macros::sql;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -459,14 +460,14 @@ impl Database {
         &self,
         harness_id: Uuid,
     ) -> Result<Vec<HarnessCapabilityRow>> {
-        let rows = sqlx::query_as::<_, HarnessCapabilityRow>(
+        let rows = sqlx::query_as::<_, HarnessCapabilityRow>(sql!(
             r#"
-            SELECT id, harness_id, capability_id, position, config, created_at
+            SELECT {HarnessCapabilityRow}
             FROM harness_capabilities
             WHERE harness_id = $1
             ORDER BY position ASC
-            "#,
-        )
+            "#
+        ))
         .bind(harness_id)
         .fetch_all(&self.pool)
         .await?;

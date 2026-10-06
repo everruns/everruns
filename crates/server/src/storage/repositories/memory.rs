@@ -3,19 +3,20 @@
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
     pub async fn create_memory(&self, org_id: i64, input: CreateMemoryRow) -> Result<MemoryRow> {
         let row = sqlx::query_as::<_, MemoryRow>(
-            r#"
+            sql!(r#"
             INSERT INTO memories (
                 org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config,
                 is_readonly, sync_status, owner_principal_id, resolved_owner_user_id
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {MemoryRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -43,17 +44,17 @@ impl Database {
         owner_agent_id: Option<everruns_contracts::typed_id::AgentId>,
         owner_user_id: Option<Uuid>,
     ) -> Result<Option<MemoryRow>> {
-        let row = sqlx::query_as::<_, MemoryRow>(
+        let row = sqlx::query_as::<_, MemoryRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {MemoryRow}
             FROM memories
             WHERE org_id = $1
               AND scope = $2
               AND (($3::uuid IS NULL AND owner_agent_id IS NULL) OR owner_agent_id = $3)
               AND (($4::uuid IS NULL AND owner_user_id IS NULL) OR owner_user_id = $4)
               AND status != 'deleted'
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(scope)
         .bind(owner_agent_id.map(|id| id.uuid()))
@@ -69,13 +70,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<MemoryRow>> {
-        let row = sqlx::query_as::<_, MemoryRow>(
+        let row = sqlx::query_as::<_, MemoryRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {MemoryRow}
             FROM memories
             WHERE org_id = $1 AND public_id = $2 AND status != 'deleted'
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -85,13 +86,13 @@ impl Database {
     }
 
     pub async fn get_memory_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<MemoryRow>> {
-        let row = sqlx::query_as::<_, MemoryRow>(
+        let row = sqlx::query_as::<_, MemoryRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {MemoryRow}
             FROM memories
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -152,7 +153,7 @@ impl Database {
         id: Uuid,
         input: UpdateMemory,
     ) -> Result<Option<MemoryRow>> {
-        let row = sqlx::query_as::<_, MemoryRow>(
+        let row = sqlx::query_as::<_, MemoryRow>(sql!(
             r#"
             UPDATE memories
             SET
@@ -176,9 +177,9 @@ impl Database {
                 END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
-            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {MemoryRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.name)
@@ -217,7 +218,7 @@ impl Database {
 
     pub async fn claim_next_memory_sync(&self) -> Result<Option<MemoryRow>> {
         let row = sqlx::query_as::<_, MemoryRow>(
-            r#"
+            sql!(r#"
             UPDATE memories
             SET sync_status = 'syncing', last_sync_error = NULL, updated_at = NOW()
             WHERE id = (
@@ -238,8 +239,8 @@ impl Database {
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
-            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {MemoryRow}
+            "#),
         )
         .fetch_optional(&self.pool)
         .await?;
@@ -255,7 +256,7 @@ impl Database {
     ) -> Result<Option<MemoryRow>> {
         let mut tx = self.pool.begin().await?;
 
-        let memory = sqlx::query_as::<_, MemoryRow>(
+        let memory = sqlx::query_as::<_, MemoryRow>(sql!(
             r#"
             UPDATE memories
             SET sync_status = 'synced',
@@ -267,9 +268,9 @@ impl Database {
               AND sync_status = 'syncing'
               AND status = 'active'
               AND source_type != 'manual'
-            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {MemoryRow}
+            "#
+        ))
         .bind(memory_id)
         .bind(claimed_at)
         .fetch_optional(&mut *tx)
@@ -313,7 +314,7 @@ impl Database {
         claimed_at: chrono::DateTime<chrono::Utc>,
         error: &str,
     ) -> Result<Option<MemoryRow>> {
-        let row = sqlx::query_as::<_, MemoryRow>(
+        let row = sqlx::query_as::<_, MemoryRow>(sql!(
             r#"
             UPDATE memories
             SET sync_status = 'failed',
@@ -324,9 +325,9 @@ impl Database {
               AND sync_status = 'syncing'
               AND status = 'active'
               AND source_type != 'manual'
-            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {MemoryRow}
+            "#
+        ))
         .bind(memory_id)
         .bind(error)
         .bind(claimed_at)
@@ -337,14 +338,14 @@ impl Database {
     }
 
     pub async fn list_all_memory_files(&self, memory_id: Uuid) -> Result<Vec<MemoryFileRow>> {
-        let rows = sqlx::query_as::<_, MemoryFileRow>(
+        let rows = sqlx::query_as::<_, MemoryFileRow>(sql!(
             r#"
-            SELECT id, memory_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
+            SELECT {MemoryFileRow}
             FROM memory_files
             WHERE memory_id = $1
             ORDER BY path ASC
-            "#,
-        )
+            "#
+        ))
         .bind(memory_id)
         .fetch_all(&self.pool)
         .await?;
@@ -364,11 +365,11 @@ impl Database {
         let size_bytes = input.content.as_ref().map(|c| c.len() as i64).unwrap_or(0);
 
         let row = sqlx::query_as::<_, MemoryFileRow>(
-            r#"
+            sql!(r#"
             INSERT INTO memory_files (memory_id, path, content, is_directory, size_bytes, content_hash)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, memory_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
-            "#,
+            RETURNING {MemoryFileRow}
+            "#),
         )
         .bind(memory_id)
         .bind(&input.path)
@@ -387,13 +388,13 @@ impl Database {
         memory_id: Uuid,
         path: &str,
     ) -> Result<Option<MemoryFileRow>> {
-        let row = sqlx::query_as::<_, MemoryFileRow>(
+        let row = sqlx::query_as::<_, MemoryFileRow>(sql!(
             r#"
-            SELECT id, memory_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
+            SELECT {MemoryFileRow}
             FROM memory_files
             WHERE memory_id = $1 AND path = $2
-            "#,
-        )
+            "#
+        ))
         .bind(memory_id)
         .bind(path)
         .fetch_optional(&self.pool)
@@ -407,13 +408,13 @@ impl Database {
         memory_id: Uuid,
         path: &str,
     ) -> Result<Option<MemoryFileInfoRow>> {
-        let row = sqlx::query_as::<_, MemoryFileInfoRow>(
+        let row = sqlx::query_as::<_, MemoryFileInfoRow>(sql!(
             r#"
-            SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+            SELECT {MemoryFileInfoRow}
             FROM memory_files
             WHERE memory_id = $1 AND path = $2
-            "#,
-        )
+            "#
+        ))
         .bind(memory_id)
         .bind(path)
         .fetch_optional(&self.pool)
@@ -433,14 +434,14 @@ impl Database {
             format!("^{}/[^/]+$", regex::escape(parent_path))
         };
 
-        let rows = sqlx::query_as::<_, MemoryFileInfoRow>(
+        let rows = sqlx::query_as::<_, MemoryFileInfoRow>(sql!(
             r#"
-            SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+            SELECT {MemoryFileInfoRow}
             FROM memory_files
             WHERE memory_id = $1 AND path ~ $2
             ORDER BY is_directory DESC, path ASC
-            "#,
-        )
+            "#
+        ))
         .bind(memory_id)
         .bind(&pattern)
         .fetch_all(&self.pool)
@@ -461,7 +462,7 @@ impl Database {
             None => (false, None),
         };
 
-        let row = sqlx::query_as::<_, MemoryFileRow>(
+        let row = sqlx::query_as::<_, MemoryFileRow>(sql!(
             r#"
             UPDATE memory_files
             SET
@@ -470,9 +471,9 @@ impl Database {
                 content_hash = CASE WHEN $5 THEN $6 ELSE content_hash END,
                 updated_at = NOW()
             WHERE memory_id = $1 AND path = $2 AND is_directory = FALSE
-            RETURNING id, memory_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
-            "#,
-        )
+            RETURNING {MemoryFileRow}
+            "#
+        ))
         .bind(memory_id)
         .bind(path)
         .bind(&input.content)
@@ -522,32 +523,32 @@ impl Database {
         // as a PostgreSQL regex and, critically, avoid scanning content until the
         // service has narrowed these metadata candidates by path.
         let rows = if path_pattern.is_some() {
-            sqlx::query_as::<_, MemoryFileInfoRow>(
+            sqlx::query_as::<_, MemoryFileInfoRow>(sql!(
                 r#"
-                SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+                SELECT {MemoryFileInfoRow}
                 FROM memory_files
                 WHERE memory_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
                 ORDER BY path ASC
-                "#,
-            )
+                "#
+            ))
             .bind(memory_id)
             .bind(max_file_bytes)
             .fetch_all(&self.pool)
             .await?
         } else {
-            sqlx::query_as::<_, MemoryFileInfoRow>(
+            sqlx::query_as::<_, MemoryFileInfoRow>(sql!(
                 r#"
-                SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+                SELECT {MemoryFileInfoRow}
                 FROM memory_files
                 WHERE memory_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
                     AND convert_from(content, 'UTF8') ~ $3
                 ORDER BY path ASC
-                "#,
-            )
+                "#
+            ))
             .bind(memory_id)
             .bind(max_file_bytes)
             .bind(pattern)

@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -15,18 +16,16 @@ impl Database {
         // creation can keep workspace.id == session.id). Otherwise the
         // table DEFAULT uuidv7() is used.
         let row = if let Some(id) = input.id {
-            sqlx::query_as::<_, WorkspaceRow>(
+            sqlx::query_as::<_, WorkspaceRow>(sql!(
                 r#"
                 INSERT INTO workspaces (
                     id, org_id, public_id, name, description,
                     owner_principal_id, resolved_owner_user_id
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                RETURNING id, org_id, public_id, name, description,
-                          owner_principal_id, resolved_owner_user_id,
-                          status, created_at, updated_at, archived_at, deleted_at
-                "#,
-            )
+                RETURNING {WorkspaceRow}
+                "#
+            ))
             .bind(id)
             .bind(org_id)
             .bind(&input.public_id)
@@ -37,18 +36,16 @@ impl Database {
             .fetch_one(&self.pool)
             .await?
         } else {
-            sqlx::query_as::<_, WorkspaceRow>(
+            sqlx::query_as::<_, WorkspaceRow>(sql!(
                 r#"
                 INSERT INTO workspaces (
                     org_id, public_id, name, description,
                     owner_principal_id, resolved_owner_user_id
                 )
                 VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING id, org_id, public_id, name, description,
-                          owner_principal_id, resolved_owner_user_id,
-                          status, created_at, updated_at, archived_at, deleted_at
-                "#,
-            )
+                RETURNING {WorkspaceRow}
+                "#
+            ))
             .bind(org_id)
             .bind(&input.public_id)
             .bind(&input.name)
@@ -67,15 +64,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<WorkspaceRow>> {
-        let row = sqlx::query_as::<_, WorkspaceRow>(
+        let row = sqlx::query_as::<_, WorkspaceRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description,
-                   owner_principal_id, resolved_owner_user_id,
-                   status, created_at, updated_at, archived_at, deleted_at
+            SELECT {WorkspaceRow}
             FROM workspaces
             WHERE org_id = $1 AND public_id = $2 AND status != 'deleted'
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -85,15 +80,13 @@ impl Database {
     }
 
     pub async fn get_workspace_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<WorkspaceRow>> {
-        let row = sqlx::query_as::<_, WorkspaceRow>(
+        let row = sqlx::query_as::<_, WorkspaceRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description,
-                   owner_principal_id, resolved_owner_user_id,
-                   status, created_at, updated_at, archived_at, deleted_at
+            SELECT {WorkspaceRow}
             FROM workspaces
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -156,7 +149,7 @@ impl Database {
         id: Uuid,
         input: UpdateWorkspace,
     ) -> Result<Option<WorkspaceRow>> {
-        let row = sqlx::query_as::<_, WorkspaceRow>(
+        let row = sqlx::query_as::<_, WorkspaceRow>(sql!(
             r#"
             UPDATE workspaces
             SET
@@ -174,11 +167,9 @@ impl Database {
                 END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
-            RETURNING id, org_id, public_id, name, description,
-                      owner_principal_id, resolved_owner_user_id,
-                      status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {WorkspaceRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.name)

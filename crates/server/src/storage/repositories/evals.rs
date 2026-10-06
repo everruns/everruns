@@ -1,6 +1,7 @@
 // Eval storage (PostgreSQL)
 
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 use crate::storage::Database;
@@ -13,14 +14,13 @@ impl Database {
     // ============================================
 
     pub async fn create_eval(&self, org_id: i64, input: CreateEvalRow) -> Result<EvalRow> {
-        let row = sqlx::query_as::<_, EvalRow>(
+        let row = sqlx::query_as::<_, EvalRow>(sql!(
             r#"
             INSERT INTO evals (org_id, public_id, name, description, target, model_override, tags)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, org_id, public_id, name, description, target,
-                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {EvalRow}
+            "#
+        ))
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
@@ -48,14 +48,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<EvalRow>> {
-        let row = sqlx::query_as::<_, EvalRow>(
+        let row = sqlx::query_as::<_, EvalRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, target,
-                   model_override, tags, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {EvalRow}
             FROM evals
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -97,7 +96,7 @@ impl Database {
         id: Uuid,
         input: UpdateEvalRow,
     ) -> Result<Option<EvalRow>> {
-        let row = sqlx::query_as::<_, EvalRow>(
+        let row = sqlx::query_as::<_, EvalRow>(sql!(
             r#"
             UPDATE evals
             SET
@@ -109,10 +108,9 @@ impl Database {
                 status = COALESCE($8, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, target,
-                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {EvalRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.name)
@@ -151,12 +149,11 @@ impl Database {
         input: CreateEvalCaseRow,
     ) -> Result<EvalCaseRow> {
         let row = sqlx::query_as::<_, EvalCaseRow>(
-            r#"
+            sql!(r#"
             INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers, max_turns, timeout_seconds, position)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
-                      max_turns, timeout_seconds, position, created_at, updated_at
-            "#,
+            RETURNING {EvalCaseRow}
+            "#),
         )
         .bind(eval_id)
         .bind(&input.public_id)
@@ -177,15 +174,14 @@ impl Database {
     }
 
     pub async fn list_eval_cases(&self, eval_id: Uuid) -> Result<Vec<EvalCaseRow>> {
-        let rows = sqlx::query_as::<_, EvalCaseRow>(
+        let rows = sqlx::query_as::<_, EvalCaseRow>(sql!(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
-                   max_turns, timeout_seconds, position, created_at, updated_at
+            SELECT {EvalCaseRow}
             FROM eval_cases
             WHERE eval_id = $1
             ORDER BY position ASC, created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(eval_id)
         .fetch_all(&self.pool)
         .await?;
@@ -193,14 +189,13 @@ impl Database {
     }
 
     pub async fn get_eval_case(&self, id: Uuid) -> Result<Option<EvalCaseRow>> {
-        let row = sqlx::query_as::<_, EvalCaseRow>(
+        let row = sqlx::query_as::<_, EvalCaseRow>(sql!(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
-                   max_turns, timeout_seconds, position, created_at, updated_at
+            SELECT {EvalCaseRow}
             FROM eval_cases
             WHERE id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -212,14 +207,13 @@ impl Database {
         eval_id: Uuid,
         public_id: &str,
     ) -> Result<Option<EvalCaseRow>> {
-        let row = sqlx::query_as::<_, EvalCaseRow>(
+        let row = sqlx::query_as::<_, EvalCaseRow>(sql!(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
-                   max_turns, timeout_seconds, position, created_at, updated_at
+            SELECT {EvalCaseRow}
             FROM eval_cases
             WHERE eval_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(eval_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -232,7 +226,7 @@ impl Database {
         id: Uuid,
         input: UpdateEvalCaseRow,
     ) -> Result<Option<EvalCaseRow>> {
-        let row = sqlx::query_as::<_, EvalCaseRow>(
+        let row = sqlx::query_as::<_, EvalCaseRow>(sql!(
             r#"
             UPDATE eval_cases
             SET
@@ -249,10 +243,9 @@ impl Database {
                 position = COALESCE($12, position),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
-                      max_turns, timeout_seconds, position, created_at, updated_at
-            "#,
-        )
+            RETURNING {EvalCaseRow}
+            "#
+        ))
         .bind(id)
         .bind(&input.name)
         .bind(&input.description)
@@ -307,12 +300,11 @@ impl Database {
         input: CreateEvalRunRow,
     ) -> Result<EvalRunRow> {
         let row = sqlx::query_as::<_, EvalRunRow>(
-            r#"
+            sql!(r#"
             INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
-            "#,
+            RETURNING {EvalRunRow}
+            "#),
         )
         .bind(input.eval_id)
         .bind(org_id)
@@ -397,27 +389,25 @@ impl Database {
         }
 
         let case_ids: Vec<Uuid> = case_ids.into_iter().map(|(id,)| id).collect();
-        let cases = sqlx::query_as::<_, EvalCaseRow>(
+        let cases = sqlx::query_as::<_, EvalCaseRow>(sql!(
             r#"
-            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
-                   max_turns, timeout_seconds, position, created_at, updated_at
+            SELECT {EvalCaseRow}
             FROM eval_cases
             WHERE eval_id = $1 AND id = ANY($2)
             ORDER BY position ASC, created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(input.eval_id)
         .bind(&case_ids)
         .fetch_all(&mut *tx)
         .await?;
 
         let row = sqlx::query_as::<_, EvalRunRow>(
-            r#"
+            sql!(r#"
             INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
-            "#,
+            RETURNING {EvalRunRow}
+            "#),
         )
         .bind(input.eval_id)
         .bind(org_id)
@@ -523,12 +513,11 @@ impl Database {
 
         let now = chrono::Utc::now();
         let run = sqlx::query_as::<_, EvalRunRow>(
-            r#"
+            sql!(r#"
             INSERT INTO eval_runs (eval_id, org_id, public_id, status, triggered_by, started_at, completed_at, summary, source, source_run_id, attribution)
             VALUES ($1, $2, $3, 'completed', $4, $5, $5, $6, $7, $8, $9)
-            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
-            "#,
+            RETURNING {EvalRunRow}
+            "#),
         )
         .bind(eval_id)
         .bind(org_id)
@@ -614,15 +603,14 @@ impl Database {
     }
 
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
-        let rows = sqlx::query_as::<_, EvalRunRow>(
+        let rows = sqlx::query_as::<_, EvalRunRow>(sql!(
             r#"
-            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
+            SELECT {EvalRunRow}
             FROM eval_runs
             WHERE eval_id = $1
             ORDER BY created_at DESC
-            "#,
-        )
+            "#
+        ))
         .bind(eval_id)
         .fetch_all(&self.pool)
         .await?;
@@ -634,14 +622,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<EvalRunRow>> {
-        let row = sqlx::query_as::<_, EvalRunRow>(
+        let row = sqlx::query_as::<_, EvalRunRow>(sql!(
             r#"
-            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
+            SELECT {EvalRunRow}
             FROM eval_runs
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -662,7 +649,7 @@ impl Database {
         } else {
             None
         };
-        let row = sqlx::query_as::<_, EvalRunRow>(
+        let row = sqlx::query_as::<_, EvalRunRow>(sql!(
             r#"
             UPDATE eval_runs
             SET
@@ -672,10 +659,9 @@ impl Database {
                 summary = COALESCE($5, summary),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
-            "#,
-        )
+            RETURNING {EvalRunRow}
+            "#
+        ))
         .bind(id)
         .bind(status)
         .bind(started)
@@ -687,16 +673,15 @@ impl Database {
     }
 
     pub async fn get_latest_eval_run(&self, eval_id: Uuid) -> Result<Option<EvalRunRow>> {
-        let row = sqlx::query_as::<_, EvalRunRow>(
+        let row = sqlx::query_as::<_, EvalRunRow>(sql!(
             r#"
-            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
+            SELECT {EvalRunRow}
             FROM eval_runs
             WHERE eval_id = $1
             ORDER BY created_at DESC
             LIMIT 1
-            "#,
-        )
+            "#
+        ))
         .bind(eval_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -712,13 +697,11 @@ impl Database {
         input: CreateEvalCaseResultRow,
     ) -> Result<EvalCaseResultRow> {
         let row = sqlx::query_as::<_, EvalCaseResultRow>(
-            r#"
+            sql!(r#"
             INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot, artifacts)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
-                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message, artifacts,
-                      created_at, updated_at
-            "#,
+            RETURNING {EvalCaseResultRow}
+            "#),
         )
         .bind(input.eval_run_id)
         .bind(input.eval_case_id)
@@ -758,7 +741,7 @@ impl Database {
         id: Uuid,
         input: UpdateEvalCaseResultRow,
     ) -> Result<Option<EvalCaseResultRow>> {
-        let row = sqlx::query_as::<_, EvalCaseResultRow>(
+        let row = sqlx::query_as::<_, EvalCaseResultRow>(sql!(
             r#"
             UPDATE eval_case_results
             SET
@@ -776,11 +759,9 @@ impl Database {
                 artifacts = COALESCE($13, artifacts),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, eval_run_id, eval_case_id, public_id, session_id, target, target_snapshot,
-                      status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message, artifacts,
-                      created_at, updated_at
-            "#,
-        )
+            RETURNING {EvalCaseResultRow}
+            "#
+        ))
         .bind(id)
         .bind(input.session_id)
         .bind(&input.target)
@@ -824,14 +805,13 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
         let created = inserted_id.is_some();
-        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, eval_run_id, request, status, body, record_count,
-                   error_message, started_at, completed_at, created_at, updated_at
+            SELECT {EvalRunDatasetRow}
             FROM eval_run_datasets
             WHERE org_id = $1 AND eval_run_id = $2 AND request = $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(input.eval_run_id)
         .bind(&input.request)
@@ -846,14 +826,13 @@ impl Database {
         eval_run_id: Uuid,
         request: &serde_json::Value,
     ) -> Result<Option<EvalRunDatasetRow>> {
-        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, eval_run_id, request, status, body, record_count,
-                   error_message, started_at, completed_at, created_at, updated_at
+            SELECT {EvalRunDatasetRow}
             FROM eval_run_datasets
             WHERE org_id = $1 AND eval_run_id = $2 AND request = $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(eval_run_id)
         .bind(request)
@@ -867,14 +846,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<EvalRunDatasetRow>> {
-        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, eval_run_id, request, status, body, record_count,
-                   error_message, started_at, completed_at, created_at, updated_at
+            SELECT {EvalRunDatasetRow}
             FROM eval_run_datasets
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -896,7 +874,7 @@ impl Database {
             Some("completed") | Some("failed") => Some(now),
             _ => None,
         };
-        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(sql!(
             r#"
             UPDATE eval_run_datasets
             SET status = COALESCE($2, status),
@@ -907,10 +885,9 @@ impl Database {
                 completed_at = COALESCE(completed_at, $7),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, org_id, public_id, eval_run_id, request, status, body, record_count,
-                      error_message, started_at, completed_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {EvalRunDatasetRow}
+            "#
+        ))
         .bind(id)
         .bind(&input.status)
         .bind(&input.body)
@@ -932,15 +909,14 @@ impl Database {
         org_id: i64,
         input: CreateEvalRunShareTokenRow,
     ) -> Result<EvalRunShareTokenRow> {
-        let row = sqlx::query_as::<_, EvalRunShareTokenRow>(
+        let row = sqlx::query_as::<_, EvalRunShareTokenRow>(sql!(
             r#"
             INSERT INTO eval_run_share_tokens
                 (org_id, public_id, eval_run_id, token_hash, token_prefix, created_by, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, org_id, public_id, eval_run_id, token_hash, token_prefix, created_by,
-                      expires_at, revoked_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {EvalRunShareTokenRow}
+            "#
+        ))
         .bind(org_id)
         .bind(&input.public_id)
         .bind(input.eval_run_id)
@@ -999,14 +975,13 @@ impl Database {
         &self,
         token_hash: &str,
     ) -> Result<Option<EvalRunShareTokenRow>> {
-        let row = sqlx::query_as::<_, EvalRunShareTokenRow>(
+        let row = sqlx::query_as::<_, EvalRunShareTokenRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, eval_run_id, token_hash, token_prefix, created_by,
-                   expires_at, revoked_at, created_at, updated_at
+            SELECT {EvalRunShareTokenRow}
             FROM eval_run_share_tokens
             WHERE token_hash = $1
-            "#,
-        )
+            "#
+        ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
@@ -1016,15 +991,13 @@ impl Database {
     /// Load an eval run by internal id (used by the public share resolver, which
     /// has the run id from the token row, not a public id + org).
     pub async fn get_eval_run_by_id(&self, id: Uuid) -> Result<Option<EvalRunRow>> {
-        let row = sqlx::query_as::<_, EvalRunRow>(
+        let row = sqlx::query_as::<_, EvalRunRow>(sql!(
             r#"
-            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution,
-                   created_at, updated_at
+            SELECT {EvalRunRow}
             FROM eval_runs
             WHERE id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;

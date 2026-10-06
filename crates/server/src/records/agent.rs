@@ -311,6 +311,12 @@ pub struct Agent {
     #[serde(default)]
     #[schema(example = json!(["support", "production"]))]
     pub tags: Vec<String>,
+    /// Built-in agents (Platform Chat) are provisioned by the platform and
+    /// are read-only: they cannot be modified or deleted via the API. Copy
+    /// one to get an editable version.
+    #[serde(default)]
+    #[schema(example = false)]
+    pub is_built_in: bool,
     /// Capabilities enabled for this agent with per-agent configuration.
     /// Capabilities add tools and system prompt modifications.
     #[serde(default)]
@@ -490,6 +496,7 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent {
+            is_built_in: false,
             avatar: None,
             service_virtual_user_id: None,
 

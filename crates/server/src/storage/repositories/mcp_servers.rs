@@ -9,6 +9,7 @@ use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
 use everruns_contracts::typed_id::McpServerId;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -26,11 +27,11 @@ impl Database {
         let api_key_set = input.api_key_encrypted.is_some();
 
         let row = sqlx::query_as::<_, McpServerRow>(
-            r#"
+            sql!(r#"
             INSERT INTO mcp_servers (org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {McpServerRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.name)
@@ -62,7 +63,7 @@ impl Database {
         let api_key_set = input.api_key_encrypted.is_some();
 
         let row = sqlx::query_as::<_, McpServerRow>(
-            r#"
+            sql!(r#"
             INSERT INTO mcp_servers (id, org_id, name, description, url, transport_type, api_key_encrypted, api_key_set, headers, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id) DO UPDATE SET
@@ -76,8 +77,8 @@ impl Database {
                 OR mcp_servers.description IS DISTINCT FROM EXCLUDED.description
                 OR mcp_servers.url IS DISTINCT FROM EXCLUDED.url
                 OR mcp_servers.transport_type IS DISTINCT FROM EXCLUDED.transport_type
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {McpServerRow}
+            "#),
         )
         .bind(id)
         .bind(org_id)
@@ -109,13 +110,13 @@ impl Database {
     }
 
     pub async fn get_mcp_server(&self, org_id: i64, id: Uuid) -> Result<Option<McpServerRow>> {
-        let row = sqlx::query_as::<_, McpServerRow>(
+        let row = sqlx::query_as::<_, McpServerRow>(sql!(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {McpServerRow}
             FROM mcp_servers
             WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NULL
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -133,13 +134,13 @@ impl Database {
         if ids.is_empty() {
             return Ok(vec![]);
         }
-        let rows = sqlx::query_as::<_, McpServerRow>(
+        let rows = sqlx::query_as::<_, McpServerRow>(sql!(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {McpServerRow}
             FROM mcp_servers
             WHERE org_id = $1 AND id = ANY($2) AND owner_virtual_user_id IS NULL
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(ids)
         .fetch_all(&self.pool)
@@ -153,17 +154,17 @@ impl Database {
         org_id: i64,
         name: &str,
     ) -> Result<Option<McpServerRow>> {
-        let row = sqlx::query_as::<_, McpServerRow>(
+        let row = sqlx::query_as::<_, McpServerRow>(sql!(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {McpServerRow}
             FROM mcp_servers
             -- Live rows only. Archived and deleted rows release their name
             -- (EVE-964), so a name can now match a dead row and a live one;
             -- callers asking "which server is called X" mean the live one.
             WHERE org_id = $1 AND name = $2 AND status IN ('active', 'disabled')
               AND owner_virtual_user_id IS NULL
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(name)
         .fetch_optional(&self.pool)
@@ -204,11 +205,9 @@ impl Database {
         cursor: Option<McpServerId>,
         limit: i64,
     ) -> Result<Vec<McpServerRow>> {
-        Ok(sqlx::query_as::<_, McpServerRow>(
+        Ok(sqlx::query_as::<_, McpServerRow>(sql!(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status,
-                   api_key_encrypted, api_key_set, headers, settings, cached_tools,
-                   tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {McpServerRow}
             FROM mcp_servers
             WHERE org_id = $1
               AND owner_virtual_user_id IS NULL
@@ -216,8 +215,8 @@ impl Database {
               AND ($2::uuid IS NULL OR id < $2)
             ORDER BY id DESC
             LIMIT $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(cursor.map(|id| id.uuid()))
         .bind(limit)
@@ -337,14 +336,14 @@ impl Database {
 
     /// List only active MCP servers (for capability listing)
     pub async fn list_active_mcp_servers(&self, org_id: i64) -> Result<Vec<McpServerRow>> {
-        let rows = sqlx::query_as::<_, McpServerRow>(
+        let rows = sqlx::query_as::<_, McpServerRow>(sql!(
             r#"
-            SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
+            SELECT {McpServerRow}
             FROM mcp_servers
             WHERE org_id = $1 AND status = 'active' AND owner_virtual_user_id IS NULL
             ORDER BY name ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
@@ -387,7 +386,7 @@ impl Database {
         };
 
         let row = sqlx::query_as::<_, McpServerRow>(
-            r#"
+            sql!(r#"
             UPDATE mcp_servers
             SET
                 name = COALESCE($3, name),
@@ -400,8 +399,8 @@ impl Database {
                 headers = COALESCE($10, headers),
                 settings = COALESCE($11, settings)
             WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NOT DISTINCT FROM $13
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {McpServerRow}
+            "#),
         )
         .bind(org_id)
         .bind(id)
@@ -429,16 +428,16 @@ impl Database {
         id: Uuid,
         input: UpdateMcpServerTools,
     ) -> Result<Option<McpServerRow>> {
-        let row = sqlx::query_as::<_, McpServerRow>(
+        let row = sqlx::query_as::<_, McpServerRow>(sql!(
             r#"
             UPDATE mcp_servers
             SET
                 cached_tools = $3,
                 tools_cached_at = NOW()
             WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NULL
-            RETURNING id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {McpServerRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.cached_tools)
@@ -453,16 +452,14 @@ impl Database {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<McpServerRow>> {
-        Ok(sqlx::query_as::<_, McpServerRow>(
+        Ok(sqlx::query_as::<_, McpServerRow>(sql!(
             r#"
             UPDATE mcp_servers
             SET cached_tools = '[]'::jsonb, tools_cached_at = NULL
             WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NULL
-            RETURNING id, org_id, name, description, url, transport_type, status,
-                      api_key_encrypted, api_key_set, headers, settings, cached_tools,
-                      tools_cached_at, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {McpServerRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -477,18 +474,17 @@ impl Database {
         cache_scope: &str,
         credential_hash: &str,
     ) -> Result<Option<McpServiceToolCacheRow>> {
-        Ok(sqlx::query_as::<_, McpServiceToolCacheRow>(
+        Ok(sqlx::query_as::<_, McpServiceToolCacheRow>(sql!(
             r#"
-            SELECT org_id, mcp_server_id, agent_id, cache_scope, credential_hash,
-                   cached_tools, ttl_ms, tools_cached_at
+            SELECT {McpServiceToolCacheRow}
             FROM mcp_service_tool_caches
             WHERE org_id = $1
               AND mcp_server_id = $2
               AND agent_id = $3
               AND cache_scope = $4
               AND credential_hash = $5
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(mcp_server_id)
         .bind(agent_id)
@@ -502,7 +498,7 @@ impl Database {
         &self,
         input: UpsertMcpServiceToolCache,
     ) -> Result<McpServiceToolCacheRow> {
-        Ok(sqlx::query_as::<_, McpServiceToolCacheRow>(
+        Ok(sqlx::query_as::<_, McpServiceToolCacheRow>(sql!(
             r#"
             INSERT INTO mcp_service_tool_caches (
                 org_id, mcp_server_id, agent_id, cache_scope, credential_hash,
@@ -514,10 +510,9 @@ impl Database {
                 cached_tools = EXCLUDED.cached_tools,
                 ttl_ms = EXCLUDED.ttl_ms,
                 tools_cached_at = NOW()
-            RETURNING org_id, mcp_server_id, agent_id, cache_scope, credential_hash,
-                      cached_tools, ttl_ms, tools_cached_at
-            "#,
-        )
+            RETURNING {McpServiceToolCacheRow}
+            "#
+        ))
         .bind(input.org_id)
         .bind(input.mcp_server_id)
         .bind(input.agent_id)
