@@ -7,8 +7,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::update_field::UpdateField;
 use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
+use everruns_db::UpdateField;
 
 /// Default snapshot interval: save a snapshot every N events.
 /// Configurable via `DURABLE_SNAPSHOT_INTERVAL` env var.

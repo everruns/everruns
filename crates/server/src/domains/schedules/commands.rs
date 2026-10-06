@@ -6,9 +6,9 @@ use super::types::{
 };
 use crate::domains::common::*;
 use chrono::Utc;
+use everruns_db::UpdateField;
 use everruns_durable::{
-    CreateScheduleRow, Pagination, ScheduleExecutionFilter, ScheduleFilter, UpdateField,
-    UpdateSchedule,
+    CreateScheduleRow, Pagination, ScheduleExecutionFilter, ScheduleFilter, UpdateSchedule,
 };
 use serde::Deserialize;
 use utoipa::ToSchema;

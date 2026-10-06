@@ -337,7 +337,6 @@ and `--summary <file>` appends one JSON line per scenario.
 | Flag | Effect |
 | --- | --- |
 | `workflows` | Default. The experimental workflow engine: `Workflow`, `Activity`, `WorkflowExecutor` (timers, child workflows, system tasks), `TimeoutManager`. |
-| `sqlite` | The `sqlite` module, a small rusqlite wrapper for local hosts. |
 | `postgres-tests` | Compiles the tests that need a live PostgreSQL. |
 | `failpoints` | Enables `fail-rs` failpoints in the PostgreSQL store. Zero cost when off. |
 | `bench` | Builds the benchmark support module and bench binaries; implies `workflows`. Not a supported API. |

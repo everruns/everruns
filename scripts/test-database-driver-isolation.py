@@ -31,7 +31,7 @@ class DatabaseOwnership(unittest.TestCase):
                         ]))
 
     def test_only_owning_crates_and_dev_dependencies_are_allowed(self):
-        for name in ["everruns-server", "everruns-durable"]:
+        for name in ["everruns-server", "everruns-durable", "everruns-db"]:
             self.assertFalse(guard.dependency_violations([package(name, "rusqlite")]))
         self.assertFalse(guard.dependency_violations([package("everruns-core", kind="dev")]))
 
@@ -65,8 +65,9 @@ class DatabaseOwnership(unittest.TestCase):
             ]:
                 source.write_text(code)
                 self.assertTrue(guard.constructor_violations([entry]))
-            entry["name"] = "everruns-durable"
-            self.assertFalse(guard.constructor_violations([entry]))
+            for owner in ["everruns-durable", "everruns-db"]:
+                entry["name"] = owner
+                self.assertFalse(guard.constructor_violations([entry]))
 
 
     def test_forwarded_query_types_allow_callbacks_but_not_aliased_construction(self):
@@ -76,17 +77,17 @@ class DatabaseOwnership(unittest.TestCase):
             source = root / "src/lib.rs"
             entry = {"name": "everruns", "manifest_path": str(root / "Cargo.toml")}
             for code in [
-                "use everruns_durable::sqlite::QueryConnection as Db; Db::open(path);",
-                "use everruns_durable::sqlite::{Connection as Db, Row}; Db::open_in_memory();",
-                "type Db = everruns_durable::sqlite::QueryConnection; Db::open(path);",
-                "type First = everruns_durable::sqlite::Connection; type Db = First; Db::open_with_flags(path, flags);",
+                "use everruns_db::sqlite::QueryConnection as Db; Db::open(path);",
+                "use everruns_db::sqlite::{Connection as Db, Row}; Db::open_in_memory();",
+                "type Db = everruns_db::sqlite::QueryConnection; Db::open(path);",
+                "type First = everruns_db::sqlite::Connection; type Db = First; Db::open_with_flags(path, flags);",
                 "use everruns_durable::PostgresPool as Db; Db::connect_lazy(url);",
             ]:
                 with self.subTest(code=code):
                     source.write_text(code)
                     self.assertTrue(guard.constructor_violations([entry]))
             source.write_text(
-                "use everruns_durable::sqlite::QueryConnection as Db; "
+                "use everruns_db::sqlite::QueryConnection as Db; "
                 "type QueryDb = Db; fn read(conn: &QueryDb) { conn.execute(sql, params); }"
             )
             self.assertFalse(guard.constructor_violations([entry]))

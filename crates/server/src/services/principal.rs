@@ -9,7 +9,7 @@ use crate::kernel_imports::{
 };
 use crate::records::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
 use anyhow::{Result, anyhow};
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;

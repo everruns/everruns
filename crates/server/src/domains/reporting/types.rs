@@ -4,7 +4,7 @@ pub use crate::records::reporting::{
     ReportTimeRange,
 };
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

@@ -20,7 +20,7 @@
 // read plus, at most, an attach; the run itself happens outside the lock.
 
 #[cfg(feature = "local")]
-use everruns_durable::sqlite as rusqlite;
+use everruns_db::sqlite as rusqlite;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

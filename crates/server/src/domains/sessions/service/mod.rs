@@ -54,7 +54,7 @@ use everruns_capabilities::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_contracts::typed_id::MemoryId;
 use everruns_core::builtins::AttachSkillCapability;
 use everruns_core::mcp::is_mcp_capability;
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;

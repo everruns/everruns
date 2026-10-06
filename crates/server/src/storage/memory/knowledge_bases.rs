@@ -144,9 +144,9 @@ impl InMemoryDatabase {
             }
         }
         match input.embedding_model_id {
-            Some(everruns_durable::UpdateField::Set(v)) => kb.embedding_model_id = Some(v),
-            Some(everruns_durable::UpdateField::Clear) => kb.embedding_model_id = None,
-            Some(everruns_durable::UpdateField::Unchanged) | None => {}
+            Some(everruns_db::UpdateField::Set(v)) => kb.embedding_model_id = Some(v),
+            Some(everruns_db::UpdateField::Clear) => kb.embedding_model_id = None,
+            Some(everruns_db::UpdateField::Unchanged) | None => {}
         }
 
         kb.updated_at = Self::now();

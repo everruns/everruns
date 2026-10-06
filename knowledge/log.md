@@ -2,6 +2,14 @@
 
 ## 2026-10-06
 
+* **Database utilities have their own crate.** `everruns-db` (a leaf with no
+  `everruns-*` dependency) now owns the embedded SQLite wrapper and
+  `UpdateField`, taken out of `everruns-durable`. The facade's `local` feature
+  and the serve hosts open SQLite through it and no longer compile the durable
+  engine; it joins the database-driver guard's owners, and durable's isolation
+  guard allows it as durable's one `everruns-*` dependency. See
+  [Crate Layout](project/crate-layout.md#only-the-server-durable-and-db-touch-a-database).
+
 * **One turn entry point for server and framework.** The server's
   `AgentRunner` shim is gone: the server persists input, then starts,
   continues and cancels turns through `TurnBackend` on `DurableRunner`, as the

@@ -94,12 +94,12 @@ impl InMemoryDatabase {
         input.base_harness_id.apply(&mut row.base_harness_id);
         // The per-service default map is replaced wholesale (mirrors the SQL path).
         match input.default_provider_per_service {
-            everruns_durable::UpdateField::Unchanged => {}
-            everruns_durable::UpdateField::Clear => {
+            everruns_db::UpdateField::Unchanged => {}
+            everruns_db::UpdateField::Clear => {
                 row.default_provider_per_service =
                     sqlx::types::Json(ServiceProviderDefaults::new());
             }
-            everruns_durable::UpdateField::Set(map) => {
+            everruns_db::UpdateField::Set(map) => {
                 row.default_provider_per_service = sqlx::types::Json(map);
             }
         }

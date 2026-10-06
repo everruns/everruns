@@ -9,7 +9,7 @@ use crate::kernel_imports::{
 };
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use std::sync::Arc;
 
 use crate::services::PrincipalService;

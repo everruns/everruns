@@ -346,6 +346,8 @@ jobs:
               # The server domain suites drive platform capabilities directly;
               # #4068 changed A2A policy here and the shards never ran.
               - 'crates/platform/**'
+              # Durable's UpdateField; server storage uses it too.
+              - 'crates/db/**'
               - 'crates/durable/**'
               # The durable shard also runs the PostgreSQL halves of the
               # durable-engine backend tests and the facade's backend
@@ -532,6 +534,7 @@ jobs:
         run: |
           cargo check --locked --all-features \
             -p everruns-core \
+            -p everruns-db \
             -p everruns-durable \
             -p everruns-durable-engine \
             -p everruns-drivers \
