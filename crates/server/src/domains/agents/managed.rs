@@ -1,4 +1,4 @@
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use crate::kernel_imports::{AgentCapabilityConfig, OrgRole};
 use everruns_contracts::typed_id::HarnessId;
 
@@ -22,8 +22,7 @@ pub(super) async fn check_high_risk_caps(
     let high = ctx
         .capability_service
         .high_risk_ids_for_org(ctx.org_id(), &refs)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     if !high.is_empty() {
         return Err(CommandError::forbidden(format!(
             "Admin role required to assign high-risk capabilities: {}",
@@ -41,8 +40,7 @@ pub(crate) async fn check_harness_assignment(
 ) -> Result<(), CommandError> {
     let harness =
         crate::domains::harnesses::queries::resolve_effective(&ctx.db, ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
     // Declarative capabilities are not expanded by the builtin registry.
     check_high_risk_caps(ctx, &harness.capabilities).await?;
@@ -85,15 +83,9 @@ async fn resolve_harness_id(
     }
 
     let row = if let Some(id) = harness_id {
-        ctx.db
-            .get_harness(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+        ctx.db.get_harness(ctx.org_id(), id).await?
     } else if let Some(name) = harness_name {
-        ctx.db
-            .get_harness_by_name(ctx.org_id(), name)
-            .await
-            .map_err(classify_anyhow)?
+        ctx.db.get_harness_by_name(ctx.org_id(), name).await?
     } else if default_when_omitted {
         let id = crate::domains::sessions::queries::resolve_session_harness_id(
             &ctx.db,
@@ -104,12 +96,8 @@ async fn resolve_harness_id(
                 .as_deref()
                 .or(Some("conversation")),
         )
-        .await
-        .map_err(classify_anyhow)?;
-        ctx.db
-            .get_harness(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+        .await?;
+        ctx.db.get_harness(ctx.org_id(), id).await?
     } else {
         None
     };

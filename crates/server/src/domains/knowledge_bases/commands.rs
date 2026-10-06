@@ -134,14 +134,12 @@ async fn validate_embedding_model_id(
     let model = ctx
         .db
         .get_model(ctx.org_id(), model_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
     let provider = ctx
         .db
         .get_provider(ctx.org_id(), model.provider_id.uuid())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::bad_request("Embedding provider not found"))?;
     let provider_type: DriverId = provider
         .provider_type
@@ -207,8 +205,7 @@ impl Command for ListKnowledgeBases {
                 self.search.as_deref(),
                 self.include_archived.unwrap_or(false),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| knowledge_base_response(row).map_err(classify_anyhow))
             .collect()
@@ -276,11 +273,7 @@ impl Command for CreateKnowledgeBase {
             resolved_owner_user_id: ctx.caller.user_id,
             embedding_model_id,
         };
-        let row = ctx
-            .db
-            .create_knowledge_base(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_knowledge_base(ctx.org_id(), input).await?;
         knowledge_base_response(row).map_err(classify_anyhow)
     }
 }
@@ -323,8 +316,7 @@ impl Command for GetKnowledgeBase {
         let row = ctx
             .db
             .get_knowledge_base(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         knowledge_base_response(row).map_err(classify_anyhow)
     }
@@ -366,8 +358,7 @@ impl Command for UpdateKnowledgeBaseCmd {
         let existing = ctx
             .db
             .get_knowledge_base(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         // Archived KBs are read-only per knowledge/foundations/models.md lifecycle contract.
         if existing.status != "active" {
@@ -405,8 +396,7 @@ impl Command for UpdateKnowledgeBaseCmd {
                     embedding_model_id,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         knowledge_base_response(row).map_err(classify_anyhow)
     }
@@ -442,14 +432,12 @@ impl Command for DeleteKnowledgeBase {
         let existing = ctx
             .db
             .get_knowledge_base(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
         let archived = ctx
             .db
             .archive_knowledge_base(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if archived {
             Ok(())
         } else {
@@ -475,8 +463,7 @@ pub(super) async fn resolve_kb_internal_id(
     let kb = ctx
         .db
         .get_knowledge_base(ctx.org_id(), id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
     if require_active && kb.status != "active" {
         return Err(CommandError::bad_request(
@@ -534,8 +521,7 @@ impl Command for ListKnowledgeEntries {
         let rows = ctx
             .db
             .list_knowledge_entries(kb_internal_id, self.search.as_deref(), kind.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow))
             .collect()
@@ -611,11 +597,7 @@ impl Command for CreateKnowledgeEntry {
             tags,
             resource,
         };
-        let row = ctx
-            .db
-            .create_knowledge_entry(kb_internal_id, input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_knowledge_entry(kb_internal_id, input).await?;
         knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow)
     }
 }
@@ -657,8 +639,7 @@ impl Command for GetKnowledgeEntry {
         let row = ctx
             .db
             .get_knowledge_entry(kb_internal_id, entry_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow)
     }
@@ -703,8 +684,7 @@ impl Command for UpdateKnowledgeEntryCmd {
         let existing = ctx
             .db
             .get_knowledge_entry(kb_internal_id, entry_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         let title = self
             .request
@@ -738,8 +718,7 @@ impl Command for UpdateKnowledgeEntryCmd {
                     resource,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         knowledge_entry_response(row, &self.kb_id).map_err(classify_anyhow)
     }
@@ -778,14 +757,12 @@ impl Command for DeleteKnowledgeEntry {
         let existing = ctx
             .db
             .get_knowledge_entry(kb_internal_id, entry_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("KnowledgeEntry"))?;
         let removed = ctx
             .db
             .delete_knowledge_entry(kb_internal_id, existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if removed {
             Ok(())
         } else {

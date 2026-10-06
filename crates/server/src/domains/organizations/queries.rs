@@ -33,10 +33,7 @@ pub async fn build_organization_response(
     org_id: i64,
     row: OrganizationRow,
 ) -> Result<OrganizationResponse, CommandError> {
-    let settings = db
-        .get_organization_settings(org_id)
-        .await
-        .map_err(classify_anyhow)?;
+    let settings = db.get_organization_settings(org_id).await?;
 
     Ok(OrganizationResponse {
         id: row.public_id,

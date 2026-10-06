@@ -45,15 +45,13 @@ impl AgentHealthCheckService {
     ) -> Result<HealthCheckRun, CommandError> {
         let org_id = caller.org_id;
         let agent = crate::domains::agents::queries::resolve(&self.run_ctx.db, org_id, agent_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         let (resolved_prompt, tools) = self
             .capability_service
             .preview(org_id, &agent.system_prompt, &agent.capabilities)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let tool_listing = tools
             .iter()
             .map(|t| format!("- {}: {}", t.name(), t.description()))
@@ -76,8 +74,7 @@ impl AgentHealthCheckService {
                     model_id: model_id.clone(),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         spawn_health_check_run(
             self.run_ctx.clone(),
@@ -107,15 +104,13 @@ impl AgentHealthCheckService {
             .map_err(|_| CommandError::bad_request("Invalid health check run id"))?;
         let agent =
             crate::domains::agents::queries::resolve(&self.run_ctx.db, caller.org_id, agent_id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| CommandError::not_found("Agent"))?;
         let row = self
             .run_ctx
             .db
             .get_agent_health_check_run(caller.org_id, &run_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             // Scope the run to the agent in the path: a run for a different
             // agent is treated as not found rather than returned on a
             // mismatched URL.
@@ -131,15 +126,13 @@ impl AgentHealthCheckService {
     ) -> Result<Vec<HealthCheckRun>, CommandError> {
         let agent =
             crate::domains::agents::queries::resolve(&self.run_ctx.db, caller.org_id, agent_id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| CommandError::not_found("Agent"))?;
         let rows = self
             .run_ctx
             .db
             .list_agent_health_check_runs(caller.org_id, agent.internal_id, LIST_LIMIT)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let now = chrono::Utc::now();
         Ok(rows
             .into_iter()
@@ -158,16 +151,14 @@ impl AgentHealthCheckService {
     ) -> Result<LatestHealthCheckRun, CommandError> {
         let org_id = caller.org_id;
         let agent = crate::domains::agents::queries::resolve(&self.run_ctx.db, org_id, agent_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         let rows = self
             .run_ctx
             .db
             .list_agent_health_check_runs(org_id, agent.internal_id, 1)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let Some(row) = rows.into_iter().next() else {
             return Ok(LatestHealthCheckRun {
                 run: None,
@@ -180,8 +171,7 @@ impl AgentHealthCheckService {
         let (resolved_prompt, tools) = self
             .capability_service
             .preview(org_id, &agent.system_prompt, &agent.capabilities)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let tool_listing = tools
             .iter()
             .map(|t| format!("- {}: {}", t.name(), t.description()))

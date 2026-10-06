@@ -68,8 +68,7 @@ pub async fn require_active_agent(
 ) -> Result<AgentRow, CommandError> {
     let row = db
         .get_agent_by_public_id(org_id, &agent_id.to_string())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| classify_anyhow(ResourceNotFoundError::new("Agent").into()))?;
     if row.status != "active" {
         return Err(CommandError::bad_request(

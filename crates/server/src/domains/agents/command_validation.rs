@@ -1,6 +1,6 @@
 //! Cross-resource validation for Agent create and update commands.
 
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use crate::kernel_imports::AgentCapabilityConfig;
 use crate::records::SandboxPolicy;
 use everruns_contracts::typed_id::HarnessId;
@@ -14,8 +14,7 @@ pub(super) async fn normalize_capability_refs(
         ctx.org_id(),
         caps,
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
         &ctx.feature_flags,
         &caps,
@@ -43,8 +42,7 @@ pub(super) async fn reject_sandbox_override_for_fixed_harness(
         harness_id,
         "bashkit-worker",
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     if fixed {
         return Err(CommandError::unprocessable(
             "Bashkit Worker fixes the Sandbox Template to Bashkit Virtual Workspace; remove the Agent sandbox_policy or choose a provider-neutral Harness",
@@ -67,8 +65,7 @@ pub(super) async fn validate_sandbox_template_sources(
         let revision = ctx
             .db
             .get_sandbox_template_revision(ctx.org_id(), revision_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::unprocessable("Sandbox Template revision not found"))?;
         let mut authored = spec.clone();
         authored.template_revision_id = None;

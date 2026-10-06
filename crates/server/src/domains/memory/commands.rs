@@ -222,8 +222,7 @@ impl Command for ListMemories {
                 self.search.as_deref(),
                 self.include_archived.unwrap_or(false),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.into_iter()
             .map(|row| memory_response(row).map_err(classify_anyhow))
             .collect()
@@ -292,11 +291,7 @@ impl Command for CreateMemory {
             owner_principal_id: None,
             resolved_owner_user_id: ctx.caller.user_id,
         };
-        let row = ctx
-            .db
-            .create_memory(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_memory(ctx.org_id(), input).await?;
         memory_response(row).map_err(classify_anyhow)
     }
 }
@@ -339,8 +334,7 @@ impl Command for GetMemory {
         let row = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         memory_response(row).map_err(classify_anyhow)
     }
@@ -382,8 +376,7 @@ impl Command for UpdateMemoryCmd {
         let existing = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         let name = self
             .request
@@ -425,8 +418,7 @@ impl Command for UpdateMemoryCmd {
                     last_sync_error: source_update.as_ref().map(|_| None),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         memory_response(row).map_err(classify_anyhow)
     }
@@ -466,8 +458,7 @@ impl Command for SyncMemoryNow {
         let existing = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         if existing.source_type == "manual" {
             return Err(CommandError::bad_request(
@@ -490,8 +481,7 @@ impl Command for SyncMemoryNow {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         memory_response(row).map_err(classify_anyhow)
     }
@@ -527,14 +517,9 @@ impl Command for DeleteMemory {
         let existing = ctx
             .db
             .get_memory(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Memory"))?;
-        let archived = ctx
-            .db
-            .archive_memory(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+        let archived = ctx.db.archive_memory(ctx.org_id(), existing.id).await?;
         if archived {
             Ok(())
         } else {

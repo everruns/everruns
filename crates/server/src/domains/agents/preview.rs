@@ -95,8 +95,7 @@ impl Command for PreviewAgent {
                 ctx.org_id(),
                 harness_id,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
             everruns_core::AgentConfigOverlay::from(&harness).merge(draft)
         } else {
@@ -111,8 +110,7 @@ impl Command for PreviewAgent {
             ctx.org_id(),
             &effective.mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let preview = ctx
             .capability_service
             .preview_with_features(
@@ -120,8 +118,7 @@ impl Command for PreviewAgent {
                 &effective.system_prompt.unwrap_or_default(),
                 &effective.capabilities,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let prompt = preview.system_prompt;
         let mut tools = preview.tools;
         tools.extend(
@@ -134,7 +131,7 @@ impl Command for PreviewAgent {
                 ctx.capability_service.egress_service().as_ref(),
             )
             .await
-            .map_err(classify_anyhow)?,
+            ?,
         );
         tools.extend(self.tools);
         // Apply org rule config (phase 4): override built-in severities/enabled

@@ -48,10 +48,7 @@ impl Command for ListSessionTasks {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionTask>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        if !q::session_in_org(&ctx.db, ctx.org_id(), session_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if !q::session_in_org(&ctx.db, ctx.org_id(), session_id).await? {
             return Err(CommandError::not_found("Session"));
         }
         let state = match self.state.as_deref().filter(|s| !s.is_empty()) {
@@ -163,8 +160,7 @@ impl Command for ListOrgTasks {
                 root_session_id,
                 limit,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         rows.iter()
             .map(|r| {
                 r.to_task().map_err(|e| {
@@ -378,10 +374,7 @@ impl Command for CancelSessionTask {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionTask, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        if !q::session_in_org(&ctx.db, ctx.org_id(), session_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if !q::session_in_org(&ctx.db, ctx.org_id(), session_id).await? {
             return Err(CommandError::not_found("Session"));
         }
         let task = q::registry_for_ctx(ctx)
@@ -573,11 +566,7 @@ impl Command for CreateTaskPushConfig {
             secret: self.secret.filter(|s| !s.is_empty()),
             event_filter,
         };
-        let row = ctx
-            .db
-            .create_task_push_config(input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_task_push_config(input).await?;
         Ok(TaskPushConfig::from_row(row))
     }
 }
@@ -617,8 +606,7 @@ impl Command for ListTaskPushConfigs {
         let rows = ctx
             .db
             .list_task_push_configs(session_id, &self.task_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.into_iter().map(TaskPushConfig::from_row).collect())
     }
 }
@@ -660,8 +648,7 @@ impl Command for DeleteTaskPushConfig {
         let deleted = ctx
             .db
             .delete_task_push_config(session_id, &self.task_id, &self.config_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             Ok(())
         } else {

@@ -132,8 +132,7 @@ impl Command for GetObserver {
         let observer_id = parse_observer_id(&self.observer_id)?;
         service(ctx)
             .get_by_public_id(&ctx.caller, &observer_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Observer"))
     }
 }
@@ -172,8 +171,7 @@ impl Command for UpdateObserver {
         let observer_id = parse_observer_id(&self.observer_id)?;
         service(ctx)
             .update(&ctx.caller, &observer_id.to_string(), self.req)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Observer"))
     }
 }
@@ -210,8 +208,7 @@ impl Command for DeleteObserver {
         let observer_id = parse_observer_id(&self.observer_id)?;
         let deleted = service(ctx)
             .delete(&ctx.caller, &observer_id.to_string())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             Ok(true)
         } else {
@@ -269,8 +266,7 @@ impl Command for ListObserverScores {
                 self.limit,
                 self.offset,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Observer"))
     }
 }

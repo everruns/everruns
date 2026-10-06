@@ -151,8 +151,7 @@ async fn normalize_capability_refs(
         ctx.org_id(),
         caps,
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
         &ctx.feature_flags,
         &caps,
@@ -222,11 +221,7 @@ impl Command for CreateHarness {
         // soft-deleted rows and system-seeded built-in harnesses, so only
         // user-created harnesses consume the budget.
         let max = ctx.resource_limits.max_harnesses_per_org;
-        let count = ctx
-            .db
-            .count_harnesses_for_org(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let count = ctx.db.count_harnesses_for_org(ctx.org_id()).await?;
         if count >= max {
             return Err(CommandError::conflict(format!(
                 "Harness limit reached (max {max})"
@@ -248,16 +243,13 @@ impl Command for CreateHarness {
             ctx.org_id(),
             &caps,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let parent_harness_id =
-            q::validate_parent_harness(&ctx.db, ctx.org_id(), None, req.parent_harness_id)
-                .await
-                .map_err(classify_anyhow)?;
+            q::validate_parent_harness(&ctx.db, ctx.org_id(), None, req.parent_harness_id).await?;
         let parent = match parent_harness_id {
-            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
-                .await
-                .map_err(classify_anyhow)?,
+            Some(parent_id) => {
+                q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id).await?
+            }
             None => None,
         };
         let mut scoped_mcp_layers = Vec::new();
@@ -270,11 +262,9 @@ impl Command for CreateHarness {
             ctx.org_id(),
             scoped_mcp_layers,
         )
-        .await
-        .map_err(classify_anyhow)?;
-        let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        .await?;
+        let default_model_id =
+            q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
 
         // Persist
         let input = CreateHarnessRow {
@@ -301,11 +291,7 @@ impl Command for CreateHarness {
             embedder_metadata: serde_json::to_value(&req.embedder_metadata).unwrap_or_default(),
             is_built_in: false,
         };
-        let row = ctx
-            .db
-            .create_harness(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_harness(ctx.org_id(), input).await?;
         let harness_uuid = row.id.uuid();
 
         persist_capabilities(&ctx.db, harness_uuid, &caps).await?;
@@ -356,8 +342,7 @@ impl Command for ListHarnesses {
         let rows = ctx
             .db
             .list_harnesses(ctx.org_id(), self.search.as_deref(), self.include_archived)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         q::load_harnesses_list(&ctx.db, rows)
             .await
             .map_err(classify_anyhow)
@@ -400,8 +385,7 @@ impl Command for GetHarness {
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         q::resolve(&ctx.db, ctx.org_id(), &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))
     }
 }
@@ -461,10 +445,7 @@ impl Command for UpdateHarnessCmd {
         }
 
         // Reject updates to built-in harnesses
-        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id).await? {
             return Err(CommandError::bad_request(
                 "Cannot modify built-in harness. Copy it first to create an editable version.",
             ));
@@ -474,8 +455,7 @@ impl Command for UpdateHarnessCmd {
         let existing = ctx
             .db
             .get_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         if existing.status != "active" {
@@ -506,9 +486,7 @@ impl Command for UpdateHarnessCmd {
                 .await?,
             ),
             None if final_has_initial_files => Some(q::ensure_file_system_capability(
-                q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid())
-                    .await
-                    .map_err(classify_anyhow)?,
+                q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid()).await?,
                 true,
             )),
             None => None,
@@ -519,20 +497,17 @@ impl Command for UpdateHarnessCmd {
                 ctx.org_id(),
                 caps,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         }
-        let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let default_model_id =
+            q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
         let parent_harness_id = q::validate_parent_harness(
             &ctx.db,
             ctx.org_id(),
             Some(harness_id),
             req.parent_harness_id.flatten(),
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let updated_mcp_servers = req.mcp_servers.clone().unwrap_or_else(|| {
             serde_json::from_value(existing.mcp_servers.clone()).unwrap_or_default()
         });
@@ -541,9 +516,9 @@ impl Command for UpdateHarnessCmd {
             .map(|_| parent_harness_id)
             .unwrap_or(existing.parent_harness_id);
         let parent = match effective_parent_harness_id {
-            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
-                .await
-                .map_err(classify_anyhow)?,
+            Some(parent_id) => {
+                q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id).await?
+            }
             None => None,
         };
         let mut scoped_mcp_layers = Vec::new();
@@ -556,8 +531,7 @@ impl Command for UpdateHarnessCmd {
             ctx.org_id(),
             scoped_mcp_layers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
         // Persist
         let input = UpdateHarness {
@@ -594,17 +568,14 @@ impl Command for UpdateHarnessCmd {
         let row = ctx
             .db
             .update_harness(ctx.org_id(), harness_id, input)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         let caps = if let Some(caps) = capabilities_override {
             persist_capabilities(&ctx.db, harness_id.uuid(), &caps).await?;
             caps
         } else {
-            q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid())
-                .await
-                .map_err(classify_anyhow)?
+            q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid()).await?
         };
 
         Ok(q::row_to_harness(row, caps))
@@ -652,10 +623,7 @@ impl Command for DeleteHarness {
             .map_err(|e| CommandError::bad_request(format!("Invalid harness ID: {e}")))?;
 
         // Reject deletion of built-in harnesses
-        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id).await? {
             return Err(CommandError::bad_request("Cannot delete built-in harness."));
         }
 
@@ -670,11 +638,7 @@ impl Command for DeleteHarness {
         )
         .await?;
 
-        let deleted = ctx
-            .db
-            .delete_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = ctx.db.delete_harness(ctx.org_id(), harness_id).await?;
 
         if deleted {
             Ok(serde_json::json!({"deleted": true}))
@@ -738,10 +702,7 @@ impl Command for DestroyHarness {
             .map_err(|e| CommandError::bad_request(format!("Invalid harness ID: {e}")))?;
 
         // Reject deletion of built-in harnesses
-        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id).await? {
             return Err(CommandError::bad_request("Cannot delete built-in harness."));
         }
 
@@ -759,8 +720,7 @@ impl Command for DestroyHarness {
         let existing = ctx
             .db
             .get_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         if existing.status != "archived" {
@@ -769,11 +729,7 @@ impl Command for DestroyHarness {
             ));
         }
 
-        let destroyed = ctx
-            .db
-            .destroy_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let destroyed = ctx.db.destroy_harness(ctx.org_id(), harness_id).await?;
 
         if destroyed {
             Ok(serde_json::json!({"destroyed": true}))
@@ -819,14 +775,11 @@ impl Command for CopyHarness {
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         let source = q::resolve(&ctx.db, ctx.org_id(), &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         let copy_name =
-            q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name))
-                .await
-                .map_err(classify_anyhow)?;
+            q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name)).await?;
 
         let req = CreateHarnessRequest {
             name: copy_name,
@@ -899,9 +852,9 @@ impl Command for PreviewHarness {
 
     async fn execute(self, ctx: &Ctx) -> Result<HarnessPreview, CommandError> {
         let parent = match self.parent_harness_id {
-            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
-                .await
-                .map_err(classify_anyhow)?,
+            Some(parent_id) => {
+                q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id).await?
+            }
             None => None,
         };
         crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
@@ -909,8 +862,7 @@ impl Command for PreviewHarness {
             ctx.org_id(),
             &self.mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let (system_prompt, capabilities) = q::merge_preview_layer(
             parent.as_ref(),
             &self.system_prompt.unwrap_or_default(),
@@ -928,13 +880,11 @@ impl Command for PreviewHarness {
             ctx.org_id(),
             &effective_mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let preview = ctx
             .capability_service
             .preview_with_features(ctx.org_id(), &system_prompt, &capabilities)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let mut tools = preview.tools;
         tools.extend(
             crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
@@ -946,7 +896,7 @@ impl Command for PreviewHarness {
                 ctx.capability_service.egress_service().as_ref(),
             )
             .await
-            .map_err(classify_anyhow)?,
+            ?,
         );
         Ok(HarnessPreview {
             system_prompt: preview.system_prompt,
@@ -1006,11 +956,7 @@ impl Command for CheckHarnessName {
             })
             .transpose()?;
 
-        let existing = ctx
-            .db
-            .get_harness_by_name(ctx.org_id(), &self.name)
-            .await
-            .map_err(classify_anyhow)?;
+        let existing = ctx.db.get_harness_by_name(ctx.org_id(), &self.name).await?;
 
         let available = match existing {
             Some(row) => exclude_id == Some(row.id),

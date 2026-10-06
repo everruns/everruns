@@ -22,7 +22,7 @@
 use super::events::{self, TriggerEvent, TriggerEventOutcome, TriggerEventRoute};
 use super::queries as q;
 use super::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::records::{
@@ -80,8 +80,7 @@ pub(super) async fn create_config(
     let identity_id = agent.virtual_user_id.ok_or_else(connect_first)?;
     ctx.db
         .get_github_app_for_identity(ctx.org_id(), identity_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(connect_first)?;
     let config = GitHubTriggerConfig {
         events: normalize_events(req.github_events.clone())?,
@@ -298,8 +297,7 @@ pub async fn dispatch_github_delivery(
 
     let triggers = db
         .list_agent_triggers(app.org_id, None, false)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .into_iter()
         .filter(|row| {
             row.enabled
@@ -311,8 +309,7 @@ pub async fn dispatch_github_delivery(
     for row in triggers {
         let Some(agent) = db
             .get_agent(row.org_id, row.agent_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
             .filter(|agent| agent.virtual_user_id == Some(app.virtual_user_id))
         else {

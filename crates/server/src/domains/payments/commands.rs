@@ -132,8 +132,7 @@ impl Command for CreatePaymentAccount {
                     metadata: req.metadata.unwrap_or_else(|| serde_json::json!({})),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(q::row_to_account(&row))
     }
 }
@@ -171,8 +170,7 @@ impl Command for ListPaymentAccounts {
                 self.owner_type.as_deref(),
                 self.owner_id.as_deref(),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_account).collect())
     }
 }
@@ -206,8 +204,7 @@ impl Command for GetPaymentAccount {
         let row = ctx
             .db
             .get_payment_account(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment account"))?;
         Ok(q::row_to_account(&row))
     }
@@ -263,8 +260,7 @@ impl Command for UpdatePaymentAccountCmd {
                     metadata: self.metadata,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment account"))?;
         validate_required_signing_material(&row.rail, row.credential_encrypted.as_deref())?;
         Ok(q::row_to_account(&row))
@@ -307,8 +303,7 @@ impl Command for DisablePaymentAccount {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(PaymentDeleteResult {
             disabled: row.is_some(),
         })
@@ -362,8 +357,7 @@ impl Command for CreatePaymentPolicy {
         let _account = ctx
             .db
             .get_payment_account(ctx.org_id(), account_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment account"))?;
         let row = ctx
             .db
@@ -383,8 +377,7 @@ impl Command for CreatePaymentPolicy {
                     metadata: req.metadata.unwrap_or_else(|| serde_json::json!({})),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(q::row_to_policy(&row))
     }
 }
@@ -435,8 +428,7 @@ impl Command for ListPaymentPolicies {
                 }),
                 self.subject_id.as_deref(),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_policy).collect())
     }
 }
@@ -470,8 +462,7 @@ impl Command for GetPaymentPolicy {
         let row = ctx
             .db
             .get_payment_policy(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment policy"))?;
         Ok(q::row_to_policy(&row))
     }
@@ -545,8 +536,7 @@ impl Command for UpdatePaymentPolicyCmd {
                     metadata: self.metadata,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment policy"))?;
         Ok(q::row_to_policy(&row))
     }
@@ -588,8 +578,7 @@ impl Command for DisablePaymentPolicy {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(PaymentDeleteResult {
             disabled: row.is_some(),
         })
@@ -632,8 +621,7 @@ impl Command for ListPaymentAttempts {
         let rows = ctx
             .db
             .list_payment_attempts(ctx.org_id(), session_id, self.limit.clamp(1, 200))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_attempt).collect())
     }
 }

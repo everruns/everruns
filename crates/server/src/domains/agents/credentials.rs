@@ -1,4 +1,4 @@
-use crate::domains::common::{Command, CommandError, CommandMeta, Ctx, classify_anyhow};
+use crate::domains::common::{Command, CommandError, CommandMeta, Ctx};
 use crate::kernel_imports::{CapabilityId, contracts::typed_id::AgentId};
 use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use everruns_core::mcp::McpCapabilityIdExt;
@@ -21,8 +21,7 @@ pub(crate) async fn revoke_agent_grants(
     if let Some(identity_id) = row.virtual_user_id {
         ctx.db
             .delete_all_virtual_user_connections(identity_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
     }
     Ok(())
 }
@@ -156,8 +155,7 @@ impl Command for CreateAgentCredentialBinding {
         let agent = ctx
             .db
             .get_agent(ctx.org_id(), agent_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         let mcp_server_url =
@@ -175,8 +173,7 @@ impl Command for CreateAgentCredentialBinding {
                 label: self.label,
                 description: self.description,
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(AgentCredentialBinding::from_row(row, &public_agent_id))
     }
 }
@@ -204,22 +201,13 @@ async fn resolve_attached_server_url(
         return Ok(server.url.clone());
     }
 
-    let capabilities = ctx
-        .db
-        .get_agent_capabilities(agent.id.uuid())
-        .await
-        .map_err(classify_anyhow)?;
+    let capabilities = ctx.db.get_agent_capabilities(agent.id.uuid()).await?;
     for capability in capabilities {
         let capability_id = CapabilityId::new(capability.capability_id);
         let Some(server_id) = capability_id.mcp_server_id() else {
             continue;
         };
-        let Some(server) = ctx
-            .db
-            .get_mcp_server(ctx.org_id(), server_id)
-            .await
-            .map_err(classify_anyhow)?
-        else {
+        let Some(server) = ctx.db.get_mcp_server(ctx.org_id(), server_id).await? else {
             continue;
         };
         if server.status == "active" && server.name == requested_name {

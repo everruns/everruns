@@ -52,11 +52,7 @@ impl Command for ListAgentCheckRules {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
-        let rows = ctx
-            .db
-            .list_agent_check_rules(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let rows = ctx.db.list_agent_check_rules(ctx.org_id()).await?;
         Ok(build_response(&rows))
     }
 }
@@ -96,15 +92,8 @@ impl Command for UpsertAgentCheckRule {
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
         let row = build_upsert_row(&self.rule_id, &self.req)?;
         enforce_custom_rule_quota(ctx, &row).await?;
-        ctx.db
-            .upsert_agent_check_rule(ctx.org_id(), row)
-            .await
-            .map_err(classify_anyhow)?;
-        let rows = ctx
-            .db
-            .list_agent_check_rules(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        ctx.db.upsert_agent_check_rule(ctx.org_id(), row).await?;
+        let rows = ctx.db.list_agent_check_rules(ctx.org_id()).await?;
         Ok(build_response(&rows))
     }
 }
@@ -141,13 +130,8 @@ impl Command for DeleteAgentCheckRule {
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
         ctx.db
             .delete_agent_check_rule(ctx.org_id(), &self.rule_id)
-            .await
-            .map_err(classify_anyhow)?;
-        let rows = ctx
-            .db
-            .list_agent_check_rules(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
+        let rows = ctx.db.list_agent_check_rules(ctx.org_id()).await?;
         Ok(build_response(&rows))
     }
 }
@@ -232,8 +216,7 @@ async fn enforce_custom_rule_quota(
     let existing_custom_rules = ctx
         .db
         .count_custom_agent_check_rules_excluding(ctx.org_id(), &row.rule_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     if existing_custom_rules >= MAX_CUSTOM_RULES_PER_ORG {
         return Err(CommandError::conflict(format!(
             "Custom agent check rule limit reached ({MAX_CUSTOM_RULES_PER_ORG})"

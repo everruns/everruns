@@ -42,8 +42,7 @@ async fn revision(
     };
     ctx.db
         .get_entity_revision(&key)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| match revision {
             Some(revision) => {
                 CommandError::not_found_msg(format!("{entity_ref} has no revision {revision}"))
