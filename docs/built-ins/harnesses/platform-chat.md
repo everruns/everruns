@@ -1,5 +1,5 @@
 ---
-title: Platform Chat Agent
+title: Platform Chat
 description: The managed Agent for Everruns platform conversations, running on Bashkit Worker.
 ---
 
@@ -7,6 +7,9 @@ description: The managed Agent for Everruns platform conversations, running on B
 It runs on [Bashkit Worker](/built-ins/harnesses/bashkit-worker/), which supplies a sealed,
 recoverable Bashkit virtual workspace. The Agent supplies its identity, instructions, platform
 access, introduction, conversation starters, and durable operator memory.
+
+Platform Chat is built in and read-only: you cannot edit, archive, or delete it from the UI
+or the API. Use **Copy** on its page to make an editable Agent from it.
 
 ## Chat and side conversations
 

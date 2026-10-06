@@ -53,6 +53,7 @@ impl DirectWorkerAdapters {
             internal_id: r.id.uuid(),
             name: r.name,
             display_name: r.display_name,
+            is_built_in: r.is_built_in,
             description: r.description,
             intro_markdown: None,
             short_description: None,

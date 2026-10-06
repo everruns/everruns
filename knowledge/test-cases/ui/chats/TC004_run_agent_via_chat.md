@@ -29,7 +29,7 @@ Verify that the global chat agent can run a previously created agent by creating
 
 ## Steps
 
-1. Open a Platform Chat thread: go to `/chats/new`; the managed Platform Chat Agent is already selected
+1. Open a Platform Chat thread: go to `/chats/new`; the managed Platform Chat is already selected
 2. Send the message from test data above
 3. Wait for the chat agent to:
    - Create a session for Math Tutor

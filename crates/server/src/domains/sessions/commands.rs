@@ -274,7 +274,7 @@ impl Command for CreateSession {
         .map_err(classify_anyhow)?;
         if source == SessionSource::Chat && !is_platform_chat {
             return Err(CommandError::bad_request(
-                "Chat requires the managed Platform Chat Agent; use Playground to test agents",
+                "Chat requires the managed Platform Chat; use Playground to test agents",
             ));
         }
         if is_platform_chat

@@ -1031,6 +1031,30 @@ fn assert_built_in_rejection(err: &CommandError) {
     );
 }
 
+/// The UI hides edit, archive and delete from `is_built_in`, so the read
+/// model must carry it for built-in agents and leave it false otherwise.
+#[tokio::test]
+async fn built_in_flag_is_exposed_on_reads() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
+    let built_in = seed_built_in_agent(&db, &ctx, "chat").await;
+    let regular = CreateAgent(basic_agent_request("regular"))
+        .execute(&ctx)
+        .await
+        .expect("create");
+    assert!(!regular.is_built_in);
+
+    let after = GetAgent {
+        id: built_in.public_id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("get");
+    assert!(after.is_built_in);
+    let json = serde_json::to_value(&after).expect("serialize");
+    assert_eq!(json["is_built_in"], serde_json::json!(true));
+}
+
 #[tokio::test]
 async fn built_in_agent_rejects_update() {
     let db = Arc::new(StorageBackend::test_database());

@@ -171,7 +171,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const webmcp = useWebMcp();
 
   const draft = useAgentDraft(agent);
-  const readOnly = isReadOnlyStatus(agent?.status);
+  // Built-in agents (Platform Chat) are managed by the platform: the API
+  // rejects definition edits, archive and delete, so the page never offers
+  // them. Bindings (service account, triggers, credentials) stay editable.
+  const builtIn = !!agent?.is_built_in;
+  const statusReadOnly = isReadOnlyStatus(agent?.status);
+  const readOnly = builtIn || statusReadOnly;
   const editing = editRequested && !!agent && !readOnly;
 
   const modelMap = useMemo(
@@ -232,7 +237,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       return;
     }
     try {
-      await updateAgent.mutateAsync({ agentId, request: result.request, reason: saveReason });
+      await updateAgent.mutateAsync({
+        agentId,
+        request: result.request,
+        reason: saveReason,
+      });
       draft.reset();
       setSaveReason("");
       exitEdit();
@@ -253,7 +262,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         properties: {},
         additionalProperties: false,
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
       execute: async () => {
         webmcp.assertBinding(webmcp.bindingToken);
         if (!agent || agent.id !== agentId || agent.status !== "active") {
@@ -286,7 +299,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         const blob =
           format === "zip"
             ? await exportAgentPackage(agent.name)
-            : new Blob([await exportAgent.mutateAsync(agentId)], { type: "text/markdown" });
+            : new Blob([await exportAgent.mutateAsync(agentId)], {
+                type: "text/markdown",
+              });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -351,6 +366,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   }
 
   const isActive = agent.status === "active";
+  const canEdit = isActive && !builtIn;
   const sessionCount = agent.session_count;
   const displayName = getDisplayName(agent);
   const fixedSandbox = harnessInheritsFromName(
@@ -410,11 +426,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         ? formatTokens(agent.usage.input_tokens + agent.usage.output_tokens)
         : "None",
     },
-    { id: "health", label: "Health check", summary: healthSummary(latestHealth) },
+    {
+      id: "health",
+      label: "Health check",
+      summary: healthSummary(latestHealth),
+    },
   ];
 
-  const canArchive = isActive;
-  const canDelete = agent.status === "archived" && can("agent.dangerous");
+  const canArchive = canEdit;
+  const canDelete = !builtIn && agent.status === "archived" && can("agent.dangerous");
   const canManage = can("agent.manage");
   const confirmError = confirmAction === "delete" ? destroyAgent.error : deleteAgent.error;
   const confirmPending = deleteAgent.isPending || destroyAgent.isPending;
@@ -456,7 +476,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 id: "observe",
                 label: "Observe this agent",
                 icon: <Telescope className="size-4" />,
-                href: { pathname: "/observers/new", query: { agent_id: agentId } },
+                href: {
+                  pathname: "/observers/new",
+                  query: { agent_id: agentId },
+                },
               },
             ]
           : []),
@@ -478,7 +501,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     </>
   ) : (
     <>
-      {isActive && (
+      {canEdit && (
         <Button variant="outline" onClick={startEdit}>
           <Pencil className="size-4" />
           Edit
@@ -512,12 +535,15 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               ) : (
                 <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
               )}
+              {builtIn && <Badge variant="outline">Built-in</Badge>}
             </>
           }
           description={
             editing
               ? "Changes apply to new sessions only. Running sessions keep the current definition."
-              : undefined
+              : builtIn
+                ? "Managed by Everruns and read-only. Copy it to make an editable version."
+                : undefined
           }
           meta={
             editing ? (
@@ -566,7 +592,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 className="lg:border-r"
                 value={draft.fields.system_prompt}
                 editing={editing}
-                onEdit={isActive ? startEdit : undefined}
+                onEdit={canEdit ? startEdit : undefined}
                 onChange={(value) => draft.setField("system_prompt", value)}
                 error={draft.errors.system_prompt}
                 checks={
@@ -606,7 +632,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 <AgentServiceAccount
                   agentId={agentId}
                   value={agent.service_virtual_user_id}
-                  disabled={readOnly}
+                  disabled={statusReadOnly}
                 />
               </div>
             </div>

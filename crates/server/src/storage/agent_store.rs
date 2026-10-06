@@ -68,6 +68,7 @@ impl DbAgentStore {
                     internal_id: row.id.uuid(),
                     name: row.name,
                     display_name: row.display_name,
+                    is_built_in: row.is_built_in,
                     description: row.description,
                     intro_markdown: None,
                     short_description: None,

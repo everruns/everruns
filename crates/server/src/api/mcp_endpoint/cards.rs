@@ -451,6 +451,7 @@ mod tests {
 
     fn sample_agent() -> Agent {
         Agent {
+            is_built_in: false,
             avatar: None,
             service_virtual_user_id: None,
 

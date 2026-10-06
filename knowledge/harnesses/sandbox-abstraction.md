@@ -456,7 +456,7 @@ When the Harness is fixed, the control is read-only and says, for example,
 Playground owns Agent testing and Session setup. It shows Sandbox Template and
 Workspace controls only when the Agent policy permits them. A fixed Agent shows
 the resolved runtime as read-only. Personal Chats remain bound to the managed
-Platform Chat Agent and expose no Harness or Sandbox selector.
+Platform Chat and expose no Harness or Sandbox selector.
 
 ### Session
 
