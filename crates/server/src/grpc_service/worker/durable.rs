@@ -580,7 +580,7 @@ impl WorkerServiceImpl {
         let store = self.durable_store()?;
 
         store.drain_worker(&req.worker_id).await.map_err(|e| {
-            tracing::error!("Failed to drain worker: {}", e);
+            tracing::error!(error = %e, "Failed to drain worker");
             Status::internal("Failed to drain worker")
         })?;
         tracing::info!(worker_id = %req.worker_id, "Worker draining itself for shutdown");
