@@ -41,6 +41,7 @@ use crate::records::{AgentVersionPolicy, MemoryConfig, MemoryMountAccess, Sandbo
 use crate::records::{Session, SessionActivity, SessionSource, SessionStatus};
 use crate::server::ResourceLimitsConfig;
 use crate::services::{PrincipalService, row_to_principal};
+use crate::storage::UpdateField;
 use crate::storage::{
     StorageBackend,
     models::{
@@ -54,7 +55,6 @@ use everruns_capabilities::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_contracts::typed_id::MemoryId;
 use everruns_core::builtins::AttachSkillCapability;
 use everruns_core::mcp::is_mcp_capability;
-use everruns_db::UpdateField;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;

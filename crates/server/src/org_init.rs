@@ -18,13 +18,13 @@ use crate::kernel_imports::{
     contracts::typed_id::HarnessId, contracts::typed_id::PluginMarketplaceId,
 };
 use crate::records::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
+use crate::storage::UpdateField;
 use crate::storage::{
     StorageBackend,
     models::{CreateHarnessRow, CreatePluginMarketplaceRow, UpdateOrganizationSettings},
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use everruns_db::UpdateField;
 use std::sync::Arc;
 use uuid::Uuid;
 

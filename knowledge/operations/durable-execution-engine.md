@@ -25,7 +25,7 @@ retries, and activity scheduling. The worker reaches these through
 `everruns-durable-engine`, which is also published as the facade's experimental
 durable turn backend ([Execution Backends](../framework/execution-backends.md)).
 The worker owns no database driver; database connection construction
-belongs only to server, durable, and `everruns-db` (embedded SQLite), enforced by
+belongs only to server, durable, and the `everruns` facade (embedded SQLite), enforced by
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh).
 
 ## Goals

@@ -1,6 +1,6 @@
+use crate::storage::UpdateField;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{KnowledgeIndexDocumentId, KnowledgeIndexId, ModelId};
-use everruns_db::UpdateField;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

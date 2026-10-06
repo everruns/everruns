@@ -534,7 +534,6 @@ jobs:
         run: |
           cargo check --locked --all-features \
             -p everruns-core \
-            -p everruns-db \
             -p everruns-durable \
             -p everruns-durable-engine \
             -p everruns-drivers \

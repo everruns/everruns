@@ -267,7 +267,7 @@ async fn another_users_platform_chat_session(server: &TestServer) -> SessionId {
             session_id,
             everruns_server::storage::models::UpdateSession {
                 harness_id: Some(server.seed_chat_harness_id.parse().unwrap()),
-                resolved_owner_user_id: everruns_db::UpdateField::Set(owner.id),
+                resolved_owner_user_id: everruns_server::storage::UpdateField::Set(owner.id),
                 ..Default::default()
             },
         )

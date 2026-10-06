@@ -262,10 +262,10 @@ impl Command for UpdateVirtualUserCmd {
         let req = self.req;
 
         // Validate locale/timezone if being set
-        if let everruns_db::UpdateField::Set(ref locale) = req.locale {
+        if let crate::storage::UpdateField::Set(ref locale) = req.locale {
             q::validate_locale(locale).map_err(classify_anyhow)?;
         }
-        if let everruns_db::UpdateField::Set(ref tz) = req.timezone {
+        if let crate::storage::UpdateField::Set(ref tz) = req.timezone {
             q::validate_timezone(tz).map_err(classify_anyhow)?;
         }
 

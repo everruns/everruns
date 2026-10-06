@@ -195,6 +195,8 @@ pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolCallContext, To
 #[cfg(feature = "local")]
 pub mod local;
 #[cfg(feature = "local")]
+pub mod sqlite;
+#[cfg(feature = "local")]
 #[deprecated(note = "use LocalGitWorkspace")]
 pub use local::LocalGitWorkspace as LocalGitWorkspaceProvider;
 #[cfg(feature = "local")]

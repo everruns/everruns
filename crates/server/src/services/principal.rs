@@ -8,8 +8,8 @@ use crate::kernel_imports::{
     org_public_id_from_internal,
 };
 use crate::records::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
+use crate::storage::UpdateField;
 use anyhow::{Result, anyhow};
-use everruns_db::UpdateField;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;

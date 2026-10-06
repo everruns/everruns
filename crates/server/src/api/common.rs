@@ -4,6 +4,7 @@
 // ApiResult: standard return type for API handlers
 // impl_auth_state!: macro to eliminate repeated FromRef<AppState> for AuthState impls
 
+use crate::storage::UpdateField;
 use axum::Json;
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;
@@ -12,7 +13,6 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::SessionId;
-use everruns_db::UpdateField;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{DeserializeOwned, Error as DeError},

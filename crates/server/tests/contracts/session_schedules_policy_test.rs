@@ -228,7 +228,7 @@ async fn reassign_owner(server: &TestServer, session: &Session, owner: Uuid) {
             TEST_ORG_ID,
             session.id,
             UpdateSession {
-                resolved_owner_user_id: everruns_db::UpdateField::Set(owner),
+                resolved_owner_user_id: everruns_server::storage::UpdateField::Set(owner),
                 ..Default::default()
             },
         )

@@ -68,6 +68,7 @@ pub mod maintenance;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
+mod update_field;
 // `/proc` readings for the worker pool's backpressure and the bench reports.
 // Not part of the API.
 pub(crate) mod sysstat;
@@ -143,7 +144,7 @@ pub use scheduler::{
     disable_schedule, ensure_schedule, find_schedule,
 };
 // `ScheduleUpdate` fields are `UpdateField`s, so the type stays nameable here.
-pub use everruns_db::UpdateField;
+pub use update_field::UpdateField;
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal, signal_types};
 #[cfg(feature = "workflows")]
