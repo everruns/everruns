@@ -44,6 +44,7 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;
+use everruns_core::durability::{DurableToolResultStore, PartialStreamStore};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::permissions::PermissionResolver;
@@ -1642,20 +1643,18 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .map(|l| l.clone() as Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>)
     }
 
-    fn durable_tool_result_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
-        Some(Arc::new(crate::storage::PgDurableToolResultStore::new(
-            self.db.pool().clone(),
-        )))
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn DurableToolResultStore>> {
+        crate::storage::PgDurableToolResultStore::shared(&self.db)
     }
 
     fn subagent_spawn_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
-        Some(Arc::new(crate::storage::PgSubagentSpawnStore::new(
-            self.db.pool().clone(),
-        )))
+        crate::storage::PgSubagentSpawnStore::shared(&self.db)
+    }
+
+    fn partial_stream_store(&self) -> Option<Arc<dyn PartialStreamStore>> {
+        crate::storage::PgPartialStreamStore::shared(&self.db)
     }
 
     async fn invoke_scheduled_channel(

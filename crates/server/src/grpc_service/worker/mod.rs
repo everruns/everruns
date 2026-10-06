@@ -16,6 +16,7 @@ mod events;
 mod leases;
 mod messages;
 mod notifications;
+mod partial_streams;
 mod platform_sessions;
 mod policy;
 mod resilience;

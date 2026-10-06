@@ -731,6 +731,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         self.stream_heartbeater.clone()
     }
 
+    fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {
+        Some(Arc::new(
+            crate::grpc_partial_stream::GrpcPartialStreamStore::new(self.client.clone()),
+        ))
+    }
+
     async fn invoke_scheduled_channel(
         &self,
         org_id: i64,

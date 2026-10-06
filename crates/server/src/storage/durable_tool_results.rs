@@ -22,6 +22,13 @@ impl PgDurableToolResultStore {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    /// The store over `db`'s shared pool, if it has one.
+    pub fn shared(
+        db: &super::StorageBackend,
+    ) -> Option<std::sync::Arc<dyn DurableToolResultStore>> {
+        Some(std::sync::Arc::new(Self::new(db.pool().clone())))
+    }
 }
 
 #[async_trait]

@@ -66,10 +66,13 @@ through the host's partial-stream store (EVE-532,
 [`partial_recovery.rs`](../../crates/core/src/engine/execution/reason/partial_recovery.rs)),
 announces neither again, and completes the message under the dead attempt's
 id, leaving `reason.recovered` as the only trace of the lost attempt. The
-in-process runtime answers that store from its own event log. The platform
-worker does not wire one yet (the server has `PgPartialStreamStore` but no
-worker RPC), so there each lost attempt still leaves one orphaned started
-message and a second `reason.started`.
+in-process runtime answers that store from its own event log; the platform
+worker asks the control plane (`GetPartialStream`, answered by
+`PgPartialStreamStore` over the `events` table), and the server's in-process
+worker reads that table directly. The worker stores a phase's leading events
+write-behind, so the lookup sees only what the dead worker flushed: an
+attempt that died before its `output.message.started` landed is announced
+again, as are the steps of a worker on a control plane without the RPC.
 
 ### Scenario 2: Control Plane Restart
 
