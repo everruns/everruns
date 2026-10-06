@@ -2646,6 +2646,7 @@ dependencies = [
  "aws-config",
  "aws-credential-types",
  "aws-sdk-bedrockruntime",
+ "aws-smithy-eventstream",
  "aws-smithy-types",
  "base64 0.23.1",
  "chrono",

@@ -725,9 +725,9 @@ async fn function_call_without_output_item_added_still_emits_the_tool_call() {
 
 /// A model sometimes closes a synchronous function call with arguments that
 /// are not JSON (seen live: `{"name": "sql-style", "arguments": }`). That must
-/// not fail the whole turn: the call goes through the same lenient snapshot as
-/// streamed calls, so the tool sees empty arguments and can answer with an
-/// error the model recovers from.
+/// not fail the stream, and the call must not run with `{}` either: the driver
+/// drops it and counts it in `tool_calls_dropped`, and the turn's
+/// `output_truncation` gate tells the model its call did not run.
 #[tokio::test]
 async fn malformed_sync_function_call_arguments_do_not_fail_the_turn() {
     let server = MockServer::start().await;
@@ -753,19 +753,13 @@ async fn malformed_sync_function_call_arguments_do_not_fail_the_turn() {
 
     assert_eq!(
         drain_golden(stream).await,
-        vec![
-            Golden::ToolCall {
-                name: "activate_skill".into(),
-                args: "{}".into(),
-            },
-            Golden::Done {
-                total: Some(23),
-                prompt: Some(15),
-                completion: Some(8),
-                cache_read: None,
-                finish: Some("tool_calls".into()),
-            },
-        ]
+        vec![Golden::Done {
+            total: Some(23),
+            prompt: Some(15),
+            completion: Some(8),
+            cache_read: None,
+            finish: Some("tool_calls".into()),
+        },]
     );
 }
 
@@ -865,13 +859,12 @@ async fn incomplete_terminal_function_call_is_not_emitted() {
     }
 }
 
-/// A truncated body is a reason to hand the tool `{}`, not to drop the call.
-/// The finish reason this driver derives already says `tool_calls`, so dropping
-/// would end the turn with nothing to run and no error for the model to recover
-/// from. `{}` reaches the tool, which rejects it, and the model retries. Either
-/// way the malformed body itself is never executed.
+/// A truncated body in the terminal response is dropped, never run with `{}`.
+/// The finish reason still says `tool_calls`; the turn's `output_truncation`
+/// gate sees the dropped count and tells the model its call did not run, so
+/// the turn does not end silently with nothing to execute.
 #[tokio::test]
-async fn malformed_terminal_function_call_arguments_reach_the_tool_empty() {
+async fn malformed_terminal_function_call_arguments_are_dropped() {
     for typed in [false, true] {
         let server = MockServer::start().await;
         let mut event = serde_json::json!({
@@ -904,19 +897,13 @@ async fn malformed_terminal_function_call_arguments_reach_the_tool_empty() {
 
         assert_eq!(
             drain_golden(stream).await,
-            vec![
-                Golden::ToolCall {
-                    name: "bash".into(),
-                    args: "{}".into(),
-                },
-                Golden::Done {
-                    total: Some(0),
-                    prompt: Some(0),
-                    completion: Some(0),
-                    cache_read: None,
-                    finish: Some("tool_calls".into()),
-                }
-            ],
+            vec![Golden::Done {
+                total: Some(0),
+                prompt: Some(0),
+                completion: Some(0),
+                cache_read: None,
+                finish: Some("tool_calls".into()),
+            }],
             "typed={typed}"
         );
     }

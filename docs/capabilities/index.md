@@ -167,6 +167,7 @@ Streaming-output guardrails and runtime safety nets.
 |---|---|---|
 | [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
 | [Tool Call Repair](/capabilities/tool-call-repair/) | `tool_call_repair` | 0 |
+| [Output Truncation](/capabilities/output-truncation/) | `output_truncation` | 0 |
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 | [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
 | Progress Guard | `progress_guard` | 0 |

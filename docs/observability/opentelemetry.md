@@ -130,7 +130,8 @@ Spans also carry a few Everruns-specific attributes under their own namespace, s
 | `everruns.usage.cost_usd` | `chat`, `invoke_agent` | Cost when known |
 | `everruns.llm.retry.attempts`, `everruns.llm.retry.total_wait_ms` | `chat` | Provider retries behind a single call |
 | `everruns.llm.finish_reason`, `everruns.llm.provider_finish_reason` | `chat` | Normalized finish reason as a scalar, and the provider's own stop reason verbatim (`max_tokens`, `MAX_TOKENS`, ...) |
-| `everruns.llm.tool_calls_dropped`, `everruns.llm.tool_calls_truncated_executed` | `chat` | Tool calls discarded because the response was cut off, and calls run from a truncated response; present only when non-zero |
+| `everruns.llm.tool_calls_dropped`, `everruns.llm.tool_calls_truncated_executed` | `chat` | Tool calls discarded because the response was cut off (or their arguments were not valid JSON), and complete calls run from a truncated response; present only when non-zero |
+| `everruns.llm.truncation_gate` | `chat` | `retried` or `failed` when the [output truncation](/capabilities/output-truncation/) policy acted on dropped calls |
 | `everruns.span.orphaned`, `everruns.span.unterminated` | Any | Diagnostics: a span rebuilt from a terminal event, or closed because its turn ended first |
 
 ## Choosing Conventions
