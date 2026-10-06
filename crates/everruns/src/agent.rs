@@ -596,8 +596,12 @@ impl Agent {
         let harness = match bound_harness {
             Some(harness) => harness.seeded(),
             None => {
-                let mut harness = HarnessBuilder::new(&self.name, &self.instructions)
-                    .capabilities(capabilities.clone());
+                // Decision: the synthetic harness carries no prompt. The
+                // agent definition below owns the instructions, and the
+                // runtime folds harness + agent prompts additively, so
+                // setting both rendered them twice.
+                let mut harness =
+                    HarnessBuilder::new(&self.name, "").capabilities(capabilities.clone());
                 if let Some(parallel) = self.parallel_tool_calls {
                     harness = harness.parallel_tool_calls(parallel);
                 }
