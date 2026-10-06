@@ -199,6 +199,7 @@ mod tests {
             tool_call_count: None,
             llm_call_count: None,
             status: None,
+            stop_reason: None,
         });
         let frame = translate_session_event(&data, "task-1", "ctx-1", "").unwrap();
         assert_eq!(frame["kind"], "status-update");

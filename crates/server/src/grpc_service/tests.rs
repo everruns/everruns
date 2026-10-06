@@ -70,6 +70,7 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
                     tool_call_count: None,
                     llm_call_count: None,
                     status: None,
+                    stop_reason: None,
                 },
             ))
             .await?;

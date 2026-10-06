@@ -59,6 +59,7 @@ pub(crate) fn annotate_braintrust(event: &Event, metadata: &mut serde_json::Valu
     for (key, value) in provider_correlation(event.metadata.as_ref()) {
         metadata[key] = serde_json::json!(value);
     }
+    super::generation_attrs::annotate_braintrust(event, metadata);
     if let crate::events::EventData::LlmGeneration(data) = &event.data
         && !data.metadata.cost_components.is_empty()
     {

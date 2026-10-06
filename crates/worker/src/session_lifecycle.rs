@@ -131,6 +131,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
                 tool_call_count: None,
                 llm_call_count: None,
                 status: Some("completed".to_string()),
+                stop_reason: None,
             },
         )
         .await;

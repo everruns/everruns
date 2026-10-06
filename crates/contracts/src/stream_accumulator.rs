@@ -47,6 +47,9 @@ struct PartialToolCall {
 #[derive(Debug, Default)]
 pub struct StreamToolCallAccumulator {
     calls: Vec<PartialToolCall>,
+    /// Calls discarded so far by [`Self::take_at_stream_end`] (cut-off or
+    /// rejected responses). Reported in completion metadata, never reset.
+    dropped: u32,
 }
 
 impl StreamToolCallAccumulator {
@@ -176,10 +179,24 @@ impl StreamToolCallAccumulator {
     pub fn take_at_stream_end(&mut self, finish_reason: Option<&str>) -> Vec<ToolCall> {
         if !matches!(finish_reason, None | Some("tool_calls")) {
             // Drain so a repeated flush cannot re-emit, but do not execute.
-            self.calls.clear();
+            // Count what was discarded so the drop is observable.
+            self.dropped += self.discard();
             return Vec::new();
         }
         self.take_pending_strict()
+    }
+
+    /// Discard every pending call without executing it, returning how many
+    /// there were. For responses that ended cut off or rejected.
+    pub fn discard(&mut self) -> u32 {
+        let count = u32::try_from(self.calls.len()).unwrap_or(u32::MAX);
+        self.calls.clear();
+        count
+    }
+
+    /// Calls [`Self::take_at_stream_end`] discarded over this stream.
+    pub fn dropped_at_stream_end(&self) -> u32 {
+        self.dropped
     }
 
     /// Drain accumulated calls, keeping only those with a non-empty name and
@@ -289,6 +306,29 @@ mod tests {
             assert_eq!(calls_json(actual), expected, "{mode}");
             assert!(acc.is_empty(), "{mode} must drain rejected entries too");
             assert!(acc.take_finalized().is_empty());
+        }
+    }
+
+    #[test]
+    fn stream_end_counts_calls_discarded_by_a_cut_off_response() {
+        for (finish, dropped, survivors) in [
+            (Some("length"), 2, 0),
+            (Some("content_filter"), 2, 0),
+            (Some("tool_calls"), 0, 2),
+            (None, 0, 2),
+        ] {
+            let mut acc = StreamToolCallAccumulator::new();
+            acc.apply_indexed_delta(0, Some("a"), Some("first"), Some("{}"));
+            acc.apply_indexed_delta(1, Some("b"), Some("second"), Some("{\"x\":1}"));
+            assert_eq!(
+                acc.take_at_stream_end(finish).len(),
+                survivors,
+                "{finish:?}"
+            );
+            assert_eq!(acc.dropped_at_stream_end(), dropped, "{finish:?}");
+            // A repeated flush neither re-emits nor double-counts.
+            assert!(acc.take_at_stream_end(finish).is_empty());
+            assert_eq!(acc.dropped_at_stream_end(), dropped, "{finish:?}");
         }
     }
 

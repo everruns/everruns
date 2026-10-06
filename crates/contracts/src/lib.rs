@@ -55,6 +55,7 @@ pub mod hosted_mcp;
 mod llm_call_config_builder;
 pub mod llm_error;
 pub mod llm_retry;
+pub mod llm_telemetry;
 pub mod message;
 pub mod model;
 pub mod model_discovery;

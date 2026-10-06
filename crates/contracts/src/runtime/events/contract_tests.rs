@@ -145,6 +145,7 @@ fn snapshot_turn_completed() {
         tool_call_count: Some(2),
         llm_call_count: Some(3),
         status: Some("completed".to_string()),
+        stop_reason: None,
     };
     with_settings!({
         sort_maps => true,
@@ -709,6 +710,7 @@ fn representative_event_payloads_preserve_wire_identity() {
                 tool_call_count: None,
                 llm_call_count: None,
                 status: None,
+                stop_reason: None,
             }
             .into(),
         ),

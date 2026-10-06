@@ -12,6 +12,8 @@
 pub mod braintrust;
 mod braintrust_delivery;
 pub mod composite;
+#[cfg(any(feature = "otel", feature = "braintrust"))]
+mod generation_attrs;
 #[cfg(feature = "otel")]
 pub mod openinference;
 #[cfg(feature = "otel")]

@@ -1,4 +1,5 @@
 use super::compaction::materially_reduced;
+use super::generation_outcome::add_compaction_cost;
 use super::*;
 use crate::engine::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, PromptCacheConfig, PromptCacheStrategy,

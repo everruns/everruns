@@ -762,6 +762,8 @@ struct GeminiStreamState {
     calls: StreamToolCallAccumulator,
     call_counter: u32,
     finish_reason: Option<String>,
+    provider_finish_reason: Option<String>,
+    tool_calls_dropped: u32,
     retry_metadata: Option<RetryMetadata>,
     pending: std::collections::VecDeque<LlmStreamEvent>,
     done: bool,
@@ -850,7 +852,11 @@ impl GeminiStreamState {
                 let calls = self.calls.take_finalized();
                 if reason == "STOP" && !calls.is_empty() {
                     self.pending.push_back(LlmStreamEvent::ToolCalls(calls));
+                } else {
+                    // Cut off or rejected: discarded, but counted.
+                    self.tool_calls_dropped += u32::try_from(calls.len()).unwrap_or(u32::MAX);
                 }
+                self.provider_finish_reason = Some(reason);
                 break;
             }
         }
@@ -875,6 +881,16 @@ impl GeminiStreamState {
             // `None` when no candidate reported a finish reason: kept distinct
             // from an explicit stop.
             metadata.finish_reason = self.finish_reason.take();
+            let raw = self.provider_finish_reason.take();
+            let dropped = self.tool_calls_dropped;
+            let stop = raw.as_deref().unwrap_or("none");
+            everruns_contracts::llm_telemetry::warn_tool_calls_dropped(
+                "gemini",
+                &self.model,
+                dropped,
+                stop,
+            );
+            (metadata.provider_finish_reason, metadata.tool_calls_dropped) = (raw, dropped);
             metadata.retry_metadata = self.retry_metadata.take();
             metadata
         })));
