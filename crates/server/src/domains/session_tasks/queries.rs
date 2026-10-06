@@ -1,5 +1,5 @@
 use crate::domains::agents::queries::row_to_agent;
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use crate::kernel_imports::{
     AgentCapabilityConfig, SessionTask, contracts::error::from_json,
     contracts::typed_id::HarnessId, contracts::typed_id::SessionId,
@@ -71,8 +71,7 @@ pub async fn tool_context_for_ctx(
     let session_row = ctx
         .db
         .get_session(org_id, session_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Session"))?;
 
     // --- Build session overlay directly from the row ---
@@ -100,9 +99,7 @@ pub async fn tool_context_for_ctx(
     // executor calls never silently drop the harness policy.
     let harness_id = match session_row.harness_id {
         Some(id) => id,
-        None => org_init::base_harness_id(ctx.db.as_ref(), org_id)
-            .await
-            .map_err(classify_anyhow)?,
+        None => org_init::base_harness_id(ctx.db.as_ref(), org_id).await?,
     };
     // Mirrors DbHarnessStore::get_harness_chain, using ctx.db directly so
     // both Postgres and InMemory backends are supported.
@@ -113,14 +110,12 @@ pub async fn tool_context_for_ctx(
         let agent_row = ctx
             .db
             .get_agent(org_id, agent_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
         let caps: Vec<AgentCapabilityConfig> = ctx
             .db
             .get_agent_capabilities(agent_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .into_iter()
             .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
             .collect();
@@ -193,11 +188,7 @@ async fn load_harness_chain(
             )));
         }
 
-        let Some(row) = db
-            .get_harness(org_id, current_id)
-            .await
-            .map_err(classify_anyhow)?
-        else {
+        let Some(row) = db.get_harness(org_id, current_id).await? else {
             let kind = if chain.is_empty() {
                 "Leaf harness"
             } else {
@@ -208,10 +199,7 @@ async fn load_harness_chain(
             )));
         };
 
-        let cap_rows = db
-            .get_harness_capabilities(current_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let cap_rows = db.get_harness_capabilities(current_id.uuid()).await?;
         let capabilities: Vec<AgentCapabilityConfig> = cap_rows
             .into_iter()
             .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))

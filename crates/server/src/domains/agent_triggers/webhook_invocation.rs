@@ -7,7 +7,7 @@ use super::commands::{WebhookCompatibilityContext, parse_agent_id};
 use super::events;
 use super::queries as q;
 use crate::domains::agent_channels::invocation::render_message_template;
-use crate::domains::common::{CommandError, classify_anyhow};
+use crate::domains::common::CommandError;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::records::AgentTriggerType;
@@ -35,8 +35,7 @@ pub async fn invoke_webhook_agent_trigger(
 ) -> Result<events::TriggerEventOutcome, CommandError> {
     let trigger_row = db
         .get_agent_trigger_by_ingress_id_unscoped(&req.ingress_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .filter(|row| row.trigger_type == AgentTriggerType::Webhook.to_string())
         .ok_or_else(|| CommandError::not_found("Agent trigger"))?;
     if !trigger_row.enabled {
@@ -46,8 +45,7 @@ pub async fn invoke_webhook_agent_trigger(
     }
     let agent = db
         .get_agent(trigger_row.org_id, trigger_row.agent_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .filter(|agent| agent.status == "active" && !agent.exposures_suspended)
         .ok_or_else(|| CommandError::not_found("Agent"))?;
     let trigger = q::row_to_trigger(

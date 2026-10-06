@@ -29,8 +29,7 @@ impl Command for EnsurePlatformChat {
         if let Some(id) = ctx
             .db
             .get_platform_chat_starter_id(ctx.org_id(), user)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         {
             return q::get_session(ctx, id, None).await;
         }
@@ -41,8 +40,7 @@ impl Command for EnsurePlatformChat {
                 if let Some(id) = ctx
                     .db
                     .get_platform_chat_starter_id(ctx.org_id(), user)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                 {
                     q::get_session(ctx, id, None).await
                 } else {

@@ -42,11 +42,7 @@ impl Command for ListSessionStorage {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
 
-        let keys = ctx
-            .db
-            .list_session_keys(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let keys = ctx.db.list_session_keys(session_id.uuid()).await?;
 
         let mut items = Vec::with_capacity(keys.len());
         for key_info in keys {
@@ -57,8 +53,7 @@ impl Command for ListSessionStorage {
             let value = ctx
                 .db
                 .get_session_key_value(session_id.uuid(), &key_info.key)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .map(|row| row.value)
                 .unwrap_or_default();
 
@@ -108,11 +103,7 @@ impl Command for ListSessionSecrets {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
 
-        let secrets = ctx
-            .db
-            .list_session_secrets(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let secrets = ctx.db.list_session_secrets(session_id.uuid()).await?;
 
         Ok(secrets
             .into_iter()
@@ -200,8 +191,7 @@ impl Command for BatchSetSessionSecrets {
                     name: name.clone(),
                     value_encrypted: encrypted,
                 })
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
         }
 
         Ok(BatchSetSecretsResponse {

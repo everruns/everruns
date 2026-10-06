@@ -140,8 +140,7 @@ impl Command for CreateProvider {
                     request_options: self.request_options,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if has_credential {
             provision_provider_models(ctx, &provider).await;
@@ -223,13 +222,11 @@ impl Command for CheckProviderCredentials {
         if self.api_key.trim().is_empty() {
             return Err(CommandError::bad_request("api_key must not be empty"));
         }
-        crate::domains::providers::service::validate_provider_type(&self.provider_type)
-            .map_err(classify_anyhow)?;
+        crate::domains::providers::service::validate_provider_type(&self.provider_type)?;
         crate::domains::providers::service::validate_provider_base_url(
             self.provider_type.clone(),
             self.base_url.as_deref(),
-        )
-        .map_err(classify_anyhow)?;
+        )?;
 
         Ok(crate::domains::providers::check_credentials(
             &ctx.driver_registry,
@@ -274,8 +271,7 @@ impl Command for GetProvider {
         let provider_id = q::parse_provider_id(&self.id)?;
         q::service(ctx)
             .get(&ctx.caller, provider_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Provider"))
     }
 }
@@ -337,8 +333,7 @@ impl Command for UpdateProvider {
                     request_options: self.request_options,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Provider"))?;
 
         // A key arriving on an existing provider is the same event as one
@@ -381,10 +376,7 @@ impl Command for DeleteProvider {
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteProviderResult, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
-        let deleted = q::service(ctx)
-            .delete(&ctx.caller, provider_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = q::service(ctx).delete(&ctx.caller, provider_id).await?;
         if !deleted {
             return Err(CommandError::not_found("Provider"));
         }
@@ -421,13 +413,11 @@ impl Command for SyncProviderModels {
         let provider_id = q::parse_provider_id(&self.id)?;
         q::service(ctx)
             .get(&ctx.caller, provider_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Provider"))?;
         let result = sync_service(ctx)?
             .sync_provider(ctx.org_id(), provider_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         // A manual refresh is also a chance to make the org usable: an org that
         // still has no enabled chat model or no resolvable default gets one.

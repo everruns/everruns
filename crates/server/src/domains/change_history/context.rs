@@ -281,11 +281,7 @@ impl Command for GetManagerContext {
 
     async fn execute(self, ctx: &Ctx) -> Result<ManagerContext, CommandError> {
         let key = managed_entity(ctx, &self.entity_ref, self.kind.as_deref()).await?;
-        let row = ctx
-            .db
-            .get_manager_context(&key)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.get_manager_context(&key).await?;
         let kind = EntityKind::parse(&key.entity_kind).expect("resolved above");
         Ok(ManagerContext::of(kind, key.entity_ref, row))
     }

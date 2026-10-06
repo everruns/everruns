@@ -24,8 +24,7 @@ async fn resolve_agent(
             .await
     } else {
         ctx.db.get_agent_by_name(ctx.org_id(), id_or_name).await
-    }
-    .map_err(classify_anyhow)?
+    }?
     .ok_or_else(|| CommandError::not_found("Agent"))?;
     if row.status != "active" {
         return Err(CommandError::bad_request(
@@ -36,8 +35,7 @@ async fn resolve_agent(
 }
 
 fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, CommandError> {
-    let (context, channel) =
-        row_to_ingress(ctx.encryption.as_ref(), row).map_err(classify_anyhow)?;
+    let (context, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
     Ok(redact_channel_for_response(channel.into_channel(&context)))
 }
 
@@ -51,7 +49,7 @@ fn stored_version_selection(row: &IngressChannelRow) -> VersionSelection {
 }
 
 fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {
-    let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row).map_err(classify_anyhow)?;
+    let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
     let mut config = channel.channel_config;
     if let Some(auth) = channel.auth
         && let Some(object) = config.as_object_mut()
@@ -101,8 +99,7 @@ pub(crate) async fn preflight_package_channel_config(
     let existing = ctx
         .db
         .get_agent_channel(ctx.org_id(), agent_id, channel_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Channel"))?;
     let channel_type = ChannelType::from_str_opt(&existing.channel_type)
         .ok_or_else(|| CommandError::bad_request("Channel has an unsupported channel type"))?;
@@ -136,8 +133,7 @@ impl Command for ListAgentChannels {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
         ctx.db
             .list_agent_channels(ctx.org_id(), agent.id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .into_iter()
             .map(|row| row_to_channel(ctx, row))
             .collect()
@@ -174,8 +170,7 @@ impl Command for GetAgentChannel {
         let row = ctx
             .db
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
         row_to_channel(ctx, row)
     }
@@ -229,15 +224,12 @@ impl Command for CreateAgentChannel {
             policy: crate::records::AgentVersionPolicy::Default,
             version_id: None,
         });
-        let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent)
-            .await
-            .map_err(classify_anyhow)?;
+        let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent).await?;
         let config = normalize_and_validate_channel_config(
             self.req.channel_type.clone(),
             self.req.channel_config,
         )?;
-        let prepared = super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)
-            .map_err(classify_anyhow)?;
+        let prepared = super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)?;
         let channel_id = AgentChannelId::new();
         let row = ctx
             .db
@@ -265,8 +257,7 @@ impl Command for CreateAgentChannel {
                     resolved_owner_user_id: owner.resolved_user_id,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         row_to_channel(ctx, row)
     }
 }
@@ -303,8 +294,7 @@ impl Command for UpdateAgentChannelCmd {
         let existing = ctx
             .db
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
         let channel_type = ChannelType::from_str_opt(&existing.channel_type)
             .ok_or_else(|| CommandError::bad_request("Channel has an unsupported channel type"))?;
@@ -321,8 +311,7 @@ impl Command for UpdateAgentChannelCmd {
                 let config =
                     prepare_updated_config(ctx, &existing, channel_type, config, self.req.enabled)?;
                 let prepared =
-                    super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)
-                        .map_err(classify_anyhow)?;
+                    super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)?;
                 (
                     Some(prepared.channel_config),
                     UpdateField::from_option(prepared.channel_config_encrypted),
@@ -374,8 +363,7 @@ impl Command for UpdateAgentChannelCmd {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
         if row.channel_type == "slack" {
             let service = crate::domains::health_issues::service::SlackHealthService::new(
@@ -475,8 +463,7 @@ async fn set_channel_status(
                 ..Default::default()
             },
         )
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Channel"))?;
     row_to_channel(ctx, row)
 }
@@ -509,8 +496,7 @@ impl Command for DeleteAgentChannel {
         let deleted = ctx
             .db
             .delete_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if !deleted {
             return Err(CommandError::not_found("Channel"));
         }
@@ -557,11 +543,9 @@ impl Command for TriggerAgentChannel {
         let row = ctx
             .db
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
-        let (context, channel) =
-            row_to_ingress(ctx.encryption.as_ref(), row).map_err(classify_anyhow)?;
+        let (context, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
         if channel.channel_type != ChannelType::Schedule {
             return Err(CommandError::bad_request(
                 "Only schedule channels can run now",

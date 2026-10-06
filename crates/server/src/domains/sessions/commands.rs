@@ -115,11 +115,7 @@ impl Command for CreateSession {
         // Enforce per-org session cap before the heavier creation work. Sessions
         // are hard-deleted, so the count reflects only live rows.
         let max = ctx.resource_limits.max_sessions_per_org;
-        let count = ctx
-            .db
-            .count_sessions_for_org(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let count = ctx.db.count_sessions_for_org(ctx.org_id()).await?;
         if count >= max {
             return Err(CommandError::conflict(format!(
                 "Session limit reached (max {max})"
@@ -143,8 +139,7 @@ impl Command for CreateSession {
                 let row = ctx
                     .db
                     .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .ok_or_else(|| CommandError::not_found("Agent"))?;
                 let public_id: AgentId = row
                     .public_id
@@ -157,8 +152,7 @@ impl Command for CreateSession {
                 let row = ctx
                     .db
                     .get_agent_by_name(ctx.org_id(), name)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .ok_or_else(|| CommandError::not_found("Agent"))?;
                 let public_id: AgentId = row
                     .public_id
@@ -174,11 +168,7 @@ impl Command for CreateSession {
         if let Some(name) = req.harness_name.clone() {
             crate::api::validation::validate_harness_name(&name).map_err(validation_error)?;
             if name == "default" {
-                let settings = ctx
-                    .db
-                    .get_organization_settings(ctx.org_id())
-                    .await
-                    .map_err(classify_anyhow)?;
+                let settings = ctx.db.get_organization_settings(ctx.org_id()).await?;
                 req.harness_id = Some(settings.and_then(|row| row.default_harness_id).ok_or_else(
                     || {
                         CommandError::not_found_msg(
@@ -190,8 +180,7 @@ impl Command for CreateSession {
                 let row = ctx
                     .db
                     .get_harness_by_name(ctx.org_id(), &name)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .ok_or_else(|| CommandError::not_found("Harness"))?;
                 req.harness_id = Some(row.id);
             }
@@ -206,8 +195,7 @@ impl Command for CreateSession {
             agent_harness_id,
             ctx.fallback_harness_name.as_deref(),
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         if assigns_harness {
             crate::domains::agents::commands::check_harness_assignment(ctx, harness_id).await?;
         }
@@ -216,15 +204,13 @@ impl Command for CreateSession {
         let harness = ctx
             .db
             .get_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         if let Some(model_id) = req.model_id {
             ctx.db
                 .get_model(ctx.org_id(), model_id.uuid())
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .ok_or_else(|| CommandError::not_found("Model"))?;
         }
 
@@ -270,8 +256,7 @@ impl Command for CreateSession {
             ctx.org_id(),
             agent_internal_id.map(AgentId::from_uuid),
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         if source == SessionSource::Chat && !is_platform_chat {
             return Err(CommandError::bad_request(
                 "Chat requires the managed Platform Chat; use Playground to test agents",
@@ -356,8 +341,7 @@ impl Command for ListSessionParticipants {
         let rows = ctx
             .db
             .list_session_participants(ctx.org_id(), session_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if rows.len() > MAX_SESSION_PARTICIPANT_HISTORY {
             return Err(CommandError::conflict(format!(
                 "Session participant history exceeds the {MAX_SESSION_PARTICIPANT_HISTORY} row limit"
@@ -427,8 +411,7 @@ impl Command for AddSessionParticipant {
                 let agent = ctx
                     .db
                     .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .ok_or_else(|| CommandError::not_found("Agent"))?;
                 (Some(agent.id), agent.default_version_id)
             }
@@ -447,8 +430,7 @@ impl Command for AddSessionParticipant {
             let rows = ctx
                 .db
                 .list_session_participants(ctx.org_id(), session_id)
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
             if rows.len() > MAX_SESSION_PARTICIPANT_HISTORY {
                 return Err(CommandError::conflict(format!(
                     "Session participant history exceeds the {MAX_SESSION_PARTICIPANT_HISTORY} row limit"
@@ -471,8 +453,7 @@ impl Command for AddSessionParticipant {
                 Some(user_id) => {
                     let principal = PrincipalService::new(ctx.db.clone())
                         .ensure_default_virtual_user_principal(ctx.org_id(), user_id)
-                        .await
-                        .map_err(classify_anyhow)?;
+                        .await?;
                     let display_name = principal
                         .metadata
                         .get("name")
@@ -501,15 +482,9 @@ impl Command for AddSessionParticipant {
         };
 
         let row = if is_user_participant {
-            ctx.db
-                .ensure_active_user_session_participant(input)
-                .await
-                .map_err(classify_anyhow)?
+            ctx.db.ensure_active_user_session_participant(input).await?
         } else {
-            ctx.db
-                .create_session_participant(input)
-                .await
-                .map_err(classify_anyhow)?
+            ctx.db.create_session_participant(input).await?
         };
 
         Ok(row.to_core())
@@ -567,8 +542,7 @@ impl Command for LeaveSessionParticipant {
         let participants = ctx
             .db
             .list_session_participants(ctx.org_id(), session_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let participant = participants
             .iter()
             .find(|row| row.id == participant_id)
@@ -583,8 +557,7 @@ impl Command for LeaveSessionParticipant {
 
         ctx.db
             .leave_session_participant(ctx.org_id(), session_id, participant_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .map(|row| row.to_core())
             .ok_or_else(|| CommandError::not_found("Participant"))
     }
@@ -598,8 +571,7 @@ async fn ensure_session_exists(
 ) -> Result<crate::storage::models::SessionRow, CommandError> {
     ctx.db
         .get_session(ctx.org_id(), session_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Session"))
 }
 
@@ -666,8 +638,7 @@ impl Command for ForkSession {
         let parent = ctx
             .db
             .get_session(ctx.org_id(), parent_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
         if matches!(
             parent.status.as_str(),
@@ -768,8 +739,7 @@ impl Command for ListSessions {
                 &filters,
                 crate::api::common::Pagination::new(pagination.offset, pagination.limit),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(Paginated {
             data: sessions,
@@ -942,8 +912,7 @@ impl Command for GetSessionContextReport {
                 None,
                 Some(1),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         let Some(row) = rows.into_iter().next() else {
             return Ok(SessionContextReport {
@@ -1053,12 +1022,11 @@ impl Command for UpdateSessionCmd {
 
         let session = q::session_service(ctx)?
             .update(&ctx.caller, session_id.uuid(), req)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         if let (Some(event), Some(event_service)) = (title_event, event_service) {
-            event_service.emit(event).await.map_err(classify_anyhow)?;
+            event_service.emit(event).await?;
         }
 
         Ok(session)
@@ -1147,10 +1115,7 @@ impl Command for GetSessionStats {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionStatsResponse, CommandError> {
-        let stats = q::session_service(ctx)?
-            .stats(&ctx.caller)
-            .await
-            .map_err(classify_anyhow)?;
+        let stats = q::session_service(ctx)?.stats(&ctx.caller).await?;
         Ok(SessionStatsResponse {
             total: stats.total,
             active: stats.active,
@@ -1206,8 +1171,7 @@ impl Command for PinSession {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .pin(&ctx.caller, user_id, session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(true)
     }
 }

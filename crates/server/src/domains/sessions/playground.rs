@@ -1,5 +1,5 @@
 //! Playground is a shared session, with an immutable end-user test subject.
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use everruns_contracts::typed_id::{PrincipalId, VirtualUserId};
 use everruns_core::{Permission, Policy, Rule};
 
@@ -17,11 +17,7 @@ pub async fn validate_subject(
     let user = ctx.caller.user_id.ok_or_else(|| {
         CommandError::forbidden("Playground requires a signed-in organisation member")
     })?;
-    let own = ctx
-        .db
-        .default_virtual_user(ctx.org_id(), user)
-        .await
-        .map_err(classify_anyhow)?;
+    let own = ctx.db.default_virtual_user(ctx.org_id(), user).await?;
     let id = requested.unwrap_or(own.id);
     // THREAT[TM-AUTHZ-021]: Only authorised operators may select another active in-org subject.
     if id != own.id {
@@ -32,8 +28,7 @@ pub async fn validate_subject(
     let subject = ctx
         .db
         .get_virtual_user(ctx.org_id(), id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Virtual user"))?;
     if subject.status != "active" || subject.usage != "end_user" {
         return Err(CommandError::bad_request(
@@ -50,12 +45,10 @@ pub async fn subject_principal(ctx: &Ctx, id: VirtualUserId) -> Result<Principal
     let service = crate::services::PrincipalService::new(ctx.db.clone());
     let parent = service
         .ensure_system_principal(ctx.org_id(), "playground")
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     Ok(service
         .ensure_virtual_user_principal(ctx.org_id(), id, parent.id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .id)
 }
 

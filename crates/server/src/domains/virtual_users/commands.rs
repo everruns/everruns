@@ -51,10 +51,10 @@ impl Command for CreateVirtualUser {
 
         // Validate locale/timezone
         if let Some(ref locale) = req.locale {
-            q::validate_locale(locale).map_err(classify_anyhow)?;
+            q::validate_locale(locale)?;
         }
         if let Some(ref tz) = req.timezone {
-            q::validate_timezone(tz).map_err(classify_anyhow)?;
+            q::validate_timezone(tz)?;
         }
 
         // Persist
@@ -70,16 +70,13 @@ impl Command for CreateVirtualUser {
                 locale: req.locale,
                 timezone: req.timezone,
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let parent = PrincipalService::new(ctx.db.clone())
             .default_owner_principal(&ctx.caller, None)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         PrincipalService::new(ctx.db.clone())
             .ensure_virtual_user_principal(ctx.org_id(), row.id, parent.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         q::row_to_identity(&ctx.db, ctx.org_id(), row)
             .await
@@ -151,15 +148,10 @@ impl Command for ListVirtualUsers {
                 usage.as_deref(),
                 pg,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let mut data = Vec::with_capacity(rows.len());
         for row in rows {
-            data.push(
-                q::row_to_identity(&ctx.db, ctx.org_id(), row)
-                    .await
-                    .map_err(classify_anyhow)?,
-            );
+            data.push(q::row_to_identity(&ctx.db, ctx.org_id(), row).await?);
         }
         Ok(Paginated {
             data,
@@ -211,8 +203,7 @@ impl Command for GetVirtualUser {
             .map_err(|e| CommandError::bad_request(format!("Invalid identity ID: {e}")))?;
 
         q::get_by_id(&ctx.db, ctx.org_id(), identity_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Virtual user"))
     }
 }
@@ -263,10 +254,10 @@ impl Command for UpdateVirtualUserCmd {
 
         // Validate locale/timezone if being set
         if let crate::storage::UpdateField::Set(ref locale) = req.locale {
-            q::validate_locale(locale).map_err(classify_anyhow)?;
+            q::validate_locale(locale)?;
         }
         if let crate::storage::UpdateField::Set(ref tz) = req.timezone {
-            q::validate_timezone(tz).map_err(classify_anyhow)?;
+            q::validate_timezone(tz)?;
         }
 
         // Persist
@@ -284,30 +275,26 @@ impl Command for UpdateVirtualUserCmd {
                     status: req.status.map(|s| s.to_string()),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Virtual user"))?;
         let principal_service = PrincipalService::new(ctx.db.clone());
         let parent = match ctx
             .db
             .get_principal_by_subject(ctx.org_id(), "virtual_user", row.id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .and_then(|principal| principal.parent_principal_id)
         {
             Some(parent_id) => parent_id,
             None => {
                 principal_service
                     .default_owner_principal(&ctx.caller, None)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .id
             }
         };
         principal_service
             .ensure_virtual_user_principal(ctx.org_id(), row.id, parent)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         q::row_to_identity(&ctx.db, ctx.org_id(), row)
             .await
@@ -331,8 +318,7 @@ async fn ensure_no_live_references(
     if ctx
         .db
         .has_agent_with_identity(ctx.org_id(), identity_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
     {
         return Err(CommandError::conflict(
             "Cannot archive or delete virtual user while agents still reference it",
@@ -385,14 +371,12 @@ impl Command for DeleteVirtualUser {
         let deleted = ctx
             .db
             .delete_virtual_user(ctx.org_id(), identity_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if deleted {
             PrincipalService::new(ctx.db.clone())
                 .sync_virtual_user_status(ctx.org_id(), identity_id, PrincipalStatus::Archived)
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
             Ok(serde_json::json!({"deleted": true}))
         } else {
             Err(CommandError::not_found("Virtual user"))
@@ -458,14 +442,12 @@ impl Command for DestroyVirtualUser {
         let destroyed = ctx
             .db
             .destroy_virtual_user(ctx.org_id(), identity_id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if destroyed {
             PrincipalService::new(ctx.db.clone())
                 .sync_virtual_user_status(ctx.org_id(), identity_id, PrincipalStatus::Deleted)
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
             Ok(serde_json::json!({"destroyed": true}))
         } else {
             Err(CommandError::not_found("Virtual user"))
