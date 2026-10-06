@@ -369,6 +369,16 @@ impl MessageService {
                 .into());
             }
             ReserveActiveTurnSlotResult::AtCapacity { active_turns } => {
+                metrics::counter!(
+                    crate::api::prometheus::names::ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL
+                )
+                .increment(1);
+                tracing::warn!(
+                    org_id = ctx.org_id,
+                    active_turns,
+                    limit = self.caps.max_active_turns,
+                    "org active-turn cap reached; message refused"
+                );
                 return Err(BadRequestError::new(format!(
                     "Too many active turns: org has {} turns executing (limit {}); retry later",
                     active_turns, self.caps.max_active_turns

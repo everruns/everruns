@@ -184,6 +184,10 @@ pub mod names {
     /// Nonzero values point at paths not yet converted to the transaction.
     pub const DB_QUERIES_OUTSIDE_TRANSACTION: &str =
         "everruns_db_queries_outside_command_transaction_total";
+    /// Messages refused because their org reached `ORG_MAX_ACTIVE_TURNS`, a
+    /// protective limit. The org is in the log line; nonzero means an org hit it.
+    pub const ORG_ACTIVE_TURN_CAP_REJECTIONS_TOTAL: &str =
+        "everruns_org_active_turn_cap_rejections_total";
 
     /// Orphaned blob objects deleted by the object-storage GC sweep (objects
     /// present in the bucket with no live sidecar pointer, older than the grace

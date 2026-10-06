@@ -787,16 +787,12 @@ impl Database {
     ) -> Result<ReserveActiveTurnSlotResult> {
         let mut tx = self.pool.begin().await?;
 
-        // Serialize per-org reservations so the soft cap covers accepted queued
-        // turns, not only turns workers have already begun executing.
-        sqlx::query("SELECT pg_advisory_xact_lock($1)")
-            .bind(org_id)
-            .execute(&mut *tx)
-            .await?;
-
+        // NO KEY UPDATE: the status columns change, never the key, so rows
+        // that reference this session (schedules, events) can still insert.
         let existing: Option<WaitingTurnResolutionRow> = sqlx::query_as(
             "SELECT status, turn_resolution_id, turn_resolution_lease_expires_at, \
-             turn_resolution_plan FROM sessions WHERE org_id = $1 AND id = $2 FOR UPDATE",
+             turn_resolution_plan FROM sessions WHERE org_id = $1 AND id = $2 \
+             FOR NO KEY UPDATE",
         )
         .bind(org_id)
         .bind(session_id)
@@ -878,6 +874,12 @@ impl Database {
             });
         }
 
+        // Decision: the cap is a protective limit and may be exceeded by
+        // reservations racing between this count and their commits; the user
+        // accepted "around" the cap (2026-10-07). A per-org lock made all of an
+        // org's sessions queue behind each other on every message (about 4 ms of
+        // lock wait per turn under a 10-session load test). Cap hits are counted
+        // in `everruns_org_active_turn_cap_rejections_total`.
         let active_turns: (i64,) = sqlx::query_as(
             "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
         )
