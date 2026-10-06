@@ -411,9 +411,9 @@ impl Command for UpdateKnowledgeIndexCmd {
             // THREAT[TM-AUTHZ-011]: Source edits must not continue to use the
             // previous owner's external connection. Rebind the sync token owner
             // to the caller who selected the new source coordinates.
-            everruns_db::UpdateField::from_option(ctx.caller.user_id)
+            crate::storage::UpdateField::from_option(ctx.caller.user_id)
         } else {
-            everruns_db::UpdateField::Unchanged
+            crate::storage::UpdateField::Unchanged
         };
         let row = ctx
             .db
@@ -423,9 +423,9 @@ impl Command for UpdateKnowledgeIndexCmd {
                 UpdateKnowledgeIndex {
                     name,
                     description: match self.request.description {
-                        everruns_db::UpdateField::Set(description) => Some(Some(description)),
-                        everruns_db::UpdateField::Clear => Some(None),
-                        everruns_db::UpdateField::Unchanged => None,
+                        crate::storage::UpdateField::Set(description) => Some(Some(description)),
+                        crate::storage::UpdateField::Clear => Some(None),
+                        crate::storage::UpdateField::Unchanged => None,
                     },
                     source_config,
                     resolved_owner_user_id,
@@ -715,7 +715,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: Some("Product Docs v2".into()),
-                description: everruns_db::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: None,
             },
@@ -854,7 +854,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: None,
-                description: everruns_db::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: Some(serde_json::json!({
                     "repository": "https://github.com/owner/rebound.git/"
                 })),
@@ -899,7 +899,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: Some("Stable Docs v2".into()),
-                description: everruns_db::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: None,
             },
@@ -1080,7 +1080,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: None,
-                description: everruns_db::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: Some(chat_model.id),
             },
@@ -1129,7 +1129,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: None,
-                description: everruns_db::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: Some(model_id),
             },
@@ -1292,7 +1292,7 @@ mod tests {
             index_id: created.id.to_string(),
             request: UpdateKnowledgeIndexRequest {
                 name: Some("Renamed".into()),
-                description: everruns_db::UpdateField::Unchanged,
+                description: crate::storage::UpdateField::Unchanged,
                 source_config: None,
                 embedding_model_id: None,
             },

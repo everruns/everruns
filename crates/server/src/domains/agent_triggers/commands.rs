@@ -29,13 +29,13 @@ use crate::records::AgentChannelId;
 use crate::records::{AgentAction, AuditEvent};
 use crate::records::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig, WebhookTriggerConfig};
 use crate::storage::StorageBackend;
+use crate::storage::UpdateField;
 use crate::storage::models::{
     AgentRow, AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger,
 };
 use chrono::Utc;
 use everruns_contracts::typed_id::{AgentId, SessionId, TriggerId};
 use everruns_core::channel::SessionBinding;
-use everruns_db::UpdateField;
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleTargetType, StoreError, UpdateSchedule, WorkflowEventStore,
@@ -816,8 +816,8 @@ impl Command for UpdateAgentTriggerCmd {
                     enabled: Some(new_enabled),
                     agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
                     agent_version_id: version
-                        .map_or(everruns_db::UpdateField::Unchanged, |version| {
-                            everruns_db::UpdateField::from_option(version.version_id)
+                        .map_or(crate::storage::UpdateField::Unchanged, |version| {
+                            crate::storage::UpdateField::from_option(version.version_id)
                         }),
                     ..Default::default()
                 },

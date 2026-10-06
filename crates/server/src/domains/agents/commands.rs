@@ -28,8 +28,8 @@ use crate::kernel_imports::{
     AgentCapabilityConfig, InitialFile, Policy, ScopedMcpServers,
     contracts::tool_types::ToolDefinition,
 };
-use crate::max_iterations;
 use crate::records::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
+use crate::{max_iterations, storage::UpdateField as StorageUpdate};
 use everruns_contracts::typed_id::{AgentId, AgentVersionId, HarnessId};
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -490,7 +490,7 @@ impl Command for UpdateAgentCmd {
         }
         validate_update_limits(&req)?;
         sandbox_templates::validate_update(&req.sandbox_policy)?;
-        if let everruns_db::UpdateField::Set(environments) = &req.sandbox_policy {
+        if let StorageUpdate::Set(environments) = &req.sandbox_policy {
             validate_sandbox_template_sources(ctx, Some(environments)).await?;
         }
         if matches!(req.status, Some(AgentStatus::Deleted)) {
@@ -581,17 +581,17 @@ impl Command for UpdateAgentCmd {
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
         let final_has_environments = match &req.sandbox_policy {
-            everruns_db::UpdateField::Set(_) => true,
-            everruns_db::UpdateField::Clear => false,
-            everruns_db::UpdateField::Unchanged => existing.environments.is_some(),
+            StorageUpdate::Set(_) => true,
+            StorageUpdate::Clear => false,
+            StorageUpdate::Unchanged => existing.environments.is_some(),
         };
         reject_sandbox_override_for_fixed_harness(ctx, final_harness_id, final_has_environments)
             .await?;
 
-        if let everruns_db::UpdateField::Set(id) = req.service_virtual_user_id {
+        if let StorageUpdate::Set(id) = req.service_virtual_user_id {
             validate_service_account(ctx, Some(id)).await?;
         }
-        if matches!(req.service_virtual_user_id, everruns_db::UpdateField::Clear) {
+        if matches!(req.service_virtual_user_id, StorageUpdate::Clear) {
             crate::domains::virtual_users::VIRTUAL_USER_MANAGE
                 .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
                 .map_err(|_| {
@@ -603,9 +603,9 @@ impl Command for UpdateAgentCmd {
         // Persist
         let input = UpdateAgent {
             virtual_user_id: match req.service_virtual_user_id {
-                everruns_db::UpdateField::Unchanged => None,
-                everruns_db::UpdateField::Clear => Some(None),
-                everruns_db::UpdateField::Set(id) => Some(Some(id)),
+                StorageUpdate::Unchanged => None,
+                StorageUpdate::Clear => Some(None),
+                StorageUpdate::Set(id) => Some(Some(id)),
             },
             name: req.name,
             display_name: req.display_name,

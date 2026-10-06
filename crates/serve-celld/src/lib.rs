@@ -56,7 +56,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
-use everruns_db::sqlite as rusqlite;
+use everruns::sqlite as rusqlite;
 use std::ffi::OsString;
 use std::io::Read;
 use std::net::SocketAddr;

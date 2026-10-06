@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Move the embedded SQLite wrapper and `UpdateField` out of `everruns-durable` into the new `everruns-db` crate, so the `everruns` `local` feature no longer compiles the durable engine. `everruns-durable` drops its `sqlite` feature and `sqlite` and `update_field` modules; `everruns_durable::UpdateField` remains.
+- Move the embedded SQLite wrapper out of `everruns-durable` into the `everruns` facade as `everruns::sqlite` (behind `local`), so the `local` feature no longer compiles the durable engine. `everruns-durable` drops its `sqlite` feature and its `sqlite` and `update_field` modules; `everruns_durable::UpdateField` remains.
 
 ## [0.41.0] - 2026-10-04
 

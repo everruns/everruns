@@ -1,5 +1,5 @@
 use crate::test_harness::get_database_url;
-use everruns_db::UpdateField;
+use everruns_server::storage::UpdateField;
 use everruns_server::{
     org_init,
     storage::{

@@ -492,7 +492,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .patch_organization_settings(
             everruns_core::DEFAULT_ORG_ID,
             UpdateOrganizationSettings {
-                default_harness_id: everruns_db::UpdateField::Set(base_id),
+                default_harness_id: everruns_server::storage::UpdateField::Set(base_id),
                 ..Default::default()
             },
         )

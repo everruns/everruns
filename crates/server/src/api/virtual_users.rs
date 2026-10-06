@@ -258,12 +258,12 @@ async fn update_me(
     }
     req.status = None;
     // The self shortcut shares profile validation and storage, with explicit self authority.
-    if let everruns_db::UpdateField::Set(ref value) = req.locale {
+    if let crate::storage::UpdateField::Set(ref value) = req.locale {
         crate::domains::virtual_users::queries::validate_locale(value).map_err(|_| {
             ErrorResponse::new("Invalid locale").into_response(StatusCode::BAD_REQUEST)
         })?;
     }
-    if let everruns_db::UpdateField::Set(ref value) = req.timezone {
+    if let crate::storage::UpdateField::Set(ref value) = req.timezone {
         crate::domains::virtual_users::queries::validate_timezone(value).map_err(|_| {
             ErrorResponse::new("Invalid timezone").into_response(StatusCode::BAD_REQUEST)
         })?;

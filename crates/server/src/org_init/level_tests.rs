@@ -1,10 +1,10 @@
 use super::*;
+use crate::storage::UpdateField;
 use crate::storage::{
     CreateAgentRow, CreateOrganizationRow, UpdateAgent, UpdateOrganizationSettings,
 };
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
-use everruns_db::UpdateField;
 use serde_json::json;
 
 #[tokio::test]

@@ -771,7 +771,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             everruns_core::DEFAULT_ORG_ID,
             parent_id,
             crate::storage::models::UpdateSession {
-                resolved_owner_user_id: everruns_db::UpdateField::Set(user.id),
+                resolved_owner_user_id: crate::storage::UpdateField::Set(user.id),
                 ..Default::default()
             },
         )

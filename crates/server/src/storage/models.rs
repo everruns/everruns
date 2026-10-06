@@ -14,8 +14,8 @@ use crate::kernel_imports::{
     contracts::typed_id::VirtualUserId,
 };
 use crate::records::{SessionParticipant, SessionParticipantKind, SessionParticipantRole};
+use crate::storage::UpdateField;
 use chrono::{DateTime, Utc};
-use everruns_db::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 

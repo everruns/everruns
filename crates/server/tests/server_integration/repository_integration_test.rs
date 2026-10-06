@@ -17,9 +17,9 @@ use uuid::Uuid;
 
 use crate::session_row_fixture::base_session_row;
 use everruns_core::message_filter::MessageQuery;
-use everruns_db::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
+use everruns_server::storage::UpdateField;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
     CreateDeclarativeCapabilityRow, CreateEvalRow, CreateEventRow, CreateHarnessRow,

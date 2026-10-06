@@ -317,7 +317,7 @@ just durable bench --save my-box   # also write a checkpoint for comparison
 
 Scenarios cover worker scaling (1 to 100 workers, burst load), workflow
 throughput (many workflows with many sequential steps) and cold-start latency.
-Each run writes HTML reports to `crates/durable/target/benchmark-reports/`.
+Each run writes HTML reports under `target/benchmark-reports/`.
 
 The bench binaries and the `bench` support module need the `bench` feature,
 which the commands above enable. Every bench takes the same flags: `--smoke` runs each scenario at a tiny scale,

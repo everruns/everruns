@@ -474,7 +474,7 @@ async fn make_platform_chat(server: &TestServer, session_id: SessionId, owner: U
                         .parse()
                         .expect("platform-chat harness id"),
                 ),
-                resolved_owner_user_id: everruns_db::UpdateField::Set(owner),
+                resolved_owner_user_id: everruns_server::storage::UpdateField::Set(owner),
                 ..Default::default()
             },
         )

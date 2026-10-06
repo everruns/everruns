@@ -12,8 +12,8 @@ use crate::domains::common::*;
 use crate::kernel_imports::{
     Policy, contracts::driver_registry::ServiceKind, contracts::provider::DriverId,
 };
+use crate::storage::UpdateField;
 use everruns_contracts::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
-use everruns_db::UpdateField;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
