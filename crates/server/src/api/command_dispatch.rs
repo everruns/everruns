@@ -39,6 +39,14 @@
 // otherwise keeps only its hash.
 // Read-only commands ignore the header; running them twice is harmless.
 //
+// Decision: the claim commits on its own, before the command runs, so a
+// concurrent retry sees the request in flight. For a transactional command
+// (`Command::transactional`) the stored response is written inside the
+// command's transaction, so the change, its history entry and the response a
+// retry replays commit together; a failure to store it fails the request and
+// rolls the change back. The release after a failure runs once that rollback
+// is done.
+//
 // Decision: the envelope's `reason` is the change reason the command records in
 // entity history (`domains::change_history`). It sits beside `params`, not in
 // them, because it describes the invocation rather than the change, and it is
@@ -335,34 +343,57 @@ pub async fn execute_command(
             .into()),
         },
         IdempotencyClaim::Claimed => {
-            match run(
-                &org,
-                &state,
-                name,
-                request,
-                current_hash,
-                Some(scope.key.clone()),
-            )
-            .await
-            {
-                Ok(response) => {
-                    // The command already ran: failing to remember it must not
-                    // turn its success into an error.
-                    let stored = match seal_response(&state, &response) {
-                        Ok(sealed) => {
-                            state
-                                .db
-                                .complete_command_idempotency_key(&scope, &sealed)
-                                .await
-                        }
-                        Err(err) => Err(err),
-                    };
-                    if let Err(err) = stored {
-                        tracing::warn!(error = %err, "failed to store idempotent command response");
+            let transactional = desc.is_some_and(|desc| (desc.transactional)());
+            // Boxed so the command's deep future is not held inline twice.
+            let attempt = Box::pin(async {
+                let response = run(
+                    &org,
+                    &state,
+                    name,
+                    request,
+                    current_hash,
+                    Some(scope.key.clone()),
+                )
+                .await?;
+                let stored = match seal_response(&state, &response) {
+                    Ok(sealed) => {
+                        state
+                            .db
+                            .complete_command_idempotency_key(&scope, &sealed)
+                            .await
                     }
-                    Ok(Json(response).into_response())
+                    Err(err) => Err(err),
+                };
+                if let Err(err) = stored {
+                    if transactional {
+                        // Inside the command's transaction: the change and the
+                        // response a retry replays commit together, or neither.
+                        return Err(CommandError::internal(
+                            err.context("failed to store the idempotent command response"),
+                        )
+                        .into());
+                    }
+                    // The command already committed: failing to remember it
+                    // must not turn its success into an error.
+                    tracing::warn!(error = %err, "failed to store idempotent command response");
                 }
+                Ok(response)
+            });
+            // The claim above committed on its own, so a concurrent retry sees
+            // it in flight; the completion commits with the command.
+            let result = if transactional {
+                crate::storage::transaction::scope(&state.db, attempt, |err| {
+                    CommandError::internal(err).into()
+                })
+                .await
+            } else {
+                attempt.await
+            };
+            match result {
+                Ok(response) => Ok(Json(response).into_response()),
                 Err(err) => {
+                    // After the rollback: forget the in-flight claim so the
+                    // client can retry.
                     if let Err(release) = state.db.release_command_idempotency_key(&scope).await {
                         tracing::warn!(error = %release, "failed to release idempotency key");
                     }

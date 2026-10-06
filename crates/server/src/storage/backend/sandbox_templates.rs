@@ -70,7 +70,7 @@ impl StorageBackend {
             let id = SandboxTemplateId::new();
             let revision_id = SandboxTemplateRevisionId::new();
             let now = chrono::Utc::now();
-            let mut tx = db.pool().begin().await?;
+            let mut tx = db.tx_pool().begin().await?;
             sqlx::query(
                     "INSERT INTO execution_environments (id, org_id, name, display_name, description, is_managed, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$7)",
                 )
@@ -129,7 +129,7 @@ impl StorageBackend {
             );
             sqlx::query_as::<_, SandboxTemplateDbRow>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(org_id)
-                .fetch_all(db.pool())
+                .fetch_all(db.tx_pool())
                 .await?
                 .into_iter()
                 .map(sandbox_template_from_row)
@@ -148,7 +148,7 @@ impl StorageBackend {
             sqlx::query_as::<_, SandboxTemplateDbRow>(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(org_id)
                 .bind(id.uuid())
-                .fetch_optional(db.pool())
+                .fetch_optional(db.tx_pool())
                 .await?
                 .map(sandbox_template_from_row)
                 .transpose()
@@ -164,7 +164,7 @@ impl StorageBackend {
             let db = self.database();
             let row: Option<(uuid::Uuid, uuid::Uuid, i32, serde_json::Value, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
                     "SELECT r.id,r.environment_id,r.revision,r.profile,r.created_at FROM execution_environment_revisions r JOIN execution_environments e ON e.id=r.environment_id WHERE e.org_id=$1 AND r.id=$2",
-                ).bind(org_id).bind(id.uuid()).fetch_optional(db.pool()).await?;
+                ).bind(org_id).bind(id.uuid()).fetch_optional(db.tx_pool()).await?;
             row.map(
                 |(revision_id, environment_id, revision, profile, created_at)| {
                     Ok(SandboxTemplateRevision {
@@ -192,7 +192,7 @@ impl StorageBackend {
             .map_err(anyhow::Error::msg)?;
         {
             let db = self.database();
-            let mut tx = db.pool().begin().await?;
+            let mut tx = db.tx_pool().begin().await?;
             let current: Option<(bool, String, i32)> = sqlx::query_as(
                     "SELECT e.is_managed,e.status,r.revision FROM execution_environments e JOIN execution_environment_revisions r ON r.id=e.current_revision_id WHERE e.org_id=$1 AND e.id=$2 FOR UPDATE OF e",
                 ).bind(org_id).bind(id.uuid()).fetch_optional(&mut *tx).await?;
@@ -224,7 +224,7 @@ impl StorageBackend {
         {
             let db = self.database();
             Ok(sqlx::query("UPDATE execution_environments SET status='archived',updated_at=now() WHERE org_id=$1 AND id=$2 AND status='active' AND NOT is_managed")
-                .bind(org_id).bind(id.uuid()).execute(db.pool()).await?.rows_affected() == 1)
+                .bind(org_id).bind(id.uuid()).execute(db.tx_pool()).await?.rows_affected() == 1)
         }
     }
 

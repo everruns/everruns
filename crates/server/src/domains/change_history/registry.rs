@@ -598,6 +598,35 @@ pub fn declared(name: &str) -> Change {
     }
 }
 
+/// Whether `Command::run` holds a command's mutation, its history entry and
+/// its idempotency record in one transaction
+/// (`crate::storage::transaction`): every recorded entity change does, except
+/// the commands below, whose `execute` does long or external work that must
+/// not hold a database connection and row locks open, or writes through a
+/// second store a rollback could not undo. Those keep committing as they go
+/// and record history after, as before.
+pub fn transactional(read_only: bool, name: &str, change: Change) -> bool {
+    if read_only || !matches!(change, Change::Subject { .. }) {
+        return false;
+    }
+    !matches!(
+        name,
+        // Inline model discovery against the provider's API.
+        "create_provider" | "update_provider"
+        // Git or URL fetches through egress.
+        | "install_plugin" | "update_plugin"
+        | "create_plugin_marketplace" | "update_plugin_marketplace"
+        // The durable schedule store writes on its own connection.
+        | "create_schedule" | "update_schedule" | "pause_schedule" | "resume_schedule"
+        | "delete_schedule"
+        | "create_agent_trigger" | "update_agent_trigger" | "delete_agent_trigger"
+        // Session lifecycle: workflows, sandboxes and starter turns.
+        | "create_session" | "fork_session" | "delete_session"
+        // Composes channel and trigger creation from a package.
+        | "import_agent"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

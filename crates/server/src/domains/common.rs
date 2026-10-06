@@ -588,6 +588,17 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
         crate::domains::change_history::registry::default_for(Self::read_only(), Self::meta().name)
     }
 
+    /// Whether `run` holds the mutation, its history entry and (over
+    /// `/v1/commands`) its idempotency record in one database transaction. See
+    /// `change_history::registry::transactional` for the default.
+    fn transactional() -> bool {
+        crate::domains::change_history::registry::transactional(
+            Self::read_only(),
+            Self::meta().name,
+            Self::change(),
+        )
+    }
+
     /// If set, allows MCP `execute` callers to pass the value for this field as
     /// a single positional argument (e.g. `get_agent <id>` instead of
     /// `get_agent --id <id>`). bashkit's flag parser hardcodes `expected --flag`
@@ -681,12 +692,22 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
                         .map_err(|e| CommandError::forbidden(e.message))?;
                 }
-                // Entity history: an invalid reason fails before anything changes.
-                let pending = super::change_history::PendingChange::of(&self, ctx).await?;
-                let output = self.execute(ctx).await?;
-                crate::domains::change_history::PendingChange::record(pending, &meta, ctx, &output)
-                    .await;
-                Ok(output)
+                // Boxed: the command's future is deep, and both arms below
+                // would otherwise hold it inline on the stack.
+                let body = Box::pin(async {
+                    // Entity history: an invalid reason fails before anything changes.
+                    let pending = super::change_history::PendingChange::of(&self, ctx).await?;
+                    let output = self.execute(ctx).await?;
+                    super::change_history::PendingChange::record(pending, &meta, ctx, &output)
+                        .await?;
+                    Ok(output)
+                });
+                // The mutation and its history commit together, or neither does.
+                if Self::transactional() {
+                    crate::storage::transaction::scope(&ctx.db, body, CommandError::internal).await
+                } else {
+                    body.await
+                }
             }
             .await;
 
@@ -909,6 +930,8 @@ pub struct CommandDescriptor {
     pub policy: fn() -> Option<&'static Policy>,
     /// What the command changes (entity history).
     pub change: fn() -> crate::domains::change_history::Change,
+    /// Whether the command runs in one transaction (`Command::transactional`).
+    pub transactional: fn() -> bool,
     pub dispatch: DispatchFn,
 }
 
@@ -927,6 +950,7 @@ impl CommandDescriptor {
             output_shape: C::output_shape,
             policy: C::policy,
             change: C::change,
+            transactional: C::transactional,
             dispatch: dispatch_for::<C>,
         }
     }

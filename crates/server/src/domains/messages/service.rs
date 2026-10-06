@@ -423,7 +423,9 @@ impl MessageService {
                 let request_id_log = request_id.as_deref().unwrap_or("").to_string();
                 let request =
                     crate::turns::stored_message(session_id, scope, message_id_typed, request_id);
-                tokio::spawn(async move {
+                // The turn reads the stored message, so it starts once that
+                // commits.
+                crate::storage::transaction::spawn_after_commit(async move {
                     if let Err(error) = crate::turns::start(&*runner, request).await {
                         tracing::error!(
                             session_id = %session_id,

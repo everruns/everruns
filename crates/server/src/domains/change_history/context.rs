@@ -211,7 +211,7 @@ async fn write(
             ManagerContextWriteError::Storage(error) => CommandError::internal(error),
         })?;
     let output = ManagerContext::of(entity_kind, key.entity_ref, Some(row));
-    PendingChange::record(pending, meta, ctx, &output).await;
+    PendingChange::record(pending, meta, ctx, &output).await?;
     Ok(output)
 }
 
@@ -346,6 +346,12 @@ impl Command for SetManagerContext {
         EXEMPT
     }
 
+    // The context write and the `context_updated` entry `write` records
+    // commit together.
+    fn transactional() -> bool {
+        true
+    }
+
     fn output_schema() -> serde_json::Value {
         context_output_schema()
     }
@@ -419,6 +425,12 @@ impl Command for AppendManagerContext {
 
     fn change() -> Change {
         EXEMPT
+    }
+
+    // The context write and the `context_updated` entry `write` records
+    // commit together.
+    fn transactional() -> bool {
+        true
     }
 
     fn output_schema() -> serde_json::Value {
@@ -496,6 +508,12 @@ impl Command for ClearManagerContext {
 
     fn change() -> Change {
         EXEMPT
+    }
+
+    // The context write and the `context_updated` entry `write` records
+    // commit together.
+    fn transactional() -> bool {
+        true
     }
 
     fn output_schema() -> serde_json::Value {
