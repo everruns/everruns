@@ -48,7 +48,11 @@ async fn run(arguments: &Value, context: &catalog::CatalogContext) -> Result<Str
     // it runs a resolved line in the full toolset.
     let desc = catalog::scripted_descriptor(command, catalog::ToolsetMode::Full)
         .ok_or_else(|| format!("unknown command `{command}`"))?;
-    catalog::run_for_shell(desc, params, context).await
+    // A tool call result is read whole, not piped: notices follow the output.
+    let output = catalog::run_for_shell(desc, params, context).await?;
+    Ok(output.notices.iter().fold(output.stdout, |text, notice| {
+        format!("{text}\n\nnotice: {notice}")
+    }))
 }
 
 fn discover(

@@ -11,8 +11,8 @@ tags:
 ---
 # Change Reasons and Manager Context
 
-Status: in progress. Phase 1 (reasons and history) is implemented; phases 2
-to 7 are design. For what has landed, the Rust source
+Status: in progress. Phases 1 (reasons and history) and 2 (manager context)
+are implemented; phases 3 to 7 are design. For what has landed, the Rust source
 (`crates/server/src/domains/change_history/`), migrations and OpenAPI export
 own the exact fields and this concept keeps only the intent, contracts and
 success bars.
@@ -468,8 +468,9 @@ Knowing has to be structural, not a hope that the model reads docs:
 
 ## Threats
 
-Entries for [Threat Model](../security/threat-model.md) (TM-API-028 and
-TM-API-029 landed with Phase 1; the context entries land with Phase 2):
+Entries for [Threat Model](../security/threat-model.md): TM-API-028 and
+TM-API-029 (Phase 1), TM-AGENT-033 and TM-AGENT-034
+(Phase 2):
 
 - **Planted instructions in context.** A manager writes context meant to steer
   future Platform Chat threads. Same trust as editing the entity itself, which
@@ -593,7 +594,7 @@ Each phase is one PR-sized change.
    `entity_changes`, `history` commands. Reason optional everywhere. Builds on
    the idempotency-key envelope work so both share one invocation-metadata
    path.
-2. **Manager context.** Table, `context` commands, self rule,
+2. **Manager context** (implemented). Table, `context` commands, self rule,
    `--context-revision`, the never-reaches-the-runtime test.
 3. **Agents know.** Platform Chat and capability prompts, MCP instructions,
    error recovery actions, public docs, the two evals.

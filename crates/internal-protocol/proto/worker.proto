@@ -1654,6 +1654,9 @@ message ExecuteCommandRequest {
     // Why the caller is making this change, recorded in the changed entity's
     // history. Caller text; the server validates it like any other surface.
     optional string reason = 12;
+    // The changed entity's manager context revision the caller read before
+    // changing it; a newer one refuses the change.
+    optional int64 context_revision = 13;
 }
 
 message CommandError {

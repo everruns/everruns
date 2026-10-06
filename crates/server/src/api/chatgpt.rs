@@ -363,6 +363,7 @@ pub async fn disconnect(
     Path(id): Path<String>,
 ) -> ApiResult<serde_json::Value> {
     let row = row(&state, &org, &id).await?;
+    let change = credential_change(&state, &org, &row, "disconnect_chatgpt").await?;
     cancel_attempt(org.org_id, row.id).await;
     let store = chatgpt::store(
         state.db.clone(),
@@ -372,6 +373,7 @@ pub async fn disconnect(
     )
     .map_err(|_| ErrorResponse::internal_error())?;
     chatgpt::disconnect(&store).await.map_err(|_|ErrorResponse::new("Revocation was not confirmed. The connection was retained. Retry or disconnect the app in ChatGPT settings.").into_response(StatusCode::BAD_GATEWAY))?;
+    change.finish(&row.id.to_string()).await;
     Ok(Json(json!({"disconnected":true})))
 }
 /// Import a private login-helper document.
@@ -447,6 +449,7 @@ pub async fn import(
             ErrorResponse::new("Missing plan grant").into_response(StatusCode::BAD_REQUEST)
         })?
         .subject = Some(identity.subject);
+    let change = credential_change(&state, &org, &row, "import_chatgpt").await?;
     cancel_attempt(org.org_id, row.id).await;
     let store = chatgpt::store(
         state.db.clone(),
@@ -488,7 +491,31 @@ pub async fn import(
         .sync_service
         .sync_provider(org.org_id, row.id.uuid())
         .await;
+    change.finish(&row.id.to_string()).await;
     Ok(Json(json!({"connected":true})))
+}
+
+/// Disconnect and import change the provider's credentials outside the
+/// command layer, so they record its history entry themselves.
+async fn credential_change(
+    state: &AppState,
+    org: &ResolvedOrg,
+    row: &ProviderRow,
+    operation: &'static str,
+) -> Result<crate::domains::change_history::rest::RestChange, (StatusCode, Json<ErrorResponse>)> {
+    use crate::domains::change_history::{ChangeAction, EntityKind, rest::RestChange};
+    let (db, caller, id) = (state.db.clone(), org.into(), row.id.to_string());
+    let (kind, action) = (EntityKind::Provider, ChangeAction::Updated);
+    Ok(RestChange::begin(
+        db,
+        caller,
+        operation,
+        kind,
+        action,
+        Some(&id),
+        &["credentials"],
+    )
+    .await?)
 }
 
 pub(crate) async fn cancel_attempt(org: i64, id: ProviderId) {

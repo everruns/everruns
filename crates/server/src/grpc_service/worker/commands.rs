@@ -111,6 +111,7 @@ impl WorkerServiceImpl {
             ),
         };
         intent.reason = req.reason.clone();
+        intent.context_revision = req.context_revision;
         intent.idempotency_key = req.idempotency_key.clone();
         ctx = ctx.with_change_intent(intent);
         let result = if req.runtime_view {
@@ -388,6 +389,7 @@ pub(crate) mod test_support {
                 idempotency_key: None,
                 metadata: std::collections::HashMap::new(),
                 reason: None,
+                context_revision: None,
             }))
             .await
             .unwrap_or_else(|status| panic!("{name} transport failure: {status:?}"))

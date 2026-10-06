@@ -1173,6 +1173,11 @@ impl TestServer {
             },
         ));
 
+        // As in production (`app_builder`): capture the change reason header.
+        let api_routes = api_routes.layer(axum::middleware::from_fn(
+            everruns_server::domains::change_history::http_change_intent_layer,
+        ));
+
         let root_routes = Router::new()
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))
             .merge(api::mcp_elicitation::routes(mcp_elicitation_state))

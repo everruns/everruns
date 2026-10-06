@@ -134,51 +134,75 @@ pub(crate) fn scripted_descriptor(
         .find(|desc| (desc.meta)().name == name && allowed_in(desc, mode))
 }
 
+/// A command's shell rendering, plus the non-fatal notices its run left
+/// (such as unacknowledged manager context) for the host to show apart from
+/// the output, so a pipe into `jq` still reads clean JSON.
+pub(crate) struct ShellOutput {
+    pub(crate) stdout: String,
+    pub(crate) notices: Vec<String>,
+}
+
 /// One command through the scripted pipeline, rendered for a shell.
 pub(crate) async fn run_for_shell(
     desc: &'static crate::domains::common::CommandDescriptor,
     mut params: serde_json::Value,
     ctx: &CatalogContext,
-) -> Result<String, String> {
+) -> Result<ShellOutput, String> {
     // Schema rewriting in `bashkit_inventory_schema` advertises array and
     // object fields as `string` so bashkit's parser accepts JSON text on the
     // command line. Translate them back here so the domain dispatcher sees the
     // structured value it expects.
-    let reason = take_reason(&mut params)?;
+    let (reason, context_revision) = take_invocation_metadata(&mut params)?;
     let original_schema = (desc.param_schema)();
     normalize_and_validate_params(&original_schema, &mut params)?;
     coerce_json_text_params(&original_schema, &mut params)?;
     let mut domain_ctx = ctx.to_domain_ctx();
-    if reason.is_some() {
-        let intent = domain_ctx
-            .change_intent
-            .take()
-            .unwrap_or_default()
-            .with_reason(reason);
-        domain_ctx = domain_ctx.with_change_intent(intent);
-    }
+    let mut intent = domain_ctx
+        .change_intent
+        .take()
+        .unwrap_or_default()
+        .with_reason(reason);
+    intent.context_revision = context_revision.or(intent.context_revision);
+    let notices = intent.notices.clone();
+    domain_ctx = domain_ctx.with_change_intent(intent);
     let result = (desc.dispatch)(params, &domain_ctx)
         .await
         .map_err(|error| format_dispatch_error(&error))?;
-    decorate_command_output(&result, &ctx.link_builder)
+    Ok(ShellOutput {
+        stdout: decorate_command_output(&result, &ctx.link_builder)?,
+        notices: notices.take(),
+    })
 }
 
-/// Move the global `--reason` out of a shell command's params: it is the
-/// change reason (`domains::change_history`), not a command param. Both
-/// spellings reach here, `everruns agents update ... --reason` through the
-/// shared mapper and `update_agent ... --reason` as a flat builtin.
-fn take_reason(params: &mut serde_json::Value) -> Result<Option<String>, String> {
-    let Some(value) = params
-        .as_object_mut()
-        .and_then(|object| object.remove(everruns_cli_contract::REASON_FIELD))
-    else {
-        return Ok(None);
+/// Move the global `--reason` and `--context-revision` out of a shell
+/// command's params: they describe the call (`domains::change_history`), not
+/// the command. Both spellings reach here, `everruns agents update ...
+/// --reason` through the shared mapper and `update_agent ... --reason` as a
+/// flat builtin.
+fn take_invocation_metadata(
+    params: &mut serde_json::Value,
+) -> Result<(Option<String>, Option<i64>), String> {
+    let mut take = |field: &str| {
+        params
+            .as_object_mut()
+            .and_then(|object| object.remove(field))
+            .filter(|value| !value.is_null())
     };
-    match value {
-        serde_json::Value::String(reason) => Ok(Some(reason)),
-        serde_json::Value::Null => Ok(None),
-        _ => Err("--reason takes text".to_string()),
-    }
+    let reason = match take(everruns_cli_contract::REASON_FIELD) {
+        None => None,
+        Some(serde_json::Value::String(reason)) => Some(reason),
+        Some(_) => return Err("--reason takes text".to_string()),
+    };
+    let revision = match take(everruns_cli_contract::CONTEXT_REVISION_FIELD) {
+        None => None,
+        Some(value) => Some(
+            value
+                .as_i64()
+                .or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))
+                .ok_or("--context-revision takes a number")?,
+        ),
+    };
+    Ok((reason, revision))
 }
 
 fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -> ToolDef {
@@ -236,6 +260,14 @@ fn bashkit_inventory_schema(mut schema: serde_json::Value) -> serde_json::Value 
                     serde_json::json!({
                         "type": "string",
                         "description": "Why you are making this change. Recorded in the entity's history; agents must give one."
+                    })
+                });
+            properties
+                .entry(everruns_cli_contract::CONTEXT_REVISION_FIELD)
+                .or_insert_with(|| {
+                    serde_json::json!({
+                        "type": "integer",
+                        "description": "The entity's manager context revision you read; the change is refused if the notes changed since."
                     })
                 });
         }
@@ -776,7 +808,10 @@ fn make_inventory_callback(
 + 'static {
     move |args: ToolArgs| {
         let ctx = ctx.clone();
-        Box::pin(async move { run_for_shell(desc, args.params, &ctx).await })
+        // Flat builtins have only stdout; their notices are dropped rather
+        // than mixed into output a script may parse. The `everruns` builtin
+        // writes them to stderr.
+        Box::pin(async move { Ok(run_for_shell(desc, args.params, &ctx).await?.stdout) })
     }
 }
 

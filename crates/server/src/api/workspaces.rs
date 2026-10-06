@@ -8,6 +8,8 @@
 
 use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
+use crate::domains::change_history::rest::RestChange;
+use crate::domains::change_history::{ChangeAction, EntityKind};
 use crate::domains::workspaces::types::workspace_response;
 pub use crate::domains::workspaces::types::{
     CreateWorkspaceRequest, ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
@@ -120,6 +122,19 @@ pub async fn create_workspace(
     // per-session workspaces). This keeps `WorkspaceId::from_uuid(id)` equal to
     // the public id, so callers — e.g. the `workspace_id` rendered on a session
     // response — round-trip correctly.
+    let change = history(
+        &state,
+        &org,
+        "create_workspace",
+        ChangeAction::Created,
+        None,
+        &{
+            let mut fields = vec!["name"];
+            fields.extend(req.description.as_ref().map(|_| "description"));
+            fields
+        },
+    )
+    .await?;
     let workspace_id = WorkspaceId::new();
     let public_id = workspace_id.to_string();
     let row = state
@@ -146,6 +161,7 @@ pub async fn create_workspace(
                 internal_error(e)
             }
         })?;
+    change.finish(&row.public_id).await;
     Ok((StatusCode::CREATED, Json(workspace_response(row))))
 }
 
@@ -227,6 +243,23 @@ pub async fn update_workspace(
             Json(ErrorResponse::new("name cannot be empty")),
         ));
     }
+    let fields: Vec<&str> = [
+        req.name.as_ref().map(|_| "name"),
+        req.description.as_ref().map(|_| "description"),
+        req.status.as_ref().map(|_| "status"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let change = history(
+        &state,
+        &org,
+        "update_workspace",
+        ChangeAction::Updated,
+        Some(&existing.public_id),
+        &fields,
+    )
+    .await?;
     let row = state
         .db
         .update_workspace(
@@ -250,6 +283,7 @@ pub async fn update_workspace(
             }
         })?
         .ok_or_else(not_found)?;
+    change.finish(&row.public_id).await;
     Ok(Json(workspace_response(row)))
 }
 
@@ -282,12 +316,46 @@ pub async fn delete_workspace(
         .await
         .map_err(internal_error)?
         .ok_or_else(not_found)?;
+    let change = history(
+        &state,
+        &org,
+        "delete_workspace",
+        ChangeAction::Deleted,
+        Some(&existing.public_id),
+        &[],
+    )
+    .await?;
     state
         .db
         .archive_workspace(org.org_id, existing.id)
         .await
         .map_err(internal_error)?;
+    change.finish(&existing.public_id).await;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// These routes write storage directly rather than through the workspace
+/// commands, so they record their history entry themselves.
+async fn history(
+    state: &ApiState,
+    org: &ResolvedOrg,
+    operation: &'static str,
+    action: ChangeAction,
+    entity_ref: Option<&str>,
+    fields: &[&str],
+) -> Result<RestChange, (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(org);
+    let kind = EntityKind::Workspace;
+    Ok(RestChange::begin(
+        state.db.clone(),
+        caller,
+        operation,
+        kind,
+        action,
+        entity_ref,
+        fields,
+    )
+    .await?)
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {

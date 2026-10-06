@@ -1434,6 +1434,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/context/{entity_ref}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/context/{entity_ref} - Read an entity's manager context */
+    get: operations["get_manager_context"];
+    /** PUT /v1/context/{entity_ref} - Replace an entity's manager context */
+    put: operations["set_manager_context"];
+    post?: never;
+    /** DELETE /v1/context/{entity_ref} - Empty an entity's manager context */
+    delete: operations["clear_manager_context"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/context/{entity_ref}/append": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/context/{entity_ref}/append - Add a paragraph to an entity's manager context */
+    post: operations["append_manager_context"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/durable/circuit-breakers": {
     parameters: {
       query?: never;
@@ -6670,6 +6706,11 @@ export interface components {
      * @enum {string}
      */
     AppStatus: "draft" | "published" | "archived" | "deleted";
+    /** @description Add a paragraph to an entity's manager context. */
+    AppendManagerContextRequest: {
+      /** @description The paragraph to add, markdown. */
+      text: string;
+    };
     /** @description Presentation and search metadata for one curated agent avatar. */
     AvatarPreset: {
       /** @description Short description of the preset's appearance. */
@@ -7423,6 +7464,14 @@ export interface components {
        * @example v1
        */
       api_version?: string | null;
+      /**
+       * Format: int64
+       * @description The changed entity's manager context revision the caller read
+       *     (`get_manager_context`). A newer one refuses the change with
+       *     `manager_context_changed`; omitting it while the entity has context
+       *     adds a warning.
+       */
+      context_revision?: number | null;
       /**
        * @description Opaque client annotations (for example the client name and version),
        *     recorded on the request trace. Never interpreted by the command.
@@ -14182,6 +14231,29 @@ export interface components {
       /** @description Absolute path of the sandbox workspace root. */
       workspace_path?: string | null;
     };
+    /** @description An entity's manager context. */
+    ManagerContext: {
+      /** @description Markdown, at most 16 KiB. Empty when none was written or it was cleared. */
+      content: string;
+      /** @example agent */
+      entity_kind: string;
+      /** @example agent_01933b5a000070008000000000000001 */
+      entity_ref: string;
+      /**
+       * Format: int64
+       * @description Grows by one per write; 0 when none was ever written. Pass it as
+       *     `--expected-revision` to a context write or `--context-revision` to a
+       *     change of the entity.
+       */
+      revision: number;
+      /** Format: date-time */
+      updated_at?: string | null;
+      /**
+       * Format: uuid
+       * @description The user the last write was made as.
+       */
+      updated_by_user_id?: string | null;
+    };
     /** @description Authored values only: no organisation, agent, model, harness or channel IDs. */
     Manifest: {
       /** @description Named capabilities, optionally with configuration; the host validates availability. */
@@ -19387,6 +19459,17 @@ export interface components {
     SetDefaultDecisionModel: {
       /** @description Prefixed saved model ID; omit or pass null to clear the default. */
       model_id?: string | null;
+    };
+    /** @description Replace an entity's manager context. */
+    SetManagerContextRequest: {
+      /** @description The whole document, markdown, at most 16 KiB. */
+      content: string;
+      /**
+       * Format: int64
+       * @description The revision this edit was based on (0 when none exists yet); refused
+       *     with `manager_context_changed` when the stored one differs.
+       */
+      expected_revision?: number | null;
     };
     /** @description Request body for setting a preference value. */
     SetPreferenceRequest: {
@@ -27813,6 +27896,255 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProviderResponse"][];
+        };
+      };
+    };
+  };
+  get_manager_context: {
+    parameters: {
+      query?: {
+        /**
+         * @description Entity kind, needed only for ids without a prefix (`schedule`,
+         *     `saved_report`, `check_rule`).
+         */
+        kind?: string;
+        /** @description For DELETE: the revision being cleared; refused when stale. */
+        expected_revision?: number;
+      };
+      header?: never;
+      path: {
+        /** @description The entity's public id, e.g. agent_01933b5a... */
+        entity_ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The manager context; empty content and revision 0 when none was written */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagerContext"];
+        };
+      };
+      /** @description Unknown kind, or a kind without manager context */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description The caller does not manage this kind, or is the entity's own session */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Entity not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  set_manager_context: {
+    parameters: {
+      query?: {
+        /**
+         * @description Entity kind, needed only for ids without a prefix (`schedule`,
+         *     `saved_report`, `check_rule`).
+         */
+        kind?: string;
+        /** @description For DELETE: the revision being cleared; refused when stale. */
+        expected_revision?: number;
+      };
+      header?: never;
+      path: {
+        /** @description The entity's public id */
+        entity_ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetManagerContextRequest"];
+      };
+    };
+    responses: {
+      /** @description The new manager context */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagerContext"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Entity not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Stale expected_revision (manager_context_changed) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Larger than 16 KiB */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  clear_manager_context: {
+    parameters: {
+      query?: {
+        /**
+         * @description Entity kind, needed only for ids without a prefix (`schedule`,
+         *     `saved_report`, `check_rule`).
+         */
+        kind?: string;
+        /** @description For DELETE: the revision being cleared; refused when stale. */
+        expected_revision?: number;
+      };
+      header?: never;
+      path: {
+        /** @description The entity's public id */
+        entity_ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The emptied manager context, with its new revision */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagerContext"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Entity not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Stale expected_revision (manager_context_changed) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  append_manager_context: {
+    parameters: {
+      query?: {
+        /**
+         * @description Entity kind, needed only for ids without a prefix (`schedule`,
+         *     `saved_report`, `check_rule`).
+         */
+        kind?: string;
+        /** @description For DELETE: the revision being cleared; refused when stale. */
+        expected_revision?: number;
+      };
+      header?: never;
+      path: {
+        /** @description The entity's public id */
+        entity_ref: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AppendManagerContextRequest"];
+      };
+    };
+    responses: {
+      /** @description The new manager context */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ManagerContext"];
+        };
+      };
+      /** @description Forbidden */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Entity not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Larger than 16 KiB */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
     };

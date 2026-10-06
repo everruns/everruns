@@ -2,6 +2,7 @@ use crate::api::state::ApiState;
 use crate::auth::ResolvedOrg;
 use crate::domains::agents::AGENT_MANAGE;
 use crate::domains::agents::credentials::{AgentCredentialBinding, CreateAgentCredentialBinding};
+use crate::domains::change_history::{ChangeAction, EntityKind, rest::RestChange};
 use crate::domains::common::Command;
 use crate::kernel_imports::{Caller, contracts::typed_id::AgentId};
 use axum::{
@@ -130,6 +131,14 @@ pub async fn set_credential_value(
                 .into_response(StatusCode::BAD_REQUEST),
         );
     }
+    let change = credential_change(
+        &state,
+        &org,
+        &public_id,
+        "set_agent_credential_value",
+        ChangeAction::Updated,
+    )
+    .await?;
     let encryption = state
         .encryption
         .as_ref()
@@ -143,6 +152,7 @@ pub async fn set_credential_value(
         .await
         .map_err(|_| ErrorResponse::internal_error())?
         .ok_or_else(|| ErrorResponse::not_found("Credential binding"))?;
+    change.finish(&public_id).await;
     Ok(Json(AgentCredentialBinding::from_row(row, &public_id)))
 }
 
@@ -165,15 +175,39 @@ pub async fn delete_credential_binding(
     State(state): State<ApiState>,
     Path((agent_id, binding_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let (internal_id, _) = resolve_agent(&state, &org, &agent_id).await?;
+    let (internal_id, public_id) = resolve_agent(&state, &org, &agent_id).await?;
+    let change = credential_change(
+        &state,
+        &org,
+        &public_id,
+        "delete_agent_credential_binding",
+        ChangeAction::Detached,
+    )
+    .await?;
     let deleted = state
         .db
         .delete_agent_mcp_secret_binding(org.org_id, internal_id, binding_id)
         .await
         .map_err(|_| ErrorResponse::internal_error())?;
     if deleted {
+        change.finish(&public_id).await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ErrorResponse::not_found("Credential binding"))
     }
+}
+
+/// Credential values are written here, not through a command, so the change
+/// is recorded on the parent agent's history (`change_history::rest`). The
+/// value itself never reaches history.
+async fn credential_change(
+    state: &ApiState,
+    org: &ResolvedOrg,
+    agent_ref: &str,
+    operation: &'static str,
+    action: ChangeAction,
+) -> Result<RestChange, (StatusCode, Json<ErrorResponse>)> {
+    let (db, caller, kind) = (state.db.clone(), Caller::from(org), EntityKind::Agent);
+    let fields = &["credentials"];
+    Ok(RestChange::begin(db, caller, operation, kind, action, Some(agent_ref), fields).await?)
 }

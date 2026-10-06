@@ -27,6 +27,7 @@ pub mod github_app_rows;
 pub mod harness_store;
 mod health_issues;
 mod ingress;
+pub mod manager_context;
 pub use health_issues::*;
 pub mod late_generation_usage;
 pub mod leased_resource_store;

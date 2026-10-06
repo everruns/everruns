@@ -857,7 +857,7 @@ pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema
                         .map_err(|e| CommandError::forbidden(e.message))?;
                 }
                 // Entity history: an invalid reason fails before anything changes.
-                let pending = crate::domains::change_history::PendingChange::of(&self, ctx)?;
+                let pending = super::change_history::PendingChange::of(&self, ctx).await?;
                 let output = self.execute(ctx).await?;
                 crate::domains::change_history::PendingChange::record(pending, &meta, ctx, &output)
                     .await;

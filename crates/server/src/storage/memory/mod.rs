@@ -33,6 +33,7 @@ mod health_issues;
 mod knowledge_bases;
 mod knowledge_indexes;
 mod late_generation_usage;
+mod manager_context;
 mod mcp_event_subscriptions;
 mod mcp_servers;
 mod memories;
@@ -257,6 +258,7 @@ pub struct InMemoryDatabase {
         HashMap<command_idempotency::IdempotencyRowKey, command_idempotency::MemoryIdempotencyKey>,
     >,
     entity_changes: RwLock<Vec<crate::storage::entity_changes::EntityChangeRow>>,
+    manager_context: RwLock<Vec<crate::storage::manager_context::ManagerContextRow>>,
     agent_trigger_mcp_subscriptions: RwLock<
         HashMap<TriggerId, super::agent_trigger_mcp_subscriptions::AgentTriggerMcpSubscriptionRow>,
     >,
@@ -438,6 +440,7 @@ impl Default for InMemoryDatabase {
             usage_generations: RwLock::new(HashMap::new()),
             command_idempotency_keys: RwLock::new(HashMap::new()),
             entity_changes: RwLock::new(Vec::new()),
+            manager_context: RwLock::new(Vec::new()),
             agent_trigger_mcp_subscriptions: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),

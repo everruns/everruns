@@ -96,6 +96,16 @@ pub fn routes(state: AppState) -> Router {
             "/v1/history/{entity_ref}",
             get(super::history::list_entity_history),
         )
+        .route(
+            "/v1/context/{entity_ref}",
+            get(super::manager_context::get_manager_context)
+                .put(super::manager_context::set_manager_context)
+                .delete(super::manager_context::clear_manager_context),
+        )
+        .route(
+            "/v1/context/{entity_ref}/append",
+            post(super::manager_context::append_manager_context),
+        )
         .with_state(state)
 }
 
@@ -156,6 +166,12 @@ pub struct CommandRequest {
     #[serde(default)]
     #[schema(example = "Make the support agent kid friendly, as requested in the product review")]
     pub reason: Option<String>,
+    /// The changed entity's manager context revision the caller read
+    /// (`get_manager_context`). A newer one refuses the change with
+    /// `manager_context_changed`; omitting it while the entity has context
+    /// adds a warning.
+    #[serde(default)]
+    pub context_revision: Option<i64>,
 }
 
 /// A command's result.
@@ -356,15 +372,17 @@ async fn run(
     let mut context = catalog_context(org, state);
     let intent = crate::domains::change_history::ChangeIntent {
         idempotency_key: idempotency_key.clone(),
+        context_revision: request.context_revision,
         ..crate::domains::change_history::ChangeIntent::on(
             crate::domains::change_history::ChangeSurface::Commands,
         )
     }
     .with_reason(request.reason);
+    let notices = intent.notices.clone();
     context.domain_ctx = context.domain_ctx.with_change_intent(intent);
     let output = catalog::dispatch_named(&name, request.params, &context).await?;
 
-    let mut warnings = Vec::new();
+    let mut warnings = notices.take();
     if let Some(sent) = request.schema_hash.as_deref()
         && sent != current_hash
     {

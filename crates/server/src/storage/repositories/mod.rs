@@ -32,6 +32,7 @@ mod health_issues;
 mod knowledge_bases;
 mod knowledge_indexes;
 mod late_generation_usage;
+mod manager_context;
 mod mcp_event_subscriptions;
 mod mcp_servers;
 mod memory;

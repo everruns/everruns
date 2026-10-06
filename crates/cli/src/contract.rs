@@ -170,12 +170,18 @@ pub async fn execute(client: &ApiClient<'_>, wire_name: &str, mut params: Value)
     let reason = params
         .as_object_mut()
         .and_then(|object| object.remove(everruns_cli_contract::REASON_FIELD));
+    let context_revision = params
+        .as_object_mut()
+        .and_then(|object| object.remove(everruns_cli_contract::CONTEXT_REVISION_FIELD));
     let mut body = json!({
         "params": params,
         "metadata": { "client": concat!("everruns-cli/", env!("CARGO_PKG_VERSION")) },
     });
     if let Some(reason) = reason {
         body["reason"] = reason;
+    }
+    if let Some(revision) = context_revision {
+        body["context_revision"] = revision;
     }
     let response = client
         .post_command(
