@@ -986,17 +986,17 @@ async fn assert_health_counters_match_counts(pool: &PgPool) {
     let row = sqlx::query(
         r#"
         SELECT
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'), 0) AS c_tc,
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'tasks_completed'), 0)::BIGINT AS c_tc,
             (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'completed') AS a_tc,
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_failed'), 0) AS c_tf,
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'tasks_failed'), 0)::BIGINT AS c_tf,
             (SELECT COUNT(*) FROM durable_task_queue WHERE status IN ('failed', 'dead')) AS a_tf,
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_started'), 0) AS c_ts,
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'tasks_started'), 0)::BIGINT AS c_ts,
             (SELECT COUNT(*) FROM durable_task_queue WHERE claimed_at IS NOT NULL) AS a_ts,
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_completed'), 0) AS c_wc,
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'workflows_completed'), 0)::BIGINT AS c_wc,
             (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'completed') AS a_wc,
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_failed'), 0) AS c_wf,
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'workflows_failed'), 0)::BIGINT AS c_wf,
             (SELECT COUNT(*) FROM durable_workflow_instances WHERE status IN ('failed', 'cancelled')) AS a_wf,
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_started'), 0) AS c_ws,
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'workflows_started'), 0)::BIGINT AS c_ws,
             (SELECT COUNT(*) FROM durable_workflow_instances WHERE started_at IS NOT NULL) AS a_ws
         "#,
     )
@@ -1141,7 +1141,7 @@ async fn test_health_query_constant_time_with_large_history() {
         .unwrap();
 
     let before: i64 =
-        sqlx::query_scalar("SELECT COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'), 0)")
+        sqlx::query_scalar("SELECT COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'tasks_completed'), 0)::BIGINT")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1167,7 +1167,7 @@ async fn test_health_query_constant_time_with_large_history() {
     .unwrap();
 
     let after: i64 = sqlx::query_scalar(
-        "SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'",
+        "SELECT SUM(value)::BIGINT FROM durable_stat_counters WHERE name = 'tasks_completed'",
     )
     .fetch_one(&pool)
     .await
@@ -1200,8 +1200,8 @@ async fn test_health_query_constant_time_with_large_history() {
         SELECT
             (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'pending'),
             (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'claimed'),
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'), 0),
-            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_started'), 0)
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'tasks_completed'), 0)::BIGINT,
+            COALESCE((SELECT SUM(value) FROM durable_stat_counters WHERE name = 'tasks_started'), 0)::BIGINT
         "#,
     )
     .fetch_all(&pool)
@@ -1216,7 +1216,7 @@ async fn test_health_query_constant_time_with_large_history() {
     // Cleanup (cascades to the N tasks; delete triggers restore the counter).
     cleanup_workflow(&store, workflow_id).await;
     let restored: i64 = sqlx::query_scalar(
-        "SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'",
+        "SELECT SUM(value)::BIGINT FROM durable_stat_counters WHERE name = 'tasks_completed'",
     )
     .fetch_one(&pool)
     .await
