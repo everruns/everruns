@@ -1188,11 +1188,13 @@ fn capabilities_follow_the_endpoint_config() {
         "agent tools stay private"
     );
     assert_eq!(wire["custom"]["everruns"]["usage"], false);
+    assert!(wire.get("state").is_none(), "state undeclared when hidden");
 
     let mut config = reasoning_config();
     config.subagents_visible = true;
     config.tool_approval_interrupts = true;
     config.usage_visible = true;
+    config.state_visible = true;
     let wire = serde_json::to_value(crate::api::ag_ui_capabilities::capabilities(
         "Bot",
         Some("Helps"),
@@ -1205,4 +1207,63 @@ fn capabilities_follow_the_endpoint_config() {
     assert_eq!(wire["multiAgent"]["delegation"], true);
     assert_eq!(wire["humanInTheLoop"]["approvals"], true);
     assert_eq!(wire["custom"]["everruns"]["usage"], true);
+    assert_eq!(
+        wire["state"],
+        serde_json::json!({ "snapshots": true, "deltas": true })
+    );
+}
+
+/// The todo list reaches the stream as shared state only when the endpoint
+/// opts in, because its items are `write_todos` arguments and public tool
+/// visibility never shows tool arguments.
+#[test]
+fn todo_list_is_shared_state_only_when_the_endpoint_opts_in() {
+    let written = |status: &str| {
+        serde_json::json!({
+            "success": true,
+            "todos": [{ "content": "Plan", "activeForm": "Planning", "status": status }],
+        })
+        .to_string()
+    };
+
+    let mut hidden = TestRun::new();
+    hidden.tool_started("call-1", "write_todos", None);
+    hidden.tool_completed("call-1", "write_todos", &written("in_progress"));
+    assert!(
+        !hidden.types().iter().any(|kind| kind.starts_with("STATE_")),
+        "{:?}",
+        hidden.types()
+    );
+
+    let mut config = test_config();
+    config.state_visible = true;
+    let mut shown = TestRun::with_config(&config);
+    shown.tool_started("call-1", "write_todos", None);
+    shown.tool_completed("call-1", "write_todos", &written("in_progress"));
+    shown.tool_started("call-2", "write_todos", None);
+    shown.tool_completed("call-2", "write_todos", &written("completed"));
+    let state: Vec<_> = shown
+        .events
+        .iter()
+        .filter_map(|event| match event {
+            AgUiEvent::StateSnapshot(snapshot) => Some(serde_json::json!({
+                "snapshot": snapshot.snapshot,
+            })),
+            AgUiEvent::StateDelta(delta) => Some(serde_json::json!({
+                "delta": delta.delta,
+            })),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        state,
+        [
+            serde_json::json!({ "snapshot": { "todos": [
+                { "content": "Plan", "activeForm": "Planning", "status": "in_progress" },
+            ] } }),
+            serde_json::json!({ "delta": [
+                { "op": "replace", "path": "/todos/0/status", "value": "completed" },
+            ] }),
+        ]
+    );
 }

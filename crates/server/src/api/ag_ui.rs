@@ -35,7 +35,9 @@ use everruns_contracts::execution_phase::ExecutionPhase;
 use everruns_contracts::typed_id::ImageId;
 #[cfg(test)]
 use everruns_contracts::user_facing_error::codes as user_facing_error_codes;
-use everruns_core::ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure, public_text};
+use everruns_core::ag_ui::projection::{
+    ProjectionPolicy, Projector, TurnFailure, latest_todos, public_text,
+};
 use everruns_core::ag_ui::{
     AssistantMessage as AgUiAssistantMessage, Event as AgUiEvent, Message as AgUiMessage,
     MessagesSnapshotEvent as AgUiMessagesSnapshotEvent, PROTOCOL_VERSION,
@@ -677,6 +679,16 @@ pub(crate) async fn run_app_agent_stream(
         policy.session_id = Some(session.session.id.to_string());
     }
     let mut projector = Projector::new(thread_id.clone(), run_id.clone(), policy);
+    // Shared state starts from the session's todo list, so a client that
+    // reconnects holds what one that followed along does. Queued now, it
+    // streams right after the initial events and before the turn's.
+    if let Some(todos) = latest_todos(
+        snapshot_messages
+            .iter()
+            .map(|message| message.content.as_slice()),
+    ) {
+        projector.restore_todos(todos);
+    }
     // Version negotiation: a 1.0 consumer declares `protocolVersion`; answer
     // with ours. A pre-versioning consumer gets no field it might reject.
     let mut run_started = AgUiRunStartedEvent::new(thread_id, run_id);
@@ -1134,6 +1146,7 @@ fn public_projection_policy(config: &AgUiChannelConfig) -> ProjectionPolicy {
         subagents_visible: config.subagents_visible,
         // The model rides with usage, which already names it.
         model_visible: config.usage_visible,
+        state_visible: config.state_visible,
         session_id: None,
         error: std::sync::Arc::new(|failure: &TurnFailure| {
             public_run_error(PublicError::from_internal_code(failure.code.as_deref()))

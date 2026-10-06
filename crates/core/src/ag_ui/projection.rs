@@ -43,10 +43,10 @@ use serde_json::Value;
 use crate::ag_ui::{
     ActivitySnapshotEvent, BaseEvent, Event, Interrupt, Metadata, ReasoningMessageContentEvent,
     ReasoningMessageEndEvent, ReasoningMessageStartEvent, ReasoningSpanEvent, RunErrorEvent,
-    RunFinishedEvent, RunFinishedOutcome, SubagentErrorEvent, SubagentFinishedEvent,
-    SubagentFinishedOutcome, SubagentStartedEvent, TextMessageContentEvent, TextMessageEndEvent,
-    TextMessageStartEvent, TokenUsage, ToolCall, ToolCallArgsEvent, ToolCallEndEvent,
-    ToolCallStartEvent,
+    RunFinishedEvent, RunFinishedOutcome, StateDeltaEvent, StateSnapshotEvent, SubagentErrorEvent,
+    SubagentFinishedEvent, SubagentFinishedOutcome, SubagentStartedEvent, TextMessageContentEvent,
+    TextMessageEndEvent, TextMessageStartEvent, TokenUsage, ToolCall, ToolCallArgsEvent,
+    ToolCallEndEvent, ToolCallStartEvent, diff,
 };
 
 /// The metadata key Everruns-specific run details ride under. `ag-ui` is
@@ -56,6 +56,15 @@ pub const METADATA_KEY: &str = "everruns";
 /// `activityType` of the activity a subagent reports: structured progress, and
 /// the note that it carries on in the background after the run ends.
 pub const SUBAGENT_ACTIVITY_TYPE: &str = "everruns.subagent";
+
+/// The tool whose result is the agent's todo list: `write_todos` from the
+/// `stateless_todo_list` capability (`crate::builtins`, a feature this module
+/// does not depend on). Every call carries the complete list.
+pub const TODO_TOOL_NAME: &str = "write_todos";
+
+/// The shared-state key the todo list rides under: the run's state is
+/// `{ "todos": [{ "content", "activeForm", "status" }] }`.
+pub const TODOS_STATE_KEY: &str = "todos";
 
 /// A failed turn, as handed to [`ProjectionPolicy::error`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -87,6 +96,9 @@ pub struct ProjectionPolicy {
     /// Name the model in the run's `everruns` metadata. It is the model
     /// `usage` would name, so public channels tie it to `usage_visible`.
     pub model_visible: bool,
+    /// Stream the agent's todo list as shared state: `STATE_SNAPSHOT` the
+    /// first time it is known in a run, `STATE_DELTA` for later changes.
+    pub state_visible: bool,
     /// The session id to name in the run's `everruns` metadata, or `None` to
     /// leave it out. Anonymous channels leave it out.
     pub session_id: Option<String>,
@@ -95,9 +107,9 @@ pub struct ProjectionPolicy {
 }
 
 impl Default for ProjectionPolicy {
-    /// Trusted defaults: reasoning, usage, subagents and the model visible, no
-    /// tool activity text, no session id, and the runtime's error message and
-    /// code passed through.
+    /// Trusted defaults: reasoning, usage, subagents, the model and state
+    /// visible, no tool activity text, no session id, and the runtime's error
+    /// message and code passed through.
     fn default() -> Self {
         Self {
             reasoning_visible: true,
@@ -105,6 +117,7 @@ impl Default for ProjectionPolicy {
             usage_visible: true,
             subagents_visible: true,
             model_visible: true,
+            state_visible: true,
             session_id: None,
             error: Arc::new(|failure: &TurnFailure| RunErrorEvent {
                 code: failure.code.clone(),
@@ -122,6 +135,7 @@ impl std::fmt::Debug for ProjectionPolicy {
             .field("usage_visible", &self.usage_visible)
             .field("subagents_visible", &self.subagents_visible)
             .field("model_visible", &self.model_visible)
+            .field("state_visible", &self.state_visible)
             .field("session_id", &self.session_id)
             .finish_non_exhaustive()
     }
@@ -161,6 +175,9 @@ pub struct Projector {
     open_subagents: Vec<(String, bool)>,
     /// Every invocation this run announced, so a closed one is never reopened.
     seen_subagents: HashSet<String>,
+    /// The shared state this run last sent, `None` until its first
+    /// `STATE_SNAPSHOT`; later changes are `STATE_DELTA`s against it.
+    state: Option<Value>,
     finished: bool,
 }
 
@@ -191,6 +208,7 @@ impl Projector {
             model: None,
             open_subagents: Vec::new(),
             seen_subagents: HashSet::new(),
+            state: None,
             finished: false,
         }
     }
@@ -239,6 +257,31 @@ impl Projector {
         );
         (!everruns.is_empty())
             .then(|| Metadata::from_iter([(METADATA_KEY.to_string(), Value::Object(everruns))]))
+    }
+
+    /// Starts the run from the todo list the session already has, as
+    /// [`latest_todos`] reads it from history, so a client that reconnects
+    /// (or never saw an earlier run) holds the same state as one that
+    /// followed along. Queues a `STATE_SNAPSHOT` when the list is non-empty
+    /// and the policy shows state; call it before projecting the run's
+    /// events. An empty list sends nothing: a fresh client already has none.
+    ///
+    /// ```
+    /// use everruns_core::ag_ui::projection::{ProjectionPolicy, Projector};
+    /// use everruns_core::ag_ui::Event;
+    ///
+    /// let mut projector = Projector::new("thread", "run", ProjectionPolicy::default());
+    /// projector.restore_todos(serde_json::json!([
+    ///     { "content": "Run tests", "activeForm": "Running tests", "status": "pending" },
+    /// ]));
+    /// let Some(Event::StateSnapshot(snapshot)) = projector.pop() else { panic!() };
+    /// assert_eq!(snapshot.snapshot["todos"][0]["status"], "pending");
+    /// ```
+    pub fn restore_todos(&mut self, todos: Value) {
+        let todos = sanitize_todos(&todos);
+        if todos.as_array().is_some_and(|items| !items.is_empty()) {
+            self.set_todos(todos);
+        }
     }
 
     /// Whether the run has ended (`RUN_FINISHED` or `RUN_ERROR` queued).
@@ -403,6 +446,12 @@ impl Projector {
                 }
             }
             "tool.completed" => {
+                if data.get("tool_name").and_then(Value::as_str) == Some(TODO_TOOL_NAME)
+                    && data.get("success").and_then(Value::as_bool) == Some(true)
+                    && let Some(todos) = data.get("result").and_then(todos_from_result)
+                {
+                    self.set_todos(todos);
+                }
                 self.active_tools = self.active_tools.saturating_sub(1);
                 if self.active_tools == 0 && self.tool_activity_shown {
                     if self.span_opened_by_tools {
@@ -440,6 +489,39 @@ impl Projector {
             }
             _ => {}
         }
+    }
+
+    /// The todo list changed: the run's first state is a snapshot, a later
+    /// one the patch from what was last sent, and no change sends nothing.
+    /// State is the parent session's: subagent tool calls stay in the child
+    /// session (see `subagent_task`), so it is never attributed.
+    fn set_todos(&mut self, todos: Value) {
+        if !self.policy.state_visible || self.finished {
+            return;
+        }
+        let state = Value::Object(serde_json::Map::from_iter([(
+            TODOS_STATE_KEY.to_string(),
+            todos,
+        )]));
+        match &self.state {
+            None => self
+                .queue
+                .push_back(Event::StateSnapshot(StateSnapshotEvent {
+                    snapshot: state.clone(),
+                    ..StateSnapshotEvent::default()
+                })),
+            Some(previous) => {
+                let delta = diff(previous, &state);
+                if delta.is_empty() {
+                    return;
+                }
+                self.queue.push_back(Event::StateDelta(StateDeltaEvent {
+                    delta,
+                    ..StateDeltaEvent::default()
+                }));
+            }
+        }
+        self.state = Some(state);
     }
 
     fn finish(&mut self, outcome: Option<RunFinishedOutcome>) {
@@ -850,6 +932,102 @@ impl Projector {
         self.tool_activity_shown = false;
         self.span_opened_by_tools = false;
     }
+}
+
+/// The session's current todo list as its history shows it: the result of
+/// the last successful `write_todos` call, or `None` when the agent never
+/// wrote one. Pass the messages' content oldest first, as history stores it.
+/// [`TodoHistory`] reads the same thing a page at a time.
+pub fn latest_todos<'a>(messages: impl IntoIterator<Item = &'a [ContentPart]>) -> Option<Value> {
+    let mut history = TodoHistory::default();
+    for parts in messages {
+        history.observe(parts);
+    }
+    history.into_todos()
+}
+
+/// [`latest_todos`] fed incrementally, for history read in pages: a call and
+/// its result can land on different pages.
+#[derive(Clone, Debug, Default)]
+pub struct TodoHistory {
+    /// `write_todos` calls whose result has not been seen yet.
+    calls: HashSet<String>,
+    latest: Option<Value>,
+}
+
+impl TodoHistory {
+    /// Reads one message's content, the next oldest first.
+    pub fn observe(&mut self, parts: &[ContentPart]) {
+        for part in parts {
+            match part {
+                ContentPart::ToolCall(call) if call.name == TODO_TOOL_NAME => {
+                    self.calls.insert(call.id.clone());
+                }
+                ContentPart::ToolResult(result) if self.calls.remove(&result.tool_call_id) => {
+                    if result.error.is_none()
+                        && let Some(todos) = result.result.as_ref().and_then(todos_from_result)
+                    {
+                        self.latest = Some(todos);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// The latest list seen, if any.
+    pub fn into_todos(self) -> Option<Value> {
+        self.latest
+    }
+}
+
+/// The todo list in a `write_todos` result, in any of the shapes the runtime
+/// stores one: the tool's JSON object, that object as a JSON string, or
+/// content parts whose text is that string (`tool.completed`).
+fn todos_from_result(result: &Value) -> Option<Value> {
+    match result {
+        Value::Object(object) => object
+            .get(TODOS_STATE_KEY)
+            .filter(|todos| todos.is_array())
+            .map(sanitize_todos),
+        Value::String(text) => serde_json::from_str::<Value>(text)
+            .ok()
+            .filter(Value::is_object)
+            .and_then(|value| todos_from_result(&value)),
+        Value::Array(parts) => parts.iter().rev().find_map(|part| {
+            (part.get("type").and_then(Value::as_str) == Some("text"))
+                .then(|| part.get("text"))
+                .flatten()
+                .and_then(todos_from_result)
+        }),
+        _ => None,
+    }
+}
+
+/// Keeps only the todo fields the tool defines, as strings, so whatever
+/// else a result carries never reaches the client's state.
+fn sanitize_todos(todos: &Value) -> Value {
+    let items = todos
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_object)
+                .map(|item| {
+                    let fields =
+                        ["content", "activeForm", "status"]
+                            .into_iter()
+                            .filter_map(|key| {
+                                item.get(key)
+                                    .filter(|value| value.is_string())
+                                    .map(|value| (key.to_string(), value.clone()))
+                            });
+                    Value::Object(serde_json::Map::from_iter(fields))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Value::Array(items)
 }
 
 fn parse<T: DeserializeOwned>(data: &Value) -> Option<T> {

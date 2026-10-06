@@ -251,6 +251,7 @@ pub use threads::{
     AgUiThreads, InMemoryThreadStore, ThreadError, ThreadSession, ThreadStore, ThreadStoreError,
 };
 
+use everruns_core::ag_ui::projection::TodoHistory;
 pub use everruns_core::ag_ui::projection::{ProjectionPolicy, Projector, TurnFailure};
 pub use everruns_core::ag_ui::{
     Event, Interrupt, Message, PROTOCOL_VERSION, ResumeEntry, ResumeStatus, RunAgentInput,
@@ -1194,6 +1195,13 @@ impl Session {
                 );
             }
         }
+        // Shared state starts from the session's todo list, read before the
+        // run sends anything so it is the list the turn starts from.
+        let todos = if policy.state_visible {
+            self.current_todos().await
+        } else {
+            None
+        };
         // Subscribe before anything can happen, so no event of this run and
         // no park is missed.
         let events = self.events();
@@ -1253,6 +1261,9 @@ impl Session {
             started = started.with_protocol_version();
         }
         let mut projector = Projector::new(input.thread_id, input.run_id, policy);
+        if let Some(todos) = todos {
+            projector.restore_todos(todos);
+        }
         match start {
             Start::Follow => {}
             Start::Park(calls, interrupts) => projector.park(calls, interrupts),
@@ -1275,6 +1286,42 @@ impl Session {
             inner: Box::pin(stream),
             sent,
         })
+    }
+}
+
+impl Session {
+    /// The todo list the session's history ends with, for a run's first
+    /// `STATE_SNAPSHOT`. Walks the history snapshot a bounded page at a time,
+    /// keeping only the latest list; a backend that cannot read history
+    /// starts the run without state rather than failing it.
+    async fn current_todos(&self) -> Option<Value> {
+        let query = match self.history().limit(256) {
+            Ok(query) => query,
+            Err(error) => {
+                tracing::debug!(%error, "AG-UI: history page size refused; no initial state");
+                return None;
+            }
+        };
+        let mut pages = query.pages();
+        let mut todos = TodoHistory::default();
+        loop {
+            match pages.next_page().await {
+                Ok(Some(page)) => {
+                    for message in page.iter() {
+                        todos.observe(&message.content);
+                    }
+                }
+                Ok(None) => return todos.into_todos(),
+                Err(error) => {
+                    tracing::debug!(
+                        session_id = %self.session_id(),
+                        %error,
+                        "AG-UI: history unreadable; no initial state"
+                    );
+                    return None;
+                }
+            }
+        }
     }
 }
 

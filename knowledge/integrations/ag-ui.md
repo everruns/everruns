@@ -77,7 +77,7 @@ errors visible), because the developer owns both ends.
 - **Input.** The session owns the conversation, so a run sends only the last
   user message, or the trailing `tool` messages that answer parked frontend
   calls. Earlier messages are read only to seed a new thread (below);
-  `state` and `forwardedProps` are not read.
+  `state` and `forwardedProps` are not read (see [Shared state](#shared-state)).
 - **Threads.** `AgUiThreads` resolves `threadId` to a session through a
   pluggable `ThreadStore` (in-memory, or `SqliteThreadStore` behind `local`):
   create on first sight, reopen through `Engine::attach` after a restart. The
@@ -307,6 +307,27 @@ as terminal for the stream and not for the subagent. Success or error would
 claim an outcome nobody has seen. Its later completion belongs to whatever
 turn wakes the parent, not to this run.
 
+## Shared state
+
+The stream carries the agent's todo list as AG-UI shared state, one way:
+`{ "todos": [{ "content", "activeForm", "status" }] }`, the fields the
+`write_todos` tool defines and nothing else. It comes from the last successful
+`write_todos` result, read from `tool.completed` live and from the transcript
+at run start (`latest_todos`, `TodoHistory`), the one source all three hosts
+see. A run's first state is a `STATE_SNAPSHOT`; later changes are `STATE_DELTA`
+JSON Patches from what that run last sent (`ag_ui::diff`), and an unchanged
+list sends nothing. A run on a session that already has a non-empty list opens
+with its snapshot, right after `RUN_STARTED`, so a reconnecting client agrees
+with one that followed along; a session that never wrote one sends no state.
+Subagent todos stay in the child session and are not projected.
+
+`ProjectionPolicy::state_visible` gates it: on for the framework and serve
+(trusted), and per endpoint on the server through `state_visible`, default off
+because the items are `write_todos` arguments, which public tool visibility
+never shows, and forced off for Public Chat. Two-way state is a later step:
+the client's `RunAgentInput.state` is still not read, and no tool writes
+client state.
+
 ## Run metadata
 
 `RUN_STARTED`, `RUN_FINISHED` and `RUN_ERROR` carry `metadata.everruns`
@@ -322,7 +343,8 @@ behind the same auth, gates and rate limit as a run
 ([`ag_ui_capabilities.rs`](../../crates/server/src/api/ag_ui_capabilities.rs)).
 It is derived from the endpoint config only: identity (the endpoint name and
 description, `type: everruns`), streaming, client-provided tools, interrupts,
-and the opt-ins (reasoning, approvals, subagents, and usage under
+and the opt-ins (reasoning, approvals, subagents, `state` snapshots and
+deltas when `state_visible` is set, and usage under
 `custom.everruns`). The agent's own tools are not listed, and `multiAgent` is
 undeclared unless subagents are visible. The stream stays authoritative.
 
@@ -334,5 +356,6 @@ activity uses only the endpoint's configured text. The decided policy for the
 1.0 additions: anonymous endpoints may receive `ask_user` interrupts, while
 approval interrupts (`tool_approval_interrupts`), token usage
 (`usage_visible`) and subagents (`subagents_visible`) stay off unless the
-endpoint enables them. Public Chat keeps all three off. See TM-TENANT-016,
+endpoint enables them, as does shared state (`state_visible`). Public Chat
+keeps all four off. See TM-TENANT-016,
 TM-TOOL-052 and TM-API-026.

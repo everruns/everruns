@@ -472,6 +472,10 @@ pub struct AgUiChannelConfig {
     /// Stream subagent work as `SUBAGENT_*`; off because child output and errors reach the client.
     #[serde(default, skip_serializing_if = "is_false")]
     pub subagents_visible: bool,
+    /// Stream the agent's todo list as AG-UI shared state; off because todos
+    /// are `write_todos` arguments, which public tool visibility never shows.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub state_visible: bool,
     /// Optional inline auth config for this public endpoint. When omitted,
     /// legacy `anonymous` + `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -801,6 +805,7 @@ impl PublicChatChannelConfig {
             tool_approval_interrupts: false,
             usage_visible: false,
             subagents_visible: false,
+            state_visible: false,
             auth: self.auth.clone(),
         }
     }
@@ -942,6 +947,7 @@ mod tests {
         assert_eq!(config.tool_visibility, PublicToolVisibility::Generic);
         assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
         assert!(!config.reasoning_summary_visible && !config.subagents_visible);
+        assert!(!config.state_visible);
     }
 
     #[test]
@@ -957,6 +963,7 @@ mod tests {
             tool_approval_interrupts: true,
             usage_visible: true,
             subagents_visible: true,
+            state_visible: true,
             auth: None,
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -969,7 +976,7 @@ mod tests {
         assert_eq!(parsed.generic_tool_text, "Please wait");
         assert!(parsed.reasoning_summary_visible);
         assert!(parsed.tool_approval_interrupts && parsed.usage_visible);
-        assert!(parsed.subagents_visible);
+        assert!(parsed.subagents_visible && parsed.state_visible);
     }
 
     #[test]
