@@ -429,8 +429,9 @@ jobs:
             # The weekly `integration-live-sweep.yml` remains the backstop for
             # other shared-crate and dependency regressions.
             daytona:
-              - 'integrations/daytona/**'
-              - '!integrations/daytona/**/*.md'
+              - 'crates/integrations/src/daytona/**'
+              - 'crates/integrations/tests/daytona_*.rs'
+              - '!crates/integrations/src/daytona/**/*.md'
               - 'crates/contracts/src/session_sandbox.rs'
               - 'crates/contracts/src/sandbox_checkpoint.rs'
               - 'crates/capabilities/src/session_sandbox.rs'
@@ -439,15 +440,18 @@ jobs:
               - 'crates/capabilities/src/sandbox_state.rs'
               - '.github/workflows/ci.yml'
             cursor:
-              - 'integrations/cursor/**'
-              - '!integrations/cursor/**/*.md'
+              - 'crates/integrations/src/cursor/**'
+              - 'crates/integrations/tests/cursor_*.rs'
+              - '!crates/integrations/src/cursor/**/*.md'
             browserless:
-              - 'integrations/browserless/**'
-              - '!integrations/browserless/**/*.md'
+              - 'crates/integrations/src/browserless/**'
+              - 'crates/integrations/tests/browserless_*.rs'
+              - '!crates/integrations/src/browserless/**/*.md'
               - '.github/workflows/ci.yml'
             e2b:
-              - 'integrations/e2b/**'
-              - '!integrations/e2b/**/*.md'
+              - 'crates/integrations/src/e2b/**'
+              - 'crates/integrations/tests/e2b_*.rs'
+              - '!crates/integrations/src/e2b/**/*.md'
               - '.github/workflows/ci.yml'
 
   format:
@@ -532,12 +536,8 @@ jobs:
             -p everruns-durable-engine \
             -p everruns-drivers \
             -p everruns-integrations \
+            -p everruns-integrations-experimental \
             -p everruns-turbopuffer \
-            -p everruns-integrations-duckduckgo \
-            -p everruns-integrations-github \
-            -p everruns-integrations-daytona \
-            -p everruns-integrations-e2b \
-            -p everruns-integrations-parallel \
             -p everruns-serve \
             -p everruns-serve-build \
             -p everruns-serve-macros \
@@ -1062,7 +1062,10 @@ jobs:
           # Canonical module tests share one integration binary.
           # Preserve the migrated host fixtures' serial execution contract.
           cargo test -p everruns-core --all-features -- --test-threads=1
-          cargo test -p everruns-integrations-docker --all-features
+          cargo test -p everruns-integrations --features bashkit,brave-search,brave-search-hosted,browserless,cursor,daytona,daytona-test-util,docker,duckduckgo,e2b,filesystem,github,lua,openai-decisions,openai-image,openrouter,parallel,typesafe,typesafe-hosted,web-fetch,modal,modal-test-util -- --test-threads=1
+          # Experimental integrations stay on their own support track; unit and
+          # mock-backed tests run here, while Sprites live tests remain manual.
+          cargo test -p everruns-integrations-experimental --features deno,sprites -- --test-threads=1
           # The integration catalog is the one list naming every plugin-publishing
           # crate; check-integration-catalog.sh guards completeness, these tests
           # guard the entries themselves.
@@ -1122,27 +1125,27 @@ jobs:
           # Do not pass --all-features to integration crates: it enables their *-live-tests
           # features, which fail closed without real credentials. Live tests run in their
           # own dedicated jobs (e.g. `daytona-live-test`) that provide Doppler secrets.
-          cargo test -p everruns-integrations-daytona
-          cargo test -p everruns-integrations-deno
-          cargo test -p everruns-integrations-browserless
-          cargo test -p everruns-integrations-cursor
-          cargo test -p everruns-integrations-e2b
-          cargo test -p everruns-integrations-github
-          cargo test -p everruns-integrations-sprites
+          cargo test -p everruns-integrations --features daytona,daytona-test-util
+          cargo test -p everruns-integrations-experimental --features deno
+          cargo test -p everruns-integrations --features browserless
+          cargo test -p everruns-integrations --features cursor
+          cargo test -p everruns-integrations --features e2b
+          cargo test -p everruns-integrations --features github
+          cargo test -p everruns-integrations-experimental --features sprites
           # The modal feature with its mock-gRPC tool tests; live tests run in
           # modal-integration.yml.
-          cargo test -p everruns-integrations --features modal,test-util
+          cargo test -p everruns-integrations --features modal,modal-test-util
           # The crate must also build with no vendor feature on.
           cargo check -p everruns-integrations --no-default-features
-          cargo test -p everruns-integrations-typesafe
+          cargo test -p everruns-integrations --features typesafe,typesafe-hosted
           # The lib-only half (client, classifier, framework capability) must keep
           # compiling without `hosted`; that is the shape an embedder carries, and
           # nothing else in CI builds it. The typesafe-integration.yml workflow is
-          # path-filtered on integrations/typesafe/**, so a break introduced from
+          # path-filtered on crates/integrations/src/typesafe/**, so a break introduced from
           # everruns-core/-capability/-provider would otherwise reach main unseen.
-          cargo check -p everruns-integrations-typesafe --no-default-features
+          cargo check -p everruns-integrations --no-default-features --features typesafe
           # Wire fixtures only; the live smoke sits behind `live-tests`.
-          cargo test -p everruns-integrations-openai-decisions
+          cargo test -p everruns-integrations --features openai-decisions
 
               ;;
           esac
@@ -1272,7 +1275,7 @@ jobs:
       - name: Run Daytona live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test live_api_test -- --test-threads=1
 
   # Live Browserless API tests — only when integrations/browserless/** changes
   browserless-live-test:
@@ -1311,7 +1314,7 @@ jobs:
       - name: Run Browserless live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features browserless-live-tests --test live_api -- --test-threads=1
 
   # Live E2B API tests — only when integrations/e2b/** changes
   e2b-live-test:
@@ -1350,14 +1353,14 @@ jobs:
       - name: Run E2B live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features e2b-live-tests --test live_api_test -- --test-threads=1
 
   # The `deno-live-test` job is quarantined: the Deno organization's plan no
   # longer includes sandboxes, so `create_sandbox` returns 400
   # VERIFICATION_REQUIRED_FOR_SANDBOXES and the fail-closed live tests can never
   # pass. Per the fail-closed contract we remove the job rather than let it
   # silently skip/pass. The mock-backed unit tests still run above via
-  # `cargo test -p everruns-integrations-deno`, so the client stays covered.
+  # `cargo test -p everruns-integrations-experimental --features deno`, so the client stays covered.
   # Restoring it means re-adding this job, its `deno` path filter and `changes`
   # output, its entry in the `build-check` needs list, and the matrix entry in
   # integration-live-sweep.yml. See EVE-946.
@@ -1481,7 +1484,7 @@ jobs:
         run: sqlx migrate run --source crates/server/migrations
 
       # Keep the number of `cargo test` invocations per shard to a minimum.
-      # everruns-server, everruns-worker and everruns-integrations-e2b recompile
+      # everruns-server, everruns-worker and everruns-integrations recompile
       # on EVERY separate invocation against this package -- ~1m50 each -- even
       # immediately after a `--no-run` build of the exact same targets, so a
       # prebuild step does not help here (it was tried and only added a wave).

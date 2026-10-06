@@ -25,7 +25,7 @@ use rstest::rstest;
 
 use everruns_contracts::model_spec::ModelSpec;
 use everruns_core::builtins::CurrentTimeCapability;
-use everruns_integrations_filesystem::FileSystemCapability;
+use everruns_integrations::filesystem::FileSystemCapability;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
 // ============================================================================

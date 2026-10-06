@@ -124,20 +124,20 @@ pub fn register_environment_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
     grade: everruns_core::DeploymentGrade,
 ) {
-    registry.register(everruns_integrations_filesystem::FileSystemCapability);
-    registry.register(everruns_integrations_bashkit::BashkitShellCapability);
-    registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
-    registry.register(everruns_integrations_openrouter::OpenRouterServerToolsCapability);
+    registry.register(everruns_integrations::filesystem::FileSystemCapability);
+    registry.register(everruns_integrations::bashkit::BashkitShellCapability);
+    registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
+    registry.register(everruns_integrations::openrouter::OpenRouterServerToolsCapability);
     registry.register(everruns_core::builtins::OpenAiServerToolsCapability);
-    registry.register(everruns_integrations_openrouter::ModelScoutCapability);
-    registry.register(everruns_integrations_openrouter::OpenRouterWorkspaceCapability);
+    registry.register(everruns_integrations::openrouter::ModelScoutCapability);
+    registry.register(everruns_integrations::openrouter::OpenRouterWorkspaceCapability);
 
     #[cfg(not(feature = "lua"))]
     let _ = grade;
     #[cfg(feature = "lua")]
     if everruns_core::InternalFeatureFlags::for_deployment(grade).lua {
-        registry.register(everruns_integrations_lua::LuaCapability);
-        registry.register(everruns_integrations_lua::LuaCodeModeCapability);
+        registry.register(everruns_integrations::lua::LuaCapability);
+        registry.register(everruns_integrations::lua::LuaCodeModeCapability);
     }
 }
 

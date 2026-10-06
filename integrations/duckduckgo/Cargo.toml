@@ -1,8 +1,3 @@
-# DuckDuckGo Integration
-# Decision: External integration crate, named in crates/integrations-catalog
-# Decision: Experimental-only (gated behind DeploymentGrade::Dev)
-# Decision: No API key required (DuckDuckGo Instant Answer API is free)
-
 [package]
 name = "everruns-integrations-duckduckgo"
 version.workspace = true
@@ -13,32 +8,16 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-duckduckgo"
-description = "DuckDuckGo Instant Answer search integration for Everruns agents"
-keywords = ["everruns", "duckduckgo", "search", "agents"]
-categories = ["api-bindings", "development-tools"]
+description = "Deprecated compatibility shim for everruns-integrations-duckduckgo"
 readme = "README.md"
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
-
-# HTTP client for DuckDuckGo API
-reqwest.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Async
-async-trait.workspace = true
-tokio.workspace = true
-tracing.workspace = true
+everruns-integrations = { workspace = true, features = ["duckduckgo"] }
 
 [features]
-integration = [] # Gate real-API tests; CI passes --features integration
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
+default = []
+integration = ["everruns-integrations/duckduckgo-integration"]
 
 [lints]
 workspace = true

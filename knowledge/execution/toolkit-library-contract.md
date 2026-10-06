@@ -17,9 +17,9 @@ This is a behavioral convention, not a shared Rust trait crate. Exact public
 items and signatures belong to each toolkit's source and generated API docs:
 
 - [bashkit on docs.rs](https://docs.rs/bashkit) and
-  [`integrations/bashkit/src/lib.rs`](../../integrations/bashkit/src/lib.rs)
+  [`integrations/bashkit/src/lib.rs`](../../crates/integrations/src/bashkit/mod.rs)
 - [fetchkit on docs.rs](https://docs.rs/fetchkit) and
-  [`integrations/web-fetch/src/lib.rs`](../../integrations/web-fetch/src/lib.rs)
+  [`integrations/web-fetch/src/lib.rs`](../../crates/integrations/src/web_fetch/mod.rs)
 - the pinned versions and enabled features in
   [`crates/core/Cargo.toml`](../../crates/core/Cargo.toml)
 

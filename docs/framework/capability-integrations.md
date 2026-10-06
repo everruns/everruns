@@ -16,15 +16,15 @@ execution or network surface.
 
 | `everruns` feature | Default | Implementation | Effect boundary |
 |---|---:|---|---|
-| `filesystem` | Yes | `everruns-integrations-filesystem` | Host-provided, session-scoped filesystem only |
-| `bashkit` | No | `everruns-integrations-bashkit` | Sandboxed shell; HTTP remains capability-config and egress-policy gated |
-| `web-fetch` | No | `everruns-integrations-web-fetch` | FetchKit requests through the host egress contract |
-| `lua` | No | `everruns-integrations-lua` | Vendored Lua 5.4 sandbox; also requires `FEATURE_LUA=prod` at runtime |
+| `filesystem` | Yes | `everruns-integrations` (`filesystem` feature) | Host-provided, session-scoped filesystem only |
+| `bashkit` | No | `everruns-integrations` (`bashkit` feature) | Sandboxed shell; HTTP remains capability-config and egress-policy gated |
+| `web-fetch` | No | `everruns-integrations` (`web-fetch` feature) | FetchKit requests through the host egress contract |
+| `lua` | No | `everruns-integrations` (`lua` feature) | Vendored Lua 5.4 sandbox; also requires `FEATURE_LUA=prod` at runtime |
 | `mcp` | No | `everruns-core` (`mcp` feature) | Remote HTTP MCP through the host egress contract |
 | `mcp-stdio` | No | `everruns-core` (`mcp` feature) | Adds local-process MCP servers and implies `mcp` |
 | `host-shell` | No | `everruns-core` (`host` feature) | `bash` tool over real host processes, bounded by a kernel policy; implies `host-compute` |
 
-| `duckduckgo` | No | `everruns-integrations-duckduckgo` | DuckDuckGo web search through the host egress contract |
+| `duckduckgo` | No | `everruns-integrations` (`duckduckgo` feature) | DuckDuckGo web search through the host egress contract |
 | `a2a` | No | `everruns-capabilities` | Outbound A2A delegation to remote agents; implies `local` |
 | `otel` | No | `everruns-core` (`host` feature) | OpenTelemetry exporter; see [Observability](/observability/) |
 | `braintrust` | No | `everruns-core` (`host` feature) | Braintrust exporter; see [Observability](/observability/) |
@@ -50,7 +50,7 @@ Search supports the ordinary Framework builder:
 
 ```rust
 use everruns::{Agent, OpenAI};
-use everruns_integrations_brave_search::BraveSearch;
+use everruns_integrations::brave_search::BraveSearch;
 
 let agent = Agent::builder()
     .instructions("Search and cite primary sources.")
@@ -61,8 +61,10 @@ let agent = Agent::builder()
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Depend on `everruns-integrations-brave-search` with `default-features = false`
-to omit Platform connector registration. The Framework adapter reads
+Depend on `everruns-integrations` with `default-features = false` and the
+`brave-search` feature. Add `brave-search-integration` to opt into Platform
+connector registration; leave it off for a Framework-only dependency. The
+Framework adapter reads
 `BRAVE_SEARCH_API_KEY` at construction; `BraveSearch::new` accepts an explicit
 application-owned key. Keys are retained privately by the client, never placed
 in capability JSON. Hosted execution continues to resolve connections and

@@ -21,7 +21,7 @@ use everruns_core::host::{
     InProcessRuntimeBuilder, SessionBuilder,
 };
 use everruns_framework_cli_host::{Fleet, FleetCommands};
-use everruns_integrations_bashkit::BashkitShellCapability;
+use everruns_integrations::bashkit::BashkitShellCapability;
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 
 const OPENAI_MODEL: &str = "gpt-5.6-terra";

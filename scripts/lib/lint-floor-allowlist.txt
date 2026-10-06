@@ -11,4 +11,3 @@ crates/everruns
 crates/capabilities
 crates/server
 crates/test-support
-integrations/browserless

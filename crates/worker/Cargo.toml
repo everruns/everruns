@@ -13,6 +13,10 @@ license.workspace = true
 lua = ["everruns-capabilities/lua", "everruns/lua"]
 
 [dependencies]
+everruns-integrations = { workspace = true, features = ["bashkit", "daytona", "browserless", "e2b", "typesafe", "openai-decisions"] }
+everruns-integrations-experimental = { workspace = true, features = ["deno", "sprites"] }
+
+
 mimalloc.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -33,17 +37,8 @@ everruns-core = { workspace = true, default-features = false, features = ["mcp",
 everruns-llmsim.workspace = true
 clap = { workspace = true, features = ["string"] }
 everruns-cli-contract.workspace = true
-everruns-integrations-bashkit.workspace = true
 everruns-capabilities = { path = "../capabilities", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins", "a2a", "ag-ui", "container-sandbox"] }
 everruns-integrations-catalog.workspace = true
-everruns-integrations-daytona = { path = "../../integrations/daytona" }
-everruns-integrations-deno = { path = "../../integrations/deno" }
-everruns-integrations-browserless = { path = "../../integrations/browserless" }
-everruns-integrations-e2b = { path = "../../integrations/e2b" }
-everruns-integrations-sprites = { path = "../../integrations/sprites" }
-everruns-integrations = { workspace = true, features = ["modal"] }
-everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
-everruns-integrations-openai-decisions = { path = "../../integrations/openai-decisions" }
 everruns-drivers = { workspace = true, features = [
     "chatgpt",
     "anthropic",

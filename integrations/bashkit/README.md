@@ -1,37 +1,26 @@
 # everruns-integrations-bashkit
 
-> Sandboxed Bash execution for Everruns agents.
+> Deprecated compatibility package for the Bashkit integration.
 
-`everruns-integrations-bashkit` adapts the standalone Bashkit interpreter to
-Everruns session filesystems, cancellation, progress, narration, and egress
-policy. Network-capable shell builtins remain an explicit capability
-configuration opt-in.
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-Part of the [Everruns](https://everruns.com) ecosystem. Framework applications
-enable it with the `bashkit` feature; advanced hosts can register the
-capability and hook dispatcher directly.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `bashkit` feature. This package will be removed in the following platform release.
 
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_bashkit::BashkitShellCapability;
-
-assert_eq!(BashkitShellCapability.id(), "bashkit_shell");
+use everruns-integrations::bashkit as _;
 ```
 
-## What It Provides
+## Features
 
-- Sandboxed `bash` tool backed by Bashkit
-- Live session-filesystem and indexed-search adapters
-- Cooperative cancellation, progress, and output sanitization
-- Egress-routed HTTP and user-hook dispatch
+The `bashkit` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [Framework capability integrations](https://docs.everruns.com/framework/capability-integrations/)
-- [API reference](https://docs.rs/everruns-integrations-bashkit)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

@@ -1,0 +1,85 @@
+# Experimental integrations. This crate is separate only because its modules carry a distinct support promise.
+[package]
+name = "everruns-integrations-experimental"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-experimental"
+description = "Experimental Everruns agent integrations"
+keywords = ["everruns", "agents", "integrations"]
+categories = ["api-bindings", "development-tools"]
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = []
+deno = ["dep:async-trait", "dep:base64", "dep:chrono", "dep:futures-util", "dep:hickory-resolver", "dep:http", "dep:reqwest", "dep:rustls", "dep:rustls-native-certs", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tokio-tungstenite", "dep:tracing", "dep:urlencoding", "everruns-contracts/runtime"]
+sprites = ["dep:async-trait", "dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tracing", "everruns-contracts/runtime"]
+sprites-live-tests = ["sprites"]
+
+[dependencies]
+everruns-contracts = { workspace = true, default-features = false, optional = true }
+async-trait = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
+hickory-resolver = { version = "0.26", optional = true }
+http = { version = "1", optional = true }
+reqwest = { workspace = true, features = ["multipart"], optional = true }
+rustls = { workspace = true, optional = true }
+rustls-native-certs = { version = "0.8", optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+urlencoding = { version = "2.1", optional = true }
+
+[dev-dependencies]
+everruns-core = { workspace = true, default-features = false, features = ["host", "direct-egress"] }
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = { version = "0.6" }
+
+[lints]
+workspace = true
+
+[[test]]
+name = "deno_plugin_registration"
+path = "tests/deno_plugin_registration.rs"
+required-features = ["deno"]
+
+[[test]]
+name = "deno_tool_integration"
+path = "tests/deno_tool_integration.rs"
+required-features = ["deno"]
+
+[[test]]
+name = "deno_tool_narration"
+path = "tests/deno_tool_narration.rs"
+required-features = ["deno"]
+
+[[test]]
+name = "sprites_live_api_test"
+path = "tests/sprites_live_api_test.rs"
+required-features = ["sprites-live-tests"]
+
+[[test]]
+name = "sprites_plugin_registration"
+path = "tests/sprites_plugin_registration.rs"
+required-features = ["sprites"]
+
+[[test]]
+name = "sprites_tool_integration"
+path = "tests/sprites_tool_integration.rs"
+required-features = ["sprites"]
+
+[[test]]
+name = "sprites_tool_narration"
+path = "tests/sprites_tool_narration.rs"
+required-features = ["sprites"]

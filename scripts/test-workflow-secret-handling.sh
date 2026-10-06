@@ -186,7 +186,7 @@ FIXTURES = [
 """, True),
     ("doppler-run-scoped-to-one-command", """
     steps:
-      - run: doppler run -- cargo test -p everruns-integrations-brave-search --features integration
+      - run: doppler run -- cargo test -p everruns-integrations --features brave-search-integration
 """, False),
     ("non-credential-export", """
     steps:

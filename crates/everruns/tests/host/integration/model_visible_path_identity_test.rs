@@ -22,7 +22,7 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PostToolExecHook;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{Capability, MountFs, WorkspaceRootSet, session_files::SessionFileSystem};
-use everruns_integrations_filesystem::{
+use everruns_integrations::filesystem::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, WriteFileTool,
 };

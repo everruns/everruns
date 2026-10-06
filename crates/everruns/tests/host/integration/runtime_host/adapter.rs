@@ -148,7 +148,9 @@ impl RuntimeHostAdapter for MockHostAdapter {
         org_id: i64,
     ) -> Arc<dyn everruns_core::hook_executor::BashHookDispatcher> {
         Arc::new(
-            everruns_integrations_bashkit::BashkitShellHookDispatcher::new(self.file_store(org_id)),
+            everruns_integrations::bashkit::BashkitShellHookDispatcher::new(
+                self.file_store(org_id),
+            ),
         )
     }
 

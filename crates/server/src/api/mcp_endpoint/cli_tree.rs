@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn the_eval_harness_matches_the_shipped_one() {
         use everruns_core::Tool;
-        use everruns_integrations_bashkit::BashTool;
+        use everruns_integrations::bashkit::BashTool;
 
         let bash = BashTool::default();
         let harness = serde_json::json!({

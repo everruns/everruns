@@ -1,36 +1,26 @@
 # everruns-integrations-lua
 
-> Sandboxed Lua and code-mode execution for Everruns agents.
+> Deprecated compatibility package for the Lua integration.
 
-`everruns-integrations-lua` provides the high-risk, opt-in `lua` interpreter
-capability and its `lua_code_mode` routing companion. Scripts run in vendored
-Lua 5.4 with bounded memory, instructions, time, output, filesystem access, and
-host-provided tool/HTTP bridges.
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-Part of the [Everruns](https://everruns.com) ecosystem. Enable it through the
-Framework `lua` feature or register it directly in an advanced host.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `lua` feature. This package will be removed in the following platform release.
 
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_lua::LuaCapability;
-
-assert_eq!(LuaCapability.id(), "lua");
+use everruns-integrations::lua as _;
 ```
 
-## What It Provides
+## Features
 
-- Sandboxed Lua 5.4 execution
-- Session-filesystem and controlled tool-call bridges
-- Optional host egress bridge with network policy
-- Code-mode tool-definition routing
+The `lua` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [Framework capability integrations](https://docs.everruns.com/framework/capability-integrations/)
-- [API reference](https://docs.rs/everruns-integrations-lua)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

@@ -4,12 +4,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'integrations/parallel/**'
+      - 'crates/integrations/src/parallel/**'
+      - 'crates/integrations/tests/parallel_*.rs'
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
-      - 'integrations/parallel/**'
+      - 'crates/integrations/src/parallel/**'
+      - 'crates/integrations/tests/parallel_*.rs'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -42,4 +44,4 @@ jobs:
           shared-key: "debug"
 
       - name: Run integration tests
-        run: cargo test -p everruns-integrations-parallel --features integration
+        run: cargo test -p everruns-integrations --features parallel-integration

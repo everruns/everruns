@@ -31,7 +31,7 @@ use everruns_core::{
     execution_loading::SessionStore, provider_resolution::ProviderStore,
     session_files::SessionFileSystem,
 };
-use everruns_integrations_filesystem::FileSystemCapability;
+use everruns_integrations::filesystem::FileSystemCapability;
 use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::{Value, json};
 use std::collections::HashMap;

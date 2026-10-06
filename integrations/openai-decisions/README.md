@@ -1,12 +1,26 @@
 # everruns-integrations-openai-decisions
 
-OpenAI's Decisions API as an Everruns decision driver (`openai`). Preview:
-the API is in limited preview and its wire shape is not yet published, so the
-request and response types in `src/wire.rs` are inferred and the crate is not
-published. See `knowledge/operations/decisions-service.md`.
+> Deprecated compatibility package for the Openai Decisions integration.
 
-```bash
-cargo test -p everruns-integrations-openai-decisions
-# Needs an account with Decisions API access:
-doppler run -- cargo test -p everruns-integrations-openai-decisions --features live-tests
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
+
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `openai-decisions` feature. This package will be removed in the following platform release.
+
+## Quick Start
+
+```rust
+use everruns-integrations::openai_decisions as _;
 ```
+
+## Features
+
+The `openai-decisions` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
+
+## Documentation
+
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
+
+## License
+
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

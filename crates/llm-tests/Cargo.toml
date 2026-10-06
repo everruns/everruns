@@ -17,6 +17,8 @@ default = ["llm-tests"]
 llm-tests = []
 
 [dependencies]
+everruns-integrations = { workspace = true, features = ["filesystem", "bashkit"] }
+
 everruns-contracts = { workspace = true, default-features = false }
 everruns-test-support = { path = "../test-support" }
 everruns-capabilities = { path = "../capabilities" }
@@ -33,8 +35,6 @@ everruns-drivers = { path = "../drivers/drivers", features = [
     "openrouter",
     "vercel",
 ] }
-everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
-everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 
 anyhow.workspace = true
 async-trait.workspace = true

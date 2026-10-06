@@ -1,7 +1,3 @@
-# TypeSafe hosted capability, Framework helper and connector.
-# The credential-free System One protocol lives in everruns-drivers. This crate
-# retains the application client convenience over provider-owned authentication.
-
 [package]
 name = "everruns-integrations-typesafe"
 version.workspace = true
@@ -12,38 +8,18 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-typesafe"
-description = "TypeSafe typed-judgment capability for Everruns agents"
+description = "Deprecated compatibility shim for everruns-integrations-typesafe"
 readme = "README.md"
-keywords = ["everruns", "typesafe", "agents", "classification", "llm"]
-categories = ["api-bindings", "development-tools"]
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime", "definition"] }
-everruns-drivers = { workspace = true, features = ["typesafe", "openrouter"] }
-# Connector catalog (EVE-879): connectors register into the hosted connector
-# plugin system, which lives in the platform crate.
-inventory = { workspace = true, optional = true }
-
-async-trait.workspace = true
-futures.workspace = true
-reqwest = { workspace = true, features = ["json"] }
-serde.workspace = true
-serde_json.workspace = true
-thiserror.workspace = true
-tokio = { workspace = true, features = ["time"] }
-tracing.workspace = true
+everruns-integrations = { workspace = true, features = ["typesafe"] }
 
 [features]
 default = ["hosted"]
-hosted = ["dep:inventory"]
-# Gate real-API tests; CI passes these with the matching credential set.
-integration = []
-live-tests = []
-
-[dev-dependencies]
-everruns = { path = "../../crates/everruns" }
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
+hosted = ["everruns-integrations/typesafe-hosted"]
+integration = ["everruns-integrations/typesafe-integration"]
+live-tests = ["everruns-integrations/typesafe-live-tests"]
 
 [lints]
 workspace = true

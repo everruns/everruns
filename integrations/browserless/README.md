@@ -1,46 +1,26 @@
 # everruns-integrations-browserless
 
-> Cloud browser automation for Everruns agents.
+> Deprecated compatibility package for the Browserless integration.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-browserless.svg)](https://crates.io/crates/everruns-integrations-browserless)
-[![Documentation](https://docs.rs/everruns-integrations-browserless/badge.svg)](https://docs.rs/everruns-integrations-browserless)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-`everruns-integrations-browserless` gives agents a headless cloud browser through
-the [Browserless](https://www.browserless.io) REST API and CDP (Chrome DevTools
-Protocol) WebSocket sessions. Agents can capture screenshots, read the DOM, scrape
-structured data, and drive multi-step browser flows.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `browserless` feature. This package will be removed in the following platform release.
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. It registers with `everruns-core`
-through the Everruns integration plugin system.
-
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_browserless::BrowserlessCapability;
-
-let capability = BrowserlessCapability;
-
-assert_eq!(capability.id(), "browserless");
+use everruns-integrations::browserless as _;
 ```
 
-## What It Provides
+## Features
 
-- Screenshots and DOM reads of remote pages
-- Structured scraping of page content
-- Multi-step browser automation over CDP WebSocket sessions
-- Bring-your-own Browserless API key via the user connection provider
-- Inventory-based Everruns integration registration
+The `browserless` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-integrations-browserless)
-- [Browserless integration](https://docs.everruns.com/capabilities/browserless/)
-- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

@@ -39,14 +39,14 @@ or failing utility services. Tenant model defaults never affect these calls.
 
 ## Tenant authority
 
-The [Jev capability](../../integrations/typesafe/src/capability.rs) may bind a saved decision model or
+The [Jev capability](../../crates/integrations/src/typesafe/capability.rs) may bind a saved decision model or
 use the organization's explicit decision default. Selection refers to an exact model row, which owns
 its provider account, wire ID and stable profile binding. Missing, disabled, wrong-service, unhealthy
 or foreign selections fail closed; they never fall through to another account or deployment keys.
 Legacy TypeSafe connections/session secrets remain available when no catalog selection exists.
 
 [Host resolution](../../crates/server/src/services/provider_resolver.rs) authorizes the session and
-account per call, identically through direct and worker adapters. [Bound execution](../../integrations/typesafe/src/bound.rs)
+account per call, identically through direct and worker adapters. [Bound execution](../../crates/integrations/src/typesafe/bound.rs)
 uses session egress policy and DNS pinning, checks budgets before transport, validates outcomes, and
 emits usage through the existing generation ledger. Provider-reported cost wins over profile estimates.
 No retries duplicate a billable System One call. State and secrets are absent from usage metadata.
@@ -66,7 +66,7 @@ uses that picker; tool arguments cannot override the account or model.
 
 ## Framework and ownership
 
-[Framework Jev](../../integrations/typesafe/src/framework.rs) accepts an authenticated runtime provider
+[Framework Jev](../../crates/integrations/src/typesafe/framework.rs) accepts an authenticated runtime provider
 and model pair; existing key/client conveniences remain. [Decisions](../../crates/everruns/src/decisions.rs)
 uses the same registry. EVE-1155 ownership is preserved without adding a published crate: contracts
 own the SPI, drivers own protocols, integrations own capability/connector adapters, core owns host

@@ -40,7 +40,7 @@ assert!(registry.get("docker_container").is_none());
 
 let without_docker = CATALOG
     .iter()
-    .filter(|entry| entry.crate_name != "everruns-integrations-docker");
+    .filter(|entry| entry.crate_name != "everruns-integrations::docker");
 for entry in without_docker {
     for plugin in entry.capabilities {
         let _enabled = capability_is_enabled(plugin, DeploymentGrade::Prod);

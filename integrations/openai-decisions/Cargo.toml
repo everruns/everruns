@@ -1,6 +1,3 @@
-# Unpublished application helper for the opt-in OpenAI Decisions preview.
-# Protocol implementation lives in everruns-drivers/openai/decisions.
-
 [package]
 name = "everruns-integrations-openai-decisions"
 version.workspace = true
@@ -10,28 +7,17 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-description = "OpenAI Decisions API as an Everruns decision driver (preview)"
+documentation = "https://docs.rs/everruns-integrations-openai-decisions"
+description = "Deprecated compatibility shim for everruns-integrations-openai-decisions"
+readme = "README.md"
 publish = false
 
 [dependencies]
-everruns-drivers = { workspace = true, features = ["openai"] }
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
-
-async-trait.workspace = true
-futures.workspace = true
-reqwest = { workspace = true, features = ["json"] }
-serde.workspace = true
-serde_json.workspace = true
-tokio = { workspace = true, features = ["time"] }
-tracing.workspace = true
+everruns-integrations = { workspace = true, features = ["openai-decisions"] }
 
 [features]
-# Real-API smoke test; needs an account with Decisions API access.
-live-tests = []
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
+default = []
+live-tests = ["everruns-integrations/openai-decisions-live-tests"]
 
 [lints]
 workspace = true

@@ -340,7 +340,7 @@ async fn the_judge_uses_the_endpoints_pinned_purpose() {
 #[tokio::test]
 #[ignore = "requires a live TypeSafe utility key"]
 async fn live_jev_relevance_matches_intent_examples() {
-    let service = everruns_integrations_typesafe::SystemDecisionsConfig::from_env()
+    let service = everruns_integrations::typesafe::SystemDecisionsConfig::from_env()
         .into_driver()
         .expect("UTILITY_TYPESAFE_API_KEY must be configured");
     let (state, app, config, mut event) = fixture(None).await;

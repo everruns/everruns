@@ -1,6 +1,3 @@
-# Daytona Integration
-# Decision: External integration crate, named in crates/integrations-catalog
-
 [package]
 name = "everruns-integrations-daytona"
 version.workspace = true
@@ -11,44 +8,17 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-daytona"
+description = "Deprecated compatibility shim for everruns-integrations-daytona"
 readme = "README.md"
-keywords = ["everruns", "daytona", "sandbox", "agents"]
-categories = ["api-bindings", "development-tools"]
-description = "Daytona cloud sandbox integration for Everruns"
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, features = ["runtime", "session-sandbox"] }
-inventory.workspace = true
-
-# HTTP client for Daytona API
-reqwest = { workspace = true, features = ["multipart"] }
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Async
-async-trait.workspace = true
-tokio.workspace = true
-chrono.workspace = true
-tracing.workspace = true
+everruns-integrations = { workspace = true, features = ["daytona"] }
 
 [features]
-daytona-live-tests = []
-# Test-only: lets tests point DaytonaApiCallTool at a mock server via
-# ToolContext. Never enabled in shipped builds, so no runtime path can
-# redirect the API key elsewhere.
-test-util = []
+default = []
+daytona-live-tests = ["everruns-integrations/daytona-live-tests"]
+test-util = ["everruns-integrations/daytona-test-util"]
 
-[dev-dependencies]
-# Verify the host reserves provider state from agent-visible secret storage.
-# Enables `test-util` for this crate's own integration tests.
-everruns-integrations-daytona = { path = ".", features = ["test-util"] }
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
-urlencoding = "2"
-tempfile.workspace = true
-
-everruns-core = { workspace = true, default-features = false, features = ["host"] }
 [lints]
 workspace = true

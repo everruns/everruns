@@ -1,0 +1,138 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+//! Integration test: verify Docker Container plugin is published by the crate catalog.
+
+use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_contracts::runtime::deployment::DeploymentGrade;
+
+use everruns_integrations::docker::CAPABILITY_PLUGINS;
+
+// Env-var-mutating tests must not run in parallel.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+    ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
+    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
+    let mut registry = CapabilityRegistry::new();
+    registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
+        plugin.feature_flag.map_or_else(
+            || !plugin.experimental_only || grade.experimental_features_enabled(),
+            |flag| decisions.is_enabled(flag),
+        )
+    });
+    registry
+}
+
+#[test]
+fn test_docker_plugin_is_published() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
+    assert!(
+        plugins.iter().any(|p| {
+            let cap = (p.factory)();
+            cap.id() == "docker_container"
+        }),
+        "Docker Container IntegrationPlugin should be published in CAPABILITY_PLUGINS"
+    );
+}
+
+#[test]
+fn test_docker_plugin_is_experimental() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
+    let docker = plugins
+        .iter()
+        .find(|p| {
+            let cap = (p.factory)();
+            cap.id() == "docker_container"
+        })
+        .expect("Docker Container plugin not found");
+
+    assert!(
+        docker.experimental_only,
+        "Docker Container should be marked experimental_only"
+    );
+}
+
+#[test]
+fn test_docker_plugin_has_feature_flag() {
+    let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
+    let docker = plugins
+        .iter()
+        .find(|p| {
+            let cap = (p.factory)();
+            cap.id() == "docker_container"
+        })
+        .expect("Docker Container plugin not found");
+
+    assert_eq!(
+        docker.feature_flag,
+        Some("docker_capability"),
+        "Docker Container should be gated by 'docker_capability' feature flag"
+    );
+}
+
+#[test]
+fn test_docker_not_registered_in_dev_without_flag() {
+    let _lock = lock_env();
+    // Docker requires FEATURE_DOCKER_CAPABILITY=dev even in dev
+    unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+    let registry = registry_for_grade(DeploymentGrade::Dev);
+    assert!(
+        !registry.has("docker_container"),
+        "Docker Container should NOT be in dev registry without FEATURE_DOCKER_CAPABILITY"
+    );
+}
+
+#[test]
+fn test_docker_registered_in_dev_with_flag() {
+    let _lock = lock_env();
+    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "prod") };
+    let registry = registry_for_grade(DeploymentGrade::Dev);
+    assert!(
+        registry.has("docker_container"),
+        "Docker Container should be in dev registry when FEATURE_DOCKER_CAPABILITY=dev"
+    );
+    unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+}
+
+#[test]
+fn test_docker_not_registered_in_prod_registry() {
+    let _lock = lock_env();
+    unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+    let registry = registry_for_grade(DeploymentGrade::Prod);
+    assert!(
+        !registry.has("docker_container"),
+        "Docker Container should NOT be in prod registry"
+    );
+}
+
+#[test]
+fn test_docker_grade_override_allows_production_registration() {
+    let _lock = lock_env();
+    // The feature rollout grade owns availability even for experimental plugins.
+    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "prod") };
+    let registry = registry_for_grade(DeploymentGrade::Prod);
+    assert!(
+        registry.has("docker_container"),
+        "A prod rollout grade allows Docker registration in production"
+    );
+    unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+}
+
+#[test]
+fn test_docker_capability_metadata() {
+    let _lock = lock_env();
+    unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "prod") };
+    let registry = registry_for_grade(DeploymentGrade::Dev);
+    let cap = registry
+        .get("docker_container")
+        .expect("Docker Container capability not found");
+
+    assert_eq!(cap.id(), "docker_container");
+    assert_eq!(cap.name(), "[Experimental] Docker Container");
+    assert_eq!(cap.icon(), Some("container"));
+    assert_eq!(cap.category(), Some("Sandboxes"));
+    assert_eq!(cap.tools().len(), 5);
+    unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+}

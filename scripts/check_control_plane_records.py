@@ -21,7 +21,7 @@ RUNTIME_HANDLES = {
     'crates/serve/src/app.rs': {'App', 'Skill'},
     'crates/serve/src/connection.rs': {'McpServer'},
     # This is the external Cursor service's status, not an Everruns agent row.
-    'integrations/cursor/src/client.rs': {'AgentStatus'},
+    'crates/integrations/src/cursor/client.rs': {'AgentStatus'},
 }
 PUBLIC_DECLARATION = re.compile(r'\bpub(?:\([^)]*\))?\s+(?:struct|enum|type)\s+(\w+)\b')
 DECLARATION = re.compile(r'\b(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|type)\s+(\w+)\b')

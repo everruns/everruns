@@ -154,17 +154,17 @@ pub use everruns_core::host::{DecisionRouter, LlmDecisionDriver};
 #[cfg(feature = "host-compute")]
 pub use everruns_core::host::{HostCompute, HostComputeSession};
 #[cfg(feature = "bashkit")]
-pub use everruns_integrations_bashkit::BashkitShell;
+pub use everruns_integrations::bashkit::BashkitShell;
 #[cfg(feature = "duckduckgo")]
-pub use everruns_integrations_duckduckgo::DuckDuckGo;
+pub use everruns_integrations::duckduckgo::DuckDuckGo;
 #[cfg(feature = "filesystem")]
-pub use everruns_integrations_filesystem::FileSystem;
+pub use everruns_integrations::filesystem::FileSystem;
 /// The TypeSafe decisions provider, for [`Decisions::new`], and the
 /// capability that hands the same tool to an agent.
 #[cfg(feature = "typesafe")]
-pub use everruns_integrations_typesafe::{Jev, TypeSafeAI};
+pub use everruns_integrations::typesafe::{Jev, TypeSafeAI};
 #[cfg(feature = "web-fetch")]
-pub use everruns_integrations_web_fetch::WebFetch;
+pub use everruns_integrations::web_fetch::WebFetch;
 pub use harness::{
     Harness, HarnessBuildError, HarnessBuilder, HarnessEnvironmentSessionBuilder,
     HarnessSessionBuilder,

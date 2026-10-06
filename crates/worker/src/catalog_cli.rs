@@ -25,7 +25,7 @@ use async_trait::async_trait;
 use everruns_capabilities::PlatformStore;
 use everruns_cli_contract::Mapper;
 use everruns_cli_contract::mapper::NODE_ABOUT;
-use everruns_integrations_bashkit::cli::{
+use everruns_integrations::bashkit::cli::{
     CliCommandSource, CliCommandSourceHandle, CliCommandSpec, CliTree,
 };
 

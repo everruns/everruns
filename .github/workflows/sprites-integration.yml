@@ -8,13 +8,15 @@ on:
   push:
     branches: [main]
     paths:
-      - 'integrations/sprites/**'
-      - '!integrations/sprites/**/*.md'
+      - 'crates/integrations-experimental/src/sprites/**'
+      - 'crates/integrations-experimental/tests/sprites_*.rs'
+      - '!crates/integrations-experimental/src/sprites/**/*.md'
   pull_request:
     branches: [main]
     paths:
-      - 'integrations/sprites/**'
-      - '!integrations/sprites/**/*.md'
+      - 'crates/integrations-experimental/src/sprites/**'
+      - 'crates/integrations-experimental/tests/sprites_*.rs'
+      - '!crates/integrations-experimental/src/sprites/**/*.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -50,7 +52,7 @@ jobs:
           shared-key: "debug"
 
       - name: Run unit tests
-        run: cargo test -p everruns-integrations-sprites
+        run: cargo test -p everruns-integrations-experimental --features sprites
 
   live-test:
     name: Sprites Live API Tests
@@ -94,4 +96,4 @@ jobs:
       - name: Run Sprites live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations-experimental --features sprites-live-tests --test live_api_test -- --test-threads=1

@@ -1,55 +1,22 @@
-# OpenAI Image Generation Integration
-# Decision: Lives as an integration crate (not in the `everruns-openai` driver
-# crate) so the provider crate stays a pure ChatDriver with no dependency on
-# core's capability/tool/session runtime. Named in the integration catalog via the
-# IntegrationPlugin system, exactly like the other integration crates.
-
 [package]
 name = "everruns-integrations-openai-image"
-readme = "README.md"
 version.workspace = true
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "OpenAI GPT Image generation/editing capability for Everruns agents"
-keywords = ["everruns", "openai", "image", "generation", "agents"]
-categories = ["api-bindings", "development-tools"]
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-openai-image"
+description = "Deprecated compatibility shim for everruns-integrations-openai-image"
+readme = "README.md"
+publish = true
 
 [dependencies]
-# Capability/tool/session runtime lives in core with default features on, the
-# same as the other integration crates.
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime", "http"] }
+everruns-integrations = { workspace = true, features = ["openai-image"] }
 
-# URL type only: requests go through the host EgressService (EVE-1174).
-reqwest.workspace = true
-eventsource-stream.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Async
-async-trait.workspace = true
-tokio.workspace = true
-futures.workspace = true
-
-# Encoding
-base64.workspace = true
-
-# Errors / tracing
-anyhow.workspace = true
-tracing.workspace = true
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
-# Real host egress transport (no redirects, ACL, DNS pinning with a controlled
-# resolver) so tests prove image requests cannot reach internal addresses.
-everruns-core = { workspace = true, default-features = false, features = ["direct-egress"] }
+[features]
+default = []
 
 [lints]
 workspace = true

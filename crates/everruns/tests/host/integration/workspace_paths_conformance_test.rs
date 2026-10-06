@@ -19,9 +19,9 @@ use everruns_core::tool_hooks::PostToolExecHook;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{MountFs, WorkspaceRootSet, session_files::SessionFileSystem};
 #[cfg(feature = "bashkit")]
-use everruns_integrations_bashkit::BashTool;
+use everruns_integrations::bashkit::BashTool;
 #[cfg(feature = "filesystem")]
-use everruns_integrations_filesystem::WriteFileTool;
+use everruns_integrations::filesystem::WriteFileTool;
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::TempDir;

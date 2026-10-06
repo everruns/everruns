@@ -12,8 +12,7 @@ path = "src/main.rs"
 [dependencies]
 everruns-contracts = { path = "../../crates/contracts", default-features = false }
 everruns-llmsim = { path = "../../crates/drivers/llmsim" }
-everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
-everruns-integrations-lua = { path = "../../integrations/lua" }
+everruns-integrations = { path = "../../crates/integrations", default-features = false, features = ["bashkit", "lua"] }
 everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"

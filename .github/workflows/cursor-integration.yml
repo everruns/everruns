@@ -5,13 +5,15 @@ on:
   push:
     branches: [main]
     paths:
-      - 'integrations/cursor/**'
-      - '!integrations/cursor/**/*.md'
+      - 'crates/integrations/src/cursor/**'
+      - 'crates/integrations/tests/cursor_*.rs'
+      - '!crates/integrations/src/cursor/**/*.md'
   pull_request:
     branches: [main]
     paths:
-      - 'integrations/cursor/**'
-      - '!integrations/cursor/**/*.md'
+      - 'crates/integrations/src/cursor/**'
+      - 'crates/integrations/tests/cursor_*.rs'
+      - '!crates/integrations/src/cursor/**/*.md'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -47,7 +49,7 @@ jobs:
           shared-key: "debug"
 
       - name: Run unit tests
-        run: cargo test -p everruns-integrations-cursor
+        run: cargo test -p everruns-integrations --features cursor
 
   live-test:
     name: Cursor Live API Tests
@@ -84,4 +86,4 @@ jobs:
       - name: Run Cursor live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations-cursor --features cursor-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features cursor-live-tests --test live_api_test -- --test-threads=1

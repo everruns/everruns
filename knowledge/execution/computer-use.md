@@ -15,9 +15,9 @@ Status: phases 1 to 3 implemented, behind experimental mode. Capability
 `computer_use`, contract in
 [`crates/contracts/src/runtime/computer_use.rs`](../../crates/contracts/src/runtime/computer_use.rs), first
 backend in
-[`integrations/browserless/src/computer.rs`](../../integrations/browserless/src/computer.rs),
+[`integrations/browserless/src/computer.rs`](../../crates/integrations/src/browserless/computer.rs),
 desktop backend (capability `computer_use_desktop`) in
-[`integrations/e2b/src/computer.rs`](../../integrations/e2b/src/computer.rs).
+[`integrations/e2b/src/computer.rs`](../../crates/integrations/src/e2b/computer.rs).
 Tracked as EVE-1119 (phase 1) and EVE-1133 (phase 2).
 
 ## Why

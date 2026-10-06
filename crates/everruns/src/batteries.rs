@@ -96,22 +96,22 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
 
 fn register_selected_integrations(_registry: &mut CapabilityRegistry) {
     #[cfg(feature = "filesystem")]
-    _registry.register(everruns_integrations_filesystem::FileSystemCapability);
+    _registry.register(everruns_integrations::filesystem::FileSystemCapability);
     #[cfg(feature = "bashkit")]
-    _registry.register(everruns_integrations_bashkit::BashkitShellCapability);
+    _registry.register(everruns_integrations::bashkit::BashkitShellCapability);
     // Both contribute a tool named `bash`, so an embedder selects one. Nothing
     // stops both features being on at once; the capability an agent enables is
     // what decides which shell it gets.
     #[cfg(feature = "host-shell")]
     _registry.register(everruns_core::host::capabilities::shell::HostShellCapability);
     #[cfg(feature = "web-fetch")]
-    _registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
+    _registry.register(everruns_integrations::web_fetch::WebFetchCapability::from_env());
     #[cfg(feature = "duckduckgo")]
-    _registry.register(everruns_integrations_duckduckgo::DuckDuckGoCapability);
+    _registry.register(everruns_integrations::duckduckgo::DuckDuckGoCapability);
     #[cfg(feature = "lua")]
     if everruns_core::InternalFeatureFlags::from_env().lua {
-        _registry.register(everruns_integrations_lua::LuaCapability);
-        _registry.register(everruns_integrations_lua::LuaCodeModeCapability);
+        _registry.register(everruns_integrations::lua::LuaCapability);
+        _registry.register(everruns_integrations::lua::LuaCodeModeCapability);
     }
 }
 
@@ -125,7 +125,7 @@ pub fn runtime_backends(
         if backends.bash_hook_dispatcher_factory.is_none() {
             return backends.with_bash_hook_dispatcher_factory(std::sync::Arc::new(|files| {
                 std::sync::Arc::new(
-                    everruns_integrations_bashkit::BashkitShellHookDispatcher::new(files),
+                    everruns_integrations::bashkit::BashkitShellHookDispatcher::new(files),
                 )
             }));
         }

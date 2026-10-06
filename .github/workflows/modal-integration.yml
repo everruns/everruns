@@ -10,8 +10,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'crates/integrations/**'
-      - '!crates/integrations/**/*.md'
+      - 'crates/integrations/src/modal/**'
+      - 'crates/integrations/tests/modal_*.rs'
+      - '!crates/integrations/src/modal/**/*.md'
       - '.github/workflows/modal-integration.yml'
 
 concurrency:

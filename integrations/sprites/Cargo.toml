@@ -1,47 +1,23 @@
-# Sprites Integration
-# Decision: External integration crate, named in crates/integrations-catalog
-# Decision: Embrace persistent VMs — sprites survive across sessions, expose HTTP endpoints
-
 [package]
 name = "everruns-integrations-sprites"
-readme = "README.md"
 version.workspace = true
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Sprites cloud sandbox integration for Everruns agents"
-keywords = ["everruns", "sprites", "sandbox", "agents"]
-categories = ["api-bindings", "development-tools"]
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-sprites"
+description = "Deprecated compatibility shim for everruns-integrations-sprites"
+readme = "README.md"
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
-# Connector catalog (EVE-879): connectors register into the hosted connector
-# plugin system, which lives in the platform crate.
-
-# HTTP client for Sprites API
-reqwest.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Async
-async-trait.workspace = true
-tokio.workspace = true
-chrono.workspace = true
-tracing.workspace = true
+everruns-integrations-experimental = { workspace = true, features = ["sprites"] }
 
 [features]
-sprites-live-tests = []
+default = []
+sprites-live-tests = ["everruns-integrations-experimental/sprites-live-tests"]
 
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
-
-everruns-core = { workspace = true, default-features = false, features = ["host"] }
 [lints]
 workspace = true

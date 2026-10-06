@@ -1,8 +1,3 @@
-# GitHub Integration
-# Decision: External integration crate, named in crates/integrations-catalog
-# Decision: `github` offers host-facing pull request tools; GitHub Scout stays blueprint-only
-# Decision: GitHub token resolved via the existing "github" user connection
-
 [package]
 name = "everruns-integrations-github"
 version.workspace = true
@@ -13,29 +8,16 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-github"
+description = "Deprecated compatibility shim for everruns-integrations-github"
 readme = "README.md"
-keywords = ["everruns", "github", "agents", "blueprints"]
-categories = ["api-bindings", "development-tools"]
-description = "GitHub pull request tools and agent blueprints for Everruns"
+publish = true
 
 [dependencies]
-# `definition` supplies `json_schema_for` + schemars so the blueprint config
-# schema is derived from `GitHubScoutConfig` instead of hand-written JSON.
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime", "definition"] }
-reqwest.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-async-trait.workspace = true
-tracing.workspace = true
-base64.workspace = true
+everruns-integrations = { workspace = true, features = ["github"] }
 
 [features]
-github-live-tests = []
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
-chrono.workspace = true
+default = []
+github-live-tests = ["everruns-integrations/github-live-tests"]
 
 [lints]
 workspace = true

@@ -103,8 +103,7 @@ assert_tree_excludes \
   "everruns-core builtins normal dependency tree" \
   "$BUILTINS_TREE" \
   everruns-host everruns-capabilities everruns-server everruns-worker everruns-mcp \
-  everruns-integrations-filesystem everruns-integrations-bashkit \
-  everruns-integrations-web-fetch everruns-integrations-lua \
+  everruns-integrations everruns-integrations-experimental \
   reqwest sqlx bashkit fetchkit mlua
 
 CORE_ALL_FEATURES_TREE=$(cargo tree -p everruns-core --all-features -e normal --prefix none)

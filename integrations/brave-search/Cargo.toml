@@ -1,51 +1,24 @@
-# Brave Search Integration
-# Decision: External integration crate, named in crates/integrations-catalog
-# Decision: Experimental-only (gated behind DeploymentGrade::Dev)
-# Decision: API key resolved via user connections (connection_resolver), fallback to session secrets
-
 [package]
 name = "everruns-integrations-brave-search"
-readme = "README.md"
 version.workspace = true
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Brave Search web search integration for Everruns agents"
-keywords = ["everruns", "brave", "search", "agents"]
-categories = ["api-bindings", "development-tools"]
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-brave-search"
+description = "Deprecated compatibility shim for everruns-integrations-brave-search"
+readme = "README.md"
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime", "definition"] }
-# Connector catalog (EVE-879): connectors register into the hosted connector
-# plugin system, which lives in the platform crate.
-
-# HTTP client for Brave Search API
-reqwest.workspace = true
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Async
-async-trait.workspace = true
-tokio.workspace = true
-chrono.workspace = true
-tracing.workspace = true
+everruns-integrations = { workspace = true, features = ["brave-search"] }
 
 [features]
 default = ["hosted"]
-hosted = []
-integration = [] # Gate real-API tests; CI passes --features integration
-
-[dev-dependencies]
-everruns = { path = "../../crates/everruns" }
-everruns-llmsim = { path = "../../crates/drivers/llmsim" }
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
+hosted = ["everruns-integrations/brave-search-hosted"]
+integration = ["everruns-integrations/brave-search-integration"]
 
 [lints]
 workspace = true
