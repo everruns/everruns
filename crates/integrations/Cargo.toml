@@ -1,16 +1,4 @@
-# Everruns integrations, one module and one feature per vendor.
-#
-# Decision: new integrations land here as feature modules instead of their own
-# `integrations/<vendor>` packages, the same consolidation everruns-drivers did
-# for model vendors. A package costs a workspace member, isolation-guard
-# entries, a CI `-p` shard, a publish pin, and a crates.io name; a module costs
-# none of those. Each vendor's heavy dependencies sit behind its feature, so a
-# consumer compiles only the vendors it names. Existing `integrations/*`
-# packages fold in here over time.
-#
-# Decision: like every integration, this crate depends on everruns-contracts
-# only (the runtime SPI behind its `runtime` feature), never on everruns-core.
-
+# Published integration implementations, organized by capability vendor.
 [package]
 name = "everruns-integrations"
 version.workspace = true
@@ -21,72 +9,103 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations"
-description = "Everruns agent integrations: Modal VM sandboxes and more, one feature per vendor"
-keywords = ["everruns", "agents", "sandbox", "modal", "integrations"]
+description = "Everruns agent integrations, one feature per vendor"
+keywords = ["everruns", "agents", "integrations"]
 categories = ["api-bindings", "development-tools"]
 readme = "README.md"
 build = "build.rs"
 
-# docs.rs otherwise builds the empty default feature set and hides every vendor.
 [package.metadata.docs.rs]
 all-features = true
 
 [package.metadata.cargo-machete]
-# Used only by build.rs (protox, tonic-prost-build) or by generated code (prost,
-# tonic-prost), which machete cannot see.
-ignored = ["prost", "protox", "tonic-prost", "tonic-prost-build"]
+ignored = ["prost", "protox", "tonic-prost", "tonic-prost-build", "connectrpc-build", "connectrpc", "buffa", "http-body"]
 
 [features]
-# No vendor is on by default: a consumer names the ones it serves.
 default = []
-# Modal sandboxes (https://modal.com), gVisor and VM runtimes, over Modal's gRPC API.
-modal = [
-    "dep:protox",
-    "dep:tonic-prost-build",
-    "dep:async-trait",
-    "dep:base64",
-    "dep:chrono",
-    "dep:futures",
-    "dep:hyper-util",
-    "dep:prost",
-    "dep:serde",
-    "dep:serde_json",
-    "dep:tokio",
-    "dep:tonic",
-    "dep:tonic-prost",
-    "dep:tracing",
-    "dep:uuid",
-    # Managed Sandboxes provider (Sandbox Templates `managed` target).
-    "dep:inventory",
-]
-# Live tests against the real Modal API. Requires MODAL_TOKEN_ID and
-# MODAL_TOKEN_SECRET; fails closed when they are missing.
+bashkit = ["dep:everruns-cli-contract", "dep:async-trait", "dep:bashkit", "dep:clap", "dep:serde_json", "dep:futures", "dep:tokio", "dep:tracing", "dep:url", "dep:everruns-contracts", "everruns-contracts/runtime"]
+brave-search = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:chrono", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
+browserless = ["dep:reqwest", "reqwest/brotli", "reqwest/deflate", "reqwest/gzip", "reqwest/zstd", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "dep:rustls-native-certs", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:chrono", "dep:tracing", "dep:base64", "dep:flate2", "dep:url", "dep:everruns-contracts", "everruns-contracts/http", "everruns-contracts/runtime"]
+cursor = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
+daytona = ["dep:inventory", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:chrono", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime", "everruns-contracts/session-sandbox"]
+docker = ["dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:tracing", "dep:base64", "dep:everruns-contracts", "everruns-contracts/runtime"]
+duckduckgo = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
+e2b = ["dep:async-trait", "dep:base64", "dep:chrono", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tracing", "dep:urlencoding", "dep:http", "dep:http-body", "dep:futures", "dep:connectrpc", "dep:buffa", "dep:rustls", "dep:rustls-native-certs", "dep:tokio", "dep:everruns-contracts", "everruns-contracts/runtime", "dep:connectrpc-build", "dep:protox", "dep:prost"]
+filesystem = ["dep:anyhow", "dep:async-trait", "dep:base64", "dep:globset", "dep:serde_json", "dep:sha2", "dep:hex", "dep:similar", "dep:everruns-contracts", "everruns-contracts/runtime"]
+github = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tracing", "dep:base64", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
+lua = ["dep:async-trait", "dep:base64", "dep:mlua", "dep:serde_json", "dep:tokio", "dep:everruns-contracts", "everruns-contracts/runtime"]
+openai-decisions = ["dep:everruns-drivers", "everruns-drivers/openai", "dep:async-trait", "dep:futures", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
+openai-image = ["dep:reqwest", "dep:eventsource-stream", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:tokio", "dep:futures", "dep:base64", "dep:anyhow", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/http", "everruns-contracts/runtime"]
+openrouter = ["dep:everruns-drivers", "everruns-drivers/openrouter", "dep:async-trait", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
+parallel = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:async-trait", "dep:everruns-contracts", "everruns-contracts/runtime"]
+typesafe = ["dep:everruns-drivers", "everruns-drivers/typesafe", "everruns-drivers/openrouter", "dep:async-trait", "dep:futures", "dep:reqwest", "dep:serde", "dep:serde_json", "dep:thiserror", "dep:tokio", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/definition", "everruns-contracts/runtime"]
+web-fetch = ["dep:async-trait", "dep:base64", "dep:bytes", "dep:ed25519-dalek", "dep:fetchkit", "dep:serde_json", "dep:futures", "dep:sha2", "dep:tracing", "dep:everruns-contracts", "everruns-contracts/runtime"]
+modal = ["dep:inventory", "dep:async-trait", "dep:base64", "dep:chrono", "dep:futures", "dep:hyper-util", "dep:prost", "dep:serde", "dep:serde_json", "dep:tokio", "dep:tonic", "dep:tonic-prost", "dep:tracing", "dep:uuid", "dep:everruns-contracts", "everruns-contracts/runtime", "dep:protox", "dep:tonic-prost-build"]
+brave-search-hosted = ["brave-search"]
+brave-search-integration = ["brave-search"]
+duckduckgo-integration = ["duckduckgo"]
+parallel-integration = ["parallel"]
+typesafe-hosted = ["typesafe", "dep:inventory"]
+typesafe-integration = ["typesafe"]
+typesafe-live-tests = ["typesafe"]
+cursor-live-tests = ["cursor"]
+daytona-live-tests = ["daytona"]
+daytona-test-util = ["daytona"]
+browserless-live-tests = ["browserless"]
+e2b-live-tests = ["e2b"]
+github-live-tests = ["github"]
+openai-decisions-live-tests = ["openai-decisions"]
 modal-live-tests = ["modal"]
-# Test-only hook that lets tool tests point the client at a mock server.
-# Only this crate's own tests enable it; shipped builds never do.
-test-util = []
+modal-test-util = ["modal"]
+
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
-inventory = { workspace = true, optional = true }
-
-# Per-vendor dependencies, each pulled in only by the features that need it.
+everruns-contracts = { workspace = true, default-features = false, optional = true }
+anyhow = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
+bashkit = { version = "0.18.1", default-features = false, features = ["aws-lc-rs", "bash_tool", "bot-auth", "http_client", "jq", "tzdata"], optional = true }
+buffa = { version = "0.9", optional = true }
+bytes = { version = "1", optional = true }
 chrono = { workspace = true, optional = true }
+clap = { workspace = true, features = ["string"], optional = true }
+connectrpc = { version = "0.9.0", features = ["client", "client-tls"], optional = true }
+ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
+eventsource-stream = { workspace = true, optional = true }
+everruns-cli-contract = { workspace = true, optional = true }
+everruns-drivers = { workspace = true, default-features = false, optional = true }
+fetchkit = { version = "=0.5.0", features = ["bot-auth"], optional = true }
+flate2 = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
-# HTTP CONNECT tunnelling for gRPC: tonic does not read HTTPS_PROXY itself.
+futures-util = { workspace = true, optional = true }
+globset = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+http = { version = "1", optional = true }
+http-body = { version = "1", optional = true }
 hyper-util = { version = "0.1.21", optional = true, default-features = false, features = ["client-legacy", "client-proxy", "http2", "tokio"] }
+inventory = { workspace = true, optional = true }
+mlua = { version = "0.12", features = ["async", "lua54", "send", "serialize", "vendored"], optional = true }
 prost = { workspace = true, optional = true }
+reqwest = { workspace = true, features = ["json", "multipart"], optional = true }
+rustls = { workspace = true, optional = true }
+rustls-native-certs = { version = "0.8", optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
-tokio = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+similar = { version = "3", optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"], optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
 tonic = { workspace = true, optional = true, features = ["tls-native-roots", "tls-webpki-roots"] }
 tonic-prost = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
+url = { version = "2", optional = true }
+urlencoding = { version = "2", optional = true }
 uuid = { workspace = true, optional = true }
 
 [build-dependencies]
+connectrpc-build = { version = "0.9.0", optional = true }
+prost = { workspace = true, optional = true }
 protox = { version = "0.9", optional = true }
 tonic-prost-build = { workspace = true, optional = true }
 
@@ -97,19 +116,213 @@ futures.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 tokio-stream = { workspace = true, features = ["net"] }
 serde_json.workspace = true
-everruns-core = { workspace = true, default-features = false, features = ["host"] }
-
-[[test]]
-name = "modal_tools"
-required-features = ["modal", "test-util"]
-
-[[test]]
-name = "modal_session_sandbox"
-required-features = ["modal", "test-util"]
-
-[[test]]
-name = "modal_live"
-required-features = ["modal"]
+wiremock = "0.6"
+regex.workspace = true
+fancy-regex = "0.19"
+tempfile.workspace = true
+everruns-core = { workspace = true, default-features = false, features = ["host", "direct-egress"] }
 
 [lints]
 workspace = true
+
+[[test]]
+name = "brave_search_plugin_registration"
+path = "tests/brave_search_plugin_registration.rs"
+required-features = ["brave-search"]
+
+[[test]]
+name = "brave_search_smoke_real_api"
+path = "tests/brave_search_smoke_real_api.rs"
+required-features = ["brave-search"]
+
+[[test]]
+name = "browserless_browser_network_guard"
+path = "tests/browserless_browser_network_guard.rs"
+required-features = ["browserless"]
+
+[[test]]
+name = "browserless_live_api"
+path = "tests/browserless_live_api.rs"
+required-features = ["browserless-live-tests"]
+
+[[test]]
+name = "browserless_plugin_registration"
+path = "tests/browserless_plugin_registration.rs"
+required-features = ["browserless"]
+
+[[test]]
+name = "browserless_tool_integration"
+path = "tests/browserless_tool_integration.rs"
+required-features = ["browserless"]
+
+[[test]]
+name = "cursor_live_api_test"
+path = "tests/cursor_live_api_test.rs"
+required-features = ["cursor-live-tests"]
+
+[[test]]
+name = "cursor_plugin_registration"
+path = "tests/cursor_plugin_registration.rs"
+required-features = ["cursor"]
+
+[[test]]
+name = "cursor_tool_integration"
+path = "tests/cursor_tool_integration.rs"
+required-features = ["cursor"]
+
+[[test]]
+name = "daytona_api_call_labels_and_tracking"
+path = "tests/daytona_api_call_labels_and_tracking.rs"
+required-features = ["daytona", "daytona-test-util"]
+
+[[test]]
+name = "daytona_live_api_test"
+path = "tests/daytona_live_api_test.rs"
+required-features = ["daytona-live-tests"]
+
+[[test]]
+name = "daytona_plugin_registration"
+path = "tests/daytona_plugin_registration.rs"
+required-features = ["daytona", "daytona-test-util"]
+
+[[test]]
+name = "daytona_session_sandbox_provider"
+path = "tests/daytona_session_sandbox_provider.rs"
+required-features = ["daytona", "daytona-test-util"]
+
+[[test]]
+name = "daytona_tool_integration"
+path = "tests/daytona_tool_integration.rs"
+required-features = ["daytona", "daytona-test-util"]
+
+[[test]]
+name = "daytona_tool_narration"
+path = "tests/daytona_tool_narration.rs"
+required-features = ["daytona", "daytona-test-util"]
+
+[[test]]
+name = "docker_plugin_registration"
+path = "tests/docker_plugin_registration.rs"
+required-features = ["docker"]
+
+[[test]]
+name = "docker_tool_narration"
+path = "tests/docker_tool_narration.rs"
+required-features = ["docker"]
+
+[[test]]
+name = "duckduckgo_plugin_registration"
+path = "tests/duckduckgo_plugin_registration.rs"
+required-features = ["duckduckgo"]
+
+[[test]]
+name = "duckduckgo_smoke_real_api"
+path = "tests/duckduckgo_smoke_real_api.rs"
+required-features = ["duckduckgo"]
+
+[[test]]
+name = "e2b_live_api_test"
+path = "tests/e2b_live_api_test.rs"
+required-features = ["e2b-live-tests"]
+
+[[test]]
+name = "e2b_plugin_registration"
+path = "tests/e2b_plugin_registration.rs"
+required-features = ["e2b"]
+
+[[test]]
+name = "e2b_tool_integration"
+path = "tests/e2b_tool_integration.rs"
+required-features = ["e2b"]
+
+[[test]]
+name = "e2b_tool_narration"
+path = "tests/e2b_tool_narration.rs"
+required-features = ["e2b"]
+
+[[test]]
+name = "github_live_api_test"
+path = "tests/github_live_api_test.rs"
+required-features = ["github-live-tests"]
+
+[[test]]
+name = "github_plugin_registration"
+path = "tests/github_plugin_registration.rs"
+required-features = ["github"]
+
+[[test]]
+name = "github_tool_narration"
+path = "tests/github_tool_narration.rs"
+required-features = ["github"]
+
+[[test]]
+name = "modal_live"
+path = "tests/modal_live.rs"
+required-features = ["modal-live-tests"]
+
+[[test]]
+name = "modal_session_sandbox"
+path = "tests/modal_session_sandbox.rs"
+required-features = ["modal", "modal-test-util"]
+
+[[test]]
+name = "modal_tools"
+path = "tests/modal_tools.rs"
+required-features = ["modal", "modal-test-util"]
+
+[[test]]
+name = "openai_decisions_live"
+path = "tests/openai_decisions_live.rs"
+required-features = ["openai-decisions-live-tests"]
+
+[[test]]
+name = "parallel_live_api_test"
+path = "tests/parallel_live_api_test.rs"
+required-features = ["parallel"]
+
+[[test]]
+name = "parallel_plugin_registration"
+path = "tests/parallel_plugin_registration.rs"
+required-features = ["parallel"]
+
+[[test]]
+name = "typesafe_classifier"
+path = "tests/typesafe_classifier.rs"
+required-features = ["typesafe"]
+
+[[test]]
+name = "typesafe_classifier_live"
+path = "tests/typesafe_classifier_live.rs"
+required-features = ["typesafe-live-tests"]
+
+[[test]]
+name = "typesafe_client"
+path = "tests/typesafe_client.rs"
+required-features = ["typesafe"]
+
+[[test]]
+name = "typesafe_client_live"
+path = "tests/typesafe_client_live.rs"
+required-features = ["typesafe-live-tests"]
+
+[[test]]
+name = "typesafe_plugin_registration"
+path = "tests/typesafe_plugin_registration.rs"
+required-features = ["typesafe-hosted"]
+
+[[test]]
+name = "typesafe_tool_narration"
+path = "tests/typesafe_tool_narration.rs"
+required-features = ["typesafe-hosted"]
+
+[[example]]
+name = "typesafe_joke_judge"
+required-features = ["typesafe"]
+
+[[example]]
+name = "typesafe_screen_message"
+required-features = ["typesafe"]
+
+[[example]]
+name = "typesafe_triage"
+required-features = ["typesafe"]

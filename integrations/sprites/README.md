@@ -1,45 +1,26 @@
 # everruns-integrations-sprites
 
-> Persistent microVM sandboxes for Everruns agents.
+> Deprecated compatibility package for the Sprites sandboxes.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-sprites.svg)](https://crates.io/crates/everruns-integrations-sprites)
-[![Documentation](https://docs.rs/everruns-integrations-sprites/badge.svg)](https://docs.rs/everruns-integrations-sprites)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-`everruns-integrations-sprites` gives agents persistent, hardware-isolated Linux
-microVMs through the [Sprites](https://sprites.dev) (Fly.io) REST API. Sprites are
-Firecracker VMs with full ext4 filesystems that persist across sessions, so an
-agent can keep long-lived state between runs.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations-experimental`](https://crates.io/crates/everruns-integrations-experimental) with the `sprites` feature. This package will be removed in the following platform release.
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. It registers with `everruns-core`
-through the Everruns integration plugin system.
-
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_sprites::SpritesCapability;
-
-let capability = SpritesCapability;
-
-assert_eq!(capability.id(), "sprites");
+use everruns-integrations-experimental::sprites as _;
 ```
 
-## What It Provides
+## Features
 
-- Persistent, hardware-isolated Linux microVMs (Firecracker VMs)
-- Filesystems that persist across sessions
-- Command execution and file access inside the microVM
-- Bring-your-own Sprites API key via the user connection provider
-- Inventory-based Everruns integration registration
+The `sprites` feature forwards to the maintained module in `everruns-integrations-experimental`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-integrations-sprites)
-- [Sprites integration](https://docs.everruns.com/integrations/sprites/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations-experimental)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

@@ -139,13 +139,15 @@ while IFS= read -r file; do
   ALLOWED["$file"]=1
 done < "$ALLOWLIST"
 
-# A rename is not growth. Measure the new path against the content it came from.
+# A rename or a moved-and-retained compatibility source is not growth. Measure
+# the new path against the content it came from, even when the old path remains
+# as a deprecated shim.
 declare -A RENAMED_FROM=()
 while IFS=$'\t' read -r status old new; do
   case "$status" in
-    R*) [ -n "${new:-}" ] && RENAMED_FROM["$new"]="$old" ;;
+    R*|C*) [ -n "${new:-}" ] && RENAMED_FROM["$new"]="$old" ;;
   esac
-done < <(git diff --name-status --find-renames "$MERGE_BASE" HEAD -- '*.rs' '*.ts' '*.tsx')
+done < <(git diff --name-status --find-renames --find-copies --find-copies-harder "$MERGE_BASE" HEAD -- '*.rs' '*.ts' '*.tsx')
 
 base_line_count() {
   # Empty when the path does not exist at the merge base.

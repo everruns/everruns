@@ -307,7 +307,7 @@ mod tests {
         assert!(!setting.default);
         assert_eq!(config[setting.config_key], json!(setting.default));
 
-        let capability = everruns_integrations_github::GitHubCapability;
+        let capability = everruns_integrations::github::GitHubCapability;
         capability.validate_config(&config).expect("valid config");
         let tools: Vec<String> = capability
             .tools_with_config(&config)

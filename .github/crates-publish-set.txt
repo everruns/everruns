@@ -1,8 +1,8 @@
 # Crates published to crates.io at the platform version, one per line, sorted.
+# crates.io and the CARGO_REGISTRY_TOKEN may create it.
+# reviewed edit. Before adding a never-published name, confirm it is free on
 # scripts/release-preflight.py fails when this differs from the packages
 # without `publish = false`, so joining or leaving the publish set is a
-# reviewed edit. Before adding a never-published name, confirm it is free on
-# crates.io and the CARGO_REGISTRY_TOKEN may create it.
 everruns
 everruns-ard
 everruns-capabilities
@@ -24,6 +24,7 @@ everruns-integrations-deno
 everruns-integrations-docker
 everruns-integrations-duckduckgo
 everruns-integrations-e2b
+everruns-integrations-experimental
 everruns-integrations-filesystem
 everruns-integrations-github
 everruns-integrations-lua

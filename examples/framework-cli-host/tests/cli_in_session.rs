@@ -17,7 +17,7 @@ use everruns_core::host::{
     InProcessRuntimeBuilder, SessionBuilder,
 };
 use everruns_framework_cli_host::{Fleet, FleetCommands};
-use everruns_integrations_bashkit::BashkitShellCapability;
+use everruns_integrations::bashkit::BashkitShellCapability;
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 
 /// Build a session whose shell carries `fleet`'s commands, and run one turn in

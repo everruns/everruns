@@ -1,43 +1,26 @@
 # everruns-integrations-cursor
 
-> Cursor Cloud Agents integration for Everruns.
+> Deprecated compatibility package for the Cursor integration.
 
-[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-cursor.svg)](https://crates.io/crates/everruns-integrations-cursor)
-[![Documentation](https://docs.rs/everruns-integrations-cursor/badge.svg)](https://docs.rs/everruns-integrations-cursor)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-`everruns-integrations-cursor` lets Everruns agents launch and manage
-[Cursor](https://cursor.com) Background / Cloud Agents through Cursor's public
-REST API. Agents can delegate coding work to Cursor's cloud agents and track
-their progress, authenticated with a user-supplied Cursor API key.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `cursor` feature. This package will be removed in the following platform release.
 
-Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
-harness engine for building unstoppable agents. It registers with `everruns-core`
-through the Everruns integration plugin system.
-
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_cursor::CursorCapability;
-
-let capability = CursorCapability;
-
-assert_eq!(capability.id(), "cursor");
+use everruns-integrations::cursor as _;
 ```
 
-## What It Provides
+## Features
 
-- Launch and manage Cursor Background / Cloud Agents over the public REST API
-- Bring-your-own Cursor API key via the user connection provider
-- Inventory-based Everruns integration registration
+The `cursor` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [API reference (docs.rs)](https://docs.rs/everruns-integrations-cursor)
-- [Cursor integration](https://docs.everruns.com/integrations/cursor/)
-- [Everruns documentation](https://docs.everruns.com)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

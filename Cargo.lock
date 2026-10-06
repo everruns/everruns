@@ -1458,6 +1458,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
+ "zstd 0.14.0",
+ "zstd-safe 8.0.0",
 ]
 
 [[package]]
@@ -1498,7 +1500,7 @@ dependencies = [
  "tower",
  "tracing",
  "wasm-bindgen-futures",
- "zstd",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -2343,12 +2345,7 @@ dependencies = [
  "everruns-drivers",
  "everruns-durable",
  "everruns-durable-engine",
- "everruns-integrations-bashkit",
- "everruns-integrations-duckduckgo",
- "everruns-integrations-filesystem",
- "everruns-integrations-lua",
- "everruns-integrations-typesafe",
- "everruns-integrations-web-fetch",
+ "everruns-integrations",
  "everruns-llmsim",
  "everruns-macros",
  "everruns-test-support",
@@ -2409,11 +2406,7 @@ dependencies = [
  "chrono",
  "everruns-contracts",
  "everruns-core",
- "everruns-integrations-bashkit",
- "everruns-integrations-filesystem",
- "everruns-integrations-lua",
- "everruns-integrations-openrouter",
- "everruns-integrations-web-fetch",
+ "everruns-integrations",
  "futures",
  "futures-util",
  "hex",
@@ -2616,7 +2609,7 @@ dependencies = [
  "everruns",
  "everruns-core",
  "everruns-drivers",
- "everruns-integrations-brave-search",
+ "everruns-integrations",
  "everruns-llmsim",
  "futures",
  "serde",
@@ -2732,8 +2725,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "everruns-drivers",
- "everruns-integrations-bashkit",
- "everruns-integrations-filesystem",
+ "everruns-integrations",
  "everruns-llmsim",
  "serde_json",
  "tokio",
@@ -2774,86 +2766,78 @@ dependencies = [
 name = "everruns-integrations"
 version = "0.41.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "base64 0.23.1",
+ "bashkit",
+ "buffa",
+ "bytes",
  "chrono",
+ "clap",
+ "connectrpc",
+ "connectrpc-build",
+ "ed25519-dalek 3.0.0",
+ "eventsource-stream",
+ "everruns-cli-contract",
  "everruns-contracts",
  "everruns-core",
+ "everruns-drivers",
+ "fancy-regex 0.19.2",
+ "fetchkit",
+ "flate2",
  "futures",
+ "futures-util",
+ "globset",
+ "hex",
+ "http",
+ "http-body",
  "hyper-util",
  "inventory",
+ "mlua",
  "prost",
  "protox",
+ "regex",
+ "reqwest",
+ "rustls",
+ "rustls-native-certs",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
+ "similar 3.2.0",
+ "tempfile",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-stream",
+ "tokio-tungstenite 0.30.0",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
  "tracing",
+ "url",
+ "urlencoding",
  "uuid",
+ "wiremock",
 ]
 
 [[package]]
 name = "everruns-integrations-bashkit"
 version = "0.41.0"
 dependencies = [
- "anyhow",
- "async-trait",
- "bashkit",
- "chrono",
- "clap",
- "everruns-cli-contract",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "regex",
- "serde_json",
- "tokio",
- "tracing",
- "url",
- "uuid",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-brave-search"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "chrono",
- "everruns",
- "everruns-contracts",
- "everruns-llmsim",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-browserless"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "base64 0.23.1",
- "chrono",
- "everruns-contracts",
- "fancy-regex 0.14.0",
- "flate2",
- "futures-util",
- "reqwest",
- "rustls",
- "rustls-native-certs",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite 0.30.0",
- "tracing",
- "url",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
@@ -2865,57 +2849,53 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "everruns-integrations",
- "everruns-integrations-brave-search",
- "everruns-integrations-browserless",
- "everruns-integrations-cursor",
- "everruns-integrations-daytona",
- "everruns-integrations-deno",
- "everruns-integrations-docker",
- "everruns-integrations-duckduckgo",
- "everruns-integrations-e2b",
- "everruns-integrations-github",
- "everruns-integrations-openai-image",
- "everruns-integrations-parallel",
- "everruns-integrations-sprites",
- "everruns-integrations-typesafe",
+ "everruns-integrations-experimental",
 ]
 
 [[package]]
 name = "everruns-integrations-cursor"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "everruns-contracts",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-daytona"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "everruns-integrations-daytona",
- "inventory",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tracing",
- "urlencoding",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-deno"
+version = "0.41.0"
+dependencies = [
+ "everruns-integrations-experimental",
+]
+
+[[package]]
+name = "everruns-integrations-docker"
+version = "0.41.0"
+dependencies = [
+ "everruns-integrations",
+]
+
+[[package]]
+name = "everruns-integrations-duckduckgo"
+version = "0.41.0"
+dependencies = [
+ "everruns-integrations",
+]
+
+[[package]]
+name = "everruns-integrations-e2b"
+version = "0.41.0"
+dependencies = [
+ "everruns-integrations",
+]
+
+[[package]]
+name = "everruns-integrations-experimental"
 version = "0.41.0"
 dependencies = [
  "async-trait",
@@ -2935,61 +2915,6 @@ dependencies = [
  "tokio-tungstenite 0.30.0",
  "tracing",
  "urlencoding",
-]
-
-[[package]]
-name = "everruns-integrations-docker"
-version = "0.41.0"
-dependencies = [
- "async-trait",
- "base64 0.23.1",
- "everruns-contracts",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "everruns-integrations-duckduckgo"
-version = "0.41.0"
-dependencies = [
- "async-trait",
- "everruns-contracts",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
-]
-
-[[package]]
-name = "everruns-integrations-e2b"
-version = "0.41.0"
-dependencies = [
- "async-trait",
- "base64 0.23.1",
- "buffa",
- "chrono",
- "connectrpc",
- "connectrpc-build",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "http",
- "http-body",
- "prost",
- "protox",
- "reqwest",
- "rustls",
- "rustls-native-certs",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "urlencoding",
  "wiremock",
 ]
 
@@ -2997,165 +2922,70 @@ dependencies = [
 name = "everruns-integrations-filesystem"
 version = "0.41.0"
 dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.23.1",
- "chrono",
- "everruns-contracts",
- "globset",
- "hex",
- "regex",
- "serde_json",
- "sha2 0.11.0",
- "similar 3.2.0",
- "tokio",
- "uuid",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-github"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "base64 0.23.1",
- "chrono",
- "everruns-contracts",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-lua"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "base64 0.23.1",
- "chrono",
- "everruns-contracts",
- "mlua",
- "regex",
- "serde_json",
- "tokio",
- "uuid",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-openai-decisions"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "everruns-contracts",
- "everruns-drivers",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-openai-image"
 version = "0.41.0"
 dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.23.1",
- "eventsource-stream",
- "everruns-contracts",
- "everruns-core",
- "futures",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-openrouter"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "everruns-contracts",
- "everruns-drivers",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-parallel"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "everruns-contracts",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-sprites"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "chrono",
- "everruns-contracts",
- "everruns-core",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "wiremock",
+ "everruns-integrations-experimental",
 ]
 
 [[package]]
 name = "everruns-integrations-typesafe"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "everruns",
- "everruns-contracts",
- "everruns-drivers",
- "futures",
- "inventory",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
 name = "everruns-integrations-web-fetch"
 version = "0.41.0"
 dependencies = [
- "async-trait",
- "base64 0.23.1",
- "bytes",
- "chrono",
- "ed25519-dalek 3.0.0",
- "everruns-contracts",
- "fetchkit",
- "futures",
- "serde_json",
- "sha2 0.11.0",
- "tokio",
- "tracing",
- "uuid",
- "wiremock",
+ "everruns-integrations",
 ]
 
 [[package]]
@@ -3192,8 +3022,7 @@ dependencies = [
  "everruns-contracts",
  "everruns-core",
  "everruns-drivers",
- "everruns-integrations-bashkit",
- "everruns-integrations-filesystem",
+ "everruns-integrations",
  "everruns-test-support",
  "rstest",
  "serde_json",
@@ -3247,7 +3076,7 @@ dependencies = [
  "everruns",
  "everruns-drivers",
  "everruns-example-demo",
- "everruns-integrations-brave-search",
+ "everruns-integrations",
  "serde_json",
  "tokio",
 ]
@@ -3387,11 +3216,7 @@ dependencies = [
  "everruns-drivers",
  "everruns-durable",
  "everruns-integrations",
- "everruns-integrations-bashkit",
  "everruns-integrations-catalog",
- "everruns-integrations-github",
- "everruns-integrations-typesafe",
- "everruns-integrations-web-fetch",
  "everruns-internal-protocol",
  "everruns-pg-embedded",
  "everruns-sdk",
@@ -3529,15 +3354,8 @@ dependencies = [
  "everruns-drivers",
  "everruns-durable-engine",
  "everruns-integrations",
- "everruns-integrations-bashkit",
- "everruns-integrations-browserless",
  "everruns-integrations-catalog",
- "everruns-integrations-daytona",
- "everruns-integrations-deno",
- "everruns-integrations-e2b",
- "everruns-integrations-openai-decisions",
- "everruns-integrations-sprites",
- "everruns-integrations-typesafe",
+ "everruns-integrations-experimental",
  "everruns-internal-protocol",
  "everruns-llmsim",
  "mimalloc",
@@ -3583,17 +3401,6 @@ checksum = "b95f7c0680e4142284cf8b22c14a476e87d61b004a3a0861872b32ef7ead40a2"
 dependencies = [
  "bit-set 0.5.3",
  "regex",
-]
-
-[[package]]
-name = "fancy-regex"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e24cb5a94bcae1e5408b0effca5cd7172ea3c5755049c5f3af4cd283a165298"
-dependencies = [
- "bit-set 0.8.0",
- "regex-automata",
- "regex-syntax",
 ]
 
 [[package]]
@@ -10257,7 +10064,16 @@ version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
 dependencies = [
- "zstd-safe",
+ "zstd-safe 7.3.0",
+]
+
+[[package]]
+name = "zstd"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf06bd8162af0734b344780deb55b42a2429ae430870d13fcc12f238e880fe6e"
+dependencies = [
+ "zstd-safe 8.0.0",
 ]
 
 [[package]]
@@ -10265,6 +10081,15 @@ name = "zstd-safe"
 version = "7.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64d80649ab6db9d9f6f9c80a40becd948eda4714a0a5ac8c4d157a32231c7882"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae42c0555055784c70058d19ba8e275528e8a99a706684868ace5da4e716a4ab"
 dependencies = [
  "zstd-sys",
 ]

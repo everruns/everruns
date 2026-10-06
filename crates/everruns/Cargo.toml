@@ -90,19 +90,19 @@ builtins = ["everruns-core/builtins"]
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.
 jsonl = []
-filesystem = ["dep:everruns-integrations-filesystem"]
+filesystem = ["everruns-integrations/filesystem"]
 # Agent definition disk I/O; independent of the session filesystem integration.
 agent-package-fs = ["everruns-core/agent-package-fs"]
 # Environment-backed execution integrations. Filesystem is default and stays
 # inside the host-provided session filesystem; the others are explicit opt-ins.
-bashkit = ["filesystem", "everruns-core/direct-egress", "dep:everruns-integrations-bashkit"]
+bashkit = ["filesystem", "everruns-core/direct-egress", "everruns-integrations/bashkit"]
 # The `bash` tool over real host processes, bounded by a kernel policy. Implies
 # `host-compute`: both are ways of running commands on this machine, and this
 # one is the model-facing half.
 host-shell = ["host-compute", "filesystem", "everruns-core/host-shell"]
-web-fetch = ["everruns-core/direct-egress", "dep:everruns-integrations-web-fetch"]
-duckduckgo = ["everruns-core/direct-egress", "dep:everruns-integrations-duckduckgo"]
-lua = ["everruns-core/direct-egress", "dep:everruns-integrations-lua"]
+web-fetch = ["everruns-core/direct-egress", "everruns-integrations/web-fetch"]
+duckduckgo = ["everruns-core/direct-egress", "everruns-integrations/duckduckgo"]
+lua = ["everruns-core/direct-egress", "everruns-integrations/lua"]
 # Run commands on the machine this process is already running on, with nothing
 # between the command and the filesystem. Opt-in because it is the one target
 # that contains nothing; the contract types compile without it.
@@ -151,7 +151,7 @@ gemini = ["dep:everruns-drivers", "everruns-drivers/gemini"]
 bedrock = ["dep:everruns-drivers", "everruns-drivers/bedrock-default-credentials"]
 # Typed decision: the TypeSafe-backed `DecisionsService` behind
 # `Decisions`, re-exported so one import reaches both halves.
-typesafe = ["dep:everruns-integrations-typesafe"]
+typesafe = ["everruns-integrations/typesafe"]
 # Serve an AG-UI 1.0 run from any session (`everruns::ag_ui`): the protocol
 # types, the shared runtime-event projection, and an interrupt gate for
 # `ask_user` and tool approvals. Off by default; it enables core's
@@ -173,6 +173,8 @@ otel = ["everruns-core/otel"]
 braintrust = ["everruns-core/braintrust"]
 
 [dependencies]
+everruns-integrations = { workspace = true, optional = true }
+
 # Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
 # `CapabilitySpec`/`IntoCapability`, and (behind `capabilities`) the
 # code-defined authoring surface. The facade re-exports this contract as its
@@ -182,18 +184,12 @@ everruns-contracts = { workspace = true, default-features = false }
 # `Model::simulated`; no dependency on testing/demo helpers.
 everruns-llmsim.workspace = true
 everruns-capabilities = { workspace = true, optional = true, features = ["portable-builtins"] }
-everruns-integrations-filesystem = { workspace = true, optional = true }
-everruns-integrations-bashkit = { workspace = true, optional = true }
-everruns-integrations-web-fetch = { workspace = true, optional = true }
-everruns-integrations-duckduckgo = { workspace = true, optional = true }
-everruns-integrations-lua = { workspace = true, optional = true }
 # Optional real-provider edge: one crate, with the vendor features above turning
 # on the matching `everruns-drivers` features. Re-exported as `everruns::drivers`.
 everruns-drivers = { workspace = true, optional = true }
 # Client + framework surface only: the workspace dependency leaves the crate's
 # `hosted` feature off, so enabling `typesafe` on the facade does not drag in
 # everruns-capabilities. Guarded by scripts/lib/check-portable-builtins-isolation.sh.
-everruns-integrations-typesafe = { workspace = true, optional = true }
 # The `AgUiHandler` route and SSE response. Activated by `ag-ui-axum`.
 axum = { workspace = true, optional = true }
 async-trait.workspace = true

@@ -33,8 +33,8 @@ use everruns_core::builtins::{
     ToolSearchCapability,
 };
 use everruns_core::events::{EventData, LLM_GENERATION};
-use everruns_integrations_bashkit::BashkitShellCapability;
-use everruns_integrations_filesystem::FileSystemCapability;
+use everruns_integrations::bashkit::BashkitShellCapability;
+use everruns_integrations::filesystem::FileSystemCapability;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, InMemoryModelConfig, TurnResult};
 use rstest::rstest;
 

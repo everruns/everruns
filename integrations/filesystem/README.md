@@ -1,37 +1,26 @@
 # everruns-integrations-filesystem
 
-> Session filesystem tools for Everruns agents.
+> Deprecated compatibility package for the Filesystem integration.
 
-`everruns-integrations-filesystem` implements the `session_file_system`
-capability over Everruns' neutral session-filesystem contract. It provides
-read, write, edit, list, grep, delete, and stat tools while retaining path and
-mount policy enforcement supplied by the host.
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-Part of the [Everruns](https://everruns.com) ecosystem. Applications normally
-enable this integration through the `everruns` Framework crate; advanced hosts
-may register it directly.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `filesystem` feature. This package will be removed in the following platform release.
 
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_filesystem::FileSystemCapability;
-
-assert_eq!(FileSystemCapability.id(), "session_file_system");
+use everruns-integrations::filesystem as _;
 ```
 
-## What It Provides
+## Features
 
-- Session-scoped filesystem tool implementations
-- Traversal-safe path and mount adaptation
-- Hash-gated text edits and bounded single-file or ordered multi-file reads/searches
-- Model-visible path narration and binary image handling
+The `filesystem` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [Framework workspace security](https://docs.everruns.com/framework/workspaces-and-environments/)
-- [API reference](https://docs.rs/everruns-integrations-filesystem)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

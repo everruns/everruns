@@ -97,7 +97,7 @@ pub trait HookExecutor: Send + Sync {
 /// This struct is backend-agnostic: it serializes the payload, hands it to a
 /// `BashHookDispatcher`, and parses the dispatcher's stdout/exit_code/stderr
 /// into a `HookOutcome`. The production dispatcher
-/// (for example `everruns_integrations_bashkit::BashkitShellHookDispatcher`) runs the command
+/// (for example `everruns_integrations::bashkit::BashkitShellHookDispatcher`) runs the command
 /// through the same bashkit interpreter the `bashkit_shell` capability uses.
 pub struct BashHookExecutor {
     /// Command the user authored (validated non-empty).
@@ -205,7 +205,7 @@ pub fn payload_filename(payload: &HookPayload) -> String {
 /// Indirection used to route bash hook invocations through the session's
 /// existing `bashkit_shell` sandbox without `everruns-core`'s executor module
 /// having to depend on bashkit directly. The concrete
-/// `everruns_integrations_bashkit::BashkitShellHookDispatcher` is the production
+/// `everruns_integrations::bashkit::BashkitShellHookDispatcher` is the production
 /// implementation.
 #[async_trait]
 pub trait BashHookDispatcher: Send + Sync {

@@ -103,8 +103,8 @@ hosted adapters retain lazy, session-scoped connection resolution. Connector UI
 and inventory discovery must be separable from the application's dependency
 graph. Registration alone does not supply platform persistence or orchestration.
 
-[Brave Search](../../integrations/brave-search/src/framework.rs) is the reference
-implementation. Its [acceptance test](../../integrations/brave-search/tests/framework.rs)
+[Brave Search](../../crates/integrations/src/brave_search/framework.rs) is the reference
+implementation. Its [acceptance test](../../crates/everruns/tests/brave_search_framework.rs)
 checks schema parity, execution through the public Engine, and credential
 separation. Other integrations adopt this boundary as they gain Framework
 support; this does not imply the entire hosted catalog is executable by default.

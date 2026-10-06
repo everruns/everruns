@@ -26,6 +26,8 @@ path = "src/bin/export_openapi.rs"
 lua = ["everruns-capabilities/lua"]
 
 [dependencies]
+everruns-integrations = { workspace = true, features = ["typesafe", "bashkit", "web-fetch", "github"] }
+
 mimalloc.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
@@ -102,10 +104,6 @@ everruns-capabilities = { path = "../capabilities", features = ["openapi", "envi
 everruns-cli-contract.workspace = true
 everruns-integrations-catalog.workspace = true
 # Sandbox Templates validate Modal egress with the provider's own rules.
-everruns-integrations = { workspace = true, features = ["modal"] }
-everruns-integrations-typesafe = { path = "../../integrations/typesafe" }
-everruns-integrations-bashkit.workspace = true
-everruns-integrations-web-fetch.workspace = true
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
@@ -130,7 +128,6 @@ serde_html_form = "0.4"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
 everruns-test-support = { path = "../test-support", default-features = false }
 # Template tests check the `github` capability enforces template settings.
-everruns-integrations-github = { path = "../../integrations/github" }
 wiremock = "0.6"
 jsonschema = { version = "0.58.1", default-features = false }
 flate2.workspace = true

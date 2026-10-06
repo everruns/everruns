@@ -1,36 +1,26 @@
 # everruns-integrations-web-fetch
 
-> Policy-routed web fetching for Everruns agents.
+> Deprecated compatibility package for the Web Fetch integration.
 
-`everruns-integrations-web-fetch` adapts FetchKit's schema, extraction,
-download, signing, and SSRF controls to Everruns capability and egress
-contracts.
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-Part of the [Everruns](https://everruns.com) ecosystem. Framework applications
-enable it with the `web-fetch` feature; hosted product composition registers it
-explicitly.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `web-fetch` feature. This package will be removed in the following platform release.
 
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_web_fetch::WebFetchCapability;
-
-assert_eq!(WebFetchCapability::new(None).id(), "web_fetch");
+use everruns-integrations::web_fetch as _;
 ```
 
-## What It Provides
+## Features
 
-- FetchKit-backed `web_fetch` tool and delegated schema
-- DNS-pinned SSRF and host egress-policy integration
-- Optional session-file downloads
-- Cancellation-safe, bounded response handling and request signing
+The `web-fetch` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
-- [API reference](https://docs.rs/everruns-integrations-web-fetch)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

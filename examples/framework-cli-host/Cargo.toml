@@ -7,10 +7,10 @@ license.workspace = true
 publish = false
 
 [dependencies]
+everruns-integrations = { workspace = true, features = ["bashkit", "filesystem"] }
+
 clap = { workspace = true, features = ["string", "color"] }
 everruns-contracts = { path = "../../crates/contracts", default-features = false, features = ["http"] }
-everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
-everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
 everruns-llmsim = { path = "../../crates/drivers/llmsim", features = ["host"] }
 everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthropic", "openai"] }
 async-trait.workspace = true

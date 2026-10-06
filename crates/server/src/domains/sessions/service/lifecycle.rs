@@ -315,7 +315,7 @@ impl SessionService {
             crate::domains::session_files::WorkspaceFileService::new(self.db.clone()),
         );
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> =
-            Arc::new(everruns_integrations_bashkit::BashkitShellHookDispatcher::new(file_store));
+            Arc::new(everruns_integrations::bashkit::BashkitShellHookDispatcher::new(file_store));
         let hooks = everruns_core::lifecycle_hooks::build_session_lifecycle_hooks(
             &specs, event, dispatcher,
         );

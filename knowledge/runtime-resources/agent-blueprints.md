@@ -35,7 +35,7 @@ do not introduce a second execution engine.
 - [`crates/core/src/host/`](../../crates/core/src/host) owns runtime-agent assembly
   and execution for blueprint sessions.
 - [`integrations/github/`](../../integrations/github) and
-  [`integrations/openrouter/src/model_scout.rs`](../../integrations/openrouter/src/model_scout.rs)
+  [`integrations/openrouter/src/model_scout.rs`](../../crates/integrations/src/openrouter/model_scout.rs)
   are current concrete examples. Their source, not this spec, owns prompts,
   tool lists, model names, and config schemas.
 - [`crates/server/migrations/`](../../crates/server/migrations) owns exact

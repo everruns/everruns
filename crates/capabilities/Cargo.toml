@@ -29,13 +29,13 @@ embedded-platform-docs = ["dep:include_dir"]
 # the server now depends on directly. No crate enabled this passthrough.
 portable-builtins = ["everruns-core/builtins", "everruns-core/ui-capabilities"]
 environment-capabilities = [
-    "dep:everruns-integrations-filesystem",
-    "dep:everruns-integrations-bashkit",
-    "dep:everruns-integrations-web-fetch",
-    "dep:everruns-integrations-openrouter",
+    "everruns-integrations/filesystem",
+    "everruns-integrations/bashkit",
+    "everruns-integrations/web-fetch",
+    "everruns-integrations/openrouter",
     "everruns-core/builtins",
 ]
-lua = ["dep:everruns-integrations-lua"]
+lua = ["everruns-integrations/lua"]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.
 a2a = ["everruns-core/a2a", "dep:url"]
 # Outbound AG-UI delegation (`ag_ui_delegation`): product-owned and optional,
@@ -52,15 +52,13 @@ container-sandbox = [
 container-sandbox-live-tests = ["container-sandbox"]
 
 [dependencies]
+everruns-integrations = { workspace = true, optional = true }
+
+
 # Orchestration consumes neutral contracts and portable core execution views.
 # Persistence/API records remain exclusively in the server.
 everruns-core = { workspace = true, default-features = false, features = ["host"] }
 everruns-contracts = { workspace = true, default-features = false, features = ["session-sandbox"] }
-everruns-integrations-filesystem = { workspace = true, optional = true }
-everruns-integrations-bashkit = { workspace = true, optional = true }
-everruns-integrations-web-fetch = { workspace = true, optional = true }
-everruns-integrations-lua = { workspace = true, optional = true }
-everruns-integrations-openrouter = { workspace = true, optional = true }
 
 serde.workspace = true
 serde_json.workspace = true

@@ -259,7 +259,7 @@ async fn cleanup_daytona(
     storage_store: &dyn SessionStorageStore,
     token: &str,
 ) -> Result<String> {
-    let client = everruns_integrations_daytona::client::DaytonaClient::new(token.to_string());
+    let client = everruns_integrations::daytona::client::DaytonaClient::new(token.to_string());
 
     match client.delete_sandbox(&resource.external_id).await {
         Ok(()) => {}
@@ -290,7 +290,7 @@ async fn cleanup_e2b(
     storage_store: &dyn SessionStorageStore,
     token: &str,
 ) -> Result<String> {
-    let client = everruns_integrations_e2b::client::E2BClient::new(token.to_string());
+    let client = everruns_integrations::e2b::client::E2BClient::new(token.to_string());
 
     match client.delete_sandbox(&resource.external_id).await {
         Ok(()) => {}
@@ -328,7 +328,8 @@ async fn cleanup_deno(
         .ok_or_else(|| anyhow!("Deno leased resource missing metadata.region"))?;
     let org = deno_cleanup_org(resource);
 
-    let client = everruns_integrations_deno::client::DenoClient::new(token.to_string(), org);
+    let client =
+        everruns_integrations_experimental::deno::client::DenoClient::new(token.to_string(), org);
     match client.delete_sandbox(&resource.external_id, region).await {
         Ok(()) => {}
         Err(error) if is_deno_not_found(&error) => {
@@ -358,7 +359,8 @@ async fn cleanup_sprites(
     storage_store: &dyn SessionStorageStore,
     token: &str,
 ) -> Result<String> {
-    let client = everruns_integrations_sprites::client::SpritesClient::new(token.to_string());
+    let client =
+        everruns_integrations_experimental::sprites::client::SpritesClient::new(token.to_string());
 
     match client.delete_sprite(&resource.external_id).await {
         Ok(()) => {}
@@ -436,11 +438,13 @@ async fn cleanup_browserless(
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| anyhow!("Browserless leased resource missing metadata.ws_endpoint"))?;
 
-    let reconnect_url =
-        everruns_integrations_browserless::state::BrowserSessionState::new(ws_endpoint.to_string())
-            .reconnect_url(token);
+    let reconnect_url = everruns_integrations::browserless::state::BrowserSessionState::new(
+        ws_endpoint.to_string(),
+    )
+    .reconnect_url(token);
 
-    match everruns_integrations_browserless::cdp::CdpSession::connect_to_close(&reconnect_url).await
+    match everruns_integrations::browserless::cdp::CdpSession::connect_to_close(&reconnect_url)
+        .await
     {
         Ok(session) => {
             session.disconnect().await;
@@ -478,7 +482,7 @@ async fn clear_browserless_session_state_if_matches(
     };
 
     let Ok(state) = serde_json::from_str::<
-        everruns_integrations_browserless::state::BrowserSessionState,
+        everruns_integrations::browserless::state::BrowserSessionState,
     >(&state_json) else {
         return;
     };
@@ -493,7 +497,7 @@ async fn clear_browserless_session_state_if_matches(
 }
 
 fn browserless_external_id(ws_endpoint: &str) -> String {
-    everruns_integrations_browserless::state::browser_session_external_id(ws_endpoint)
+    everruns_integrations::browserless::state::browser_session_external_id(ws_endpoint)
 }
 
 fn is_daytona_not_found(error: &str) -> bool {

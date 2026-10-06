@@ -29,8 +29,8 @@ use crate::core::{
 };
 use crate::host::{DecisionRouter, LLM_DECISION_DRIVER_ID, LlmDecisionDriver};
 use everruns_contracts::{ModelSpec, ProviderRegistry};
-use everruns_integrations_openai_decisions::OpenAIDecisions;
-use everruns_integrations_typesafe::SystemDecisionsConfig;
+use everruns_integrations::openai_decisions::OpenAIDecisions;
+use everruns_integrations::typesafe::SystemDecisionsConfig;
 
 /// Environment variable naming the default decision driver.
 pub const DECISIONS_DRIVER_ENV: &str = "DECISIONS_DRIVER";
@@ -150,7 +150,7 @@ impl SystemDecisions {
             })?;
             return Ok(Arc::new(OpenAIDecisions::new(key).model(
                 self.model.unwrap_or_else(|| {
-                    everruns_integrations_openai_decisions::DEFAULT_MODEL.into()
+                    everruns_integrations::openai_decisions::DEFAULT_MODEL.into()
                 }),
             )));
         }

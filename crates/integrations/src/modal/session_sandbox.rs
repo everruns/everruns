@@ -187,7 +187,7 @@ async fn client(
     })?;
     // Tests point the client at an in-process mock. Templates cannot set this
     // key (validation allowlists options) and shipped builds never read it.
-    #[cfg(feature = "test-util")]
+    #[cfg(feature = "modal-test-util")]
     if let Some(url) = config
         .provider_config
         .get("_test_server_url")
@@ -196,7 +196,7 @@ async fn client(
         return ModalClient::with_server_url(credentials, url)
             .map_err(ToolExecutionResult::tool_error);
     }
-    #[cfg(not(feature = "test-util"))]
+    #[cfg(not(feature = "modal-test-util"))]
     let _ = config;
     ModalClient::new(credentials).map_err(ToolExecutionResult::tool_error)
 }

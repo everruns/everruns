@@ -28,7 +28,7 @@ use everruns::{
     SessionEvent, WorkspacePolicy,
 };
 
-use everruns_integrations_typesafe::Jev;
+use everruns_integrations::typesafe::Jev;
 use mira::subject::summarize_events;
 use mira::{ErrorKind, Part, RunCx, Sample, Source, Subject, Target, Transcript};
 

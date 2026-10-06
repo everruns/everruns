@@ -1,47 +1,22 @@
-# Deno Sandbox Integration
-# Decision: External integration crate, named in crates/integrations-catalog
-
 [package]
 name = "everruns-integrations-deno"
-readme = "README.md"
 version.workspace = true
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Deno Sandbox integration for Everruns agents"
-keywords = ["everruns", "deno", "sandbox", "agents"]
-categories = ["api-bindings", "development-tools"]
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-deno"
+description = "Deprecated compatibility shim for everruns-integrations-deno"
+readme = "README.md"
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
-# Connector catalog (EVE-879): connectors register into the hosted connector
-# plugin system, which lives in the platform crate.
-reqwest = { workspace = true, features = ["multipart"] }
-serde.workspace = true
-serde_json.workspace = true
-async-trait.workspace = true
-tokio.workspace = true
-chrono.workspace = true
-tracing.workspace = true
-futures-util.workspace = true
-tokio-tungstenite.workspace = true
-hickory-resolver = "0.26"
+everruns-integrations-experimental = { workspace = true, features = ["deno"] }
 
-# TLS: custom rustls config to force http/1.1 ALPN for WebSocket
-rustls.workspace = true
-rustls-native-certs = "0.8"
+[features]
+default = []
 
-base64.workspace = true
-http = "1"
-urlencoding = "2.1"
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-
-everruns-core = { workspace = true, default-features = false, features = ["host"] }
 [lints]
 workspace = true

@@ -1,60 +1,23 @@
-# Browserless Integration
-# Decision: External integration crate, named in crates/integrations-catalog
-# Decision: REST API for one-shot operations, CDP (WebSocket) for persistent browser sessions
-# Decision: /function endpoint for multi-step interactions (click, type, navigate)
-
 [package]
 name = "everruns-integrations-browserless"
-readme = "README.md"
 version.workspace = true
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Browserless browser automation integration for Everruns agents"
-keywords = ["everruns", "browserless", "browser", "agents"]
-categories = ["api-bindings", "development-tools"]
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-browserless"
+description = "Deprecated compatibility shim for everruns-integrations-browserless"
+readme = "README.md"
+publish = true
 
 [dependencies]
-# `http`: SsrfGuardResolver for the browser egress boundary (EVE-1189)
-everruns-contracts = { workspace = true, features = ["runtime", "http"] }
-
-# HTTP client for Browserless REST API
-reqwest.workspace = true
-
-# WebSocket client for CDP sessions
-tokio-tungstenite.workspace = true
-futures-util.workspace = true
-
-# TLS: custom rustls config to force http/1.1 ALPN for WebSocket
-rustls.workspace = true
-rustls-native-certs = "0.8"
-
-# Serialization
-serde.workspace = true
-serde_json.workspace = true
-
-# Async
-async-trait.workspace = true
-tokio.workspace = true
-chrono.workspace = true
-tracing.workspace = true
-
-# Base64 encoding for screenshot data and relayed browser responses
-base64.workspace = true
-# Decode a relayed response a server compressed despite `identity`
-flate2.workspace = true
-
-# Normalize HTTP prefix patterns the same way NetworkAccessList does.
-url = "2"
+everruns-integrations = { workspace = true, features = ["browserless"] }
 
 [features]
-browserless-live-tests = []
+default = []
+browserless-live-tests = ["everruns-integrations/browserless-live-tests"]
 
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
-fancy-regex = "0.14"
+[lints]
+workspace = true

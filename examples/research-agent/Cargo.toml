@@ -6,10 +6,11 @@ license.workspace = true
 publish = false
 
 [dependencies]
+everruns-integrations = { workspace = true, features = ["brave-search"] }
+
 everruns = { path = "../../crates/everruns", features = ["web-fetch"] }
 everruns-example-demo = { path = "../demo-support" }
 everruns-drivers = { path = "../../crates/drivers/drivers", features = ["openrouter"] }
-everruns-integrations-brave-search = { path = "../../integrations/brave-search", default-features = false }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]

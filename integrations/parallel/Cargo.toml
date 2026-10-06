@@ -1,7 +1,3 @@
-# Parallel MCP Integration
-# Decision: Capability contributes a remote MCP server rather than reimplementing search tools.
-# Decision: Free by default; optional user connection supplies a Parallel API key as bearer auth.
-
 [package]
 name = "everruns-integrations-parallel"
 version.workspace = true
@@ -12,26 +8,16 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-parallel"
-description = "Parallel web search MCP integration for Everruns"
+description = "Deprecated compatibility shim for everruns-integrations-parallel"
 readme = "README.md"
-keywords = ["everruns", "parallel", "search", "agents"]
-categories = ["api-bindings", "development-tools"]
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
-# Connector catalog (EVE-879): connectors register into the hosted connector
-# plugin system, which lives in the platform crate.
-reqwest.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-async-trait.workspace = true
+everruns-integrations = { workspace = true, features = ["parallel"] }
 
 [features]
-integration = []
-
-[dev-dependencies]
-everruns-contracts = { workspace = true, default-features = false }
-tokio = { workspace = true, features = ["full", "test-util"] }
+default = []
+integration = ["everruns-integrations/parallel-integration"]
 
 [lints]
 workspace = true

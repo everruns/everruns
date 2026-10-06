@@ -1,38 +1,23 @@
-# Cursor Integration
-# Decision: Direct REST client for Cursor Background/Cloud Agents API.
-
 [package]
 name = "everruns-integrations-cursor"
-readme = "README.md"
 version.workspace = true
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Cursor Cloud Agents integration for Everruns"
-keywords = ["everruns", "cursor", "agents", "ai"]
-categories = ["api-bindings", "development-tools"]
+homepage.workspace = true
+repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-cursor"
+description = "Deprecated compatibility shim for everruns-integrations-cursor"
+readme = "README.md"
+publish = true
 
 [dependencies]
-everruns-contracts = { workspace = true, default-features = false, features = ["runtime"] }
-# Connector catalog (EVE-879): connectors register into the hosted connector
-# plugin system, which lives in the platform crate.
-reqwest.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-async-trait.workspace = true
-tokio.workspace = true
-tracing.workspace = true
+everruns-integrations = { workspace = true, features = ["cursor"] }
 
 [features]
-cursor-live-tests = []
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
-wiremock = "0.6"
+default = []
+cursor-live-tests = ["everruns-integrations/cursor-live-tests"]
 
 [lints]
 workspace = true

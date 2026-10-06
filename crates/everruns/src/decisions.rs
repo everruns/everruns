@@ -146,7 +146,7 @@ impl Decisions {
     /// not evidence about the next.
     ///
     /// The concrete service comes from an integration — for TypeSafe's System
-    /// One, `everruns_integrations_typesafe::TypeSafeAI`.
+    /// One, `everruns_integrations::typesafe::TypeSafeAI`.
     ///
     // `TypeSafeAI` is re-exported only under the `typesafe` feature, which is
     // not a default one. Compiling this example unconditionally made the bare

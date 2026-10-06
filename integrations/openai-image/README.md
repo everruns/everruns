@@ -1,34 +1,26 @@
 # everruns-integrations-openai-image
 
-> OpenAI GPT Image generation and editing for Everruns agents.
+> Deprecated compatibility package for the Openai Image integration.
 
-Part of the [Everruns](https://everruns.com) ecosystem.
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-## What It Provides
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `openai-image` feature. This package will be removed in the following platform release.
 
-Exposes the `gpt_image_gen` capability with two tools:
-
-- `generate_image`, create raster images from a text prompt.
-- `edit_image`, edit existing session images with OpenAI's image edit API.
+## Quick Start
 
 ```rust
-use everruns_integrations_openai_image::GptImageGenCapability;
-
-let _capability = GptImageGenCapability;
+use everruns-integrations::openai_image as _;
 ```
 
-The capability publishes an `IntegrationPlugin` const named by the integration catalog, so
-linking this crate into a binary (e.g. `everruns-server`, `everruns-worker`) is
-enough to make it available.
+## Features
 
-Per-session overrides for the OpenAI API key and base URL are read from the
-session secret store as `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`.
+The `openai-image` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [OpenAI image generation](https://docs.everruns.com/capabilities/openai-image-generation/)
-- [API reference](https://docs.rs/everruns-integrations-openai-image)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

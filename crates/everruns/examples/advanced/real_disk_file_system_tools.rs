@@ -26,7 +26,7 @@ use everruns_core::host::RealDiskSessionFileSystemFactory;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
-use everruns_integrations_filesystem::FileSystemCapability;
+use everruns_integrations::filesystem::FileSystemCapability;
 use everruns_llmsim::LlmSimConfig;
 use tempfile::TempDir;
 

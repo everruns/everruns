@@ -56,7 +56,7 @@ pub struct ModalSandboxState {
 /// Decision: only exists under the `test-util` feature, which only this
 /// crate's own tests enable, so shipped builds always talk to the real Modal
 /// API and nothing at runtime can send the token pair elsewhere.
-#[cfg(feature = "test-util")]
+#[cfg(feature = "modal-test-util")]
 #[derive(Debug, Clone)]
 pub struct ModalServerUrlOverride(pub String);
 
@@ -91,12 +91,12 @@ pub fn client_for(
     credentials: ModalCredentials,
     context: &ToolContext,
 ) -> Result<ModalClient, ToolExecutionResult> {
-    #[cfg(feature = "test-util")]
+    #[cfg(feature = "modal-test-util")]
     if let Some(url) = context.extension::<ModalServerUrlOverride>() {
         return ModalClient::with_server_url(credentials, &url.0)
             .map_err(ToolExecutionResult::tool_error);
     }
-    #[cfg(not(feature = "test-util"))]
+    #[cfg(not(feature = "modal-test-util"))]
     let _ = context;
     ModalClient::new(credentials).map_err(ToolExecutionResult::tool_error)
 }

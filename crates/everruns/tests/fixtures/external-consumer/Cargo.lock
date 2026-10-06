@@ -432,7 +432,7 @@ dependencies = [
  "base64",
  "everruns-contracts",
  "everruns-core",
- "everruns-integrations-filesystem",
+ "everruns-integrations",
  "everruns-llmsim",
  "everruns-macros",
  "schemars",
@@ -539,7 +539,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-integrations-filesystem"
+name = "everruns-integrations"
 version = "0.41.0"
 dependencies = [
  "anyhow",

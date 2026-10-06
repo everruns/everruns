@@ -3,7 +3,7 @@
 use everruns_example_demo as demo;
 
 use everruns::{Agent, AgentBuilder, Engine};
-use everruns_integrations_brave_search::BraveSearch;
+use everruns_integrations::brave_search::BraveSearch;
 
 const MODEL: &str = "z-ai/glm-5.2";
 const MAX_ITERATIONS: usize = 6;

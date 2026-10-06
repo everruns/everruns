@@ -1,38 +1,26 @@
 # everruns-integrations-openrouter
 
-> OpenRouter workspace policy, model scouting, and server tools for Everruns.
+> Deprecated compatibility package for the Openrouter integration.
 
-`everruns-integrations-openrouter` owns the OpenRouter-specific
-workspace metadata, compatibility checks, and bounded model-scout probes that
-were formerly compiled into the execution kernel. It also owns the opt-in
-provider-executed server-tool capability and its routing-config adapter.
+[Everruns](https://everruns.com) is an agentic runtime and control plane.
 
-Part of the [Everruns](https://everruns.com) ecosystem. Hosted product
-composition registers these capabilities explicitly; advanced hosts can opt in
-without coupling provider protocol crates to `everruns-core`.
+This crate is a one-release compatibility shim. Migrate to [`everruns-integrations`](https://crates.io/crates/everruns-integrations) with the `openrouter` feature. This package will be removed in the following platform release.
 
-## Quick Example
+## Quick Start
 
 ```rust
-use everruns_core::capabilities::Capability;
-use everruns_integrations_openrouter::OpenRouterWorkspaceCapability;
-
-assert_eq!(OpenRouterWorkspaceCapability.id(), "openrouter_workspace");
+use everruns-integrations::openrouter as _;
 ```
 
-## What It Provides
+## Features
 
-- OpenRouter key/workspace policy inspection
-- Local routing compatibility reports
-- Bounded model/provider probe and ranking tools
-- High-risk, explicit OpenRouter server-tool routing (`web_search`, `web_fetch`)
-- Credential redaction and explicit operator-apply semantics
+The `openrouter` feature forwards to the maintained module in `everruns-integrations`. New applications should depend directly on that crate; compatibility imports continue to resolve during this release.
 
 ## Documentation
 
-- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
-- [API reference](https://docs.rs/everruns-integrations-openrouter)
+- [Integration guide](https://docs.everruns.com/integrations)
+- [API reference](https://docs.rs/everruns-integrations)
 
 ## License
 
-Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT. See the [repository license](https://github.com/everruns/everruns/blob/main/LICENSE).

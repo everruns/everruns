@@ -5,12 +5,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'integrations/typesafe/**'
+      - 'crates/integrations/src/typesafe/**'
+      - 'crates/integrations/tests/typesafe_*.rs'
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
-      - 'integrations/typesafe/**'
+      - 'crates/integrations/src/typesafe/**'
+      - 'crates/integrations/tests/typesafe_*.rs'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -47,7 +49,7 @@ jobs:
           shared-key: "debug"
 
       - name: Run unit tests
-        run: cargo test -p everruns-integrations-typesafe
+        run: cargo test -p everruns-integrations --features typesafe
 
   # Live tests hit the real TypeSafe API and need DOPPLER_TOKEN.
   # Restricted to push/workflow_dispatch so the secret is never available
@@ -99,5 +101,5 @@ jobs:
         run: >-
           doppler run --
           bash -lc 'UTILITY_TYPESAFE_API_KEY="${UTILITY_TYPESAFE_API_KEY:-$TYPESAFE_API_KEY}"
-          cargo test -p everruns-integrations-typesafe --features integration,live-tests'
+          cargo test -p everruns-integrations --features typesafe-integration,typesafe-live-tests'
 

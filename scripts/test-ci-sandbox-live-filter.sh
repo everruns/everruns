@@ -66,9 +66,9 @@ def included(patterns: list[str], path: str) -> bool:
 providers = {
     "daytona": {
         "job": "daytona-live-test",
-        "command": "cargo test -p everruns-integrations-daytona",
+        "command": "cargo test -p everruns-integrations --features daytona-live-tests",
         "probes": [
-            "integrations/daytona/src/session_sandbox_provider.rs",
+            "crates/integrations/src/daytona/session_sandbox_provider.rs",
             "crates/contracts/src/session_sandbox.rs",
             "crates/contracts/src/sandbox_checkpoint.rs",
             "crates/capabilities/src/session_sandbox.rs",
@@ -80,17 +80,17 @@ providers = {
     },
     "e2b": {
         "job": "e2b-live-test",
-        "command": "cargo test -p everruns-integrations-e2b",
+        "command": "cargo test -p everruns-integrations --features e2b-live-tests",
         "probes": [
-            "integrations/e2b/src/client.rs",
+            "crates/integrations/src/e2b/client.rs",
             ".github/workflows/ci.yml",
         ],
     },
     "browserless": {
         "job": "browserless-live-test",
-        "command": "cargo test -p everruns-integrations-browserless",
+        "command": "cargo test -p everruns-integrations --features browserless-live-tests",
         "probes": [
-            "integrations/browserless/src/lib.rs",
+            "crates/integrations/src/browserless/mod.rs",
             ".github/workflows/ci.yml",
         ],
     },
@@ -142,9 +142,9 @@ for provider, expected in providers.items():
 for provider, expected in providers.items():
     patterns = filters[provider]
     for probe in [
-        "integrations/daytona/README.md",
-        "integrations/e2b/SPEC.md",
-        "integrations/browserless/README.md",
+        "crates/integrations/src/daytona/README.md",
+        "crates/integrations/src/e2b/SPEC.md",
+        "crates/integrations/src/browserless/README.md",
         "apps/ui/src/app/page.tsx",
     ]:
         assert not included(patterns, probe), (provider, probe)

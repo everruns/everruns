@@ -5,12 +5,14 @@ on:
   push:
     branches: [main]
     paths:
-      - 'integrations/brave-search/**'
+      - 'crates/integrations/src/brave_search/**'
+      - 'crates/integrations/tests/brave_search_*.rs'
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
-      - 'integrations/brave-search/**'
+      - 'crates/integrations/src/brave_search/**'
+      - 'crates/integrations/tests/brave_search_*.rs'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -47,7 +49,7 @@ jobs:
           shared-key: "debug"
 
       - name: Run unit tests
-        run: cargo test -p everruns-integrations-brave-search
+        run: cargo test -p everruns-integrations --features brave-search
 
   # Live tests hit the real Brave Search API and need DOPPLER_TOKEN.
   # Restricted to push/workflow_dispatch so the secret is never available
@@ -92,4 +94,4 @@ jobs:
       - name: Run integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations-brave-search --features integration
+        run: doppler run -- cargo test -p everruns-integrations --features brave-search-integration

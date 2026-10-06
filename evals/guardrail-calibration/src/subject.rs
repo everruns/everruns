@@ -26,7 +26,7 @@ use everruns_core::builtins::GuardrailsCapability;
 use everruns_core::capabilities::Capability;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_hooks::PreToolUseDecision;
-use everruns_integrations_typesafe::TypeSafeAI;
+use everruns_integrations::typesafe::TypeSafeAI;
 use mira::{RunCx, Sample, Subject, Transcript};
 use serde_json::json;
 

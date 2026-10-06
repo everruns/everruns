@@ -22,7 +22,7 @@ use everruns_contracts::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::CapabilityRegistry;
 use everruns_core::host::HostComposition;
 use everruns_core::host::{AgentBuilder, HarnessBuilder, SessionBuilder};
-use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
+use everruns_integrations::lua::{LuaCapability, LuaCodeModeCapability};
 use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_test_support::TestMathCapability;

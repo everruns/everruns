@@ -24,7 +24,7 @@ everruns-drivers = { path = "../../crates/drivers/drivers", features = ["anthrop
 # Attached through its Framework adapter rather than by capability id: the
 # hosted capability resolves a user connection, which an in-process run has
 # no store for.
-everruns-integrations-typesafe = { path = "../../integrations/typesafe", default-features = false }
+everruns-integrations = { path = "../../crates/integrations", default-features = false, features = ["typesafe"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 serde_json = "1"
 regex = "1"

@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser};
-use everruns_integrations_bashkit::cli::{
+use everruns_integrations::bashkit::cli::{
     CliCommandSource, CliCommandSourceHandle, CliCommandSpec,
 };
 use serde_json::{Value, json};

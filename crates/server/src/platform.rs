@@ -164,13 +164,13 @@ mod tests {
         let service = composition.decisions();
         // Process env decides which one; both are valid, a missing service is not.
         let configured =
-            std::env::var(everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV)
+            std::env::var(everruns_integrations::typesafe::UTILITY_TYPESAFE_API_KEY_ENV)
                 .is_ok_and(|key| !key.trim().is_empty());
         assert_eq!(
             service.is_configured(),
             configured,
             "decisions configuration must follow {}",
-            everruns_integrations_typesafe::UTILITY_TYPESAFE_API_KEY_ENV
+            everruns_integrations::typesafe::UTILITY_TYPESAFE_API_KEY_ENV
         );
         assert_eq!(
             service.name(),
