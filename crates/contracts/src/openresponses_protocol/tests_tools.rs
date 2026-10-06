@@ -238,10 +238,65 @@ fn test_incomplete_event_maps_output_limit_to_length() {
     match stream_event {
         LlmStreamEvent::Done(metadata) => {
             assert_eq!(metadata.finish_reason.as_deref(), Some("length"));
+            assert_eq!(
+                metadata.provider_finish_reason.as_deref(),
+                Some("max_output_tokens")
+            );
+            // The incomplete item was never handed on, so nothing ran truncated.
+            assert_eq!(metadata.tool_calls_truncated_executed, 0);
         }
         other => panic!("expected Done event, got {other:?}"),
     }
     assert!(deferred.lock().unwrap().is_empty());
+}
+
+/// A call already handed on mid-stream (via `output_item.done`) before the
+/// response ended incomplete may run with cut-off arguments: count it. A
+/// completed response counts only calls whose arguments fell back to `{}`.
+#[test]
+fn test_terminal_event_counts_calls_that_may_run_truncated() {
+    for (status, details, arguments, expected) in [
+        (
+            "incomplete",
+            json!({"reason": "max_output_tokens"}),
+            "{}",
+            1,
+        ),
+        ("completed", Value::Null, "{\"command\":\"rm -rf", 1),
+        ("completed", Value::Null, "{\"command\":\"ls\"}", 0),
+        ("completed", Value::Null, "", 0),
+    ] {
+        let event = json!({
+            "type": format!("response.{status}"),
+            "sequence_number": 10,
+            "response": {
+                "id": "resp", "object": "response", "created_at": 1780000000,
+                "status": status, "incomplete_details": details, "model": "gpt-5.5",
+                "output": [],
+                "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}
+            }
+        });
+        let mut calls = ToolCallStream::default();
+        calls.observe_item("fc_1", "call_1", "bash", arguments);
+        calls.mark_complete("fc_1", "call_1");
+        let LlmStreamEvent::Done(metadata) = handle_streaming_event(
+            serde_json::from_value(event).unwrap(),
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(calls),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            "gpt-5.5".to_string(),
+            None,
+        ) else {
+            panic!("expected Done");
+        };
+        assert_eq!(
+            metadata.tool_calls_truncated_executed, expected,
+            "{status} {arguments}"
+        );
+    }
 }
 
 #[test]

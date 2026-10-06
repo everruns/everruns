@@ -132,6 +132,9 @@ fn test_convert_llm_generation_with_parent() {
             compaction: None,
             request_options: None,
             cost_components: Vec::new(),
+            provider_finish_reason: None,
+            tool_calls_dropped: 0,
+            tool_calls_truncated_executed: 0,
         },
     };
 
@@ -150,6 +153,27 @@ fn test_convert_llm_generation_with_parent() {
     assert_eq!(bt_event.span_attributes.span_type, "llm");
     assert_eq!(bt_event.root_span_id, Some(turn_id.to_string()));
     assert_eq!(bt_event.span_parents, Some(vec![turn_id.to_string()]));
+    // A clean generation reports how it ended, and no truncation counts.
+    assert_eq!(bt_event.metadata["finish_reason"], "stop");
+    assert_eq!(bt_event.metadata["output_tokens"], 5);
+    for absent in [
+        "provider_finish_reason",
+        "tool_calls_dropped",
+        "tool_calls_truncated_executed",
+    ] {
+        assert!(bt_event.metadata.get(absent).is_none(), "{absent}");
+    }
+
+    let truncated = data.with_stop_details(Some("length".into()), 3, 1);
+    let event = Event::new(
+        SessionId::new(),
+        event.context.clone(),
+        EventData::LlmGeneration(truncated.clone()),
+    );
+    let bt_event = listener.convert_llm_generation(&event, &truncated);
+    assert_eq!(bt_event.metadata["provider_finish_reason"], "length");
+    assert_eq!(bt_event.metadata["tool_calls_dropped"], 3);
+    assert_eq!(bt_event.metadata["tool_calls_truncated_executed"], 1);
 }
 
 #[test]
@@ -178,6 +202,7 @@ fn test_convert_turn_completed_with_usage() {
         tool_call_count: None,
         llm_call_count: None,
         status: None,
+        stop_reason: Some("length".to_string()),
     };
 
     let event = Event::new(
@@ -188,6 +213,7 @@ fn test_convert_turn_completed_with_usage() {
 
     let bt_event = listener.convert_turn_completed(&event, &data);
 
+    assert_eq!(bt_event.metadata["stop_reason"], "length");
     assert_eq!(bt_event.id, turn_id.to_string());
     assert!(bt_event.metrics.is_some());
     let metrics = bt_event.metrics.unwrap();
@@ -265,6 +291,7 @@ fn test_turn_events_are_self_referencing_root_spans() {
         tool_call_count: None,
         llm_call_count: None,
         status: None,
+        stop_reason: None,
     };
     let completed_event = Event::new(
         SessionId::new(),

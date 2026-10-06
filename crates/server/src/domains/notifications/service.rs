@@ -238,6 +238,7 @@ mod tests {
                 tool_call_count: None,
                 llm_call_count: None,
                 status: None,
+                stop_reason: None,
             }),
             metadata: None,
             tags: None,

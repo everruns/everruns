@@ -44,7 +44,7 @@ pub struct TurnStartedData {
 }
 
 /// Data for turn.completed event
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TurnCompletedData {
     /// Turn identifier
@@ -90,6 +90,14 @@ pub struct TurnCompletedData {
     /// Optional explicit completion status for consumers that summarize turns.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
+
+    /// Normalized finish reason of the turn's final LLM generation (`stop`,
+    /// `length`, `content_filter`, `refusal`, ...). A turn that "completed" on
+    /// `length` ended because the model ran out of output budget, not because
+    /// it was done. `None` when the provider reported no reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "stop"))]
+    pub stop_reason: Option<String>,
 }
 
 /// Data for turn.failed event

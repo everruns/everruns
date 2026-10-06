@@ -150,6 +150,18 @@ pub mod names {
     pub const HTTP_REQUESTS_TOTAL: &str = "everruns_http_requests_total";
     pub const LLM_REQUESTS_TOTAL: &str = "everruns_llm_requests_total";
     pub const TOOL_EXECUTIONS_TOTAL: &str = "everruns_tool_executions_total";
+    /// Generations by normalized finish reason. Labels: provider, model,
+    /// finish_reason (`stop`, `tool_calls`, `length`, `content_filter`, ...).
+    pub const LLM_FINISH_REASON_TOTAL: &str = "everruns_llm_finish_reason_total";
+    /// Tool calls a driver discarded because the response was cut off or
+    /// rejected. Labels: provider, model, reason (the finish reason).
+    pub const LLM_TOOL_CALLS_DROPPED_TOTAL: &str = "everruns_llm_tool_calls_dropped_total";
+    /// Tool calls run from a truncated response, possibly with `{}`
+    /// arguments. Labels: provider, model, reason (the finish reason).
+    pub const LLM_TOOL_CALLS_TRUNCATED_EXECUTED_TOTAL: &str =
+        "everruns_llm_tool_calls_truncated_executed_total";
+    /// Provider retries before a generation succeeded. Label: provider.
+    pub const LLM_RETRIES_TOTAL: &str = "everruns_llm_retries_total";
     /// Counter for every domain Command invocation across HTTP, MCP and
     /// gRPC ExecuteCommand. Labels: name, category, status (ok |
     /// bad_request | unprocessable | forbidden | not_found | conflict |
@@ -170,6 +182,9 @@ pub mod names {
     pub const HTTP_REQUEST_DURATION: &str = "everruns_http_request_duration_seconds";
     pub const LLM_REQUEST_DURATION: &str = "everruns_llm_request_duration_seconds";
     pub const TOOL_EXECUTION_DURATION: &str = "everruns_tool_execution_duration_seconds";
+    /// Total backoff (Retry-After or computed) a retried generation waited.
+    /// Label: provider.
+    pub const LLM_RETRY_WAIT_DURATION: &str = "everruns_llm_retry_wait_seconds";
     /// Wall-clock duration of every domain Command invocation. Same labels
     /// as `COMMANDS_TOTAL`.
     pub const COMMAND_DURATION: &str = "everruns_command_duration_seconds";
@@ -321,7 +336,74 @@ pub async fn http_metrics_layer(
 
 use async_trait::async_trait;
 use everruns_core::EventListener;
-use everruns_core::events::{Event, EventData, LLM_GENERATION, TOOL_COMPLETED};
+use everruns_core::events::{
+    Event, EventData, LLM_GENERATION, LlmGenerationMetadata, TOOL_COMPLETED,
+};
+
+/// The LLM edge cases one generation contributes to the counters (see
+/// `everruns_contracts::llm_telemetry`). Pure, so the mapping is testable
+/// without a recorder.
+#[derive(Debug, Default, PartialEq)]
+struct LlmOutcomeSample {
+    finish_reason: Option<String>,
+    tool_calls_dropped: u32,
+    tool_calls_truncated_executed: u32,
+    retries: u32,
+    retry_wait_secs: Option<f64>,
+}
+
+impl LlmOutcomeSample {
+    fn of(meta: &LlmGenerationMetadata) -> Self {
+        Self {
+            finish_reason: meta
+                .finish_reasons
+                .as_ref()
+                .and_then(|reasons| reasons.first().cloned()),
+            tool_calls_dropped: meta.tool_calls_dropped,
+            tool_calls_truncated_executed: meta.tool_calls_truncated_executed,
+            retries: meta.retry.as_ref().map_or(0, |retry| retry.attempts),
+            retry_wait_secs: meta
+                .retry
+                .as_ref()
+                .filter(|retry| retry.attempts > 0)
+                .map(|retry| retry.total_wait_ms as f64 / 1000.0),
+        }
+    }
+
+    fn record(self, provider: &str, model: &str) {
+        let reason = self.finish_reason.unwrap_or_else(|| "unknown".to_string());
+        let labels = [
+            ("provider", provider.to_string()),
+            ("model", model.to_string()),
+        ];
+        let counter = |name: &'static str, value: u32, label: &'static str| {
+            if value > 0 {
+                let mut labels = labels.to_vec();
+                labels.push((label, reason.clone()));
+                metrics::counter!(name, &labels).increment(u64::from(value));
+            }
+        };
+        counter(names::LLM_FINISH_REASON_TOTAL, 1, "finish_reason");
+        counter(
+            names::LLM_TOOL_CALLS_DROPPED_TOTAL,
+            self.tool_calls_dropped,
+            "reason",
+        );
+        counter(
+            names::LLM_TOOL_CALLS_TRUNCATED_EXECUTED_TOTAL,
+            self.tool_calls_truncated_executed,
+            "reason",
+        );
+        if self.retries > 0 {
+            metrics::counter!(names::LLM_RETRIES_TOTAL, "provider" => provider.to_string())
+                .increment(u64::from(self.retries));
+        }
+        if let Some(wait) = self.retry_wait_secs {
+            metrics::histogram!(names::LLM_RETRY_WAIT_DURATION, "provider" => provider.to_string())
+                .record(wait);
+        }
+    }
+}
 
 /// Event listener that records per-instance LLM/tool counters and duration histograms.
 ///
@@ -354,10 +436,13 @@ impl EventListener for PrometheusMetricsListener {
                 if let Some(duration_ms) = data.metadata.duration_ms {
                     metrics::histogram!(
                         names::LLM_REQUEST_DURATION,
-                        "provider" => provider,
-                        "model" => model,
+                        "provider" => provider.clone(),
+                        "model" => model.clone(),
                     )
                     .record(duration_ms as f64 / 1000.0);
+                }
+                if data.metadata.success {
+                    LlmOutcomeSample::of(&data.metadata).record(&provider, &model);
                 }
             }
             EventData::ToolCompleted(data) => {
@@ -393,6 +478,53 @@ impl EventListener for PrometheusMetricsListener {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn generation(finish: &str) -> everruns_core::events::LlmGenerationData {
+        everruns_core::events::LlmGenerationData::success_with_metadata(
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            "claude-sonnet-4-6".into(),
+            Some("anthropic".into()),
+            None,
+            None,
+            None,
+            Some(vec![finish.to_string()]),
+            None,
+        )
+    }
+
+    #[test]
+    fn llm_outcome_counts_truncation_and_retries() {
+        let data = generation("length")
+            .with_stop_details(Some("max_tokens".into()), 2, 1)
+            .with_retry(everruns_core::events::LlmRetryInfo {
+                attempts: 2,
+                total_wait_ms: 1500,
+            });
+        assert_eq!(
+            LlmOutcomeSample::of(&data.metadata),
+            LlmOutcomeSample {
+                finish_reason: Some("length".into()),
+                tool_calls_dropped: 2,
+                tool_calls_truncated_executed: 1,
+                retries: 2,
+                retry_wait_secs: Some(1.5),
+            }
+        );
+    }
+
+    #[test]
+    fn llm_outcome_of_a_clean_generation_counts_only_its_finish_reason() {
+        assert_eq!(
+            LlmOutcomeSample::of(&generation("stop").metadata),
+            LlmOutcomeSample {
+                finish_reason: Some("stop".into()),
+                ..LlmOutcomeSample::default()
+            }
+        );
+    }
 
     #[test]
     fn config_defaults_safe() {

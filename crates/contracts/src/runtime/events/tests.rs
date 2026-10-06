@@ -47,6 +47,9 @@ fn generation_metadata() -> LlmGenerationMetadata {
         compaction: None,
         request_options: None,
         cost_components: Vec::new(),
+        provider_finish_reason: None,
+        tool_calls_dropped: 0,
+        tool_calls_truncated_executed: 0,
     }
 }
 

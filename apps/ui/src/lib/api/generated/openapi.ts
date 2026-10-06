@@ -14161,6 +14161,13 @@ export interface components {
        * @example anthropic
        */
       provider?: string | null;
+      /**
+       * @description The provider's own finish/stop reason, verbatim (`max_tokens`,
+       *     `MAX_TOKENS`, `max_output_tokens`, ...). `finish_reasons` carries the
+       *     normalized value; this keeps the provider vocabulary it came from.
+       * @example max_tokens
+       */
+      provider_finish_reason?: string | null;
       request_options?: components["schemas"]["LlmRequestOptions"] | null;
       /**
        * @description Unique response identifier from the LLM provider
@@ -14196,6 +14203,21 @@ export interface components {
        * @example 312
        */
       time_to_first_token_ms?: number | null;
+      /**
+       * Format: int32
+       * @description Tool calls the model started that the driver discarded because the
+       *     response was cut off or rejected. Omitted when zero.
+       * @example 1
+       */
+      tool_calls_dropped?: number;
+      /**
+       * Format: int32
+       * @description Tool calls handed on for execution although the response was truncated
+       *     or their arguments did not parse, so they may run with incomplete
+       *     (`{}`) arguments. Omitted when zero.
+       * @example 1
+       */
+      tool_calls_truncated_executed?: number;
       usage?: components["schemas"]["TokenUsage"] | null;
     };
     /** @description LLM generation output */
@@ -20614,6 +20636,14 @@ export interface components {
       llm_call_count?: number | null;
       /** @description Optional explicit completion status for consumers that summarize turns. */
       status?: string | null;
+      /**
+       * @description Normalized finish reason of the turn's final LLM generation (`stop`,
+       *     `length`, `content_filter`, `refusal`, ...). A turn that "completed" on
+       *     `length` ended because the model ran out of output budget, not because
+       *     it was done. `None` when the provider reported no reason.
+       * @example stop
+       */
+      stop_reason?: string | null;
       /**
        * Format: int64
        * @description First-token latency for the turn, usually from the first LLM generation.

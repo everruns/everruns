@@ -104,6 +104,19 @@ pub struct LlmCompletionMetadata {
     pub response_model: Option<String>,
     /// Finish reason as reported, normalized; `None` if the provider sent none.
     pub finish_reason: Option<String>,
+    /// The provider's own stop reason, verbatim (`max_tokens`, `MAX_TOKENS`,
+    /// `max_output_tokens`, ...), next to the normalized `finish_reason`.
+    /// Telemetry only: lets an operator tell which provider vocabulary a
+    /// normalized value came from. `None` when the driver does not record it.
+    pub provider_finish_reason: Option<String>,
+    /// Tool calls the model started that the driver discarded because the
+    /// response was cut off or rejected (`length`, `content_filter`, ...).
+    /// Discarding is the contract; the count makes it observable.
+    pub tool_calls_dropped: u32,
+    /// Tool calls handed on for execution although the response was truncated
+    /// or their arguments did not parse, so they may run with incomplete (`{}`)
+    /// arguments. Observability only; nothing gates on it here.
+    pub tool_calls_truncated_executed: u32,
     /// Retry metadata (present if rate limit retries occurred)
     pub retry_metadata: Option<crate::llm_retry::RetryMetadata>,
     /// Provider's response ID (e.g., OpenAI response ID from response.completed).

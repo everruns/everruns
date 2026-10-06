@@ -1776,7 +1776,7 @@ mod tests {
                     time_to_first_token_ms: None,
                     tool_call_count: Some(1),
                     llm_call_count: Some(2),
-                    status: None,
+                    ..Default::default()
                 },
             ),
         ]

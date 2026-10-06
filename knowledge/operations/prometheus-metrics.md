@@ -97,6 +97,15 @@ tools, label `outcome`). The same listener logs one `turn latency` line per turn
 with the full breakdown, which is what deployments without a scraper, such as
 the hosted SaaS, collect.
 
+LLM edge-case counters come from the same `PrometheusMetricsListener`, off
+each successful `llm.generation` (see
+`knowledge/operations/observability.md#llm-edge-case-telemetry`):
+`everruns_llm_finish_reason_total` (labels `provider`, `model`,
+`finish_reason`), `everruns_llm_tool_calls_dropped_total` and
+`everruns_llm_tool_calls_truncated_executed_total` (labels `provider`,
+`model`, `reason`), `everruns_llm_retries_total` and the
+`everruns_llm_retry_wait_seconds` histogram (label `provider`).
+
 ## Architecture
 
 1. **Recorder:** the in-tree recorder in

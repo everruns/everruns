@@ -211,6 +211,7 @@ Emitted when a turn completes successfully.
 | `tool_call_count` | integer? | Completed tool-call count |
 | `llm_call_count` | integer? | LLM generation count |
 | `status` | string? | Optional completion status |
+| `stop_reason` | string? | How the final model call ended (`stop`, `length`, `content_filter`, ...) |
 
 ```json
 {
@@ -228,7 +229,8 @@ Emitted when a turn completes successfully.
     "time_to_first_token_ms": 120,
     "tool_call_count": 2,
     "llm_call_count": 3,
-    "status": "completed"
+    "status": "completed",
+    "stop_reason": "stop"
   }
 }
 ```
@@ -546,6 +548,13 @@ Full visibility into LLM API calls. Emitted after each call.
 | `tools` | ToolDefinitionSummary[] | Available tools |
 | `output` | LlmGenerationOutput | LLM response |
 | `metadata` | LlmGenerationMetadata | Call metadata |
+
+`metadata.finish_reasons` holds the normalized reason (`stop`, `tool_calls`,
+`length`, `content_filter`). When the call was cut off, `metadata` also carries
+`provider_finish_reason` (the provider's own value, such as `max_tokens`) and,
+when non-zero, `tool_calls_dropped` (tool calls discarded because the response
+ended mid-call) and `tool_calls_truncated_executed` (calls run although their
+arguments may be incomplete).
 
 ```json
 {

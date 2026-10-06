@@ -65,6 +65,7 @@ fn test_is_merge_serialization_completed_events() {
         tool_call_count: None,
         llm_call_count: None,
         status: None,
+        stop_reason: None,
     };
     let event = Event::new(
         SessionId::new(),
@@ -779,6 +780,7 @@ async fn test_on_event_batches_multiple_events_into_one_request() {
             tool_call_count: None,
             llm_call_count: None,
             status: None,
+            stop_reason: None,
         }),
     );
 

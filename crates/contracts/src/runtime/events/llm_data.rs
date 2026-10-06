@@ -151,6 +151,26 @@ pub struct LlmGenerationMetadata {
     #[cfg_attr(feature = "openapi", schema(example = json!(["tool_calls"])))]
     pub finish_reasons: Option<Vec<String>>,
 
+    /// The provider's own finish/stop reason, verbatim (`max_tokens`,
+    /// `MAX_TOKENS`, `max_output_tokens`, ...). `finish_reasons` carries the
+    /// normalized value; this keeps the provider vocabulary it came from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "max_tokens"))]
+    pub provider_finish_reason: Option<String>,
+
+    /// Tool calls the model started that the driver discarded because the
+    /// response was cut off or rejected. Omitted when zero.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    #[cfg_attr(feature = "openapi", schema(example = 1u32))]
+    pub tool_calls_dropped: u32,
+
+    /// Tool calls handed on for execution although the response was truncated
+    /// or their arguments did not parse, so they may run with incomplete
+    /// (`{}`) arguments. Omitted when zero.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    #[cfg_attr(feature = "openapi", schema(example = 1u32))]
+    pub tool_calls_truncated_executed: u32,
+
     /// Unique response identifier from the LLM provider
     /// Required for gen-ai semantic conventions
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -179,6 +199,10 @@ pub struct LlmGenerationMetadata {
     /// ordinary token-billed generation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cost_components: Vec<LlmCostComponent>,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }
 
 impl LlmGenerationMetadata {
@@ -351,6 +375,9 @@ impl LlmGenerationData {
                 success: true,
                 error: None,
                 finish_reasons,
+                provider_finish_reason: None,
+                tool_calls_dropped: 0,
+                tool_calls_truncated_executed: 0,
                 response_id: None,
                 retry: None,
                 compaction: None,
@@ -389,6 +416,9 @@ impl LlmGenerationData {
                 success: true,
                 error: None,
                 finish_reasons,
+                provider_finish_reason: None,
+                tool_calls_dropped: 0,
+                tool_calls_truncated_executed: 0,
                 response_id,
                 retry: None,
                 compaction: None,
@@ -428,6 +458,9 @@ impl LlmGenerationData {
                 success: true,
                 error: None,
                 finish_reasons,
+                provider_finish_reason: None,
+                tool_calls_dropped: 0,
+                tool_calls_truncated_executed: 0,
                 response_id,
                 retry,
                 compaction: None,
@@ -464,6 +497,9 @@ impl LlmGenerationData {
                 success: false,
                 error: Some(error),
                 finish_reasons: Some(vec!["error".to_string()]),
+                provider_finish_reason: None,
+                tool_calls_dropped: 0,
+                tool_calls_truncated_executed: 0,
                 response_id: None,
                 retry: None,
                 compaction: None,
@@ -495,6 +531,20 @@ impl LlmGenerationData {
     /// [`LlmGenerationMetadata::cost_components`]).
     pub fn with_cost_components(mut self, components: Vec<LlmCostComponent>) -> Self {
         self.metadata.cost_components = components;
+        self
+    }
+
+    /// Record how the provider ended the response: its raw stop reason and the
+    /// tool calls a driver discarded or ran from a truncated response.
+    pub fn with_stop_details(
+        mut self,
+        provider_finish_reason: Option<String>,
+        tool_calls_dropped: u32,
+        tool_calls_truncated_executed: u32,
+    ) -> Self {
+        self.metadata.provider_finish_reason = provider_finish_reason;
+        self.metadata.tool_calls_dropped = tool_calls_dropped;
+        self.metadata.tool_calls_truncated_executed = tool_calls_truncated_executed;
         self
     }
 
