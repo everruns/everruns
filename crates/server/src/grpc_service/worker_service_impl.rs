@@ -1,663 +1,234 @@
 // `WorkerService` trait implementation for the gRPC service.
 //
-// Delegation only. A trait impl cannot be split across modules, and this one has
-// 120 methods, so every handler body lives in `super::worker::<domain>` as an
-// inherent method and each RPC below forwards to it. Keep it that way: a body
-// added here is a body nobody will find again.
+// Delegation only. A trait impl cannot be split across modules, so every
+// handler body lives in `super::worker::<domain>` as an inherent method and
+// `delegate!` below generates the RPC that forwards to it. Keep it that way: a
+// body added here is a body nobody will find again.
 
 use super::*;
 
-#[tonic::async_trait]
-impl WorkerService for WorkerServiceImpl {
-    type SubscribeTaskNotificationsStream = super::worker::support::TaskNotificationStream;
+/// Generates the `WorkerService` impl. Each `rpc => handler(Req) -> Resp;`
+/// line becomes `async fn rpc(&self, Request<Req>) -> Result<Response<Resp>,
+/// Status>` forwarding to `self.handler`. (`macro_rules!` cannot build the
+/// `handle_` identifier itself, so it is spelled out.)
+macro_rules! delegate {
+    ($($rpc:ident => $handler:ident($req:ty) -> $resp:ty;)*) => {
+        #[tonic::async_trait]
+        impl WorkerService for WorkerServiceImpl {
+            type SubscribeTaskNotificationsStream =
+                super::worker::support::TaskNotificationStream;
 
+            $(
+                async fn $rpc(
+                    &self,
+                    request: Request<$req>,
+                ) -> Result<Response<$resp>, Status> {
+                    self.$handler(request).await
+                }
+            )*
+        }
+    };
+}
+
+delegate! {
     // Turn context, message load/append, journal, compaction checkpoints.
-    async fn get_turn_context(
-        &self,
-        request: Request<GetTurnContextRequest>,
-    ) -> Result<Response<GetTurnContextResponse>, Status> {
-        self.handle_get_turn_context(request).await
-    }
-
-    async fn get_message(
-        &self,
-        request: Request<GetMessageRequest>,
-    ) -> Result<Response<GetMessageResponse>, Status> {
-        self.handle_get_message(request).await
-    }
-
-    async fn load_messages(
-        &self,
-        request: Request<LoadMessagesRequest>,
-    ) -> Result<Response<LoadMessagesResponse>, Status> {
-        self.handle_load_messages(request).await
-    }
-
-    async fn native_async_journal(
-        &self,
-        request: Request<proto::NativeAsyncJournalRequest>,
-    ) -> Result<Response<proto::NativeAsyncJournalResponse>, Status> {
-        self.handle_native_async_journal(request).await
-    }
-
-    async fn agents_api_journal(
-        &self,
-        request: Request<proto::AgentsApiJournalRequest>,
-    ) -> Result<Response<proto::AgentsApiJournalResponse>, Status> {
-        self.handle_agents_api_journal(request).await
-    }
-
-    async fn get_compaction_checkpoint(
-        &self,
-        request: Request<proto::GetCompactionCheckpointRequest>,
-    ) -> Result<Response<proto::GetCompactionCheckpointResponse>, Status> {
-        self.handle_get_compaction_checkpoint(request).await
-    }
-
-    async fn install_compaction_checkpoint(
-        &self,
-        request: Request<proto::InstallCompactionCheckpointRequest>,
-    ) -> Result<Response<proto::InstallCompactionCheckpointResponse>, Status> {
-        self.handle_install_compaction_checkpoint(request).await
-    }
-
-    async fn get_partial_stream(
-        &self,
-        request: Request<proto::GetPartialStreamRequest>,
-    ) -> Result<Response<proto::GetPartialStreamResponse>, Status> {
-        self.handle_get_partial_stream(request).await
-    }
-
-    async fn sandbox_persistence(
-        &self,
-        request: Request<proto::SandboxPersistenceRequest>,
-    ) -> Result<Response<proto::SandboxPersistenceResponse>, Status> {
-        self.handle_sandbox_persistence(request).await
-    }
-
-    async fn add_message(
-        &self,
-        request: Request<AddMessageRequest>,
-    ) -> Result<Response<AddMessageResponse>, Status> {
-        self.handle_add_message(request).await
-    }
+    get_turn_context => handle_get_turn_context(GetTurnContextRequest) -> GetTurnContextResponse;
+    get_message => handle_get_message(GetMessageRequest) -> GetMessageResponse;
+    load_messages => handle_load_messages(LoadMessagesRequest) -> LoadMessagesResponse;
+    native_async_journal => handle_native_async_journal(proto::NativeAsyncJournalRequest)
+        -> proto::NativeAsyncJournalResponse;
+    agents_api_journal => handle_agents_api_journal(proto::AgentsApiJournalRequest)
+        -> proto::AgentsApiJournalResponse;
+    get_compaction_checkpoint => handle_get_compaction_checkpoint(proto::GetCompactionCheckpointRequest)
+        -> proto::GetCompactionCheckpointResponse;
+    install_compaction_checkpoint => handle_install_compaction_checkpoint(proto::InstallCompactionCheckpointRequest)
+        -> proto::InstallCompactionCheckpointResponse;
+    get_partial_stream => handle_get_partial_stream(proto::GetPartialStreamRequest)
+        -> proto::GetPartialStreamResponse;
+    sandbox_persistence => handle_sandbox_persistence(proto::SandboxPersistenceRequest)
+        -> proto::SandboxPersistenceResponse;
+    add_message => handle_add_message(AddMessageRequest) -> AddMessageResponse;
 
     // Event emission and exec commits.
-    async fn emit_event_stream(
-        &self,
-        request: Request<Streaming<EmitEventRequest>>,
-    ) -> Result<Response<EmitEventStreamResponse>, Status> {
-        self.handle_emit_event_stream(request).await
-    }
-
-    async fn emit_event(
-        &self,
-        request: Request<EmitEventRequest>,
-    ) -> Result<Response<EmitEventResponse>, Status> {
-        self.handle_emit_event(request).await
-    }
-
-    async fn commit_exec(
-        &self,
-        _request: Request<CommitExecRequest>,
-    ) -> Result<Response<CommitExecResponse>, Status> {
-        self.handle_commit_exec(_request).await
-    }
+    emit_event_stream => handle_emit_event_stream(Streaming<EmitEventRequest>)
+        -> EmitEventStreamResponse;
+    emit_event => handle_emit_event(EmitEventRequest) -> EmitEventResponse;
+    commit_exec => handle_commit_exec(CommitExecRequest) -> CommitExecResponse;
 
     // Agent, harness, session lookup and mutation, model resolution.
-    async fn get_agent(
-        &self,
-        request: Request<GetAgentRequest>,
-    ) -> Result<Response<GetAgentResponse>, Status> {
-        self.handle_get_agent(request).await
-    }
-
-    async fn get_harness(
-        &self,
-        request: Request<GetHarnessRequest>,
-    ) -> Result<Response<GetHarnessResponse>, Status> {
-        self.handle_get_harness(request).await
-    }
-
-    async fn get_session(
-        &self,
-        request: Request<GetSessionRequest>,
-    ) -> Result<Response<GetSessionResponse>, Status> {
-        self.handle_get_session(request).await
-    }
-
-    async fn set_session_status(
-        &self,
-        request: Request<SetSessionStatusRequest>,
-    ) -> Result<Response<SetSessionStatusResponse>, Status> {
-        self.handle_set_session_status(request).await
-    }
-
-    async fn set_session_title(
-        &self,
-        request: Request<SetSessionTitleRequest>,
-    ) -> Result<Response<SetSessionTitleResponse>, Status> {
-        self.handle_set_session_title(request).await
-    }
-
-    async fn get_resolved_model(
-        &self,
-        request: Request<GetResolvedModelRequest>,
-    ) -> Result<Response<GetResolvedModelResponse>, Status> {
-        self.handle_get_resolved_model(request).await
-    }
-
-    async fn get_default_model(
-        &self,
-        request: Request<GetDefaultModelRequest>,
-    ) -> Result<Response<GetDefaultModelResponse>, Status> {
-        self.handle_get_default_model(request).await
-    }
+    get_agent => handle_get_agent(GetAgentRequest) -> GetAgentResponse;
+    get_harness => handle_get_harness(GetHarnessRequest) -> GetHarnessResponse;
+    get_session => handle_get_session(GetSessionRequest) -> GetSessionResponse;
+    set_session_status => handle_set_session_status(SetSessionStatusRequest)
+        -> SetSessionStatusResponse;
+    set_session_title => handle_set_session_title(SetSessionTitleRequest)
+        -> SetSessionTitleResponse;
+    get_resolved_model => handle_get_resolved_model(GetResolvedModelRequest)
+        -> GetResolvedModelResponse;
+    get_default_model => handle_get_default_model(GetDefaultModelRequest)
+        -> GetDefaultModelResponse;
 
     // Durable workflows, tasks, and workers.
-    async fn create_durable_workflow(
-        &self,
-        request: Request<CreateDurableWorkflowRequest>,
-    ) -> Result<Response<CreateDurableWorkflowResponse>, Status> {
-        self.handle_create_durable_workflow(request).await
-    }
-
-    async fn get_durable_workflow_status(
-        &self,
-        request: Request<GetDurableWorkflowStatusRequest>,
-    ) -> Result<Response<GetDurableWorkflowStatusResponse>, Status> {
-        self.handle_get_durable_workflow_status(request).await
-    }
-
-    async fn update_durable_workflow_status(
-        &self,
-        request: Request<UpdateDurableWorkflowStatusRequest>,
-    ) -> Result<Response<UpdateDurableWorkflowStatusResponse>, Status> {
-        self.handle_update_durable_workflow_status(request).await
-    }
-
-    async fn enqueue_durable_task(
-        &self,
-        request: Request<EnqueueDurableTaskRequest>,
-    ) -> Result<Response<EnqueueDurableTaskResponse>, Status> {
-        self.handle_enqueue_durable_task(request).await
-    }
-
-    async fn claim_durable_tasks(
-        &self,
-        request: Request<ClaimDurableTasksRequest>,
-    ) -> Result<Response<ClaimDurableTasksResponse>, Status> {
-        self.handle_claim_durable_tasks(request).await
-    }
-
-    async fn complete_durable_task(
-        &self,
-        request: Request<CompleteDurableTaskRequest>,
-    ) -> Result<Response<CompleteDurableTaskResponse>, Status> {
-        self.handle_complete_durable_task(request).await
-    }
-
-    async fn fail_durable_task(
-        &self,
-        request: Request<FailDurableTaskRequest>,
-    ) -> Result<Response<FailDurableTaskResponse>, Status> {
-        self.handle_fail_durable_task(request).await
-    }
-
-    async fn heartbeat_durable_task(
-        &self,
-        request: Request<HeartbeatDurableTaskRequest>,
-    ) -> Result<Response<HeartbeatDurableTaskResponse>, Status> {
-        self.handle_heartbeat_durable_task(request).await
-    }
-
-    async fn count_active_durable_workflows(
-        &self,
-        _request: Request<CountActiveDurableWorkflowsRequest>,
-    ) -> Result<Response<CountActiveDurableWorkflowsResponse>, Status> {
-        self.handle_count_active_durable_workflows(_request).await
-    }
-
-    async fn send_durable_workflow_signal(
-        &self,
-        request: Request<SendDurableWorkflowSignalRequest>,
-    ) -> Result<Response<SendDurableWorkflowSignalResponse>, Status> {
-        self.handle_send_durable_workflow_signal(request).await
-    }
-
-    async fn get_and_consume_durable_workflow_signals(
-        &self,
-        request: Request<GetAndConsumeDurableWorkflowSignalsRequest>,
-    ) -> Result<Response<GetAndConsumeDurableWorkflowSignalsResponse>, Status> {
-        self.handle_get_and_consume_durable_workflow_signals(request)
-            .await
-    }
-
-    async fn register_durable_worker(
-        &self,
-        request: Request<RegisterDurableWorkerRequest>,
-    ) -> Result<Response<RegisterDurableWorkerResponse>, Status> {
-        self.handle_register_durable_worker(request).await
-    }
-
-    async fn heartbeat_durable_worker(
-        &self,
-        request: Request<HeartbeatDurableWorkerRequest>,
-    ) -> Result<Response<HeartbeatDurableWorkerResponse>, Status> {
-        self.handle_heartbeat_durable_worker(request).await
-    }
-
-    async fn drain_durable_worker(
-        &self,
-        request: Request<DrainDurableWorkerRequest>,
-    ) -> Result<Response<DrainDurableWorkerResponse>, Status> {
-        self.handle_drain_durable_worker(request).await
-    }
-
-    async fn deregister_durable_worker(
-        &self,
-        request: Request<DeregisterDurableWorkerRequest>,
-    ) -> Result<Response<DeregisterDurableWorkerResponse>, Status> {
-        self.handle_deregister_durable_worker(request).await
-    }
+    create_durable_workflow => handle_create_durable_workflow(CreateDurableWorkflowRequest)
+        -> CreateDurableWorkflowResponse;
+    get_durable_workflow_status => handle_get_durable_workflow_status(GetDurableWorkflowStatusRequest)
+        -> GetDurableWorkflowStatusResponse;
+    update_durable_workflow_status => handle_update_durable_workflow_status(UpdateDurableWorkflowStatusRequest)
+        -> UpdateDurableWorkflowStatusResponse;
+    enqueue_durable_task => handle_enqueue_durable_task(EnqueueDurableTaskRequest)
+        -> EnqueueDurableTaskResponse;
+    claim_durable_tasks => handle_claim_durable_tasks(ClaimDurableTasksRequest)
+        -> ClaimDurableTasksResponse;
+    complete_durable_task => handle_complete_durable_task(CompleteDurableTaskRequest)
+        -> CompleteDurableTaskResponse;
+    fail_durable_task => handle_fail_durable_task(FailDurableTaskRequest)
+        -> FailDurableTaskResponse;
+    heartbeat_durable_task => handle_heartbeat_durable_task(HeartbeatDurableTaskRequest)
+        -> HeartbeatDurableTaskResponse;
+    count_active_durable_workflows => handle_count_active_durable_workflows(CountActiveDurableWorkflowsRequest)
+        -> CountActiveDurableWorkflowsResponse;
+    send_durable_workflow_signal => handle_send_durable_workflow_signal(SendDurableWorkflowSignalRequest)
+        -> SendDurableWorkflowSignalResponse;
+    get_and_consume_durable_workflow_signals => handle_get_and_consume_durable_workflow_signals(GetAndConsumeDurableWorkflowSignalsRequest)
+        -> GetAndConsumeDurableWorkflowSignalsResponse;
+    register_durable_worker => handle_register_durable_worker(RegisterDurableWorkerRequest)
+        -> RegisterDurableWorkerResponse;
+    heartbeat_durable_worker => handle_heartbeat_durable_worker(HeartbeatDurableWorkerRequest)
+        -> HeartbeatDurableWorkerResponse;
+    drain_durable_worker => handle_drain_durable_worker(DrainDurableWorkerRequest)
+        -> DrainDurableWorkerResponse;
+    deregister_durable_worker => handle_deregister_durable_worker(DeregisterDurableWorkerRequest)
+        -> DeregisterDurableWorkerResponse;
 
     // Circuit breaker state.
-    async fn check_circuit_breaker(
-        &self,
-        request: Request<CheckCircuitBreakerRequest>,
-    ) -> Result<Response<CheckCircuitBreakerResponse>, Status> {
-        self.handle_check_circuit_breaker(request).await
-    }
-
-    async fn record_circuit_breaker_success(
-        &self,
-        request: Request<RecordCircuitBreakerSuccessRequest>,
-    ) -> Result<Response<RecordCircuitBreakerSuccessResponse>, Status> {
-        self.handle_record_circuit_breaker_success(request).await
-    }
-
-    async fn record_circuit_breaker_failure(
-        &self,
-        request: Request<RecordCircuitBreakerFailureRequest>,
-    ) -> Result<Response<RecordCircuitBreakerFailureResponse>, Status> {
-        self.handle_record_circuit_breaker_failure(request).await
-    }
+    check_circuit_breaker => handle_check_circuit_breaker(CheckCircuitBreakerRequest)
+        -> CheckCircuitBreakerResponse;
+    record_circuit_breaker_success => handle_record_circuit_breaker_success(RecordCircuitBreakerSuccessRequest)
+        -> RecordCircuitBreakerSuccessResponse;
+    record_circuit_breaker_failure => handle_record_circuit_breaker_failure(RecordCircuitBreakerFailureRequest)
+        -> RecordCircuitBreakerFailureResponse;
 
     // Task notification stream.
-    async fn subscribe_task_notifications(
-        &self,
-        request: Request<SubscribeTaskNotificationsRequest>,
-    ) -> Result<Response<Self::SubscribeTaskNotificationsStream>, Status> {
-        self.handle_subscribe_task_notifications(request).await
-    }
+    subscribe_task_notifications => handle_subscribe_task_notifications(SubscribeTaskNotificationsRequest)
+        -> Self::SubscribeTaskNotificationsStream;
 
     // Image and file artifact resolution.
-    async fn resolve_image(
-        &self,
-        request: Request<ResolveImageRequest>,
-    ) -> Result<Response<ResolveImageResponse>, Status> {
-        self.handle_resolve_image(request).await
-    }
-
-    async fn resolve_images(
-        &self,
-        request: Request<ResolveImagesRequest>,
-    ) -> Result<Response<ResolveImagesResponse>, Status> {
-        self.handle_resolve_images(request).await
-    }
-
-    async fn resolve_files(
-        &self,
-        request: Request<ResolveFilesRequest>,
-    ) -> Result<Response<ResolveFilesResponse>, Status> {
-        self.handle_resolve_files(request).await
-    }
-
-    async fn create_image_artifact(
-        &self,
-        request: Request<CreateImageArtifactRequest>,
-    ) -> Result<Response<CreateImageArtifactResponse>, Status> {
-        self.handle_create_image_artifact(request).await
-    }
-
-    async fn get_image_artifact(
-        &self,
-        request: Request<GetImageArtifactRequest>,
-    ) -> Result<Response<GetImageArtifactResponse>, Status> {
-        self.handle_get_image_artifact(request).await
-    }
-
-    async fn get_image_artifact_info(
-        &self,
-        request: Request<GetImageArtifactInfoRequest>,
-    ) -> Result<Response<GetImageArtifactInfoResponse>, Status> {
-        self.handle_get_image_artifact_info(request).await
-    }
+    resolve_image => handle_resolve_image(ResolveImageRequest) -> ResolveImageResponse;
+    resolve_images => handle_resolve_images(ResolveImagesRequest) -> ResolveImagesResponse;
+    resolve_files => handle_resolve_files(ResolveFilesRequest) -> ResolveFilesResponse;
+    create_image_artifact => handle_create_image_artifact(CreateImageArtifactRequest)
+        -> CreateImageArtifactResponse;
+    get_image_artifact => handle_get_image_artifact(GetImageArtifactRequest)
+        -> GetImageArtifactResponse;
+    get_image_artifact_info => handle_get_image_artifact_info(GetImageArtifactInfoRequest)
+        -> GetImageArtifactInfoResponse;
 
     // Provider credentials and MCP server resolution.
-    async fn get_default_provider_credentials(
-        &self,
-        request: Request<GetDefaultProviderCredentialsRequest>,
-    ) -> Result<Response<GetDefaultProviderCredentialsResponse>, Status> {
-        self.handle_get_default_provider_credentials(request).await
-    }
-
-    async fn get_mcp_server_by_prefix(
-        &self,
-        request: Request<GetMcpServerByPrefixRequest>,
-    ) -> Result<Response<GetMcpServerByPrefixResponse>, Status> {
-        self.handle_get_mcp_server_by_prefix(request).await
-    }
+    get_default_provider_credentials => handle_get_default_provider_credentials(GetDefaultProviderCredentialsRequest)
+        -> GetDefaultProviderCredentialsResponse;
+    get_mcp_server_by_prefix => handle_get_mcp_server_by_prefix(GetMcpServerByPrefixRequest)
+        -> GetMcpServerByPrefixResponse;
 
     // Session key/value storage and secrets.
-    async fn session_storage_set_value(
-        &self,
-        request: Request<SessionStorageSetValueRequest>,
-    ) -> Result<Response<SessionStorageSetValueResponse>, Status> {
-        self.handle_session_storage_set_value(request).await
-    }
-
-    async fn session_storage_get_value(
-        &self,
-        request: Request<SessionStorageGetValueRequest>,
-    ) -> Result<Response<SessionStorageGetValueResponse>, Status> {
-        self.handle_session_storage_get_value(request).await
-    }
-
-    async fn session_storage_delete_value(
-        &self,
-        request: Request<SessionStorageDeleteValueRequest>,
-    ) -> Result<Response<SessionStorageDeleteValueResponse>, Status> {
-        self.handle_session_storage_delete_value(request).await
-    }
-
-    async fn session_storage_take_value(
-        &self,
-        request: Request<SessionStorageTakeValueRequest>,
-    ) -> Result<Response<SessionStorageTakeValueResponse>, Status> {
-        self.handle_session_storage_take_value(request).await
-    }
-
-    async fn session_storage_list_keys(
-        &self,
-        request: Request<SessionStorageListKeysRequest>,
-    ) -> Result<Response<SessionStorageListKeysResponse>, Status> {
-        self.handle_session_storage_list_keys(request).await
-    }
-
-    async fn session_storage_set_secret(
-        &self,
-        request: Request<SessionStorageSetSecretRequest>,
-    ) -> Result<Response<SessionStorageSetSecretResponse>, Status> {
-        self.handle_session_storage_set_secret(request).await
-    }
-
-    async fn session_storage_get_secret(
-        &self,
-        request: Request<SessionStorageGetSecretRequest>,
-    ) -> Result<Response<SessionStorageGetSecretResponse>, Status> {
-        self.handle_session_storage_get_secret(request).await
-    }
-
-    async fn session_storage_delete_secret(
-        &self,
-        request: Request<SessionStorageDeleteSecretRequest>,
-    ) -> Result<Response<SessionStorageDeleteSecretResponse>, Status> {
-        self.handle_session_storage_delete_secret(request).await
-    }
-
-    async fn session_storage_list_secrets(
-        &self,
-        request: Request<SessionStorageListSecretsRequest>,
-    ) -> Result<Response<SessionStorageListSecretsResponse>, Status> {
-        self.handle_session_storage_list_secrets(request).await
-    }
+    session_storage_set_value => handle_session_storage_set_value(SessionStorageSetValueRequest)
+        -> SessionStorageSetValueResponse;
+    session_storage_get_value => handle_session_storage_get_value(SessionStorageGetValueRequest)
+        -> SessionStorageGetValueResponse;
+    session_storage_delete_value => handle_session_storage_delete_value(SessionStorageDeleteValueRequest)
+        -> SessionStorageDeleteValueResponse;
+    session_storage_take_value => handle_session_storage_take_value(SessionStorageTakeValueRequest)
+        -> SessionStorageTakeValueResponse;
+    session_storage_list_keys => handle_session_storage_list_keys(SessionStorageListKeysRequest)
+        -> SessionStorageListKeysResponse;
+    session_storage_set_secret => handle_session_storage_set_secret(SessionStorageSetSecretRequest)
+        -> SessionStorageSetSecretResponse;
+    session_storage_get_secret => handle_session_storage_get_secret(SessionStorageGetSecretRequest)
+        -> SessionStorageGetSecretResponse;
+    session_storage_delete_secret => handle_session_storage_delete_secret(SessionStorageDeleteSecretRequest)
+        -> SessionStorageDeleteSecretResponse;
+    session_storage_list_secrets => handle_session_storage_list_secrets(SessionStorageListSecretsRequest)
+        -> SessionStorageListSecretsResponse;
 
     // User connection tokens.
-    async fn get_connection_token(
-        &self,
-        request: Request<GetConnectionTokenRequest>,
-    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
-        self.handle_get_connection_token(request).await
-    }
-
-    async fn get_mcp_connection_token(
-        &self,
-        request: Request<GetMcpConnectionTokenRequest>,
-    ) -> Result<Response<GetConnectionTokenResponse>, Status> {
-        self.handle_get_mcp_connection_token(request).await
-    }
-    async fn invalidate_mcp_connection(
-        &self,
-        request: Request<InvalidateMcpConnectionRequest>,
-    ) -> Result<Response<InvalidateMcpConnectionResponse>, Status> {
-        self.handle_invalidate_mcp_connection(request).await
-    }
-
-    async fn get_connection_user(
-        &self,
-        request: Request<GetConnectionUserRequest>,
-    ) -> Result<Response<GetConnectionUserResponse>, Status> {
-        self.handle_get_connection_user(request).await
-    }
-
-    async fn get_connection_token_for_user(
-        &self,
-        request: Request<GetConnectionTokenForUserRequest>,
-    ) -> Result<Response<GetConnectionTokenForUserResponse>, Status> {
-        self.handle_get_connection_token_for_user(request).await
-    }
+    get_connection_token => handle_get_connection_token(GetConnectionTokenRequest)
+        -> GetConnectionTokenResponse;
+    get_mcp_connection_token => handle_get_mcp_connection_token(GetMcpConnectionTokenRequest)
+        -> GetConnectionTokenResponse;
+    invalidate_mcp_connection => handle_invalidate_mcp_connection(InvalidateMcpConnectionRequest)
+        -> InvalidateMcpConnectionResponse;
+    get_connection_user => handle_get_connection_user(GetConnectionUserRequest)
+        -> GetConnectionUserResponse;
+    get_connection_token_for_user => handle_get_connection_token_for_user(GetConnectionTokenForUserRequest)
+        -> GetConnectionTokenForUserResponse;
 
     // Leased resource lifecycle.
-    async fn upsert_leased_resource(
-        &self,
-        request: Request<UpsertLeasedResourceRequest>,
-    ) -> Result<Response<UpsertLeasedResourceResponse>, Status> {
-        self.handle_upsert_leased_resource(request).await
-    }
-
-    async fn release_leased_resource(
-        &self,
-        request: Request<ReleaseLeasedResourceRequest>,
-    ) -> Result<Response<ReleaseLeasedResourceResponse>, Status> {
-        self.handle_release_leased_resource(request).await
-    }
-
-    async fn list_session_leased_resources(
-        &self,
-        request: Request<ListSessionLeasedResourcesRequest>,
-    ) -> Result<Response<ListSessionLeasedResourcesResponse>, Status> {
-        self.handle_list_session_leased_resources(request).await
-    }
-
-    async fn claim_due_leased_resources(
-        &self,
-        request: Request<ClaimDueLeasedResourcesRequest>,
-    ) -> Result<Response<ClaimDueLeasedResourcesResponse>, Status> {
-        self.handle_claim_due_leased_resources(request).await
-    }
-
-    async fn mark_leased_resource_released(
-        &self,
-        request: Request<MarkLeasedResourceReleasedRequest>,
-    ) -> Result<Response<MarkLeasedResourceReleasedResponse>, Status> {
-        self.handle_mark_leased_resource_released(request).await
-    }
-
-    async fn mark_leased_resource_cleanup_failed(
-        &self,
-        request: Request<MarkLeasedResourceCleanupFailedRequest>,
-    ) -> Result<Response<MarkLeasedResourceCleanupFailedResponse>, Status> {
-        self.handle_mark_leased_resource_cleanup_failed(request)
-            .await
-    }
+    upsert_leased_resource => handle_upsert_leased_resource(UpsertLeasedResourceRequest)
+        -> UpsertLeasedResourceResponse;
+    release_leased_resource => handle_release_leased_resource(ReleaseLeasedResourceRequest)
+        -> ReleaseLeasedResourceResponse;
+    list_session_leased_resources => handle_list_session_leased_resources(ListSessionLeasedResourcesRequest)
+        -> ListSessionLeasedResourcesResponse;
+    claim_due_leased_resources => handle_claim_due_leased_resources(ClaimDueLeasedResourcesRequest)
+        -> ClaimDueLeasedResourcesResponse;
+    mark_leased_resource_released => handle_mark_leased_resource_released(MarkLeasedResourceReleasedRequest)
+        -> MarkLeasedResourceReleasedResponse;
+    mark_leased_resource_cleanup_failed => handle_mark_leased_resource_cleanup_failed(MarkLeasedResourceCleanupFailedRequest)
+        -> MarkLeasedResourceCleanupFailedResponse;
 
     // Session resource registry.
-    async fn register_session_resource(
-        &self,
-        request: Request<RegisterSessionResourceRequest>,
-    ) -> Result<Response<RegisterSessionResourceResponse>, Status> {
-        self.handle_register_session_resource(request).await
-    }
-
-    async fn update_session_resource_status(
-        &self,
-        request: Request<UpdateSessionResourceStatusRequest>,
-    ) -> Result<Response<UpdateSessionResourceStatusResponse>, Status> {
-        self.handle_update_session_resource_status(request).await
-    }
-
-    async fn list_session_resources(
-        &self,
-        request: Request<ListSessionResourcesRequest>,
-    ) -> Result<Response<ListSessionResourcesResponse>, Status> {
-        self.handle_list_session_resources(request).await
-    }
-
-    async fn deregister_session_resource(
-        &self,
-        request: Request<DeregisterSessionResourceRequest>,
-    ) -> Result<Response<DeregisterSessionResourceResponse>, Status> {
-        self.handle_deregister_session_resource(request).await
-    }
+    register_session_resource => handle_register_session_resource(RegisterSessionResourceRequest)
+        -> RegisterSessionResourceResponse;
+    update_session_resource_status => handle_update_session_resource_status(UpdateSessionResourceStatusRequest)
+        -> UpdateSessionResourceStatusResponse;
+    list_session_resources => handle_list_session_resources(ListSessionResourcesRequest)
+        -> ListSessionResourcesResponse;
+    deregister_session_resource => handle_deregister_session_resource(DeregisterSessionResourceRequest)
+        -> DeregisterSessionResourceResponse;
 
     // Session task lifecycle and task messages.
-    async fn create_session_task(
-        &self,
-        request: Request<CreateSessionTaskRequest>,
-    ) -> Result<Response<SessionTaskResponse>, Status> {
-        self.handle_create_session_task(request).await
-    }
-
-    async fn update_session_task(
-        &self,
-        request: Request<UpdateSessionTaskRequest>,
-    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
-        self.handle_update_session_task(request).await
-    }
-
-    async fn get_session_task(
-        &self,
-        request: Request<GetSessionTaskRequest>,
-    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
-        self.handle_get_session_task(request).await
-    }
-
-    async fn list_session_tasks(
-        &self,
-        request: Request<ListSessionTasksRequest>,
-    ) -> Result<Response<ListSessionTasksResponse>, Status> {
-        self.handle_list_session_tasks(request).await
-    }
-
-    async fn request_cancel_session_task(
-        &self,
-        request: Request<RequestCancelSessionTaskRequest>,
-    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
-        self.handle_request_cancel_session_task(request).await
-    }
-
-    async fn record_session_task_message(
-        &self,
-        request: Request<RecordSessionTaskMessageRequest>,
-    ) -> Result<Response<SessionTaskMessageResponse>, Status> {
-        self.handle_record_session_task_message(request).await
-    }
-
-    async fn list_session_task_messages(
-        &self,
-        request: Request<ListSessionTaskMessagesRequest>,
-    ) -> Result<Response<ListSessionTaskMessagesResponse>, Status> {
-        self.handle_list_session_task_messages(request).await
-    }
-
-    async fn list_orphaned_session_tasks(
-        &self,
-        request: Request<ListOrphanedSessionTasksRequest>,
-    ) -> Result<Response<ListOrphanedSessionTasksResponse>, Status> {
-        self.handle_list_orphaned_session_tasks(request).await
-    }
-
-    async fn prune_terminal_session_tasks(
-        &self,
-        request: Request<PruneTerminalSessionTasksRequest>,
-    ) -> Result<Response<PruneTerminalSessionTasksResponse>, Status> {
-        self.handle_prune_terminal_session_tasks(request).await
-    }
+    create_session_task => handle_create_session_task(CreateSessionTaskRequest)
+        -> SessionTaskResponse;
+    update_session_task => handle_update_session_task(UpdateSessionTaskRequest)
+        -> OptionalSessionTaskResponse;
+    get_session_task => handle_get_session_task(GetSessionTaskRequest)
+        -> OptionalSessionTaskResponse;
+    list_session_tasks => handle_list_session_tasks(ListSessionTasksRequest)
+        -> ListSessionTasksResponse;
+    request_cancel_session_task => handle_request_cancel_session_task(RequestCancelSessionTaskRequest)
+        -> OptionalSessionTaskResponse;
+    record_session_task_message => handle_record_session_task_message(RecordSessionTaskMessageRequest)
+        -> SessionTaskMessageResponse;
+    list_session_task_messages => handle_list_session_task_messages(ListSessionTaskMessagesRequest)
+        -> ListSessionTaskMessagesResponse;
+    list_orphaned_session_tasks => handle_list_orphaned_session_tasks(ListOrphanedSessionTasksRequest)
+        -> ListOrphanedSessionTasksResponse;
+    prune_terminal_session_tasks => handle_prune_terminal_session_tasks(PruneTerminalSessionTasksRequest)
+        -> PruneTerminalSessionTasksResponse;
 
     // Session schedules.
-    async fn create_session_schedule(
-        &self,
-        request: Request<CreateSessionScheduleRequest>,
-    ) -> Result<Response<CreateSessionScheduleResponse>, Status> {
-        self.handle_create_session_schedule(request).await
-    }
-
-    async fn cancel_session_schedule(
-        &self,
-        request: Request<CancelSessionScheduleRequest>,
-    ) -> Result<Response<CancelSessionScheduleResponse>, Status> {
-        self.handle_cancel_session_schedule(request).await
-    }
-
-    async fn list_session_schedules(
-        &self,
-        request: Request<ListSessionSchedulesRequest>,
-    ) -> Result<Response<ListSessionSchedulesResponse>, Status> {
-        self.handle_list_session_schedules(request).await
-    }
-
-    async fn count_active_session_schedules(
-        &self,
-        request: Request<CountActiveSessionSchedulesRequest>,
-    ) -> Result<Response<CountActiveSessionSchedulesResponse>, Status> {
-        self.handle_count_active_session_schedules(request).await
-    }
-
-    async fn count_active_org_schedules(
-        &self,
-        request: Request<CountActiveOrgSchedulesRequest>,
-    ) -> Result<Response<CountActiveOrgSchedulesResponse>, Status> {
-        self.handle_count_active_org_schedules(request).await
-    }
+    create_session_schedule => handle_create_session_schedule(CreateSessionScheduleRequest)
+        -> CreateSessionScheduleResponse;
+    cancel_session_schedule => handle_cancel_session_schedule(CancelSessionScheduleRequest)
+        -> CancelSessionScheduleResponse;
+    list_session_schedules => handle_list_session_schedules(ListSessionSchedulesRequest)
+        -> ListSessionSchedulesResponse;
+    count_active_session_schedules => handle_count_active_session_schedules(CountActiveSessionSchedulesRequest)
+        -> CountActiveSessionSchedulesResponse;
+    count_active_org_schedules => handle_count_active_org_schedules(CountActiveOrgSchedulesRequest)
+        -> CountActiveOrgSchedulesResponse;
 
     // Session SQL databases.
 
-    async fn session_sql_db_execute(
-        &self,
-        request: Request<SessionSqlDbExecuteRequest>,
-    ) -> Result<Response<SessionSqlDbExecuteResponse>, Status> {
-        self.handle_session_sql_db_execute(request).await
-    }
-
-    async fn session_sql_db_query(
-        &self,
-        request: Request<SessionSqlDbQueryRequest>,
-    ) -> Result<Response<SessionSqlDbQueryResponse>, Status> {
-        self.handle_session_sql_db_query(request).await
-    }
+    session_sql_db_execute => handle_session_sql_db_execute(SessionSqlDbExecuteRequest)
+        -> SessionSqlDbExecuteResponse;
+    session_sql_db_query => handle_session_sql_db_query(SessionSqlDbQueryRequest)
+        -> SessionSqlDbQueryResponse;
 
     // Generic domain command transport.
-    async fn execute_command(
-        &self,
-        request: Request<ExecuteCommandRequest>,
-    ) -> Result<Response<ExecuteCommandResponse>, Status> {
-        self.handle_execute_command(request).await
-    }
-
-    async fn list_commands(
-        &self,
-        _request: Request<ListCommandsRequest>,
-    ) -> Result<Response<ListCommandsResponse>, Status> {
-        self.handle_list_commands(_request).await
-    }
-
-    async fn invoke_platform_command_surface(
-        &self,
-        request: Request<InvokePlatformCommandSurfaceRequest>,
-    ) -> Result<Response<InvokePlatformCommandSurfaceResponse>, Status> {
-        self.handle_invoke_platform_command_surface(request).await
-    }
+    execute_command => handle_execute_command(ExecuteCommandRequest) -> ExecuteCommandResponse;
+    list_commands => handle_list_commands(ListCommandsRequest) -> ListCommandsResponse;
+    invoke_platform_command_surface => handle_invoke_platform_command_surface(InvokePlatformCommandSurfaceRequest)
+        -> InvokePlatformCommandSurfaceResponse;
 
     // Platform harness management.
 
@@ -665,55 +236,22 @@ impl WorkerService for WorkerServiceImpl {
 
     // Platform session management and messaging.
 
-    async fn invoke_scheduled_app_channel(
-        &self,
-        request: Request<InvokeScheduledAppChannelRequest>,
-    ) -> Result<Response<InvokeScheduledAppChannelResponse>, Status> {
-        self.handle_invoke_scheduled_app_channel(request).await
-    }
-
-    async fn invoke_agent_trigger(
-        &self,
-        request: Request<InvokeAgentTriggerRequest>,
-    ) -> Result<Response<InvokeAgentTriggerResponse>, Status> {
-        self.handle_invoke_agent_trigger(request).await
-    }
+    invoke_scheduled_app_channel => handle_invoke_scheduled_app_channel(InvokeScheduledAppChannelRequest)
+        -> InvokeScheduledAppChannelResponse;
+    invoke_agent_trigger => handle_invoke_agent_trigger(InvokeAgentTriggerRequest)
+        -> InvokeAgentTriggerResponse;
 
     // Platform capability and base-URL lookup.
 
     // Budgets, rate limits, payments, and session authorization.
-    async fn check_budgets_for_session(
-        &self,
-        request: Request<CheckBudgetsForSessionRequest>,
-    ) -> Result<Response<CheckBudgetsForSessionResponse>, Status> {
-        self.handle_check_budgets_for_session(request).await
-    }
-
-    async fn check_outbound_tool_rate_limit(
-        &self,
-        request: Request<CheckOutboundToolRateLimitRequest>,
-    ) -> Result<Response<CheckOutboundToolRateLimitResponse>, Status> {
-        self.handle_check_outbound_tool_rate_limit(request).await
-    }
-
-    async fn invoke_slack_action(
-        &self,
-        request: Request<InvokeSlackActionRequest>,
-    ) -> Result<Response<InvokeSlackActionResponse>, Status> {
-        crate::slack_actions::serve_rpc(&self.db, self.encryption.as_ref(), request).await
-    }
-
-    async fn execute_machine_payment(
-        &self,
-        request: Request<ExecuteMachinePaymentRequest>,
-    ) -> Result<Response<ExecuteMachinePaymentResponse>, Status> {
-        self.handle_execute_machine_payment(request).await
-    }
-
-    async fn authorize_session_creation(
-        &self,
-        request: Request<AuthorizeSessionCreationRequest>,
-    ) -> Result<Response<AuthorizeSessionCreationResponse>, Status> {
-        self.handle_authorize_session_creation(request).await
-    }
+    check_budgets_for_session => handle_check_budgets_for_session(CheckBudgetsForSessionRequest)
+        -> CheckBudgetsForSessionResponse;
+    check_outbound_tool_rate_limit => handle_check_outbound_tool_rate_limit(CheckOutboundToolRateLimitRequest)
+        -> CheckOutboundToolRateLimitResponse;
+    invoke_slack_action => handle_invoke_slack_action(InvokeSlackActionRequest)
+        -> InvokeSlackActionResponse;
+    execute_machine_payment => handle_execute_machine_payment(ExecuteMachinePaymentRequest)
+        -> ExecuteMachinePaymentResponse;
+    authorize_session_creation => handle_authorize_session_creation(AuthorizeSessionCreationRequest)
+        -> AuthorizeSessionCreationResponse;
 }

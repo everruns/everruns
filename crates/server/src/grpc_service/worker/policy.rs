@@ -238,4 +238,11 @@ impl WorkerServiceImpl {
             budget_root_session_id: root_session_id.to_string(),
         }))
     }
+
+    pub(crate) async fn handle_invoke_slack_action(
+        &self,
+        request: Request<InvokeSlackActionRequest>,
+    ) -> Result<Response<InvokeSlackActionResponse>, Status> {
+        crate::slack_actions::serve_rpc(&self.db, self.encryption.as_ref(), request).await
+    }
 }
