@@ -1,4 +1,3 @@
-use crate::api::common::deserialize_nullable_update_field;
 pub use crate::records::reporting::{
     DatasetCatalog, DatasetCatalogEntry, ReportColumn, ReportColumnKind, ReportFilter,
     ReportFilterOp, ReportOrderBy, ReportOrderDirection, ReportQuery, ReportResult, ReportScope,
@@ -59,7 +58,7 @@ pub struct SavedReportDashboardMetadata {
 }
 
 /// Request body for the `create_saved_report` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateSavedReportRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     #[schema(example = "Weekly active agents — last 30 days")]
@@ -80,25 +79,25 @@ pub struct CreateSavedReportRequest {
 }
 
 /// Request body for the `update_saved_report` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSavedReportRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     #[serde(default)]
     #[schema(example = "Weekly active agents — last 60 days")]
     pub name: Option<String>,
     /// Human-readable description. Safe to render in user-facing messages.
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = Option<String>, nullable = true, example = "Rolling 60-day window; widened from 30d after the Q3 product launch.")]
     pub description: UpdateField<String>,
     /// Replace the saved report's query wholesale. Omit to keep the existing
     /// query; send a new `ReportQuery` to swap it.
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = ReportQuery, nullable = false)]
     pub query: UpdateField<ReportQuery>,
     /// Replace dashboard placement metadata. Omit to keep current placement;
     /// send `null` to detach the report from its dashboard; send an object
     /// to overwrite the placement.
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = Option<SavedReportDashboardMetadata>, nullable = true)]
     pub dashboard: UpdateField<SavedReportDashboardMetadata>,
 }
@@ -114,7 +113,7 @@ pub enum ReportExportFormat {
 }
 
 /// Request body for the `export_report_query` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportReportQueryRequest {
     /// Ad-hoc query to materialize and export. Same shape as the body of
     /// `POST /v1/reports/query` — see `ReportQuery` for the field breakdown.
@@ -125,7 +124,7 @@ pub struct ExportReportQueryRequest {
 }
 
 /// Request body for the `export_saved_report` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportSavedReportRequest {
     /// Export format. Defaults to `csv` when omitted.
     #[serde(default = "default_export_format")]
@@ -247,7 +246,7 @@ pub struct ProjectorRunResult {
 
 /// Request body for the `reporting_backfill` operation — enqueues source
 /// rows into the reporting outbox for the projector to re-materialize.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ReportingBackfillRequest {
     /// Maximum number of outbox rows to enqueue across all source types. Defaults to 1000.
     #[serde(default = "default_backfill_limit")]

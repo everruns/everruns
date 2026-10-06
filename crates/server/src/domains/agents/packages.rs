@@ -32,7 +32,7 @@ pub fn package_error(error: PackageError) -> CommandError {
 }
 
 /// A self-contained agent definition or package in the current session workspace.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PackageInput {
     /// Markdown/TOML/YAML/JSON agent definition, with assets embedded.
@@ -769,7 +769,7 @@ pub async fn apply(
 }
 
 /// Export a portable definition, optionally writing an artifact to the current session.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportAgent {
     /// Agent name (legacy IDs are also accepted).
     pub id: String,
@@ -853,7 +853,7 @@ impl Command for ExportAgent {
 }
 inventory::submit! { CommandDescriptor::of::<ExportAgent>() }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 #[serde(untagged)]
 pub enum ImportAgent {
     Package(PackageInput),
@@ -908,7 +908,7 @@ impl Command for ImportAgent {
 }
 inventory::submit! { CommandDescriptor::of::<ImportAgent>() }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct ValidateAgentPackage(pub PackageInput);
 impl CommandSchema for ValidateAgentPackage {
     fn param_schema() -> Value {
@@ -986,7 +986,7 @@ impl Command for ValidateAgentPackage {
 }
 inventory::submit! { CommandDescriptor::of::<ValidateAgentPackage>() }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct DiffAgentPackage(pub PackageInput);
 impl CommandSchema for DiffAgentPackage {
     fn param_schema() -> Value {

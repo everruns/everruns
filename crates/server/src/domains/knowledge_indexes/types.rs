@@ -1,4 +1,3 @@
-use crate::api::common::deserialize_nullable_update_field;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{KnowledgeIndexDocumentId, KnowledgeIndexId, ModelId};
 use everruns_durable::UpdateField;
@@ -83,13 +82,13 @@ pub struct CreateKnowledgeIndexRequest {
 }
 
 /// Request body for the `update_knowledge_index` operation.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateKnowledgeIndexRequest {
     #[serde(default)]
     /// Human-readable name. Safe to render in user-facing messages.
     #[schema(example = "product-docs-v2")]
     pub name: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     /// Human-readable description. Set to null to clear.
     pub description: UpdateField<String>,

@@ -13,7 +13,7 @@ use super::types::{
 use super::{REPORT_ADMIN, REPORT_MANAGE, REPORT_VIEW};
 use crate::domains::common::{Command, CommandDescriptor, CommandError, CommandMeta, Ctx};
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunReportQuery(pub ReportQuery);
 
 impl Command for RunReportQuery {
@@ -55,7 +55,7 @@ impl Command for RunReportQuery {
 
 inventory::submit! { CommandDescriptor::of::<RunReportQuery>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetReportCatalog;
 
 impl Command for GetReportCatalog {
@@ -82,7 +82,7 @@ impl Command for GetReportCatalog {
 
 inventory::submit! { CommandDescriptor::of::<GetReportCatalog>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSavedReports;
 
 impl Command for ListSavedReports {
@@ -112,7 +112,7 @@ impl Command for ListSavedReports {
 
 inventory::submit! { CommandDescriptor::of::<ListSavedReports>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
@@ -145,7 +145,7 @@ impl Command for GetSavedReport {
 
 inventory::submit! { CommandDescriptor::of::<GetSavedReport>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateSavedReport(pub CreateSavedReportRequest);
 
 impl Command for CreateSavedReport {
@@ -175,7 +175,7 @@ impl Command for CreateSavedReport {
 
 inventory::submit! { CommandDescriptor::of::<CreateSavedReport>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
@@ -211,7 +211,7 @@ impl Command for UpdateSavedReport {
 
 inventory::submit! { CommandDescriptor::of::<UpdateSavedReport>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
@@ -246,7 +246,7 @@ impl Command for DeleteSavedReport {
 
 inventory::submit! { CommandDescriptor::of::<DeleteSavedReport>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
@@ -291,7 +291,7 @@ impl Command for RunSavedReport {
 
 inventory::submit! { CommandDescriptor::of::<RunSavedReport>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportReportQuery(pub ExportReportQueryRequest);
 
 impl Command for ExportReportQuery {
@@ -335,7 +335,7 @@ impl Command for ExportReportQuery {
 
 inventory::submit! { CommandDescriptor::of::<ExportReportQuery>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
@@ -382,7 +382,7 @@ impl Command for ExportSavedReport {
 
 inventory::submit! { CommandDescriptor::of::<ExportSavedReport>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetReportingDiagnostics;
 
 impl Command for GetReportingDiagnostics {
@@ -412,7 +412,7 @@ impl Command for GetReportingDiagnostics {
 
 inventory::submit! { CommandDescriptor::of::<GetReportingDiagnostics>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunReportingProjector {
     #[serde(default = "default_projector_limit")]
     /// Maximum number of items returned in this page.
@@ -450,7 +450,7 @@ impl Command for RunReportingProjector {
 
 inventory::submit! { CommandDescriptor::of::<RunReportingProjector>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct BackfillReporting(pub ReportingBackfillRequest);
 
 impl Command for BackfillReporting {

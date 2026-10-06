@@ -11,7 +11,7 @@ fn require_user_id(ctx: &Ctx) -> Result<uuid::Uuid, CommandError> {
         .ok_or_else(|| CommandError::forbidden("Notifications require an authenticated user"))
 }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListNotifications {
     /// Maximum number of items returned in this page.
     pub limit: Option<i64>,
@@ -73,7 +73,7 @@ impl Command for ListNotifications {
 
 inventory::submit! { CommandDescriptor::of::<ListNotifications>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MarkNotificationViewed {
     pub notification_id: String,
 }

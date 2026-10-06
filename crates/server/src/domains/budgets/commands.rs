@@ -54,7 +54,7 @@ pub struct ResumeSessionBudgetsResult {
     pub session_id: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateBudget(pub CreateBudgetRequest);
 
 impl CommandSchema for CreateBudget {
@@ -108,7 +108,7 @@ impl Command for CreateBudget {
 
 inventory::submit! { CommandDescriptor::of::<CreateBudget>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListBudgets {
     pub subject_type: Option<String>,
     pub subject_id: Option<String>,
@@ -153,7 +153,7 @@ impl Command for ListBudgets {
 
 inventory::submit! { CommandDescriptor::of::<ListBudgets>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetBudget {
     pub budget_id: String,
 }
@@ -193,7 +193,7 @@ impl Command for GetBudget {
 
 inventory::submit! { CommandDescriptor::of::<GetBudget>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateBudgetCmd {
     pub budget_id: String,
     /// Maximum number of items returned in this page.
@@ -257,7 +257,7 @@ impl Command for UpdateBudgetCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateBudgetCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteBudget {
     pub budget_id: String,
 }
@@ -307,7 +307,7 @@ impl Command for DeleteBudget {
 
 inventory::submit! { CommandDescriptor::of::<DeleteBudget>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TopUpBudget {
     pub budget_id: String,
     pub amount: f64,
@@ -377,7 +377,7 @@ impl Command for TopUpBudget {
 
 inventory::submit! { CommandDescriptor::of::<TopUpBudget>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListBudgetLedger {
     pub budget_id: String,
     #[serde(default = "default_budget_ledger_limit")]
@@ -427,7 +427,7 @@ impl Command for ListBudgetLedger {
 
 inventory::submit! { CommandDescriptor::of::<ListBudgetLedger>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckBudget {
     pub budget_id: String,
 }
@@ -470,7 +470,7 @@ impl Command for CheckBudget {
 
 inventory::submit! { CommandDescriptor::of::<CheckBudget>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -509,7 +509,7 @@ impl Command for ListSessionBudgets {
 
 inventory::submit! { CommandDescriptor::of::<ListSessionBudgets>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -545,7 +545,7 @@ impl Command for CheckSessionBudgets {
 
 inventory::submit! { CommandDescriptor::of::<CheckSessionBudgets>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResumeSessionBudgets {
     /// Session's prefixed public identifier.
     pub session_id: String,

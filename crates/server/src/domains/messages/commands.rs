@@ -8,7 +8,7 @@ use everruns_contracts::typed_id::{AgentId, SessionId, SessionParticipantId};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -202,7 +202,7 @@ async fn resolve_responder_agent_id(
     Ok(Some(public_id))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListMessages {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -268,7 +268,7 @@ pub enum SessionExportFormat {
     Atif,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportSessionMessages {
     /// Session's prefixed public identifier.
     pub session_id: String,

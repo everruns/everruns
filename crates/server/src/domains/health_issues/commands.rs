@@ -129,7 +129,7 @@ async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
 }
 
 /// Pagination and optional channel filter for pending health issues.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListHealthIssues {
     /// Restrict results to this public channel identifier.
     #[schema(example = "appchan_550e8400e29b41d4a716446655440000")]
@@ -184,7 +184,7 @@ impl Command for ListHealthIssues {
 inventory::submit! {CommandDescriptor::of::<ListHealthIssues>()}
 
 /// Read the current evidence and recovery guidance for one health issue.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetHealthIssue {
     /// Stable identifier of the issue in the current organization.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
@@ -211,7 +211,7 @@ impl Command for GetHealthIssue {
 inventory::submit! {CommandDescriptor::of::<GetHealthIssue>()}
 
 /// Request fresh, non-mutating verification of one health issue.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckHealthIssue {
     /// Stable identifier of the issue in the current organization.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
@@ -249,7 +249,7 @@ impl Command for CheckHealthIssue {
 inventory::submit! {CommandDescriptor::of::<CheckHealthIssue>()}
 
 /// Suppress the current user's reminders for one day without resolving the issue.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SnoozeHealthIssue {
     /// Stable identifier of the issue in the current organization.
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]

@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use chrono::{DateTime, Duration, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 use super::types::*;
@@ -38,7 +38,7 @@ const FLEET_STATES: &[&str] = &[
 macro_rules! fleet_filter_command {
     ($(#[$meta:meta])* $name:ident { $($(#[$fmeta:meta])* $field:ident : $ty:ty),* $(,)? }) => {
         $(#[$meta])*
-        #[derive(Debug, Default, Deserialize, ToSchema, IntoParams)]
+        #[derive(Debug, Default, Deserialize, Serialize, ToSchema, IntoParams)]
         #[into_params(parameter_in = Query)]
         pub struct $name {
             /// Comma-separated states: `running`, `paused`, `lost`, `starting`,
@@ -401,7 +401,7 @@ fn concurrency<'a>(
 // ============================================================================
 
 /// One Sandbox with its provider resources and state history.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct GetSandbox {
     /// Logical Sandbox id.
     pub id: String,

@@ -164,11 +164,19 @@ async fn run(
 
 /// Run one command by wire name and return its output, printing any warnings
 /// the server attached to stderr.
-pub async fn execute(client: &ApiClient<'_>, wire_name: &str, params: Value) -> Result<Value> {
-    let body = json!({
+pub async fn execute(client: &ApiClient<'_>, wire_name: &str, mut params: Value) -> Result<Value> {
+    // `--reason` is invocation metadata: it goes in the envelope, where the
+    // server records it in the entity's history, not among the params.
+    let reason = params
+        .as_object_mut()
+        .and_then(|object| object.remove(everruns_cli_contract::REASON_FIELD));
+    let mut body = json!({
         "params": params,
         "metadata": { "client": concat!("everruns-cli/", env!("CARGO_PKG_VERSION")) },
     });
+    if let Some(reason) = reason {
+        body["reason"] = reason;
+    }
     let response = client
         .post_command(
             &format!("/v1/commands/{wire_name}"),

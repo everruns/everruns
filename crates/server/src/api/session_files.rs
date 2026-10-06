@@ -47,7 +47,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 /// Request to create a file
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateFileRequest {
     /// File content (text or base64-encoded). Must match `encoding`.
     #[serde(default)]
@@ -68,7 +68,7 @@ pub struct CreateFileRequest {
 }
 
 /// Request to update a file
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateFileRequest {
     /// Content the file must currently hold for the write to happen.
     ///
@@ -97,7 +97,7 @@ pub struct UpdateFileRequest {
 }
 
 /// Request to move/rename a file
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct MoveFileRequest {
     /// Source path (relative to the workspace filesystem root).
     #[schema(example = "drafts/migration-plan.md")]
@@ -108,7 +108,7 @@ pub struct MoveFileRequest {
 }
 
 /// Request to copy a file
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyFileRequest {
     /// Source path (relative to the workspace filesystem root).
     #[schema(example = "templates/runbook.md")]
@@ -119,7 +119,7 @@ pub struct CopyFileRequest {
 }
 
 /// Request to search files
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct GrepRequest {
     /// Regex pattern to search for. Standard PCRE-ish (Rust `regex` crate) syntax.
     #[schema(example = "TODO\\(perf\\)")]
@@ -136,7 +136,7 @@ pub struct GrepRequest {
 /// Distinct from [`GrepRequest`], which answers with matches grouped by path
 /// and no context. This one streams a bounded window of matches plus the lines
 /// around them, which is what an agent reading a large repository needs.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct SearchRequest {
     /// Regular expression to match against file contents.
     #[schema(example = "TODO\\(perf\\)")]
@@ -168,7 +168,7 @@ pub struct SearchRequest {
     pub max_bytes: Option<usize>,
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct StatRequest {
     /// Path to the file or directory (relative to the workspace filesystem root).
     #[schema(example = "docs/migration-plan.md")]

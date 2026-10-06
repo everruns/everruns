@@ -18,7 +18,7 @@ use uuid::Uuid;
 // ============================================================================
 
 /// List audit logs for the caller's organization. Policy-gated read.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAuditLogs {
     /// Max entries to return (default 50, max 200).
     pub limit: Option<i64>,

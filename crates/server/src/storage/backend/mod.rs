@@ -144,6 +144,7 @@ mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;
 mod decision_defaults;
+mod entity_changes;
 mod harnesses_sessions;
 mod health_issues;
 mod identity;

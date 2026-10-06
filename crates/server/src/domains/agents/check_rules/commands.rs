@@ -24,7 +24,7 @@ const MAX_RULE_ID_LEN: usize = 128;
 const MAX_CUSTOM_RULES_PER_ORG: i64 = 100;
 
 /// List the org's effective check-rule configuration (built-ins + custom).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentCheckRules {}
 
 impl Command for ListAgentCheckRules {
@@ -64,7 +64,7 @@ impl Command for ListAgentCheckRules {
 inventory::submit! { CommandDescriptor::of::<ListAgentCheckRules>() }
 
 /// Create or update a single check rule.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpsertAgentCheckRule {
     /// Built-in rule id (for `builtin_override`) or `custom.<slug>` (custom).
     pub rule_id: String,
@@ -112,7 +112,7 @@ impl Command for UpsertAgentCheckRule {
 inventory::submit! { CommandDescriptor::of::<UpsertAgentCheckRule>() }
 
 /// Delete a check rule (removes a built-in override or a custom rule).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgentCheckRule {
     pub rule_id: String,
 }

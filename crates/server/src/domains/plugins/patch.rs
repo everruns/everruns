@@ -54,7 +54,7 @@ fn apply_mcp_identity_choices(
 }
 
 /// Update an installed plugin's status or resolve legacy MCP identities.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PatchInstalledPlugin {
     /// Public plugin ID.
     pub id: String,

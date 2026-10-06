@@ -4,7 +4,7 @@ use everruns_core::{McpServerAuthMode, mcp_oauth_provider_id_for_uuid};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListUserConnections {
     /// Optional provider ID filter.
     pub provider: Option<String>,
@@ -55,7 +55,7 @@ impl Command for ListUserConnections {
 
 inventory::submit! { CommandDescriptor::of::<ListUserConnections>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListConnectionProviders {
     /// Optional case-insensitive provider name/ID filter.
     pub search: Option<String>,

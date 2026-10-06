@@ -4,7 +4,7 @@ use crate::domains::common::*;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListUsers {
     #[serde(default)]
     pub search: Option<String>,

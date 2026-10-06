@@ -44,7 +44,7 @@ pub struct PluginMarketplace {
 }
 
 /// Request body for creating a plugin marketplace.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreatePluginMarketplaceRequest {
     /// Unique name within the org (kebab-case, e.g. `my-org-plugins`).
     #[schema(example = "everruns-plugins")]
@@ -59,7 +59,7 @@ pub struct CreatePluginMarketplaceRequest {
 }
 
 /// Request body for updating a plugin marketplace.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePluginMarketplaceRequest {
     pub name: Option<String>,
     pub status: Option<String>,
@@ -121,7 +121,7 @@ pub struct InstalledPlugin {
 }
 
 /// Request body for installing a plugin from a marketplace catalog entry.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct InstallPluginRequest {
     /// Public ID of the marketplace to install from.
     #[schema(example = "plgmkt_01933b5a000070008000000000000001")]
@@ -132,7 +132,7 @@ pub struct InstallPluginRequest {
 }
 
 /// Request body for updating an installed plugin.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateInstalledPluginRequest {
     /// New lifecycle status: `active` or `disabled`.
     pub status: Option<String>,

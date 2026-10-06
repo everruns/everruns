@@ -48,7 +48,7 @@ impl sqlx::error::DatabaseError for TestUniqueViolation {
     }
 }
 
-#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, serde::Serialize)]
 pub(crate) struct TransportConflictCommand {
     pub(crate) kind: String,
 }

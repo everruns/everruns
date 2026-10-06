@@ -185,7 +185,7 @@ async fn persist_capabilities(
 // ============================================================================
 
 /// Create a new harness with a name, system prompt, and optional capabilities.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateHarness(pub CreateHarnessRequest);
 
 impl CommandSchema for CreateHarness {
@@ -320,7 +320,7 @@ inventory::submit! { CommandDescriptor::of::<CreateHarness>() }
 // ============================================================================
 
 /// List harnesses. Supports search and include_archived.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListHarnesses {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -371,7 +371,7 @@ inventory::submit! { CommandDescriptor::of::<ListHarnesses>() }
 // ============================================================================
 
 /// Get a single harness by ID or name.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetHarness {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -413,7 +413,7 @@ inventory::submit! { CommandDescriptor::of::<GetHarness>() }
 // ============================================================================
 
 /// Update a harness. Only provided fields are changed.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateHarnessCmd {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -618,7 +618,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateHarnessCmd>() }
 // ============================================================================
 
 /// Archive a harness (soft delete).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteHarness {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -691,7 +691,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteHarness>() }
 // ============================================================================
 
 /// Permanently delete an archived harness.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroyHarness {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -790,7 +790,7 @@ inventory::submit! { CommandDescriptor::of::<DestroyHarness>() }
 // ============================================================================
 
 /// Copy a harness. Generates a unique name ({name}-copy, -copy-2, etc.)
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyHarness {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -857,7 +857,7 @@ inventory::submit! { CommandDescriptor::of::<CopyHarness>() }
 // ============================================================================
 
 /// Preview the final harness shape with capabilities applied.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PreviewHarness {
     pub system_prompt: Option<String>,
     #[serde(default)]
@@ -963,7 +963,7 @@ inventory::submit! { CommandDescriptor::of::<PreviewHarness>() }
 // ============================================================================
 
 /// Check whether a harness name is available.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckHarnessName {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

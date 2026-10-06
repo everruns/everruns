@@ -3,7 +3,7 @@
 // Policy enforcement happens at the service layer via #[policy] macro.
 use super::common::{
     ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
-    deserialize_nullable_update_field, impl_auth_state,
+    impl_auth_state,
 };
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
@@ -46,7 +46,7 @@ pub use create_request::CreateSessionRequest;
 /// Request to fork a session. Every field is
 /// optional; omitted fields inherit the parent session's value. Title defaults
 /// to "{parent title} (fork)" when omitted.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ForkSessionRequest {
     /// Title for the fork. Defaults to "{parent title} (fork)".
     #[serde(default)]
@@ -185,7 +185,7 @@ pub enum CancelStatus {
 }
 
 /// Request to update a session. Only provided fields will be updated.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSessionRequest {
     /// Human-readable title for the session.
     #[serde(default)]
@@ -196,7 +196,7 @@ pub struct UpdateSessionRequest {
     #[schema(example = "Summarize the incident and list remediations")]
     pub goal: Option<String>,
     /// Optional resident virtual user used for unattended/background execution.
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(
         value_type = Option<String>,
         example = "identity_01933b5a00007000800000000000001",
@@ -214,7 +214,7 @@ pub struct UpdateSessionRequest {
 }
 
 /// Request to add a participant to a session.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct AddSessionParticipantRequest {
     /// Participant kind to add.
     pub kind: SessionParticipantKind,

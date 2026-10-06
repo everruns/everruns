@@ -2437,9 +2437,9 @@ impl DirectPlatformStore {
         operation: crate::services::platform_command_surface::Operation,
         arguments: serde_json::Value,
     ) -> everruns_contracts::error::Result<String> {
-        let base_url = Self::base_url_from_env();
+        let (base_url, ctx) = (Self::base_url_from_env(), self.command_ctx().await?);
         let context = crate::api::mcp_endpoint::catalog::CatalogContext {
-            domain_ctx: self.command_ctx().await?,
+            domain_ctx: crate::domains::change_history::on_platform(ctx, self.session_id).await,
             link_builder: crate::api::common::UrlBuilder::new(&base_url, &base_url),
         };
         crate::services::platform_command_surface::invoke(operation, &arguments, context)

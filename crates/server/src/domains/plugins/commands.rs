@@ -266,7 +266,7 @@ fn sync_local_path(source: &serde_json::Value) -> Result<(String, Option<String>
 // ============================================================================
 
 /// List plugin marketplaces registered for this org.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPluginMarketplaces {
     pub search: Option<String>,
 }
@@ -305,7 +305,7 @@ inventory::submit! { CommandDescriptor::of::<ListPluginMarketplaces>() }
 // ============================================================================
 
 /// Get a plugin marketplace by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPluginMarketplace {
     /// Public marketplace ID (`plgmkt_<32-hex>`).
     pub id: String,
@@ -345,7 +345,7 @@ inventory::submit! { CommandDescriptor::of::<GetPluginMarketplace>() }
 // ============================================================================
 
 /// Register a new plugin marketplace.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreatePluginMarketplaceCmd(pub CreatePluginMarketplaceRequest);
 
 impl CommandSchema for CreatePluginMarketplaceCmd {
@@ -488,7 +488,7 @@ fn build_source_json(source_type: &str, source_value: &str) -> serde_json::Value
 // ============================================================================
 
 /// Update a plugin marketplace's name or status.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePluginMarketplaceCmd {
     /// Public marketplace ID.
     pub id: String,
@@ -562,7 +562,7 @@ inventory::submit! { CommandDescriptor::of::<UpdatePluginMarketplaceCmd>() }
 
 /// Delete a plugin marketplace registration. Installed plugins from this
 /// marketplace become unattached (marketplace_id is set to NULL).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeletePluginMarketplace {
     /// Public marketplace ID.
     pub id: String,
@@ -611,7 +611,7 @@ inventory::submit! { CommandDescriptor::of::<DeletePluginMarketplace>() }
 // ============================================================================
 
 /// Re-sync a plugin marketplace catalog from its source.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncPluginMarketplace {
     /// Public marketplace ID.
     pub id: String,
@@ -693,7 +693,7 @@ inventory::submit! { CommandDescriptor::of::<SyncPluginMarketplace>() }
 // ============================================================================
 
 /// List the synced catalog entries for a marketplace, with `installed` flag.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetMarketplaceCatalog {
     /// Public marketplace ID.
     pub id: String,
@@ -792,7 +792,7 @@ inventory::submit! { CommandDescriptor::of::<GetMarketplaceCatalog>() }
 // ============================================================================
 
 /// List installed plugins for this org.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPlugins {
     pub search: Option<String>,
 }
@@ -860,7 +860,7 @@ inventory::submit! { CommandDescriptor::of::<ListPlugins>() }
 // ============================================================================
 
 /// Get an installed plugin by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPlugin {
     /// Public plugin ID (`plugin_<32-hex>`).
     pub id: String,
@@ -908,7 +908,7 @@ inventory::submit! { CommandDescriptor::of::<GetPlugin>() }
 // ============================================================================
 
 /// Install a plugin from a marketplace catalog entry.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct InstallPluginCmd(pub InstallPluginRequest);
 
 impl CommandSchema for InstallPluginCmd {
@@ -1089,7 +1089,7 @@ inventory::submit! { CommandDescriptor::of::<InstallPluginCmd>() }
 
 /// Uninstall a plugin. Agents/harnesses referencing `plugin:{install_id}` will
 /// surface a dangling-ref error (same behaviour as deleted declarative caps).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UninstallPlugin {
     /// Public plugin ID.
     pub id: String,
@@ -1141,7 +1141,7 @@ inventory::submit! { CommandDescriptor::of::<UninstallPlugin>() }
 // ============================================================================
 
 /// Re-compile and update an installed plugin from the marketplace's current catalog.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePlugin {
     /// Public plugin ID.
     pub id: String,

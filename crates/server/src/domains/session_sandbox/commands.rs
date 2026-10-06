@@ -23,7 +23,7 @@ fn manage_response_from_state(
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ManageSessionSandbox {
     /// Session's prefixed public identifier.
     pub session_id: String,

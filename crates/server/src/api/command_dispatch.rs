@@ -39,6 +39,12 @@
 // otherwise keeps only its hash.
 // Read-only commands ignore the header; running them twice is harmless.
 //
+// Decision: the envelope's `reason` is the change reason the command records in
+// entity history (`domains::change_history`). It sits beside `params`, not in
+// them, because it describes the invocation rather than the change, and it is
+// left out of the idempotency fingerprint so a retry that rewords it is still
+// the same request.
+//
 // Not to be confused with `/v1/sessions/{id}/commands`, which lists a
 // session's slash commands (`api/commands.rs`).
 
@@ -85,6 +91,11 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/commands", get(list_commands))
         .route("/v1/commands/{name}", post(execute_command))
+        .route("/v1/history", get(super::history::list_org_history))
+        .route(
+            "/v1/history/{entity_ref}",
+            get(super::history::list_entity_history),
+        )
         .with_state(state)
 }
 
@@ -138,6 +149,13 @@ pub struct CommandRequest {
     /// recorded on the request trace. Never interpreted by the command.
     #[serde(default)]
     pub metadata: BTreeMap<String, String>,
+    /// Why the caller is making this change, recorded in the changed entity's
+    /// history. 1 to 1000 characters; rejected if it looks like a credential.
+    /// Read-only commands ignore it. Not part of the idempotency fingerprint:
+    /// a retry may word it differently, and the first reason is kept.
+    #[serde(default)]
+    #[schema(example = "Make the support agent kid friendly, as requested in the product review")]
+    pub reason: Option<String>,
 }
 
 /// A command's result.
@@ -243,7 +261,7 @@ pub async fn execute_command(
     // Unknown and read-only commands run without a key: the first fails the
     // same way every time, the second is harmless to repeat.
     let Some(key) = key.filter(|_| desc.is_some_and(|desc| !(desc.read_only)())) else {
-        let response = run(&org, &state, name, request, current_hash).await?;
+        let response = run(&org, &state, name, request, current_hash, None).await?;
         return Ok(Json(response).into_response());
     };
     let scope = IdempotencyKeyScope {
@@ -289,7 +307,16 @@ pub async fn execute_command(
             .into()),
         },
         IdempotencyClaim::Claimed => {
-            match run(&org, &state, name, request, current_hash).await {
+            match run(
+                &org,
+                &state,
+                name,
+                request,
+                current_hash,
+                Some(scope.key.clone()),
+            )
+            .await
+            {
                 Ok(response) => {
                     // The command already ran: failing to remember it must not
                     // turn its success into an error.
@@ -324,9 +351,18 @@ async fn run(
     name: String,
     request: CommandRequest,
     current_hash: String,
+    idempotency_key: Option<String>,
 ) -> Result<CommandResponse, (StatusCode, Json<ErrorResponse>)> {
-    let output =
-        catalog::dispatch_named(&name, request.params, &catalog_context(org, state)).await?;
+    let mut context = catalog_context(org, state);
+    let intent = crate::domains::change_history::ChangeIntent {
+        idempotency_key: idempotency_key.clone(),
+        ..crate::domains::change_history::ChangeIntent::on(
+            crate::domains::change_history::ChangeSurface::Commands,
+        )
+    }
+    .with_reason(request.reason);
+    context.domain_ctx = context.domain_ctx.with_change_intent(intent);
+    let output = catalog::dispatch_named(&name, request.params, &context).await?;
 
     let mut warnings = Vec::new();
     if let Some(sent) = request.schema_hash.as_deref()

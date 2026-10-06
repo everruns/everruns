@@ -1312,7 +1312,7 @@ pub struct CreateProviderRow {
     pub settings: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct UpdateProvider {
     pub name: Option<String>,
     pub provider_type: Option<String>,
@@ -1337,7 +1337,7 @@ pub struct CreateModelRow {
     pub provider_metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct UpdateModel {
     pub provider_id: Option<ProviderId>,
     pub model_id: Option<String>,

@@ -13,7 +13,7 @@ fn registry_err(e: everruns_contracts::error::AgentLoopError) -> CommandError {
     CommandError::internal(anyhow::anyhow!(e))
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionTasks {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -82,7 +82,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessionTasks>() }
 /// not bound to a single session. The org is taken from the authenticated
 /// caller (`ctx.org_id()`), never from input, so the result is always scoped to
 /// the caller's tenant.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListOrgTasks {
     /// Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled).
     #[serde(default)]
@@ -184,7 +184,7 @@ pub struct SessionTaskDetail {
     pub messages: Vec<TaskMessage>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSessionTask {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -234,7 +234,7 @@ impl Command for GetSessionTask {
 
 inventory::submit! { CommandDescriptor::of::<GetSessionTask>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PostSessionTaskMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -351,7 +351,7 @@ impl Command for PostSessionTaskMessage {
 
 inventory::submit! { CommandDescriptor::of::<PostSessionTaskMessage>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CancelSessionTask {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -517,7 +517,7 @@ impl TaskPushConfig {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateTaskPushConfig {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -584,7 +584,7 @@ impl Command for CreateTaskPushConfig {
 
 inventory::submit! { CommandDescriptor::of::<CreateTaskPushConfig>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListTaskPushConfigs {
     /// Session's prefixed public identifier.
     pub session_id: String,
@@ -625,7 +625,7 @@ impl Command for ListTaskPushConfigs {
 
 inventory::submit! { CommandDescriptor::of::<ListTaskPushConfigs>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteTaskPushConfig {
     /// Session's prefixed public identifier.
     pub session_id: String,

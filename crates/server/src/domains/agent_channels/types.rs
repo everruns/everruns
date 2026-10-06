@@ -5,7 +5,7 @@ use serde_json::Value;
 use utoipa::ToSchema;
 
 /// Request to create an ingress channel owned by an Agent.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentChannelRequest {
     /// Transport used by the channel.
     pub channel_type: ChannelType,
@@ -27,7 +27,7 @@ pub struct CreateAgentChannelRequest {
 }
 
 /// Request to update an ingress channel owned by an Agent.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentChannelRequest {
     /// Replacement transport-specific channel configuration.
     pub channel_config: Option<Value>,

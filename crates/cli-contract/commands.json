@@ -4484,6 +4484,127 @@
     ]
   },
   {
+    "wire_name": "list_entity_history",
+    "path": [
+      "history"
+    ],
+    "verb": "list",
+    "description": "List recorded changes to one entity (agent, harness, knowledge base, provider, ...), newest first, with who made each change, through which surface and session, and why.",
+    "method": "GET",
+    "http_path": "/v1/history/{entity_ref}",
+    "args": [
+      {
+        "field": "entity_ref",
+        "long": "entity-ref",
+        "position": 1,
+        "kind": "string",
+        "required": true,
+        "help": "The entity's public id, e.g."
+      },
+      {
+        "field": "action",
+        "long": "action",
+        "kind": "string",
+        "required": false,
+        "help": "Only this action (`created`, `updated`, `deleted`, ...)."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Only changes older than this timestamp (page cursor)."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Entity kind."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Max entries (default 50, max 200)."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See why an agent was changed",
+        "command": "everruns history list agent_01h9 --limit 10"
+      }
+    ]
+  },
+  {
+    "wire_name": "list_org_history",
+    "path": [
+      "history"
+    ],
+    "verb": "org",
+    "description": "List recorded changes across the organization, newest first. Filter by entity kind, action, the user a change was made as, or the agent that made it.",
+    "method": "GET",
+    "http_path": "/v1/history",
+    "args": [
+      {
+        "field": "action",
+        "long": "action",
+        "kind": "string",
+        "required": false,
+        "help": "Only this action."
+      },
+      {
+        "field": "actor_user_id",
+        "long": "actor-user-id",
+        "kind": "string",
+        "required": false,
+        "help": "Only changes made as this user."
+      },
+      {
+        "field": "before",
+        "long": "before",
+        "kind": "string",
+        "required": false,
+        "help": "Only changes older than this timestamp (page cursor)."
+      },
+      {
+        "field": "kind",
+        "long": "kind",
+        "kind": "string",
+        "required": false,
+        "help": "Only this entity kind."
+      },
+      {
+        "field": "limit",
+        "long": "limit",
+        "kind": "integer",
+        "required": false,
+        "help": "Max entries (default 50, max 200)."
+      },
+      {
+        "field": "since",
+        "long": "since",
+        "kind": "string",
+        "required": false,
+        "help": "Only changes at or after this timestamp."
+      },
+      {
+        "field": "via_agent_id",
+        "long": "via-agent",
+        "kind": "string",
+        "required": false,
+        "help": "Only changes an agent made, by the agent's public id."
+      }
+    ],
+    "examples": [
+      {
+        "intent": "See what Platform Chat changed today",
+        "command": "everruns history org --via-agent agent_01h9 --since 2026-10-05T00:00:00Z"
+      }
+    ]
+  },
+  {
     "wire_name": "get_image",
     "path": [
       "images"

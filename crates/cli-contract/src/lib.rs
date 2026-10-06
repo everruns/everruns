@@ -48,6 +48,17 @@ use clap::builder::{BoolishValueParser, PossibleValuesParser};
 use clap::{Arg, ArgAction, ColorChoice, Command};
 use serde::{Deserialize, Serialize};
 
+/// Field under which [`params_from`] reports the global `--reason` flag.
+///
+/// The reason is invocation metadata, not a command param: it says why the
+/// caller is changing something, and the server records it in the entity's
+/// history. Every leaf accepts it so a script can pass it uniformly (a
+/// read-only command ignores it). It rides in the params object because that
+/// is what every shell host forwards; hosts move it out before dispatch
+/// (`everruns-cli` into the request envelope, the server's shells into the
+/// command's change intent). No command may declare a param of this name.
+pub const REASON_FIELD: &str = "reason";
+
 /// What one argument accepts.
 ///
 /// A reduction of JSON Schema to the shapes a command line has: everything
@@ -194,6 +205,18 @@ impl ContractCommand {
                 command = command.arg(positional(arg));
             }
         }
+        if !self.args.iter().any(|arg| arg.field == REASON_FIELD) {
+            command = command.arg(
+                Arg::new(REASON_FIELD)
+                    .long(REASON_FIELD)
+                    .value_name("TEXT")
+                    .help(
+                        "Why you are making this change. Recorded in the entity's history; \
+                         agents must give one",
+                    )
+                    .action(ArgAction::Set),
+            );
+        }
         command
     }
 }
@@ -291,6 +314,9 @@ pub fn params_from(command: &ContractCommand, matches: &clap::ArgMatches) -> ser
                 break;
             }
         }
+    }
+    if let Some(reason) = read(matches, REASON_FIELD, ArgKind::String) {
+        object.insert(REASON_FIELD.to_string(), reason);
     }
 
     serde_json::Value::Object(object)

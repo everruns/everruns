@@ -90,7 +90,7 @@ impl AgentCredentialBinding {
     }
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 /// Declare a credential requirement for an agent's attached MCP tool.
 pub struct CreateAgentCredentialBinding {
     /// Agent ID, populated from the request path by the HTTP API.

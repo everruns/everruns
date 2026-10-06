@@ -110,7 +110,7 @@ pub(crate) async fn preflight_package_channel_config(
     Ok(())
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentChannels {
     pub agent_id: String,
 }
@@ -146,7 +146,7 @@ impl Command for ListAgentChannels {
 
 inventory::submit! { CommandDescriptor::of::<ListAgentChannels>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
@@ -183,7 +183,7 @@ impl Command for GetAgentChannel {
 
 inventory::submit! { CommandDescriptor::of::<GetAgentChannel>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateAgentChannel {
     pub agent_id: String,
     #[serde(flatten)]
@@ -273,7 +273,7 @@ impl Command for CreateAgentChannel {
 
 inventory::submit! { CommandDescriptor::of::<CreateAgentChannel>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateAgentChannelCmd {
     pub agent_id: String,
     pub channel_id: String,
@@ -395,7 +395,7 @@ impl Command for UpdateAgentChannelCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateAgentChannelCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PublishAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
@@ -425,7 +425,7 @@ impl Command for PublishAgentChannel {
 
 inventory::submit! { CommandDescriptor::of::<PublishAgentChannel>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UnpublishAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
@@ -481,7 +481,7 @@ async fn set_channel_status(
     row_to_channel(ctx, row)
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteAgentChannel {
     pub agent_id: String,
     pub channel_id: String,
@@ -520,7 +520,7 @@ impl Command for DeleteAgentChannel {
 
 inventory::submit! { CommandDescriptor::of::<DeleteAgentChannel>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentChannel {
     pub agent_id: String,
     pub channel_id: String,

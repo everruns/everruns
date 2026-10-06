@@ -1651,6 +1651,9 @@ message ExecuteCommandRequest {
     optional string user_id = 5;
     optional string idempotency_key = 6;
     map<string, string> metadata = 7;
+    // Why the caller is making this change, recorded in the changed entity's
+    // history. Caller text; the server validates it like any other surface.
+    optional string reason = 12;
 }
 
 message CommandError {

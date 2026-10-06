@@ -6,7 +6,7 @@ use crate::records::validate_org_public_id;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListOrgs {}
 
 impl Command for ListOrgs {
@@ -43,7 +43,7 @@ impl Command for ListOrgs {
 
 inventory::submit! { CommandDescriptor::of::<ListOrgs>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetOrg {
     pub org: String,
 }
@@ -90,7 +90,7 @@ inventory::submit! { CommandDescriptor::of::<GetOrg>() }
 // (THREAT[TM-TENANT-010]); we return NotFound for every failure mode to
 // preserve the org-enumeration guarantee. See knowledge/security/multitenancy.md
 // (Cross-Org Resource Resolution).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ResolveOrg {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,

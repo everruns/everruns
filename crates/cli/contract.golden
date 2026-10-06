@@ -1,310 +1,312 @@
-agents analyze	--capabilities --harness-id --initial-files --mcp-servers --system-prompt --tools
-agents channels create	--agent-id! --agent-version-id --agent-version-policy --channel-config --channel-type! --enabled
-agents channels delete	--agent-id! --channel-id!
-agents channels get	--agent-id! --channel-id!
-agents channels list	--agent-id!
-agents channels publish	--agent-id! --channel-id!
-agents channels trigger	--agent-id! --channel-id!
-agents channels unpublish	--agent-id! --channel-id!
-agents channels update	--agent-id! --agent-version-id --agent-version-policy --channel-config --channel-id! --enabled
-agents check-name	--exclude-id --name!
-agents check-rules delete	--rule-id!
-agents check-rules list
-agents check-rules upsert	--category --enabled! --kind! --match-mode --message --pattern --rubric --rule-id! --severity
-agents copy	--id <id>
+agents analyze	--capabilities --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents channels create	--agent-id! --agent-version-id --agent-version-policy --channel-config --channel-type! --enabled --reason
+agents channels delete	--agent-id! --channel-id! --reason
+agents channels get	--agent-id! --channel-id! --reason
+agents channels list	--agent-id! --reason
+agents channels publish	--agent-id! --channel-id! --reason
+agents channels trigger	--agent-id! --channel-id! --reason
+agents channels unpublish	--agent-id! --channel-id! --reason
+agents channels update	--agent-id! --agent-version-id --agent-version-policy --channel-config --channel-id! --enabled --reason
+agents check-name	--exclude-id --name! --reason
+agents check-rules delete	--reason --rule-id!
+agents check-rules list	--reason
+agents check-rules upsert	--category --enabled! --kind! --match-mode --message --pattern --reason --rubric --rule-id! --severity
+agents copy	--id --reason <id>
 agents create	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --tag/-t... --writable
-agents credentials create	--agent-id --description --label! --mcp-server-name! --parameter-name! --tool-name!
-agents delete	--id <id>
-agents destroy	--id <id>
+agents credentials create	--agent-id --description --label! --mcp-server-name! --parameter-name! --reason --tool-name!
+agents delete	--id --reason <id>
+agents destroy	--id --reason <id>
 agents diff	--against --target <file>!
 agents export	--format --out <agent>!
-agents exposures resume	--agent <agent_id>
-agents exposures suspend	--agent <agent_id>
-agents get	--id <id>
-agents health-checks get	--agent-id! --run-id!
-agents health-checks latest get	--agent-id!
-agents health-checks list	--agent-id!
-agents health-checks trigger	--agent-id!
+agents exposures resume	--agent --reason <agent_id>
+agents exposures suspend	--agent --reason <agent_id>
+agents get	--id --reason <id>
+agents health-checks get	--agent-id! --reason --run-id!
+agents health-checks latest get	--agent-id! --reason
+agents health-checks list	--agent-id! --reason
+agents health-checks trigger	--agent-id! --reason
 agents import	--content --format --target <file>
-agents list	--include-archived --limit --offset --search
-agents preview	--capabilities --harness-id --initial-files --mcp-servers --system-prompt --tools
-agents triggers create	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-type
-agents triggers delete	--agent-id! --trigger-id!
-agents triggers deliveries list	--agent-id! --limit --trigger-id!
-agents triggers get	--agent-id! --trigger-id!
-agents triggers list	--agent-id! --include-archived
-agents triggers runs list	--agent-id! --trigger-id!
-agents triggers trigger	--agent-id! --trigger-id!
-agents triggers update	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --repositories... --session-mode --subject-template --timezone --token --trigger-id!
+agents list	--include-archived --limit --offset --reason --search
+agents preview	--capabilities --harness-id --initial-files --mcp-servers --reason --system-prompt --tools
+agents triggers create	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message! --rate-limit-per-minute --reason --repositories... --session-mode --subject-template --timezone --token --trigger-type
+agents triggers delete	--agent-id! --reason --trigger-id!
+agents triggers deliveries list	--agent-id! --limit --reason --trigger-id!
+agents triggers get	--agent-id! --reason --trigger-id!
+agents triggers list	--agent-id! --include-archived --reason
+agents triggers runs list	--agent-id! --reason --trigger-id!
+agents triggers trigger	--agent-id! --reason --trigger-id!
+agents triggers update	--agent-id! --agent-version-id --agent-version-policy --auth --cron-expression --enabled --event-id-template --filter --github-events... --mcp-event --mcp-event-arguments --mcp-server --message --rate-limit-per-minute --reason --repositories... --session-mode --subject-template --timezone --token --trigger-id!
 agents update	--description --file/-f --harness/-H --initial-files-dir --instructions --model --name --tag/-t... --writable <agent_id>
-agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
+agents upsert	--capabilities --default-model-id --description --display-name --harness-id --harness/-H --id --initial-files --intro-markdown --max-iterations --mcpServers --name! --network-access --parallel-tool-calls --reason --sandbox-policy --service-virtual-user-id --short-description --starters --system-prompt! --tags... --tools <id>
 agents validate	--remote <file>!
-agents versions create	--agent! --change-kind --summary
-agents versions diff	--agent! --from-version-id! --to-version-id!
-agents versions fork	--agent! --description --display-name --name! --version-id!
-agents versions list	--agent!
-agents versions rollback	--agent! --save-version --summary --version-id!
-agents versions set-default	--agent! --version-id!
-budgets check	--budget-id!
-budgets create	--currency! --limit! --metadata --period --soft-limit --subject-id! --subject-type!
-budgets delete	--budget-id!
-budgets get	--budget-id!
-budgets ledger list	--budget-id! --limit --offset
-budgets list	--subject-id --subject-type
-budgets top-up top	--amount! --budget-id! --description
-budgets update	--budget-id! --limit --metadata --soft-limit --status
-capabilities create	--definition!
-capabilities declarative delete	--id!
-capabilities declarative destroy	--id <id>
-capabilities declarative get	--id!
-capabilities declarative list	--include-archived --search
-capabilities declarative update	--definition --id! --status
-capabilities get	--id!
-capabilities guardrails dry-run dry	--config! --stage! --text! --tool-name
-capabilities guardrails examples list
-capabilities list	--include-retired --limit --offset --search
+agents versions create	--agent! --change-kind --reason --summary
+agents versions diff	--agent! --from-version-id! --reason --to-version-id!
+agents versions fork	--agent! --description --display-name --name! --reason --version-id!
+agents versions list	--agent! --reason
+agents versions rollback	--agent! --reason --save-version --summary --version-id!
+agents versions set-default	--agent! --reason --version-id!
+budgets check	--budget-id! --reason
+budgets create	--currency! --limit! --metadata --period --reason --soft-limit --subject-id! --subject-type!
+budgets delete	--budget-id! --reason
+budgets get	--budget-id! --reason
+budgets ledger list	--budget-id! --limit --offset --reason
+budgets list	--reason --subject-id --subject-type
+budgets top-up top	--amount! --budget-id! --description --reason
+budgets update	--budget-id! --limit --metadata --reason --soft-limit --status
+capabilities create	--definition! --reason
+capabilities declarative delete	--id! --reason
+capabilities declarative destroy	--id --reason <id>
+capabilities declarative get	--id! --reason
+capabilities declarative list	--include-archived --reason --search
+capabilities declarative update	--definition --id! --reason --status
+capabilities get	--id! --reason
+capabilities guardrails dry-run dry	--config! --reason --stage! --text! --tool-name
+capabilities guardrails examples list	--reason
+capabilities list	--include-retired --limit --offset --reason --search
 chat	--no-stream --session/-s! --timeout <message>!
 connections list
 connections remove	<provider>!
 connections set	--api-key-stdin <provider>!
-durable executions get	--execution-id!
-durable schedules create	--catch-up-missed --cron-expression! --description --enabled --max-catch-up --max-concurrent --name! --retry-policy --target! --timezone
-durable schedules delete	--schedule-id!
-durable schedules executions list	--limit --offset --schedule-id! --status
-durable schedules get	--schedule-id!
-durable schedules list	--enabled --limit --offset --target-type
-durable schedules pause	--schedule-id!
-durable schedules resume	--schedule-id!
-durable schedules stats get	--schedule-id!
-durable schedules trigger	--schedule-id!
-durable schedules update	--catch-up-missed --cron-expression --description --enabled --max-catch-up --max-concurrent --retry-policy --schedule-id! --target --timezone
-evals atif-import import	--body! --eval-id!
-evals cases create	--artifacts --conversation! --description --eval-id! --max-turns --name! --position --post --scorers! --tags... --target --timeout-seconds
-evals cases delete	--case-id! --eval-id!
-evals cases get	--case-id! --eval-id!
-evals cases list	--eval-id!
-evals cases update	--artifacts --case-id! --conversation --description --eval-id! --max-turns --name --position --post --scorers --tags... --target --timeout-seconds
-evals create	--description --model-override --name! --tags... --target
-evals delete	--eval-id!
-evals get	--eval-id!
-evals import	--evals! --source!
-evals import-preflight
-evals list	--include-archived --search
-evals runs artifacts export	--eval-id! --run-id!
-evals runs cancel	--eval-id! --run-id!
-evals runs create	--eval-id! --model-override --target
-evals runs dataset export	--eval-id! --filters --format --redaction --run-id!
-evals runs dataset get	--dataset-id! --eval-id! --run-id!
-evals runs get	--eval-id! --run-id!
-evals runs list	--eval-id!
-evals runs results scores update	--eval-id! --metadata --result-id! --run-id! --scores! --status
-evals runs scores bulk	--eval-id! --metadata --results! --run-id!
-evals runs share create	--eval-id! --run-id!
-evals runs share get	--eval-id! --run-id!
-evals runs share revoke	--eval-id! --run-id!
-evals update	--description --eval-id! --model-override --name --tags... --target
+durable executions get	--execution-id! --reason
+durable schedules create	--catch-up-missed --cron-expression! --description --enabled --max-catch-up --max-concurrent --name! --reason --retry-policy --target! --timezone
+durable schedules delete	--reason --schedule-id!
+durable schedules executions list	--limit --offset --reason --schedule-id! --status
+durable schedules get	--reason --schedule-id!
+durable schedules list	--enabled --limit --offset --reason --target-type
+durable schedules pause	--reason --schedule-id!
+durable schedules resume	--reason --schedule-id!
+durable schedules stats get	--reason --schedule-id!
+durable schedules trigger	--reason --schedule-id!
+durable schedules update	--catch-up-missed --cron-expression --description --enabled --max-catch-up --max-concurrent --reason --retry-policy --schedule-id! --target --timezone
+evals atif-import import	--body! --eval-id! --reason
+evals cases create	--artifacts --conversation! --description --eval-id! --max-turns --name! --position --post --reason --scorers! --tags... --target --timeout-seconds
+evals cases delete	--case-id! --eval-id! --reason
+evals cases get	--case-id! --eval-id! --reason
+evals cases list	--eval-id! --reason
+evals cases update	--artifacts --case-id! --conversation --description --eval-id! --max-turns --name --position --post --reason --scorers --tags... --target --timeout-seconds
+evals create	--description --model-override --name! --reason --tags... --target
+evals delete	--eval-id! --reason
+evals get	--eval-id! --reason
+evals import	--evals! --reason --source!
+evals import-preflight	--reason
+evals list	--include-archived --reason --search
+evals runs artifacts export	--eval-id! --reason --run-id!
+evals runs cancel	--eval-id! --reason --run-id!
+evals runs create	--eval-id! --model-override --reason --target
+evals runs dataset export	--eval-id! --filters --format --reason --redaction --run-id!
+evals runs dataset get	--dataset-id! --eval-id! --reason --run-id!
+evals runs get	--eval-id! --reason --run-id!
+evals runs list	--eval-id! --reason
+evals runs results scores update	--eval-id! --metadata --reason --result-id! --run-id! --scores! --status
+evals runs scores bulk	--eval-id! --metadata --reason --results! --run-id!
+evals runs share create	--eval-id! --reason --run-id!
+evals runs share get	--eval-id! --reason --run-id!
+evals runs share revoke	--eval-id! --reason --run-id!
+evals update	--description --eval-id! --model-override --name --reason --tags... --target
 files ls	--long/-l --recursive/-r --session/-s! <path>
 files pull	--delete --dry-run --session/-s! <local_dir>
 files push	--delete --dry-run --session/-s! <local_dir>
 files sync	--conflict --delete --dry-run --exclude... --interval --no-gitignore --session/-s! --verbose/-v <local_dir>
-harnesses check-name check	--exclude-id --name!
-harnesses copy	--id!
-harnesses create	--capabilities --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --mcpServers --name! --network-access --parent-harness-id --short-description --starters --system-prompt --tags...
-harnesses delete	--id!
-harnesses destroy	--id <id>
-harnesses get	--id!
-harnesses list	--include-archived --search
-harnesses preview	--capabilities --mcp-servers --parent-harness-id --system-prompt
-harnesses update	--capabilities --default-model-id --description --display-name --embedder-metadata --id! --initial-files --intro-markdown --mcpServers --name --network-access --parent-harness-id --short-description --starters --status --system-prompt --tags...
-health-issues check	--issue-id!
-health-issues get	--issue-id!
-health-issues list	--channel-id --limit --offset
-health-issues snooze	--issue-id!
-images get	--id!
-images list	--limit --offset
-knowledge-bases create	--description --embedding-model-id --name!
-knowledge-bases delete	--kb-id!
-knowledge-bases entries create	--body! --kb-id! --kind --resource --tags... --title!
-knowledge-bases entries delete	--entry-id! --kb-id!
-knowledge-bases entries get	--entry-id! --kb-id!
-knowledge-bases entries list	--kb-id! --kind --search
-knowledge-bases entries update	--body --entry-id! --kb-id! --kind --resource --tags... --title
-knowledge-bases get	--kb-id!
-knowledge-bases list	--include-archived --search
-knowledge-bases okf-import import	--bundle-base64 --files --kb-id! --prune
-knowledge-bases update	--description --embedding-model-id --kb-id! --name
-knowledge-indexes create	--description --embedding-model-id! --name! --source-config --source-type
-knowledge-indexes delete	--index-id!
-knowledge-indexes documents list	--index-id!
-knowledge-indexes get	--index-id!
-knowledge-indexes list	--include-archived --search
-knowledge-indexes sync	--index-id!
-knowledge-indexes update	--description --embedding-model-id --index-id! --name --source-config
+harnesses check-name check	--exclude-id --name! --reason
+harnesses copy	--id! --reason
+harnesses create	--capabilities --default-model-id --description --display-name --embedder-metadata --initial-files --intro-markdown --mcpServers --name! --network-access --parent-harness-id --reason --short-description --starters --system-prompt --tags...
+harnesses delete	--id! --reason
+harnesses destroy	--id --reason <id>
+harnesses get	--id! --reason
+harnesses list	--include-archived --reason --search
+harnesses preview	--capabilities --mcp-servers --parent-harness-id --reason --system-prompt
+harnesses update	--capabilities --default-model-id --description --display-name --embedder-metadata --id! --initial-files --intro-markdown --mcpServers --name --network-access --parent-harness-id --reason --short-description --starters --status --system-prompt --tags...
+health-issues check	--issue-id! --reason
+health-issues get	--issue-id! --reason
+health-issues list	--channel-id --limit --offset --reason
+health-issues snooze	--issue-id! --reason
+history list	--action --before --entity-ref --kind --limit --reason <entity_ref>
+history org	--action --actor-user-id --before --kind --limit --reason --since --via-agent
+images get	--id! --reason
+images list	--limit --offset --reason
+knowledge-bases create	--description --embedding-model-id --name! --reason
+knowledge-bases delete	--kb-id! --reason
+knowledge-bases entries create	--body! --kb-id! --kind --reason --resource --tags... --title!
+knowledge-bases entries delete	--entry-id! --kb-id! --reason
+knowledge-bases entries get	--entry-id! --kb-id! --reason
+knowledge-bases entries list	--kb-id! --kind --reason --search
+knowledge-bases entries update	--body --entry-id! --kb-id! --kind --reason --resource --tags... --title
+knowledge-bases get	--kb-id! --reason
+knowledge-bases list	--include-archived --reason --search
+knowledge-bases okf-import import	--bundle-base64 --files --kb-id! --prune --reason
+knowledge-bases update	--description --embedding-model-id --kb-id! --name --reason
+knowledge-indexes create	--description --embedding-model-id! --name! --reason --source-config --source-type
+knowledge-indexes delete	--index-id! --reason
+knowledge-indexes documents list	--index-id! --reason
+knowledge-indexes get	--index-id! --reason
+knowledge-indexes list	--include-archived --reason --search
+knowledge-indexes sync	--index-id! --reason
+knowledge-indexes update	--description --embedding-model-id --index-id! --name --reason --source-config
 login	--token
 logout
-mcp-servers create	--api-key --auth-mode --description --elicitation-policy --headers --name! --protocol-mode --transport-type --url!
-mcp-servers delete	--id <id>
-mcp-servers destroy	--id <id>
-mcp-servers get	--id <id>
-mcp-servers list	--include-archived --search
-mcp-servers update	--api-key --auth-mode --description --elicitation-policy --headers --id --name --protocol-mode --status --transport-type --url <id>
-memories create	--description --name! --source
-memories delete	--memory-id!
-memories get	--memory-id!
-memories list	--include-archived --search
-memories sync	--memory-id!
-memories update	--description --memory-id! --name --source
-models decision-default get
-models decision-default set	--model-id
-models default get
-models delete	--id!
-models get	--id!
-models list	--favorites-only --include-stale --service --source
-models update	--capabilities... --display-name --enabled --id! --is-favorite --model-id --profile-key --provider-id --service
-notifications list	--limit
-notifications view mark	--notification-id!
-observers create	--description --match --name! --sampling-rate --scorers!
-observers delete	--observer-id!
-observers get	--observer-id!
-observers list	--include-archived
-observers scores list	--limit! --observer-id! --offset! --session-id
-observers update	--description --match --name --observer-id! --sampling-rate --scorers --status
-orgs audit-logs list	--action --actor-id --before --domain --event-type --limit
-orgs get	--org!
-orgs list
-orgs resolve	--id!
+mcp-servers create	--api-key --auth-mode --description --elicitation-policy --headers --name! --protocol-mode --reason --transport-type --url!
+mcp-servers delete	--id --reason <id>
+mcp-servers destroy	--id --reason <id>
+mcp-servers get	--id --reason <id>
+mcp-servers list	--include-archived --reason --search
+mcp-servers update	--api-key --auth-mode --description --elicitation-policy --headers --id --name --protocol-mode --reason --status --transport-type --url <id>
+memories create	--description --name! --reason --source
+memories delete	--memory-id! --reason
+memories get	--memory-id! --reason
+memories list	--include-archived --reason --search
+memories sync	--memory-id! --reason
+memories update	--description --memory-id! --name --reason --source
+models decision-default get	--reason
+models decision-default set	--model-id --reason
+models default get	--reason
+models delete	--id! --reason
+models get	--id! --reason
+models list	--favorites-only --include-stale --reason --service --source
+models update	--capabilities... --display-name --enabled --id! --is-favorite --model-id --profile-key --provider-id --reason --service
+notifications list	--limit --reason
+notifications view mark	--notification-id! --reason
+observers create	--description --match --name! --reason --sampling-rate --scorers!
+observers delete	--observer-id! --reason
+observers get	--observer-id! --reason
+observers list	--include-archived --reason
+observers scores list	--limit! --observer-id! --offset! --reason --session-id
+observers update	--description --match --name --observer-id! --reason --sampling-rate --scorers --status
+orgs audit-logs list	--action --actor-id --before --domain --event-type --limit --reason
+orgs get	--org! --reason
+orgs list	--reason
+orgs resolve	--id! --reason
 orgs select
-payments accounts create	--label! --metadata --owner-id! --owner-type! --private-key --public-address --rail!
-payments accounts disable	--payment-account-id!
-payments accounts get	--payment-account-id!
-payments accounts list	--owner-id --owner-type
-payments accounts update	--label --metadata --payment-account-id! --private-key --public-address --status
-payments attempts list	--limit! --session-id
-payments policies create	--allowed-capabilities... --allowed-hosts... --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-account-id! --rail-preference... --require-approval-above-usd --subject-id! --subject-type!
-payments policies disable	--payment-policy-id!
-payments policies get	--payment-policy-id!
-payments policies list	--payment-account-id --subject-id --subject-type
-payments policies update	--allowed-capabilities... --allowed-hosts... --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-policy-id! --rail-preference... --require-approval-above-usd --status
-plugin-marketplaces create	--name! --source! --source-type!
-plugin-marketplaces delete	--id!
-plugin-marketplaces get	--id!
-plugin-marketplaces list	--search
-plugin-marketplaces plugins get	--id!
-plugin-marketplaces sync	--id!
-plugin-marketplaces update	--id! --name --status
-plugins get	--id!
-plugins install	--marketplace-id! --plugin-name!
-plugins list	--search
-plugins patch	--id! --mcp-server-identities --status
-plugins uninstall	--id!
-plugins update	--id!
-providers check-credentials check	--api-key! --base-url --provider-type!
-providers create	--api-key --base-url --name! --provider-type! --request-options --trace
-providers delete	--id!
-providers get	--id!
-providers list
-providers models create	--capabilities... --display-name! --enabled --is-favorite --model-id! --profile-key --provider-id! --service
-providers models list	--provider-id!
-providers sync-models sync	--id!
-providers update	--api-key --base-url --id! --name --provider-type --request-options --status --trace
-reports admin backfill	--limit
-reports admin diagnostics get
-reports catalog get
-reports projector run	--limit
-reports query export	--format --query!
-reports query run	--dataset! --dimensions... --filters --limit --measures... --order-by --time-range!
-reports saved create	--dashboard --description --name! --query!
-reports saved delete	--report-id!
-reports saved export	--report-id! --request!
-reports saved get	--report-id!
-reports saved list
-reports saved run	--report-id!
-reports saved update	--report-id! --request!
-sandbox-targets list
-sandboxes get	--id <id>
-sandboxes list	--agent-id --include-in-process --limit --needs-attention --offset --provider --sandbox-template-id --search --state
-sandboxes stats get	--agent-id --include-in-process --needs-attention --provider --sandbox-template-id --search --state
-sandboxes timeline get	--agent-id --from --include-in-process --limit --needs-attention --provider --sandbox-template-id --search --state --to
-sessions archive	--session <session_id>
-sessions budget-check check	--session-id!
-sessions budgets list	--session-id!
-sessions cancel	--session <session_id>
-sessions context	--session <session_id>
+payments accounts create	--label! --metadata --owner-id! --owner-type! --private-key --public-address --rail! --reason
+payments accounts disable	--payment-account-id! --reason
+payments accounts get	--payment-account-id! --reason
+payments accounts list	--owner-id --owner-type --reason
+payments accounts update	--label --metadata --payment-account-id! --private-key --public-address --reason --status
+payments attempts list	--limit! --reason --session-id
+payments policies create	--allowed-capabilities... --allowed-hosts... --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-account-id! --rail-preference... --reason --require-approval-above-usd --subject-id! --subject-type!
+payments policies disable	--payment-policy-id! --reason
+payments policies get	--payment-policy-id! --reason
+payments policies list	--payment-account-id --reason --subject-id --subject-type
+payments policies update	--allowed-capabilities... --allowed-hosts... --max-amount-usd-per-day --max-amount-usd-per-request --max-amount-usd-per-turn --metadata --payment-policy-id! --rail-preference... --reason --require-approval-above-usd --status
+plugin-marketplaces create	--name! --reason --source! --source-type!
+plugin-marketplaces delete	--id! --reason
+plugin-marketplaces get	--id! --reason
+plugin-marketplaces list	--reason --search
+plugin-marketplaces plugins get	--id! --reason
+plugin-marketplaces sync	--id! --reason
+plugin-marketplaces update	--id! --name --reason --status
+plugins get	--id! --reason
+plugins install	--marketplace-id! --plugin-name! --reason
+plugins list	--reason --search
+plugins patch	--id! --mcp-server-identities --reason --status
+plugins uninstall	--id! --reason
+plugins update	--id! --reason
+providers check-credentials check	--api-key! --base-url --provider-type! --reason
+providers create	--api-key --base-url --name! --provider-type! --reason --request-options --trace
+providers delete	--id! --reason
+providers get	--id! --reason
+providers list	--reason
+providers models create	--capabilities... --display-name! --enabled --is-favorite --model-id! --profile-key --provider-id! --reason --service
+providers models list	--provider-id! --reason
+providers sync-models sync	--id! --reason
+providers update	--api-key --base-url --id! --name --provider-type --reason --request-options --status --trace
+reports admin backfill	--limit --reason
+reports admin diagnostics get	--reason
+reports catalog get	--reason
+reports projector run	--limit --reason
+reports query export	--format --query! --reason
+reports query run	--dataset! --dimensions... --filters --limit --measures... --order-by --reason --time-range!
+reports saved create	--dashboard --description --name! --query! --reason
+reports saved delete	--reason --report-id!
+reports saved export	--reason --report-id! --request!
+reports saved get	--reason --report-id!
+reports saved list	--reason
+reports saved run	--reason --report-id!
+reports saved update	--reason --report-id! --request!
+sandbox-targets list	--reason
+sandboxes get	--id --reason <id>
+sandboxes list	--agent-id --include-in-process --limit --needs-attention --offset --provider --reason --sandbox-template-id --search --state
+sandboxes stats get	--agent-id --include-in-process --needs-attention --provider --reason --sandbox-template-id --search --state
+sandboxes timeline get	--agent-id --from --include-in-process --limit --needs-attention --provider --reason --sandbox-template-id --search --state --to
+sessions archive	--reason --session <session_id>
+sessions budget-check check	--reason --session-id!
+sessions budgets list	--reason --session-id!
+sessions cancel	--reason --session <session_id>
+sessions context	--reason --session <session_id>
 sessions create	--agent/-a --budget-limit... --budget-soft-limit... --capability... --harness/-H --hint... --hints-json --locale --max-iterations --model --network-allow... --network-block... --secret... --system-prompt --tag/-t... --title --virtual-user
-sessions databases create	--name! --session-id!
-sessions databases delete	--name! --session-id!
-sessions databases get	--name! --session-id!
-sessions databases list	--session-id!
-sessions databases schema get	--name! --session-id!
-sessions delete	--session <session_id>
-sessions events list	--after-sequence --around --before-sequence --exclude... --exec-id --from-ts --limit --order-desc --q --session-id! --since-id --tags... --to-ts --tool-name --trace-id --turn-id --types... --window
-sessions events summary events	--session-id!
+sessions databases create	--name! --reason --session-id!
+sessions databases delete	--name! --reason --session-id!
+sessions databases get	--name! --reason --session-id!
+sessions databases list	--reason --session-id!
+sessions databases schema get	--name! --reason --session-id!
+sessions delete	--reason --session <session_id>
+sessions events list	--after-sequence --around --before-sequence --exclude... --exec-id --from-ts --limit --order-desc --q --reason --session-id! --since-id --tags... --to-ts --tool-name --trace-id --turn-id --types... --window
+sessions events summary events	--reason --session-id!
 sessions export	--format --out <session>!
-sessions facets	--agent-id --archived-only --created-after --created-before --include-archived --mine --order --playground-user-id --search --side-chats-only --source --status
-sessions fork	--overrides --session <session_id>
-sessions fs - copy	--dst-path! --session-id! --src-path!
-sessions fs - grep	--path-pattern --pattern! --session-id!
-sessions fs - move	--dst-path! --session-id! --src-path!
-sessions fs - search	--after-context --before-context --limit --max-bytes --offset --path-pattern --pattern! --session-id!
-sessions fs - stat	--path! --session-id!
-sessions fs create	--content --encoding --is-directory --is-readonly --path! --session-id!
-sessions fs delete	--path! --recursive --session-id!
-sessions fs get	--path! --recursive --session-id!
-sessions fs list	--recursive --session-id!
-sessions fs update	--content --encoding --expected-content --expected-encoding --is-readonly --path! --session-id!
-sessions get	--session <session_id>
-sessions list	--agent-id --archived-only --created-after --created-before --include-archived --limit --mine --offset --order --playground-user-id --search --side-chats-only --source --status
-sessions messages create	--addressed-participant-id --controls --external-actor --message! --metadata --request-id --session-id! --tags...
-sessions messages list	--limit --session-id!
-sessions participants add	--agent-id --kind! --role --session!
-sessions participants leave	--participant-id! --session!
-sessions participants list	--session!
-sessions pin	--session <session_id>
-sessions platform-chat ensure
-sessions resources list	--session-id!
-sessions resume	--session-id!
-sessions sandbox get	--session-id!
-sessions sandbox manage	--action! --session-id!
-sessions sse stream	--session-id!
-sessions stats
-sessions storage keys list	--session-id!
-sessions storage secrets batch	--secrets! --session-id!
-sessions storage secrets delete	--name! --session-id!
-sessions storage secrets list	--session-id!
-sessions tasks cancel	--session-id! --task-id!
-sessions tasks get	--after-id --limit --session-id! --task-id!
-sessions tasks list	--kind --session-id! --state
-sessions tasks messages post	--content --in-reply-to --session-id! --task-id! --text
-sessions tasks push-configs create	--event-filter... --secret --session-id! --task-id! --url!
-sessions tasks push-configs delete	--config-id! --session-id! --task-id!
-sessions tasks push-configs list	--session-id! --task-id!
-sessions tool-results submit	--session-id! --tool-results!
-sessions unarchive	--session <session_id>
-sessions unpin	--session <session_id>
-sessions update	--goal --locale --session --tags... --title --virtual-user-id <session_id>
+sessions facets	--agent-id --archived-only --created-after --created-before --include-archived --mine --order --playground-user-id --reason --search --side-chats-only --source --status
+sessions fork	--overrides --reason --session <session_id>
+sessions fs - copy	--dst-path! --reason --session-id! --src-path!
+sessions fs - grep	--path-pattern --pattern! --reason --session-id!
+sessions fs - move	--dst-path! --reason --session-id! --src-path!
+sessions fs - search	--after-context --before-context --limit --max-bytes --offset --path-pattern --pattern! --reason --session-id!
+sessions fs - stat	--path! --reason --session-id!
+sessions fs create	--content --encoding --is-directory --is-readonly --path! --reason --session-id!
+sessions fs delete	--path! --reason --recursive --session-id!
+sessions fs get	--path! --reason --recursive --session-id!
+sessions fs list	--reason --recursive --session-id!
+sessions fs update	--content --encoding --expected-content --expected-encoding --is-readonly --path! --reason --session-id!
+sessions get	--reason --session <session_id>
+sessions list	--agent-id --archived-only --created-after --created-before --include-archived --limit --mine --offset --order --playground-user-id --reason --search --side-chats-only --source --status
+sessions messages create	--addressed-participant-id --controls --external-actor --message! --metadata --reason --request-id --session-id! --tags...
+sessions messages list	--limit --reason --session-id!
+sessions participants add	--agent-id --kind! --reason --role --session!
+sessions participants leave	--participant-id! --reason --session!
+sessions participants list	--reason --session!
+sessions pin	--reason --session <session_id>
+sessions platform-chat ensure	--reason
+sessions resources list	--reason --session-id!
+sessions resume	--reason --session-id!
+sessions sandbox get	--reason --session-id!
+sessions sandbox manage	--action! --reason --session-id!
+sessions sse stream	--reason --session-id!
+sessions stats	--reason
+sessions storage keys list	--reason --session-id!
+sessions storage secrets batch	--reason --secrets! --session-id!
+sessions storage secrets delete	--name! --reason --session-id!
+sessions storage secrets list	--reason --session-id!
+sessions tasks cancel	--reason --session-id! --task-id!
+sessions tasks get	--after-id --limit --reason --session-id! --task-id!
+sessions tasks list	--kind --reason --session-id! --state
+sessions tasks messages post	--content --in-reply-to --reason --session-id! --task-id! --text
+sessions tasks push-configs create	--event-filter... --reason --secret --session-id! --task-id! --url!
+sessions tasks push-configs delete	--config-id! --reason --session-id! --task-id!
+sessions tasks push-configs list	--reason --session-id! --task-id!
+sessions tool-results submit	--reason --session-id! --tool-results!
+sessions unarchive	--reason --session <session_id>
+sessions unpin	--reason --session <session_id>
+sessions update	--goal --locale --reason --session --tags... --title --virtual-user-id <session_id>
 sessions watch	<session>!
-skills content	--id <id>
-skills create	--skill-md!
-skills delete	--id <id>
-skills destroy	--id <id>
-skills get	--id <id>
-skills list	--include-archived --search
-skills update	--id --skill-md --status <id>
-skills usage
+skills content	--id --reason <id>
+skills create	--reason --skill-md!
+skills delete	--id --reason <id>
+skills destroy	--id --reason <id>
+skills get	--id --reason <id>
+skills list	--include-archived --reason --search
+skills update	--id --reason --skill-md --status <id>
+skills usage	--reason
 status
-system health
-tasks list	--created-after --kind --limit --root-session-id --state
-user connections list	--provider
-user connections providers list	--search
-users list	--search
-virtual-users create	--avatar-url --description --locale --name! --timezone --usage
-virtual-users delete	--id!
-virtual-users destroy	--id <id>
-virtual-users get	--id!
-virtual-users list	--include-archived --limit --offset --search --usage
-virtual-users update	--avatar-url --description --id! --locale --name --status --timezone
-workspaces create	--description --name!
-workspaces delete	--workspace-id!
-workspaces get	--workspace-id!
-workspaces list	--include-archived --search
-workspaces update	--description --name --status --workspace-id!
+system health	--reason
+tasks list	--created-after --kind --limit --reason --root-session-id --state
+user connections list	--provider --reason
+user connections providers list	--reason --search
+users list	--reason --search
+virtual-users create	--avatar-url --description --locale --name! --reason --timezone --usage
+virtual-users delete	--id! --reason
+virtual-users destroy	--id --reason <id>
+virtual-users get	--id! --reason
+virtual-users list	--include-archived --limit --offset --reason --search --usage
+virtual-users update	--avatar-url --description --id! --locale --name --reason --status --timezone
+workspaces create	--description --name! --reason
+workspaces delete	--reason --workspace-id!
+workspaces get	--reason --workspace-id!
+workspaces list	--include-archived --reason --search
+workspaces update	--description --name --reason --status --workspace-id!

@@ -79,7 +79,7 @@ impl AppState {
 // ============================================
 
 /// Request to create a new eval
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -97,7 +97,7 @@ pub struct CreateEvalRequest {
 }
 
 /// Request to update an eval
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable name. Safe to render in user-facing messages.
@@ -116,7 +116,7 @@ pub struct UpdateEvalRequest {
 }
 
 /// Request to create an eval case
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalCaseRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -146,7 +146,7 @@ pub struct CreateEvalCaseRequest {
 }
 
 /// Request to update an eval case
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalCaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable name. Safe to render in user-facing messages.
@@ -179,7 +179,7 @@ pub struct UpdateEvalCaseRequest {
 }
 
 /// Request to create an eval run
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRunRequest {
     /// Optional per-run target override.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -188,7 +188,7 @@ pub struct CreateEvalRunRequest {
     pub model_override: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExternalScoreStatus {
     Passed,
@@ -206,7 +206,7 @@ impl std::fmt::Display for ExternalScoreStatus {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalResultScoresRequest {
     pub scores: Vec<Score>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -217,7 +217,7 @@ pub struct UpdateEvalResultScoresRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct BulkUpdateEvalResultScoresItem {
     #[schema(value_type = String)]
     pub result_id: EvalResultId,
@@ -227,7 +227,7 @@ pub struct BulkUpdateEvalResultScoresItem {
     pub status: Option<ExternalScoreStatus>,
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct BulkUpdateEvalRunScoresRequest {
     pub results: Vec<BulkUpdateEvalResultScoresItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -242,14 +242,14 @@ pub struct BulkUpdateEvalRunScoresRequest {
 
 /// A whole external run group: one external run, one entry per eval. Maps to
 /// one everruns EvalRun per eval, all sharing `source.run_id`.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalRunRequest {
     pub source: ImportEvalSource,
     pub evals: Vec<ImportEvalGroup>,
 }
 
 /// Attribution for the external system that produced the run.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalSource {
     /// External system name, e.g. "mira".
     pub system: String,
@@ -265,7 +265,7 @@ pub struct ImportEvalSource {
 }
 
 /// One eval's worth of results within the run. The eval is upserted by `name`.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalGroup {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -277,7 +277,7 @@ pub struct ImportEvalGroup {
 
 /// One case result. The case is upserted by `name` (identity-only: everruns
 /// never re-executes it).
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalCaseEntry {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -310,7 +310,7 @@ pub struct ImportEvalCaseEntry {
 }
 
 /// Provider/model labels for an externally-executed result.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalTarget {
     pub provider: String,
     pub model: String,
@@ -319,7 +319,7 @@ pub struct ImportEvalTarget {
 }
 
 /// Verdict for an imported case (trusted as-is; not recomputed).
-#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ImportCaseStatus {
     Passed,

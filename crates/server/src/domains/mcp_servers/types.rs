@@ -14,7 +14,7 @@ use utoipa::ToSchema;
 pub use crate::storage::models::{CreateMcpServerRow, McpServerRow, UpdateMcpServer};
 
 /// Request to create a new MCP server
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateMcpServerRequest {
     /// The name of the MCP server. Must be unique.
     #[schema(example = "atlassian-mcp-server")]
@@ -60,7 +60,7 @@ pub(crate) fn default_transport_type() -> McpServerTransportType {
 }
 
 /// Request to update an MCP server. Only provided fields will be updated.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateMcpServerRequest {
     /// The name of the MCP server.
     #[serde(skip_serializing_if = "Option::is_none")]

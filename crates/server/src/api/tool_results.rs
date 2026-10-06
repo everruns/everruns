@@ -40,7 +40,7 @@ pub struct SubmitToolResultsRequest {
 }
 
 /// A single tool result from the client
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct ClientToolResult {
     /// Tool call ID (correlates with the tool call from tool.call_requested event)
     #[schema(example = "toolu_01933b5a00007000800000000000001")]

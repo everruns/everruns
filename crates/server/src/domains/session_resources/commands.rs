@@ -4,7 +4,7 @@ use everruns_core::SessionResourceEntry;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSessionResources {
     /// Session's prefixed public identifier.
     pub session_id: String,

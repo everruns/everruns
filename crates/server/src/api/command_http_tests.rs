@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::params_from_request;
 use crate::domains::common::{Command, CommandError, CommandMeta, Ctx};
 
-#[derive(Debug, Deserialize, ToSchema, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, ToSchema, PartialEq)]
 struct Probe {
     id: String,
     #[serde(default)]

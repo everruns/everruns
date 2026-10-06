@@ -98,7 +98,7 @@ pub struct UpdateMemoryFileRequest {
     pub encoding: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct GrepRequest {
     /// Regex pattern to search for.
     pub pattern: String,
@@ -114,7 +114,7 @@ pub struct GrepResultEntry {
     pub size_bytes: i64,
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct StatRequest {
     pub path: String,
 }

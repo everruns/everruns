@@ -22,6 +22,7 @@ mod agent_avatars;
 mod agent_trigger_mcp_subscriptions;
 mod command_idempotency;
 mod declarative_capabilities;
+mod entity_changes;
 mod evals;
 mod events;
 mod files;

@@ -14,7 +14,7 @@ use utoipa::ToSchema;
 // ============================================================================
 
 /// Preview the final agent shape with capabilities applied.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct PreviewAgent {
     /// Harness to layer beneath this draft. Omit to preview the agent layer alone.
     #[serde(default)]

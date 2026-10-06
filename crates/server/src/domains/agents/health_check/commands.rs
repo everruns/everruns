@@ -225,7 +225,7 @@ fn service(ctx: &Ctx) -> Result<Arc<AgentHealthCheckService>, CommandError> {
 // ============================================================================
 
 /// Trigger a behavioral health check for an agent.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct TriggerAgentHealthCheck {
     pub agent_id: String,
 }
@@ -259,7 +259,7 @@ impl Command for TriggerAgentHealthCheck {
 inventory::submit! { CommandDescriptor::of::<TriggerAgentHealthCheck>() }
 
 /// Get a health check run by id.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetAgentHealthCheckRun {
     pub agent_id: String,
     pub run_id: String,
@@ -292,7 +292,7 @@ impl Command for GetAgentHealthCheckRun {
 inventory::submit! { CommandDescriptor::of::<GetAgentHealthCheckRun>() }
 
 /// List recent health check runs for an agent.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentHealthCheckRuns {
     pub agent_id: String,
 }
@@ -322,7 +322,7 @@ impl Command for ListAgentHealthCheckRuns {
 inventory::submit! { CommandDescriptor::of::<ListAgentHealthCheckRuns>() }
 
 /// Get the latest health check run for an agent, without triggering a new one.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetLatestAgentHealthCheckRun {
     pub agent_id: String,
 }

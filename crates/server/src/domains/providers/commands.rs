@@ -89,7 +89,7 @@ async fn provision_provider_models(ctx: &Ctx, provider: &Provider) {
 /// still returns.
 const PROVISION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateProvider {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -152,7 +152,7 @@ inventory::submit! { CommandDescriptor::of::<CreateProvider>() }
 // Empty-braces (not a unit struct) so serde deserializes the empty `{}` params
 // object the MCP/command dispatcher passes; a unit struct rejects a map with
 // "invalid type: map, expected unit struct ListProviders".
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListProviders {}
 
 impl Command for ListProviders {
@@ -187,7 +187,7 @@ inventory::submit! { CommandDescriptor::of::<ListProviders>() }
 /// Deliberately takes the credential inline rather than a provider id: the
 /// point is to find out whether a key works *before* any provider row exists
 /// (setup) or before an edit overwrites a working one. Nothing is persisted.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckProviderCredentials {
     pub provider_type: DriverId,
     /// The credential to probe. Typed multi-field credentials are assembled
@@ -240,7 +240,7 @@ impl Command for CheckProviderCredentials {
 
 inventory::submit! { CommandDescriptor::of::<CheckProviderCredentials>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetProvider {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -279,7 +279,7 @@ impl Command for GetProvider {
 
 inventory::submit! { CommandDescriptor::of::<GetProvider>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateProvider {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -349,7 +349,7 @@ impl Command for UpdateProvider {
 
 inventory::submit! { CommandDescriptor::of::<UpdateProvider>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteProvider {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -391,7 +391,7 @@ impl Command for DeleteProvider {
 
 inventory::submit! { CommandDescriptor::of::<DeleteProvider>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SyncProviderModels {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,

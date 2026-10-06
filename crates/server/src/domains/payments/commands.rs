@@ -86,7 +86,7 @@ fn encrypt_wallet_key(
         })
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreatePaymentAccount(pub CreatePaymentAccountRequest);
 
 impl CommandSchema for CreatePaymentAccount {
@@ -140,7 +140,7 @@ impl Command for CreatePaymentAccount {
 
 inventory::submit! { CommandDescriptor::of::<CreatePaymentAccount>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentAccounts {
     pub owner_type: Option<String>,
     pub owner_id: Option<String>,
@@ -179,7 +179,7 @@ impl Command for ListPaymentAccounts {
 
 inventory::submit! { CommandDescriptor::of::<ListPaymentAccounts>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPaymentAccount {
     pub payment_account_id: String,
 }
@@ -215,7 +215,7 @@ impl Command for GetPaymentAccount {
 
 inventory::submit! { CommandDescriptor::of::<GetPaymentAccount>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePaymentAccountCmd {
     pub payment_account_id: String,
     pub label: Option<String>,
@@ -273,7 +273,7 @@ impl Command for UpdatePaymentAccountCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdatePaymentAccountCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DisablePaymentAccount {
     pub payment_account_id: String,
 }
@@ -317,7 +317,7 @@ impl Command for DisablePaymentAccount {
 
 inventory::submit! { CommandDescriptor::of::<DisablePaymentAccount>() }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreatePaymentPolicy(pub CreatePaymentPolicyRequest);
 
 impl CommandSchema for CreatePaymentPolicy {
@@ -391,7 +391,7 @@ impl Command for CreatePaymentPolicy {
 
 inventory::submit! { CommandDescriptor::of::<CreatePaymentPolicy>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentPolicies {
     pub payment_account_id: Option<String>,
     pub subject_type: Option<String>,
@@ -443,7 +443,7 @@ impl Command for ListPaymentPolicies {
 
 inventory::submit! { CommandDescriptor::of::<ListPaymentPolicies>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPaymentPolicy {
     pub payment_policy_id: String,
 }
@@ -479,7 +479,7 @@ impl Command for GetPaymentPolicy {
 
 inventory::submit! { CommandDescriptor::of::<GetPaymentPolicy>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePaymentPolicyCmd {
     pub payment_policy_id: String,
     pub allowed_capabilities: Option<Vec<String>>,
@@ -554,7 +554,7 @@ impl Command for UpdatePaymentPolicyCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdatePaymentPolicyCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DisablePaymentPolicy {
     pub payment_policy_id: String,
 }
@@ -598,7 +598,7 @@ impl Command for DisablePaymentPolicy {
 
 inventory::submit! { CommandDescriptor::of::<DisablePaymentPolicy>() }
 
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentAttempts {
     /// Session's prefixed public identifier.
     pub session_id: Option<String>,

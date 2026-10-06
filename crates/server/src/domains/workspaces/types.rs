@@ -47,7 +47,7 @@ pub struct CreateWorkspaceRequest {
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateWorkspaceRequest {
     #[serde(default)]
     pub name: Option<String>,

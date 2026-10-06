@@ -22,7 +22,7 @@ fn require_evals_enabled(ctx: &Ctx) -> Result<(), CommandError> {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateEval(pub CreateEvalRequest);
 
 impl CommandSchema for CreateEval {
@@ -59,7 +59,7 @@ impl Command for CreateEval {
 
 inventory::submit! { CommandDescriptor::of::<CreateEval>() }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListEvals {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
@@ -102,7 +102,7 @@ inventory::submit! { CommandDescriptor::of::<ListEvals>() }
 
 /// Import a full external run group (everruns as host/viewer for external eval
 /// systems).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportEvalRun {
     #[serde(flatten)]
     pub req: ImportEvalRunRequest,
@@ -141,7 +141,7 @@ inventory::submit! { CommandDescriptor::of::<ImportEvalRun>() }
 /// `body` is the raw import payload: NDJSON (one trajectory per line), a JSON
 /// array of trajectories, a single trajectory object, or `{ "trajectories":
 /// [...] }`. Cases are upserted by name, so re-import is idempotent.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ImportAtifTrajectories {
     pub eval_id: String,
     /// Raw ATIF payload (NDJSON or JSON).
@@ -188,7 +188,7 @@ inventory::submit! { CommandDescriptor::of::<ImportAtifTrajectories>() }
 /// Preflight: report whether the caller can import (feature enabled + has the
 /// eval-management permission) without failing. No policy gate so any org
 /// member can probe; the report just returns `false`.
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct EvalImportPreflightCmd {}
 
 impl Command for EvalImportPreflightCmd {
@@ -231,7 +231,7 @@ impl Command for EvalImportPreflightCmd {
 
 inventory::submit! { CommandDescriptor::of::<EvalImportPreflightCmd>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEval {
     pub eval_id: String,
 }
@@ -270,7 +270,7 @@ impl Command for GetEval {
 
 inventory::submit! { CommandDescriptor::of::<GetEval>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEval {
     pub eval_id: String,
     #[serde(flatten)]
@@ -307,7 +307,7 @@ impl Command for UpdateEval {
 
 inventory::submit! { CommandDescriptor::of::<UpdateEval>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteEval {
     pub eval_id: String,
 }
@@ -346,7 +346,7 @@ impl Command for DeleteEval {
 
 inventory::submit! { CommandDescriptor::of::<DeleteEval>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalCase {
     pub eval_id: String,
     #[serde(flatten)]
@@ -382,7 +382,7 @@ impl Command for CreateEvalCase {
 
 inventory::submit! { CommandDescriptor::of::<CreateEvalCase>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListEvalCases {
     pub eval_id: String,
 }
@@ -416,7 +416,7 @@ impl Command for ListEvalCases {
 
 inventory::submit! { CommandDescriptor::of::<ListEvalCases>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalCase {
     pub eval_id: String,
     pub case_id: String,
@@ -453,7 +453,7 @@ impl Command for GetEvalCase {
 
 inventory::submit! { CommandDescriptor::of::<GetEvalCase>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalCase {
     pub eval_id: String,
     pub case_id: String,
@@ -497,7 +497,7 @@ impl Command for UpdateEvalCase {
 
 inventory::submit! { CommandDescriptor::of::<UpdateEvalCase>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteEvalCase {
     pub eval_id: String,
     pub case_id: String,
@@ -538,7 +538,7 @@ impl Command for DeleteEvalCase {
 
 inventory::submit! { CommandDescriptor::of::<DeleteEvalCase>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRun {
     pub eval_id: String,
     #[serde(flatten)]
@@ -574,7 +574,7 @@ impl Command for CreateEvalRun {
 
 inventory::submit! { CommandDescriptor::of::<CreateEvalRun>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListEvalRuns {
     pub eval_id: String,
 }
@@ -608,7 +608,7 @@ impl Command for ListEvalRuns {
 
 inventory::submit! { CommandDescriptor::of::<ListEvalRuns>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRun {
     pub eval_id: String,
     pub run_id: String,
@@ -645,7 +645,7 @@ impl Command for GetEvalRun {
 
 inventory::submit! { CommandDescriptor::of::<GetEvalRun>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportEvalRunArtifacts {
     pub eval_id: String,
     pub run_id: String,
@@ -701,7 +701,7 @@ inventory::submit! { CommandDescriptor::of::<ExportEvalRunArtifacts>() }
 /// NDJSON via `GET .../dataset/{dataset_id}` once `status` is `completed`. Gated
 /// by `DATASET_EXPORT` and org-scoped through `get_run` (which resolves only
 /// runs owned by the caller's org).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportEvalRunDataset {
     pub eval_id: String,
     pub run_id: String,
@@ -747,7 +747,7 @@ inventory::submit! { CommandDescriptor::of::<ExportEvalRunDataset>() }
 
 /// Fetch an async dataset-export handle: status plus the produced NDJSON `body`
 /// once the export is `completed`. Org-scoped through `get_dataset`.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRunDataset {
     pub eval_id: String,
     pub run_id: String,
@@ -790,7 +790,7 @@ impl Command for GetEvalRunDataset {
 
 inventory::submit! { CommandDescriptor::of::<GetEvalRunDataset>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CancelEvalRun {
     pub eval_id: String,
     pub run_id: String,
@@ -827,7 +827,7 @@ impl Command for CancelEvalRun {
 
 inventory::submit! { CommandDescriptor::of::<CancelEvalRun>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateEvalRunShare {
     pub eval_id: String,
     pub run_id: String,
@@ -863,7 +863,7 @@ impl Command for CreateEvalRunShare {
 
 inventory::submit! { CommandDescriptor::of::<CreateEvalRunShare>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetEvalRunShare {
     pub eval_id: String,
     pub run_id: String,
@@ -900,7 +900,7 @@ impl Command for GetEvalRunShare {
 
 inventory::submit! { CommandDescriptor::of::<GetEvalRunShare>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RevokeEvalRunShare {
     pub eval_id: String,
     pub run_id: String,
@@ -936,7 +936,7 @@ impl Command for RevokeEvalRunShare {
 
 inventory::submit! { CommandDescriptor::of::<RevokeEvalRunShare>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateEvalResultScores {
     pub eval_id: String,
     pub run_id: String,
@@ -983,7 +983,7 @@ impl Command for UpdateEvalResultScores {
 
 inventory::submit! { CommandDescriptor::of::<UpdateEvalResultScores>() }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct BulkUpdateEvalRunScores {
     pub eval_id: String,
     pub run_id: String,

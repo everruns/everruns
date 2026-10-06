@@ -678,8 +678,7 @@ impl GrpcOrgAdapter {
                 // runtime claiming its own mount.
                 acting_for_session_id: None,
                 input_message_id: self.input_message_id.map(uuid_to_proto),
-                idempotency_key: None,
-                metadata: Default::default(),
+                ..Default::default()
             })
             .await
             .map_err(grpc_status_to_error)?

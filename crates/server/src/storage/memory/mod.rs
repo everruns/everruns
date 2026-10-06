@@ -23,6 +23,7 @@ mod budgets;
 mod command_idempotency;
 mod compaction_checkpoints;
 mod declarative_capabilities;
+mod entity_changes;
 mod evals;
 mod events;
 mod files;
@@ -255,6 +256,7 @@ pub struct InMemoryDatabase {
     command_idempotency_keys: RwLock<
         HashMap<command_idempotency::IdempotencyRowKey, command_idempotency::MemoryIdempotencyKey>,
     >,
+    entity_changes: RwLock<Vec<crate::storage::entity_changes::EntityChangeRow>>,
     agent_trigger_mcp_subscriptions: RwLock<
         HashMap<TriggerId, super::agent_trigger_mcp_subscriptions::AgentTriggerMcpSubscriptionRow>,
     >,
@@ -435,6 +437,7 @@ impl Default for InMemoryDatabase {
             agent_avatars: RwLock::new(HashMap::new()),
             usage_generations: RwLock::new(HashMap::new()),
             command_idempotency_keys: RwLock::new(HashMap::new()),
+            entity_changes: RwLock::new(Vec::new()),
             agent_trigger_mcp_subscriptions: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),

@@ -43,6 +43,7 @@ pub mod github_webhooks;
 pub mod harness_examples;
 pub mod harnesses;
 pub mod health_issues;
+pub mod history;
 pub mod http_signing_keys;
 pub mod images;
 pub mod internal_images;

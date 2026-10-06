@@ -2,7 +2,7 @@ use super::*;
 
 /// Filters shared by `ListSessions` and `GetSessionFacets` so the page and the
 /// counts that annotate it can never describe different populations (EVE-852).
-#[derive(Debug, Default, Deserialize, ToSchema)]
+#[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct SessionFilterArgs {
     /// Exclude the permanent Chat from side-conversation pagination.
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]

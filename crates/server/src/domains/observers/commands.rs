@@ -19,7 +19,7 @@ fn parse_observer_id(id: &str) -> Result<ObserverId, CommandError> {
 // Create
 // ============================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateObserver(pub CreateObserverRequest);
 
 impl CommandSchema for CreateObserver {
@@ -59,7 +59,7 @@ inventory::submit! { CommandDescriptor::of::<CreateObserver>() }
 // List
 // ============================================
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, serde::Serialize)]
 pub struct ListObservers {
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
@@ -102,7 +102,7 @@ inventory::submit! { CommandDescriptor::of::<ListObservers>() }
 // Get
 // ============================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetObserver {
     pub observer_id: String,
 }
@@ -144,7 +144,7 @@ inventory::submit! { CommandDescriptor::of::<GetObserver>() }
 // Update
 // ============================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateObserver {
     pub observer_id: String,
     #[serde(flatten)]
@@ -184,7 +184,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateObserver>() }
 // Delete
 // ============================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteObserver {
     pub observer_id: String,
 }
@@ -226,7 +226,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteObserver>() }
 // List scores
 // ============================================
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListObserverScores {
     pub observer_id: String,
     pub session_id: Option<String>,

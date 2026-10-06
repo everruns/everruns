@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 // ============================================================================
 
 /// Recent events a trigger received and what happened to each.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListAgentTriggerDeliveries {
     pub agent_id: String,
     pub trigger_id: String,

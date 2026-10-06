@@ -72,7 +72,7 @@ impl_dispatchable!(AppState);
 // ============================================================================
 
 /// Request body for creating a spending budget.
-#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateBudgetRequest {
     /// Kind of resource constrained by the budget.
     #[schema(example = "agent")]

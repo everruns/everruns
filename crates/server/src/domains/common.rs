@@ -416,6 +416,9 @@ pub struct Ctx {
     /// callers that are not a session runtime (Slack, FCP, the capability
     /// service, the durable seal) leave it `None`.
     pub acting_for_session: Option<SessionId>,
+    /// Why and through which surface the caller changes things; REST leaves it
+    /// to the HTTP layer. See `domains::change_history`.
+    pub change_intent: Option<crate::domains::change_history::ChangeIntent>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
     pub session_schedule_service:
@@ -481,6 +484,7 @@ impl Ctx {
             event_service: None,
             session_file_service: None,
             acting_for_session: None,
+            change_intent: None,
             session_sandbox_service: None,
             session_schedule_service: None,
             notification_service: None,
@@ -591,6 +595,15 @@ impl Ctx {
     /// [`Ctx::acting_for_session`].
     pub fn acting_for_session(mut self, session_id: SessionId) -> Self {
         self.acting_for_session = Some(session_id);
+        self
+    }
+
+    /// See [`Ctx::change_intent`].
+    pub fn with_change_intent(
+        mut self,
+        intent: crate::domains::change_history::ChangeIntent,
+    ) -> Self {
+        self.change_intent = Some(intent);
         self
     }
 
@@ -725,7 +738,7 @@ pub use everruns_server_macros::command;
 // Command trait
 // ============================================================================
 
-pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
+pub trait Command: DeserializeOwned + Serialize + Send + 'static + CommandSchema {
     type Output: Serialize + Send;
 
     /// Static metadata — drives MCP catalog generation.
@@ -742,6 +755,12 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     /// Policy to check before execution. None = public/no auth.
     fn policy() -> Option<&'static Policy> {
         None
+    }
+
+    /// What this command changes, recorded in entity history by `run`. Reads
+    /// record nothing; writes default to `change_history::registry::declared`.
+    fn change() -> crate::domains::change_history::Change {
+        crate::domains::change_history::registry::default_for(Self::read_only(), Self::meta().name)
     }
 
     /// If set, allows MCP `execute` callers to pass the value for this field as
@@ -837,7 +856,12 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
                         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
                         .map_err(|e| CommandError::forbidden(e.message))?;
                 }
-                self.execute(ctx).await
+                // Entity history: an invalid reason fails before anything changes.
+                let pending = crate::domains::change_history::PendingChange::of(&self, ctx)?;
+                let output = self.execute(ctx).await?;
+                crate::domains::change_history::PendingChange::record(pending, &meta, ctx, &output)
+                    .await;
+                Ok(output)
             }
             .await;
 
@@ -887,44 +911,9 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     }
 }
 
-/// Stable, low-cardinality status label for the `everruns_commands_total`
-/// counter and `everruns_command_duration_seconds` histogram.
-fn command_error_status_label(err: &CommandError) -> &'static str {
-    match err {
-        CommandError {
-            kind: CommandErrorKind::BadRequest(_),
-            ..
-        } => "bad_request",
-        CommandError {
-            kind: CommandErrorKind::Unprocessable(_),
-            ..
-        } => "unprocessable",
-        CommandError {
-            kind: CommandErrorKind::Forbidden(_),
-            ..
-        } => "forbidden",
-        CommandError {
-            kind: CommandErrorKind::NotFound(_),
-            ..
-        } => "not_found",
-        CommandError {
-            kind: CommandErrorKind::Conflict(_),
-            ..
-        } => "conflict",
-        CommandError {
-            kind: CommandErrorKind::RateLimited(_),
-            ..
-        } => "rate_limited",
-        CommandError {
-            kind: CommandErrorKind::Unavailable(_),
-            ..
-        } => "unavailable",
-        CommandError {
-            kind: CommandErrorKind::Internal(_),
-            ..
-        } => "internal",
-    }
-}
+#[path = "common_status_label.rs"]
+mod status_label;
+use status_label::command_error_status_label;
 
 pub trait CommandSchema {
     fn param_schema() -> Value;
@@ -1093,6 +1082,8 @@ pub struct CommandDescriptor {
     // SECURITY: Exposed so the policy-coverage test can assert every
     // mutating command declares a policy; do not drop.
     pub policy: fn() -> Option<&'static Policy>,
+    /// What the command changes (entity history).
+    pub change: fn() -> crate::domains::change_history::Change,
     pub dispatch: DispatchFn,
 }
 
@@ -1110,6 +1101,7 @@ impl CommandDescriptor {
             output_schema: C::output_schema,
             output_shape: C::output_shape,
             policy: C::policy,
+            change: C::change,
             dispatch: dispatch_for::<C>,
         }
     }

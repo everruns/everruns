@@ -554,7 +554,7 @@ const MAX_BUNDLE_BYTES: usize = 32 * 1024 * 1024;
 
 /// A single inline bundle file, for callers that send files as JSON rather
 /// than a tarball.
-#[derive(Debug, Clone, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, Clone, serde::Deserialize, utoipa::ToSchema, serde::Serialize)]
 pub struct OkfFileInput {
     /// Bundle-relative path, e.g. `tables/orders.md`.
     pub path: String,
@@ -577,7 +577,7 @@ pub struct ImportOkfBundleRequest {
 }
 
 /// Import an OKF bundle into a knowledge base.
-#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, serde::Serialize)]
 pub struct ImportOkfBundle {
     /// Knowledge base's prefixed public identifier.
     pub kb_id: String,

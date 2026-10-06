@@ -24,7 +24,7 @@ use utoipa::{IntoParams, ToSchema};
 // ============================================================================
 
 /// Create a new skill from SKILL.md content.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreateSkill(pub CreateSkillRequest);
 
 impl CommandSchema for CreateSkill {
@@ -119,7 +119,7 @@ impl Command for CreateSkill {
 // ============================================================================
 
 /// List skills. Supports search and include_archived.
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams, serde::Serialize)]
 #[into_params(parameter_in = Query)]
 pub struct ListSkills {
     /// Search by name or description (case-insensitive substring match).
@@ -158,7 +158,7 @@ impl Command for ListSkills {
 // ============================================================================
 
 /// Get a single skill by ID.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSkill {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -202,7 +202,7 @@ impl Command for GetSkill {
 // ============================================================================
 
 /// Get full skill content (SKILL.md + files).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSkillContent {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -292,7 +292,7 @@ impl Command for GetSkillContent {
 // ============================================================================
 
 /// Update a skill. Only provided fields are changed.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSkillCmd {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -445,7 +445,7 @@ impl Command for UpdateSkillCmd {
 // ============================================================================
 
 /// Archive a skill (soft delete).
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSkill {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -494,7 +494,7 @@ impl Command for DeleteSkill {
 // ============================================================================
 
 /// Permanently delete an archived skill.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DestroySkill {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
@@ -559,7 +559,7 @@ impl Command for DestroySkill {
 /// skill via its `skill:{uuid}` capability id. Returned map is keyed by the
 /// public SkillId string (e.g. `skill_<32hex>`). Skills with zero references
 /// are omitted; the UI defaults missing entries to zero.
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSkillsUsage {}
 
 #[command(

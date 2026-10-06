@@ -22,6 +22,7 @@ pub mod compaction_checkpoint_store;
 pub mod connection_resolver;
 pub mod durable_tool_results;
 pub mod encryption;
+pub mod entity_changes;
 pub mod github_app_rows;
 pub mod harness_store;
 mod health_issues;
