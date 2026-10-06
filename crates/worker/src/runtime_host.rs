@@ -671,6 +671,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.stream_heartbeater()
     }
 
+    fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {
+        self.adapters.partial_stream_store()
+    }
+
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
         self.adapters.provider_stall_timeout()
     }

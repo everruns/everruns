@@ -39,6 +39,8 @@ service WorkerService {
     rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
     rpc GetCompactionCheckpoint(GetCompactionCheckpointRequest) returns (GetCompactionCheckpointResponse);
     rpc InstallCompactionCheckpoint(InstallCompactionCheckpointRequest) returns (InstallCompactionCheckpointResponse);
+    // The stream a lost reason attempt left open, for ContinuePartial recovery (EVE-532).
+    rpc GetPartialStream(GetPartialStreamRequest) returns (GetPartialStreamResponse);
     // Provider-neutral Environment state and checkpoint persistence. One typed
     // operation envelope keeps the worker boundary aligned with the platform
     // store traits without exposing the control-plane database.
@@ -572,6 +574,27 @@ message InstallCompactionCheckpointRequest {
 
 message InstallCompactionCheckpointResponse {
     bool installed = 1;
+}
+
+message GetPartialStreamRequest {
+    Uuid session_id = 1;
+    // Prefixed turn id (`turn_...`), as events carry it in their context.
+    string turn_id = 2;
+}
+
+// The turn's latest `output.message.started` with no completion or
+// replacement under its message id.
+message PartialStream {
+    string message_id = 1;
+    string accumulated = 2;
+    // JSON `ReasoningState`; empty when the stream carried none.
+    bytes reasoning_state_json = 3;
+    // The attempt recorded `reason.completed` after starting the stream.
+    bool attempt_settled = 4;
+}
+
+message GetPartialStreamResponse {
+    optional PartialStream partial = 1;
 }
 
 message SandboxPersistenceRequest {

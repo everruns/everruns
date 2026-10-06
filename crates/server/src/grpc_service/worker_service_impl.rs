@@ -1,7 +1,7 @@
 // `WorkerService` trait implementation for the gRPC service.
 //
 // Delegation only. A trait impl cannot be split across modules, and this one has
-// 119 methods, so every handler body lives in `super::worker::<domain>` as an
+// 120 methods, so every handler body lives in `super::worker::<domain>` as an
 // inherent method and each RPC below forwards to it. Keep it that way: a body
 // added here is a body nobody will find again.
 
@@ -59,6 +59,13 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<proto::InstallCompactionCheckpointRequest>,
     ) -> Result<Response<proto::InstallCompactionCheckpointResponse>, Status> {
         self.handle_install_compaction_checkpoint(request).await
+    }
+
+    async fn get_partial_stream(
+        &self,
+        request: Request<proto::GetPartialStreamRequest>,
+    ) -> Result<Response<proto::GetPartialStreamResponse>, Status> {
+        self.handle_get_partial_stream(request).await
     }
 
     async fn sandbox_persistence(
