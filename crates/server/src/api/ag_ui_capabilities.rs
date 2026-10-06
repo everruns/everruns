@@ -3,15 +3,15 @@
 //!
 //! Decision: derived from the endpoint's channel config alone, never from the
 //! agent's tools or prompts. It tells a consumer what the stream will carry
-//! (reasoning, subagents, approval interrupts, usage), which the config
+//! (reasoning, subagents, approval interrupts, usage, state), which the config
 //! decides, and nothing a public caller could not learn by running the agent
 //! (TM-API-026). The stream stays authoritative, as 1.0 says.
 
 use crate::records::AgUiChannelConfig;
 use everruns_core::ag_ui::{
     AgentCapabilities, HumanInTheLoopCapabilities, IdentityCapabilities, MultiAgentCapabilities,
-    MultimodalCapabilities, MultimodalInputCapabilities, ReasoningCapabilities, ToolsCapabilities,
-    TransportCapabilities,
+    MultimodalCapabilities, MultimodalInputCapabilities, ReasoningCapabilities, StateCapabilities,
+    ToolsCapabilities, TransportCapabilities,
 };
 
 /// `identity.type`: the platform powering the agent.
@@ -52,6 +52,13 @@ pub(crate) fn capabilities(
             supported: Some(true),
             delegation: Some(true),
             ..MultiAgentCapabilities::default()
+        }),
+        // The todo list as shared state, snapshot then deltas. Client state
+        // is not read, so nothing is declared about keeping it.
+        state: config.state_visible.then(|| StateCapabilities {
+            snapshots: Some(true),
+            deltas: Some(true),
+            ..StateCapabilities::default()
         }),
         multimodal: Some(MultimodalCapabilities {
             input: Some(MultimodalInputCapabilities {

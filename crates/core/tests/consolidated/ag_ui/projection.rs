@@ -2,12 +2,14 @@
 //! The runtime-event projection keeps 1.0 sequencing on every path.
 
 use everruns_contracts::typed_id::{MessageId, TurnId};
-use everruns_core::RuntimeMessage;
-use everruns_core::ag_ui::projection::{ProjectionPolicy, Projector};
+use everruns_core::ag_ui::projection::{ProjectionPolicy, Projector, latest_todos};
 use everruns_core::ag_ui::{
     Event, RunErrorEvent, RunFinishedOutcome, SCHEMA_JSON, SubagentFinishedOutcome,
 };
-use everruns_core::events::{OutputMessageCompletedData, OutputMessageDeltaData};
+use everruns_core::events::{
+    OutputMessageCompletedData, OutputMessageDeltaData, ToolCompletedData,
+};
+use everruns_core::{ContentPart, RuntimeMessage, ToolCallContentPart, ToolResultContentPart};
 use serde_json::{Value, json};
 
 fn policy() -> ProjectionPolicy {
@@ -670,5 +672,203 @@ fn run_metadata_names_turn_model_and_only_a_given_session() {
     assert_eq!(
         serde_json::to_value(&error.base.metadata).unwrap(),
         json!({ "everruns": { "sessionId": "session_1", "turnId": "turn_2" } })
+    );
+}
+
+fn todo(content: &str, status: &str) -> Value {
+    json!({ "content": content, "activeForm": format!("{content}ing"), "status": status })
+}
+
+/// A `tool.completed` as the runtime records a successful `write_todos`: the
+/// tool's JSON result as the text of one content part.
+fn todos_written(todos: &[Value]) -> Value {
+    let result = json!({ "success": true, "total_tasks": todos.len(), "todos": todos });
+    serde_json::to_value(ToolCompletedData::success(
+        "call-1".into(),
+        "write_todos".into(),
+        vec![ContentPart::tool_result_text(&result)],
+        Some(3),
+    ))
+    .unwrap()
+}
+
+fn state_events(events: &[Event]) -> Vec<&Event> {
+    events
+        .iter()
+        .filter(|e| matches!(e, Event::StateSnapshot(_) | Event::StateDelta(_)))
+        .collect()
+}
+
+#[test]
+fn todo_list_streams_as_a_snapshot_then_deltas() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.project("tool.started", &json!({}));
+    projector.project(
+        "tool.completed",
+        &todos_written(&[todo("Plan", "in_progress"), todo("Build", "pending")]),
+    );
+    // The same list again changes nothing.
+    projector.project(
+        "tool.completed",
+        &todos_written(&[todo("Plan", "in_progress"), todo("Build", "pending")]),
+    );
+    projector.project(
+        "tool.completed",
+        &todos_written(&[
+            todo("Plan", "completed"),
+            todo("Build", "in_progress"),
+            todo("Ship", "pending"),
+        ]),
+    );
+    projector.project("tool.completed", &todos_written(&[]));
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    let state = state_events(&events);
+    assert_eq!(state.len(), 3, "{:?}", types(&events));
+
+    let Event::StateSnapshot(snapshot) = state[0] else {
+        panic!("first state event must be a snapshot");
+    };
+    assert_eq!(
+        snapshot.snapshot,
+        json!({ "todos": [todo("Plan", "in_progress"), todo("Build", "pending")] })
+    );
+    assert!(snapshot.subagent_run_id.is_none());
+
+    let Event::StateDelta(progress) = state[1] else {
+        panic!("later changes are deltas");
+    };
+    assert_eq!(
+        serde_json::to_value(&progress.delta).unwrap(),
+        json!([
+            { "op": "replace", "path": "/todos/0/status", "value": "completed" },
+            { "op": "replace", "path": "/todos/1/status", "value": "in_progress" },
+            { "op": "add", "path": "/todos/2", "value": todo("Ship", "pending") },
+        ])
+    );
+    let Event::StateDelta(cleared) = state[2] else {
+        panic!("later changes are deltas");
+    };
+    assert_eq!(
+        serde_json::to_value(&cleared.delta).unwrap(),
+        json!([
+            { "op": "remove", "path": "/todos/2" },
+            { "op": "remove", "path": "/todos/1" },
+            { "op": "remove", "path": "/todos/0" },
+        ])
+    );
+}
+
+#[test]
+fn a_run_without_todos_sends_no_state() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.restore_todos(json!([]));
+    projector.project("tool.started", &json!({}));
+    // Another tool's result never counts, whatever it carries.
+    projector.project(
+        "tool.completed",
+        &serde_json::to_value(ToolCompletedData::success(
+            "call-1".into(),
+            "read_file".into(),
+            vec![ContentPart::tool_result_text(
+                &json!({ "todos": [todo("Not a todo list", "pending")] }),
+            )],
+            None,
+        ))
+        .unwrap(),
+    );
+    // Nor does a failed write_todos.
+    let mut failed = todos_written(&[todo("Plan", "pending")]);
+    failed["success"] = json!(false);
+    projector.project("tool.completed", &failed);
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    assert!(state_events(&events).is_empty(), "{:?}", types(&events));
+}
+
+#[test]
+fn hidden_state_sends_no_state() {
+    let mut projector = Projector::new(
+        "t",
+        "r",
+        ProjectionPolicy {
+            state_visible: false,
+            ..policy()
+        },
+    );
+    projector.restore_todos(json!([todo("Plan", "pending")]));
+    projector.project(
+        "tool.completed",
+        &todos_written(&[todo("Plan", "completed")]),
+    );
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_eq!(types(&events), ["RUN_FINISHED"]);
+}
+
+#[test]
+fn a_run_starts_from_the_sessions_todo_list() {
+    let call = |id: &str, name: &str| {
+        ContentPart::ToolCall(ToolCallContentPart {
+            native: None,
+            id: id.into(),
+            name: name.into(),
+            arguments: json!({}),
+        })
+    };
+    let history = [
+        vec![call("a", "write_todos")],
+        vec![ContentPart::ToolResult(ToolResultContentPart::success(
+            "a",
+            json!({ "success": true, "todos": [todo("Plan", "in_progress"), todo("Build", "pending")] }),
+        ))],
+        // A later failed call, and another tool's result, do not count.
+        vec![call("b", "write_todos"), call("c", "read_file")],
+        vec![
+            ContentPart::ToolResult(ToolResultContentPart::new(
+                "b",
+                None,
+                Some("invalid".into()),
+            )),
+            ContentPart::ToolResult(ToolResultContentPart::success("c", json!({ "todos": [] }))),
+        ],
+    ];
+    let todos = latest_todos(history.iter().map(Vec::as_slice)).unwrap();
+    assert_eq!(
+        todos,
+        json!([todo("Plan", "in_progress"), todo("Build", "pending")])
+    );
+    assert_eq!(latest_todos(history[2..].iter().map(Vec::as_slice)), None);
+
+    let mut projector = Projector::new("t", "r", policy());
+    projector.restore_todos(todos);
+    projector.project(
+        "tool.completed",
+        &todos_written(&[todo("Plan", "completed"), todo("Build", "in_progress")]),
+    );
+    projector.project("turn.completed", &json!({}));
+    let events: Vec<Event> = projector.drain().collect();
+    assert_conformant(&events);
+    assert_eq!(
+        types(&events),
+        ["STATE_SNAPSHOT", "STATE_DELTA", "RUN_FINISHED"]
+    );
+}
+
+#[test]
+fn todo_items_carry_only_the_tools_fields() {
+    let mut projector = Projector::new("t", "r", policy());
+    projector.restore_todos(json!([
+        { "content": "Plan", "activeForm": "Planning", "status": "pending", "secret": "x" },
+        "not an item",
+    ]));
+    let Some(Event::StateSnapshot(snapshot)) = projector.pop() else {
+        panic!("expected STATE_SNAPSHOT");
+    };
+    assert_eq!(
+        snapshot.snapshot,
+        json!({ "todos": [{ "content": "Plan", "activeForm": "Planning", "status": "pending" }] })
     );
 }

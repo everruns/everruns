@@ -82,12 +82,14 @@ Send `protocolVersion: "1.0"` in the run request to receive the version in `RUN_
 
 Subagent events and their activity snapshots are available when the channel enables `subagents_visible`. This setting defaults to off and stays off for Public Chat.
 
+The agent's todo list is available as AG-UI shared state when the channel enables `state_visible`, which defaults to off and stays off for Public Chat. The state is `{ "todos": [{ "content", "activeForm", "status" }] }`: a run sends `STATE_SNAPSHOT` the first time it knows the list (at run start when the conversation already has one) and `STATE_DELTA` JSON Patches for later changes. State the client sends in the run request is not read.
+
 ### Visibility and access
 
 AG-UI channels are public client surfaces, so they expose less than the Agent's own event stream:
 
 - `tool_visibility` controls tool activity: `none`, `generic` (a fixed text you configure in `generic_tool_text`), or `narrated`. Raw tool names, arguments, and results are never sent.
-- Reasoning summaries, token usage, subagent activity, and client answers to tool-approval interrupts are off by default, each behind its own setting.
+- Reasoning summaries, token usage, subagent activity, the todo list as shared state, and client answers to tool-approval interrupts are off by default, each behind its own setting.
 - Access is anonymous by default. Set a shared `token` or an `auth` block to require authentication, and `rate_limit_per_minute` to cap requests per IP.
 - A thread stays resumable for `session_expiration_seconds` (6 hours by default); after that, the same thread ID starts a new session.
 

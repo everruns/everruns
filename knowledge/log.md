@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-10-06
+
+* **AG-UI streams the todo list as shared state.** The shared projector sends
+  the agent's `write_todos` list as `STATE_SNAPSHOT`, then `STATE_DELTA`
+  patches, and opens a run on a session that has one with its snapshot.
+  Server endpoints opt in with `state_visible` (default off, off for Public
+  Chat); client `state` is still not read. See
+  [AG-UI Channel](integrations/ag-ui.md#shared-state).
+
 ## 2026-10-05
 
 * **The generic workflow engine is an opt-out feature.** `everruns-durable`'s

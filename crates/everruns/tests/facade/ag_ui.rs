@@ -972,3 +972,105 @@ async fn the_latest_run_sets_the_frontend_tools() {
             .any(|tool| tool.name == "confirm")
     );
 }
+
+/// An agent whose first turn writes a todo list through a tool named like the
+/// built-in `write_todos`, so its result takes the same path.
+fn planning_session() -> Session {
+    let write_todos = FunctionTool::new(
+        "write_todos",
+        "Write the task list.",
+        json!({ "type": "object", "properties": { "todos": { "type": "array" } } }),
+        |args: Value| async move { Ok::<_, String>(json!({ "success": true, "todos": args["todos"] })) },
+    );
+    let model = Model::simulated_with_config(
+        LlmSimConfig::fixed("Planned.").with_tool_call_sequence(vec![
+            vec![ToolCall {
+                id: "call_plan".to_string(),
+                name: "write_todos".to_string(),
+                arguments: json!({ "todos": [
+                    { "content": "Plan", "activeForm": "Planning", "status": "in_progress" },
+                ] }),
+            }],
+            vec![],
+        ]),
+    );
+    let agent = Agent::builder()
+        .instructions("Plan first.")
+        .model(model)
+        .tool(write_todos)
+        .build()
+        .expect("valid agent");
+    Engine::new().create(agent)
+}
+
+fn state(events: &[Event]) -> Vec<Value> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Event::StateSnapshot(_) | Event::StateDelta(_) => {
+                Some(serde_json::to_value(event).expect("serializes"))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn the_todo_list_is_shared_state_and_a_later_run_starts_from_it() {
+    let session = planning_session();
+    let todos = json!({ "todos": [
+        { "content": "Plan", "activeForm": "Planning", "status": "in_progress" },
+    ] });
+
+    let first = run_with(&session, input("Plan it."), AgUiOptions::new()).await;
+    assert_well_formed(&first);
+    let written = state(&first);
+    assert_eq!(written.len(), 1, "{first:?}");
+    assert_eq!(written[0]["type"], "STATE_SNAPSHOT");
+    assert_eq!(written[0]["snapshot"], todos);
+
+    // A later run, as a reconnecting client makes it, opens with the list.
+    let second = run_with(
+        &session,
+        RunAgentInput {
+            run_id: "run-2".into(),
+            ..input("Go on.")
+        },
+        AgUiOptions::new(),
+    )
+    .await;
+    assert_well_formed(&second);
+    assert!(
+        matches!(second.get(1), Some(Event::StateSnapshot(_))),
+        "{second:?}"
+    );
+    assert_eq!(state(&second)[0]["snapshot"], todos);
+
+    // A policy that hides state sends none.
+    let hidden = run_with(
+        &session,
+        RunAgentInput {
+            run_id: "run-3".into(),
+            ..input("Again.")
+        },
+        AgUiOptions::new().policy(everruns::ag_ui::ProjectionPolicy {
+            state_visible: false,
+            ..everruns::ag_ui::ProjectionPolicy::default()
+        }),
+    )
+    .await;
+    assert!(state(&hidden).is_empty(), "{hidden:?}");
+}
+
+#[tokio::test]
+async fn a_session_without_todos_sends_no_state() {
+    let agent = Agent::builder()
+        .instructions("Be brief.")
+        .model(Model::simulated("Hello."))
+        .build()
+        .expect("valid agent");
+    let session = Engine::new().create(agent);
+    let events = run_with(&session, input("Hi"), AgUiOptions::new()).await;
+    assert_well_formed(&events);
+    assert!(state(&events).is_empty(), "{events:?}");
+}
