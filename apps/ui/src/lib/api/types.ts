@@ -1,7 +1,6 @@
 export * from "./schema-types";
 export * from "./legacy-api-types";
 export * from "./provider-driver-types";
-export * from "./model-vendor-types";
 export * from "./mcp-server-types";
 export * from "./agent-mcp-types";
 export * from "./agent-sandbox-types";
