@@ -1408,6 +1408,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # PostgreSQL binaries for the embedded cluster (crates/pg-embedded) that
+      # DEV_MODE and isolated test servers start. A hit skips the Maven
+      # Central download and its version lookup; the key holds the major
+      # version, so bump it with pg-embedded's MAJOR_VERSION.
+      - name: Cache embedded PostgreSQL
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
+
       # lld instead of GNU ld. These jobs link many binaries against a large
       # dependency graph -- crates/server alone has 51 integration-test targets,
       # each a separate binary linking the whole server crate -- and link time
@@ -1599,6 +1609,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # PostgreSQL binaries for the embedded cluster (crates/pg-embedded) that
+      # DEV_MODE and isolated test servers start. A hit skips the Maven
+      # Central download and its version lookup; the key holds the major
+      # version, so bump it with pg-embedded's MAJOR_VERSION.
+      - name: Cache embedded PostgreSQL
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
 
       - name: Install Doppler CLI
         id: doppler_install
@@ -1820,6 +1840,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # PostgreSQL binaries for the embedded cluster (crates/pg-embedded) that
+      # DEV_MODE and isolated test servers start. A hit skips the Maven
+      # Central download and its version lookup; the key holds the major
+      # version, so bump it with pg-embedded's MAJOR_VERSION.
+      - name: Cache embedded PostgreSQL
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
+
       # lld instead of GNU ld. These jobs link many binaries against a large
       # dependency graph -- crates/server alone has 51 integration-test targets,
       # each a separate binary linking the whole server crate -- and link time
@@ -2024,8 +2054,8 @@ jobs:
       # This job exercises the real durable topology: the server owns Postgres
       # state and exposes the gRPC control-plane on :9001, and a separate
       # everruns-worker binary connects to it. That path only runs when the
-      # server is NOT in DEV_MODE (DEV_MODE=true forces in-memory storage and
-      # disables the gRPC control-plane — see app_builder.rs), which would leave
+      # server is NOT in DEV_MODE (DEV_MODE=true uses its own embedded PostgreSQL
+      # and disables the gRPC control-plane — see app_builder.rs), which would leave
       # the external worker unable to connect. AUTH_MODE=none still requires a
       # dev deployment grade (EVE-621), so opt in via DEPLOYMENT_GRADE=dev
       # instead of DEV_MODE, satisfying the auth gate without touching the
@@ -2035,6 +2065,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # PostgreSQL binaries for the embedded cluster (crates/pg-embedded) that
+      # DEV_MODE and isolated test servers start. A hit skips the Maven
+      # Central download and its version lookup; the key holds the major
+      # version, so bump it with pg-embedded's MAJOR_VERSION.
+      - name: Cache embedded PostgreSQL
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
 
       - name: Install Doppler CLI
         id: doppler_install
@@ -2260,6 +2300,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # PostgreSQL binaries for the embedded cluster (crates/pg-embedded) that
+      # DEV_MODE and isolated test servers start. A hit skips the Maven
+      # Central download and its version lookup; the key holds the major
+      # version, so bump it with pg-embedded's MAJOR_VERSION.
+      - name: Cache embedded PostgreSQL
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
+
       - name: Ensure jq is available
         # Same apt stall mode as the shell-test install, but the runner image ships
         # jq so this short-circuits before apt is reached (measured at 0.00m across
@@ -2354,6 +2404,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # PostgreSQL binaries for the embedded cluster (crates/pg-embedded) that
+      # DEV_MODE and isolated test servers start. A hit skips the Maven
+      # Central download and its version lookup; the key holds the major
+      # version, so bump it with pg-embedded's MAJOR_VERSION.
+      - name: Cache embedded PostgreSQL
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
 
       - name: Setup Node.js
         if: matrix.language == 'typescript'
@@ -2701,6 +2761,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      # PostgreSQL binaries for the embedded cluster (crates/pg-embedded) that
+      # DEV_MODE and isolated test servers start. A hit skips the Maven
+      # Central download and its version lookup; the key holds the major
+      # version, so bump it with pg-embedded's MAJOR_VERSION.
+      - name: Cache embedded PostgreSQL
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/everruns/postgres
+          key: ${{ runner.os }}-pg-embedded-17
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
