@@ -30,6 +30,7 @@ import {
   defaultOperationalNavigation,
   defaultQualityNavigation,
   defaultRegistriesNavigation,
+  defaultSandboxesNavigation,
 } from "@/lib/navigation";
 import type { NavigationItem, NavigationSection } from "@/lib/navigation";
 
@@ -47,6 +48,7 @@ export {
   defaultOperationalNavigation,
   defaultQualityNavigation,
   defaultRegistriesNavigation,
+  defaultSandboxesNavigation,
 };
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useProviders } from "@/hooks/use-providers";

@@ -141,7 +141,7 @@ export default function SandboxesPageClient() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Sandboxes" }]} />
+      <PageBreadcrumb items={[{ label: "Fleet" }]} />
       <PageMasthead
         icon={<Container />}
         title="Sandboxes"
