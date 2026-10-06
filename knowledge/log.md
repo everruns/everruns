@@ -2,6 +2,11 @@
 
 ## 2026-10-06
 
+* **Decision: user MCP servers.** Virtual users own MCP servers, agents opt
+  in to use or manage them through a `user_mcp` capability, and agent servers
+  gain a `user_or_service` auth mode. Accepted, implementation in progress.
+  See [User MCP servers](integrations/user-mcp-servers.md).
+
 * **No database-utilities crate.** The embedded SQLite wrapper left
   `everruns-durable` for the `everruns` facade (`everruns::sqlite`, behind
   `local`), so the facade's `local` feature and the serve hosts no longer
