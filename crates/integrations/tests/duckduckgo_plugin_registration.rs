@@ -60,11 +60,11 @@ fn test_duckduckgo_registered_in_dev_registry() {
 }
 
 #[test]
-fn test_duckduckgo_not_registered_in_prod_registry() {
+fn test_duckduckgo_registered_in_prod_registry() {
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
-        !registry.has("duckduckgo"),
-        "DuckDuckGo should NOT be in prod registry"
+        registry.has("duckduckgo"),
+        "DuckDuckGo is adoption grade, so it should be in prod registry"
     );
 }
 

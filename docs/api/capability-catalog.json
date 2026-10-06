@@ -165,6 +165,7 @@
       "feature_flag": "brave_search",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "brave_search",
@@ -325,6 +326,7 @@
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "computer_use",
@@ -527,6 +529,7 @@
       "feature_flag": "duckduckgo",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "duckduckgo",
@@ -689,6 +692,7 @@
       "feature_flag": "typesafe",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "jev",
@@ -794,6 +798,7 @@
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "modal",
@@ -964,6 +969,7 @@
       "feature_flag": "parallel_search",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "parallel_search",
@@ -1089,6 +1095,7 @@
       "feature_flag": "ard",
       "features": [],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "resource_discovery",
@@ -1373,6 +1380,7 @@
         "leased_resources"
       ],
       "grades": [
+        "prod",
         "dev"
       ],
       "id": "sprites",

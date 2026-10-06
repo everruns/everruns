@@ -31,7 +31,7 @@ use std::sync::Arc;
 ///
 /// ```ignore
 /// pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-///     feature_flag: Some("daytona_connection"),
+///     feature_flag: Some("daytona"),
 ///     factory: || Box::new(DaytonaConnector),
 /// }];
 /// ```

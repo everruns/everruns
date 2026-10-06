@@ -36,9 +36,9 @@ fn plugin_is_behind_its_feature_flag() {
 }
 
 #[test]
-fn capability_is_available_in_dev_and_withheld_in_prod() {
+fn capability_is_available_in_dev_and_prod() {
     assert!(registry_for_grade(DeploymentGrade::Dev).has("jev"));
-    assert!(!registry_for_grade(DeploymentGrade::Prod).has("jev"));
+    assert!(registry_for_grade(DeploymentGrade::Prod).has("jev"));
 }
 
 #[test]

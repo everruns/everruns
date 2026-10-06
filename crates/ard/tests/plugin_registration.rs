@@ -33,7 +33,7 @@ fn capability_plugin_is_published() {
 }
 
 #[test]
-fn capability_is_experimental_dev_only() {
+fn capability_is_flagged_and_on_from_adoption_grade() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let plugin = plugins
         .iter()
@@ -45,8 +45,8 @@ fn capability_is_experimental_dev_only() {
     assert!(dev.has("resource_discovery"), "should be in dev registry");
     let prod = registry_for_grade(DeploymentGrade::Prod);
     assert!(
-        !prod.has("resource_discovery"),
-        "experimental capability should not be in prod registry"
+        prod.has("resource_discovery"),
+        "adoption-grade capability should be in prod registry"
     );
 }
 

@@ -63,11 +63,11 @@ fn test_brave_search_registered_in_dev_registry() {
 }
 
 #[test]
-fn test_brave_search_not_registered_in_prod_registry() {
+fn test_brave_search_registered_in_prod_registry() {
     let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
-        !registry.has("brave_search"),
-        "Brave Search should NOT be in prod registry"
+        registry.has("brave_search"),
+        "Brave Search is adoption grade, so it should be in prod registry"
     );
 }
 

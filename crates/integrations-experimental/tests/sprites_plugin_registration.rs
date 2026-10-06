@@ -51,9 +51,12 @@ fn test_sprites_plugin_is_behind_its_feature_flag() {
 }
 
 #[test]
-fn test_sprites_registered_in_dev_registry() {
+fn test_sprites_is_off_in_every_grade() {
     let registry = registry_for_grade(DeploymentGrade::Dev);
-    assert!(registry.has("sprites"), "Sprites should be in dev registry");
+    assert!(
+        !registry.has("sprites"),
+        "Sprites is off by default, even in dev"
+    );
 }
 
 #[test]
@@ -67,9 +70,10 @@ fn test_sprites_not_registered_in_prod_registry() {
 
 #[test]
 fn test_sprites_capability_metadata() {
-    let registry = registry_for_grade(DeploymentGrade::Dev);
-    let cap = registry
-        .get("sprites")
+    let cap = CAPABILITY_PLUGINS
+        .iter()
+        .map(|p| (p.factory)())
+        .find(|cap| cap.id() == "sprites")
         .expect("Sprites capability not found");
 
     assert_eq!(cap.id(), "sprites");

@@ -33,7 +33,7 @@ use tools::DuckDuckGoSearchTool;
 // Integration Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// Feature flags this module's plugins name, with their default rollout grades;
 /// the hosted platform lists them in its feature flag settings, and
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
@@ -41,7 +41,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         name: "duckduckgo",
         label: "DuckDuckGo search",
         description: "Keyless web search through DuckDuckGo.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     }];
 
 /// Capability plugins this crate contributes to a hosted catalog.

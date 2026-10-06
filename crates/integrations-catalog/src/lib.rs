@@ -25,9 +25,9 @@
 //!     !entry.capabilities.is_empty() || !entry.connectors.is_empty()
 //! }));
 //!
-//! // Integrations behind a dev-grade feature flag stay out of a production registry.
+//! // Integrations behind an off-by-default feature flag stay out of a production registry.
 //! for plugin in everruns_integrations_catalog::capability_plugins() {
-//!     if plugin.feature_flag == Some("modal") {
+//!     if plugin.feature_flag == Some("sprites") {
 //!         assert!(!capability_is_enabled(plugin, DeploymentGrade::Prod));
 //!     }
 //! }
@@ -378,10 +378,7 @@ mod tests {
     #[test]
     fn daytona_capabilities_are_ungated_while_its_connection_is_flagged() {
         assert_eq!(capability_feature_flag("daytona"), None);
-        assert_eq!(
-            connector_feature_flag("daytona"),
-            Some("daytona_connection")
-        );
+        assert_eq!(connector_feature_flag("daytona"), Some("daytona"));
         assert_eq!(connector_feature_flag("e2b"), None);
         assert_eq!(capability_feature_flag("modal"), Some("modal"));
     }
@@ -393,9 +390,12 @@ mod tests {
         let mut prod = ConnectorRegistry::new();
         register_connectors(&mut prod, DeploymentGrade::Prod);
         assert!(prod.has("e2b"));
-        if std::env::var("FEATURE_DAYTONA_CONNECTION").is_err() {
-            assert!(dev.has("daytona"));
-            assert!(!prod.has("daytona"));
+        if std::env::var("FEATURE_DAYTONA").is_err() {
+            assert!(prod.has("daytona"), "daytona is adoption grade");
+        }
+        if std::env::var("FEATURE_BROWSERLESS_CONNECTION").is_err() {
+            assert!(dev.has("browserless"));
+            assert!(!prod.has("browserless"));
         }
     }
 }

@@ -54,9 +54,9 @@ fn parallel_registered_in_dev_registry() {
 }
 
 #[test]
-fn parallel_not_registered_in_prod_registry() {
+fn parallel_registered_in_prod_registry() {
     let registry = registry_for_grade(DeploymentGrade::Prod);
-    assert!(!registry.has("parallel_search"));
+    assert!(registry.has("parallel_search"));
 }
 
 // Env-var-mutating tests must not run in parallel with each other.

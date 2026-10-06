@@ -76,7 +76,7 @@ const MODAL_MAX_TIMEOUT_SECS: u32 = 24 * 60 * 60;
 const MODAL_DEFAULT_EXEC_TIMEOUT_SECS: u32 = 120;
 const MODAL_MAX_EXEC_TIMEOUT_SECS: u32 = 60 * 60;
 
-/// Feature flags this crate's plugins name. Each starts at the `dev` grade;
+/// Feature flags this crate's plugins name, with their default rollout grades;
 /// the hosted platform lists them in its feature flag settings, and
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
@@ -84,7 +84,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         name: "modal",
         label: "Modal sandboxes",
         description: "Run agent sandboxes on Modal, with a Modal connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     }];
 
 /// Capability plugins this module contributes to a hosted catalog.

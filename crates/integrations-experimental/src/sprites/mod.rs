@@ -39,7 +39,7 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// Feature flags this module's plugins name, with their default rollout grades;
 /// the hosted platform lists them in its feature flag settings, and
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
@@ -47,15 +47,15 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         name: "sprites",
         label: "Sprites sandboxes",
         description: "Run agent sandboxes on Sprites, with a Sprites connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Off,
     }];
 
 /// Capability plugins this crate contributes to a hosted catalog.
 ///
-/// Gated by the `sprites` feature flag (dev grade by default): Sprites is no
+/// Gated by the `sprites` feature flag (off by default): Sprites is no
 /// longer part of the supported sandbox set. Its live coverage runs only on
 /// manual dispatch, and an outage of the vendor control plane had been turning
-/// `main` red, so prod registries leave it out.
+/// `main` red, so no registry includes it unless `FEATURE_SPRITES` sets a grade.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
     feature_flag: Some("sprites"),
     factory: || Box::new(SpritesCapability),

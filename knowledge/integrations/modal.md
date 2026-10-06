@@ -30,9 +30,9 @@ optional behind it, so a default build compiles nothing. Existing
 - **Same registration as other integrations.** Each module exports
   `CAPABILITY_PLUGINS` and `CONNECTOR_PLUGINS`, named in
   `crates/integrations-catalog` with crate name `everruns-integrations::<module>`.
-- **Dev grade first.** Modal's plugins are behind the `modal` feature flag,
-  which defaults to the `dev` rollout grade: registered on development
-  deployments only, like Sprites, until it has run in production.
+- **Organisation opt-in.** Modal's plugins are behind the `modal` feature
+  flag at the `adoption` rollout grade: every deployment registers them, and an
+  organisation owner or admin enables them in Settings → Features.
 
 ## Transport
 

@@ -827,21 +827,19 @@ mod tests {
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
-        assert_eq!(prod.grade("daytona_connection"), FeatureFlagGrade::Dev);
-        assert!(!prod.deployment_flags().is_enabled("daytona_connection"));
-        let adopted = prod.with_grade("daytona_connection", FeatureFlagGrade::Adoption);
-        assert!(adopted.deployment_flags().is_enabled("daytona_connection"));
-        assert!(
-            !adopted
-                .for_org(&HashMap::new())
-                .is_enabled("daytona_connection")
-        );
+        assert_eq!(prod.grade("browserless_connection"), FeatureFlagGrade::Dev);
+        assert!(!prod.deployment_flags().is_enabled("browserless_connection"));
+        assert!(!prod.deployment_flags().is_connector_enabled("browserless"));
+        assert_eq!(prod.grade("daytona"), FeatureFlagGrade::Adoption);
+        let adopted = prod;
+        assert!(adopted.deployment_flags().is_enabled("daytona"));
+        assert!(!adopted.for_org(&HashMap::new()).is_enabled("daytona"));
         assert!(
             adopted
-                .for_org(&HashMap::from([("daytona_connection".into(), true)]))
+                .for_org(&HashMap::from([("daytona".into(), true)]))
                 .is_connector_enabled("daytona")
         );
         let map = adopted.deployment_flags().to_map();
-        assert_eq!(map.0.get("daytona_connection"), Some(&true));
+        assert_eq!(map.0.get("daytona"), Some(&true));
     }
 }

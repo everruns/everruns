@@ -77,7 +77,7 @@ Browser automation and web interaction capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [Browserless](/capabilities/browserless/) | `browserless` | 7 |
-| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1 (dev-only); `FEATURE_BROWSERLESS_COMPUTER_USE` grade |
+| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; `FEATURE_BROWSERLESS_COMPUTER_USE` grade |
 
 ### Data and knowledge
 

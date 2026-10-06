@@ -16,7 +16,7 @@ use crate::typesafe::{
     CAPABILITY_ID, TYPESAFE_API_KEY_SECRET, TYPESAFE_CONNECTION_PROVIDER, evaluate,
 };
 
-/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// Feature flags this module's plugins name, with their default rollout grades;
 /// the hosted platform lists them in its feature flag settings, and
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 #[cfg(feature = "typesafe-hosted")]
@@ -25,7 +25,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         name: "typesafe",
         label: "Jev decisions",
         description: "Ask TypeSafe's System One model typed questions and get calibrated answers back, with a TypeSafe AI connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Prod,
     },
 ];
 

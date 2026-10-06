@@ -41,7 +41,7 @@ use tools::BraveWebSearchTool;
 // Plugin Registration
 // ============================================================================
 
-/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// Feature flags this module's plugins name, with their default rollout grades;
 /// the hosted platform lists them in its feature flag settings, and
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 #[cfg(feature = "brave-search-hosted")]
@@ -50,7 +50,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         name: "brave_search",
         label: "Brave Search",
         description: "Web search through the Brave Search API, with a Brave Search connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     }];
 
 /// Capability plugins this crate contributes to a hosted catalog.

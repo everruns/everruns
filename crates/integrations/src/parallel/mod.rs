@@ -40,7 +40,7 @@ use serde_json::{Value, json};
 use connection::ParallelConnector;
 pub use payments::ParallelPaymentsCapability;
 
-/// Feature flags this module's plugins name. Each starts at the `dev` grade;
+/// Feature flags this module's plugins name, with their default rollout grades;
 /// the hosted platform lists them in its feature flag settings, and
 /// `FEATURE_<NAME>` overrides the grade per deployment.
 pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
@@ -48,7 +48,7 @@ pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
         name: "parallel_search",
         label: "Parallel search",
         description: "Web search and research through Parallel, with a Parallel connection.",
-        grade: everruns_contracts::runtime::FeatureFlagGrade::Dev,
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
     }];
 
 /// Capability plugins this crate contributes to a hosted catalog.
