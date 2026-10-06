@@ -5,7 +5,7 @@
 //! unset, unless `EVERRUNS_REQUIRE_POSTGRES_TESTS` is set (CI's durable
 //! PostgreSQL shard sets it), which makes the missing URL a failure. A set
 //! URL that does not connect fails them. They share the database
-//! with whatever else uses it: every session and routing key is fresh, and
+//! with whatever else uses it: every session and backend queue is fresh, and
 //! nothing is truncated.
 
 use std::time::Duration;
@@ -23,7 +23,7 @@ use crate::durable_backend::{DurableBackend, LEFT_BEHIND};
 use crate::host::{
     AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnTicket,
 };
-use crate::task_store::TaskStore;
+use crate::turn_store::TurnStore;
 
 /// The test database, or `None` (the test skips) without `DATABASE_URL`.
 async fn store() -> Option<PostgresWorkflowEventStore> {
@@ -119,23 +119,21 @@ async fn a_tool_turn_runs_on_postgres_with_every_step_routed() {
     assert_eq!(result.iterations, 2);
     assert!(!session.is_running(session_id).await);
 
-    // Input with its first reason, act, reason: each tagged with this
-    // backend's key.
+    // Input with its first reason, act, reason: plain activity types, each
+    // in this backend's own task queue.
     let steps = tasks(&store, session_id).await;
     let mut types: Vec<&str> = steps
         .iter()
         .map(|task| task.activity_type.as_str())
         .collect();
     types.sort_unstable();
-    let plain: Vec<&str> = types
-        .iter()
-        .map(|activity| activity.split_once('@').expect("routed").0)
-        .collect();
-    assert_eq!(plain, ["act", "process_input", "reason"]);
-    let key = types[0].split_once('@').unwrap().1;
+    assert_eq!(types, ["act", "process_input", "reason"]);
+    let queues: Vec<Option<String>> = steps.iter().map(|task| task.queue.clone()).collect();
+    let queue = queues[0].clone().expect("a named queue");
+    assert!(queue.starts_with("fw-"), "{queue}");
     assert!(
-        types.iter().all(|activity| activity.ends_with(key)),
-        "{types:?}"
+        queues.iter().all(|q| q.as_deref() == Some(queue.as_str())),
+        "{queues:?}"
     );
 
     // The session takes its next turn.
@@ -203,9 +201,10 @@ async fn a_session_attached_again_ends_the_workflow_a_gone_backend_left_behind()
     )
     .await
     .unwrap();
-    let claimed = TaskQueue::claim_task(
+    let claimed = TaskQueue::claim_queue_tasks(
         &store,
         &dead_worker,
+        held[0].queue.as_deref(),
         std::slice::from_ref(&held[0].activity_type),
         1,
     )
@@ -236,9 +235,10 @@ async fn a_session_attached_again_ends_the_workflow_a_gone_backend_left_behind()
     assert_ne!(held.status, TaskStatus::Claimed, "{held:?}");
     assert_eq!(held.last_error.as_deref(), Some(LEFT_BEHIND));
     assert_eq!(
-        TaskStore::get_workflow_status(&store, session_id.uuid())
+        TurnStore::get_workflow(&store, session_id.uuid())
             .await
-            .unwrap(),
+            .unwrap()
+            .status,
         WorkflowStatus::Completed
     );
     backend.shutdown().await;

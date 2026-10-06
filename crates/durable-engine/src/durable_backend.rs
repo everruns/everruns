@@ -48,8 +48,8 @@
 //!   - The ticket of a continued turn counts only the steps this run takes,
 //!     as an in-process result does.
 //! - On PostgreSQL ([`DurableBackend::postgres`]) the queue is shared with
-//!   other processes, so each backend claims only the tasks it routed to
-//!   itself (see `backend_store`).
+//!   other processes, so each backend enqueues to and claims from a task
+//!   queue of its own (see `backend_store`).
 //! - Recovery is per session, from the session log, on every store. A turn a
 //!   process exit cut off continues through `ResumeInterrupted`, as in
 //!   process; nothing replays the dead process's queue. The memory store
@@ -88,14 +88,12 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
-use crate::backend_store::{BackendTaskStore, RoutedDurableStore, Routing};
-use crate::durable_runner::{
-    DirectDurableStore, DurableRunner, DurableTaskNotifier, DurableTurnInput,
-};
+use crate::backend_store::{RoutedStore, Routing};
+use crate::durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput};
 use crate::task_heartbeat::CancelSignals;
-use crate::task_store::TaskStore;
 use crate::turn_backend::TurnBaseline;
 use crate::turn_driver::{TurnTaskDriver, TurnTaskHost, act_task_input};
+use crate::turn_store::TurnStore;
 
 /// How long an idle worker waits for a start notification before it polls
 /// the queue again.
@@ -182,7 +180,7 @@ impl Drop for Owner {
 }
 
 struct Shared {
-    store: Arc<BackendTaskStore>,
+    store: Arc<dyn TurnStore>,
     /// The PostgreSQL store other backends share, for ending the workflows
     /// they left behind; `None` for a store this backend owns.
     shared_store: Option<PostgresWorkflowEventStore>,
@@ -214,15 +212,9 @@ impl DurableBackend {
     /// the process, but every step is queued and checkpointed exactly as on a
     /// persistent store.
     pub fn memory(workers: usize) -> Self {
-        let store = Arc::new(InMemoryWorkflowEventStore::new());
-        let wake = Arc::new(Notify::new());
-        let runner = DurableRunner::new_with_shared_store(store.clone())
-            .with_task_notifier(Arc::new(WakeWorkers(wake.clone())));
         Self::new(
-            BackendTaskStore::owned(store),
+            Arc::new(InMemoryWorkflowEventStore::new()),
             None,
-            runner,
-            wake,
             workers,
             WORKER_POLL_INTERVAL,
         )
@@ -263,35 +255,30 @@ impl DurableBackend {
     /// ```
     pub fn postgres(store: PostgresWorkflowEventStore, workers: usize) -> Self {
         let routing = Routing::unique();
-        let wake = Arc::new(Notify::new());
-        let runner = DurableRunner::from_store(RoutedDurableStore::new(
-            DirectDurableStore::new(store.pool().clone()),
-            routing.clone(),
-        ))
-        .with_task_notifier(Arc::new(WakeWorkers(wake.clone())));
-        debug!(routing_key = routing.key(), "durable PostgreSQL backend");
+        debug!(queue = routing.queue(), "durable PostgreSQL backend");
         Self::new(
-            BackendTaskStore::routed(Arc::new(store.clone()), routing),
+            Arc::new(RoutedStore::new(Arc::new(store.clone()), routing)),
             Some(store),
-            runner,
-            wake,
             workers,
             POSTGRES_WORKER_POLL_INTERVAL,
         )
     }
 
+    /// The runner and the workers share `store`, so a routed store's tags
+    /// and local workflow-end wakeups cover both.
     fn new(
-        store: BackendTaskStore,
+        store: Arc<dyn TurnStore>,
         shared_store: Option<PostgresWorkflowEventStore>,
-        runner: DurableRunner,
-        wake: Arc<Notify>,
         workers: usize,
         poll_interval: Duration,
     ) -> Self {
+        let wake = Arc::new(Notify::new());
+        let runner = DurableRunner::from_shared(store.clone())
+            .with_task_notifier(Arc::new(WakeWorkers(wake.clone())));
         let shutdown = CancellationToken::new();
         Self {
             shared: Arc::new(Shared {
-                store: Arc::new(store),
+                store,
                 shared_store,
                 runner,
                 sessions: Mutex::default(),

@@ -23,16 +23,16 @@
 //!   session its [`TurnBackend`](everruns_core::host::TurnBackend). The
 //!   `everruns` facade selects it with its `durable` feature.
 //! - [`TurnTaskDriver`] runs one claimed turn task against any
-//!   [`TaskStore`](task_store::TaskStore); a [`TurnTaskHost`] supplies the
-//!   runtime host each step runs on.
-//! - [`DurableStoreBackend`] is the runner's store contract.
-//!   [`InMemoryDurableStore`] serves tests and development;
-//!   [`DirectDurableStore`] talks to PostgreSQL through `everruns-durable`'s
-//!   own schema. Any `everruns-durable` `WorkflowEventStore` is a `TaskStore`.
+//!   [`TurnStore`]; a [`TurnTaskHost`] supplies the runtime host each step
+//!   runs on.
+//! - [`TurnStore`] is the one store contract the runner and the driver share.
+//!   Any `everruns-durable` `WorkflowEventStore` is a `TurnStore`: the
+//!   in-memory store serves tests and development, and the PostgreSQL store
+//!   runs on `everruns-durable`'s own schema.
 //!
 //! The crate carries no transport. The platform worker's gRPC
 //! stores and runner constructors live in `everruns-worker`, which implements
-//! [`TaskStore`](task_store::TaskStore) and [`DurableStoreBackend`] for its own
+//! [`TurnStore`] for its own
 //! client type and builds its runner with [`DurableRunner::from_store`].
 //! Another process boundary plugs in the same way. [`AgentRunner`] is a shim
 //! over [`DurableRunner`]'s `TurnBackend` until the server calls the seam
@@ -111,7 +111,6 @@ pub mod durable_backend;
 mod durable_backend_postgres_tests;
 #[cfg(test)]
 mod durable_backend_tests;
-pub mod durable_execution;
 pub mod durable_runner;
 pub mod durable_turn;
 pub mod runner;
@@ -119,7 +118,6 @@ pub mod task_error;
 pub mod task_heartbeat;
 #[cfg(test)]
 mod task_heartbeat_tests;
-pub mod task_store;
 pub mod turn_backend;
 #[cfg(test)]
 mod turn_backend_tests;
@@ -127,16 +125,14 @@ pub mod turn_driver;
 #[cfg(test)]
 mod turn_driver_tests;
 mod turn_start;
+pub mod turn_store;
 
 pub use everruns_core as core;
 pub use everruns_core::{engine, host};
 pub use everruns_durable as durable;
 
 pub use durable_backend::{DurableBackend, DurableSessionBackend};
-pub use durable_execution::DurableExecution;
-pub use durable_runner::{
-    DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTaskNotifier, DurableTurnInput,
-    DurableTurnOutput, InMemoryDurableStore, WorkflowEndSignal,
-};
+pub use durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput, DurableTurnOutput};
 pub use runner::{AgentRunner, RunnerBackend, create_runner_with_backend};
 pub use turn_driver::{TurnTaskDriver, TurnTaskHost};
+pub use turn_store::{TurnStore, WorkflowEndSignal, WorkflowSnapshot};

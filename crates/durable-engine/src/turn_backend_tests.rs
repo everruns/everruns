@@ -11,15 +11,14 @@ use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use uuid::Uuid;
 
+use crate::backend_store::{RoutedStore, Routing};
 use crate::core::InputMessage;
 use crate::core::turn::TurnStopReason;
 use crate::durable::{
     EventLog, InMemoryWorkflowEventStore, TaskQueue, WorkerInfo, WorkerRegistry, WorkflowError,
-    WorkflowEvent, WorkflowSignal, WorkflowStatus,
+    WorkflowStatus,
 };
-use crate::durable_runner::{
-    DurableRunner, DurableStoreBackend, InMemoryDurableStore, WorkflowEndSignal,
-};
+use crate::durable_runner::DurableRunner;
 use crate::engine::ReasonInput;
 use crate::host::{
     AcceptedTurnInput, InProcessRuntime, PersistedTurn, RuntimeHostAdapter, TurnBackend, TurnInput,
@@ -27,9 +26,9 @@ use crate::host::{
 };
 use crate::runner::AgentRunner;
 use crate::task_heartbeat::CancelSignals;
-use crate::task_store::TaskStore;
 use crate::turn_backend::TICKET_FALLBACK_POLL_INTERVAL;
 use crate::turn_driver::{TurnTaskDriver, TurnTaskHost};
+use crate::turn_store::TurnStore;
 
 /// The in-process runtime as the driver's host: every step runs on it.
 #[derive(Clone)]
@@ -266,7 +265,7 @@ async fn completion_without_a_stop_reason_resolves_as_end_turn() {
         .await
         .unwrap();
 
-    TaskStore::complete_workflow(
+    TurnStore::complete_workflow(
         &*store,
         session_id.uuid(),
         serde_json::json!({ "success": true, "text": "need a tool" }),
@@ -372,7 +371,7 @@ async fn memory_ticket_wakes_on_completion_without_waiting_for_a_poll() {
     assert!(!ticket.is_finished(), "the workflow still runs");
 
     let ended_at = tokio::time::Instant::now();
-    TaskStore::complete_workflow(
+    TurnStore::complete_workflow(
         &*store,
         session_id.uuid(),
         serde_json::json!({ "success": true, "text": "woken", "stop_reason": "end_turn" }),
@@ -391,121 +390,12 @@ async fn memory_ticket_wakes_on_completion_without_waiting_for_a_poll() {
     );
 }
 
-/// The memory store behind a [`DurableStoreBackend`] whose workflow-end
-/// signal never fires: a lost wakeup, or an end another process wrote.
-struct MissedWakeups(InMemoryDurableStore);
-
-#[async_trait::async_trait]
-impl DurableStoreBackend for MissedWakeups {
-    async fn get_workflow_status(
-        &self,
-        workflow_id: Uuid,
-    ) -> anyhow::Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
-        self.0.get_workflow_status(workflow_id).await
-    }
-
-    async fn create_workflow(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-    ) -> anyhow::Result<Uuid> {
-        self.0
-            .create_workflow(workflow_id, workflow_type, input)
-            .await
-    }
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> anyhow::Result<()> {
-        self.0
-            .update_workflow_status(workflow_id, status, output, error)
-            .await
-    }
-
-    async fn enqueue_task(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> anyhow::Result<Uuid> {
-        self.0
-            .enqueue_task(workflow_id, activity_id, activity_type, input)
-            .await
-    }
-
-    async fn start_turn(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        activity_id: String,
-        activity_type: String,
-    ) -> anyhow::Result<everruns_durable::RunStart> {
-        self.0
-            .start_turn(
-                workflow_id,
-                workflow_type,
-                input,
-                activity_id,
-                activity_type,
-            )
-            .await
-    }
-
-    async fn count_active_workflows(&self) -> anyhow::Result<usize> {
-        self.0.count_active_workflows().await
-    }
-
-    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> anyhow::Result<u64> {
-        self.0.cancel_pending_tasks(workflow_id).await
-    }
-
-    async fn append_events(
-        &self,
-        workflow_id: Uuid,
-        expected_sequence: i32,
-        events: Vec<WorkflowEvent>,
-    ) -> anyhow::Result<i32> {
-        self.0
-            .append_events(workflow_id, expected_sequence, events)
-            .await
-    }
-
-    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> anyhow::Result<()> {
-        self.0.send_signal(workflow_id, signal).await
-    }
-
-    async fn get_and_consume_signals(
-        &self,
-        workflow_id: Uuid,
-    ) -> anyhow::Result<Vec<WorkflowSignal>> {
-        self.0.get_and_consume_signals(workflow_id).await
-    }
-
-    async fn latest_completion_output(
-        &self,
-        workflow_id: Uuid,
-    ) -> anyhow::Result<Option<serde_json::Value>> {
-        self.0.latest_completion_output(workflow_id).await
-    }
-
-    fn workflow_end_signal(&self, _workflow_id: Uuid) -> Option<WorkflowEndSignal> {
-        Some(Box::pin(std::future::pending()))
-    }
-}
-
 #[tokio::test(start_paused = true)]
 async fn ticket_resolves_on_the_fallback_poll_when_no_wakeup_comes() {
     let store = Arc::new(InMemoryWorkflowEventStore::new());
-    let runner = DurableRunner::from_store(MissedWakeups(InMemoryDurableStore::from_shared(
-        store.clone(),
-    )));
+    // A routed store's end signal fires only on the ends written through it:
+    // this end lands on the store underneath, as another process's would.
+    let runner = DurableRunner::from_store(RoutedStore::new(store.clone(), Routing::unique()));
     let session_id = SessionId::new();
     let ticket = runner
         .start_turn(persisted_message(session_id))

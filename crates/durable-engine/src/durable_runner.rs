@@ -2,28 +2,17 @@
 // Decision: everruns-durable-engine owns durable orchestration and maps runtime turn state onto the durable engine.
 // Decision: Core host remains durable-agnostic and only exports generic turn strategy/state.
 
-use anyhow::Result;
 use async_trait::async_trait;
 use everruns_contracts::typed_id::SessionId;
 pub use everruns_core::engine::TurnState as DurableTurnInput;
-use everruns_durable::{
-    DurableAdmin, EventLog, InMemoryWorkflowEventStore, PostgresWorkflowEventStore, RunStart,
-    SignalStore, TaskQueue, WorkflowEvent, WorkflowSignal, WorkflowStatus,
-};
-use std::future::Future;
-use std::pin::Pin;
+use everruns_durable::{InMemoryWorkflowEventStore, PostgresWorkflowEventStore};
 use std::sync::Arc;
 use tracing::info;
-use uuid::Uuid;
 
 #[async_trait]
 pub trait DurableTaskNotifier: Send + Sync {
     async fn notify_task_available(&self, activity_type: &str);
 }
-
-/// Resolves when a workflow next reaches a terminal status; see
-/// [`DurableStoreBackend::workflow_end_signal`].
-pub type WorkflowEndSignal = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// Output metadata for durable turns.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -34,404 +23,6 @@ pub struct DurableTurnOutput {
     pub stop_reason: everruns_core::turn::TurnStopReason,
 }
 
-#[async_trait]
-pub trait DurableStoreBackend: Send + Sync {
-    async fn get_workflow_status(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)>;
-
-    async fn create_workflow(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-    ) -> Result<Uuid>;
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> Result<()>;
-
-    async fn enqueue_task(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> Result<Uuid>;
-
-    /// Start a turn: create the session's workflow or start a new run of it,
-    /// and enqueue `activity_type` as its first task, in one atomic step
-    /// ([`EventLog::start_run_with_task`]). Returns [`RunStart::Active`],
-    /// changing nothing, while a turn is already running.
-    async fn start_turn(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        activity_id: String,
-        activity_type: String,
-    ) -> Result<RunStart>;
-
-    async fn count_active_workflows(&self) -> Result<usize>;
-
-    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> Result<u64>;
-
-    async fn append_events(
-        &self,
-        workflow_id: Uuid,
-        expected_sequence: i32,
-        events: Vec<WorkflowEvent>,
-    ) -> Result<i32>;
-
-    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> Result<()>;
-
-    async fn get_and_consume_signals(&self, workflow_id: Uuid) -> Result<Vec<WorkflowSignal>>;
-
-    /// The output the workflow's latest `WorkflowCompleted` event recorded.
-    ///
-    /// A [`DurableRunner`] turn ticket reads it to fill in the turn's
-    /// response and stop reason. The default returns `None`, for a store
-    /// without a cheap event-log read; the ticket then falls back to the
-    /// turn checkpoint (see [`crate::turn_backend`]).
-    async fn latest_completion_output(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Option<serde_json::Value>> {
-        let _ = workflow_id;
-        Ok(None)
-    }
-
-    /// A signal that resolves when `workflow_id` next reaches a terminal
-    /// status, subscribed when this returns.
-    ///
-    /// A [`DurableRunner`] turn ticket takes it before each status read and
-    /// waits on it instead of the short poll, so a turn reports back as soon
-    /// as its workflow ends. The default returns `None`, for a store whose
-    /// workflows other processes may end (PostgreSQL); the ticket then polls
-    /// (see [`crate::turn_backend`]). A store that returns a signal must fire
-    /// it on every terminal transition this process makes; the ticket still
-    /// re-reads the status on a long fallback interval.
-    fn workflow_end_signal(&self, workflow_id: Uuid) -> Option<WorkflowEndSignal> {
-        let _ = workflow_id;
-        None
-    }
-}
-
-/// Direct database store for control-plane use.
-pub struct DirectDurableStore {
-    store: PostgresWorkflowEventStore,
-}
-
-impl DirectDurableStore {
-    pub fn new(pool: everruns_durable::PostgresPool) -> Self {
-        Self {
-            store: PostgresWorkflowEventStore::new(pool),
-        }
-    }
-}
-
-/// In-memory store for dev mode (no PostgreSQL required).
-pub struct InMemoryDurableStore {
-    store: Arc<InMemoryWorkflowEventStore>,
-}
-
-impl InMemoryDurableStore {
-    pub fn new() -> Self {
-        Self {
-            store: Arc::new(InMemoryWorkflowEventStore::new()),
-        }
-    }
-
-    pub fn from_shared(store: Arc<InMemoryWorkflowEventStore>) -> Self {
-        Self { store }
-    }
-
-    pub fn store(&self) -> Arc<InMemoryWorkflowEventStore> {
-        Arc::clone(&self.store)
-    }
-}
-
-impl Default for InMemoryDurableStore {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl DurableStoreBackend for DirectDurableStore {
-    async fn get_workflow_status(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
-        let info = self.store.get_workflow_info(workflow_id).await?;
-        Ok((
-            info.status,
-            info.result,
-            info.error.map(|error| format!("{error:?}")),
-        ))
-    }
-
-    async fn create_workflow(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-    ) -> Result<Uuid> {
-        self.store
-            .create_workflow(workflow_id, workflow_type, input, None)
-            .await?;
-        Ok(workflow_id)
-    }
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> Result<()> {
-        self.store
-            .update_workflow_status(
-                workflow_id,
-                status,
-                output,
-                error.map(everruns_durable::WorkflowError::new),
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn enqueue_task(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> Result<Uuid> {
-        self.store
-            .enqueue_task(everruns_durable::TaskDefinition {
-                workflow_id: Some(workflow_id),
-                options: crate::durable_turn::activity_options_for(&activity_id),
-                activity_id,
-                activity_type,
-                input,
-            })
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn start_turn(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        activity_id: String,
-        activity_type: String,
-    ) -> Result<RunStart> {
-        let task = everruns_durable::TaskDefinition {
-            workflow_id: Some(workflow_id),
-            options: crate::durable_turn::activity_options_for(&activity_id),
-            activity_id,
-            activity_type,
-            input: input.clone(),
-        };
-        self.store
-            .start_run_with_task(workflow_id, workflow_type, input, task)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn count_active_workflows(&self) -> Result<usize> {
-        self.store
-            .count_active_workflows()
-            .await
-            .map(|count| count as usize)
-            .map_err(Into::into)
-    }
-
-    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> Result<u64> {
-        self.store
-            .cancel_pending_tasks_for_workflow(workflow_id)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn append_events(
-        &self,
-        workflow_id: Uuid,
-        expected_sequence: i32,
-        events: Vec<WorkflowEvent>,
-    ) -> Result<i32> {
-        self.store
-            .append_events(workflow_id, expected_sequence, events)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> Result<()> {
-        self.store
-            .send_signal(workflow_id, signal)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn get_and_consume_signals(&self, workflow_id: Uuid) -> Result<Vec<WorkflowSignal>> {
-        self.store
-            .consume_pending_signals(workflow_id)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn latest_completion_output(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Option<serde_json::Value>> {
-        crate::turn_backend::latest_completion_output(&self.store, workflow_id).await
-    }
-}
-
-#[async_trait]
-impl DurableStoreBackend for InMemoryDurableStore {
-    async fn get_workflow_status(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
-        let info = self.store.get_workflow_info(workflow_id).await?;
-        Ok((
-            info.status,
-            info.result,
-            info.error.map(|error| format!("{error:?}")),
-        ))
-    }
-
-    async fn create_workflow(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-    ) -> Result<Uuid> {
-        self.store
-            .create_workflow(workflow_id, workflow_type, input, None)
-            .await?;
-        Ok(workflow_id)
-    }
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> Result<()> {
-        self.store
-            .update_workflow_status(
-                workflow_id,
-                status,
-                output,
-                error.map(everruns_durable::WorkflowError::new),
-            )
-            .await?;
-        Ok(())
-    }
-
-    async fn enqueue_task(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> Result<Uuid> {
-        self.store
-            .enqueue_task(everruns_durable::TaskDefinition {
-                workflow_id: Some(workflow_id),
-                options: crate::durable_turn::activity_options_for(&activity_id),
-                activity_id,
-                activity_type,
-                input,
-            })
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn start_turn(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-        activity_id: String,
-        activity_type: String,
-    ) -> Result<RunStart> {
-        let task = everruns_durable::TaskDefinition {
-            workflow_id: Some(workflow_id),
-            options: crate::durable_turn::activity_options_for(&activity_id),
-            activity_id,
-            activity_type,
-            input: input.clone(),
-        };
-        self.store
-            .start_run_with_task(workflow_id, workflow_type, input, task)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn count_active_workflows(&self) -> Result<usize> {
-        Ok(self.store.workflow_count())
-    }
-
-    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> Result<u64> {
-        self.store
-            .cancel_pending_tasks_for_workflow(workflow_id)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn append_events(
-        &self,
-        workflow_id: Uuid,
-        expected_sequence: i32,
-        events: Vec<WorkflowEvent>,
-    ) -> Result<i32> {
-        self.store
-            .append_events(workflow_id, expected_sequence, events)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> Result<()> {
-        self.store
-            .send_signal(workflow_id, signal)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn get_and_consume_signals(&self, workflow_id: Uuid) -> Result<Vec<WorkflowSignal>> {
-        self.store
-            .consume_pending_signals(workflow_id)
-            .await
-            .map_err(Into::into)
-    }
-
-    async fn latest_completion_output(
-        &self,
-        workflow_id: Uuid,
-    ) -> Result<Option<serde_json::Value>> {
-        crate::turn_backend::latest_completion_output(&*self.store, workflow_id).await
-    }
-
-    /// The memory store ends workflows only in this process, so its end
-    /// subscription sees every terminal transition.
-    fn workflow_end_signal(&self, workflow_id: Uuid) -> Option<WorkflowEndSignal> {
-        Some(Box::pin(
-            self.store.subscribe_workflow_end(workflow_id).ended(),
-        ))
-    }
-}
-
 /// Durable execution engine based runner.
 ///
 /// This runner maps runtime turn state onto the durable engine.
@@ -439,30 +30,31 @@ impl DurableStoreBackend for InMemoryDurableStore {
 /// [`crate::turn_backend`]); its [`AgentRunner`](crate::AgentRunner)
 /// methods are a shim over that implementation.
 pub struct DurableRunner {
-    pub(crate) store: Arc<dyn DurableStoreBackend>,
+    pub(crate) store: Arc<dyn crate::turn_store::TurnStore>,
     task_notifier: Option<Arc<dyn DurableTaskNotifier>>,
 }
 
 impl DurableRunner {
-    /// Build a runner over any durable store backend.
+    /// Build a runner over any turn store.
     ///
     /// Process-specific transports (the worker's gRPC store) implement
-    /// [`DurableStoreBackend`] in their own crate and enter here, so this crate
-    /// stays free of transport dependencies.
-    pub fn from_store(store: impl DurableStoreBackend + 'static) -> Self {
+    /// [`TurnStore`](crate::turn_store::TurnStore) in their own crate and
+    /// enter here, so this crate stays free of transport dependencies.
+    pub fn from_store(store: impl crate::turn_store::TurnStore) -> Self {
+        Self::from_shared(Arc::new(store))
+    }
+
+    /// Build a runner over a turn store others (a backend's workers) share.
+    pub(crate) fn from_shared(store: Arc<dyn crate::turn_store::TurnStore>) -> Self {
         Self {
-            store: Arc::new(store),
+            store,
             task_notifier: None,
         }
     }
 
     pub fn new_with_pool(pool: everruns_durable::PostgresPool) -> Self {
         info!("Initializing durable runner (direct DB mode)");
-        let store = DirectDurableStore::new(pool);
-        Self {
-            store: Arc::new(store),
-            task_notifier: None,
-        }
+        Self::from_store(PostgresWorkflowEventStore::new(pool))
     }
 
     pub fn new_with_pool_and_task_notifier(
@@ -470,29 +62,17 @@ impl DurableRunner {
         task_notifier: Arc<dyn DurableTaskNotifier>,
     ) -> Self {
         info!("Initializing durable runner (direct DB mode with task notifier)");
-        let store = DirectDurableStore::new(pool);
-        Self {
-            store: Arc::new(store),
-            task_notifier: Some(task_notifier),
-        }
+        Self::from_store(PostgresWorkflowEventStore::new(pool)).with_task_notifier(task_notifier)
     }
 
     pub fn new_in_memory() -> Self {
         info!("Initializing durable runner (in-memory dev mode)");
-        let store = InMemoryDurableStore::new();
-        Self {
-            store: Arc::new(store),
-            task_notifier: None,
-        }
+        Self::from_store(InMemoryWorkflowEventStore::new())
     }
 
     pub fn new_with_shared_store(shared_store: Arc<InMemoryWorkflowEventStore>) -> Self {
         info!("Initializing durable runner (shared in-memory dev mode)");
-        let store = InMemoryDurableStore::from_shared(shared_store);
-        Self {
-            store: Arc::new(store),
-            task_notifier: None,
-        }
+        Self::from_shared(shared_store)
     }
 
     pub fn with_task_notifier(mut self, task_notifier: Arc<dyn DurableTaskNotifier>) -> Self {
@@ -512,7 +92,8 @@ mod tests {
     use super::*;
     use crate::runner::AgentRunner;
     use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId};
-    use everruns_durable::WorkerRegistry;
+    use everruns_durable::{EventLog, SignalStore, TaskQueue, WorkerRegistry, WorkflowStatus};
+    use uuid::Uuid;
 
     #[derive(Default)]
     struct RecordingTaskNotifier {

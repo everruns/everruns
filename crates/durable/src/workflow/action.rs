@@ -11,6 +11,10 @@ use super::options::{ActivityOptions, duration_serde};
 ///
 /// These are the commands a workflow can issue in response to events.
 /// Each action is persisted as a [`WorkflowEvent`](super::WorkflowEvent) before execution.
+// `ScheduleActivity` carries its `ActivityOptions` inline. Actions are
+// short-lived values a workflow returns a handful of at a time, so boxing the
+// options would cost an allocation per action for no measurable saving.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum WorkflowAction {
