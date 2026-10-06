@@ -1,13 +1,13 @@
-version: 0.41.0
-date: 2026-10-04
+version: 0.42.0
+date: 2026-10-06
 headline:
-  - 37 crates.
+  - 40 crates.
   - Every capability.
 summary:
-  - The five core migration shims are retired.
-  - Library hosts use portable runtime contracts.
-  - Server and durable own database connections.
+  - Vendor integrations move behind feature flags.
+  - Deno and Sprites remain experimental.
+  - 18 deprecated package shims ship.
 highlights:
-  - title: Database ownership
-    description: Durable owns embedded SQLite connections and private worker execution.
-    source: "#4084"
+  - title: Integration crate consolidation
+    description: Maintained vendors share one crate; Deno and Sprites stay experimental.
+    source: "#4251"
