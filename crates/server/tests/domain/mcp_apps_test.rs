@@ -29,33 +29,33 @@ struct ResumeRecordingRunner {
 }
 
 #[async_trait::async_trait]
-impl everruns_worker::AgentRunner for ResumeRecordingRunner {
-    async fn start_run(
+impl everruns_core::host::TurnBackend for ResumeRecordingRunner {
+    async fn start_turn(
         &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        _harness_id: everruns_contracts::typed_id::HarnessId,
-        _agent_id: Option<everruns_contracts::typed_id::AgentId>,
-        _input_message_id: everruns_contracts::typed_id::MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        if matches!(
+            request.input,
+            everruns_core::host::TurnInput::RecordedToolResults { .. }
+        ) {
+            self.resumes.fetch_add(1, Ordering::SeqCst);
+        }
+        // The server drops its tickets; this one never resolves.
+        Ok(everruns_core::host::TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
     }
 
-    async fn resume_after_tool_results(
+    async fn cancel(
         &self,
-        _session_id: SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
-        self.resumes.fetch_add(1, Ordering::SeqCst);
-        Ok(())
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
     }
 
-    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn is_running(&self, _run_id: SessionId) -> bool {
+    async fn is_running(&self, _session_id: everruns_contracts::typed_id::SessionId) -> bool {
         false
     }
 

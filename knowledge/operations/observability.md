@@ -150,7 +150,12 @@ vocabulary in `crates/core/src/telemetry.rs` (`gen_ai`) and
 - **Everruns extras** live under `everruns.*`: turn/exec/input-message ids,
   `everruns.phase`, iteration and tool-call counters, `everruns.tool.status`,
   retry counts, `everruns.usage.cost_usd`, `everruns.usage.cost_unknown_components`
-  (billable components with no known amount), provider correlation ids copied
+  (billable components with no known amount), how a generation ended
+  (`everruns.llm.finish_reason`, the provider's raw
+  `everruns.llm.provider_finish_reason`, `everruns.llm.tool_calls_dropped`,
+  `everruns.llm.tool_calls_truncated_executed`, see
+  [LLM edge-case telemetry](#llm-edge-case-telemetry)), the turn's
+  `everruns.turn.stop_reason`, provider correlation ids copied
   from event metadata (`everruns.provider_session_id`, `everruns.provider_turn_id`,
   `everruns.provider_trace_url`, ...; see `crates/contracts/src/runtime/events/correlation.rs`),
   and the diagnostic markers
@@ -235,6 +240,44 @@ Ownership boundary: default core holds neutral observability contracts, the `Eve
 
 ---
 
+## LLM edge-case telemetry
+
+Provider edge cases are made measurable before anything changes behaviour on
+them. The why and the log contract live at the top of
+`crates/contracts/src/llm_telemetry.rs`; the event fields at
+`crates/core/src/engine/execution/reason/generation_outcome.rs`.
+
+- **How a generation ended**: drivers report the provider's raw stop reason
+  next to the normalized finish reason (Bedrock's `max_tokens` normalizes to
+  `length` like every other driver). `llm.generation` carries it as
+  `provider_finish_reason`; `turn.completed` carries the final generation's
+  normalized `stop_reason`. The `ReasonAtom: LLM call completed` log line adds
+  provider, model, finish reason, raw reason, and output tokens.
+- **Discarded tool calls**: a response cut off or rejected mid tool call
+  (Anthropic, Chat Completions, Gemini) still discards the calls, but the count
+  rides on the completion as `tool_calls_dropped`, with a `warn` on the
+  `everruns::llm_telemetry` target.
+- **Calls that may run truncated**: OpenAI Responses calls handed on before
+  the response ended incomplete, calls whose arguments fell back to `{}`, and
+  Bedrock calls emitted off a non-`tool_use` stop are counted as
+  `tool_calls_truncated_executed` and warned. Gating them is separate work.
+- **Context overflow**: every terminal pre-stream provider error goes through
+  `observe_request_error` in the reason phase: classified request-too-large
+  errors log `classified=true` with provider, model, HTTP status and provider
+  error code; unclassified errors whose wording reads like an overflow log
+  `overflow_suspected_unclassified=true`, which is how classifier gaps show up.
+  The wording list is deliberately short; it flags, it never reclassifies.
+- **Retries**: driver retries log the provider's `Retry-After` next to the wait
+  used, and both the driver loop and the reason phase log
+  `retry_exhausted=true` when the attempt or time budget runs out.
+
+Counters derived from `llm.generation` are listed in
+`knowledge/operations/prometheus-metrics.md`. Overflow and retry exhaustion are
+logs only: no event carries a pre-stream provider error with its provider, so
+there is nothing for the metrics listener to count.
+
+---
+
 ## Braintrust
 
 Integration with [Braintrust](https://www.braintrust.dev/) for LLM observability, evaluation, and logging.
@@ -288,6 +331,7 @@ For the complete field-by-field mapping (LLM generation, tool events, thinking e
 - **Messages**: Converted to Braintrust/OpenAI-compatible payloads only when `BRAINTRUST_RECORD_CONTENT=true`; otherwise the exporter sends structural summaries without raw text previews
 - **Tool args/results**: Controlled independently via `BRAINTRUST_TOOL_ARGS_MODE` and `BRAINTRUST_TOOL_RESULTS_MODE`, including tool-call/tool-result payloads nested inside recorded LLM input/output; hook-rewritten `executed_arguments` from `tool.completed` join the tool span's input under the args mode
 - **Thinking content**: Controlled independently via `BRAINTRUST_RECORD_THINKING`
+- **Generation ending**: `finish_reason`, `provider_finish_reason`, `output_tokens`, and the non-zero `tool_calls_dropped` / `tool_calls_truncated_executed` on the LLM span; `stop_reason` on the turn root (`generation_attrs.rs`)
 - **Root turn metadata**: Every exported turn root includes `session_id`; when available it also includes `input_message_id`, monotonic session ordering fields, deployment grade, session status, model/provider summary, retry markers, and compaction markers
 - **Session lifecycle markers**: `session.started`, `session.activated`, and `session.idled` are exported as lightweight session lifecycle logs to preserve grouped-session flow
 

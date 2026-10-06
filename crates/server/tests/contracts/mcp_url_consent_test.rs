@@ -12,12 +12,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use axum::http::StatusCode;
-use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_contracts::typed_id::SessionId;
+use everruns_core::host::TurnBackend;
 use everruns_core::mcp::{StoredConsent, consent_storage_key};
 use everruns_core::{Caller, Permission, PermissionResolver};
 use everruns_server::records::{Agent, Session};
 use everruns_server::storage::models::{ReserveActiveTurnSlotResult, WaitingTurnResolutionPlan};
-use everruns_worker::AgentRunner;
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
 use test_harness::TestServer;
@@ -28,32 +28,24 @@ const TEST_ORG_ID: i64 = 1;
 struct ConsentRunner;
 
 #[async_trait]
-impl AgentRunner for ConsentRunner {
-    async fn start_run(
+impl TurnBackend for ConsentRunner {
+    async fn start_turn(
         &self,
-        _org_id: i64,
-        _session_id: SessionId,
-        _harness_id: HarnessId,
-        _agent_id: Option<AgentId>,
-        _input_message_id: MessageId,
-        _request_id: Option<String>,
-    ) -> anyhow::Result<()> {
-        Ok(())
+        request: everruns_core::host::TurnRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::host::TurnTicket> {
+        // The server drops its tickets; this one never resolves.
+        Ok(everruns_core::host::TurnTicket::new(
+            request.session_id,
+            request.turn_id,
+            std::future::pending(),
+        ))
     }
 
-    async fn resume_after_tool_results(
-        &self,
-        _session_id: SessionId,
-        _resolution_id: uuid::Uuid,
-    ) -> anyhow::Result<()> {
-        Ok(())
+    async fn cancel(&self, _session_id: SessionId) -> everruns_contracts::error::Result<bool> {
+        Ok(false)
     }
 
-    async fn cancel_run(&self, _run_id: SessionId) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    async fn is_running(&self, _run_id: SessionId) -> bool {
+    async fn is_running(&self, _session_id: SessionId) -> bool {
         false
     }
 

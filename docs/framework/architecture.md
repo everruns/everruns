@@ -1,6 +1,6 @@
 ---
 title: Framework Architecture
-description: Understand Agent, Engine, Session, the TurnBackend seam, and how immediate and durable execution share one kernel.
+description: Understand Agent, Engine, Session, the TurnBackend entry point, and how immediate and durable execution share one kernel.
 ---
 
 Everruns has one turn model and two ways to execute it. A turn runs either in
@@ -11,7 +11,7 @@ durable backend instead. The Everruns Platform's server and workers always run
 turns durably. Every path converges on the same `everruns-core` (`engine`
 feature) Input/Reason/Act state machine.
 
-![Framework execution architecture: the Framework app and the Platform server start turns through the TurnBackend seam in everruns-core; InProcessBackend is the default and drives the core::engine kernel directly, while everruns-durable-engine (DurableBackend, DurableRunner, TurnTaskDriver) runs the same kernel as queued, checkpointed steps on the generic everruns-durable engine over an in-memory or PostgreSQL store; Platform workers claim those steps over gRPC.](./architecture.svg)
+![Framework execution architecture: the Framework app and the Platform server start turns through the TurnBackend entry point in everruns-core; InProcessBackend is the default and drives the core::engine kernel directly, while everruns-durable-engine (DurableBackend, DurableRunner, TurnTaskDriver) runs the same kernel as queued, checkpointed steps on the generic everruns-durable engine over an in-memory or PostgreSQL store; Platform workers claim those steps over gRPC.](./architecture.svg)
 
 ## Public Framework objects
 
@@ -49,8 +49,8 @@ assert_eq!(resumed.session_id(), session_id);
 
 ## Two execution paths, one kernel
 
-A host hands each turn to a `TurnBackend`, the seam in `everruns-core` (`host`
-feature) that starts, cancels, and observes a session's turns. The backend
+A host hands each turn to a `TurnBackend`, the turn entry point in
+`everruns-core` (`host` feature) that starts, cancels, and observes a session's turns. The backend
 decides only where the planned steps run and what survives a crash; it never
 plans the turn itself.
 
@@ -63,8 +63,15 @@ plans the turn itself.
   reclaimed and the turn continues from its last checkpoint. The facade selects
   its `DurableBackend` through the `durable` feature (see [Durable turns
   (experimental)](/framework/sessions/#durable-turns-experimental)); the Platform
-  server starts turns through its `DurableRunner`, and Platform workers claim
-  the steps over gRPC and run them with the same `TurnTaskDriver`.
+  server persists each input and then starts the turn from it through the same
+  trait, on its `DurableRunner`, and Platform workers claim the steps over gRPC
+  and run them with the same `TurnTaskDriver`.
+
+A caller either hands the backend input to record (`TurnInput::Message`,
+`TurnInput::ToolResults`) or names input it already recorded through its own
+store (`TurnInput::StoredMessage`, `TurnInput::RecordedToolResults`). Every
+backend serves the stored forms, so a host that persists input itself starts
+and continues turns the way the Platform server does.
 
 `everruns-durable` underneath is a generic engine: a task queue, an event log,
 signals, timers, child workflows, a worker registry, a dead letter queue,
@@ -105,7 +112,7 @@ not implemented by applications. Provider integrations implement the open
 An application that is itself an execution host may compose
 `everruns_core::engine::Execution` with `everruns-core` (`host` feature) or
 `everruns-durable-engine`, or implement `TurnBackend` for its own backend. Both
-seams are experimental. That is
+interfaces are experimental. That is
 an advanced deployment boundary: preserve event ordering, workspace isolation,
 credential separation, cancellation, and committed effect semantics. Start
 with [Custom Backends](/framework/custom-backends/) before crossing it.

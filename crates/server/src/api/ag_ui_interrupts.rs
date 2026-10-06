@@ -224,7 +224,7 @@ pub(crate) struct ResumeServices<'a> {
     pub(crate) db: &'a Arc<StorageBackend>,
     pub(crate) session_service: &'a crate::domains::sessions::SessionService,
     pub(crate) event_service: &'a crate::services::EventService,
-    pub(crate) runner: Arc<dyn everruns_worker::AgentRunner>,
+    pub(crate) runner: Arc<dyn everruns_core::host::TurnBackend>,
 }
 
 /// Apply a run's resume entries to the thread's session.

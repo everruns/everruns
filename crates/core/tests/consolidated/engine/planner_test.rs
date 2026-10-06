@@ -590,3 +590,31 @@ fn a_tool_approval_pause_holds_without_any_hint() {
     let (plan, _) = plan_after_act(&state, outcome, false, false, false, calls);
     assert!(matches!(plan, TurnPlan::WaitForToolResults { .. }));
 }
+
+/// `turn.completed` names how the final generation ended, so a turn that ran
+/// out of output budget (`length`) is not indistinguishable from one the model
+/// finished. No provider reason leaves it unset rather than guessed.
+#[test]
+fn turn_completed_carries_the_final_generation_stop_reason() {
+    for (finish, expected) in [
+        (Some("length"), Some("length")),
+        (Some("stop"), Some("stop")),
+        (None, None),
+    ] {
+        let result = ReasonResult {
+            finish_reason: finish.map(str::to_string),
+            ..reason_result()
+        };
+        let (_, effects) = plan_after_reason(&turn_state(), result, 0, fixed_now(), None);
+        let data = effects
+            .iter()
+            .find_map(|effect| match effect {
+                TurnLifecycleEffect::TurnCompleted { data, .. } => Some(data),
+                _ => None,
+            })
+            .expect("turn completes");
+        assert_eq!(data.stop_reason.as_deref(), expected, "{finish:?}");
+        let json = serde_json::to_value(data).unwrap();
+        assert_eq!(json.get("stop_reason").is_some(), expected.is_some());
+    }
+}

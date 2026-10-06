@@ -14,6 +14,8 @@
 //! - [`TurnInput::Message`] is persisted the way the in-process runtime
 //!   persists it ([`InProcessRuntime::persist_accepted_input`]) before the
 //!   workflow starts, and the turn keeps the requested turn id.
+//!   [`TurnInput::StoredMessage`] starts the same workflow from a message
+//!   the caller already recorded, writing nothing first.
 //! - Steering keeps the in-process contract exactly. The session's
 //!   [`TurnSteering`] stays open; the driver's steering hooks drain it at the
 //!   same boundaries `InProcessRuntime::run_steerable_turn` does (before each
@@ -45,6 +47,9 @@
 //!     session log ([`InProcessRuntime::interrupted_turn_plan`]) and starts a
 //!     workflow whose first task is that act, checkpointed with the turn's
 //!     state, so the driver runs it and plans on from there.
+//!   - [`TurnInput::RecordedToolResults`] continues the parked turn the same
+//!     way once the caller has recorded the results under it, keying the
+//!     resume with the request's resolution id.
 //!   - The ticket of a continued turn counts only the steps this run takes,
 //!     as an in-process result does.
 //! - On PostgreSQL ([`DurableBackend::postgres`]) the queue is shared with
@@ -60,8 +65,9 @@
 //!   another backend left running for it ([`LEFT_BEHIND`]), failing its
 //!   claimed tasks and cancelling it. Only then does the turn start, the
 //!   same way it would in process.
-//! - Not served: `Persisted`, the server's stored input, with a configuration
-//!   error.
+//! - The request's [`TurnScope`](everruns_core::host::TurnScope) is ignored:
+//!   the attached runtime resolves the session. Its request id is carried in
+//!   the turn's checkpoint.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -73,6 +79,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+use everruns_core::ResolvedExecutionSnapshot;
 use everruns_core::engine::{ReasonInput, ReasonResult, TurnPlan, reason_schedules_act};
 use everruns_core::events::ToolCompletedData;
 use everruns_core::host::{
@@ -659,8 +666,8 @@ impl TurnTaskHost for SessionHosts {
 ///
 /// **Experimental**, with [`TurnBackend`].
 ///
-/// Serves [`TurnInput::Message`], [`TurnInput::ToolResults`] and
-/// [`TurnInput::ResumeInterrupted`]. The workflow starts before
+/// Serves every [`TurnInput`]: new and stored messages, new and recorded
+/// tool results, and [`TurnInput::ResumeInterrupted`]. The workflow starts before
 /// [`start_turn`](TurnBackend::start_turn) returns, so the turn runs whether
 /// or not its ticket is polled; the ticket resolves when the workflow ends.
 /// Dropping this handle detaches the session: its in-flight step is dropped
@@ -694,15 +701,8 @@ impl Drop for DurableSessionBackend {
     }
 }
 
-fn unsupported_input(input: &TurnInput) -> AgentLoopError {
-    let name = match input {
-        TurnInput::Persisted(_) => "TurnInput::Persisted",
-        _ => "this turn input",
-    };
-    AgentLoopError::config(format!(
-        "the durable backend cannot run {name}; it serves TurnInput::Message, \
-         TurnInput::ToolResults and TurnInput::ResumeInterrupted"
-    ))
+fn unsupported_input() -> AgentLoopError {
+    AgentLoopError::config("the durable backend cannot run this turn input")
 }
 
 fn already_running(session_id: SessionId) -> AgentLoopError {
@@ -775,13 +775,47 @@ impl DurableSessionBackend {
         turn_id: TurnId,
         input: AcceptedTurnInput,
         steering: TurnSteering,
+        request_id: Option<String>,
     ) -> Result<TurnTicket> {
         let runtime = &self.slot.runtime;
         let snapshot = runtime.resolved_execution_snapshot(session_id).await?;
         self.begin_turn(steering);
         let input_message_id = runtime.persist_accepted_input(session_id, input).await?;
+        self.start_from_message(session_id, turn_id, &snapshot, input_message_id, request_id)
+            .await
+    }
+
+    /// Start a new turn from the message `input_message_id` the caller
+    /// already recorded in the session's log.
+    async fn start_stored_message(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+        steering: TurnSteering,
+        request_id: Option<String>,
+    ) -> Result<TurnTicket> {
+        let snapshot = self
+            .slot
+            .runtime
+            .resolved_execution_snapshot(session_id)
+            .await?;
+        self.begin_turn(steering);
+        self.start_from_message(session_id, turn_id, &snapshot, input_message_id, request_id)
+            .await
+    }
+
+    /// The workflow of a turn whose input message is in the session's log.
+    async fn start_from_message(
+        &self,
+        session_id: SessionId,
+        turn_id: TurnId,
+        snapshot: &ResolvedExecutionSnapshot,
+        input_message_id: MessageId,
+        request_id: Option<String>,
+    ) -> Result<TurnTicket> {
         // A new turn supersedes one parked on client-side tool calls.
-        runtime.supersede_parked_turn(session_id);
+        self.slot.runtime.supersede_parked_turn(session_id);
         let turn_input = DurableTurnInput {
             org_id: in_process_internal_org_id(&snapshot.organization_id),
             session_id,
@@ -791,7 +825,7 @@ impl DurableSessionBackend {
             turn_id: Some(turn_id),
             previous_response_id: None,
             iteration: 1,
-            request_id: None,
+            request_id,
             started_at: Some(Utc::now()),
             cumulative_usage: None,
             tool_call_count: 0,
@@ -815,11 +849,15 @@ impl DurableSessionBackend {
     /// Continue the turn parked on client-side tool calls: record `results`
     /// under it on the runtime, then resume the workflow from the checkpoint
     /// it parked with, through the runner's tool-resolution resume.
+    ///
+    /// `results` may be empty when the caller recorded them already
+    /// ([`TurnInput::RecordedToolResults`]); `resolution_id` keys the resume.
     async fn resume_tool_results(
         &self,
         session_id: SessionId,
         turn_id: TurnId,
         results: Vec<ToolCompletedData>,
+        resolution_id: uuid::Uuid,
         steering: TurnSteering,
     ) -> Result<TurnTicket> {
         let resume = self
@@ -828,10 +866,9 @@ impl DurableSessionBackend {
             .deliver_parked_tool_results(session_id, results)
             .await?;
         self.begin_turn(steering);
-        // The facade has no stored resolution; a fresh id keys this resume.
         self.shared
             .runner
-            .resume_persisted_resolution(session_id, uuid::Uuid::now_v7())
+            .resume_persisted_resolution(session_id, resolution_id)
             .await
             .map_err(store_error)?;
         let baseline = TurnBaseline {
@@ -902,6 +939,7 @@ impl TurnBackend for DurableSessionBackend {
             turn_id,
             input,
             steering,
+            request_id,
             ..
         } = request;
         if session_id != self.slot.session_id {
@@ -910,26 +948,39 @@ impl TurnBackend for DurableSessionBackend {
                 self.slot.session_id
             )));
         }
-        if matches!(input, TurnInput::Persisted(_)) {
-            return Err(unsupported_input(&input));
-        }
         self.recover_left_behind(session_id).await?;
         if self.shared.runner.is_running(session_id).await {
             return Err(already_running(session_id));
         }
         match input {
             TurnInput::Message(input) => {
-                self.start_message(session_id, turn_id, *input, steering)
+                self.start_message(session_id, turn_id, *input, steering, request_id)
+                    .await
+            }
+            TurnInput::StoredMessage { message_id } => {
+                self.start_stored_message(session_id, turn_id, message_id, steering, request_id)
                     .await
             }
             TurnInput::ToolResults(results) => {
-                self.resume_tool_results(session_id, turn_id, results, steering)
+                // The facade has no stored resolution; a fresh id keys this
+                // resume.
+                self.resume_tool_results(
+                    session_id,
+                    turn_id,
+                    results,
+                    uuid::Uuid::now_v7(),
+                    steering,
+                )
+                .await
+            }
+            TurnInput::RecordedToolResults { resolution_id } => {
+                self.resume_tool_results(session_id, turn_id, Vec::new(), resolution_id, steering)
                     .await
             }
             TurnInput::ResumeInterrupted => {
                 self.resume_interrupted(session_id, turn_id, steering).await
             }
-            other => Err(unsupported_input(&other)),
+            _ => Err(unsupported_input()),
         }
     }
 

@@ -214,6 +214,24 @@ impl ToolCallStream {
         Some(snapshot)
     }
 
+    /// Handed-on calls that may run with incomplete arguments: every one when
+    /// the response itself ended incomplete (a call can be cut mid-body), and
+    /// otherwise those whose arguments did not parse and fell back to `{}` in
+    /// [`Self::snapshot`]. Observability only (see `llm_telemetry`).
+    pub(crate) fn truncated_executed(&self, response_incomplete: bool) -> u32 {
+        let count = self
+            .calls
+            .iter()
+            .filter(|tc| tc.completed && !tc.name.is_empty())
+            .filter(|tc| {
+                response_incomplete
+                    || (!tc.arguments.trim().is_empty()
+                        && serde_json::from_str::<Value>(&tc.arguments).is_err())
+            })
+            .count();
+        u32::try_from(count).unwrap_or(u32::MAX)
+    }
+
     pub(crate) fn snapshot(&self) -> Vec<ToolCall> {
         self.calls
             .iter()
@@ -543,6 +561,21 @@ pub(crate) fn handle_streaming_event(
                 .and_then(|u| u.output_tokens_details.as_ref())
                 .map(|d| d.reasoning_tokens);
             let provider_cost_usd = response.usage.as_ref().and_then(|u| u.cost);
+            let incomplete = matches!(response.status, types::ResponseStatus::Incomplete);
+            let provider_reason = incomplete
+                .then_some(response.incomplete_details.as_ref())
+                .flatten()
+                .map(|details| details.reason.clone());
+            let truncated_executed = accumulated_tool_calls
+                .lock()
+                .unwrap()
+                .truncated_executed(incomplete);
+            crate::llm_telemetry::warn_tool_calls_truncated_executed(
+                "openai_responses",
+                &model,
+                truncated_executed,
+                provider_reason.as_deref().unwrap_or(&reason),
+            );
 
             LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                 // `input` is OpenAI's cache-inclusive prompt count; normalize to
@@ -560,14 +593,12 @@ pub(crate) fn handle_streaming_event(
                 model: Some(model),
                 response_model: Some(response.model),
                 finish_reason: Some(reason),
+                provider_finish_reason: provider_reason,
+                tool_calls_truncated_executed: truncated_executed,
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),
                 phase,
-                request_body: None,
-                cache_diagnostics: None,
-                provider_opaque_content: None,
-                provider_checkpoint_candidate: None,
-                hosted_tool_calls: Default::default(),
+                ..Default::default()
             }))
         }
 

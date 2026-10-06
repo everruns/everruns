@@ -793,12 +793,13 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 .and_then(Value::as_str)
                                                 .map(str::to_owned),
                                             phase,
-                                            request_body: None,
-                                            cache_diagnostics: None,
-                                            provider_opaque_content: None,
-                                            provider_checkpoint_candidate: None,
+                                            provider_finish_reason: response_obj
+                                                .pointer("/incomplete_details/reason")
+                                                .and_then(Value::as_str)
+                                                .map(str::to_owned),
                                             hosted_tool_calls:
                                                 super::hosted_tools::hosted_tool_calls(response_obj),
+                                            ..Default::default()
                                         })))
                                     }
 

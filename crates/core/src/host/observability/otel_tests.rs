@@ -171,6 +171,9 @@ fn generation(success: bool) -> LlmGenerationData {
                 ..LlmRequestOptions::default()
             }),
             cost_components: Vec::new(),
+            provider_finish_reason: None,
+            tool_calls_dropped: 0,
+            tool_calls_truncated_executed: 0,
         },
     }
 }
@@ -296,6 +299,7 @@ async fn run_full_turn(h: &OtelHarness) {
             tool_call_count: Some(1),
             llm_call_count: Some(1),
             status: Some("completed".to_string()),
+            stop_reason: None,
         },
     )
     .await;
@@ -961,6 +965,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
             tool_call_count: None,
             llm_call_count: None,
             status: None,
+            stop_reason: None,
         },
     )
     .await;
@@ -993,6 +998,7 @@ async fn orphan_completions_are_reconstructed_from_their_duration() {
                 tool_call_count: None,
                 llm_call_count: None,
                 status: None,
+                stop_reason: None,
             },
         )
         .await;
@@ -1175,4 +1181,81 @@ async fn hook_rewritten_arguments_reach_the_tool_span() {
     assert!(attr(&tool, "everruns.tool.executed_arguments").is_none());
     assert!(attr(&tool, "everruns.tool.executed_arguments_truncated").is_none());
     assert!(attr(&tool, "gen_ai.tool.call.arguments").is_none());
+}
+
+/// A generation cut off at the output limit says so on its chat span: the
+/// normalized and raw stop reasons and the tool calls the driver discarded,
+/// under `everruns.*` names that every convention set emits. The turn span
+/// carries the turn's stop reason. A clean generation adds none of the counts.
+#[tokio::test]
+async fn truncation_details_reach_chat_and_turn_spans() {
+    for conventions in [TraceConventions::ALL, TraceConventions::OPENINFERENCE] {
+        let h = OtelHarness::new(false, conventions);
+        h.emit(0, h.context(None, None, None), h.turn_started())
+            .await;
+        let mut data = generation(true).with_stop_details(Some("max_tokens".into()), 2, 1);
+        data.metadata.finish_reasons = Some(vec!["length".into()]);
+        h.emit(600, h.context(Some(ExecId::new()), Some("g1"), None), data)
+            .await;
+        h.emit(
+            800,
+            h.context(None, None, None),
+            TurnCompletedData {
+                turn_id: h.turn,
+                iterations: 1,
+                status: Some("completed".into()),
+                stop_reason: Some("length".into()),
+                ..Default::default()
+            },
+        )
+        .await;
+
+        let spans = h.spans();
+        let chat = by_name(&spans, "chat claude-sonnet-4-6");
+        assert_eq!(
+            attr_str(chat, "everruns.llm.finish_reason").as_deref(),
+            Some("length")
+        );
+        assert_eq!(
+            attr_str(chat, "everruns.llm.provider_finish_reason").as_deref(),
+            Some("max_tokens")
+        );
+        assert_eq!(
+            attr(chat, "everruns.llm.tool_calls_dropped"),
+            Some(&Value::I64(2))
+        );
+        assert_eq!(
+            attr(chat, "everruns.llm.tool_calls_truncated_executed"),
+            Some(&Value::I64(1))
+        );
+        let turn = spans
+            .iter()
+            .find(|span| attr(span, "everruns.turn.iterations").is_some())
+            .expect("turn span");
+        assert_eq!(
+            attr_str(turn, "everruns.turn.stop_reason").as_deref(),
+            Some("length")
+        );
+    }
+
+    let h = OtelHarness::new(false, TraceConventions::ALL);
+    run_full_turn(&h).await;
+    let spans = h.spans();
+    let chat = by_name(&spans, "chat claude-sonnet-4-6");
+    assert_eq!(
+        attr_str(chat, "everruns.llm.finish_reason").as_deref(),
+        Some("tool_calls")
+    );
+    for absent in [
+        "everruns.llm.provider_finish_reason",
+        "everruns.llm.tool_calls_dropped",
+        "everruns.llm.tool_calls_truncated_executed",
+    ] {
+        assert!(attr(chat, absent).is_none(), "{absent}");
+    }
+    assert!(
+        spans
+            .iter()
+            .all(|span| attr(span, "everruns.turn.stop_reason").is_none())
+    );
 }

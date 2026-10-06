@@ -669,12 +669,8 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 duration_ms: None,
                 usage: usage.clone(),
                 input_content,
-                final_message_id: None,
-                final_answer_preview: None,
-                time_to_first_token_ms: None,
-                tool_call_count: None,
-                llm_call_count: None,
                 status: Some("completed".to_string()),
+                ..Default::default()
             },
         )
         .await?;

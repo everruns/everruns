@@ -27,6 +27,7 @@ use everruns_contracts::driver_registry::{
     LlmStreamEvent, Message, MessageContent, MessageRole,
 };
 use everruns_contracts::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_contracts::llm_telemetry;
 use everruns_contracts::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -360,7 +361,20 @@ impl ChatDriver for BedrockChatDriver {
                             }
                         }
                         ConverseStreamOutput::MessageStop(e) => {
-                            meta.finish_reason = Some(e.stop_reason().as_str().to_string());
+                            let raw = e.stop_reason().as_str();
+                            meta.finish_reason = Some(normalize_stop_reason(raw));
+                            meta.provider_finish_reason = Some(raw.to_string());
+                            // Bedrock runs pending calls whatever the stop
+                            // reason. Off a `tool_use` stop their input may be
+                            // cut short (an empty one becomes `{}`): count it.
+                            // Gating it is a separate change.
+                            if raw != "tool_use" {
+                                let count = u32::try_from(pending.len()).unwrap_or(u32::MAX);
+                                meta.tool_calls_truncated_executed = count;
+                                llm_telemetry::warn_tool_calls_truncated_executed(
+                                    "bedrock", &model_id, count, raw,
+                                );
+                            }
                             // Emit accumulated tool calls now; Done is emitted on stream end.
                             if !pending.is_empty() {
                                 let mut ordered: Vec<(usize, PartialToolCall)> =
@@ -814,6 +828,20 @@ fn json_to_document(value: Value) -> Document {
 // Error classification
 // ============================================================================
 
+/// Map Bedrock's Converse stop reason onto the shared finish-reason
+/// vocabulary (`stop`, `length`, `tool_calls`, `content_filter`), as the other
+/// drivers report it. The raw value travels separately as
+/// `provider_finish_reason`. Unknown values pass through lower-cased.
+fn normalize_stop_reason(raw: &str) -> String {
+    match raw {
+        "end_turn" | "stop_sequence" => "stop".to_string(),
+        "max_tokens" | "model_context_window_exceeded" => "length".to_string(),
+        "tool_use" => "tool_calls".to_string(),
+        "guardrail_intervened" | "content_filtered" => "content_filter".to_string(),
+        other => other.to_ascii_lowercase(),
+    }
+}
+
 fn is_too_large(msg: &str) -> bool {
     let lower = msg.to_lowercase();
     lower.contains("too long")
@@ -886,6 +914,24 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn stop_reasons_normalize_to_the_shared_vocabulary() {
+        for (raw, normalized) in [
+            ("end_turn", "stop"),
+            ("stop_sequence", "stop"),
+            ("max_tokens", "length"),
+            ("model_context_window_exceeded", "length"),
+            ("tool_use", "tool_calls"),
+            ("guardrail_intervened", "content_filter"),
+            ("content_filtered", "content_filter"),
+            ("Some_Future_Reason", "some_future_reason"),
+        ] {
+            assert_eq!(normalize_stop_reason(raw), normalized, "{raw}");
+        }
+        // Never the raw `max_tokens`: usage tracking and OTel key on `length`.
+        assert_ne!(normalize_stop_reason("max_tokens"), "max_tokens");
+    }
 
     #[test]
     fn test_is_too_large_detects_bedrock_messages() {

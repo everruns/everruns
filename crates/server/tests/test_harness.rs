@@ -21,12 +21,13 @@ use serde_json::Value;
 use sqlx::PgPool;
 use tower::ServiceExt;
 
+use everruns_core::host::TurnBackend;
 use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_server::{
     api, auth, seed, services,
     storage::{EncryptionService, StorageBackend},
 };
-use everruns_worker::{AgentRunner, RunnerBackend, create_runner_with_backend};
+use everruns_worker::DurableRunner;
 
 // Relative to this file's directory; a sibling `tests/*.rs` would be its own
 // test binary, so support modules live under `tests/test_harness/`.
@@ -74,7 +75,7 @@ pub struct TestServer {
     pub pool: PgPool,
     pub virtual_registry:
         Arc<everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
-    pub runner: Arc<dyn AgentRunner>,
+    pub runner: Arc<dyn TurnBackend>,
     /// Public ID of the built-in `base` harness for the default org (resolved
     /// at construction time; no hardcoded UUIDs).
     pub seed_base_harness_id: String,
@@ -136,7 +137,7 @@ impl TestServer {
     pub async fn in_memory() -> Self {
         Self::with_mode_and_url(TestMode::InMemory, "http://127.0.0.1:0/api".to_string()).await
     }
-    pub async fn in_memory_with_runner(runner: Arc<dyn AgentRunner>) -> Self {
+    pub async fn in_memory_with_runner(runner: Arc<dyn TurnBackend>) -> Self {
         Self::build(
             TestMode::InMemory,
             "http://127.0.0.1:0/api".to_string(),
@@ -149,7 +150,7 @@ impl TestServer {
     }
 
     pub async fn in_memory_with_runner_and_permission_resolver(
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn TurnBackend>,
         permission_resolver: Arc<dyn everruns_core::PermissionResolver>,
     ) -> Self {
         Self::build(
@@ -522,7 +523,7 @@ impl TestServer {
         api_base_url: String,
         atif_export_max_bytes: Option<usize>,
         encryption_enabled: bool,
-        runner_override: Option<Arc<dyn AgentRunner>>,
+        runner_override: Option<Arc<dyn TurnBackend>>,
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
     ) -> Self {
         Self::build_with_feature_policy(
@@ -557,7 +558,7 @@ impl TestServer {
         api_base_url: String,
         atif_export_max_bytes: Option<usize>,
         encryption_enabled: bool,
-        runner_override: Option<Arc<dyn AgentRunner>>,
+        runner_override: Option<Arc<dyn TurnBackend>>,
         permission_resolver: Option<Arc<dyn everruns_core::PermissionResolver>>,
         policy_override: Option<everruns_server::records::FeatureFlagPolicy>,
     ) -> Self {
@@ -640,9 +641,7 @@ impl TestServer {
         // Use the requested test runner or a mode-appropriate default.
         let runner = match runner_override {
             Some(runner) => runner,
-            None => create_runner_with_backend(RunnerBackend::Postgres(pool.clone()))
-                .await
-                .expect("Failed to create agent runner"),
+            None => Arc::new(DurableRunner::new_with_pool(pool.clone())),
         };
 
         // Create driver registry

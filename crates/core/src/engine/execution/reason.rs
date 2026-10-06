@@ -8,25 +8,17 @@ use std::sync::Arc;
 use uuid::Uuid;
 use web_time::Instant;
 
-fn add_compaction_cost(usage: &mut TokenUsage, compaction_cost: f64) {
-    let generation_cost = usage.effective_cost_usd();
-    usage.effective_cost_usd = Some(generation_cost.unwrap_or(0.0) + compaction_cost);
-    if let Some(actual_cost) = usage.actual_cost_usd.as_mut() {
-        *actual_cost += compaction_cost;
-    }
-}
-
 use super::ExecutionContext;
 use crate::engine::annotation_hook::{collect_annotations, verify_annotations};
 use crate::engine::capabilities::CapabilityRegistry;
 use crate::engine::driver_registry::{LlmStreamEvent, Message, MessageContent, MessageRole};
 use crate::engine::error::{AgentLoopError, Result};
 use crate::engine::events::{
-    EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmRetryInfo,
-    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
-    OutputMessageStartedData, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
-    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
+    EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, OutputMessageCompletedData,
+    OutputMessageDeltaData, OutputMessageReplacedData, OutputMessageStartedData,
+    ReasonCompletedData, ReasonItemData, ReasonRecoveredData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode,
+    TokenUsage, ToolDefinitionSummary,
 };
 use crate::engine::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
@@ -60,6 +52,7 @@ mod compaction;
 mod error_policy;
 mod facts;
 mod finalized_calls;
+mod generation_outcome;
 mod hosted_tools;
 mod observability;
 mod output_hooks;
@@ -1389,6 +1382,7 @@ impl ReasonAtom {
             let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
+                    generation_outcome::observe_overflow(&model_with_provider, &e);
                     compaction_lifecycle.fail_if(provider_managed).await;
                     if provider_managed {
                         return Err(e);
@@ -1447,6 +1441,12 @@ impl ReasonAtom {
                     let Some(wait_duration) =
                         reserve_retry_wait(&retry_config, &mut retry_started_at, proposed_wait)
                     else {
+                        let attempts = stream_retry_metadata.attempts;
+                        generation_outcome::retry_time_exhausted(
+                            &model_with_provider,
+                            attempts,
+                            &retry_config,
+                        );
                         compaction_lifecycle.fail_if(provider_managed).await;
                         return Err(AgentLoopError::llm_kind(
                             e.llm_error_kind()
@@ -1464,6 +1464,7 @@ impl ReasonAtom {
                         attempt = stream_retry_metadata.attempts + 1,
                         max_retries = retry_config.max_retries,
                         wait_secs = wait_duration.as_secs_f64(),
+                        retry_after_secs = e.retry_after_secs(),
                         error = %e,
                         "ReasonAtom: transient provider failure before stream, retrying"
                     );
@@ -1472,6 +1473,13 @@ impl ReasonAtom {
                     continue 'stream_attempt;
                 }
                 Err(error) => {
+                    let attempts = stream_retry_metadata.attempts;
+                    generation_outcome::observe_terminal(
+                        &model_with_provider,
+                        &error,
+                        attempts,
+                        &retry_config,
+                    );
                     return compaction_lifecycle
                         .fail_start(error, provider_managed)
                         .await;
@@ -1954,6 +1962,12 @@ impl ReasonAtom {
                                 &mut retry_started_at,
                                 proposed_wait,
                             ) else {
+                                let attempts = stream_retry_metadata.attempts;
+                                generation_outcome::retry_time_exhausted(
+                                    &model_with_provider,
+                                    attempts,
+                                    &retry_config,
+                                );
                                 return Err(AgentLoopError::llm_kind(
                                     err.kind(),
                                     format!(
@@ -2295,68 +2309,30 @@ impl ReasonAtom {
         );
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
-        let finish_reasons = Some(vec![finish_reason.clone().unwrap_or_else(|| {
-            if finalized_tool_calls.is_empty() {
-                "stop".to_string()
-            } else {
-                "tool_calls".to_string()
-            }
-        })]);
         let meta = completion_metadata.as_ref();
+        let outcome = generation_outcome::GenerationOutcome::from_completion(
+            meta,
+            !finalized_tool_calls.is_empty(),
+        );
         let served = meta.and_then(|m| m.response_model.clone());
-        let retry_info = completion_metadata
-            .as_ref()
-            .and_then(|meta| meta.retry_metadata.as_ref())
-            .filter(|rm| rm.had_retries())
-            .map(|rm| LlmRetryInfo {
-                attempts: rm.attempts,
-                total_wait_ms: rm.total_retry_wait.as_millis() as u64,
-            });
-        let mut generation_data = LlmGenerationData::success_with_retry(
-            messages_for_event.clone(),
-            tools_summary,
-            Some(text.clone()).filter(|s| !s.is_empty()),
-            finalized_tool_calls.clone(),
-            runtime_agent.model.clone(),
-            Some(model_with_provider.provider_type.to_string()),
-            usage.clone(),
-            Some(llm_duration_ms),
-            time_to_first_token_ms,
-            finish_reasons,
-            response_id.clone(),
-            retry_info,
-        )
-        .with_response_model(served);
-
-        // Add compaction info if compaction was performed. Compaction is a
-        // separate billable model call on the same turn. Preserve whether the
-        // generation cost was actual or estimated while recording their combined
-        // best-effort cost for budgets and usage totals. `compaction.cost_usd`
-        // keeps the split visible (EVE-895).
+        let mut generation_data = outcome
+            .apply(LlmGenerationData::success_with_retry(
+                messages_for_event.clone(),
+                tools_summary,
+                Some(text.clone()).filter(|s| !s.is_empty()),
+                finalized_tool_calls.clone(),
+                runtime_agent.model.clone(),
+                Some(model_with_provider.provider_type.to_string()),
+                usage.clone(),
+                Some(llm_duration_ms),
+                time_to_first_token_ms,
+                Some(vec![outcome.finish_reason.clone()]),
+                response_id.clone(),
+                generation_outcome::retry_info(meta),
+            ))
+            .with_response_model(served);
         if let Some(info) = compaction_info {
-            if let Some(compaction_cost) = info.cost_usd {
-                match generation_data.metadata.usage.as_mut() {
-                    Some(usage) => {
-                        add_compaction_cost(usage, compaction_cost);
-                    }
-                    // The generation itself reported no usage — a provider may
-                    // price compaction without returning usage on the retry.
-                    // Carry the cost on a usage record of its own rather than
-                    // dropping it, which is the failure this fixes.
-                    None => {
-                        generation_data.metadata.usage = Some(crate::engine::events::TokenUsage {
-                            input_tokens: 0,
-                            output_tokens: 0,
-                            cache_read_tokens: None,
-                            cache_creation_tokens: None,
-                            actual_cost_usd: Some(compaction_cost),
-                            estimated_cost_usd: None,
-                            effective_cost_usd: None,
-                        });
-                    }
-                }
-            }
-            generation_data = generation_data.with_compaction(info);
+            generation_data = generation_outcome::with_compaction(generation_data, info);
         }
 
         if let Some(request_options) =
@@ -2592,12 +2568,12 @@ impl ReasonAtom {
                 ))
                 .await?;
         }
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %context.turn_id,
-            has_tool_calls = %result.has_tool_calls,
-            tool_count = %result.tool_calls.len(),
-            "ReasonAtom: LLM call completed"
+        outcome.log_completed(
+            &session_id,
+            &context.turn_id,
+            model_with_provider.provider_type.as_str(),
+            &runtime_agent.model,
+            result.tool_calls.len(),
         );
 
         Ok(result)

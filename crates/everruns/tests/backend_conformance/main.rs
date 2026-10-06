@@ -14,7 +14,8 @@
 //! - `turns`: a single turn, a tool loop, steering into the running turn
 //!   versus starting the next one, and cancel then the next turn.
 //! - `parked`: a turn parks on a client-side tool call and its result resumes
-//!   it, through a session's AG-UI runs and directly on the backend seam.
+//!   it, through a session's AG-UI runs and directly on the turn entry point,
+//!   with input handed to the backend and with input the caller stored.
 //! - `interrupted`: a turn whose act is cut off when its session goes away,
 //!   then `resume_interrupted_turn` on the reopened session finishes it.
 //!

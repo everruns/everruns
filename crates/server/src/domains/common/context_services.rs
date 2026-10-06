@@ -149,7 +149,7 @@ impl Ctx {
         self
     }
 
-    pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
+    pub fn with_runner(mut self, runner: Arc<dyn everruns_core::host::TurnBackend>) -> Self {
         self.runner = Some(runner);
         self
     }

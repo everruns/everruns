@@ -17,4 +17,5 @@ mod message_metadata_test;
 mod mid_turn_reasoning_effort_test;
 mod prompt_budget_fixtures;
 mod reason_atom_test;
+mod reason_generation_outcome_test;
 mod seed_events_test;

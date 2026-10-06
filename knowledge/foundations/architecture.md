@@ -338,7 +338,7 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 ### Execution Layer
 
-1. **Runner Abstraction**: `AgentRunner` trait provides the execution backend interface
+1. **Turn Entry Point**: the server starts, continues and cancels turns through core's `TurnBackend` trait, the same one the framework uses; `DurableRunner` implements it ([Execution Backends](../framework/execution-backends.md))
 2. **Durable Execution**: Workflows run via PostgreSQL-backed durable execution engine
 3. **Workflow Isolation**: Backend concepts (workflow IDs, task queues) never exposed in public API
 4. **Event Streaming**: SSE for real-time event delivery via PostgreSQL-backed durable events plus `EventDelivery` push channels
