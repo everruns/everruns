@@ -163,8 +163,10 @@ to retry. A person in the UI or a script calling REST may omit it; the entry
 records `reason: null`. Agents are the callers whose intent is otherwise lost,
 and the ones that reliably follow an error's recovery hint.
 
-Rollout starts as a warning for agent callers and turns into the error once
-the Platform Chat eval passes (see Phases).
+Rollout starts as a warning for agent callers. The error is per organization,
+behind the `agent_change_reasons_required` Adoption flag, so it can be turned
+on once the Platform Chat eval passes and
+`everruns_entity_changes_without_reason_total` stays flat (see Phases).
 
 ## Revisions, restore and secrets
 
@@ -394,9 +396,10 @@ caller text and never authoritative; who and through what are.
 - Awaited, not spawned: losing history silently is the failure this design
   exists to prevent. If the history write fails after the mutation committed,
   the command still returns success, logs at error, and increments
-  `everruns_entity_history_write_failures_total`. Phase 4 moves the write into
-  the mutation's transaction through the same mechanism idempotency keys need
-  (their record must commit with the mutation too), which removes the gap.
+  `everruns_entity_history_write_failures_total`. Closing the gap needs the
+  write inside the mutation's transaction, which in turn needs services to
+  accept a caller's transaction; idempotency records have the same gap today.
+  Deferred until that mechanism exists (see Phases).
 - An idempotent replay returns the stored result and writes no second entry.
   The reason is not part of the idempotency fingerprint: a retrying agent may
   word it differently. The first reason wins and the replay response carries a
@@ -615,8 +618,11 @@ Each phase is one PR-sized change.
 5. **Retire agent versions.** Data migration into history, pins removed,
    `agent_revision` on sessions, version commands, UI tab and feature flag
    deleted. The Agent Versions concept is retired.
-6. **Enforcement and atomicity.** `reason_required` for agent callers; history
-   write inside the mutation transaction with idempotency records.
+6. **Enforcement and atomicity.** `reason_required` for agent callers
+   (implemented: warning by default, error behind the
+   `agent_change_reasons_required` flag). Writing history inside the mutation
+   transaction is deferred: idempotency records are claimed and completed
+   outside the mutation, so there is no shared transaction to join yet.
 7. **UI.** `EntityActionsMenu` on every entity page with History and manager
    notes, an
    optional reason field in save and delete dialogs (see UI).

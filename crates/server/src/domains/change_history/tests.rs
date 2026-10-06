@@ -320,3 +320,72 @@ fn no_command_takes_a_param_named_like_invocation_metadata() {
     }
     assert!(clashes.is_empty(), "{clashes:?}");
 }
+
+fn agent_session_ctx(reason: Option<&str>) -> Ctx {
+    ctx_with(OrgRole::Owner).with_change_intent(ChangeIntent {
+        reason: reason.map(Into::into),
+        surface: Some(ChangeSurface::Platform),
+        via_session_id: Some(Uuid::from_u128(99)),
+        ..ChangeIntent::default()
+    })
+}
+
+fn requiring_reasons(ctx: Ctx) -> Ctx {
+    reasons_required(ctx, true)
+}
+
+fn reasons_required(ctx: Ctx, required: bool) -> Ctx {
+    ctx.with_feature_flags(crate::records::FeatureFlags {
+        agent_change_reasons_required: required,
+        ..crate::records::FeatureFlags::default()
+    })
+}
+
+#[tokio::test]
+async fn an_agent_change_without_a_reason_goes_through_with_a_warning() {
+    let ctx = reasons_required(agent_session_ctx(None), false);
+    let created = run("create_workspace", json!({ "name": "kids" }), &ctx)
+        .await
+        .unwrap();
+    let notices = ctx.change_intent.as_ref().unwrap().notices.take();
+    assert!(
+        notices.iter().any(|n| n.contains("need a reason")),
+        "{notices:?}"
+    );
+    let entry = history(&ctx, created["id"].as_str().unwrap())
+        .await
+        .remove(0);
+    assert_eq!(entry["reason"], Value::Null);
+}
+
+#[tokio::test]
+async fn an_org_that_requires_reasons_refuses_an_agent_change_without_one() {
+    let ctx = requiring_reasons(agent_session_ctx(None));
+    let err = run("create_workspace", json!({ "name": "kids" }), &ctx)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code.as_deref(), Some(super::REASON_REQUIRED));
+    assert!(
+        !err.allowed_actions.is_empty(),
+        "the error says how to retry"
+    );
+    let all = run("list_workspaces", json!({}), &ctx).await.unwrap();
+    assert_eq!(
+        all.as_array().map(Vec::len),
+        Some(0),
+        "nothing changed: {all}"
+    );
+
+    let with_reason = requiring_reasons(agent_session_ctx(Some("the user asked")));
+    run("create_workspace", json!({ "name": "kids" }), &with_reason)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn people_may_change_things_without_a_reason_even_when_agents_may_not() {
+    let ctx = requiring_reasons(ctx_with(OrgRole::Owner));
+    run("create_workspace", json!({ "name": "ops" }), &ctx)
+        .await
+        .unwrap();
+}
