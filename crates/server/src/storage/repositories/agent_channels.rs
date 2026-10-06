@@ -15,6 +15,7 @@ use super::super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelR
 use super::Database;
 use crate::errors::BadRequestError;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
@@ -395,14 +396,14 @@ impl Database {
     }
 
     pub async fn list_legacy_alias_channels(&self, app_id: Uuid) -> Result<Vec<AgentChannelRow>> {
-        let rows = sqlx::query_as::<_, AgentChannelRow>(
+        let rows = sqlx::query_as::<_, AgentChannelRow>(sql!(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
+            SELECT {AgentChannelRow}
             FROM agent_channels
             WHERE app_id = $1
             ORDER BY created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(app_id)
         .fetch_all(&self.pool)
         .await?;
@@ -422,13 +423,13 @@ impl Database {
         &self,
         public_id: &str,
     ) -> Result<Option<AgentChannelRow>> {
-        let row = sqlx::query_as::<_, AgentChannelRow>(
+        let row = sqlx::query_as::<_, AgentChannelRow>(sql!(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
+            SELECT {AgentChannelRow}
             FROM agent_channels
             WHERE public_id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(public_id)
         .fetch_optional(&self.pool)
         .await?;

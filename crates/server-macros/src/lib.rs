@@ -45,6 +45,26 @@ use syn::{
     Type, parse_macro_input,
 };
 
+mod columns;
+
+/// See [`columns`]: emits `pub const COLUMNS: &str` for a `FromRow` struct.
+#[proc_macro_derive(Columns, attributes(sqlx))]
+pub fn derive_columns(item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as syn::DeriveInput);
+    columns::expand(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// See [`columns::expand_sql`]: a static query with `{Row}` column lists.
+#[proc_macro]
+pub fn sql(item: TokenStream) -> TokenStream {
+    let lit = parse_macro_input!(item as syn::LitStr);
+    columns::expand_sql(lit)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
 #[proc_macro_attribute]
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as CommandArgs);

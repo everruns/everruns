@@ -1,8 +1,9 @@
 // Agent trigger models (agent-owned invocation triggers).
 
 use super::*;
+use everruns_server_macros::Columns;
 
-#[derive(Debug, Clone, FromRow)]
+#[derive(Debug, Clone, FromRow, Columns)]
 pub struct AgentTriggerRow {
     pub id: TriggerId,
     pub org_id: i64,

@@ -3,6 +3,7 @@
 use super::Database;
 use crate::storage::models::*;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -64,13 +65,13 @@ impl Database {
         session_id: Uuid,
         oid: &[u8],
     ) -> Result<Option<SessionGitObjectRow>> {
-        let row = sqlx::query_as::<_, SessionGitObjectRow>(
+        let row = sqlx::query_as::<_, SessionGitObjectRow>(sql!(
             r#"
-            SELECT session_id, oid, obj_type, size, data
+            SELECT {SessionGitObjectRow}
             FROM session_git_objects
             WHERE session_id = $1 AND oid = $2
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .bind(oid)
         .fetch_optional(&self.pool)
@@ -81,13 +82,13 @@ impl Database {
 
     /// Load all git objects for a session in a single query (avoids N+1).
     pub async fn load_all_git_objects(&self, session_id: Uuid) -> Result<Vec<SessionGitObjectRow>> {
-        let rows = sqlx::query_as::<_, SessionGitObjectRow>(
+        let rows = sqlx::query_as::<_, SessionGitObjectRow>(sql!(
             r#"
-            SELECT session_id, oid, obj_type, size, data
+            SELECT {SessionGitObjectRow}
             FROM session_git_objects
             WHERE session_id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
@@ -189,13 +190,13 @@ impl Database {
         session_id: Uuid,
         name: &str,
     ) -> Result<Option<SessionGitRefRow>> {
-        let row = sqlx::query_as::<_, SessionGitRefRow>(
+        let row = sqlx::query_as::<_, SessionGitRefRow>(sql!(
             r#"
-            SELECT session_id, name, target, is_symbolic
+            SELECT {SessionGitRefRow}
             FROM session_git_refs
             WHERE session_id = $1 AND name = $2
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .bind(name)
         .fetch_optional(&self.pool)
@@ -218,14 +219,14 @@ impl Database {
 
     /// List all git refs for a session.
     pub async fn list_git_refs(&self, session_id: Uuid) -> Result<Vec<SessionGitRefRow>> {
-        let rows = sqlx::query_as::<_, SessionGitRefRow>(
+        let rows = sqlx::query_as::<_, SessionGitRefRow>(sql!(
             r#"
-            SELECT session_id, name, target, is_symbolic
+            SELECT {SessionGitRefRow}
             FROM session_git_refs
             WHERE session_id = $1
             ORDER BY name
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
