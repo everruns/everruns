@@ -786,8 +786,8 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_session_file_read_rejects_other_users_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let owner_user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let owner_user_id = db.create_test_user(Uuid::new_v4()).await;
         let mut row = session_row(None);
         row.resolved_owner_user_id = Some(owner_user_id);
         let session = db.create_session(row).await.expect("create session");
@@ -825,8 +825,8 @@ mod tests {
     /// the private `/memory/user` subtree rather than failing the whole scan.
     #[tokio::test]
     async fn grep_redacts_private_memory_for_non_owner() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let owner_user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let owner_user_id = db.create_test_user(Uuid::new_v4()).await;
         let mut row = session_row(None);
         row.resolved_owner_user_id = Some(owner_user_id);
         let session = db.create_session(row).await.expect("create session");
@@ -884,8 +884,8 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_session_file_read_allows_owner_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let owner_user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let owner_user_id = db.create_test_user(Uuid::new_v4()).await;
         let mut row = session_row(None);
         row.resolved_owner_user_id = Some(owner_user_id);
         let session = db.create_session(row).await.expect("create session");
@@ -921,7 +921,7 @@ mod tests {
     /// writes must be rejected (archived workspaces are read-only).
     #[tokio::test]
     async fn legacy_session_file_write_rejects_archived_workspace() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -958,7 +958,7 @@ mod tests {
     /// `OrgSessionsManage` must be denied.
     #[tokio::test]
     async fn legacy_session_write_to_shared_workspace_requires_workspace_manage() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
 
         let workspace = db
@@ -966,7 +966,7 @@ mod tests {
                 DEFAULT_ORG_ID,
                 CreateWorkspaceRow {
                     id: None,
-                    public_id: format!("workspace_{:032x}", 1u128),
+                    public_id: format!("wsp_{:032x}", 1u128),
                     name: "shared".to_string(),
                     description: None,
                     owner_principal_id: None,
@@ -1019,7 +1019,7 @@ mod tests {
         path: &str,
         content: &str,
     ) -> (Arc<StorageBackend>, crate::storage::models::SessionRow, Ctx) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -1147,9 +1147,9 @@ mod tests {
 
     #[tokio::test]
     async fn search_excludes_private_memory_before_result_accounting() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut row = session_row(None);
-        row.resolved_owner_user_id = Some(Uuid::new_v4());
+        row.resolved_owner_user_id = Some(db.create_test_user(Uuid::new_v4()).await);
         let session = db.create_session(row).await.expect("create session");
         crate::domains::session_files::WorkspaceFileService::new(db.clone())
             .create_file(
@@ -1208,7 +1208,7 @@ mod tests {
     /// are now the only path to it.
     #[tokio::test]
     async fn commands_address_the_sessions_workspace_not_its_id() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
 
         // A workspace owner, then a second session attached to that workspace.
         let owner = db
@@ -1266,7 +1266,7 @@ mod tests {
     /// all inside the entitlement, none of them being a session runtime.
     #[tokio::test]
     async fn undeclared_internal_caller_cannot_read_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -1307,7 +1307,7 @@ mod tests {
     /// private store).
     #[tokio::test]
     async fn declared_session_runtime_reads_its_own_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -1350,7 +1350,7 @@ mod tests {
     /// declared session is that it is checked against the session being read.
     #[tokio::test]
     async fn declaring_one_session_does_not_open_anothers_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let victim = db
             .create_session(session_row(None))
             .await

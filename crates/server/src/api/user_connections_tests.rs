@@ -127,7 +127,7 @@ fn test_org(user_id: Uuid) -> ResolvedOrg {
 }
 
 async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uuid, String, Uuid) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = Arc::new(EncryptionService::new(TEST_KEY, &[]).unwrap());
     let auth_config = AuthConfig::default();
     let auth = AuthState::builtin(auth_config.clone(), db.clone());
@@ -161,7 +161,7 @@ async fn identity_oauth_fixture(configured: bool) -> (AppState, ResolvedOrg, Uui
             name: "linear".to_string(),
             description: None,
             url: "https://8.8.8.8/mcp".to_string(),
-            transport_type: "streamable_http".to_string(),
+            transport_type: "http".to_string(),
             api_key_encrypted: None,
             headers: None,
             settings: Some(serde_json::json!({
@@ -831,7 +831,7 @@ mod github_installation_ownership {
     const ATTACKER_INSTALLATION: i64 = 1717;
 
     async fn github_state(github: &MockServer) -> AppState {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let encryption = Arc::new(EncryptionService::new(TEST_KEY, &[]).unwrap());
         let auth_config = AuthConfig {
             github_connection: Some(GitHubConnectionConfig {

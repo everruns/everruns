@@ -765,7 +765,7 @@ mod tests {
     }
 
     pub(super) fn provisioner(server: &MockServer) -> (SlackApiProvisioner, Arc<StorageBackend>) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         (
             SlackApiProvisioner::with_api_base(db.clone(), encryption(), &server.uri())
                 .expect("provisioner"),

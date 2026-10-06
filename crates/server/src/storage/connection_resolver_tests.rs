@@ -1,6 +1,5 @@
 use super::*;
 use crate::kernel_imports::{DEFAULT_ORG_ID, PrincipalId};
-use crate::storage::InMemoryDatabase;
 use crate::storage::models::{CreateMcpServerRow, CreateSessionRow, CreateUserConnectionRow};
 use everruns_core::connection_services::UserConnectionResolver;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -92,8 +91,7 @@ fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
 async fn setup(
     owner_user_id: Option<Uuid>,
 ) -> (StorageBackend, EncryptionService, SessionId, Uuid, String) {
-    let memory = Arc::new(InMemoryDatabase::new());
-    let db = StorageBackend::InMemory(memory);
+    let db = StorageBackend::test_database();
     let server_id = Uuid::now_v7();
     db.create_mcp_server_with_id(
         DEFAULT_ORG_ID,
@@ -102,7 +100,7 @@ async fn setup(
             name: "resend".to_string(),
             description: None,
             url: "https://mcp.resend.com/mcp".to_string(),
-            transport_type: "streamable_http".to_string(),
+            transport_type: "http".to_string(),
             api_key_encrypted: None,
             headers: None,
             settings: Some(serde_json::json!({
@@ -117,6 +115,7 @@ async fn setup(
     .await
     .unwrap();
     if let Some(id) = owner_user_id {
+        db.create_test_user(id).await;
         seed_runtime_user(&db, VirtualUserId::from_uuid(id), "end_user").await;
     }
     let session = db
@@ -187,8 +186,7 @@ async fn mcp_setup(
     with_user_grant: bool,
     with_identity_grant: bool,
 ) -> McpFixture {
-    let memory = Arc::new(InMemoryDatabase::new());
-    let db = StorageBackend::InMemory(memory);
+    let db = StorageBackend::test_database();
     let encryption = encryption();
     let server_id = Uuid::now_v7();
     db.create_mcp_server_with_id(
@@ -198,7 +196,7 @@ async fn mcp_setup(
             name: "linear".to_string(),
             description: None,
             url: "https://mcp.linear.app/mcp".to_string(),
-            transport_type: "streamable_http".to_string(),
+            transport_type: "http".to_string(),
             api_key_encrypted: None,
             headers: None,
             settings: Some(serde_json::json!({
@@ -213,7 +211,7 @@ async fn mcp_setup(
     .await
     .unwrap();
 
-    let user_id = Uuid::now_v7();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
     let identity_id = VirtualUserId::from_seed(7);
     seed_runtime_user(&db, VirtualUserId::from_uuid(user_id), "end_user").await;
     seed_runtime_user(&db, identity_id, "service").await;
@@ -569,7 +567,7 @@ async fn a_non_mcp_provider_never_resolves_through_the_acts_as_path() {
 #[tokio::test]
 async fn two_different_invoking_users_reach_the_remote_as_the_same_identity() {
     let first = mcp_setup(ATTENDED, true, true).await;
-    let second_user_id = Uuid::now_v7();
+    let second_user_id = first.db.create_test_user(Uuid::now_v7()).await;
     let second_principal_id = PrincipalId::from_seed(43);
     first
         .db
@@ -1216,12 +1214,12 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
         .await
         .unwrap()
         .unwrap();
-    if let StorageBackend::InMemory(db) = &fixture.db {
-        let mut rows = db.sessions.write();
-        let row = rows.get_mut(&fixture.session_id).unwrap();
-        row.source = "playground".into();
-        row.playground_user_id = Some(subject);
-    }
+    sqlx::query("UPDATE sessions SET source = 'playground', playground_user_id = $2 WHERE id = $1")
+        .bind(fixture.session_id)
+        .bind(subject)
+        .execute(fixture.db.database().pool())
+        .await
+        .unwrap();
     let resolver = resolver_for(&fixture);
     assert_eq!(
         resolver

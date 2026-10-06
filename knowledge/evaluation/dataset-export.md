@@ -163,7 +163,7 @@ See `knowledge/security/threat-model.md` (TM-OBS-008) for the threat review.
   (harness/agent/session), which the current export path does not plumb; the
   default `CompactionConfig` is used until then.
 - Optional cost (`cost_usd`) via reporting-fact join. `fact_llm_generation`
-  stores tokens, not a cost column, and is Postgres-only (absent in-memory), so
+  stores tokens, not a cost column, and is Postgres-only, so
   a faithful cost join needs a model-pricing lookup rather than a straight join.
 - Preference-pair / DPO dataset construction.
 - Continuous capture from production sessions (opt-in).

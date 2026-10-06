@@ -108,7 +108,7 @@ mod tests {
     }
 
     async fn make_ctx(role: OrgRole) -> Ctx {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         db.create_audit_log(CreateAuditLogRow {
             org_id: DEFAULT_ORG_ID,
             actor_id: None,

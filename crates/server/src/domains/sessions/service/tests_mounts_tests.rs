@@ -13,7 +13,7 @@ use super::tests_support::*;
 
 #[tokio::test]
 async fn create_rejects_harness_from_another_org() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let other_org_id = create_second_org(&db).await;
@@ -58,7 +58,7 @@ async fn create_rejects_harness_from_another_org() {
 
 #[tokio::test]
 async fn create_rejects_model_from_another_org() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -104,7 +104,7 @@ async fn create_rejects_model_from_another_org() {
 
 #[tokio::test]
 async fn get_skips_foreign_harness_and_agent_capability_features() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let other_org_id = create_second_org(&db).await;
@@ -228,7 +228,7 @@ async fn get_skips_foreign_harness_and_agent_capability_features() {
 // tools and degrading into a different execution environment.
 #[tokio::test]
 async fn create_rejects_harness_with_unavailable_builtin_capability() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     // Empty registry stands in for a deployment where `container_sandbox` is
     // feature-gated off, so it is absent from the capability registry.
     let registry = CapabilityRegistry::new();
@@ -289,7 +289,7 @@ async fn create_rejects_harness_with_unavailable_builtin_capability() {
 
 #[tokio::test]
 async fn create_rejects_high_risk_harness_capabilities_for_members() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut registry = CapabilityRegistry::new();
     registry.register(TestHighRiskCapability);
     let session_service = SessionService::with_registry(db.clone(), registry);
@@ -358,7 +358,7 @@ async fn create_rejects_high_risk_harness_capabilities_for_members() {
 async fn create_rejects_declarative_capability_with_high_risk_dependency_for_members() {
     use crate::storage::models::CreateDeclarativeCapabilityRow;
 
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut registry = CapabilityRegistry::new();
     registry.register(TestHighRiskCapability);
     let session_service = SessionService::with_registry(db.clone(), registry);
@@ -447,7 +447,7 @@ async fn create_rejects_declarative_capability_with_high_risk_dependency_for_mem
 
 #[tokio::test]
 async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let file_service = WorkspaceFileService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
@@ -564,7 +564,7 @@ async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() 
 
 #[tokio::test]
 async fn workspace_memory_mount_materializes_source_memory_readonly() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let file_service = WorkspaceFileService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
@@ -659,7 +659,7 @@ async fn workspace_memory_mount_materializes_source_memory_readonly() {
 
 #[tokio::test]
 async fn workspace_memory_mount_rejects_readwrite_source_volume() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -728,7 +728,7 @@ async fn workspace_memory_mount_rejects_readwrite_source_volume() {
 
 #[tokio::test]
 async fn update_rejects_reserved_routing_tags_for_external_callers() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -809,7 +809,7 @@ async fn update_rejects_reserved_routing_tags_for_external_callers() {
 
 #[tokio::test]
 async fn create_rejects_reserved_routing_tags_for_external_callers() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -869,7 +869,7 @@ async fn create_rejects_reserved_routing_tags_for_external_callers() {
 
 #[tokio::test]
 async fn internal_callers_can_set_reserved_routing_tags() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -936,7 +936,7 @@ async fn internal_callers_can_set_reserved_routing_tags() {
 
 #[tokio::test]
 async fn app_session_creation_enforces_total_session_cap() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
@@ -972,7 +972,7 @@ async fn app_session_creation_enforces_total_session_cap() {
         .default_owner_principal(&caller, None)
         .await
         .unwrap();
-    let app_id = Uuid::new_v4();
+    let app_id = db.create_test_app(1).await;
 
     svc.create_from_app(
         &caller,
@@ -982,7 +982,7 @@ async fn app_session_creation_enforces_total_session_cap() {
         Some(app_id),
         AgentVersionPolicy::Default,
         None,
-        Some(Uuid::new_v4()),
+        None,
         None,
         owner_principal.id,
         owner_principal.resolved_user_id,
@@ -1001,7 +1001,7 @@ async fn app_session_creation_enforces_total_session_cap() {
             Some(app_id),
             AgentVersionPolicy::Default,
             None,
-            Some(Uuid::new_v4()),
+            None,
             None,
             owner_principal.id,
             owner_principal.resolved_user_id,
@@ -1027,7 +1027,7 @@ async fn concurrent_session_cap_enforced() {
     use crate::errors::BadRequestError;
     use crate::storage::models::UpdateSession;
 
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
@@ -1108,7 +1108,7 @@ async fn concurrent_session_cap_enforced() {
 
 #[tokio::test]
 async fn session_start_hook_fires_on_create() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut registry = CapabilityRegistry::new();
     registry.register(everruns_capabilities::capabilities::UserHooksCapability);
     let session_service = SessionService::with_registry(db.clone(), registry);
@@ -1149,7 +1149,7 @@ async fn session_start_hook_fires_on_create() {
 
 #[tokio::test]
 async fn session_end_hook_fires_on_delete_without_blocking() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut registry = CapabilityRegistry::new();
     registry.register(everruns_capabilities::capabilities::UserHooksCapability);
     let session_service = SessionService::with_registry(db.clone(), registry);
@@ -1252,7 +1252,7 @@ async fn memory_test_caller(db: &Arc<StorageBackend>, email: &str) -> Caller {
 /// two threads of one operator memory, not two private forks of it.
 #[tokio::test]
 async fn shared_agent_memory_is_visible_across_sessions() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "shared-memory@example.com").await;
     let _ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -1349,7 +1349,7 @@ async fn shared_agent_memory_is_visible_across_sessions() {
 /// notes cannot leak into another's namespace.
 #[tokio::test]
 async fn shared_memory_is_limited_to_harnesses_that_declare_it() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "no-shared-memory@example.com").await;
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -1387,7 +1387,7 @@ async fn shared_memory_is_limited_to_harnesses_that_declare_it() {
 /// follows an agent across its sessions.
 #[tokio::test]
 async fn agent_memory_is_visible_across_sessions_of_one_agent() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = memory_test_caller(&db, "agent-memory@example.com").await;
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -1465,7 +1465,7 @@ async fn agent_memory_is_visible_across_sessions_of_one_agent() {
 /// private notes can never be served through another's shared workspace.
 #[tokio::test]
 async fn a_workspace_without_a_session_gets_no_memory_mounts() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let files = WorkspaceFileService::new(db.clone());
     let unrelated = Uuid::new_v4();
 

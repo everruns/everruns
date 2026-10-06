@@ -9,7 +9,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn new_built_in_names_preserve_colliding_custom_harnesses() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     db.create_organization_with_id(
         DEFAULT_ORG_ID,
         CreateOrganizationRow {
@@ -108,7 +108,7 @@ async fn new_built_in_names_preserve_colliding_custom_harnesses() {
 
 #[tokio::test]
 async fn upgrade_pins_inherited_agents_without_changing_legacy_tools() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     db.create_organization_with_id(
         DEFAULT_ORG_ID,
         CreateOrganizationRow {
@@ -286,7 +286,7 @@ async fn worker_assignment_checks_inherited_high_risk_capabilities() {
     use crate::domains::common::Ctx;
     use everruns_core::{Caller, OrgRole};
     use std::sync::Arc;
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     db.create_organization_with_id(
         DEFAULT_ORG_ID,
         CreateOrganizationRow {
@@ -331,7 +331,7 @@ async fn worker_assignment_checks_inherited_high_risk_capabilities() {
 
 #[tokio::test]
 async fn startup_prepares_harness_upgrade_before_background_seed() {
-    let db = std::sync::Arc::new(StorageBackend::in_memory());
+    let db = std::sync::Arc::new(StorageBackend::test_database());
     db.create_organization_with_id(
         DEFAULT_ORG_ID,
         CreateOrganizationRow {

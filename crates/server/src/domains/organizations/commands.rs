@@ -164,7 +164,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_org_returns_owning_org_when_caller_is_member() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         crate::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
@@ -218,7 +218,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_org_returns_not_found_for_non_member() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
 
         // Other-org agent: created in org 42 with no membership for the caller.
         let agent_public_id = "agent_00000000000000000000000000000088".to_string();
@@ -269,7 +269,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_org_returns_not_found_for_unknown_prefix() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = Ctx::minimal_for_test(seed_caller(crate::records::ANONYMOUS_USER_ID), db, None);
 
         let err = crate::domains::common::dispatch(
@@ -293,7 +293,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_orgs_dispatch_accepts_empty_object_params() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         crate::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,

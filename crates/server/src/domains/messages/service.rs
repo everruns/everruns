@@ -917,7 +917,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_turn_cap_enforced() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
@@ -967,7 +967,7 @@ mod tests {
 
     #[tokio::test]
     async fn parked_turn_resumes_at_new_turn_capacity() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
@@ -1014,7 +1014,7 @@ mod tests {
 
     #[tokio::test]
     async fn parked_turn_event_write_failure_preserves_plan_for_retry() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = MessageService::new(
             db.clone(),
             Arc::new(NoopRunner),
@@ -1093,7 +1093,7 @@ mod tests {
 
     #[tokio::test]
     async fn parked_turn_partial_commit_retry_is_idempotent() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = MessageService::new(
             db.clone(),
             Arc::new(FailOnceResumeRunner {
@@ -1174,7 +1174,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_message_without_user_id_uses_session_owner_participant_metadata() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
@@ -1239,7 +1239,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_message_rejoins_user_who_left_session() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
@@ -1351,7 +1351,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_turn_cap_reserves_started_session_before_persisting() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 

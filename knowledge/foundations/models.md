@@ -169,7 +169,7 @@ See `crates/server/src/storage/models.rs` for the `ImageRow` type.
 
 **Storage:**
 - PostgreSQL: Full images in BYTEA columns
-- In-memory (DEV_MODE): Lost on restart
+- DEV_MODE: embedded PostgreSQL, lost on exit
 - Future: S3 storage planned
 
 ### Image Resolution

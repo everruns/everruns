@@ -43,7 +43,7 @@ struct ActsAsArrangement {
 
 impl ActsAsArrangement {
     async fn new(authenticated: bool) -> Self {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,

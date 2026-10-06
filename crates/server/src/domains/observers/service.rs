@@ -426,7 +426,7 @@ mod tests {
     // public ids — not ones fabricated from the internal UUID.
     #[tokio::test]
     async fn list_scores_returns_stored_public_ids() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = ObserverService::new(db.clone());
         let caller = Caller::internal(1);
 
@@ -451,7 +451,7 @@ mod tests {
                 public_id: score_public.to_string(),
                 observer_id: observer.internal_id,
                 scorer_key: "k".into(),
-                session_id: Uuid::now_v7(),
+                session_id: db.create_test_session().await.uuid(),
                 turn_id: "turn_x".into(),
                 agent_id: None,
                 agent_version_id: None,
@@ -535,7 +535,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_accepts_judge_with_accessible_model() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = ObserverService::new(db.clone());
         let caller = Caller::internal(1);
         let model = create_model(&db, 1, true).await;
@@ -549,7 +549,7 @@ mod tests {
     async fn create_accepts_judge_without_model() {
         // No explicit model means "use the org default" at scoring time, so it
         // must be accepted even when the org has no model configured here.
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = ObserverService::new(db.clone());
         let caller = Caller::internal(1);
 
@@ -560,7 +560,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_rejects_judge_with_unknown_model() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = ObserverService::new(db.clone());
         let caller = Caller::internal(1);
 
@@ -577,7 +577,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_rejects_judge_with_disabled_model() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = ObserverService::new(db.clone());
         let caller = Caller::internal(1);
         let model = create_model(&db, 1, false).await;
@@ -592,7 +592,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_rejects_model_from_another_org() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = ObserverService::new(db.clone());
         // Model lives in org 2; caller is org 1 and must not be able to use it.
         let other_model = create_model(&db, 2, true).await;
@@ -611,7 +611,7 @@ mod tests {
 
     #[tokio::test]
     async fn update_rechecks_model_access_when_scorers_change() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let svc = ObserverService::new(db.clone());
         let caller = Caller::internal(1);
         let observer = svc

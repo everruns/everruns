@@ -421,7 +421,7 @@ mod tests {
     async fn test_resolve_api_key_with_encrypted_key() {
         use everruns_core::DEFAULT_ORG_ID;
 
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let encryption = Arc::new(
             EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
@@ -455,7 +455,7 @@ mod tests {
     async fn test_resolve_api_key_no_encryption_service_returns_none() {
         use everruns_core::DEFAULT_ORG_ID;
 
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, None);
 
@@ -482,7 +482,7 @@ mod tests {
     async fn test_resolve_api_key_no_db_key_returns_none() {
         use everruns_core::DEFAULT_ORG_ID;
 
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, None);
 
@@ -511,22 +511,18 @@ mod tests {
     async fn test_sync_all_skips_keyless_providers_across_orgs() {
         use everruns_core::DEFAULT_ORG_ID;
 
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, None);
 
         // DEFAULT_ORG_ID (1) is pre-created by in-memory store. Create a second org.
         let org2 = db
-            .create_organization_with_id(
-                2,
-                CreateOrganizationRow {
-                    public_id: "org-2".to_string(),
-                    name: "Org 2".to_string(),
-                    created_by: None,
-                },
-            )
+            .create_organization(CreateOrganizationRow {
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
+                name: "Org 2".to_string(),
+                created_by: None,
+            })
             .await
-            .unwrap()
             .unwrap();
 
         // Create providers in each org
@@ -572,7 +568,7 @@ mod tests {
     #[tokio::test]
     async fn test_sync_all_no_providers_returns_empty() {
         // In-memory store has DEFAULT_ORG pre-created but no providers
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db, registry, None);
 
@@ -584,7 +580,7 @@ mod tests {
     async fn test_sync_all_with_encrypted_keys_across_orgs() {
         use everruns_core::DEFAULT_ORG_ID;
 
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let encryption = Arc::new(
             EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
@@ -594,16 +590,12 @@ mod tests {
 
         // DEFAULT_ORG_ID pre-exists; create second org
         let org2 = db
-            .create_organization_with_id(
-                2,
-                CreateOrganizationRow {
-                    public_id: "org-2".to_string(),
-                    name: "Org 2".to_string(),
-                    created_by: None,
-                },
-            )
+            .create_organization(CreateOrganizationRow {
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
+                name: "Org 2".to_string(),
+                created_by: None,
+            })
             .await
-            .unwrap()
             .unwrap();
 
         let enc_key1 = encryption.encrypt_string("sk-org1-key").unwrap();
@@ -657,7 +649,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_api_key_corrupted_encrypted_data_fails() {
         use everruns_core::DEFAULT_ORG_ID;
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let encryption = Arc::new(
             EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
@@ -686,7 +678,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_api_key_wrong_key_id_fails() {
         use everruns_core::DEFAULT_ORG_ID;
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let enc_v1 = Arc::new(
             EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
@@ -723,7 +715,7 @@ mod tests {
     #[tokio::test]
     async fn sync_all_provider_not_visible_cross_org() {
         use everruns_core::DEFAULT_ORG_ID;
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, None);
         // Keyed: a provider with no key is skipped entirely, which would make
@@ -742,14 +734,11 @@ mod tests {
             .await
             .unwrap();
         let _org2 = db
-            .create_organization_with_id(
-                2,
-                CreateOrganizationRow {
-                    public_id: "org-2".to_string(),
-                    name: "Org 2".to_string(),
-                    created_by: None,
-                },
-            )
+            .create_organization(CreateOrganizationRow {
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
+                name: "Org 2".to_string(),
+                created_by: None,
+            })
             .await
             .unwrap();
         let results = service.sync_all().await.unwrap();

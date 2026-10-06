@@ -4,7 +4,6 @@ use everruns_contracts::typed_id::SessionId;
 use everruns_core::message_filter::MessageQuery;
 
 use super::StorageBackend;
-use super::memory::InMemoryDatabase;
 use super::models::*;
 use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
@@ -13,7 +12,7 @@ use super::repositories::Database;
 pub const MESSAGE_SAFETY_LIMIT: usize = 2_000;
 
 /// Shared storage contract for repository operations that must stay identical
-/// across PostgreSQL and in-memory backends.
+/// for every caller of the storage layer.
 #[async_trait]
 pub trait Repository: Send + Sync {
     async fn create_principal(&self, input: CreatePrincipalRow) -> Result<PrincipalRow>;
@@ -123,77 +122,6 @@ impl Repository for Database {
         reason: &str,
     ) -> Result<Vec<ReportingOutboxRow>> {
         Database::list_reporting_outbox(self, org_id, source_type, source_id, reason).await
-    }
-}
-
-#[async_trait]
-impl Repository for InMemoryDatabase {
-    async fn create_principal(&self, input: CreatePrincipalRow) -> Result<PrincipalRow> {
-        InMemoryDatabase::create_principal(self, input).await
-    }
-
-    async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
-        InMemoryDatabase::create_session(self, input).await
-    }
-
-    async fn create_event(&self, input: CreateEventRow) -> Result<EventRow> {
-        InMemoryDatabase::create_event(self, input).await
-    }
-
-    async fn list_message_events_limited(
-        &self,
-        session_id: SessionId,
-        limit: Option<i32>,
-    ) -> Result<Vec<EventRow>> {
-        InMemoryDatabase::list_message_events_limited(self, session_id, limit).await
-    }
-
-    async fn list_message_events_filtered(&self, query: &MessageQuery) -> Result<Vec<EventRow>> {
-        InMemoryDatabase::list_message_events_filtered(self, query).await
-    }
-
-    async fn create_provider(&self, org_id: i64, input: CreateProviderRow) -> Result<ProviderRow> {
-        InMemoryDatabase::create_provider(self, org_id, input).await
-    }
-
-    async fn list_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
-        InMemoryDatabase::list_providers(self, org_id).await
-    }
-
-    async fn upsert_agent_by_name(
-        &self,
-        org_id: i64,
-        input: CreateAgentRow,
-    ) -> Result<(AgentRow, bool)> {
-        InMemoryDatabase::upsert_agent_by_name(self, org_id, input).await
-    }
-
-    async fn create_budget(&self, input: CreateBudgetRow) -> Result<BudgetRow> {
-        InMemoryDatabase::create_budget(self, input).await
-    }
-
-    async fn create_usage_journal_entry(
-        &self,
-        input: CreateUsageJournalRow,
-    ) -> Result<UsageJournalRow> {
-        InMemoryDatabase::create_usage_journal_entry(self, input).await
-    }
-
-    async fn create_usage_ledger_entry(
-        &self,
-        input: CreateUsageLedgerRow,
-    ) -> Result<(UsageLedgerRow, Option<BudgetRow>)> {
-        InMemoryDatabase::create_usage_ledger_entry(self, input).await
-    }
-
-    async fn list_reporting_outbox(
-        &self,
-        org_id: i64,
-        source_type: &str,
-        source_id: &str,
-        reason: &str,
-    ) -> Result<Vec<ReportingOutboxRow>> {
-        InMemoryDatabase::list_reporting_outbox(self, org_id, source_type, source_id, reason).await
     }
 }
 

@@ -1774,7 +1774,7 @@ mod resources_read_policy_tests {
     }
 
     fn deny_all_ctx() -> crate::domains::common::Ctx {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capabilities = Arc::new(CapabilityService::new(db.clone(), None));
         crate::domains::common::Ctx::new(
             test_caller(),

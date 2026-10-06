@@ -1032,7 +1032,7 @@ fn test_should_not_skip_thread_reply_for_human_message() {
 #[tokio::test]
 async fn test_inject_thread_context_empty_replies() {
     // When fetch returns empty, inject_thread_context should succeed as no-op
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
     let state = SlackState::new(
         db,

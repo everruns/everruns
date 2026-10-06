@@ -565,7 +565,7 @@ impl TestServer {
         let (db, pool, durable_store, isolated_database) = match mode {
             TestMode::Postgres => {
                 let pool = create_test_pool().await;
-                let db = Arc::new(StorageBackend::Postgres(
+                let db = Arc::new(StorageBackend::from_database(
                     everruns_server::storage::Database::new(pool.clone()),
                 ));
                 let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
@@ -579,9 +579,7 @@ impl TestServer {
                 // rows by foreign key (trigger schedules, for one).
                 let database = isolated_test_database().await;
                 let pool = database.pool.clone();
-                let db = Arc::new(StorageBackend::Postgres(
-                    everruns_server::storage::Database::new(pool.clone()),
-                ));
+                let db = Arc::new(database.backend());
                 let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
                     Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
                 (db, pool, durable_store, Some(Arc::new(database)))

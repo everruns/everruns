@@ -314,7 +314,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_creates_disabled_anchor_and_assigns_provider_id() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut definition = oauth_definition("resend", "https://mcp.resend.com/mcp");
         sync_plugin_oauth_anchors(&db, 1, "resend", &mut definition)
             .await
@@ -351,7 +351,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_is_idempotent_and_reuses_anchor() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut first = oauth_definition("resend", "https://mcp.resend.com/mcp");
         sync_plugin_oauth_anchors(&db, 1, "resend", &mut first)
             .await
@@ -378,7 +378,7 @@ mod tests {
 
     #[tokio::test]
     async fn changed_url_rotates_provider_id() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut first = oauth_definition("resend", "https://mcp.resend.com/mcp");
         sync_plugin_oauth_anchors(&db, 1, "resend", &mut first)
             .await
@@ -404,7 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_removes_anchor_when_server_dropped() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut definition = oauth_definition("resend", "https://mcp.resend.com/mcp");
         sync_plugin_oauth_anchors(&db, 1, "resend", &mut definition)
             .await
@@ -426,7 +426,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_removes_all_anchors() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut definition = oauth_definition("resend", "https://mcp.resend.com/mcp");
         sync_plugin_oauth_anchors(&db, 1, "resend", &mut definition)
             .await
@@ -443,7 +443,7 @@ mod tests {
 
     #[tokio::test]
     async fn anchor_name_avoids_collision_with_existing_server() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         db.create_mcp_server(
             1,
             CreateMcpServerRow {

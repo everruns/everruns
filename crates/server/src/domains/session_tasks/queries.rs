@@ -141,19 +141,17 @@ pub async fn tool_context_for_ctx(
     // --- Assemble ToolContext ---
     let registry: Arc<dyn SessionTaskRegistry> = Arc::new(registry_for_ctx(ctx));
 
-    let storage_store: Arc<dyn SessionStorageStore> = match ctx.db.as_ref() {
-        StorageBackend::InMemory(mem_db) => mem_db.clone() as Arc<dyn SessionStorageStore>,
-        StorageBackend::Postgres(db) => {
-            if let Some(enc) = &ctx.encryption {
-                Arc::new(create_db_session_storage_store(
-                    db.clone(),
-                    enc.as_ref().clone(),
-                )) as Arc<dyn SessionStorageStore>
-            } else {
-                Arc::new(create_db_session_storage_store_without_encryption(
-                    db.clone(),
-                )) as Arc<dyn SessionStorageStore>
-            }
+    let storage_store: Arc<dyn SessionStorageStore> = {
+        let db = ctx.db.database();
+        if let Some(enc) = &ctx.encryption {
+            Arc::new(create_db_session_storage_store(
+                db.clone(),
+                enc.as_ref().clone(),
+            )) as Arc<dyn SessionStorageStore>
+        } else {
+            Arc::new(create_db_session_storage_store_without_encryption(
+                db.clone(),
+            )) as Arc<dyn SessionStorageStore>
         }
     };
 

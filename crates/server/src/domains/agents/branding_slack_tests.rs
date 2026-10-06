@@ -105,10 +105,11 @@ async fn wait_for(provisioner: &Provisioner, count: usize) -> Vec<Identity> {
 
 #[tokio::test]
 async fn branding_update_is_scoped_and_failure_does_not_block_other_apps() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let provisioner = Arc::new(Provisioner::default());
-    let ctx =
-        ctx_with_role(db.clone(), OrgRole::Owner).with_slack_provisioner(Some(provisioner.clone()));
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner)
+        .await
+        .with_slack_provisioner(Some(provisioner.clone()));
     let agent = CreateAgent(basic_agent_request("branding-agent"))
         .run(&ctx)
         .await
@@ -185,9 +186,11 @@ async fn branding_update_is_scoped_and_failure_does_not_block_other_apps() {
 
 #[tokio::test]
 async fn branding_upsert_uses_name_fallback_and_rollback_restores_identity() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let provisioner = Arc::new(Provisioner::default());
-    let ctx = ctx_with_role(db, OrgRole::Owner).with_slack_provisioner(Some(provisioner.clone()));
+    let ctx = ctx_with_role(db, OrgRole::Owner)
+        .await
+        .with_slack_provisioner(Some(provisioner.clone()));
     let mut req = basic_agent_request("original-slug");
     req.display_name = Some("Original display".into());
     req.description = Some("Original description".into());
@@ -232,10 +235,11 @@ async fn branding_upsert_uses_name_fallback_and_rollback_restores_identity() {
 
 #[tokio::test]
 async fn branding_cleared_display_name_falls_back_for_sync_and_new_install() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let provisioner = Arc::new(Provisioner::default());
-    let ctx =
-        ctx_with_role(db.clone(), OrgRole::Owner).with_slack_provisioner(Some(provisioner.clone()));
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner)
+        .await
+        .with_slack_provisioner(Some(provisioner.clone()));
     let mut request = basic_agent_request("fallback-slug");
     request.display_name = Some("Before".into());
     let agent = CreateAgent(request).run(&ctx).await.unwrap();
@@ -269,10 +273,11 @@ async fn branding_cleared_display_name_falls_back_for_sync_and_new_install() {
 
 #[tokio::test]
 async fn branding_queued_updates_read_latest_saved_identity_under_install_lock() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let provisioner = Arc::new(Provisioner::default());
-    let ctx =
-        ctx_with_role(db.clone(), OrgRole::Owner).with_slack_provisioner(Some(provisioner.clone()));
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner)
+        .await
+        .with_slack_provisioner(Some(provisioner.clone()));
     let agent = CreateAgent(basic_agent_request("queued-agent"))
         .run(&ctx)
         .await
@@ -298,10 +303,11 @@ async fn branding_queued_updates_read_latest_saved_identity_under_install_lock()
 
 #[tokio::test(start_paused = true)]
 async fn branding_rate_limit_retry_releases_lock_and_reads_latest_identity() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let provisioner = Arc::new(Provisioner::default());
-    let ctx =
-        ctx_with_role(db.clone(), OrgRole::Owner).with_slack_provisioner(Some(provisioner.clone()));
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner)
+        .await
+        .with_slack_provisioner(Some(provisioner.clone()));
     let agent = CreateAgent(basic_agent_request("rate-agent"))
         .run(&ctx)
         .await

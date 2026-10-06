@@ -505,7 +505,7 @@ mod tests {
     }
 
     async fn setup_routing_fixture() -> RoutingFixture {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let harness = db
             .create_harness(
                 DEFAULT_ORG_ID,
@@ -670,7 +670,7 @@ mod tests {
         caller_user_id: Uuid,
         owner_user_id: Uuid,
     ) -> (Ctx, crate::domains::sessions::service::SessionForSend) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let harness = db
             .create_harness(
                 DEFAULT_ORG_ID,
@@ -695,6 +695,9 @@ mod tests {
             )
             .await
             .expect("create Platform Chat harness");
+        db.create_test_user(owner_user_id).await;
+        db.create_test_principal(PrincipalId::from_seed(owner_user_id.as_u128()))
+            .await;
         let row = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,

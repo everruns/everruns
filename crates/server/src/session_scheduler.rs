@@ -621,7 +621,7 @@ mod tests {
     };
 
     fn make_db() -> Arc<StorageBackend> {
-        Arc::new(StorageBackend::in_memory())
+        Arc::new(StorageBackend::test_database())
     }
 
     fn message_text(msg: &everruns_core::session_task::TaskMessage) -> String {
@@ -676,11 +676,12 @@ mod tests {
             .create_session_schedule(CreateSessionScheduleRow {
                 org_id: DEFAULT_ORG_ID,
                 session_id,
-                owner_principal_id: PrincipalId::new(),
+                owner_principal_id: PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 description: "Test schedule".to_string(),
+                // A schedule needs a cron expression or a time; one-shots get a time.
+                scheduled_at: cron_expression.is_none().then(chrono::Utc::now),
                 cron_expression,
-                scheduled_at: None,
                 timezone: "UTC".to_string(),
                 next_trigger_at: None,
             })
@@ -696,7 +697,7 @@ mod tests {
     #[tokio::test]
     async fn query_returns_monitor_linked_to_canceled_schedule() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
 
         let schedule_id = create_schedule(&db, session_id).await;
         let task = create_monitor_task(&db, session_id, schedule_id).await;
@@ -736,7 +737,7 @@ mod tests {
     #[tokio::test]
     async fn query_returns_disabled_never_triggered_one_shot_schedule() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
 
         let schedule_id = create_schedule_with_cron(&db, session_id, None).await;
         let task = create_monitor_task(&db, session_id, schedule_id).await;
@@ -767,7 +768,7 @@ mod tests {
     #[tokio::test]
     async fn query_does_not_return_fired_disabled_one_shot_schedule() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
 
         let schedule_id = create_schedule_with_cron(&db, session_id, None).await;
         create_monitor_task(&db, session_id, schedule_id).await;
@@ -801,7 +802,7 @@ mod tests {
     #[tokio::test]
     async fn query_returns_monitor_with_deleted_schedule() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
 
         let schedule_id = create_schedule(&db, session_id).await;
         let task = create_monitor_task(&db, session_id, schedule_id).await;
@@ -822,7 +823,7 @@ mod tests {
     #[tokio::test]
     async fn query_does_not_return_monitor_with_active_schedule() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
 
         let schedule_id = create_schedule(&db, session_id).await;
         create_monitor_task(&db, session_id, schedule_id).await;
@@ -841,7 +842,7 @@ mod tests {
     #[tokio::test]
     async fn query_does_not_return_monitor_without_schedule_id() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
 
         // Monitor task with no schedule_id in spec.
         let registry = make_registry(db.clone());
@@ -876,7 +877,7 @@ mod tests {
     #[tokio::test]
     async fn sweep_cancels_monitor_with_inactive_schedule() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
         let registry = make_registry(db.clone());
 
         let schedule_id = create_schedule(&db, session_id).await;
@@ -912,7 +913,7 @@ mod tests {
     #[tokio::test]
     async fn sweep_leaves_monitor_with_active_schedule_untouched() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
         let registry = make_registry(db.clone());
 
         let schedule_id = create_schedule(&db, session_id).await;
@@ -981,7 +982,7 @@ mod tests {
     #[tokio::test]
     async fn probe_monitor_records_tool_result_not_placeholder() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
         let schedule_id = ScheduleId::new();
 
         let task = create_probe_monitor_task(
@@ -1036,7 +1037,7 @@ mod tests {
     #[tokio::test]
     async fn plain_monitor_without_probe_records_placeholder() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
         let schedule_id = ScheduleId::new();
 
         let task = create_monitor_task(&db, session_id, schedule_id).await;
@@ -1073,7 +1074,7 @@ mod tests {
     #[tokio::test]
     async fn probe_monitor_without_registry_records_placeholder() {
         let db = make_db();
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
         let schedule_id = ScheduleId::new();
 
         let task = create_probe_monitor_task(

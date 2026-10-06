@@ -444,7 +444,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.channel_id, s.trigger_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.virtual_user_id, s.playground_user_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.goal, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.run_summary, s.run_summary_turn_sequence, s.created_at, s.updated_at, s.started_at, s.finished_at,
-                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_actual_cost_usd, s.total_estimated_cost_usd, s.total_cost_usd, s.parent_session_id,
+                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_actual_cost_usd, s.total_estimated_cost_usd, s.total_cost_usd, s.parent_session_id, s.root_session_id,
                    s.forked_from_session_id, s.forked_from_sequence,
                    s.blueprint_id, s.blueprint_config, s.archived_at, s.event_count, s.task_count,
                    COALESCE(w.file_count, 0) AS workspace_file_count
@@ -466,7 +466,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, workspace_id, app_id, channel_id, trigger_id, harness_id, agent_id, agent_version_id, agent_config_hash, virtual_user_id, playground_user_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, root_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config, archived_at, event_count, task_count
             FROM sessions

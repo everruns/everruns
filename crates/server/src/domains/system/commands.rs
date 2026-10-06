@@ -52,7 +52,7 @@ mod tests {
 
     #[tokio::test]
     async fn health_check_dispatch_accepts_empty_object_params() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = Ctx::minimal_for_test(
             Caller {
                 org_id: DEFAULT_ORG_ID,

@@ -5,7 +5,7 @@ use super::*;
 use crate::storage::StorageBackend;
 
 fn make_db() -> StorageBackend {
-    StorageBackend::in_memory()
+    StorageBackend::test_database()
 }
 
 #[tokio::test]

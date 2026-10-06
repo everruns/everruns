@@ -269,7 +269,7 @@ agent or harness.
 ## Testing
 
 * Typed-ID parsing/serialization for `KnowledgeBaseId` and `KnowledgeEntryId`.
-* Storage parity (in-memory and Postgres) for `knowledge_bases` and
+* Storage contract tests (PostgreSQL) for `knowledge_bases` and
   `knowledge_entries`.
 * CRUD lifecycle round-trip (create → list → update → archive → list with
   `include_archived`).

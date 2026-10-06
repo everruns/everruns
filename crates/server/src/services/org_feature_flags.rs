@@ -207,7 +207,7 @@ mod tests {
 
     #[tokio::test]
     async fn durable_opt_out_survives_reads_and_is_isolated_by_org() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let policy = policy(FeatureFlagGrade::Prod, DeploymentGrade::Prod);
         assert!(
             resolve_org_feature_flags(&db, 1, &policy)

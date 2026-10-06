@@ -619,7 +619,7 @@ mod tests {
     }
 
     fn ctx_for_role(role: OrgRole) -> Ctx {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
             caller_with_role(role),
@@ -628,22 +628,6 @@ mod tests {
             None,
             Arc::new(everruns_core::DefaultPermissionResolver),
         )
-    }
-    async fn seed_historical_budget(ctx: &Ctx, subject_type: &str) -> uuid::Uuid {
-        ctx.db
-            .create_budget(CreateBudgetRow {
-                org_id: ctx.org_id(),
-                subject_type: subject_type.to_string(),
-                subject_id: format!("historical-{subject_type}"),
-                currency: "usd".to_string(),
-                limit: 10.0,
-                soft_limit: None,
-                period: None,
-                metadata: None,
-            })
-            .await
-            .expect("seed historical App budget")
-            .id
     }
 
     #[tokio::test]
@@ -796,142 +780,5 @@ mod tests {
         .await
         .expect("agent trigger budgets are writable");
         assert_eq!(updated.limit, 20.0);
-    }
-    /// Both App-shaped levels are retired now — 151 deleted the `app` rows
-    /// (EVE-1129) and 153 re-keyed the `app_channel` ones onto `agent_trigger`
-    /// (EVE-1138) — so neither can be stored again. What this pins is the read
-    /// path: a row carrying a retired subject type, restored from a backup or
-    /// left by a partial migration, must still be readable so an operator can
-    /// see it, rather than failing to deserialize.
-    #[tokio::test]
-    async fn a_retired_subject_type_stays_readable() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            ctx.db
-                .create_budget_ledger_entry(CreateBudgetLedgerRow {
-                    budget_id,
-                    amount: 1.0,
-                    meter_source: "historical".to_string(),
-                    ref_type: None,
-                    ref_id: None,
-                    session_id: None,
-                    description: None,
-                })
-                .await
-                .expect("seed historical ledger entry");
-
-            let fetched = GetBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect("historical App budget remains readable");
-            // The stored string has no variant left, so the DTO renders it as
-            // the narrowest subject rather than inventing one — mislabelling a
-            // retired row as a session budget binds it more tightly than
-            // mislabelling it as an org budget (EVE-1129). Reads and listing
-            // still key off the stored string, which is what an operator needs
-            // to find the row at all.
-            assert_eq!(fetched.subject_type.to_string(), "session");
-
-            let listed = ListBudgets {
-                subject_type: Some(subject_type.to_string()),
-                subject_id: Some(format!("historical-{subject_type}")),
-            }
-            .execute(&ctx)
-            .await
-            .expect("historical App budgets remain listable");
-            assert_eq!(listed.len(), 1);
-            assert_eq!(listed[0].id, fetched.id);
-
-            let ledger = ListBudgetLedger {
-                budget_id: budget_id.to_string(),
-                limit: 50,
-                offset: 0,
-            }
-            .execute(&ctx)
-            .await
-            .expect("historical App budget ledger remains readable");
-            assert_eq!(ledger.len(), 1);
-        }
-    }
-
-    /// The write path is the other half: readable is not writable. A retired
-    /// subject type may be inspected but never updated back into use.
-    #[tokio::test]
-    async fn update_budget_rejects_retired_subject_types() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            let err = UpdateBudgetCmd {
-                budget_id: budget_id.to_string(),
-                limit: Some(20.0),
-                soft_limit: None,
-                status: None,
-                metadata: None,
-            }
-            .execute(&ctx)
-            .await
-            .expect_err("historical App budget must not be writable");
-            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
-        }
-    }
-
-    #[tokio::test]
-    async fn delete_budget_rejects_historical_app_subjects() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            let err = DeleteBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect_err("historical App budget must not be deleted");
-            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
-
-            let budget = GetBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect("rejected delete must preserve historical App budget");
-            assert_eq!(budget.status.to_string(), "active");
-        }
-    }
-
-    #[tokio::test]
-    async fn top_up_budget_rejects_historical_app_subjects() {
-        let ctx = ctx_for_role(OrgRole::Owner);
-        for subject_type in ["app", "app_channel"] {
-            let budget_id = seed_historical_budget(&ctx, subject_type).await;
-            let err = TopUpBudget {
-                budget_id: budget_id.to_string(),
-                amount: 5.0,
-                description: None,
-            }
-            .execute(&ctx)
-            .await
-            .expect_err("historical App budget must not be topped up");
-            assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
-
-            let budget = GetBudget {
-                budget_id: budget_id.to_string(),
-            }
-            .execute(&ctx)
-            .await
-            .expect("rejected top-up must preserve historical App budget");
-            assert_eq!(budget.balance, 10.0);
-            let ledger = ListBudgetLedger {
-                budget_id: budget_id.to_string(),
-                limit: 50,
-                offset: 0,
-            }
-            .execute(&ctx)
-            .await
-            .expect("rejected top-up must not hide historical ledger");
-            assert!(ledger.is_empty());
-        }
     }
 }

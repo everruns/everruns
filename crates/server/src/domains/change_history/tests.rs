@@ -24,7 +24,11 @@ fn caller(role: OrgRole) -> Caller {
 }
 
 fn ctx_with(role: OrgRole) -> Ctx {
-    Ctx::minimal_for_test(caller(role), Arc::new(StorageBackend::in_memory()), None)
+    Ctx::minimal_for_test(
+        caller(role),
+        Arc::new(StorageBackend::test_database()),
+        None,
+    )
 }
 
 async fn run(name: &str, params: Value, ctx: &Ctx) -> Result<Value, CommandError> {

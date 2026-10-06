@@ -221,6 +221,8 @@ pub struct Database {
     /// a pointer. `None` keeps bytes inline in
     /// PostgreSQL (default behavior).
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
+    /// Keeps a test's private database alive while any clone uses it.
+    test_database: Option<std::sync::Arc<crate::storage::test_database::TestDatabase>>,
 }
 
 /// Idle time after which a pooled connection is pinged before reuse.
@@ -253,7 +255,24 @@ impl Database {
             background_pool: pool.clone(),
             pool,
             blob_store: None,
+            test_database: None,
         }
+    }
+
+    /// Tie a test's private database to this value and its clones.
+    pub fn with_test_database(
+        mut self,
+        database: std::sync::Arc<crate::storage::test_database::TestDatabase>,
+    ) -> Self {
+        self.test_database = Some(database);
+        self
+    }
+
+    /// The test database this value runs on, if any.
+    pub(crate) fn test_database(
+        &self,
+    ) -> Option<&std::sync::Arc<crate::storage::test_database::TestDatabase>> {
+        self.test_database.as_ref()
     }
 
     /// Attach an object-storage blob backend for content offload.
@@ -368,6 +387,7 @@ impl Database {
             pool,
             background_pool,
             blob_store: None,
+            test_database: None,
         })
     }
 
@@ -392,6 +412,7 @@ impl Database {
             pool: self.background_pool.clone(),
             background_pool: self.background_pool.clone(),
             blob_store: self.blob_store.clone(),
+            test_database: self.test_database.clone(),
         }
     }
 }

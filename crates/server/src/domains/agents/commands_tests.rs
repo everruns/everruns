@@ -21,16 +21,14 @@ fn first_agent_version_is_initial_minor_even_for_major_change() {
     assert_eq!(version, "0.1.0");
 }
 
-fn ctx_with_role_and_flags(
+async fn ctx_with_role_and_flags(
     db: Arc<StorageBackend>,
     role: OrgRole,
     feature_flags: FeatureFlags,
 ) -> Ctx {
-    futures::executor::block_on(crate::org_init::initialize_org_harnesses(
-        &db,
-        DEFAULT_ORG_ID,
-    ))
-    .expect("initialize built-in harnesses for agent command tests");
+    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+        .await
+        .expect("initialize built-in harnesses for agent command tests");
     let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
     Ctx::new(
         Caller {
@@ -49,7 +47,7 @@ fn ctx_with_role_and_flags(
     .with_feature_flags(feature_flags)
 }
 
-fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
+async fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
     ctx_with_role_and_flags(
         db,
         role,
@@ -58,6 +56,7 @@ fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
             ..FeatureFlags::default()
         },
     )
+    .await
 }
 
 struct ExhaustedUtilityLlm;
@@ -84,9 +83,10 @@ impl UtilityLlmService for ExhaustedUtilityLlm {
 
 #[tokio::test]
 async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx =
-        ctx_with_role(db, OrgRole::Owner).with_utility_llm_service(Arc::new(ExhaustedUtilityLlm));
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner)
+        .await
+        .with_utility_llm_service(Arc::new(ExhaustedUtilityLlm));
 
     let error = AnalyzeAgent {
         harness_id: None,
@@ -222,8 +222,8 @@ async fn create_test_harness(db: &StorageBackend, name: &str) -> HarnessId {
 
 #[tokio::test]
 async fn create_agent_defaults_to_conversation_harness() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
@@ -244,8 +244,8 @@ async fn create_agent_defaults_to_conversation_harness() {
 
 #[tokio::test]
 async fn create_and_update_agent_resolve_harness_name_and_id() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let first_harness_id = create_test_harness(&db, "agent-harness-one").await;
     let second_harness_id = create_test_harness(&db, "agent-harness-two").await;
 
@@ -303,8 +303,8 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
 
 #[tokio::test]
 async fn create_agent_rejects_unknown_archived_or_ambiguous_harness() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
 
     let mut unknown = basic_agent_request("unknown-harness-agent");
     unknown.harness_id = Some(HarnessId::new());
@@ -356,8 +356,8 @@ async fn create_high_risk_agent_version(ctx: &Ctx, name: &str) -> (Agent, AgentV
 
 #[tokio::test]
 async fn update_agent_creates_unpublished_auto_snapshot() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("auto-snapshot-agent"))
         .run(&ctx)
         .await
@@ -410,8 +410,8 @@ async fn update_agent_creates_unpublished_auto_snapshot() {
 
 #[tokio::test]
 async fn update_agent_updates_parallel_tool_calls() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("parallel-tool-calls-agent"))
         .run(&ctx)
         .await
@@ -442,8 +442,8 @@ async fn update_agent_updates_parallel_tool_calls() {
 
 #[tokio::test]
 async fn update_agent_skips_auto_snapshot_when_versions_disabled() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role_and_flags(db.clone(), OrgRole::Owner, FeatureFlags::default());
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role_and_flags(db.clone(), OrgRole::Owner, FeatureFlags::default()).await;
     let agent = CreateAgent(basic_agent_request("auto-snapshot-disabled-agent"))
         .run(&ctx)
         .await
@@ -466,8 +466,8 @@ async fn update_agent_skips_auto_snapshot_when_versions_disabled() {
 
 #[tokio::test]
 async fn update_agent_skips_auto_snapshot_for_unchanged_config() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("auto-snapshot-noop-agent"))
         .run(&ctx)
         .await
@@ -515,8 +515,8 @@ async fn update_agent_skips_auto_snapshot_for_unchanged_config() {
 
 #[tokio::test]
 async fn update_agent_prunes_old_auto_snapshots() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("auto-snapshot-pruned-agent"))
         .run(&ctx)
         .await
@@ -545,8 +545,8 @@ async fn update_agent_prunes_old_auto_snapshots() {
 
 #[tokio::test]
 async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent_id = AgentId::new();
     let mut req = basic_agent_request("upsert-auto-snapshot-agent");
     req.system_prompt = "initial upsert prompt".to_string();
@@ -589,8 +589,8 @@ async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
 
 #[tokio::test]
 async fn upsert_agent_skips_auto_snapshot_for_unchanged_config() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent_id = AgentId::new();
     let req = basic_agent_request("upsert-auto-snapshot-noop-agent");
 
@@ -622,8 +622,8 @@ async fn upsert_agent_skips_auto_snapshot_for_unchanged_config() {
 
 #[tokio::test]
 async fn create_agent_version_rejects_auto_change_kind() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("manual-auto-kind-agent"))
         .run(&ctx)
         .await
@@ -654,8 +654,8 @@ async fn create_agent_version_rejects_auto_change_kind() {
 
 #[tokio::test]
 async fn set_default_version_rejects_unpublished_snapshot() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("default-draft-agent"))
         .run(&ctx)
         .await
@@ -698,9 +698,9 @@ async fn set_default_version_rejects_unpublished_snapshot() {
 
 #[tokio::test]
 async fn set_default_version_blocks_member_for_high_risk_capabilities() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let admin_ctx = ctx_with_role(db.clone(), OrgRole::Admin);
-    let member_ctx = ctx_with_role(db, OrgRole::Member);
+    let db = Arc::new(StorageBackend::test_database());
+    let admin_ctx = ctx_with_role(db.clone(), OrgRole::Admin).await;
+    let member_ctx = ctx_with_role(db, OrgRole::Member).await;
     let (agent, version) =
         create_high_risk_agent_version(&admin_ctx, "member-set-default-denied").await;
 
@@ -738,8 +738,8 @@ async fn set_default_version_blocks_member_for_high_risk_capabilities() {
 
 #[tokio::test]
 async fn rollback_version_restores_versioned_harness() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let first_harness_id = create_test_harness(&db, "rollback-harness-one").await;
     let second_harness_id = create_test_harness(&db, "rollback-harness-two").await;
 
@@ -788,9 +788,9 @@ async fn rollback_version_restores_versioned_harness() {
 
 #[tokio::test]
 async fn rollback_version_blocks_member_for_high_risk_capabilities() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let owner_ctx = ctx_with_role(db.clone(), OrgRole::Owner);
-    let member_ctx = ctx_with_role(db, OrgRole::Member);
+    let db = Arc::new(StorageBackend::test_database());
+    let owner_ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
+    let member_ctx = ctx_with_role(db, OrgRole::Member).await;
     let (agent, version) =
         create_high_risk_agent_version(&owner_ctx, "member-rollback-denied").await;
 
@@ -832,8 +832,8 @@ async fn rollback_version_blocks_member_for_high_risk_capabilities() {
 
 #[tokio::test]
 async fn agent_creation_rejected_at_limit_and_allowed_below() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let mut ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let mut ctx = ctx_with_role(db, OrgRole::Owner).await;
     ctx.resource_limits.max_agents_per_org = 2;
 
     CreateAgent(basic_agent_request("a1"))
@@ -855,8 +855,8 @@ async fn agent_creation_rejected_at_limit_and_allowed_below() {
 
 #[tokio::test]
 async fn soft_deleted_agents_do_not_count_toward_limit() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let mut ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let mut ctx = ctx_with_role(db, OrgRole::Owner).await;
     ctx.resource_limits.max_agents_per_org = 1;
 
     let a1 = CreateAgent(basic_agent_request("a1"))
@@ -892,8 +892,8 @@ async fn soft_deleted_agents_do_not_count_toward_limit() {
 
 #[tokio::test]
 async fn archiving_agent_revokes_all_identity_connections() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("grant-owner"))
         .execute(&ctx)
         .await
@@ -945,8 +945,8 @@ async fn archiving_agent_revokes_all_identity_connections() {
 
 #[tokio::test]
 async fn patch_archiving_agent_revokes_all_identity_connections() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("patch-grant-owner"))
         .execute(&ctx)
         .await
@@ -1033,8 +1033,8 @@ fn assert_built_in_rejection(err: &CommandError) {
 
 #[tokio::test]
 async fn built_in_agent_rejects_update() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     let err = UpdateAgentCmd {
@@ -1061,8 +1061,8 @@ async fn built_in_agent_rejects_update() {
 
 #[tokio::test]
 async fn built_in_agent_rejects_archive() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     // Archive travels through UpdateAgentCmd as a status change.
@@ -1083,8 +1083,8 @@ async fn built_in_agent_rejects_archive() {
 
 #[tokio::test]
 async fn built_in_agent_rejects_delete_and_destroy() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     let err = DeleteAgent {
@@ -1114,8 +1114,8 @@ async fn built_in_agent_rejects_delete_and_destroy() {
 
 #[tokio::test]
 async fn built_in_agent_rejects_upsert() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     let err = UpsertAgent {
@@ -1131,8 +1131,8 @@ async fn built_in_agent_rejects_upsert() {
 
 #[tokio::test]
 async fn built_in_agent_rejects_version_mutations() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
     let id = agent.public_id.to_string();
 
@@ -1175,8 +1175,8 @@ async fn built_in_agent_rejects_version_mutations() {
 
 #[tokio::test]
 async fn built_in_agent_can_be_copied() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let mut request = basic_agent_request("chat");
     request.intro_markdown = Some("Welcome to the platform".into());
     request.short_description = Some("Platform assistant".into());
@@ -1218,8 +1218,8 @@ async fn built_in_agent_can_be_copied() {
 
 #[tokio::test]
 async fn built_in_agents_do_not_count_toward_limit() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     ctx.resource_limits.max_agents_per_org = 1;
 
     seed_built_in_agent(&db, &ctx, "managed-test").await;

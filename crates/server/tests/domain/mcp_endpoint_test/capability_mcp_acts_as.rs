@@ -263,7 +263,7 @@ async fn create_agent_and_session(
             agent_config_hash: None,
             virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
-            resolved_owner_user_id: Some(Uuid::now_v7()),
+            resolved_owner_user_id: Some(db.create_test_user(Uuid::now_v7()).await),
             title: None,
             locale: None,
             tags: vec![],
@@ -292,7 +292,7 @@ async fn create_agent_and_session(
 
 #[tokio::test]
 async fn explicit_attachment_replaces_contributed_entry_in_both_identity_directions() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let egress = Arc::new(RecordingMcp::default());
     let mut registry = CapabilityRegistry::new();
     for (id, acts_as) in [
@@ -392,7 +392,7 @@ async fn explicit_attachment_replaces_contributed_entry_in_both_identity_directi
 
 #[tokio::test]
 async fn contributed_inline_identity_server_cannot_retain_authorization_header() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let egress = Arc::new(RecordingMcp::default());
     let mut registry = CapabilityRegistry::new();
     registry.register(IdentityContribution {
@@ -430,7 +430,7 @@ async fn contributed_inline_identity_server_cannot_retain_authorization_header()
 
 #[tokio::test]
 async fn persisted_legacy_unauthenticated_contribution_remains_active() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let egress = Arc::new(RecordingMcp::default());
     let capability_name = format!("legacy_mcp_{}", &Uuid::now_v7().to_string()[..8]);
     db.create_declarative_capability(

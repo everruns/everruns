@@ -50,7 +50,7 @@ struct Seed {
 /// `SessionService::list` resolves a fallback harness for rows without one, so
 /// every org used by these tests needs its built-in harnesses provisioned.
 async fn new_db(orgs: &[i64]) -> Arc<StorageBackend> {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     for org_id in orgs {
         crate::org_init::initialize_org_harnesses(&db, *org_id)
             .await

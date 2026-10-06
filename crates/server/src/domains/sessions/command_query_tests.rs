@@ -116,7 +116,7 @@ async fn seed_harness(ctx: &Ctx) -> HarnessId {
 
 #[tokio::test]
 async fn create_session_enforces_shared_org_rate_limit() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let limiter = crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(1);
     limiter
         .check_session_create(DEFAULT_ORG_ID)
@@ -139,7 +139,7 @@ async fn fork_session_enforces_shared_org_rate_limit() {
     // Fork must consume the same per-org bucket as create so MCP dispatch
     // cannot bypass it. The limiter is checked before parent lookup, so an
     // exhausted bucket rejects the fork regardless of the parent id.
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let limiter = crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(1);
     limiter
         .check_session_create(DEFAULT_ORG_ID)
@@ -201,7 +201,7 @@ impl everruns_worker::AgentRunner for CancelTestRunner {
 // or it stays `active` forever, blocking clean follow-up turns.
 #[tokio::test]
 async fn cancel_active_session_transitions_to_idle() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner));
     let harness_id = seed_harness(&ctx).await;
 
@@ -241,7 +241,7 @@ async fn cancel_active_session_transitions_to_idle() {
 
 #[tokio::test]
 async fn update_session_title_emits_one_semantic_event_per_change() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db, 100);
     let harness_id = seed_harness(&ctx).await;
     let session = CreateSession(create_request(harness_id))
@@ -288,7 +288,7 @@ async fn update_session_title_emits_one_semantic_event_per_change() {
 
 #[tokio::test]
 async fn session_creation_rejected_at_limit_and_allowed_below() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db, 1);
     let harness_id = seed_harness(&ctx).await;
 
@@ -314,7 +314,7 @@ async fn create_session_with_non_internal_owner_sets_parent_session_id() {
     // prevented at the HTTP boundary, which strips `parent_session_id`
     // before dispatch (see `strip_internal_only_fields` in api/sessions.rs),
     // so the command layer must not reject a caller-set parent link.
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let internal_ctx = test_ctx(db.clone(), 10);
     let harness_id = seed_harness(&internal_ctx).await;
     let owner = db
@@ -334,8 +334,8 @@ async fn create_session_with_non_internal_owner_sets_parent_session_id() {
     db.add_organization_member(DEFAULT_ORG_ID, owner.id, "owner")
         .await
         .unwrap();
+    let parent = db.create_test_session().await;
     let ctx = external_test_ctx(db, owner.id);
-    let parent = SessionId::new();
     let mut req = create_request(harness_id);
     req.parent_session_id = Some(parent);
 
@@ -384,7 +384,7 @@ async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
 async fn create_session_from_agent_inherits_agent_harness() {
     // Agent-first: a session created with only an agent runs on the agent's
     // own harness (D4), and an explicit request harness still overrides it.
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db.clone(), 10);
     let agent_harness = seed_harness(&ctx).await;
     let override_harness = CreateHarness(CreateHarnessRequest {
@@ -432,7 +432,7 @@ async fn create_session_from_agent_inherits_agent_harness() {
 
 #[tokio::test]
 async fn create_session_rejects_both_agent_id_and_agent_name() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db, 10);
     let harness_id = seed_harness(&ctx).await;
     let mut req = create_request(harness_id);
@@ -448,7 +448,7 @@ async fn create_session_rejects_both_agent_id_and_agent_name() {
 
 #[tokio::test]
 async fn participant_commands_list_add_and_leave_history() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = test_ctx(db.clone(), 10);
     let harness_id = seed_harness(&ctx).await;
     let host_public_id = AgentId::new();

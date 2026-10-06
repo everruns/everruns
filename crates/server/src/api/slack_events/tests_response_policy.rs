@@ -68,7 +68,7 @@ async fn fixture(
     SlackChannelConfig,
     SlackEvent,
 ) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut app = test_app();
     let agent = db
         .create_agent(
@@ -320,7 +320,7 @@ async fn the_judge_uses_the_endpoints_pinned_purpose() {
         id, public_id: id.to_string(), org_id: app.org_id, agent_id: app.agent_id.unwrap(),
         version_number: 1, semver_major: 1, semver_minor: 0, semver_patch: 0,
         version: "1.0.0".into(), is_published: true, parent_version_id: None, source_version_id: None,
-        created_by_principal_id: None, change_kind: "publish".into(), summary: None, config_hash: "test".into(),
+        created_by_principal_id: None, change_kind: "manual".into(), summary: None, config_hash: "test".into(),
         authored_config: json!({"name": "pinned-agent", "description": "Pinned purpose", "system_prompt": "Answer questions about invoices."}),
         resolved_config: json!({}),
     }).await.unwrap();

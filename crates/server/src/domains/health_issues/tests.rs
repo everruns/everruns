@@ -72,7 +72,7 @@ async fn seed_agent(db: &StorageBackend) -> String {
 }
 
 async fn fixture() -> (Arc<StorageBackend>, Ctx, crate::storage::IngressChannelRow) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let agent = seed_agent(&db).await;
     let internal = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
     let channel = CreateAgentChannel {

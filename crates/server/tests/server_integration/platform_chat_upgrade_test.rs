@@ -462,7 +462,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
 
 #[tokio::test]
 async fn platform_chat_upgrade_in_memory() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     for opted_in in [true, false] {
         verify_upgrade(db.clone(), opted_in).await;
     }
@@ -470,7 +470,7 @@ async fn platform_chat_upgrade_in_memory() {
 
 #[tokio::test]
 async fn platform_chat_upgrade_postgres() {
-    let db = Arc::new(StorageBackend::Postgres(Database::new(
+    let db = Arc::new(StorageBackend::from_database(Database::new(
         test_harness::create_test_pool().await,
     )));
     for opted_in in [true, false] {

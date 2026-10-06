@@ -175,7 +175,7 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_first_authorize_resolves_to_a_single_identity() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let agent = seed_unlinked_agent(&db).await;
 
         // Both callers observe the same unlinked agent row, which is exactly
@@ -208,7 +208,7 @@ mod tests {
         // Authorizing a second service attachment on the same agent must reuse
         // the identity, or the two grants would land on different owners and
         // only one would ever resolve.
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let agent = seed_unlinked_agent(&db).await;
 
         let (first, _) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
@@ -230,7 +230,7 @@ mod tests {
     async fn an_archived_identity_cannot_own_a_new_grant() {
         // Authorizing against an archived identity must fail loudly rather than
         // write a grant nothing will ever resolve.
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let agent = seed_unlinked_agent(&db).await;
         let (identity_id, _) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
             .await

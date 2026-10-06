@@ -458,7 +458,7 @@ mod tests {
     }
 
     async fn store_with(definition: serde_json::Value) -> StorageBackend {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         db.create_declarative_capability(
             ORG,
             CreateDeclarativeCapabilityRow {
@@ -528,7 +528,7 @@ mod tests {
 
     #[tokio::test]
     async fn plugin_hydration_blocks_unresolved_authenticated_identity() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let public_id = everruns_contracts::typed_id::PluginInstallId::new().to_string();
         let stored = json!({
             "name": "legacy_oauth",

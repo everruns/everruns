@@ -1003,8 +1003,8 @@ mod tests {
 
     #[tokio::test]
     async fn collect_case_artifacts_reads_named_files() {
-        let db = StorageBackend::in_memory();
-        let session_uuid = Uuid::now_v7();
+        let db = StorageBackend::test_database();
+        let session_uuid = db.create_test_session().await.uuid();
 
         db.create_session_file(CreateSessionFileRow {
             session_id: SessionId::from_uuid(session_uuid),

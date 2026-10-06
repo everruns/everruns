@@ -692,9 +692,9 @@ impl StorageBackend {
         provider: &ProviderRow,
         encryption: &super::super::EncryptionService,
     ) -> Result<ProviderWithApiKey> {
-        match self {
-            Self::Postgres(db) => db.get_provider_with_api_key(provider, encryption),
-            Self::InMemory(db) => db.get_provider_with_api_key(provider, encryption),
+        {
+            let db = self.database();
+            db.get_provider_with_api_key(provider, encryption)
         }
     }
 

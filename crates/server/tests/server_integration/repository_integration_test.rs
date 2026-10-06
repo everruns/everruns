@@ -43,7 +43,7 @@ async fn create_test_pool() -> PgPool {
 /// Create a test storage backend
 async fn create_test_backend() -> StorageBackend {
     let pool = create_test_pool().await;
-    StorageBackend::Postgres(Database::new(pool))
+    StorageBackend::from_database(Database::new(pool))
 }
 
 /// Test organization ID (default org)

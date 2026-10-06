@@ -225,9 +225,8 @@ Phased so each phase is independently reviewable and lands a coherent slice.
    `SESSION_MANAGE`); `POST /v1/sessions/{id}/fork`. The skip-list is enforced
    by simply not copying those tables.
 2. **KV + secrets copy.** Copy `session_key_values` and `session_secrets`.
-   Requires adding `upsert_session_key_value` and `get_session_secret` to the
-   in-memory backend + `StorageBackend` dispatch (Postgres already has both),
-   then copying in `fork()`.
+   Requires exposing `upsert_session_key_value` and `get_session_secret`
+   through `StorageBackend` dispatch, then copying in `fork()`.
 3. **SQL databases copy.** Page-level copy of `session_databases` /
    `session_database_pages` (gated on the session actually having any).
 4. **Atomicity + arbitrary fork point.** Move the multi-table copy into a single

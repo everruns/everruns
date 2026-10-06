@@ -192,7 +192,7 @@ async fn legacy_ingress_routes_work_with_apps_and_compatibility_view_unreadable(
         .connect(&get_database_url())
         .await
         .expect("connect with restricted ingress role");
-    let restricted_db = Arc::new(StorageBackend::Postgres(Database::new(
+    let restricted_db = Arc::new(StorageBackend::from_database(Database::new(
         restricted_pool.clone(),
     )));
 

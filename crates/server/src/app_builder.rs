@@ -615,8 +615,9 @@ impl ServerAppBuilder {
         }
         let session_sandbox_service: Option<
             Arc<crate::domains::session_sandbox::SessionSandboxService>,
-        > = match db.as_ref() {
-            crate::storage::StorageBackend::Postgres(database) => match &encryption {
+        > = {
+            let database = db.database();
+            match &encryption {
                 Some(enc) => {
                     let storage_store: Arc<
                         dyn everruns_core::session_services::SessionStorageStore,
@@ -649,26 +650,6 @@ impl ServerAppBuilder {
                     );
                     None
                 }
-            },
-            crate::storage::StorageBackend::InMemory(mem_db) => {
-                let connection_resolver = optional_connection_resolver(
-                    &db,
-                    &encryption,
-                    &auth_config,
-                    host_composition.egress_service(),
-                );
-                let service =
-                    Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
-                        db.clone(),
-                        mem_db.clone(),
-                        connection_resolver,
-                    ));
-                event_listeners.push(Arc::new(
-                    crate::domains::session_sandbox::SessionSandboxEventListener::new(
-                        service.clone(),
-                    ),
-                ));
-                Some(service)
             }
         };
         let notification_service: Option<Arc<crate::domains::notifications::NotificationService>> =
@@ -1983,22 +1964,20 @@ impl ServerAppBuilder {
                 );
                 let session_storage_store: Arc<
                     dyn everruns_core::session_services::SessionStorageStore,
-                > = match db.as_ref() {
-                    crate::storage::StorageBackend::Postgres(database) => {
-                        if let Some(enc) = &encryption {
-                            Arc::new(crate::storage::create_db_session_storage_store(
+                > = {
+                    let database = db.database();
+                    if let Some(enc) = &encryption {
+                        Arc::new(crate::storage::create_db_session_storage_store(
+                            database.clone(),
+                            enc.as_ref().clone(),
+                        ))
+                    } else {
+                        Arc::new(
+                            crate::storage::create_db_session_storage_store_without_encryption(
                                 database.clone(),
-                                enc.as_ref().clone(),
-                            ))
-                        } else {
-                            Arc::new(
-                                crate::storage::create_db_session_storage_store_without_encryption(
-                                    database.clone(),
-                                ),
-                            )
-                        }
+                            ),
+                        )
                     }
-                    crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
                 };
 
                 let mut adapters = DirectWorkerAdapters::new(

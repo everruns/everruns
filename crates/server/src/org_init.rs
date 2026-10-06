@@ -588,7 +588,7 @@ mod tests {
     use everruns_core::DEFAULT_ORG_ID;
 
     fn make_db() -> StorageBackend {
-        StorageBackend::in_memory()
+        StorageBackend::test_database()
     }
 
     fn harnesses() -> Vec<BuiltInHarnessDefinition> {
@@ -691,7 +691,7 @@ mod tests {
         // Create a second org
         let org2 = db
             .create_organization(crate::storage::models::CreateOrganizationRow {
-                public_id: "org_00000000000000000000000000000002".to_string(),
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test Org 2".to_string(),
                 created_by: None,
             })
@@ -726,7 +726,7 @@ mod tests {
 
         let org2 = db
             .create_organization(crate::storage::models::CreateOrganizationRow {
-                public_id: "org_00000000000000000000000000000002".to_string(),
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test Org 2".to_string(),
                 created_by: None,
             })
@@ -768,21 +768,27 @@ mod tests {
         // Create second org
         let org2 = db
             .create_organization(crate::storage::models::CreateOrganizationRow {
-                public_id: "org_00000000000000000000000000000002".to_string(),
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
                 name: "Test Org 2".to_string(),
                 created_by: None,
             })
             .await
             .unwrap();
 
+        // Every org gets the built-ins: these two plus the test fixture orgs.
+        let org_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM organizations")
+            .fetch_one(db.database().pool())
+            .await
+            .unwrap();
+        let expected = harnesses().len() * org_count as usize;
+
         let result = reconcile_built_in_harnesses(&db).await.unwrap();
-        // Should create harnesses for both orgs
-        assert_eq!(result.created, harnesses().len() * 2);
+        assert_eq!(result.created, expected);
 
         // Second reconcile should be no-op
         let result2 = reconcile_built_in_harnesses(&db).await.unwrap();
         assert_eq!(result2.created, 0);
-        assert_eq!(result2.unchanged, harnesses().len() * 2);
+        assert_eq!(result2.unchanged, expected);
 
         let _ = org2; // silence unused
     }
