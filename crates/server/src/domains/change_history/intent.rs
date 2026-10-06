@@ -102,6 +102,9 @@ pub struct ChangeIntent {
     /// The manager context revision of the changed entity the caller read
     /// before changing it (`--context-revision`).
     pub context_revision: Option<i64>,
+    /// Set by `history restore` on the update it runs: the revision it brings
+    /// back, so the change records as `restored`.
+    pub restoring: Option<i64>,
     /// Where `Command::run` leaves non-fatal notices for the adapter to show.
     pub notices: Notices,
 }

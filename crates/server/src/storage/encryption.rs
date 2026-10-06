@@ -67,6 +67,9 @@ pub struct EncryptionService {
     /// Cache: wrapped DEK (base64) -> unwrapped DEK bytes.
     /// Avoids re-decrypting the same DEK on every request.
     dek_cache: Cache<String, Vec<u8>>,
+    /// HMAC key for secret fingerprints in entity history, derived from the
+    /// primary key so a leaked history row reveals only "changed or not".
+    fingerprint_key: Arc<[u8; 32]>,
 }
 
 impl EncryptionService {
@@ -74,6 +77,7 @@ impl EncryptionService {
     /// The first key is used for new encryptions, all keys are available for decryption.
     pub fn new(primary_key: &str, previous_keys: &[&str]) -> Result<Self> {
         let (primary_id, primary_cipher) = Self::parse_versioned_key(primary_key)?;
+        let fingerprint_key = Arc::new(Self::fingerprint_key(primary_key)?);
 
         let mut keys = HashMap::new();
         keys.insert(primary_id.clone(), primary_cipher.clone());
@@ -98,7 +102,40 @@ impl EncryptionService {
             }),
             keys: Arc::new(keys),
             dek_cache,
+            fingerprint_key,
         })
+    }
+
+    fn fingerprint_key(primary_key: &str) -> Result<[u8; 32]> {
+        use hmac::{Hmac, KeyInit, Mac};
+        let raw = primary_key.split_once(':').map_or("", |(_, key)| key);
+        let raw = BASE64
+            .decode(raw)
+            .context("Failed to decode key from base64")?;
+        let mut mac = <Hmac<sha2::Sha256> as KeyInit>::new_from_slice(&raw)
+            .map_err(|e| anyhow::anyhow!("fingerprint key: {e}"))?;
+        mac.update(b"everruns.entity-history.secret-fingerprint.v1");
+        Ok(mac.finalize().into_bytes().into())
+    }
+
+    /// Keyed fingerprint of a secret value: equal for equal values under the
+    /// same primary key, and not guessable offline from a short secret the
+    /// way a plain hash is. Rotating the primary key changes every
+    /// fingerprint, so history then reads each secret as changed once.
+    pub fn fingerprint(&self, plaintext: &[u8]) -> String {
+        use hmac::{Hmac, KeyInit, Mac};
+        // HMAC accepts a key of any length, so this never takes the else.
+        let Ok(mut mac) =
+            <Hmac<sha2::Sha256> as KeyInit>::new_from_slice(self.fingerprint_key.as_ref())
+        else {
+            return String::new();
+        };
+        mac.update(plaintext);
+        let digest = mac.finalize().into_bytes();
+        digest[..12]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect()
     }
 
     /// Create from environment variables.

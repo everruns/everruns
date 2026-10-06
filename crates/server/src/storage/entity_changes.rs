@@ -22,6 +22,42 @@ pub struct NewEntityChange {
     pub surface: String,
     pub request_id: Option<String>,
     pub idempotency_key: Option<String>,
+    /// The entity as it stood after the change, secrets as markers. `None`
+    /// for kinds without snapshots and for deletes.
+    pub snapshot: Option<serde_json::Value>,
+    /// Hash of `snapshot`; an entry whose hash matches the entity's latest
+    /// revision is a no-op and gets no revision of its own.
+    pub snapshot_hash: Option<String>,
+    /// The revision a restore brought back.
+    pub restored_from_revision: Option<i64>,
+}
+
+/// Snapshots kept per entity. Older revisions keep their entry and reason
+/// and lose only the snapshot.
+pub const MAX_SNAPSHOTS_PER_ENTITY: i64 = 500;
+
+/// A revision: an entry and the snapshot it carries (`None` once pruned).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EntityRevisionRow {
+    pub entry: EntityChangeRow,
+    pub snapshot: Option<serde_json::Value>,
+}
+
+/// Which revision of which entity to read; `revision: None` is the latest.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EntityRevisionKey {
+    pub org_id: i64,
+    pub entity_kind: String,
+    pub entity_ref: String,
+    pub revision: Option<i64>,
+}
+
+/// What the in-memory store keeps per entry.
+#[derive(Debug, Clone)]
+pub struct StoredEntityChange {
+    pub row: EntityChangeRow,
+    pub snapshot: Option<serde_json::Value>,
+    pub snapshot_hash: Option<String>,
 }
 
 /// A recorded change.
@@ -43,6 +79,7 @@ pub struct EntityChangeRow {
     pub request_id: Option<String>,
     pub idempotency_key: Option<String>,
     pub revision: Option<i64>,
+    pub restored_from_revision: Option<i64>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -65,6 +102,7 @@ impl EntityChangeRow {
             request_id: change.request_id,
             idempotency_key: change.idempotency_key,
             revision: None,
+            restored_from_revision: change.restored_from_revision,
             created_at,
         }
     }

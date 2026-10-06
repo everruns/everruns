@@ -36,6 +36,22 @@ Each entry carries the action (`created`, `updated`, `deleted`, ...), the comman
 
 Anyone who can see an entity can read its history. The organization-wide view needs audit-log access. Kinds whose ids carry no prefix (`schedule`, `saved_report`, `check_rule`) need `--kind`.
 
+## Revisions and restore
+
+Every change that alters an entity's configuration makes a new revision, numbered from 1, and keeps a snapshot of the entity as it stood after the change. An update that leaves everything as it was is still recorded, but makes no revision.
+
+```bash
+everruns history show agent_01h9 --revision 4      # the agent as it was at revision 4
+everruns history diff agent_01h9 --from 4          # what changed since then
+everruns history restore agent_01h9 --revision 4 --reason "Revert the prompt change"
+```
+
+A restore is a new change, not a rewind. It runs the entity's own update command with the values from that revision, so the same permissions, validation and manager context checks apply. History records it as `restored`, with the revision it brought back. A restore that cannot bring a field back, for example an optional field the update command cannot clear, returns a warning naming the field.
+
+Secrets are never part of a snapshot. A snapshot records only whether each secret is set and a fingerprint that changes when the secret changes, so a diff can say a key was rotated without showing it. A restore keeps every secret's current value and warns when it differs from the restored revision. Re-enter the old value yourself if you need it.
+
+The REST equivalents are `GET /v1/history/{entity_ref}/revisions/{revision}`, `GET /v1/history/{entity_ref}/diff?from=N` and `POST /v1/history/{entity_ref}/restore`. Each entity keeps snapshots for its newest 500 revisions. Older entries keep their reason but lose the snapshot.
+
 ## Manager context
 
 Manager context is one markdown document per entity (up to 16 KiB) with a revision that increases on every write.
