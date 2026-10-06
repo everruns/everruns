@@ -52,7 +52,7 @@ async fn set_default_test_model(
 }
 
 /// Create a basic test setup with in-memory stores
-async fn setup_test_environment() -> (
+pub(crate) async fn setup_test_environment() -> (
     InMemoryHarnessStore,
     InMemoryAgentStore,
     InMemorySessionStore,
@@ -147,7 +147,7 @@ fn create_custom_driver_registry(config: LlmSimConfig) -> DriverRegistry {
 }
 
 /// Create an ExecutionContext for testing
-fn create_context(session_id: Uuid) -> ExecutionContext {
+pub(crate) fn create_context(session_id: Uuid) -> ExecutionContext {
     let turn_id = TurnId::new();
     let input_message_id = MessageId::new();
     ExecutionContext::new(SessionId::from_uuid(session_id), turn_id, input_message_id)

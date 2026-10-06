@@ -384,6 +384,72 @@ async fn fragmented_tool_use_golden_events() {
     );
 }
 
+/// A response that hits `max_tokens` while (or after) writing a `tool_use`
+/// block never runs the call. The discard is reported with the raw stop
+/// reason, whether the block was still open or already closed; a `tool_use`
+/// stop drops nothing.
+#[tokio::test]
+async fn truncated_tool_use_reports_dropped_calls_with_raw_stop_reason() {
+    for (stop, close_block, dropped, finish) in [
+        ("max_tokens", false, 1, "length"),
+        ("max_tokens", true, 1, "length"),
+        ("tool_use", true, 0, "tool_calls"),
+    ] {
+        let server = MockServer::start().await;
+        let mut body = vec![
+            sse_event(
+                "message_start",
+                r#"{"type":"message_start","message":{"id":"msg_cut","usage":{"input_tokens":3}}}"#,
+            ),
+            sse_event(
+                "content_block_start",
+                r#"{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"write_file"}}"#,
+            ),
+            sse_event(
+                "content_block_delta",
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\"a\"}"}}"#,
+            ),
+        ];
+        if close_block {
+            body.push(sse_event(
+                "content_block_stop",
+                r#"{"type":"content_block_stop","index":0}"#,
+            ));
+        }
+        body.push(sse_event(
+            "message_delta",
+            &format!(
+                r#"{{"type":"message_delta","delta":{{"stop_reason":"{stop}"}},"usage":{{"output_tokens":4}}}}"#
+            ),
+        ));
+        body.push(sse_event("message_stop", r#"{"type":"message_stop"}"#));
+        mount_sse(&server, body.concat()).await;
+
+        let response = driver(&server)
+            .chat_completion(
+                vec![Message::text(MessageRole::User, "write")],
+                &config("claude-opus-4-5"),
+            )
+            .await
+            .expect("completion should succeed");
+
+        let label = format!("{stop} close={close_block}");
+        assert_eq!(response.metadata.tool_calls_dropped, dropped, "{label}");
+        assert_eq!(
+            response.metadata.provider_finish_reason.as_deref(),
+            Some(stop),
+            "{label}"
+        );
+        assert_eq!(
+            response.metadata.finish_reason.as_deref(),
+            Some(finish),
+            "{label}"
+        );
+        assert_eq!(response.metadata.completion_tokens, Some(4), "{label}");
+        assert_eq!(response.tool_calls.is_some(), dropped == 0, "{label}");
+    }
+}
+
 #[tokio::test]
 async fn hosted_tool_search_content_is_captured_verbatim_in_stream_order() {
     let server = MockServer::start().await;

@@ -605,6 +605,7 @@ impl OtelEventListener {
         if let Some(status) = &data.status {
             attrs.push(KeyValue::new(everruns_attr::TURN_STATUS, status.clone()));
         }
+        attrs.extend(super::generation_attrs::otel_turn_attributes(data));
         if let Some(usage) = &data.usage {
             attrs.extend(self.turn_usage_attributes(usage));
         }
@@ -1118,7 +1119,7 @@ impl OtelEventListener {
         if let Some(cost) = meta.usage.as_ref().and_then(cost_usd) {
             attrs.push(KeyValue::new(everruns_attr::USAGE_COST_USD, cost));
         }
-        attrs.extend(super::provider_attrs::otel_unknown_cost_attributes(meta));
+        attrs.extend(super::generation_attrs::otel_chat_attributes(meta));
         attrs
     }
 

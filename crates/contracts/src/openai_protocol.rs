@@ -550,21 +550,16 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 prompt_tokens,
                 completion_tokens,
                 cache_read_tokens: cached_tokens,
-                cache_creation_tokens: None,
                 reasoning_tokens,
                 provider_cost_usd: cost,
                 model: Some(config.model.clone()),
                 response_model,
+                // Chat Completions reasons are already the normalized vocabulary.
+                provider_finish_reason: finish_reason.clone(),
                 finish_reason,
-                retry_metadata: if retry_metadata.had_retries() {
-                    Some(retry_metadata)
-                } else {
-                    None
-                },
+                retry_metadata: retry_metadata.had_retries().then_some(retry_metadata),
                 response_id: body.id,
-                phase: None,
                 request_body: captured_request,
-                cache_diagnostics: None,
                 ..Default::default()
             },
         })
@@ -712,15 +707,12 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 
                             let mut events = Vec::new();
 
-                            // Defense in depth (EVE-522): flush any tool calls that
-                            // were accumulated but never emitted before Done, so they
-                            // are never silently dropped. The normal path drains the
-                            // accumulator at the finish chunk, so this only fires as a
-                            // fallback — e.g. a provider that ends the stream with
-                            // [DONE] without a tool_calls finish chunk reaching the
-                            // handler. When it fires, reflect the tool-call completion
-                            // in the reported finish_reason.
-                            {
+                            // Defense in depth (EVE-522): flush calls accumulated but
+                            // never emitted (e.g. [DONE] with no tool_calls finish
+                            // chunk), reflecting it in finish_reason. A cut-off or
+                            // rejected response discards them instead, counted below.
+                            let provider_reason = reason.clone();
+                            let dropped = {
                                 let mut acc = accumulated_tool_calls.lock().unwrap();
                                 if let Some(event) =
                                     take_pending_tool_calls(&mut acc, reason.as_deref())
@@ -728,7 +720,14 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     events.push(Ok(event));
                                     reason.get_or_insert_with(|| "tool_calls".to_string());
                                 }
-                            }
+                                acc.dropped_at_stream_end()
+                            };
+                            crate::llm_telemetry::warn_tool_calls_dropped(
+                                "openai_chat_completions",
+                                &model,
+                                dropped,
+                                provider_reason.as_deref().unwrap_or("none"),
+                            );
 
                             // The reasoning artifact is what persists and what
                             // replays; a delta alone reaches the UI and is then
@@ -762,18 +761,17 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     completion_tokens: Some(output_tokens),
                                     cache_read_tokens: cached,
                                     reasoning_tokens: reasoning_used,
-                                    cache_creation_tokens: None,
                                     provider_cost_usd: cost,
                                     model: Some(model),
                                     response_model: served_model,
                                     // Never defaulted: `None` says the provider sent none.
                                     finish_reason: reason,
+                                    provider_finish_reason: provider_reason,
+                                    tool_calls_dropped: dropped,
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
                                     response_id: resp_id,
-                                    phase: None,
                                     request_body: (*captured_request).clone(),
-                                    cache_diagnostics: None,
                                     ..Default::default()
                                 },
                             ))));

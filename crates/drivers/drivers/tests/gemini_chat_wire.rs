@@ -530,6 +530,39 @@ async fn rejected_terminal_frame_never_releases_pending_tool_calls() {
     }
 }
 
+/// The discard above is reported, not silent: the dropped count and Gemini's
+/// raw finish reason ride on the completion metadata. A `STOP` frame drops
+/// nothing and its calls run.
+#[tokio::test]
+async fn terminal_frame_reports_dropped_tool_calls_with_raw_reason() {
+    for (reason, dropped) in [("MAX_TOKENS", 2), ("SAFETY", 2), ("STOP", 0)] {
+        let server = MockServer::start().await;
+        let frame = serde_json::json!({"candidates":[{"content":{"parts":[
+            {"functionCall":{"name":"a","args":{}}},
+            {"functionCall":{"name":"b","args":{"x":1}}}
+        ]},"finishReason":reason}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2}});
+        mount_sse(&server, format!("data: {frame}\n\n")).await;
+        let response = provider(&server)
+            .chat_completion(
+                vec![Message::text(MessageRole::User, "hi")],
+                &config("gemini-2.5-flash"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.metadata.tool_calls_dropped, dropped, "{reason}");
+        assert_eq!(
+            response.metadata.provider_finish_reason.as_deref(),
+            Some(reason)
+        );
+        assert_eq!(response.metadata.completion_tokens, Some(2), "{reason}");
+        assert_eq!(
+            response.tool_calls.map_or(0, |calls| calls.len()),
+            if dropped == 0 { 2 } else { 0 },
+            "{reason}"
+        );
+    }
+}
+
 /// A reconnect leaves the mock server holding two identical records, which is
 /// exactly what two identical calls produce. This does not reproduce a live
 /// transport failure (wiremock cannot sever a body mid-read, and only

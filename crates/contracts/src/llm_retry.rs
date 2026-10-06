@@ -587,6 +587,12 @@ where
     let mut retry_started_at = None;
 
     let budget_exhausted = |metadata: &RetryMetadata| {
+        crate::llm_telemetry::warn_retry_exhausted(
+            driver_name,
+            metadata.attempts,
+            config.max_retries,
+            "time",
+        );
         AgentLoopError::llm_kind(
             crate::error::LlmErrorKind::Unavailable,
             format!(
@@ -641,6 +647,14 @@ where
                     tokio::time::sleep(wait_duration).await;
                     continue;
                 }
+                if is_transient_send_error(&e) {
+                    crate::llm_telemetry::warn_retry_exhausted(
+                        driver_name,
+                        retry_metadata.attempts,
+                        config.max_retries,
+                        "attempts",
+                    );
+                }
                 return Err(
                     send_error(&e, retry_metadata.attempts).with_retry_metadata(&retry_metadata)
                 );
@@ -661,12 +675,16 @@ where
                 let Some(wait) = reserve_retry_wait(config, &mut retry_started_at, wait) else {
                     return Err(budget_exhausted(&retry_metadata));
                 };
+                // The provider's own Retry-After next to the wait actually
+                // used, so an operator can see when the hint was capped or
+                // absent and backoff applied instead.
                 tracing::warn!(
                     status = %status,
                     driver = driver_name,
                     attempt = retry_metadata.attempts + 1,
                     max_retries = config.max_retries,
                     wait_secs = wait.as_secs_f64(),
+                    retry_after_secs = rate_limit_info.as_ref().and_then(|i| i.retry_after_secs),
                     "rate limit or transient error, retrying"
                 );
                 retry_metadata.record_retry(wait, rate_limit_info);
@@ -675,6 +693,14 @@ where
             }
             RetryDecision::RetryNow => continue,
             RetryDecision::Terminal(err) => {
+                if is_transient_error(status) && !can_retry {
+                    crate::llm_telemetry::warn_retry_exhausted(
+                        driver_name,
+                        retry_metadata.attempts,
+                        config.max_retries,
+                        "attempts",
+                    );
+                }
                 return Err(err.with_retry_metadata(&retry_metadata));
             }
         }

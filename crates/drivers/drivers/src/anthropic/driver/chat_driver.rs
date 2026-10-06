@@ -354,6 +354,7 @@ impl ChatDriver for AnthropicChatDriver {
         let response_content = Arc::new(Mutex::new(BTreeMap::<u32, Value>::new()));
         let input_json = Arc::new(Mutex::new(BTreeMap::<u32, String>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
+        let raw_stop_reason = Arc::new(Mutex::new(Option::<String>::None));
         let response_id = Arc::new(Mutex::new(Option::<String>::None));
         let response_model = Arc::new(Mutex::new(Option::<String>::None));
         let diagnostics_payload = Arc::new(Mutex::new(Option::<serde_json::Value>::None));
@@ -378,6 +379,7 @@ impl ChatDriver for AnthropicChatDriver {
             let response_content = Arc::clone(&response_content);
             let input_json = Arc::clone(&input_json);
             let finish_reason = Arc::clone(&finish_reason);
+            let raw_stop_reason = Arc::clone(&raw_stop_reason);
             let response_id = Arc::clone(&response_id);
             let response_model = Arc::clone(&response_model);
             let diagnostics_payload = Arc::clone(&diagnostics_payload);
@@ -696,6 +698,8 @@ impl ChatDriver for AnthropicChatDriver {
                                         };
                                         *finish_reason.lock().unwrap() =
                                             Some(normalized.to_string());
+                                        *raw_stop_reason.lock().unwrap() =
+                                            Some(stop_reason.clone());
 
                                         if stop_reason == "tool_use" {
                                             let tool_calls =
@@ -724,6 +728,23 @@ impl ChatDriver for AnthropicChatDriver {
                                     request_messages.as_ref(),
                                     &content,
                                 )?;
+                                // Calls run only on a `tool_use` stop. Any other
+                                // stop (`max_tokens`, `refusal`, none at all)
+                                // discards what the model started: count it.
+                                let stop = raw_stop_reason.lock().unwrap().clone();
+                                let tool_calls_dropped = if stop.as_deref() == Some("tool_use") {
+                                    0
+                                } else {
+                                    let started = accumulated_tool_calls.lock().unwrap().len()
+                                        + usize::from(current_tool_call.lock().unwrap().is_some());
+                                    u32::try_from(started).unwrap_or(u32::MAX)
+                                };
+                                everruns_contracts::llm_telemetry::warn_tool_calls_dropped(
+                                    "anthropic",
+                                    &model,
+                                    tool_calls_dropped,
+                                    stop.as_deref().unwrap_or("none"),
+                                );
 
                                 Ok(LlmStreamEvent::Done(Box::new({
                                     let mut metadata = LlmCompletionMetadata::default();
@@ -738,6 +759,8 @@ impl ChatDriver for AnthropicChatDriver {
                                     // distinct from an explicit stop.
                                     metadata.finish_reason =
                                         finish_reason.lock().unwrap().clone();
+                                    metadata.provider_finish_reason = stop;
+                                    metadata.tool_calls_dropped = tool_calls_dropped;
                                     metadata.retry_metadata = retry_metadata_for_done
                                         .map(|arc| (*arc).clone());
                                     metadata.response_id = response_id.lock().unwrap().clone();

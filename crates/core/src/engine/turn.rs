@@ -455,6 +455,7 @@ pub fn plan_after_reason(
                 tool_call_count: Some(summarized_state.tool_call_count),
                 llm_call_count: Some(summarized_state.llm_call_count),
                 status: Some("completed".to_string()),
+                stop_reason: reason_result.finish_reason.clone(),
             },
         });
         effects.push(TurnLifecycleEffect::SessionIdled {

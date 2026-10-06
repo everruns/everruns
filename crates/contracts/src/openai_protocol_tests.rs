@@ -639,6 +639,13 @@ async fn terminal_reasons_survive_final_deltas_and_block_truncated_tool_executio
                 response.tool_calls.is_none(),
                 "truncated/rejected calls must not execute"
             );
+            // ...but the discard is reported, not silent.
+            let dropped = u32::from(delta.get("tool_calls").is_some());
+            assert_eq!(response.metadata.tool_calls_dropped, dropped);
+            assert_eq!(
+                response.metadata.provider_finish_reason.as_deref(),
+                Some(reason)
+            );
             assert_eq!(
                 response.text,
                 if delta.get("content").is_some() {
