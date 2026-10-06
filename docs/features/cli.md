@@ -168,6 +168,10 @@ EVERRUNS_IDEMPOTENCY_KEY="nightly-agent-$(date +%F)" everruns agents create --na
 
 A repeat with the same key returns the first result. Reusing a key for a different request is an error, so use one key per command.
 
+### Reasons and manager context
+
+Every command takes `--reason "..."`, which is stored on the changed entity's history entry, and `--context-revision N`, which says which revision of the entity's manager notes you read. `everruns history list <id>` shows who changed an entity and why. `everruns context get <id>` shows its notes. See [Change history](/features/change-history/).
+
 ## See also
 
 - [Automate with the CLI](/how-to/automate-with-the-cli/): `jq`, quiet mode, scripting patterns.

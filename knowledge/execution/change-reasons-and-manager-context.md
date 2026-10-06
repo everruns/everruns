@@ -11,8 +11,8 @@ tags:
 ---
 # Change Reasons and Manager Context
 
-Status: in progress. Phases 1 (reasons and history) and 2 (manager context)
-are implemented; phases 3 to 7 are design. For what has landed, the Rust source
+Status: in progress. Phases 1 (reasons and history), 2 (manager context) and
+3 (agents know) are implemented; phases 4 to 7 are design. For what has landed, the Rust source
 (`crates/server/src/domains/change_history/`), migrations and OpenAPI export
 own the exact fields and this concept keeps only the intent, contracts and
 success bars.
@@ -596,7 +596,7 @@ Each phase is one PR-sized change.
    path.
 2. **Manager context** (implemented). Table, `context` commands, self rule,
    `--context-revision`, the never-reaches-the-runtime test.
-3. **Agents know.** Platform Chat and capability prompts, MCP instructions,
+3. **Agents know** (implemented). Platform Chat and capability prompts, MCP instructions,
    error recovery actions, public docs, the two evals.
 4. **Snapshots, restore and secrets.** Snapshot rendering with `Secret`
    markers for every kind in the coverage table, `history show`, `diff` and

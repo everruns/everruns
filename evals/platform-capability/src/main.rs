@@ -334,6 +334,18 @@ mod tests {
                                     .collect()
                             })
                             .unwrap_or_default();
+                        // Global flags every command takes: they describe the
+                        // call, not the command.
+                        let accepted: Vec<String> = accepted
+                            .into_iter()
+                            .chain(
+                                [
+                                    everruns_cli_contract::REASON_FIELD,
+                                    everruns_cli_contract::CONTEXT_REVISION_FIELD,
+                                ]
+                                .map(kebab),
+                            )
+                            .collect();
 
                         if flags_must_exist {
                             for found_flag in flag.captures_iter(window) {
