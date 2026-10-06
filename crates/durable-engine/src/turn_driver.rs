@@ -128,7 +128,7 @@ pub trait TurnTaskHost: Clone + Send + Sync + 'static {
 /// Each call runs one task: it checks the workflow is not cancelled, records
 /// the activity, heartbeats the task, runs the step, then completes or fails
 /// the task and schedules the turn's next step.
-pub struct TurnTaskDriver<S: TurnStore, H: TurnTaskHost> {
+pub struct TurnTaskDriver<S: TurnStore + ?Sized, H: TurnTaskHost> {
     store: Arc<S>,
     hosts: H,
     worker_id: String,
@@ -136,7 +136,7 @@ pub struct TurnTaskDriver<S: TurnStore, H: TurnTaskHost> {
     chain_steps: bool,
 }
 
-impl<S: TurnStore, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
+impl<S: TurnStore + ?Sized, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
     fn clone(&self) -> Self {
         Self {
             store: self.store.clone(),
@@ -148,7 +148,7 @@ impl<S: TurnStore, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
     }
 }
 
-impl<S: TurnStore, H: TurnTaskHost> TurnTaskDriver<S, H> {
+impl<S: TurnStore + ?Sized, H: TurnTaskHost> TurnTaskDriver<S, H> {
     /// A driver that claims ownership as `worker_id` and heartbeats each task
     /// every `heartbeat_interval`.
     pub fn new(
@@ -225,7 +225,7 @@ async fn execute_task<S, H>(
     claim_for: Option<&str>,
 ) -> Result<Option<ClaimedTask>>
 where
-    S: TurnStore,
+    S: TurnStore + ?Sized,
     H: TurnTaskHost,
 {
     info!(
@@ -397,7 +397,7 @@ where
     Ok(None)
 }
 
-async fn fail_activity_task<S: TurnStore, H: TurnTaskHost>(
+async fn fail_activity_task<S: TurnStore + ?Sized, H: TurnTaskHost>(
     store: &Arc<S>,
     hosts: &H,
     task: &ClaimedTask,
@@ -503,7 +503,7 @@ async fn execute_act_activity<H: TurnTaskHost>(
 ///
 /// Returns the next step when it was enqueued claimed for `claim_for`.
 #[allow(clippy::too_many_arguments)]
-async fn schedule_next_activity<S: TurnStore, H: TurnTaskHost>(
+async fn schedule_next_activity<S: TurnStore + ?Sized, H: TurnTaskHost>(
     store: &Arc<S>,
     hosts: &H,
     workflow_id: Uuid,
@@ -637,7 +637,7 @@ fn drains_wake_signals_after(completed_activity: &str, reason_final_answer: bool
 /// Consume and count queued `USER_MESSAGE` wakes for `workflow_id` when this
 /// activity boundary is a drain point (see [`drains_wake_signals_after`]).
 /// Returns 0 without touching the store at non-drain boundaries.
-async fn count_drained_wakes<S: TurnStore>(
+async fn count_drained_wakes<S: TurnStore + ?Sized>(
     store: &Arc<S>,
     workflow_id: Uuid,
     completed_activity: &str,
@@ -653,7 +653,7 @@ async fn count_drained_wakes<S: TurnStore>(
         .len())
 }
 
-async fn enqueue_reason_task<S: TurnStore>(
+async fn enqueue_reason_task<S: TurnStore + ?Sized>(
     store: &Arc<S>,
     workflow_id: Uuid,
     input: &DurableTurnInput,
@@ -674,7 +674,7 @@ async fn enqueue_reason_task<S: TurnStore>(
 }
 
 /// Enqueue a turn step, claimed for `claim_for` when set.
-async fn enqueue_step<S: TurnStore>(
+async fn enqueue_step<S: TurnStore + ?Sized>(
     store: &Arc<S>,
     workflow_id: Uuid,
     activity_id: String,
@@ -702,7 +702,7 @@ async fn enqueue_step<S: TurnStore>(
     }
 }
 
-async fn enqueue_act_task<S: TurnStore>(
+async fn enqueue_act_task<S: TurnStore + ?Sized>(
     store: &Arc<S>,
     workflow_id: Uuid,
     plan: &ActPlan,

@@ -260,9 +260,10 @@ async fn insert_workflow_task(
         INSERT INTO durable_task_queue (
             id, workflow_id, activity_id, activity_type, input, options,
             max_attempts, priority, visible_at,
-            schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
+            schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
+            queue
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() + $12::bigint * INTERVAL '1 millisecond', $9, $10, $11, $13)
         "#,
     )
     .bind(task_id)
@@ -277,6 +278,7 @@ async fn insert_workflow_task(
     .bind(task.options.start_to_close_timeout.as_millis() as i64)
     .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
     .bind(task.options.start_delay.map_or(0, |d| d.as_millis() as i64))
+    .bind(task.options.queue.as_deref())
     .execute(&mut **tx)
     .await
     .map_err(|e| {

@@ -199,7 +199,7 @@ See `crates/durable/src/engine/executor.rs` for `load_workflow_state()`, `unreco
 
 ### Task Claiming
 
-Workers claim tasks partitioned by `activity_type`. See `crates/durable/src/persistence/store.rs` for implementation.
+Workers claim tasks partitioned by `activity_type`, from one task queue at a time (`ActivityOptions::queue`; the default queue unless a caller names one, as a PostgreSQL framework backend does). See `crates/durable/src/persistence/store.rs` for implementation.
 
 The in-memory store is the test double for PostgreSQL and must behave the same
 wherever a caller can tell: only a registered, non-draining worker claims;

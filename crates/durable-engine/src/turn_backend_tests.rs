@@ -11,7 +11,7 @@ use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use uuid::Uuid;
 
-use crate::backend_store::{BackendTaskStore, Routing};
+use crate::backend_store::{RoutedStore, Routing};
 use crate::core::InputMessage;
 use crate::core::turn::TurnStopReason;
 use crate::durable::{
@@ -395,8 +395,7 @@ async fn ticket_resolves_on_the_fallback_poll_when_no_wakeup_comes() {
     let store = Arc::new(InMemoryWorkflowEventStore::new());
     // A routed store's end signal fires only on the ends written through it:
     // this end lands on the store underneath, as another process's would.
-    let runner =
-        DurableRunner::from_store(BackendTaskStore::routed(store.clone(), Routing::unique()));
+    let runner = DurableRunner::from_store(RoutedStore::new(store.clone(), Routing::unique()));
     let session_id = SessionId::new();
     let ticket = runner
         .start_turn(persisted_message(session_id))

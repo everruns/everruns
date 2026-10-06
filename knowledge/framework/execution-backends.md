@@ -194,13 +194,16 @@ engines and processes, which raises two questions the memory store never did.
 - **Routing: a step runs where its session is attached.** A step needs the
   session's `InProcessRuntime`, which lives only in the engine that opened
   the session, so a worker of another process cannot run it; claiming it
-  would fail it. Each PostgreSQL backend instance therefore gets a routing
-  key of its own and tags every task it enqueues with it in the activity type
-  (`reason@<key>`), and its workers claim only tagged types. The durable claim
-  already filters by activity type, so this needs no schema change; the
-  backend's store wrapper strips the tag before the driver sees a task
+  would fail it. Each PostgreSQL backend instance therefore gets a task queue
+  of its own (`ActivityOptions::queue`, stored in the task row's `queue`
+  column), enqueues every task to it, and claims from it only; a claim never
+  takes another queue's tasks, and the server's workers claim from the
+  default queue
   ([`backend_store.rs`](../../crates/durable-engine/src/backend_store.rs)).
-  The key is one per backend instance, not configurable: a key shared by
+  Tasks keep their plain activity type. Earlier the routing key was a tag in
+  the activity type (`reason@<key>`), which worked without a schema change
+  but leaked into every type a listener or an admin view saw.
+  The queue is one per backend instance, not configurable: a queue shared by
   processes would hand one process a step only another one can run. Sharing
   it becomes useful only once any process can build a session's runtime from
   configuration (a runtime factory), which the framework does not have.

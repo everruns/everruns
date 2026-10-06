@@ -87,11 +87,22 @@ struct PendingKey {
     id: Uuid,
 }
 
+/// `(queue, activity_type)` of a pending task.
+type PendingQueue = (Option<String>, String);
+
+fn pending_queue(definition: &TaskDefinition) -> PendingQueue {
+    (
+        definition.options.queue.clone(),
+        definition.activity_type.clone(),
+    )
+}
+
 #[derive(Default)]
 pub(super) struct TaskTable {
     rows: HashMap<Uuid, TaskState>,
-    /// Pending tasks per activity type, in claim order.
-    pending: HashMap<String, BTreeSet<PendingKey>>,
+    /// Pending tasks per task queue (`None`: the default queue) and
+    /// activity type, in claim order.
+    pending: HashMap<PendingQueue, BTreeSet<PendingKey>>,
     /// Pending task count per workflow; `None` counts standalone tasks.
     pending_per_workflow: HashMap<Option<Uuid>, u32>,
     claimed: HashSet<Uuid>,
@@ -158,22 +169,27 @@ impl TaskTable {
         self.pending.values().map(BTreeSet::len).sum()
     }
 
-    /// Up to `max` claimable tasks of the given types, in claim order.
+    /// Up to `max` claimable tasks of the given types in `queue`, in claim
+    /// order.
     pub fn claimable(
         &self,
+        queue: Option<&str>,
         activity_types: &[String],
         now: DateTime<Utc>,
         max: usize,
     ) -> Vec<Uuid> {
         let mut keys: Vec<PendingKey> = Vec::new();
         for activity_type in activity_types {
-            let Some(queue) = self.pending.get(activity_type) else {
+            let Some(pending) = self
+                .pending
+                .get(&(queue.map(str::to_owned), activity_type.clone()))
+            else {
                 continue;
             };
             // Priority sorts ahead of visibility, so a delayed high-priority
             // retry can precede visible work: skip it rather than stop.
             keys.extend(
-                queue
+                pending
                     .iter()
                     .filter(|key| key.visible_at <= now && self.has_attempts_left(key.id))
                     .take(max),
@@ -197,7 +213,7 @@ impl TaskTable {
         match task.status {
             TaskStatus::Pending => {
                 self.pending
-                    .entry(task.definition.activity_type.clone())
+                    .entry(pending_queue(&task.definition))
                     .or_default()
                     .insert(PendingKey {
                         priority: Reverse(task.definition.options.priority),
@@ -222,7 +238,7 @@ impl TaskTable {
         };
         match task.status {
             TaskStatus::Pending => {
-                if let Some(queue) = self.pending.get_mut(&task.definition.activity_type) {
+                if let Some(queue) = self.pending.get_mut(&pending_queue(&task.definition)) {
                     queue.remove(&PendingKey {
                         priority: Reverse(task.definition.options.priority),
                         visible_at: task.visible_at,
@@ -273,10 +289,41 @@ mod tests {
         table.insert(ids[3], task("t", 5));
 
         let types = ["t".to_string(), "u".to_string()];
-        let order = table.claimable(&types, Utc::now(), 10);
+        let order = table.claimable(None, &types, Utc::now(), 10);
         assert_eq!(order[..2], [ids[1], ids[3]]);
         assert_eq!(order.len(), 4);
-        assert_eq!(table.claimable(&types, Utc::now(), 1), vec![ids[1]]);
+        assert_eq!(table.claimable(None, &types, Utc::now(), 1), vec![ids[1]]);
+    }
+
+    #[test]
+    fn a_claim_takes_only_its_own_queue() {
+        let mut table = TaskTable::default();
+        let default = Uuid::now_v7();
+        let queued = Uuid::now_v7();
+        table.insert(default, task("t", 0));
+        let mut in_queue = task("t", 0);
+        in_queue.definition.options.queue = Some("q".into());
+        table.insert(queued, in_queue);
+
+        let types = ["t".to_string()];
+        assert_eq!(table.claimable(None, &types, Utc::now(), 10), vec![default]);
+        assert_eq!(
+            table.claimable(Some("q"), &types, Utc::now(), 10),
+            vec![queued]
+        );
+        assert!(
+            table
+                .claimable(Some("other"), &types, Utc::now(), 10)
+                .is_empty()
+        );
+
+        table.update(queued, |t| t.status = TaskStatus::Claimed);
+        assert!(
+            table
+                .claimable(Some("q"), &types, Utc::now(), 10)
+                .is_empty()
+        );
+        assert_eq!(table.pending_total(), 1);
     }
 
     #[test]
@@ -289,12 +336,20 @@ mod tests {
         table.update(id, |t| t.status = TaskStatus::Claimed);
         assert_eq!(table.pending_count(None), 0);
         assert_eq!(table.claimed_ids(), vec![id]);
-        assert!(table.claimable(&["t".into()], Utc::now(), 10).is_empty());
+        assert!(
+            table
+                .claimable(None, &["t".into()], Utc::now(), 10)
+                .is_empty()
+        );
 
         let later = Utc::now() + chrono::Duration::seconds(60);
         table.update(id, |t| t.release(later));
         assert!(table.claimed_ids().is_empty());
-        assert!(table.claimable(&["t".into()], Utc::now(), 10).is_empty());
-        assert_eq!(table.claimable(&["t".into()], later, 10), vec![id]);
+        assert!(
+            table
+                .claimable(None, &["t".into()], Utc::now(), 10)
+                .is_empty()
+        );
+        assert_eq!(table.claimable(None, &["t".into()], later, 10), vec![id]);
     }
 }

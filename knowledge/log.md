@@ -15,6 +15,13 @@
   gone and turn steps checkpoint `TurnExecution` directly. See
   [Execution Backends](framework/execution-backends.md).
 
+* **Durable tasks have named queues.** `ActivityOptions::queue` (the
+  `durable_task_queue.queue` column, server migration 178) names the queue a
+  task goes to, and a claim takes one queue's tasks only. A PostgreSQL
+  `DurableBackend` routes its sessions' steps through a queue of its own
+  instead of tagging their activity type. See
+  [Execution Backends](framework/execution-backends.md).
+
 ## 2026-10-05
 
 * **The generic workflow engine is an opt-out feature.** `everruns-durable`'s

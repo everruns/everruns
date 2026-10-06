@@ -235,15 +235,20 @@ pub trait TurnStore: Send + Sync + 'static {
     ) -> Result<Vec<WorkflowSignal>, StoreError>;
 }
 
+/// A turn task of `workflow_id` for `queue` (`None`: the default queue),
+/// with the turn options its activity id implies.
 fn turn_task(
+    queue: Option<&str>,
     workflow_id: Uuid,
     activity_id: String,
     activity_type: String,
     input: serde_json::Value,
 ) -> TaskDefinition {
+    let mut options = activity_options_for(&activity_id);
+    options.queue = queue.map(str::to_owned);
     TaskDefinition {
         workflow_id: Some(workflow_id),
-        options: activity_options_for(&activity_id),
+        options,
         activity_id,
         activity_type,
         input,
@@ -264,6 +269,57 @@ async fn record_scheduled<S: WorkflowEventStore>(
         options: task.options.clone(),
     };
     append_event(store, workflow_id, event).await.map(|_| ())
+}
+
+/// [`TurnStore::enqueue_task_and_record`] into `queue`.
+pub(crate) async fn enqueue_task_in<S: WorkflowEventStore>(
+    store: &S,
+    queue: Option<&str>,
+    workflow_id: Uuid,
+    activity_id: String,
+    activity_type: String,
+    input: serde_json::Value,
+) -> Result<Uuid, StoreError> {
+    let task = turn_task(queue, workflow_id, activity_id, activity_type, input);
+    record_scheduled(store, &task).await?;
+    TaskQueue::enqueue_task(store, task).await
+}
+
+/// [`TurnStore::enqueue_claimed_task_and_record`] into `queue`.
+pub(crate) async fn enqueue_claimed_task_in<S: WorkflowEventStore>(
+    store: &S,
+    queue: Option<&str>,
+    workflow_id: Uuid,
+    activity_id: String,
+    activity_type: String,
+    input: serde_json::Value,
+    worker_id: &str,
+) -> Result<Option<ClaimedTask>, StoreError> {
+    let task = turn_task(queue, workflow_id, activity_id, activity_type, input);
+    record_scheduled(store, &task).await?;
+    TaskQueue::enqueue_claimed_task(store, task, worker_id)
+        .await
+        .map(Enqueued::into_claimed)
+}
+
+/// [`TurnStore::start_turn`] with its first task in `queue`.
+pub(crate) async fn start_turn_in<S: WorkflowEventStore>(
+    store: &S,
+    queue: Option<&str>,
+    workflow_id: Uuid,
+    workflow_type: &str,
+    input: serde_json::Value,
+    activity_id: String,
+    activity_type: String,
+) -> Result<RunStart, StoreError> {
+    let task = turn_task(
+        queue,
+        workflow_id,
+        activity_id,
+        activity_type,
+        input.clone(),
+    );
+    EventLog::start_run_with_task(store, workflow_id, workflow_type, input, task).await
 }
 
 #[async_trait]
@@ -365,9 +421,7 @@ where
         activity_type: String,
         input: serde_json::Value,
     ) -> Result<Uuid, StoreError> {
-        let task = turn_task(workflow_id, activity_id, activity_type, input);
-        record_scheduled(self, &task).await?;
-        TaskQueue::enqueue_task(self, task).await
+        enqueue_task_in(self, None, workflow_id, activity_id, activity_type, input).await
     }
 
     async fn enqueue_claimed_task_and_record(
@@ -378,11 +432,16 @@ where
         input: serde_json::Value,
         worker_id: &str,
     ) -> Result<Option<ClaimedTask>, StoreError> {
-        let task = turn_task(workflow_id, activity_id, activity_type, input);
-        record_scheduled(self, &task).await?;
-        TaskQueue::enqueue_claimed_task(self, task, worker_id)
-            .await
-            .map(Enqueued::into_claimed)
+        enqueue_claimed_task_in(
+            self,
+            None,
+            workflow_id,
+            activity_id,
+            activity_type,
+            input,
+            worker_id,
+        )
+        .await
     }
 
     async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> Result<u64, StoreError> {
@@ -397,8 +456,16 @@ where
         activity_id: String,
         activity_type: String,
     ) -> Result<RunStart, StoreError> {
-        let task = turn_task(workflow_id, activity_id, activity_type, input.clone());
-        EventLog::start_run_with_task(self, workflow_id, workflow_type, input, task).await
+        start_turn_in(
+            self,
+            None,
+            workflow_id,
+            workflow_type,
+            input,
+            activity_id,
+            activity_type,
+        )
+        .await
     }
 
     async fn get_workflow(&self, workflow_id: Uuid) -> Result<WorkflowSnapshot, StoreError> {

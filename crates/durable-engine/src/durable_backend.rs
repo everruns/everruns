@@ -48,8 +48,8 @@
 //!   - The ticket of a continued turn counts only the steps this run takes,
 //!     as an in-process result does.
 //! - On PostgreSQL ([`DurableBackend::postgres`]) the queue is shared with
-//!   other processes, so each backend claims only the tasks it routed to
-//!   itself (see `backend_store`).
+//!   other processes, so each backend enqueues to and claims from a task
+//!   queue of its own (see `backend_store`).
 //! - Recovery is per session, from the session log, on every store. A turn a
 //!   process exit cut off continues through `ResumeInterrupted`, as in
 //!   process; nothing replays the dead process's queue. The memory store
@@ -88,7 +88,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};
 
-use crate::backend_store::{BackendTaskStore, Routing};
+use crate::backend_store::{RoutedStore, Routing};
 use crate::durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput};
 use crate::task_heartbeat::CancelSignals;
 use crate::turn_backend::TurnBaseline;
@@ -180,7 +180,7 @@ impl Drop for Owner {
 }
 
 struct Shared {
-    store: Arc<BackendTaskStore>,
+    store: Arc<dyn TurnStore>,
     /// The PostgreSQL store other backends share, for ending the workflows
     /// they left behind; `None` for a store this backend owns.
     shared_store: Option<PostgresWorkflowEventStore>,
@@ -213,7 +213,7 @@ impl DurableBackend {
     /// persistent store.
     pub fn memory(workers: usize) -> Self {
         Self::new(
-            BackendTaskStore::owned(Arc::new(InMemoryWorkflowEventStore::new())),
+            Arc::new(InMemoryWorkflowEventStore::new()),
             None,
             workers,
             WORKER_POLL_INTERVAL,
@@ -255,9 +255,9 @@ impl DurableBackend {
     /// ```
     pub fn postgres(store: PostgresWorkflowEventStore, workers: usize) -> Self {
         let routing = Routing::unique();
-        debug!(routing_key = routing.key(), "durable PostgreSQL backend");
+        debug!(queue = routing.queue(), "durable PostgreSQL backend");
         Self::new(
-            BackendTaskStore::routed(Arc::new(store.clone()), routing),
+            Arc::new(RoutedStore::new(Arc::new(store.clone()), routing)),
             Some(store),
             workers,
             POSTGRES_WORKER_POLL_INTERVAL,
@@ -267,12 +267,11 @@ impl DurableBackend {
     /// The runner and the workers share `store`, so a routed store's tags
     /// and local workflow-end wakeups cover both.
     fn new(
-        store: BackendTaskStore,
+        store: Arc<dyn TurnStore>,
         shared_store: Option<PostgresWorkflowEventStore>,
         workers: usize,
         poll_interval: Duration,
     ) -> Self {
-        let store = Arc::new(store);
         let wake = Arc::new(Notify::new());
         let runner = DurableRunner::from_shared(store.clone())
             .with_task_notifier(Arc::new(WakeWorkers(wake.clone())));

@@ -19,7 +19,7 @@ use crate::turn_store::TurnStore;
 /// `(task cancellation, turn cancel)`.
 pub type CancelSignals = (watch::Receiver<bool>, watch::Receiver<bool>);
 
-pub fn spawn_task_heartbeat<S: TurnStore>(
+pub fn spawn_task_heartbeat<S: TurnStore + ?Sized>(
     store: Arc<S>,
     task_id: Uuid,
     worker_id: String,

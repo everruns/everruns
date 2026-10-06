@@ -48,6 +48,16 @@ pub struct ActivityOptions {
     /// one the check is best-effort.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dedupe_by_activity_id: bool,
+
+    /// Named task queue the task goes to; `None` is the default queue.
+    ///
+    /// A claim takes tasks from one queue only
+    /// ([`TaskQueue::claim_queue_tasks`](crate::TaskQueue::claim_queue_tasks)),
+    /// so processes that share a store but cannot run each other's tasks
+    /// keep them apart by queue. The PostgreSQL store keeps it in the task
+    /// row's `queue` column.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
 }
 
 impl Default for ActivityOptions {
@@ -61,6 +71,7 @@ impl Default for ActivityOptions {
             priority: 0,
             start_delay: None,
             dedupe_by_activity_id: false,
+            queue: None,
         }
     }
 }
@@ -114,6 +125,12 @@ impl ActivityOptions {
     /// [`ActivityOptions::dedupe_by_activity_id`].
     pub fn with_dedupe_by_activity_id(mut self) -> Self {
         self.dedupe_by_activity_id = true;
+        self
+    }
+
+    /// Send the task to the named queue; see [`ActivityOptions::queue`].
+    pub fn with_queue(mut self, queue: impl Into<String>) -> Self {
+        self.queue = Some(queue.into());
         self
     }
 }
