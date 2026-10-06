@@ -9,7 +9,7 @@ use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
 use crate::records::{AgentChannel, AgentChannelId, ChannelType};
 use crate::storage::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelRow};
 use everruns_contracts::typed_id::AgentId;
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use utoipa::ToSchema;

@@ -3,12 +3,14 @@
 # (workflows, activities, tasks, signals, schedules) with no agent or turn
 # semantics. Agent semantics live in durable-engine and server, which build on it.
 #
-# 1. The durable manifest declares no `everruns-*` normal or build dependency.
-#    (A dev-dependency is allowed: the database-failure drift test pins the
-#    engine's local log wording to `everruns-core`'s.)
+# 1. The durable manifest declares no `everruns-*` normal or build dependency
+#    except `everruns-db`, the database-utility leaf. (A dev-dependency is
+#    allowed: the database-failure drift test pins the engine's local log
+#    wording to `everruns-core`'s.)
 # 2. `cargo tree` for the shipped (normal + build) edges contains no
-#    `everruns-*` crate other than `everruns-durable` itself, so the engine
-#    never compiles the agent stack.
+#    `everruns-*` crate other than `everruns-durable` itself and `everruns-db`,
+#    so the engine never compiles the agent stack. `everruns-db` must itself
+#    stay a leaf: its shipped tree contains no other `everruns-*` crate.
 # 3. `everruns-durable-engine` carries no transport: neither its manifest nor
 #    its shipped (normal + build) tree contains `tonic` or
 #    `everruns-internal-protocol`. The worker owns the gRPC stores and runner
@@ -27,23 +29,33 @@ source "$SCRIPT_DIR/guard-cargo.sh"
 MANIFEST=crates/durable/Cargo.toml
 FAILED=0
 
-# 1. Manifest: only [dev-dependencies] may name an everruns-* crate.
+# 1. Manifest: only [dev-dependencies] may name an everruns-* crate, except
+#    the everruns-db leaf.
 if matches=$(awk '
   /^\[/ { section = $0 }
   /^[[:space:]]*everruns-[a-z0-9-]+[[:space:]]*[.=]/ {
+    if ($0 ~ /^[[:space:]]*everruns-db[[:space:]]*[.=]/) next
     if (section != "[dev-dependencies]") print FILENAME ":" NR ": " section " " $0
   }
 ' "$MANIFEST"); [ -n "$matches" ]; then
-  echo "everruns-durable must not declare an everruns-* normal or build dependency:"
+  echo "everruns-durable must not declare an everruns-* normal or build dependency other than everruns-db:"
   echo "$matches"
   FAILED=1
 fi
 
-# 2. Shipped dependency tree: no everruns-* crate besides the engine itself.
+# 2. Shipped dependency tree: no everruns-* crate besides the engine itself
+#    and the everruns-db leaf, which must have no everruns-* dependency.
 tree=$(guard_cargo_tree -p everruns-durable --edges normal,build --prefix none)
-if leaked=$(echo "$tree" | grep -E '^everruns-' | grep -vE '^everruns-durable ' | sort -u) \
+if leaked=$(echo "$tree" | grep -E '^everruns-' | grep -vE '^everruns-(durable|db) ' | sort -u) \
   && [ -n "$leaked" ]; then
-  echo "everruns-durable must not depend on any everruns-* crate (normal/build edges):"
+  echo "everruns-durable must not depend on any everruns-* crate but everruns-db (normal/build edges):"
+  echo "$leaked"
+  FAILED=1
+fi
+db_tree=$(guard_cargo_tree -p everruns-db --all-features --edges normal,build --prefix none)
+if leaked=$(echo "$db_tree" | grep -E '^everruns-' | grep -vE '^everruns-db ' | sort -u) \
+  && [ -n "$leaked" ]; then
+  echo "everruns-db must not depend on any everruns-* crate (normal/build edges):"
   echo "$leaked"
   FAILED=1
 fi

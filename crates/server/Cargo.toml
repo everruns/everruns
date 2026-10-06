@@ -109,6 +109,7 @@ everruns-worker = { path = "../worker" }  # DurableRunner, worker adapters, in-p
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-durable.workspace = true  # For durable execution gRPC service
+everruns-db.workspace = true  # UpdateField for storage updates
 image.workspace = true  # For image thumbnail generation
 
 # gRPC

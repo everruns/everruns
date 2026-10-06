@@ -7,9 +7,10 @@ import re
 import subprocess
 import sys
 
+# everruns-db owns embedded SQLite construction for the facade and serve hosts.
 # everruns-pg-embedded runs the server's throwaway dev/test cluster: it creates
 # and drops databases and reads no tables.
-OWNERS = {"everruns-server", "everruns-durable", "everruns-pg-embedded"}
+OWNERS = {"everruns-server", "everruns-durable", "everruns-db", "everruns-pg-embedded"}
 DRIVERS = {
     "sqlx", "rusqlite", "diesel", "postgres", "tokio-postgres", "mysql",
     "mysql_async", "mongodb", "libsql", "duckdb", "sea-orm", "surrealdb",
@@ -118,9 +119,9 @@ def main():
     violations = dependency_violations(packages) + constructor_violations(packages)
     if violations:
         print("\n".join(violations), file=sys.stderr)
-        print("Database drivers and connection construction belong to server or durable.", file=sys.stderr)
+        print("Database drivers and connection construction belong to server, durable or everruns-db.", file=sys.stderr)
         return 1
-    print("Database driver isolation guard passed: only server/durable own connections; contracts codecs remain optional.")
+    print("Database driver isolation guard passed: only server/durable/db own connections; contracts codecs remain optional.")
     return 0
 
 

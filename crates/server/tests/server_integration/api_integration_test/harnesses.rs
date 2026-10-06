@@ -5,7 +5,7 @@ use crate::test_harness;
 use axum::http::StatusCode;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use everruns_server::records::Agent;
 use everruns_server::records::Harness;
 use everruns_server::records::Session;

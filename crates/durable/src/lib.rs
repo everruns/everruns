@@ -30,7 +30,6 @@
 //!   proven by this crate's tests, benches and `examples/order_pipeline.rs`.
 //!   Turn it off with `default-features = false` to compile only the store,
 //!   queue, reliability, scheduler and worker pool core.
-//! - `sqlite`: the `sqlite` module, a small rusqlite wrapper for local hosts.
 //!
 //! # Example
 //!
@@ -69,13 +68,10 @@ pub mod maintenance;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
-#[cfg(feature = "sqlite")]
-pub mod sqlite;
 // `/proc` readings for the worker pool's backpressure and the bench reports.
 // Not part of the API.
 pub(crate) mod sysstat;
 pub mod task_events;
-pub mod update_field;
 pub mod worker;
 pub mod workflow;
 
@@ -144,7 +140,8 @@ pub use scheduler::{
     Cadence, DurableScheduler, EnsureOutcome, ScheduleSpec, SchedulerConfig, SchedulerError,
     disable_schedule, ensure_schedule, find_schedule,
 };
-pub use update_field::UpdateField;
+// `ScheduleUpdate` fields are `UpdateField`s, so the type stays nameable here.
+pub use everruns_db::UpdateField;
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal, signal_types};
 #[cfg(feature = "workflows")]

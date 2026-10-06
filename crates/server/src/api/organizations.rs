@@ -21,7 +21,7 @@ use axum::{
     routing::get,
 };
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,

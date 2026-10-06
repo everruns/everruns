@@ -127,7 +127,7 @@ pub struct UpdateAgentRequest {
     #[serde(default, with = "crate::domains::change_history::update_field")]
     #[schema(value_type=Option<String>)]
     pub service_virtual_user_id:
-        everruns_durable::UpdateField<everruns_contracts::typed_id::VirtualUserId>,
+        everruns_db::UpdateField<everruns_contracts::typed_id::VirtualUserId>,
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "updated-support")]
@@ -188,7 +188,7 @@ pub struct UpdateAgentRequest {
         with = "crate::domains::change_history::update_field"
     )]
     #[schema(value_type = Option<SandboxPolicy>)]
-    pub sandbox_policy: everruns_durable::UpdateField<SandboxPolicy>,
+    pub sandbox_policy: everruns_db::UpdateField<SandboxPolicy>,
     /// Starter files copied into each new session for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Always respond in formal English.\n"}]))]
