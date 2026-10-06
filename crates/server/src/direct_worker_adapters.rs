@@ -768,20 +768,20 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()> {
-        let session_id_typed = SessionId::from_uuid(session_id);
+        let id = SessionId::from_uuid(session_id);
         let update = UpdateSession {
             status: Some(status.to_string()),
             ..Default::default()
         };
-
         self.db
-            .update_session(org_id, session_id_typed, update)
+            .update_session(org_id, id, update)
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to update session status: {}", e);
-                store_error("Failed to update session status")
-            })?;
-
+            .inspect_err(|e| tracing::error!("Failed to update session status: {e}"))
+            .map_err(|_| store_error("Failed to update session status"))?;
+        if status == "waiting_for_tool_results" {
+            let store = self.workflow_store.as_deref();
+            crate::tool_result_timeout::arm_parked_turn(&self.db, store, org_id, id).await;
+        }
         // Acknowledgement only (EVE-882): status mutation exposes no session
         // record to the worker path.
         Ok(())

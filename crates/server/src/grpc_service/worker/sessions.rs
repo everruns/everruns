@@ -95,6 +95,7 @@ impl WorkerServiceImpl {
             )));
         }
 
+        let parked = req.status == "waiting_for_tool_results";
         let session = self
             .session_service
             .update_status(&internal_caller, session_id, req.status)
@@ -104,6 +105,15 @@ impl WorkerServiceImpl {
                 Status::internal("Failed to update session status")
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
+        if parked {
+            crate::tool_result_timeout::arm_parked_turn(
+                &self.db,
+                self.durable_store.as_deref(),
+                req.org_id,
+                everruns_contracts::typed_id::SessionId::from_uuid(session_id),
+            )
+            .await;
+        }
 
         let proto_session = schema_session_to_proto(&session);
 
