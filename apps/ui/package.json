@@ -71,7 +71,7 @@
     "jest-environment-jsdom": "^30.5.2",
     "openapi-typescript": "^7.13.0",
     "oxfmt": "^0.70.0",
-    "oxlint": "^1.82.0",
+    "oxlint": "^1.86.0",
     "playwright": "^1.63.0",
     "tailwindcss": "^4.3.3",
     "typescript": "6.0.3"
