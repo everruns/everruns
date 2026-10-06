@@ -70,18 +70,18 @@ async fn endpoint(ctx: &Ctx, agent: &Agent, app: Option<&str>, team: &str) -> Uu
             ctx.org_id(),
             CreateAgentChannelRow {
                 agent_id: agent.internal_id,
-                public_id: format!("channel_{}", Uuid::now_v7().simple()),
+                public_id: format!("appchan_{}", Uuid::now_v7().simple()),
                 channel_type: "slack".into(),
                 channel_config: config,
                 channel_config_encrypted: None,
                 auth: None,
                 auth_encrypted: None,
                 enabled: true,
-                status: "published".into(),
+                status: "live".into(),
                 virtual_user_id: None,
                 agent_version_policy: "latest".into(),
                 agent_version_id: None,
-                owner_principal_id: Uuid::nil(),
+                owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1).uuid(),
                 resolved_owner_user_id: None,
             },
         )
@@ -301,7 +301,7 @@ async fn branding_queued_updates_read_latest_saved_identity_under_install_lock()
     assert!(identities.iter().all(|identity| identity.3 == "Latest"));
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn branding_rate_limit_retry_releases_lock_and_reads_latest_identity() {
     let db = Arc::new(StorageBackend::test_database());
     let provisioner = Arc::new(Provisioner::default());
@@ -323,7 +323,7 @@ async fn branding_rate_limit_retry_releases_lock_and_reads_latest_identity() {
     .run(&ctx)
     .await
     .unwrap();
-    for _ in 0..100 {
+    for _ in 0..1000 {
         if provisioner
             .rate_attempts
             .load(std::sync::atomic::Ordering::SeqCst)
@@ -331,7 +331,7 @@ async fn branding_rate_limit_retry_releases_lock_and_reads_latest_identity() {
         {
             break;
         }
-        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(2)).await;
     }
     assert_eq!(
         provisioner
@@ -352,7 +352,6 @@ async fn branding_rate_limit_retry_releases_lock_and_reads_latest_identity() {
     .await
     .unwrap();
     drop(guard);
-    tokio::time::advance(std::time::Duration::from_secs(61)).await;
     let identities = wait_for(&provisioner, 1).await;
     assert_eq!(identities[0].3, "Latest");
     assert_eq!(
