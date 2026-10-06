@@ -87,7 +87,7 @@ pub struct FeatureFlags {
     /// deployment raises its grade: model sync works, but the key we test with
     /// is tier-limited, so chat has not been verified end to end.
     #[serde(default)]
-    pub mistral_provider: bool,
+    pub mistral: bool,
     /// Platform Chat workspace with an integrated Threads panel. Org opt-in.
     #[serde(default)]
     pub chat_threads: bool,
@@ -149,7 +149,7 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Off,
     },
     FeatureFlagDefinition {
-        name: "mistral_provider",
+        name: "mistral",
         label: "Mistral AI provider",
         description: "Connect Mistral AI directly with your own API key.",
         grade: FeatureFlagGrade::Off,
@@ -379,7 +379,7 @@ impl FeatureFlags {
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
             ("chatgpt_plan".to_string(), self.chatgpt_plan),
-            ("mistral_provider".to_string(), self.mistral_provider),
+            ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
@@ -418,7 +418,7 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
             "chatgpt_plan" => self.chatgpt_plan,
-            "mistral_provider" => self.mistral_provider,
+            "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
             "notifications" => self.notifications,
             "evals" => self.evals,
@@ -466,7 +466,7 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
             "chatgpt_plan" => self.chatgpt_plan = enabled,
-            "mistral_provider" => self.mistral_provider = enabled,
+            "mistral" => self.mistral = enabled,
             "chat_threads" => self.chat_threads = enabled,
             _ => {
                 assert!(
@@ -509,7 +509,7 @@ impl FeatureFlags {
     pub fn is_driver_offered(&self, driver: &str) -> bool {
         match driver {
             "chatgpt" => self.chatgpt_plan,
-            "mistral" => self.mistral_provider,
+            "mistral" => self.mistral,
             _ => true,
         }
     }
@@ -528,7 +528,7 @@ impl FeatureFlags {
             container_sandbox: true,
             lua: true,
             chatgpt_plan: true,
-            mistral_provider: true,
+            mistral: true,
             chat_threads: true,
             notifications: true,
             evals: true,
@@ -617,21 +617,21 @@ mod tests {
     }
 
     #[test]
-    fn mistral_provider_is_off_until_a_deployment_raises_it() {
+    fn mistral_is_off_until_a_deployment_raises_it() {
         let definition = API_FEATURE_FLAG_DEFINITIONS
             .iter()
-            .find(|definition| definition.name == "mistral_provider")
+            .find(|definition| definition.name == "mistral")
             .unwrap();
         assert_eq!(definition.grade, FeatureFlagGrade::Off);
-        let enrolled = HashMap::from([("mistral_provider".into(), true)]);
+        let enrolled = HashMap::from([("mistral".into(), true)]);
         for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
             let flags = policy(deployment, definition.grade).for_org(&enrolled);
-            assert!(!flags.mistral_provider);
+            assert!(!flags.mistral);
             assert!(!flags.is_driver_offered("mistral"));
             assert!(flags.is_driver_offered("openai"));
         }
         let raised = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off)
-            .with_grade("mistral_provider", FeatureFlagGrade::Adoption)
+            .with_grade("mistral", FeatureFlagGrade::Adoption)
             .for_org(&enrolled);
         assert!(raised.is_driver_offered("mistral"));
     }

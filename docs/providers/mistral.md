@@ -28,9 +28,9 @@ you run on any other provider.
 
 ## Configure in Everruns
 
-The Mistral AI provider is behind the `mistral_provider` feature flag, which is
+The Mistral AI provider is behind the `mistral` feature flag, which is
 off by default. A self-hosted deployment turns it on by setting
-`FEATURE_MISTRAL_PROVIDER=prod` (on for every organization) or `adoption`
+`FEATURE_MISTRAL=prod` (on for every organization) or `adoption`
 (organizations opt in). Until then, Mistral AI does not appear in the provider
 picker and the API refuses to create a `mistral` provider. Mistral models remain
 reachable through OpenRouter either way.

@@ -27,7 +27,7 @@ export type DriverId =
 
 /**
  * Drivers the server lists in `/v1/providers/config` only when an org flag
- * allows them (`chatgpt_plan`, `mistral_provider`). The server's list is the
+ * allows them (`chatgpt_plan`, `mistral`). The server's list is the
  * source of truth, so a gated driver is offered only once the config names it.
  */
 const SERVER_GATED_DRIVERS: readonly DriverId[] = ["chatgpt", "mistral"];

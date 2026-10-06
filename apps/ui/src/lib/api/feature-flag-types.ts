@@ -33,7 +33,7 @@ export interface FeatureFlags {
   /** Personal ChatGPT plan connections. Requires deployment and organization opt-in. */
   chatgpt_plan?: boolean;
   /** First-party Mistral AI provider. Off unless the deployment raises it. */
-  mistral_provider?: boolean;
+  mistral?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
 }
