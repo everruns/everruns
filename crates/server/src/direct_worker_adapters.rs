@@ -269,8 +269,6 @@ pub struct DirectWorkerAdapters {
     vector_store: Option<Arc<dyn everruns_contracts::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
-    /// Fallback when there is no encryption key to seal checkpoints with
-    /// (dev mode only); `None` disables checkpoints instead.
     in_memory_compaction_checkpoint_store:
         Option<Arc<everruns_core::host::InMemoryCompactionCheckpointStore>>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
@@ -313,9 +311,7 @@ impl DirectWorkerAdapters {
             runner: None,
             encryption: None,
             in_memory_compaction_checkpoint_store: None,
-            proactive_compaction_attempts: Arc::new(
-                everruns_core::ProactiveCompactionAttemptTracker::default(),
-            ),
+            proactive_compaction_attempts: Arc::default(),
             workflow_store: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
@@ -547,9 +543,7 @@ impl DirectWorkerAdapters {
         self
     }
 
-    /// Keep compaction checkpoints in memory when there is no encryption key.
-    /// Dev mode only: the checkpoints die with the process.
-    pub fn with_in_memory_compaction_checkpoints(mut self) -> Self {
+    pub fn with_dev_mode_in_memory_compaction_checkpoints(mut self) -> Self {
         self.in_memory_compaction_checkpoint_store = Some(Arc::default());
         self
     }
