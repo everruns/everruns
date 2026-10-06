@@ -21,5 +21,6 @@ export type DriverId =
   | "mai"
   | "fireworks"
   | "meta"
+  | "mistral"
   | "cloudflare"
   | "vercel";

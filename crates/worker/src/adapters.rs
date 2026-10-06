@@ -16,6 +16,7 @@ use everruns_contracts::provider::DriverId;
 /// - Microsoft MAI (Azure AI Foundry, OpenAI-compatible Chat Completions)
 /// - Fireworks AI (open models, OpenAI-compatible Chat Completions)
 /// - Meta Model API (Muse Spark, OpenAI-compatible Responses API)
+/// - Mistral AI (La Plateforme, OpenAI-compatible Chat Completions)
 /// - Anthropic Claude
 /// - Google Gemini
 /// - LlmSim (for testing)
@@ -131,6 +132,7 @@ mod tests {
             DriverId::Mai,
             DriverId::Fireworks,
             DriverId::Meta,
+            DriverId::Mistral,
             DriverId::Anthropic,
             DriverId::Gemini,
             DriverId::Bedrock,

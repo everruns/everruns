@@ -934,6 +934,7 @@ export type MemoryGrepResult = Schemas["MemoryGrepResult"];
 export type MemorySourceResponse = Schemas["MemorySourceResponse"];
 export type MessageBody = Schemas["MessageBody"];
 export type ModelSource = Schemas["ModelSource"];
+export type ModelVendor = Schemas["ModelVendor"];
 export type MyInvitationResponse = Schemas["MyInvitationResponse"];
 export type NativeToolCall = Schemas["NativeToolCall"];
 export type OAuthAuthorizeQuery = Schemas["OAuthAuthorizeQuery"];
