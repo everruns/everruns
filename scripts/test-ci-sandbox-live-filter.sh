@@ -66,7 +66,7 @@ def included(patterns: list[str], path: str) -> bool:
 providers = {
     "daytona": {
         "job": "daytona-live-test",
-        "command": "cargo test -p everruns-integrations --features daytona-live-tests",
+        "command": "cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test",
         "probes": [
             "crates/integrations/src/daytona/session_sandbox_provider.rs",
             "crates/contracts/src/session_sandbox.rs",
@@ -80,7 +80,7 @@ providers = {
     },
     "e2b": {
         "job": "e2b-live-test",
-        "command": "cargo test -p everruns-integrations --features e2b-live-tests",
+        "command": "cargo test -p everruns-integrations --features e2b-live-tests --test e2b_live_api_test",
         "probes": [
             "crates/integrations/src/e2b/client.rs",
             ".github/workflows/ci.yml",
@@ -88,7 +88,7 @@ providers = {
     },
     "browserless": {
         "job": "browserless-live-test",
-        "command": "cargo test -p everruns-integrations --features browserless-live-tests",
+        "command": "cargo test -p everruns-integrations --features browserless-live-tests --test browserless_live_api",
         "probes": [
             "crates/integrations/src/browserless/mod.rs",
             ".github/workflows/ci.yml",
@@ -138,6 +138,30 @@ for provider, expected in providers.items():
 
     if job_name not in aggregate_needs:
         sys.exit(f"{workflow}: Build Check does not depend on `{job_name}`")
+
+sweep = yaml.safe_load(Path(".github/workflows/integration-live-sweep.yml").read_text())
+sweep_tests = {
+    entry["name"]: entry["command"]
+    for entry in sweep["jobs"]["doppler-backed-live-tests"]["strategy"]["matrix"]["include"]
+}
+for name, command in {
+    "Daytona Live API Tests": providers["daytona"]["command"],
+    "Browserless Live API Tests": providers["browserless"]["command"],
+    "E2B Live API Tests": providers["e2b"]["command"],
+    "Cursor Live API Tests": "cargo test -p everruns-integrations --features cursor-live-tests --test cursor_live_api_test",
+}.items():
+    if not sweep_tests.get(name, "").startswith(command):
+        sys.exit(f"integration live sweep: `{name}` must run `{command}`")
+
+cursor = yaml.safe_load(Path(".github/workflows/cursor-integration.yml").read_text())
+cursor_live_runs = [
+    step.get("run", "")
+    for job in cursor["jobs"].values()
+    for step in job.get("steps") or []
+    if "DOPPLER_TOKEN" in (step.get("env") or {})
+]
+if not any("--test cursor_live_api_test" in run for run in cursor_live_runs):
+    sys.exit("cursor integration workflow must target `cursor_live_api_test`")
 
 for provider, expected in providers.items():
     patterns = filters[provider]
