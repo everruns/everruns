@@ -237,11 +237,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       return;
     }
     try {
-      await updateAgent.mutateAsync({
-        agentId,
-        request: result.request,
-        reason: saveReason,
-      });
+      await updateAgent.mutateAsync({ agentId, request: result.request, reason: saveReason });
       draft.reset();
       setSaveReason("");
       exitEdit();
@@ -262,11 +258,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         properties: {},
         additionalProperties: false,
       },
-      annotations: {
-        readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
       execute: async () => {
         webmcp.assertBinding(webmcp.bindingToken);
         if (!agent || agent.id !== agentId || agent.status !== "active") {
@@ -299,9 +291,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         const blob =
           format === "zip"
             ? await exportAgentPackage(agent.name)
-            : new Blob([await exportAgent.mutateAsync(agentId)], {
-                type: "text/markdown",
-              });
+            : new Blob([await exportAgent.mutateAsync(agentId)], { type: "text/markdown" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -426,11 +416,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         ? formatTokens(agent.usage.input_tokens + agent.usage.output_tokens)
         : "None",
     },
-    {
-      id: "health",
-      label: "Health check",
-      summary: healthSummary(latestHealth),
-    },
+    { id: "health", label: "Health check", summary: healthSummary(latestHealth) },
   ];
 
   const canArchive = canEdit;
@@ -476,10 +462,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 id: "observe",
                 label: "Observe this agent",
                 icon: <Telescope className="size-4" />,
-                href: {
-                  pathname: "/observers/new",
-                  query: { agent_id: agentId },
-                },
+                href: { pathname: "/observers/new", query: { agent_id: agentId } },
               },
             ]
           : []),

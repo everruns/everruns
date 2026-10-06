@@ -188,26 +188,16 @@ jest.mock("@/hooks", () => ({
   useCopyAgent: () => mutation(),
   useHarnesses: () => mockUseHarnesses(),
   useAgentStats: () => ({ data: undefined, isLoading: false, error: null }),
-  useAgentMcpAttachments: () => ({
-    data: [{ name: "github" }, { name: "linear" }],
-  }),
+  useAgentMcpAttachments: () => ({ data: [{ name: "github" }, { name: "linear" }] }),
   useAgentCredentials: () => ({ data: [] }),
   useLatestHealthCheckRun: () => ({ data: { config_changed: false } }),
   useUpdateAgent: () => mutation(mockUpdate),
   useDeleteAgent: () => mutation(mockArchive),
   useDestroyAgent: () => mutation(),
   useAgentNameAvailability: () => ({ isChecking: false, available: null }),
-  useAvatarPresets: () => ({
-    catalog: { data: [], isLoading: false },
-    current: {},
-  }),
+  useAvatarPresets: () => ({ catalog: { data: [], isLoading: false }, current: {} }),
   useAgentAvatar: () => ({
-    selectPreset: {
-      isPending: false,
-      error: null,
-      reset: jest.fn(),
-      mutateAsync: jest.fn(),
-    },
+    selectPreset: { isPending: false, error: null, reset: jest.fn(), mutateAsync: jest.fn() },
     upload: { mutate: jest.fn(), isPending: false, error: null },
     remove: { mutate: jest.fn(), isPending: false, error: null },
   }),
@@ -228,21 +218,9 @@ jest.mock("@/hooks/use-change-history", () => ({
   }),
   useEntityRevision: () => ({ data: undefined, isLoading: false, error: null }),
   useEntityRevisionDiff: () => ({ data: [], isLoading: false, error: null }),
-  useRestoreEntityRevision: () => ({
-    mutateAsync: jest.fn(),
-    isPending: false,
-    reset: jest.fn(),
-  }),
-  useManagerContext: () => ({
-    data: mockManagerNotes,
-    isLoading: false,
-    error: null,
-  }),
-  useSetManagerContext: () => ({
-    mutateAsync: jest.fn(),
-    isPending: false,
-    reset: jest.fn(),
-  }),
+  useRestoreEntityRevision: () => ({ mutateAsync: jest.fn(), isPending: false, reset: jest.fn() }),
+  useManagerContext: () => ({ data: mockManagerNotes, isLoading: false, error: null }),
+  useSetManagerContext: () => ({ mutateAsync: jest.fn(), isPending: false, reset: jest.fn() }),
 }));
 
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
@@ -310,21 +288,15 @@ describe("AgentPage layout", () => {
         { channel_type: "schedule", enabled: false },
       ],
     });
-    mockUseAgentTriggers.mockReturnValue({
-      data: [{ enabled: true }, { enabled: false }],
-    });
+    mockUseAgentTriggers.mockReturnValue({ data: [{ enabled: true }, { enabled: false }] });
     await renderPage();
 
     expect(screen.getByRole("tab", { name: "Integrations 5" })).toBeInTheDocument();
   });
 
   it.each(["channels", "triggers"])("hides the total until %s have loaded", async (pending) => {
-    mockUseAgentChannels.mockReturnValue({
-      data: pending === "channels" ? undefined : [{}],
-    });
-    mockUseAgentTriggers.mockReturnValue({
-      data: pending === "triggers" ? undefined : [{}],
-    });
+    mockUseAgentChannels.mockReturnValue({ data: pending === "channels" ? undefined : [{}] });
+    mockUseAgentTriggers.mockReturnValue({ data: pending === "triggers" ? undefined : [{}] });
     await renderPage();
 
     expect(screen.getByRole("tab", { name: "Integrations" })).toBeInTheDocument();
@@ -418,10 +390,7 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: /Sessions/ }));
     expect(screen.getByText("Session with GPT-4o")).toBeInTheDocument();
-    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", {
-      offset: 0,
-      limit: 20,
-    });
+    expect(mockUseSessions).toHaveBeenCalledWith("agent-1", { offset: 0, limit: 20 });
   });
 
   it("writes the selected tab into the URL so a refresh keeps it", async () => {
@@ -430,9 +399,7 @@ describe("AgentPage layout", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Integrations 0" }));
 
     expect(screen.getByText("agent integrations")).toBeInTheDocument();
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", {
-      scroll: false,
-    });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
   });
 
   it("restores the tab from the URL on load", async () => {
@@ -449,9 +416,7 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Agent" }));
 
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?mode=edit", {
-      scroll: false,
-    });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?mode=edit", { scroll: false });
   });
 
   it("keeps the open tab when leaving edit mode", async () => {
@@ -460,16 +425,11 @@ describe("AgentPage layout", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Discard/ }));
 
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", {
-      scroll: false,
-    });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
   });
 
   it("keeps an archived agent read-only", async () => {
-    mockUseAgent.mockReturnValue({
-      data: { ...mockAgent, status: "archived" },
-      isLoading: false,
-    });
+    mockUseAgent.mockReturnValue({ data: { ...mockAgent, status: "archived" }, isLoading: false });
     await renderPage();
 
     expect(screen.queryByRole("button", { name: /^Edit/ })).not.toBeInTheDocument();
@@ -479,10 +439,7 @@ describe("AgentPage layout", () => {
   });
 
   it("keeps a built-in agent read-only and offers Copy but not Archive", async () => {
-    mockUseAgent.mockReturnValue({
-      data: { ...mockAgent, is_built_in: true },
-      isLoading: false,
-    });
+    mockUseAgent.mockReturnValue({ data: { ...mockAgent, is_built_in: true }, isLoading: false });
     mockSearchParams = new URLSearchParams("mode=edit");
     await renderPage();
 
@@ -661,9 +618,7 @@ describe("AgentPage edit mode", () => {
 
     expect(screen.getByRole("button", { name: /Network access\s*1 allowed/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Network access/ }));
-    fireEvent.change(await screen.findByLabelText("Allowed hosts"), {
-      target: { value: "" },
-    });
+    fireEvent.change(await screen.findByLabelText("Allowed hosts"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();
 
@@ -675,9 +630,7 @@ describe("AgentPage edit mode", () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: /Branding/ }));
-    fireEvent.change(await screen.findByLabelText("Name"), {
-      target: { value: "Bad Name" },
-    });
+    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "Bad Name" } });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await save();
 
@@ -701,9 +654,7 @@ describe("AgentPage entity actions", () => {
       "Archive agent",
     ]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Manager notes" }));
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=notes", {
-      scroll: false,
-    });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=notes", { scroll: false });
   });
 
   it("opens the History sheet from ?sheet=history", async () => {
@@ -717,9 +668,7 @@ describe("AgentPage entity actions", () => {
     mockSearchParams = new URLSearchParams("tab=versions");
     await renderPage();
 
-    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=history", {
-      scroll: false,
-    });
+    expect(replace).toHaveBeenCalledWith("/agents/agent-1?sheet=history", { scroll: false });
     expect(screen.queryByText("agent versions")).not.toBeInTheDocument();
   });
 
@@ -747,10 +696,7 @@ describe("AgentPage entity actions", () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Archive agent" }));
     });
-    expect(mockArchive).toHaveBeenCalledWith({
-      id: "agent-1",
-      reason: "replaced by v2",
-    });
+    expect(mockArchive).toHaveBeenCalledWith({ id: "agent-1", reason: "replaced by v2" });
   });
 
   it("shows the manager notes hint only in edit mode", async () => {
