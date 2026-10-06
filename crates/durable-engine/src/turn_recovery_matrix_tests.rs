@@ -527,6 +527,9 @@ pub(crate) struct Turn<S> {
     pub store: Arc<S>,
     pub runtime: InProcessRuntime,
     pub session_id: SessionId,
+    pub org_id: i64,
+    pub harness_id: everruns_contracts::typed_id::HarnessId,
+    pub agent_id: Option<everruns_contracts::typed_id::AgentId>,
 }
 
 impl<S> Turn<S> {
@@ -621,6 +624,9 @@ pub(crate) async fn start_turn<S: WorkflowEventStore>(store: Arc<S>) -> Turn<S> 
         store,
         runtime,
         session_id,
+        org_id,
+        harness_id: snapshot.harness_id,
+        agent_id: snapshot.agent_id,
     }
 }
 
@@ -982,6 +988,125 @@ async fn postgres_cells_that_recover() {
     cells.push((ReasonToComplete, BeforeComplete, true));
     cells.push((ActToReason, AfterEnqueue, true));
     cells.push((ReasonToComplete, AfterEnqueue, true));
+    let Some(failing) = postgres::failing_cells(&cells).await else {
+        return;
+    };
+    assert!(
+        failing.is_empty(),
+        "cells did not recover:\n{}",
+        failing.join("\n")
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The matrix: cells that reproduce a stuck turn today
+// ---------------------------------------------------------------------------
+//
+// Once the completing write commits, nothing re-plans the step after it: the
+// task is `completed`, the workflow stays `running`, no task is pending or
+// claimed, and the reaper only looks at claimed tasks. Kept failing on
+// purpose until the hand-off is made recoverable.
+
+recovers! {
+    input_to_reason_crash_complete_reply_lost_recovers: InputToReason, CompleteReplyLost;
+    input_to_reason_crash_before_enqueue_recovers: InputToReason, BeforeEnqueue;
+    act_to_reason_crash_complete_reply_lost_recovers: ActToReason, CompleteReplyLost;
+    act_to_reason_crash_before_enqueue_recovers: ActToReason, BeforeEnqueue;
+    reason_to_act_crash_complete_reply_lost_recovers: ReasonToAct, CompleteReplyLost;
+    reason_to_act_crash_before_enqueue_recovers: ReasonToAct, BeforeEnqueue;
+    reason_to_complete_crash_complete_reply_lost_recovers: ReasonToComplete, CompleteReplyLost;
+    reason_to_complete_crash_before_enqueue_recovers: ReasonToComplete, BeforeEnqueue;
+}
+
+#[tokio::test]
+async fn steering_wake_is_not_lost_when_the_hand_off_after_its_drain_never_happens() {
+    // The final reason's completion drains the wake that arrived as the turn
+    // wound down; the crash then drops the extra reason that wake asked for.
+    // Recovery aside, the wake itself must survive: still pending, or answered.
+    for boundary in [Boundary::ActToReason, Boundary::ReasonToComplete] {
+        for mode in [Mode::Queued, Mode::Chained] {
+            let turn = start_turn(Arc::new(InMemoryWorkflowEventStore::new())).await;
+            crash_turn(&turn, boundary, Crash::BeforeEnqueue, mode, true).await;
+            let outcome = outcome(&turn, true).await;
+            assert!(
+                outcome.pending_wakes == 1 || outcome.steering_answered == Some(true),
+                "{boundary:?} / {mode:?}: the steering wake was consumed and nothing will act on it: {outcome:?}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_later_message_starts_a_turn_on_a_session_stuck_between_complete_and_enqueue() {
+    use crate::runner::AgentRunner;
+
+    let turn = start_turn(Arc::new(InMemoryWorkflowEventStore::new())).await;
+    crash_turn(
+        &turn,
+        Boundary::ReasonToComplete,
+        Crash::BeforeEnqueue,
+        Mode::Queued,
+        false,
+    )
+    .await;
+    recover(&turn, Mode::Queued).await;
+
+    // The user sends another message, the way the server does: persist it,
+    // then start a run, which steers the run instead when one is active.
+    let later = AcceptedTurnInput::new(InputMessage::user("anyone there?"));
+    let later_id = later.message_id();
+    turn.runtime
+        .append_accepted_inputs(turn.session_id, TurnId::new(), vec![later])
+        .await
+        .unwrap();
+    let runner = crate::DurableRunner::new_with_shared_store(turn.store.clone());
+    runner
+        .start_run(
+            turn.org_id,
+            turn.session_id,
+            turn.harness_id,
+            turn.agent_id,
+            later_id,
+            None,
+        )
+        .await
+        .unwrap();
+    let wakes_after_send = SignalStore::consume_pending_signals_by_type(
+        &*turn.store,
+        turn.workflow_id(),
+        crate::durable_turn::USER_MESSAGE,
+    )
+    .await
+    .unwrap()
+    .len();
+    recover(&turn, Mode::Queued).await;
+
+    let messages = turn.runtime.messages(turn.session_id).await.unwrap();
+    let later_at = messages
+        .iter()
+        .position(|m| m.id == later_id)
+        .expect("the later message was persisted");
+    let answered = messages[later_at..]
+        .iter()
+        .any(|m| m.role == RuntimeMessageRole::Agent);
+    let outcome = outcome(&turn, false).await;
+    assert!(
+        answered,
+        "the later message was never answered (the send became {wakes_after_send} \
+         steering wake(s) on a run nothing drives): {outcome:?}"
+    );
+}
+
+#[tokio::test]
+async fn postgres_cells_stuck_between_complete_and_enqueue() {
+    use Boundary::*;
+    use Crash::*;
+    let mut cells = Vec::new();
+    for boundary in [InputToReason, ActToReason, ReasonToAct, ReasonToComplete] {
+        for crash in [CompleteReplyLost, BeforeEnqueue] {
+            cells.push((boundary, crash, false));
+        }
+    }
     let Some(failing) = postgres::failing_cells(&cells).await else {
         return;
     };
