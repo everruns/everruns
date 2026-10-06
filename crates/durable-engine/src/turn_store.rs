@@ -19,10 +19,10 @@ use std::pin::Pin;
 
 use crate::durable::{
     ClaimedTask, DurableAdmin, Enqueued, EventLog, HeartbeatResponse, InMemoryWorkflowEventStore,
-    RunStart, SignalStore, StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo,
-    WorkerRegistry, WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowSignal,
-    WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
-    record_activity_started, record_workflow_failed,
+    RunStart, SignalStore, StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue,
+    WorkerHeartbeat, WorkerInfo, WorkerRegistry, WorkflowError, WorkflowEvent, WorkflowEventStore,
+    WorkflowSignal, WorkflowStatus, append_event, record_activity_completed,
+    record_activity_failed, record_activity_started, record_workflow_failed,
 };
 use crate::durable_turn::activity_options_for;
 use async_trait::async_trait;
@@ -50,12 +50,18 @@ pub trait TurnStore: Send + Sync + 'static {
 
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError>;
 
+    /// Records liveness and load; the reply says whether the worker is
+    /// draining, so it can stop claiming.
     async fn worker_heartbeat(
         &self,
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError>;
+    ) -> Result<WorkerHeartbeat, StoreError>;
+
+    /// Marks the worker draining: the queue hands it no new tasks and no
+    /// chained steps. A worker calls it on itself when it starts shutting down.
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError>;
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError>;
 
@@ -336,8 +342,12 @@ where
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<WorkerHeartbeat, StoreError> {
         WorkerRegistry::worker_heartbeat(self, worker_id, current_load, accepting_tasks).await
+    }
+
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError> {
+        WorkerRegistry::drain_worker(self, worker_id).await
     }
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {

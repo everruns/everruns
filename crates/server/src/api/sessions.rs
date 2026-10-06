@@ -36,7 +36,7 @@ use everruns_contracts::typed_id::{
 };
 use everruns_core::host::HostComposition;
 use everruns_core::host::TurnBackend;
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};

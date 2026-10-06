@@ -97,8 +97,12 @@ service WorkerService {
     // Register a durable worker
     rpc RegisterDurableWorker(RegisterDurableWorkerRequest) returns (RegisterDurableWorkerResponse);
 
-    // Heartbeat for a durable worker (keeps worker alive)
+    // Heartbeat for a durable worker (keeps worker alive); the reply says
+    // whether the worker is draining
     rpc HeartbeatDurableWorker(HeartbeatDurableWorkerRequest) returns (HeartbeatDurableWorkerResponse);
+
+    // A shutting-down worker drains itself: no new tasks, no chained steps
+    rpc DrainDurableWorker(DrainDurableWorkerRequest) returns (DrainDurableWorkerResponse);
 
     // Deregister a durable worker
     rpc DeregisterDurableWorker(DeregisterDurableWorkerRequest) returns (DeregisterDurableWorkerResponse);
@@ -971,7 +975,19 @@ message HeartbeatDurableWorkerRequest {
 
 message HeartbeatDurableWorkerResponse {
     bool acknowledged = 1;
+    // The worker is draining (drained by an operator, or by itself while
+    // shutting down). The queue hands it nothing, so it stops claiming until
+    // a resume clears this.
+    bool draining = 2;
 }
+
+// === Drain worker ===
+
+message DrainDurableWorkerRequest {
+    string worker_id = 1;
+}
+
+message DrainDurableWorkerResponse {}
 
 // === Deregister worker ===
 

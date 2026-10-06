@@ -1,7 +1,7 @@
 //! Deployment-level capability registration decisions. Org policy is enforced
 //! by the server before a capability list reaches the worker.
 
-use crate::runtime::{DeploymentGrade, FeatureFlagGrade};
+use crate::runtime::{DeploymentGrade, FeatureFlagDefinition, FeatureFlagGrade};
 
 // Registration defaults are shared with the hosted catalog: promoting a default
 // must change API availability and actual registry composition together.
@@ -100,6 +100,26 @@ impl ExecutionFeatureDecisions {
             )
             .available(self.deployment),
         }
+    }
+}
+
+/// Whether a plugin's `feature_flag` permits registration on `deployment`.
+///
+/// `definitions` are the flags the plugin's own crate (or catalog) declares,
+/// resolved with their default grade and `FEATURE_<NAME>` override. Any other
+/// name falls through to [`ExecutionFeatureDecisions`], which owns the platform
+/// execution flags and fails closed for unknown names.
+pub fn feature_flag_available<'a>(
+    flag: &str,
+    definitions: impl IntoIterator<Item = &'a FeatureFlagDefinition>,
+    deployment: DeploymentGrade,
+) -> bool {
+    match definitions
+        .into_iter()
+        .find(|definition| definition.name == flag)
+    {
+        Some(definition) => definition.grade_from_env().available(deployment),
+        None => ExecutionFeatureDecisions::from_env(deployment).is_enabled(flag),
     }
 }
 

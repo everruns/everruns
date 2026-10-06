@@ -70,22 +70,18 @@ mod tests {
         );
     }
 
-    /// The worker advertises the same experimental gating the server does: a
-    /// tool the server offered in dev must resolve in the worker that executes
-    /// it, and must stay out of a prod worker either way.
+    /// The worker advertises the same feature flag gating the server does: a
+    /// tool the server offers must resolve in the worker that executes it. Jev's
+    /// `typesafe` flag defaults to the prod grade, and Sprites' flag to off.
     #[test]
-    fn jev_capability_follows_the_deployment_grade() {
-        assert!(
-            default_host_composition_for_grade(DeploymentGrade::Dev)
-                .capability_registry()
-                .has("jev"),
-            "dev workers execute what a dev server offers"
-        );
-        assert!(
-            !default_host_composition_for_grade(DeploymentGrade::Prod)
-                .capability_registry()
-                .has("jev"),
-            "experimental capabilities must stay out of prod registries"
-        );
+    fn integration_capabilities_follow_their_feature_flag_grade() {
+        for grade in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
+            let composition = default_host_composition_for_grade(grade);
+            let registry = composition.capability_registry();
+            assert!(registry.has("jev"), "{grade:?} workers execute jev");
+            if std::env::var("FEATURE_SPRITES").is_err() {
+                assert!(!registry.has("sprites"), "sprites is off by default");
+            }
+        }
     }
 }

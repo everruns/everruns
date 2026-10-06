@@ -84,6 +84,8 @@ use everruns_internal_protocol::proto::{
     // Session resource registry
     DeregisterSessionResourceRequest,
     DeregisterSessionResourceResponse,
+    DrainDurableWorkerRequest,
+    DrainDurableWorkerResponse,
     DurableWorkflowSignal as ProtoDurableWorkflowSignal,
     DurableWorkflowStatus,
     EmitEventRequest,

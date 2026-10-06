@@ -168,7 +168,7 @@ fn basic_agent_request(name: &str) -> CreateAgentRequest {
 
 fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
     UpdateAgentRequest {
-        service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+        service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
         name: None,
         display_name: None,
@@ -182,7 +182,7 @@ fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
         harness_name: None,
         tags: None,
         capabilities: None,
-        sandbox_policy: everruns_durable::UpdateField::Unchanged,
+        sandbox_policy: everruns_db::UpdateField::Unchanged,
         initial_files: None,
         status: None,
         tools: None,
@@ -257,7 +257,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
     let renamed = UpdateAgentCmd {
         id: created.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             name: None,
             display_name: Some("renamed".to_string()),
@@ -271,7 +271,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
             harness_name: None,
             tags: None,
             capabilities: None,
-            sandbox_policy: everruns_durable::UpdateField::Unchanged,
+            sandbox_policy: everruns_db::UpdateField::Unchanged,
             initial_files: None,
             status: None,
             tools: None,
@@ -289,7 +289,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
     let changed = UpdateAgentCmd {
         id: created.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             harness_id: Some(second_harness_id),
             ..update_prompt_request("changed harness")
@@ -476,7 +476,7 @@ async fn update_agent_skips_auto_snapshot_for_unchanged_config() {
     UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             name: None,
             display_name: None,
@@ -490,7 +490,7 @@ async fn update_agent_skips_auto_snapshot_for_unchanged_config() {
             harness_name: None,
             tags: None,
             capabilities: None,
-            sandbox_policy: everruns_durable::UpdateField::Unchanged,
+            sandbox_policy: everruns_db::UpdateField::Unchanged,
             initial_files: None,
             status: None,
             tools: None,
@@ -760,7 +760,7 @@ async fn rollback_version_restores_versioned_harness() {
     let changed = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             harness_id: Some(second_harness_id),
             ..update_prompt_request("switch to second harness")
@@ -982,7 +982,7 @@ async fn patch_archiving_agent_revokes_all_identity_connections() {
     UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             status: Some(AgentStatus::Archived),
             ..Default::default()
@@ -1040,7 +1040,7 @@ async fn built_in_agent_rejects_update() {
     let err = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             system_prompt: Some("hijacked".to_string()),
             ..Default::default()
@@ -1069,7 +1069,7 @@ async fn built_in_agent_rejects_archive() {
     let err = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             status: Some(AgentStatus::Archived),
             ..Default::default()
@@ -1205,7 +1205,7 @@ async fn built_in_agent_can_be_copied() {
     UpdateAgentCmd {
         id: copy.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: everruns_db::UpdateField::Unchanged,
 
             system_prompt: Some("edited".to_string()),
             ..Default::default()

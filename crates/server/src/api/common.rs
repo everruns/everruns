@@ -12,7 +12,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::SessionId;
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{DeserializeOwned, Error as DeError},

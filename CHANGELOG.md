@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Offer Modal as a managed Sandbox Template target (provider `modal`): agents get the provider-neutral sandbox tools on a Modal VM or gVisor container, with pause and resume through filesystem snapshots. Experimental, dev grade only.
 - Let Modal sandboxes restrict outbound traffic (blocked, or a domain/CIDR allowlist, enforced by Modal) and use the GitHub connection without the token ever entering the sandbox: Modal adds it to requests for GitHub. Sandbox Templates on Modal enforce the template's network policy.
 
+### Changed
+
+- Move the embedded SQLite wrapper and `UpdateField` out of `everruns-durable` into the new `everruns-db` crate, so the `everruns` `local` feature no longer compiles the durable engine. `everruns-durable` drops its `sqlite` feature and `sqlite` and `update_field` modules; `everruns_durable::UpdateField` remains.
+
 ## [0.41.0] - 2026-10-04
 
 ### Changed

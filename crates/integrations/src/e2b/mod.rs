@@ -46,25 +46,34 @@ use tools::{
     E2BWriteFileTool,
 };
 
+/// Feature flags this module's plugins name, with their default rollout grades;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
+    &[everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "e2b_computer_use",
+        label: "E2B desktop computer use",
+        description: "Let agents operate a remote Linux desktop through E2B Desktop.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
+    }];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
-        experimental_only: false,
         feature_flag: None,
         factory: || Box::new(E2BCapability),
     },
-    // Desktop computer use ships behind experimental mode, like the
-    // Browserless `computer_use` backend it complements (EVE-1133).
+    // Desktop computer use ships behind the `e2b_computer_use` feature flag,
+    // like the Browserless backend it complements (EVE-1133).
     IntegrationPlugin {
-        experimental_only: true,
-        feature_flag: None,
+        feature_flag: Some("e2b_computer_use"),
         factory: || Box::new(computer::E2BDesktopComputerUseCapability),
     },
 ];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: false,
+    feature_flag: None,
     factory: || Box::new(E2BConnector),
 }];
 pub const E2B_API_BASE: &str = "https://api.e2b.app";

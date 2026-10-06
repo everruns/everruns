@@ -285,7 +285,7 @@ impl TestServer {
 
     pub async fn set_app_channels_live(&self, app_public_id: &str, live: bool) -> Value {
         use everruns_core::DEFAULT_ORG_ID;
-        use everruns_durable::UpdateField;
+        use everruns_db::UpdateField;
         use everruns_server::storage::models::UpdateApp;
 
         let app = self
@@ -405,7 +405,7 @@ impl TestServer {
         channel_public_id: &str,
         channel_config: Value,
     ) -> Value {
-        use everruns_durable::UpdateField;
+        use everruns_db::UpdateField;
         use everruns_server::domains::agent_channels::queries::{
             decrypt_channel_config, prepare_channel_storage,
         };

@@ -2,7 +2,7 @@
 // `AgentLoopError` so trait implementations can return `everruns_contracts::error::Result`.
 
 use everruns_contracts::error::AgentLoopError;
-use everruns_durable::sqlite as rusqlite;
+use everruns_db::sqlite as rusqlite;
 
 #[derive(Debug, thiserror::Error)]
 /// Failure produced while configuring or operating local persistence.

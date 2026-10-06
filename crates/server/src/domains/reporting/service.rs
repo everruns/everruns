@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::records::reporting::{ReportQuery, ReportResult, ReportScope, ReportingQueryBackend};
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
+use everruns_db::UpdateField;
 use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;

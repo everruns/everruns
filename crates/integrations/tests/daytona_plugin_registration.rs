@@ -7,13 +7,15 @@ use everruns_contracts::runtime::deployment::DeploymentGrade;
 use everruns_integrations::daytona::CAPABILITY_PLUGINS;
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
-    let decisions = everruns_contracts::runtime::ExecutionFeatureDecisions::from_env(grade);
     let mut registry = CapabilityRegistry::new();
     registry.register_plugins(CAPABILITY_PLUGINS.iter(), |plugin| {
-        (!plugin.experimental_only || grade.experimental_features_enabled())
-            && plugin
-                .feature_flag
-                .is_none_or(|flag| decisions.is_enabled(flag))
+        plugin.feature_flag.is_none_or(|flag| {
+            everruns_contracts::runtime::feature_flag_available(
+                flag,
+                everruns_integrations::daytona::FEATURE_FLAGS,
+                grade,
+            )
+        })
     });
     registry
 }
@@ -31,7 +33,7 @@ fn test_daytona_plugin_is_published() {
 }
 
 #[test]
-fn test_daytona_plugin_is_not_experimental() {
+fn test_daytona_plugin_is_not_behind_a_feature_flag() {
     let plugins: Vec<&IntegrationPlugin> = CAPABILITY_PLUGINS.iter().collect();
     let daytona = plugins
         .iter()
@@ -42,8 +44,8 @@ fn test_daytona_plugin_is_not_experimental() {
         .expect("Daytona plugin not found");
 
     assert!(
-        !daytona.experimental_only,
-        "Daytona should NOT be marked experimental_only"
+        daytona.feature_flag.is_none(),
+        "daytona should not be behind a feature flag"
     );
 }
 

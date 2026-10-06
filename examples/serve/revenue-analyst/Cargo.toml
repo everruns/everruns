@@ -14,7 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 everruns-serve.workspace = true
-everruns-durable = { workspace = true, features = ["sqlite"] }
+everruns-db = { workspace = true, features = ["sqlite"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

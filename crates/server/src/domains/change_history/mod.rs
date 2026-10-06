@@ -386,14 +386,14 @@ pub mod update_field {
     pub use crate::api::common::deserialize_nullable_update_field as deserialize;
 
     pub fn serialize<T, S>(
-        field: &everruns_durable::UpdateField<T>,
+        field: &everruns_db::UpdateField<T>,
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
         T: serde::Serialize,
         S: serde::Serializer,
     {
-        use everruns_durable::UpdateField;
+        use everruns_db::UpdateField;
         match field {
             UpdateField::Set(value) => value.serialize(serializer),
             UpdateField::Clear => serializer.serialize_str("<cleared>"),

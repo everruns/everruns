@@ -54,10 +54,10 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<WorkerHeartbeat, StoreError> {
         // Only update accepting_tasks if worker is NOT draining.
         // When draining, we preserve accepting_tasks = false set by drain_worker.
-        sqlx::query(
+        let draining: Option<bool> = sqlx::query_scalar(
             r#"
             UPDATE durable_workers
             SET last_heartbeat_at = NOW(),
@@ -67,19 +67,22 @@ impl WorkerRegistry for PostgresWorkflowEventStore {
                     ELSE $3
                 END
             WHERE id = $1
+            RETURNING status = 'draining'
             "#,
         )
         .bind(worker_id)
         .bind(current_load as i32)
         .bind(accepting_tasks)
-        .execute(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to update worker heartbeat");
             StoreError::Database(e.to_string())
         })?;
 
-        Ok(())
+        Ok(WorkerHeartbeat {
+            draining: draining.unwrap_or(false),
+        })
     }
 
     #[instrument(skip(self))]

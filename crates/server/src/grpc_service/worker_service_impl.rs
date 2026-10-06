@@ -240,6 +240,13 @@ impl WorkerService for WorkerServiceImpl {
         self.handle_heartbeat_durable_worker(request).await
     }
 
+    async fn drain_durable_worker(
+        &self,
+        request: Request<DrainDurableWorkerRequest>,
+    ) -> Result<Response<DrainDurableWorkerResponse>, Status> {
+        self.handle_drain_durable_worker(request).await
+    }
+
     async fn deregister_durable_worker(
         &self,
         request: Request<DeregisterDurableWorkerRequest>,

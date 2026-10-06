@@ -102,36 +102,66 @@ impl WorkerAppBuilder {
         .context("Failed to connect worker adapters")?;
         let mut worker = TaskWorker::new(config, store, adapters);
 
+        // Decision: SIGTERM (what Docker and Kubernetes send) and Ctrl+C
+        // both start a graceful stop: `run()` stops claiming, lets in-flight
+        // turns finish within `shutdown_grace`, then deregisters. `run()` is
+        // awaited to the end; a second signal exits at once.
         let shutdown_handle = worker.shutdown_handle();
+        let signals = tokio::spawn(async move {
+            wait_for_shutdown_signal().await;
+            info!("Received shutdown signal, draining worker");
+            shutdown_handle.shutdown();
+            wait_for_shutdown_signal().await;
+            tracing::warn!("Received second shutdown signal, exiting now");
+            std::process::exit(130);
+        });
 
-        tokio::select! {
-            result = worker.run() => {
-                if let Err(e) = result {
-                    tracing::error!(error = %e, "Worker error");
-                    if let Some(reporter) = &error_reporter {
-                        // Bounded timeout so a stalled vendor endpoint cannot
-                        // block worker termination / supervisor restart.
-                        let report_fut = reporter.report(
-                            ErrorReport::fatal("worker.run", e.to_string())
-                                .with_scope(ErrorScope::new().with_component("task_worker")),
-                        );
-                        if tokio::time::timeout(REPORTER_TIMEOUT, report_fut).await.is_err() {
-                            tracing::warn!(
-                                timeout_secs = REPORTER_TIMEOUT.as_secs(),
-                                "Embedder error reporter timed out on worker fatal path"
-                            );
-                        }
-                    }
-                    return Err(e);
+        let result = worker.run().await;
+        signals.abort();
+        if let Err(e) = result {
+            tracing::error!(error = %e, "Worker error");
+            if let Some(reporter) = &error_reporter {
+                // Bounded timeout so a stalled vendor endpoint cannot
+                // block worker termination / supervisor restart.
+                let report_fut = reporter.report(
+                    ErrorReport::fatal("worker.run", e.to_string())
+                        .with_scope(ErrorScope::new().with_component("task_worker")),
+                );
+                if tokio::time::timeout(REPORTER_TIMEOUT, report_fut)
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!(
+                        timeout_secs = REPORTER_TIMEOUT.as_secs(),
+                        "Embedder error reporter timed out on worker fatal path"
+                    );
                 }
             }
-            _ = tokio::signal::ctrl_c() => {
-                info!("Received shutdown signal");
-                shutdown_handle.shutdown();
-            }
+            return Err(e);
         }
 
         info!("Worker shutdown complete");
         Ok(())
     }
+}
+
+/// Resolves on SIGINT (Ctrl+C) or, on Unix, SIGTERM.
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = sigterm.recv() => {}
+                }
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Cannot listen for SIGTERM, only Ctrl+C stops the worker")
+            }
+        }
+    }
+    let _ = tokio::signal::ctrl_c().await;
 }

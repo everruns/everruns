@@ -106,9 +106,9 @@ impl Database {
         input: UpdateKnowledgeBase,
     ) -> Result<Option<KnowledgeBaseRow>> {
         let (embedding_model_update, embedding_model_value) = match input.embedding_model_id {
-            Some(everruns_durable::UpdateField::Set(v)) => (true, Some(v.uuid())),
-            Some(everruns_durable::UpdateField::Clear) => (true, None),
-            Some(everruns_durable::UpdateField::Unchanged) | None => (false, None),
+            Some(everruns_db::UpdateField::Set(v)) => (true, Some(v.uuid())),
+            Some(everruns_db::UpdateField::Clear) => (true, None),
+            Some(everruns_db::UpdateField::Unchanged) | None => (false, None),
         };
         let row = sqlx::query_as::<_, KnowledgeBaseRow>(
             r#"

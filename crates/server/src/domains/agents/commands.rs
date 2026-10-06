@@ -490,7 +490,7 @@ impl Command for UpdateAgentCmd {
         }
         validate_update_limits(&req)?;
         sandbox_templates::validate_update(&req.sandbox_policy)?;
-        if let everruns_durable::UpdateField::Set(environments) = &req.sandbox_policy {
+        if let everruns_db::UpdateField::Set(environments) = &req.sandbox_policy {
             validate_sandbox_template_sources(ctx, Some(environments)).await?;
         }
         if matches!(req.status, Some(AgentStatus::Deleted)) {
@@ -581,20 +581,17 @@ impl Command for UpdateAgentCmd {
             resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let final_harness_id = harness_id.unwrap_or(existing.harness_id);
         let final_has_environments = match &req.sandbox_policy {
-            everruns_durable::UpdateField::Set(_) => true,
-            everruns_durable::UpdateField::Clear => false,
-            everruns_durable::UpdateField::Unchanged => existing.environments.is_some(),
+            everruns_db::UpdateField::Set(_) => true,
+            everruns_db::UpdateField::Clear => false,
+            everruns_db::UpdateField::Unchanged => existing.environments.is_some(),
         };
         reject_sandbox_override_for_fixed_harness(ctx, final_harness_id, final_has_environments)
             .await?;
 
-        if let everruns_durable::UpdateField::Set(id) = req.service_virtual_user_id {
+        if let everruns_db::UpdateField::Set(id) = req.service_virtual_user_id {
             validate_service_account(ctx, Some(id)).await?;
         }
-        if matches!(
-            req.service_virtual_user_id,
-            everruns_durable::UpdateField::Clear
-        ) {
+        if matches!(req.service_virtual_user_id, everruns_db::UpdateField::Clear) {
             crate::domains::virtual_users::VIRTUAL_USER_MANAGE
                 .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
                 .map_err(|_| {
@@ -606,9 +603,9 @@ impl Command for UpdateAgentCmd {
         // Persist
         let input = UpdateAgent {
             virtual_user_id: match req.service_virtual_user_id {
-                everruns_durable::UpdateField::Unchanged => None,
-                everruns_durable::UpdateField::Clear => Some(None),
-                everruns_durable::UpdateField::Set(id) => Some(Some(id)),
+                everruns_db::UpdateField::Unchanged => None,
+                everruns_db::UpdateField::Clear => Some(None),
+                everruns_db::UpdateField::Set(id) => Some(Some(id)),
             },
             name: req.name,
             display_name: req.display_name,

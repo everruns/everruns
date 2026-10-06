@@ -541,6 +541,7 @@ re-executes a completed tool.
 | Microsoft MAI driver | `crates/drivers/drivers/src/mai/driver.rs` |
 | Fireworks AI driver | `crates/drivers/drivers/src/fireworks/driver.rs` |
 | Meta Model API driver | `crates/drivers/drivers/src/meta/driver.rs` |
+| Mistral AI driver | `crates/drivers/drivers/src/mistral.rs` |
 | Cloudflare AI Gateway driver | `crates/drivers/drivers/src/cloudflare.rs` |
 | Vercel AI Gateway driver | `crates/drivers/drivers/src/vercel.rs` |
 | Error handling | `crates/core/src/engine/execution/reason.rs` |
@@ -584,6 +585,25 @@ through `previous_response_id`, and discovers models from the host-gated
 `/v1/models` endpoint. Profile gating enables Meta's native message phases and
 hosted tool search only on the direct `meta` surface; gateway aliases fall back
 to client-side transcript replay and tool search.
+
+## Mistral AI Driver (`everruns_drivers::mistral`)
+
+Mistral's La Plateforme serves Chat Completions at `https://api.mistral.ai/v1`, so the driver
+wraps the shared Chat Completions protocol and adds identity, bearer auth, and host-gated
+discovery. Two of Mistral's wire differences are handled in the shared protocol instead, since a
+gateway relaying the native shape hits them too:
+
+- With `reasoning_effort: "high"`, message `content` becomes an array of typed chunks (`thinking`
+  chunks holding nested text, then `text`), streamed and non-streamed. Before the protocol split
+  them, every such chunk failed to parse and the answer was dropped with it. One chunk can carry
+  both, so a stream choice now yields reasoning and text in order.
+- A plain answer carries `"tool_calls": null`, which a defaulted list rejected, failing every
+  non-streamed call.
+
+Reasoning on Mistral Large 4 is a toggle: the API accepts only `none` and `high` and answers 400
+for anything else, so its profile offers exactly those two (`none`, the API default, is never
+sent). `/v1/models` lists every alias as its own entry repeating the canonical `name`;
+discovery keeps the `id == name` entry, chat models only, minus scheduled retirements.
 
 ## Gateway Drivers (`everruns_drivers::{cloudflare, vercel}`)
 

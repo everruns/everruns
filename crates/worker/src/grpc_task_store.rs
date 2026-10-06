@@ -8,8 +8,8 @@
 // shared channel, and the trait takes `&self` so callers need no lock.
 
 use crate::durable::{
-    ClaimedTask, HeartbeatResponse, RunStart, StoreError, TaskFailureOutcome, WorkerInfo,
-    WorkflowError, WorkflowSignal, WorkflowStatus,
+    ClaimedTask, HeartbeatResponse, RunStart, StoreError, TaskFailureOutcome, WorkerHeartbeat,
+    WorkerInfo, WorkflowError, WorkflowSignal, WorkflowStatus,
 };
 use async_trait::async_trait;
 use std::time::Duration;
@@ -38,7 +38,7 @@ impl TurnStore for GrpcDurableStore {
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<WorkerHeartbeat, StoreError> {
         let mut store = self.clone();
         GrpcDurableStore::heartbeat_worker(
             &mut store,
@@ -47,7 +47,15 @@ impl TurnStore for GrpcDurableStore {
             accepting_tasks,
         )
         .await
+        .map(|draining| WorkerHeartbeat { draining })
         .map_err(store_error)
+    }
+
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::drain_worker(&mut store, worker_id)
+            .await
+            .map_err(store_error)
     }
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
