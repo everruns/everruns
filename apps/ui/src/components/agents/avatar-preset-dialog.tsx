@@ -61,13 +61,14 @@ export function AvatarPresetDialog({
         <DialogHeader>
           <DialogTitle>Choose an avatar</DialogTitle>
           <DialogDescription>
-            Find a face, familiar or shape. These names and roles describe the artwork only.
+            Find a face, familiar or shape. Search by name, role, animal or color.
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-3">
           {agent.avatar && (
             <div
               className="flex items-center gap-2"
+              role="group"
               aria-label="Current avatar in square and circle"
             >
               <AgentAvatar avatar={agent.avatar} size={40} />
@@ -146,9 +147,10 @@ export function AvatarPresetDialog({
                     disabled={disabled}
                     aria-pressed={selected === preset.id}
                     aria-label={`${preset.name}, ${preset.family}, ${preset.role}`}
+                    aria-description={preset.description}
                     onClick={() => setPicked(preset.id)}
                     className={cn(
-                      "group relative flex flex-col items-start gap-1.5 border bg-card p-2 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60",
+                      "relative border bg-card p-2 transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60",
                       selected === preset.id && "border-primary ring-1 ring-primary",
                     )}
                   >
@@ -162,11 +164,6 @@ export function AvatarPresetDialog({
                       className="aspect-square w-full object-cover"
                       loading="lazy"
                     />
-                    <span className="text-sm font-medium">{preset.name}</span>
-                    <span className="text-[11px] text-muted-foreground">
-                      {preset.family} · {preset.role}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{preset.description}</span>
                     {selected === preset.id && (
                       <Check
                         className="absolute top-3 right-3 size-5 border bg-background p-0.5"
@@ -180,7 +177,18 @@ export function AvatarPresetDialog({
           </div>
         )}
         {selectedPreset && (
-          <div className="flex items-center gap-3 border-t pt-3">
+          <div
+            className="flex items-center gap-3 border-t pt-3"
+            role="group"
+            aria-label="Selected avatar in square and circle"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={avatarPresetUrl(selectedPreset)}
+              alt={`${selectedPreset.name} square preview`}
+              width={48}
+              height={48}
+            />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={avatarPresetUrl(selectedPreset, "circle")}
@@ -188,12 +196,6 @@ export function AvatarPresetDialog({
               width={48}
               height={48}
             />
-            <p className="text-sm">
-              {selectedPreset.name}
-              <span className="block text-xs text-muted-foreground">
-                Square and circle use the same artwork.
-              </span>
-            </p>
           </div>
         )}
         {(error ?? current.error?.message) && (

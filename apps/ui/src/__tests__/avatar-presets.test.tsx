@@ -87,7 +87,13 @@ describe("preset picker", () => {
       target: { value: "navy developer" },
     });
     expect(screen.queryByRole("button", { name: /Relay, Watchers/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Patch, Familiars/ }));
+    const patch = screen.getByRole("button", { name: /Patch, Familiars/ });
+    expect(patch).toHaveAccessibleDescription("Terracotta fox with navy glasses.");
+    fireEvent.click(patch);
+    expect(screen.getByAltText("Patch square preview")).toHaveAttribute(
+      "src",
+      "/api/v1/avatar-presets/familiars-patch/square-256.png",
+    );
     expect(screen.getByAltText("Patch circular preview")).toHaveAttribute(
       "src",
       "/api/v1/avatar-presets/familiars-patch/circle-256.png",

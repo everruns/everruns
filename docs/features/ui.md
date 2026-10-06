@@ -95,7 +95,8 @@ Tabs: **Agent**, **Preview**, **Integrations** (channels and triggers), **Stats*
 on the avatar, or choose one, then position and zoom the square crop. **Save avatar** uploads it
 right away, without **Save changes**. The server renders the square once as square and circular
 PNG presets of 32, 64, 128, 256, and 512 px.
-Use **Choose preset** to browse 25 avatars across Watchers, Familiars, Totems, Glyphs, and Bloom.
+Use **Choose preset** to browse 25 image-only avatar tiles across Watchers, Familiars, Totems,
+Glyphs, and Bloom.
 Search by name, role, animal, color, or style, and optionally filter by family. Select a card to
 preview its circular shape, then **Use avatar** to save immediately. Names and roles describe the
 artwork; they do not configure the agent. You can replace any preset with an uploaded image or

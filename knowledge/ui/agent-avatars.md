@@ -51,7 +51,8 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
   only an exact catalog ID, retains that identity with the stored avatar, and persists the same
   square/circle variants and Slack updates as upload. No client-supplied source URL is fetched.
 - **Search is presentation only.** Each whitespace-separated term can match any metadata field,
-  case-insensitively. Role labels never change the agent's behavior or configuration. Current
+  case-insensitively. Tiles and selected previews show artwork only; metadata remains available to
+  search and assistive technology. Roles never change the agent's behavior or configuration. Current
   selection survives reload; custom images remain uploadable, replaceable and removable.
 
 ## Open
