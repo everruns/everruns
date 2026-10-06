@@ -18,7 +18,7 @@ ARD is the discovery layer *above* `tool_search`. `tool_search` defers schemas
 for tools already attached to a session; ARD decides **which** MCP server / A2A
 agent to attach in the first place.
 
-> **Status:** Experimental (available in Dev environments).
+> **Status:** Experimental, behind the `ard` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_ARD` can override the grade.
 
 ## What You Get
 

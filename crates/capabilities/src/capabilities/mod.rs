@@ -222,10 +222,9 @@ pub fn register_hosted_capabilities(
         registry.register_plugins(
             crate::container_sandbox::CAPABILITY_PLUGINS.iter(),
             |plugin| {
-                plugin.feature_flag.map_or_else(
-                    || !plugin.experimental_only || grade.experimental_features_enabled(),
-                    |flag| decisions.is_enabled(flag),
-                )
+                plugin
+                    .feature_flag
+                    .is_none_or(|flag| decisions.is_enabled(flag))
             },
         );
     }

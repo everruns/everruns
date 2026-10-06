@@ -459,6 +459,7 @@ mod tests {
             machine_payments: true,
             openai_agents_api: true,
             agent_change_reasons_required: false,
+            integrations: Default::default(),
         }
     }
 
@@ -489,6 +490,7 @@ mod tests {
                 machine_payments: true,
                 openai_agents_api: true,
                 agent_change_reasons_required: false,
+                integrations: Default::default(),
             },
         )
     }

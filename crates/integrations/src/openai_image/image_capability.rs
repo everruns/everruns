@@ -39,7 +39,6 @@ const MAX_EDIT_SOURCE_BYTES: usize = 50 * 1024 * 1024;
 
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
     feature_flag: None,
     factory: || Box::new(GptImageGenCapability),
 }];

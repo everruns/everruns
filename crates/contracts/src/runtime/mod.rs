@@ -161,9 +161,11 @@ pub use self::events::{
     TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use self::execution_context::ExecutionContext;
-pub use self::execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
+pub use self::execution_features::{
+    ExecutionFeatureDecisions, InternalFeatureFlags, feature_flag_available,
+};
 pub use self::execution_loading::{HarnessStore, SessionStore};
-pub use self::feature_flag_grade::FeatureFlagGrade;
+pub use self::feature_flag_grade::{FeatureFlagDefinition, FeatureFlagGrade};
 pub use self::finalized_tool_calls::{
     FinalizedToolCallRejection, FinalizedToolCallsContext, FinalizedToolCallsHook,
 };

@@ -78,8 +78,16 @@ sed -i 's/^| \[Daytona\](\/capabilities\/daytona\/) | `daytona` | 10 |/| [Dayton
 expect_drift "index states a wrong tool count" '`daytona` lists 9 tools, the registry has 10'
 
 scratch
-sed -i 's/| 1 (dev-only) |/| 1 |/' "$WORK/repo/$INDEX"
-expect_drift "index drops a dev-only marker" '`computer_use` is registered only at dev grade'
+python3 - "$WORK/repo/docs/api/capability-catalog.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+catalog = json.load(open(path))
+for entry in catalog["capabilities"]:
+    if entry["id"] == "computer_use":
+        entry["grades"] = ["dev"]
+json.dump(catalog, open(path, "w"), indent=2)
+PY
+expect_drift "index misses a dev-only marker" '`computer_use` is registered only at dev grade'
 
 scratch
 sed -i '/^| \[E2B\](\/capabilities\/e2b\/) | \[Storage\]/d' "$WORK/repo/$INDEX"
