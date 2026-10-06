@@ -625,7 +625,14 @@ impl EventLog for PostgresWorkflowEventStore {
                 }
                 Some((status, has_claimed_task)) => {
                     if status == "running" || has_claimed_task {
-                        tx.rollback().await.ok();
+                        // A run stranded between two steps resumes, so the
+                        // signal the caller sends next has a run to act on it.
+                        if status == "running" {
+                            super::hand_off::resume_if_stranded(&mut tx, workflow_id).await?;
+                        }
+                        tx.commit()
+                            .await
+                            .map_err(db("Failed to commit active run check"))?;
                         return Ok(RunStart::Active);
                     }
                     // New run: reset the workflow and cancel the previous

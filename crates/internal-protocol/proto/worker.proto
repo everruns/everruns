@@ -874,8 +874,12 @@ message CompleteDurableTaskRequest {
     string worker_id = 2;  // Required: prevents duplicate completion when task is reclaimed
     google.protobuf.Struct output = 3;
     // When set, consume the workflow's pending signals of this type once the
-    // task completes, saving the worker a separate round trip at a hand-off.
+    // task completes. Sent by workers that predate `hand_off`.
     optional string drain_signal_type = 4;
+    // Hand the task's workflow to its next step in the same atomic write as
+    // the completion: no process exit or lost reply can leave the workflow
+    // running with no task.
+    optional DurableHandOff hand_off = 5;
 }
 
 message CompleteDurableTaskResponse {
@@ -885,6 +889,40 @@ message CompleteDurableTaskResponse {
     // How many signals were consumed for `drain_signal_type`. Absent when no
     // drain was asked for or it failed; the worker then drains on its own.
     optional uint32 drained_signal_count = 2;
+    // True when `hand_off` committed with the completion. A control plane
+    // that predates hand-offs only completes the task and leaves it false;
+    // the worker then makes the hand-off's writes itself.
+    bool handed_off = 3;
+    // The next step, when the hand-off enqueued it claimed by the worker.
+    optional DurableClaimedTask claimed = 4;
+}
+
+// What follows a completed turn step.
+message DurableHandOff {
+    // Consume the oldest `drain_limit` pending signals of this type: the ones
+    // the worker counted when it planned the next step.
+    optional string drain_signal_type = 1;
+    uint32 drain_limit = 2;
+    oneof next {
+        DurableHandOffStep step = 3;
+        DurableHandOffComplete complete = 4;
+    }
+}
+
+// Enqueue the next step, claimed by `claim_for_worker_id` when it may claim.
+message DurableHandOffStep {
+    string activity_id = 1;
+    string activity_type = 2;
+    google.protobuf.Struct input = 3;
+    optional string claim_for_worker_id = 4;
+}
+
+// Complete the workflow: record `event_output` as its completion event and
+// store `stored_output` (the turn checkpoint) as its result.
+message DurableHandOffComplete {
+    google.protobuf.Struct event_output = 1;
+    optional google.protobuf.Struct stored_output = 2;
+    optional string error = 3;
 }
 
 // === Fail task ===
@@ -942,6 +980,9 @@ message SendDurableWorkflowSignalResponse {}
 message GetAndConsumeDurableWorkflowSignalsRequest {
     string workflow_id = 1;
     string signal_type = 2;
+    // Return the pending signals without consuming them. A control plane
+    // that predates the field consumes them.
+    optional bool peek = 3;
 }
 
 message GetAndConsumeDurableWorkflowSignalsResponse {

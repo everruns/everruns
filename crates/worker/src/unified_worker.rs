@@ -693,6 +693,14 @@ mod tests {
                 Ok(0)
             }
 
+            async fn count_pending_signals(
+                &self,
+                _workflow_id: Uuid,
+                _signal_type: &str,
+            ) -> Result<usize, StoreError> {
+                Ok(0)
+            }
+
             async fn send_signal(
                 &self,
                 _workflow_id: Uuid,

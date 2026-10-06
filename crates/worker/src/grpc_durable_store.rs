@@ -307,22 +307,26 @@ impl GrpcDurableStore {
             .collect()
     }
 
-    /// Complete a task
+    /// Complete a task, handing its workflow off to `hand_off` in the same
+    /// write when set.
     ///
-    /// The worker_id must match the worker that claimed the task.
-    /// Returns an error if the task was reclaimed by another worker.
+    /// The worker_id must match the worker that claimed the task. Returns an
+    /// error if the task was reclaimed by another worker; otherwise whether
+    /// the control plane committed the hand-off (one that predates hand-offs
+    /// does not) and the next step it enqueued claimed by this worker.
     pub async fn complete_task(
         &mut self,
         task_id: Uuid,
         worker_id: &str,
         output: serde_json::Value,
-        drain_signal_type: Option<&str>,
-    ) -> Result<Option<u32>> {
+        hand_off: Option<proto::DurableHandOff>,
+    ) -> Result<(bool, Option<crate::durable::ClaimedTask>)> {
         let request = CompleteDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
             worker_id: worker_id.to_string(),
             output: Some(json_to_proto_struct(&output)),
-            drain_signal_type: drain_signal_type.map(str::to_string),
+            drain_signal_type: None,
+            hand_off,
         };
 
         let response = self.client.complete_durable_task(request).await?;
@@ -331,7 +335,8 @@ impl GrpcDurableStore {
         if !inner.success {
             anyhow::bail!("Task not owned by worker (was reclaimed or already completed)")
         }
-        Ok(inner.drained_signal_count)
+        let claimed = inner.claimed.map(claimed_task_from_proto).transpose()?;
+        Ok((inner.handed_off, claimed))
     }
 
     /// Fail a task
@@ -414,6 +419,7 @@ impl GrpcDurableStore {
         let request = GetAndConsumeDurableWorkflowSignalsRequest {
             workflow_id: workflow_id.to_string(),
             signal_type: String::new(),
+            peek: None,
         };
         let response = self
             .client
@@ -450,6 +456,28 @@ impl GrpcDurableStore {
         Ok(signals)
     }
 
+    /// How many signals of `signal_type` are pending, without consuming them.
+    ///
+    /// A control plane that predates `peek` consumes them; the count is then
+    /// what a destructive drain would have returned, as before.
+    pub async fn count_pending_signals(
+        &mut self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<usize> {
+        use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
+        let request = GetAndConsumeDurableWorkflowSignalsRequest {
+            workflow_id: workflow_id.to_string(),
+            signal_type: signal_type.to_string(),
+            peek: Some(true),
+        };
+        let response = self
+            .client
+            .get_and_consume_durable_workflow_signals(request)
+            .await?;
+        Ok(response.into_inner().signals.len())
+    }
+
     /// Get and consume pending signals of a specific type for a workflow
     pub async fn get_and_consume_signals_by_type(
         &mut self,
@@ -460,6 +488,7 @@ impl GrpcDurableStore {
         let request = GetAndConsumeDurableWorkflowSignalsRequest {
             workflow_id: workflow_id.to_string(),
             signal_type: signal_type.to_string(),
+            peek: None,
         };
         let response = self
             .client

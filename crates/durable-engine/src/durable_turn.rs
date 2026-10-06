@@ -9,6 +9,11 @@
 use everruns_durable::ActivityOptions;
 use uuid::Uuid;
 
+/// Workflow type of a session's turn workflow (one per session, a run per
+/// turn). The server's stale-task reaper resumes runs of this type stranded
+/// between two steps.
+pub const TURN_WORKFLOW_TYPE: &str = "turn_workflow";
+
 /// Signal type for a user message that arrived while a turn is already
 /// running (steering, or a task wake picked up at an iteration boundary).
 ///

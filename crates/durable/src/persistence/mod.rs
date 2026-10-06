@@ -8,11 +8,14 @@
 //! - [`PostgresWorkflowEventStore`] for production
 
 mod db_failure;
+mod hand_off;
 mod memory;
 mod postgres;
 mod store;
 
 pub(crate) use db_failure::log_database_failure;
+
+pub use hand_off::{HandOff, HandedOff, NextStep, RequeuedWorkflow, SignalDrain};
 
 pub use memory::{InMemoryWorkflowEventStore, WorkflowEndSubscription};
 pub use postgres::PostgresWorkflowEventStore;
