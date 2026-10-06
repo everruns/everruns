@@ -124,6 +124,8 @@ mod turn_backend_tests;
 pub mod turn_driver;
 #[cfg(test)]
 mod turn_driver_tests;
+#[cfg(test)]
+mod turn_recovery_matrix_tests;
 mod turn_start;
 pub mod turn_store;
 

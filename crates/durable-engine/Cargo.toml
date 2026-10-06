@@ -43,6 +43,9 @@ uuid.workspace = true
 everruns-llmsim = { workspace = true, features = ["host"] }
 # Paused clock for the ticket wakeup tests (`turn_backend_tests`).
 tokio = { workspace = true, features = ["test-util"] }
+# A scratch schema per PostgreSQL recovery-matrix run, so its zero-threshold
+# reaper cannot touch another test's tasks (`turn_recovery_matrix_tests`).
+sqlx.workspace = true
 
 [lints]
 workspace = true
