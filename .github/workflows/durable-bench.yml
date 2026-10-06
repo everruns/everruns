@@ -11,6 +11,15 @@
 # crates/durable/benches/baseline.jsonl, failing on a throughput drop. To
 # refresh the baseline, download the `durable-bench-*` artifacts of a trusted
 # run and concatenate their summary.jsonl files into baseline.jsonl.
+#
+# The `turn-backends` job benches the integration rather than the engine: the
+# facade's `turn_backends` full run, which adds the durable PostgreSQL backend
+# rows only when DATABASE_URL is set (the facade CI job runs its smoke without
+# a database). The bench applies the durable schema itself, so the job needs
+# no migrations. Its compare gates only against baseline rows recorded with
+# this job's moniker: the committed turn_backends_baseline.jsonl was taken on
+# a 4-core container (`local`), so until a run's summary.jsonl replaces it the
+# job reports and does not gate.
 name: Durable Benchmarks
 
 on:
@@ -107,4 +116,59 @@ jobs:
           path: |
             ${{ runner.temp }}/summary.jsonl
             crates/durable/target/benchmark-reports/
+          if-no-files-found: warn
+
+  turn-backends:
+    name: Turn Backend Benchmarks (in process, durable memory, durable PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: turn-backends-bench
+
+      - name: Run turn_backends
+        run: |
+          cargo bench -p everruns --features durable --bench turn_backends -- \
+            --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
+          # A run without the PostgreSQL rows measured nothing this job is for.
+          grep -q '_durable_postgres_' "$RUNNER_TEMP/summary.jsonl" \
+            || { echo "::error::turn_backends ran without the durable PostgreSQL backend"; exit 1; }
+
+      - name: Compare with baseline
+        run: |
+          echo "::group::summary.jsonl"; cat "$RUNNER_TEMP/summary.jsonl"; echo "::endgroup::"
+          jq -c --arg moniker "$BENCH_MONIKER" 'select(.moniker == $moniker)' \
+            crates/everruns/benches/turn_backends_baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
+          bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: turn-backends-bench
+          path: ${{ runner.temp }}/summary.jsonl
           if-no-files-found: warn
