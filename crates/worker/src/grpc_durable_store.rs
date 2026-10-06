@@ -7,14 +7,12 @@ use std::time::Duration;
 
 use anyhow::Result;
 use everruns_internal_protocol::proto::{
-    self, CheckCircuitBreakerRequest, ClaimDurableTasksRequest, CompleteDurableTaskRequest,
-    CountActiveDurableWorkflowsRequest, CreateDurableWorkflowRequest,
-    DeregisterDurableWorkerRequest, DurableActivityOptions, DurableTaskDefinition,
-    EnqueueDurableTaskRequest, FailDurableTaskRequest, GetDurableWorkflowStatusRequest,
-    HeartbeatDurableTaskRequest, HeartbeatDurableWorkerRequest, RecordCircuitBreakerFailureRequest,
-    RecordCircuitBreakerSuccessRequest, RegisterDurableWorkerRequest,
-    SubscribeTaskNotificationsRequest, TaskNotification, TaskNotificationType,
-    UpdateDurableWorkflowStatusRequest,
+    self, ClaimDurableTasksRequest, CompleteDurableTaskRequest, CountActiveDurableWorkflowsRequest,
+    CreateDurableWorkflowRequest, DeregisterDurableWorkerRequest, DurableActivityOptions,
+    DurableTaskDefinition, EnqueueDurableTaskRequest, FailDurableTaskRequest,
+    GetDurableWorkflowStatusRequest, HeartbeatDurableTaskRequest, HeartbeatDurableWorkerRequest,
+    RegisterDurableWorkerRequest, SubscribeTaskNotificationsRequest, TaskNotification,
+    TaskNotificationType, UpdateDurableWorkflowStatusRequest,
 };
 use everruns_internal_protocol::{WorkerServiceClient, json_to_proto_struct, uuid_to_proto_uuid};
 use tonic::service::interceptor::InterceptedService;
@@ -546,57 +544,6 @@ impl GrpcDurableStore {
     }
 
     // ========================================================================
-    // Circuit breaker operations
-    // ========================================================================
-
-    /// Check if a circuit breaker allows a call
-    ///
-    /// Returns true if the call is allowed, false if the circuit is open.
-    pub async fn check_circuit_breaker(&mut self, key: &str) -> Result<CircuitBreakerCheck> {
-        let request = CheckCircuitBreakerRequest {
-            key: key.to_string(),
-        };
-
-        let response = self.client.check_circuit_breaker(request).await?;
-        let inner = response.into_inner();
-
-        Ok(CircuitBreakerCheck {
-            allowed: inner.allowed,
-            state: proto_state_to_circuit_state(inner.state()),
-        })
-    }
-
-    /// Record a successful call to update circuit breaker state
-    pub async fn record_circuit_breaker_success(&mut self, key: &str) -> Result<CircuitState> {
-        let request = RecordCircuitBreakerSuccessRequest {
-            key: key.to_string(),
-        };
-
-        let response = self.client.record_circuit_breaker_success(request).await?;
-        Ok(proto_state_to_circuit_state(response.into_inner().state()))
-    }
-
-    /// Record a failed call to update circuit breaker state
-    ///
-    /// Returns the new state and whether the circuit just opened (tripped).
-    pub async fn record_circuit_breaker_failure(
-        &mut self,
-        key: &str,
-    ) -> Result<CircuitBreakerFailureResult> {
-        let request = RecordCircuitBreakerFailureRequest {
-            key: key.to_string(),
-        };
-
-        let response = self.client.record_circuit_breaker_failure(request).await?;
-        let inner = response.into_inner();
-
-        Ok(CircuitBreakerFailureResult {
-            state: proto_state_to_circuit_state(inner.state()),
-            circuit_opened: inner.circuit_opened,
-        })
-    }
-
-    // ========================================================================
     // Push-based task notifications
     // ========================================================================
 
@@ -686,28 +633,6 @@ pub struct HeartbeatResponse {
     pub should_cancel: bool,
 }
 
-/// Circuit breaker state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CircuitState {
-    Closed,
-    Open,
-    HalfOpen,
-}
-
-/// Result of checking a circuit breaker
-#[derive(Debug, Clone)]
-pub struct CircuitBreakerCheck {
-    pub allowed: bool,
-    pub state: CircuitState,
-}
-
-/// Result of recording a circuit breaker failure
-#[derive(Debug, Clone)]
-pub struct CircuitBreakerFailureResult {
-    pub state: CircuitState,
-    pub circuit_opened: bool,
-}
-
 /// Workflow status (mirrors crate::durable::WorkflowStatus)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkflowStatus {
@@ -787,15 +712,6 @@ fn proto_status_to_workflow(status: proto::DurableWorkflowStatus) -> WorkflowSta
         proto::DurableWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
         proto::DurableWorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
         proto::DurableWorkflowStatus::Unspecified => WorkflowStatus::Pending,
-    }
-}
-
-fn proto_state_to_circuit_state(state: proto::CircuitBreakerState) -> CircuitState {
-    match state {
-        proto::CircuitBreakerState::Closed => CircuitState::Closed,
-        proto::CircuitBreakerState::Open => CircuitState::Open,
-        proto::CircuitBreakerState::HalfOpen => CircuitState::HalfOpen,
-        proto::CircuitBreakerState::Unspecified => CircuitState::Closed,
     }
 }
 

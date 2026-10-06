@@ -104,7 +104,9 @@ service WorkerService {
     rpc DeregisterDurableWorker(DeregisterDurableWorkerRequest) returns (DeregisterDurableWorkerResponse);
 
     // === Circuit breaker operations ===
-    // Used by workers to check circuit breaker state before external calls
+    // Served over everruns-durable's DistributedCircuitBreaker for workers to
+    // guard external calls. No worker calls them today: turn steps run
+    // without a breaker (see knowledge/project/dismissed-options.md).
 
     // Check if a circuit breaker allows the call
     rpc CheckCircuitBreaker(CheckCircuitBreakerRequest) returns (CheckCircuitBreakerResponse);
