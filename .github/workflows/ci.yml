@@ -1275,7 +1275,7 @@ jobs:
       - name: Run Daytona live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features daytona-live-tests --test daytona_live_api_test -- --test-threads=1
 
   # Live Browserless API tests — only when integrations/browserless/** changes
   browserless-live-test:
@@ -1314,7 +1314,7 @@ jobs:
       - name: Run Browserless live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations --features browserless-live-tests --test live_api -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features browserless-live-tests --test browserless_live_api -- --test-threads=1
 
   # Live E2B API tests — only when integrations/e2b/** changes
   e2b-live-test:
@@ -1353,7 +1353,7 @@ jobs:
       - name: Run E2B live integration tests
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run -- cargo test -p everruns-integrations --features e2b-live-tests --test live_api_test -- --test-threads=1
+        run: doppler run -- cargo test -p everruns-integrations --features e2b-live-tests --test e2b_live_api_test -- --test-threads=1
 
   # The `deno-live-test` job is quarantined: the Deno organization's plan no
   # longer includes sandboxes, so `create_sandbox` returns 400
