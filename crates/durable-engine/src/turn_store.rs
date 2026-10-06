@@ -19,11 +19,11 @@ use std::pin::Pin;
 
 use crate::durable::{
     ClaimedTask, DurableAdmin, Enqueued, EventLog, HandOff, HeartbeatResponse,
-    InMemoryWorkflowEventStore, NextStep, RunStart, SignalDrain, SignalStore, StoreError,
-    TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerHeartbeat, WorkerInfo, WorkerRegistry,
-    WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowSignal, WorkflowStatus, append_event,
-    record_activity_completed, record_activity_failed, record_activity_started,
-    record_workflow_failed,
+    InMemoryWorkflowEventStore, NextStep, RunStart, RunSteering, SignalDrain, SignalStore,
+    StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerHeartbeat, WorkerInfo,
+    WorkerRegistry, WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowSignal,
+    WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
+    record_activity_started, record_workflow_failed,
 };
 use crate::durable_turn::activity_options_for;
 use async_trait::async_trait;
@@ -176,8 +176,10 @@ pub trait TurnStore: Send + Sync + 'static {
 
     /// Start a turn: create the session's workflow or start a new run of it,
     /// and enqueue `activity_type` as its first task, in one atomic step
-    /// ([`EventLog::start_run_with_task`]). Returns [`RunStart::Active`],
-    /// changing nothing, while a turn is already running.
+    /// ([`EventLog::start_run_with_task`]). Returns [`RunStart::Active`]
+    /// while a turn is already running, having sent it a `USER_MESSAGE`
+    /// signal with `steer` as payload when given. A new run consumes the
+    /// `USER_MESSAGE` signals still pending from the previous one.
     async fn start_turn(
         &self,
         workflow_id: Uuid,
@@ -185,6 +187,7 @@ pub trait TurnStore: Send + Sync + 'static {
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
+        steer: Option<serde_json::Value>,
     ) -> Result<RunStart, StoreError>;
 
     async fn get_workflow(&self, workflow_id: Uuid) -> Result<WorkflowSnapshot, StoreError>;
@@ -379,12 +382,13 @@ pub async fn hand_off_and_record<S: WorkflowEventStore>(
     worker_id: &str,
     output: serde_json::Value,
     hand_off: TurnHandOff,
-) -> Result<Option<ClaimedTask>, StoreError> {
+) -> Result<RecordedHandOff, StoreError> {
     let TurnHandOff {
         workflow_id,
         drain,
         next,
     } = hand_off;
+    let mut ended_turn = None;
     record_activity_completed(
         store,
         Some(workflow_id),
@@ -414,6 +418,7 @@ pub async fn hand_off_and_record<S: WorkflowEventStore>(
             error,
         } => {
             crate::durable::record_workflow_completed(store, workflow_id, event_output).await;
+            ended_turn = stored_output.clone();
             NextStep::Complete {
                 result: stored_output,
                 error,
@@ -432,7 +437,91 @@ pub async fn hand_off_and_record<S: WorkflowEventStore>(
         },
     )
     .await?;
-    Ok(handed.next.and_then(Enqueued::into_claimed))
+    let follow_up_started = match ended_turn {
+        Some(ended_turn) => start_steered_follow_up(store, queue, workflow_id, ended_turn).await,
+        None => false,
+    };
+    Ok(RecordedHandOff {
+        claimed: handed.next.and_then(Enqueued::into_claimed),
+        follow_up_started,
+    })
+}
+
+/// What [`hand_off_and_record`] committed.
+#[derive(Debug, Default)]
+pub struct RecordedHandOff {
+    /// The next step, claimed for the worker the hand-off asked for.
+    pub claimed: Option<ClaimedTask>,
+    /// A follow-up turn's `process_input` task was enqueued (see
+    /// [`start_steered_follow_up`]); wake the workers for it.
+    pub follow_up_started: bool,
+}
+
+/// Start the turn a message steering the turn that just ended asked for.
+///
+/// Decision: the final step counts the `USER_MESSAGE` signals before it
+/// plans, and its hand-off consumes only those, so a message that steers the
+/// turn after that count (sent the moment the turn reported idle) is still
+/// pending when the workflow completes. The run start that sent it found the
+/// run active under the workflow lock (see `RunSteering`), so it is committed
+/// before the hand-off, and reading the pending signals after the hand-off
+/// sees it. Nothing else would act on it: the session would stay active
+/// with its message unanswered. A start that finds a run active (another
+/// message started one) changes nothing; that run reads the message too.
+async fn start_steered_follow_up<S: WorkflowEventStore>(
+    store: &S,
+    queue: Option<&str>,
+    workflow_id: Uuid,
+    ended_turn: serde_json::Value,
+) -> bool {
+    let steering = match SignalStore::get_pending_signals(store, workflow_id).await {
+        Ok(signals) => signals
+            .into_iter()
+            .rfind(|signal| signal.signal_type == crate::durable_turn::USER_MESSAGE),
+        Err(error) => {
+            tracing::warn!(%workflow_id, %error, "Failed to read steering left after a turn");
+            return false;
+        }
+    };
+    let Some(steering) = steering else {
+        return false;
+    };
+    let input = serde_json::from_value(ended_turn)
+        .ok()
+        .and_then(|ended| crate::durable_turn::turn_input_for_steering(&ended, &steering.payload));
+    let Some(input) = input else {
+        tracing::warn!(%workflow_id, "Steering left after a turn names no message to start from");
+        return false;
+    };
+    let input = match serde_json::to_value(&input) {
+        Ok(input) => input,
+        Err(error) => {
+            tracing::warn!(%workflow_id, %error, "Failed to encode a follow-up turn");
+            return false;
+        }
+    };
+    match start_turn_in(
+        store,
+        queue,
+        workflow_id,
+        crate::durable_turn::TURN_WORKFLOW_TYPE,
+        input,
+        format!("input_{}", Uuid::now_v7()),
+        "process_input".to_string(),
+        None,
+    )
+    .await
+    {
+        Ok(RunStart::Started { .. }) => {
+            tracing::info!(%workflow_id, "started the turn a message steering the ended one asked for");
+            true
+        }
+        Ok(RunStart::Active) => false,
+        Err(error) => {
+            tracing::warn!(%workflow_id, %error, "Failed to start a steered follow-up turn");
+            false
+        }
+    }
 }
 
 /// A turn task of `workflow_id` for `queue` (`None`: the default queue),
@@ -516,6 +605,7 @@ pub(crate) async fn enqueue_claimed_task_in<S: WorkflowEventStore>(
 }
 
 /// [`TurnStore::start_turn`] with its first task in `queue`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn start_turn_in<S: WorkflowEventStore>(
     store: &S,
     queue: Option<&str>,
@@ -524,6 +614,7 @@ pub(crate) async fn start_turn_in<S: WorkflowEventStore>(
     input: serde_json::Value,
     activity_id: String,
     activity_type: String,
+    steer: Option<serde_json::Value>,
 ) -> Result<RunStart, StoreError> {
     let task = turn_task(
         queue,
@@ -532,7 +623,19 @@ pub(crate) async fn start_turn_in<S: WorkflowEventStore>(
         activity_type,
         input.clone(),
     );
-    EventLog::start_run_with_task(store, workflow_id, workflow_type, input, task).await
+    let steering = RunSteering {
+        signal_type: crate::durable_turn::USER_MESSAGE.to_string(),
+        payload: steer,
+    };
+    EventLog::start_run_with_task(
+        store,
+        workflow_id,
+        workflow_type,
+        input,
+        task,
+        Some(steering),
+    )
+    .await
 }
 
 #[async_trait]
@@ -618,6 +721,7 @@ where
             hand_off,
         )
         .await
+        .map(|recorded| recorded.claimed)
     }
 
     async fn count_pending_signals(
@@ -699,6 +803,7 @@ where
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
+        steer: Option<serde_json::Value>,
     ) -> Result<RunStart, StoreError> {
         start_turn_in(
             self,
@@ -708,6 +813,7 @@ where
             input,
             activity_id,
             activity_type,
+            steer,
         )
         .await
     }

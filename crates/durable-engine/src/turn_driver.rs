@@ -755,6 +755,7 @@ mod tests {
             _input: serde_json::Value,
             _activity_id: String,
             _activity_type: String,
+            _steer: Option<serde_json::Value>,
         ) -> Result<crate::durable::RunStart, StoreError> {
             Ok(crate::durable::RunStart::Active)
         }
@@ -1157,6 +1158,136 @@ mod tests {
             .await
             .unwrap(),
             1
+        );
+    }
+
+    /// The final step's checkpoint of a turn on a fresh session.
+    fn ended_turn() -> DurableTurnInput {
+        use everruns_contracts::typed_id::{HarnessId, SessionId};
+        DurableTurnInput {
+            org_id: 7,
+            session_id: SessionId::new(),
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            input_message_id: MessageId::new(),
+            turn_id: Some(TurnId::new()),
+            previous_response_id: Some("resp".into()),
+            iteration: 3,
+            request_id: Some("req".into()),
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 2,
+            llm_call_count: 3,
+            time_to_first_token_ms: None,
+            final_message_id: Some(MessageId::new()),
+            final_answer_preview: None,
+        }
+    }
+
+    /// Complete the turn whose final step is `task`, its plan having
+    /// counted no steering.
+    async fn complete_final_step(
+        store: &crate::durable::InMemoryWorkflowEventStore,
+        workflow_id: Uuid,
+        task: &ClaimedTask,
+        ended: &DurableTurnInput,
+    ) {
+        let next = TurnStore::complete_task_and_hand_off(
+            store,
+            task,
+            "worker",
+            serde_json::json!({}),
+            TurnHandOff {
+                workflow_id,
+                drain: Some(SignalDrain {
+                    signal_type: crate::durable_turn::USER_MESSAGE.into(),
+                    limit: 0,
+                }),
+                next: TurnNext::Complete {
+                    event_output: serde_json::json!({}),
+                    stored_output: Some(serde_json::to_value(ended).unwrap()),
+                    error: None,
+                },
+            },
+        )
+        .await
+        .unwrap();
+        assert!(next.is_none());
+    }
+
+    /// The load-test bug: a message sent the moment a turn went idle steered
+    /// its last step after that step counted the steering, and the turn
+    /// completed with the message pending; the session stayed active and
+    /// the message was never answered.
+    #[tokio::test]
+    async fn a_message_steering_a_turn_after_its_last_count_starts_the_next_turn() {
+        let store = crate::durable::InMemoryWorkflowEventStore::new();
+        let (workflow_id, task) = claimed_turn_step(&store, "reason").await;
+        let ended = ended_turn();
+        let mut sent = ended.clone();
+        sent.input_message_id = MessageId::new();
+        let started = TurnStore::start_turn(
+            &store,
+            workflow_id,
+            crate::durable_turn::TURN_WORKFLOW_TYPE,
+            serde_json::to_value(&sent).unwrap(),
+            "input-2".into(),
+            "process_input".into(),
+            Some(crate::durable_turn::steering_payload(&sent)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(started, crate::durable::RunStart::Active);
+
+        complete_final_step(&store, workflow_id, &task, &ended).await;
+
+        assert_eq!(
+            EventLog::get_workflow_status(&store, workflow_id)
+                .await
+                .unwrap(),
+            WorkflowStatus::Running,
+            "the message starts the next turn"
+        );
+        let worker = crate::durable::WorkerInfo::new("next", ["process_input"]);
+        WorkerRegistry::register_worker(&store, worker)
+            .await
+            .unwrap();
+        let next = TaskQueue::claim_task(&store, "next", &["process_input".into()], 10)
+            .await
+            .unwrap();
+        assert_eq!(next.len(), 1);
+        let input: DurableTurnInput = serde_json::from_value(next[0].input.clone()).unwrap();
+        assert_eq!(input.input_message_id, sent.input_message_id);
+        assert_eq!(
+            (input.org_id, input.session_id, input.harness_id),
+            (ended.org_id, ended.session_id, ended.harness_id)
+        );
+        assert_eq!(input.turn_id, None);
+        assert_eq!(input.iteration, 1);
+        assert_eq!((input.tool_call_count, input.llm_call_count), (0, 0));
+        assert_eq!(
+            TurnStore::count_pending_signals(
+                &store,
+                workflow_id,
+                crate::durable_turn::USER_MESSAGE
+            )
+            .await
+            .unwrap(),
+            0,
+            "the new turn took the steering"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_turn_nothing_steered_stays_completed() {
+        let store = crate::durable::InMemoryWorkflowEventStore::new();
+        let (workflow_id, task) = claimed_turn_step(&store, "reason").await;
+        complete_final_step(&store, workflow_id, &task, &ended_turn()).await;
+        assert_eq!(
+            EventLog::get_workflow_status(&store, workflow_id)
+                .await
+                .unwrap(),
+            WorkflowStatus::Completed
         );
     }
 

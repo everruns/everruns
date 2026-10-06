@@ -6,6 +6,7 @@
 //! durable gRPC service applies the same rules to tasks a worker enqueues
 //! remotely. Every string here is persisted or on the wire: keep values stable.
 
+use everruns_core::engine::TurnState;
 use everruns_durable::ActivityOptions;
 use uuid::Uuid;
 
@@ -24,6 +25,50 @@ pub const TURN_WORKFLOW_TYPE: &str = "turn_workflow";
 ///
 /// Example: `{ "input_message_id": "<id>", "org_id": 1, "harness_id": "<id>", "agent_id": "<id>" }`
 pub const USER_MESSAGE: &str = "user_message";
+
+/// The [`USER_MESSAGE`] payload announcing the stored message `input`
+/// starts its turn with.
+pub(crate) fn steering_payload(input: &TurnState) -> serde_json::Value {
+    serde_json::json!({
+        "input_message_id": input.input_message_id.to_string(),
+        "org_id": input.org_id,
+        "harness_id": input.harness_id.to_string(),
+        "agent_id": input.agent_id.map(|id| id.to_string()),
+    })
+}
+
+/// The input of a turn started for the [`USER_MESSAGE`] `payload` on the
+/// session `previous` ran a turn of, the payload's fields taking over the
+/// previous turn's. `None` when the payload names no message.
+pub(crate) fn turn_input_for_steering(
+    previous: &TurnState,
+    payload: &serde_json::Value,
+) -> Option<TurnState> {
+    fn field<T: std::str::FromStr>(payload: &serde_json::Value, key: &str) -> Option<T> {
+        payload.get(key)?.as_str()?.parse().ok()
+    }
+    Some(TurnState {
+        org_id: payload
+            .get("org_id")
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(previous.org_id),
+        session_id: previous.session_id,
+        harness_id: field(payload, "harness_id").unwrap_or(previous.harness_id),
+        agent_id: field(payload, "agent_id").or(previous.agent_id),
+        input_message_id: field(payload, "input_message_id")?,
+        turn_id: None,
+        previous_response_id: None,
+        iteration: 1,
+        request_id: None,
+        started_at: Some(chrono::Utc::now()),
+        cumulative_usage: None,
+        tool_call_count: 0,
+        llm_call_count: 0,
+        time_to_first_token_ms: None,
+        final_message_id: None,
+        final_answer_preview: None,
+    })
+}
 
 /// Activity-id prefix of the `reason` task that resumes a parked turn once its
 /// waiting resolution (tool results, approvals, answers) is claimed.
