@@ -106,7 +106,7 @@ const PROVIDER_OPTIONS: { type: SetupProviderType; label: string; models: string
 // driver catalog stays one click away after setup so the pair never reads as
 // "only two models exist".
 const MORE_PROVIDERS = ["Gemini", "Azure OpenAI", "Bedrock"];
-const MORE_PROVIDERS_EXTRA = 6; // openrouter, openai_completions, mai, fireworks, meta, mistral
+const MORE_PROVIDERS_EXTRA = 5; // openrouter, openai_completions, mai, fireworks, meta (mistral is flag-gated)
 
 // Docs base used elsewhere in the app (see capabilities page).
 const DOCS_URL = "https://docs.everruns.com";

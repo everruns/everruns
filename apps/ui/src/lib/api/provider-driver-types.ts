@@ -24,3 +24,20 @@ export type DriverId =
   | "mistral"
   | "cloudflare"
   | "vercel";
+
+/**
+ * Drivers the server lists in `/v1/providers/config` only when an org flag
+ * allows them (`chatgpt_plan`, `mistral_provider`). The server's list is the
+ * source of truth, so a gated driver is offered only once the config names it.
+ */
+const SERVER_GATED_DRIVERS: readonly DriverId[] = ["chatgpt", "mistral"];
+
+export function isDriverOffered(
+  driver: DriverId,
+  configDrivers: readonly { driver: string }[] | undefined,
+): boolean {
+  return (
+    !SERVER_GATED_DRIVERS.includes(driver) ||
+    (configDrivers?.some((entry) => entry.driver === driver) ?? false)
+  );
+}
