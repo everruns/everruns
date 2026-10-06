@@ -344,6 +344,7 @@ impl<S: Store + 'static> Cell<S> {
                     tool_call_count: Some(turn.tool_calls),
                     llm_call_count: Some(turn.iteration),
                     status: None,
+                    stop_reason: None,
                 },
             ),
             Err(error) => EventRequest::new(
