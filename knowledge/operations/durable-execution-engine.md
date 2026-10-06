@@ -74,9 +74,34 @@ belongs only to server and durable, enforced by
 
 `WorkflowEventStore` is an umbrella over focused traits (`EventLog`, `TaskQueue`, `SignalStore`, `WorkerRegistry`, `DeadLetters`, `CircuitBreakers`, `Schedules`, `DurableAdmin`), blanket-implemented, so a component can bound on only the slice it needs (a worker: `TaskQueue + SignalStore + WorkerRegistry`). Store methods have no silently-succeeding defaults; both stores implement every method, and only derived defaults (for example `count_events` via `load_events`) remain. See `crates/durable/src/persistence/store.rs`.
 
+### Workflow engine feature
+
+The crate has two halves. The core (store contract, task queue, signals,
+reliability, `DurableScheduler`) is what Everruns runs in production: the
+worker and server drive the queue directly, and turns use durable-engine's
+checkpoints rather than replay. The generic workflow engine (`Workflow`,
+`Activity`, `WorkflowExecutor` with timers, child workflows and system tasks,
+`WorkerPool`, `TimeoutManager`) has no production caller in this repository.
+
+Decision: keep the engine, so the crate stays usable and optimizable in
+isolation, but put it behind the experimental `workflows` feature. The feature
+is on by default for crates.io users, so `cargo add everruns-durable` gets
+what the README documents; the workspace dependency sets
+`default-features = false`, so server, durable-engine, the facade and the
+serve hosts compile only the core. The record types the engine shares with the
+queue (`WorkflowEvent`, `ActivityOptions`, `WorkflowError`, `ActivityError`,
+`WorkflowSignal`) stay in the core. The engine is proven by the crate's own
+suites, benches and
+[`examples/order_pipeline.rs`](../../crates/durable/examples/order_pipeline.rs),
+which has no Everruns dependency and runs on the in-memory store in the
+`durable` CI shard. See `[features]` in
+[`crates/durable/Cargo.toml`](../../crates/durable/Cargo.toml).
+
 ## Requirements
 
 ### Core Abstractions
+
+Items 1-3 are the experimental `workflows` feature.
 
 1. **Workflow** - Deterministic state machine driven by events
    - Unique type identifier
@@ -156,8 +181,8 @@ difference is `durable_tool_results`, which belongs to the server's tool-call
 idempotency storage and is never touched by the crate.
 
 `everruns-durable` is part of the crates.io publish set. Its benchmark support
-module and bench binaries sit behind the off-by-default `bench` feature, and
-bench checkpoints are excluded from the package.
+module and bench binaries sit behind the off-by-default `bench` feature (which
+implies `workflows`), and bench checkpoints are excluded from the package.
 
 Workflow statuses: `pending`, `running`, `completed`, `failed`, `cancelled`, `continued_as_new`.
 

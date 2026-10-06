@@ -24,10 +24,11 @@ cargo add everruns-durable
 
 - Event-sourced, deterministic workflows (`Workflow`, `WorkflowExecutor`) with
   replay, snapshots, timers, child workflows, signals and `continue_as_new`
+  (experimental, `workflows` feature, on by default)
 - A PostgreSQL task queue with priorities, `SKIP LOCKED` claiming, heartbeats,
   stale-claim reclamation and a dead letter queue
 - Retry policies, timeouts and distributed circuit breakers
-- A worker pool with bounded concurrency and backpressure
+- A worker pool with bounded concurrency and backpressure (`workflows`)
 - Cron and interval schedules with leader-safe claiming
 - A self-contained PostgreSQL schema (`PostgresWorkflowEventStore::migrate`)
   and an in-memory store for tests
@@ -48,8 +49,17 @@ scheduling; turn semantics, signal payloads and what a sealed task means to a
 session live in `everruns-durable-engine` and the Everruns server.
 
 The general-purpose workflow engine (`WorkflowExecutor` over the
-`Workflow` trait) is the other half of the crate: deterministic state
-machines replayed from an event log. The example below uses it.
+`Workflow` trait, plus `WorkerPool`) is the other half of the crate:
+deterministic state machines replayed from an event log. It is experimental
+and sits behind the default `workflows` feature. Everruns itself builds the
+crate with `default-features = false`, so its services compile only the store,
+queue, reliability and scheduler core. The example below uses the engine, and
+[`examples/order_pipeline.rs`](examples/order_pipeline.rs) is a runnable order
+pipeline (three activities, one retried) on the in-memory store:
+
+```sh
+cargo run -p everruns-durable --example order_pipeline
+```
 
 ## Quick start
 
@@ -263,6 +273,12 @@ the two in step.
 # Unit tests, in-memory store (no database)
 cargo test -p everruns-durable
 
+# The store, queue and scheduler core without the workflow engine
+cargo test -p everruns-durable --no-default-features --lib
+
+# The isolated workflow example
+cargo test -p everruns-durable --example order_pipeline
+
 # PostgreSQL integration tests (DATABASE_URL, default port 9332, migrated
 # with the server migrations, which schema_drift_test compares against)
 cargo test -p everruns-durable --features postgres-tests \
@@ -287,8 +303,9 @@ in-memory store stays a faithful stand-in for PostgreSQL: registered workers
 only, priority then FIFO claim order, retry backoff, stale-claim reclaim.
 `agent_reliability_test` drives whole workflows through worker crashes,
 control-plane restarts and database outages. All of these run in CI on the
-`durable` PostgreSQL shard. The examples in this README are compiled and run
-as doctests.
+`durable` PostgreSQL shard, along with `examples/order_pipeline.rs`. The
+examples in this README are compiled and run as doctests by
+`cargo test -p everruns-durable`.
 
 ## Benchmarks
 
@@ -319,9 +336,11 @@ and `--summary <file>` appends one JSON line per scenario.
 
 | Flag | Effect |
 | --- | --- |
+| `workflows` | Default. The experimental workflow engine: `Workflow`, `Activity`, `WorkflowExecutor` (timers, child workflows, system tasks), `WorkerPool`, `TimeoutManager`. |
+| `sqlite` | The `sqlite` module, a small rusqlite wrapper for local hosts. |
 | `postgres-tests` | Compiles the tests that need a live PostgreSQL. |
 | `failpoints` | Enables `fail-rs` failpoints in the PostgreSQL store. Zero cost when off. |
-| `bench` | Builds the benchmark support module and bench binaries. Not a supported API. |
+| `bench` | Builds the benchmark support module and bench binaries; implies `workflows`. Not a supported API. |
 
 ## Documentation
 

@@ -109,7 +109,7 @@ rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_declt
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
-everruns-durable = { path = "../durable" }  # For durable execution gRPC service
+everruns-durable.workspace = true  # For durable execution gRPC service
 image.workspace = true  # For image thumbnail generation
 
 # gRPC

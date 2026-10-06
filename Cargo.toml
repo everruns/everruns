@@ -246,7 +246,10 @@ futures-util = "0.3"
 # Everruns SDK
 everruns-sdk = "0.2.0"
 everruns-core = { path = "crates/core", version = "0.41.0", default-features = false }
-everruns-durable = { path = "crates/durable", version = "0.41.0" }
+# No workspace crate runs the generic workflow executor: they drive the task
+# queue directly. Its `workflows` feature stays off here; crates.io users get it
+# by default.
+everruns-durable = { path = "crates/durable", version = "0.41.0", default-features = false }
 everruns-durable-engine = { path = "crates/durable-engine", version = "0.41.0" }
 everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.41.0", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.41.0", default-features = false }
