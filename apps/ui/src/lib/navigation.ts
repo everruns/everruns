@@ -34,7 +34,6 @@ import {
   Telescope,
   UserRound,
   Workflow,
-  ShieldCheck,
 } from "lucide-react";
 import type { IconComponent } from "@/lib/capability-icons";
 import { registryNavigationItems, type RegistryNavigationItem } from "@/lib/registry-navigation";
@@ -105,7 +104,6 @@ export const defaultOperationalNavigation: NavigationItem[] = [
     icon: Cpu,
     keywords: ["compute", "daytona", "modal", "containers", "fleet"],
   },
-  { name: "Approvals", href: "/approvals", icon: ShieldCheck, minimumRole: "admin" },
   // "What in this org is reachable from outside right now" is a question
   // security and ops ask, and no agent page can answer it — it shows one agent
   // (EVE-1010). It sits here rather than under Building because reading it is

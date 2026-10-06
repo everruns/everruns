@@ -83,6 +83,9 @@ export const queryKeys = {
       ["session", org, sessionId, "context-report"] as const,
     resolvedModel: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "resolved-model"] as const,
+    approvalEvents: (sessionId?: string) => ["session", sessionId, "approval-events"] as const,
+    approvalAudit: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "approval-audit"] as const,
     participants: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "participants"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,

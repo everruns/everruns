@@ -28,6 +28,18 @@ describe("navigationGroupForPath", () => {
     expect(navigationGroupForPath("/durable/workers")).toBe("Durable Execution");
   });
 
+  it("keeps operational destinations to sessions, sandboxes, exposures and reports", () => {
+    const operational = defaultNavigationSections.find(
+      (section) => section.label === "Operational",
+    );
+    expect(operational?.items.map((item) => item.name)).toEqual([
+      "Sessions",
+      "Sandboxes",
+      "Exposures",
+      "Reports",
+    ]);
+  });
+
   it("gives no group to pages outside a labelled section", () => {
     // Chats and Settings have no group header in the sidebar, so their pages
     // take no prefix.

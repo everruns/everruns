@@ -1,15 +1,22 @@
 import { buildSessionNavigation } from "@/components/session/session-header";
 
 describe("buildSessionNavigation", () => {
-  // A session is a recording: Transcript, Timeline, Events, and Cost are
-  // unconditional; the views that depend on capabilities stay feature-gated.
-  it("always offers transcript first, followed by timeline, events and cost", () => {
+  // A session is a recording: Transcript, Timeline, Approvals, Events, and
+  // Cost are unconditional; the views that depend on capabilities stay
+  // feature-gated.
+  it("always offers transcript first, followed by timeline, approvals, events and cost", () => {
     const items = buildSessionNavigation({
       basePath: "/sessions/session_123",
       features: new Set(),
     });
 
-    expect(items.map((item) => item.key)).toEqual(["transcript", "timeline", "events", "cost"]);
+    expect(items.map((item) => item.key)).toEqual([
+      "transcript",
+      "timeline",
+      "approvals",
+      "events",
+      "cost",
+    ]);
     expect(items[0]).toMatchObject({
       label: "Transcript",
       href: "/sessions/session_123/transcript",
@@ -28,6 +35,7 @@ describe("buildSessionNavigation", () => {
     expect(items.map((item) => item.key)).toEqual([
       "transcript",
       "timeline",
+      "approvals",
       "work",
       "events",
       "files",
@@ -62,7 +70,7 @@ describe("buildSessionNavigation", () => {
       fileCount: 6,
     });
 
-    for (const key of ["transcript", "timeline", "cost"]) {
+    for (const key of ["transcript", "timeline", "approvals", "cost"]) {
       expect(items.find((item) => item.key === key)?.badge).toBeUndefined();
     }
   });
