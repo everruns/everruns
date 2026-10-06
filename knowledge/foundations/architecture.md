@@ -333,7 +333,6 @@ The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/wor
 
 2. **No Database Triggers**: Business logic MUST be implemented in Rust, not in PostgreSQL triggers
    - Triggers are invisible to application code and hard to debug
-   - Triggers don't work in DEV_MODE (in-memory storage)
    - Triggers create hidden coupling between tables
    - Use EventListener pattern for event-driven side effects instead
 

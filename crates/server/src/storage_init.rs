@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use std::sync::Arc;
 
 use crate::storage::StorageBackend;
-use everruns_durable::InMemoryWorkflowEventStore;
+use everruns_durable::PostgresWorkflowEventStore;
 use everruns_worker::{
     AgentRunner, DurableTaskNotifier, RunnerBackend, create_runner_with_backend,
 };
@@ -20,7 +20,7 @@ pub(crate) struct StorageInit {
     pub(crate) db: Arc<StorageBackend>,
     pub(crate) runner: Arc<dyn AgentRunner>,
     pub(crate) background_runner: Arc<dyn AgentRunner>,
-    pub(crate) shared_durable_store: Option<Arc<InMemoryWorkflowEventStore>>,
+    pub(crate) shared_durable_store: Option<Arc<PostgresWorkflowEventStore>>,
     pub(crate) database_url: Option<String>,
     pub(crate) database_unpooled_url: Option<String>,
     pub(crate) task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
@@ -33,20 +33,33 @@ pub(crate) async fn init_storage(
     let database_unpooled_url = std::env::var("DATABASE_UNPOOLED_URL").ok();
 
     if config.dev_mode {
-        tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
+        // Dev mode needs no database of its own: records live in a throwaway
+        // PostgreSQL owned by this process, so they run through the same
+        // repositories as production. DATABASE_URL is ignored on purpose, so a
+        // dev run never writes into a real database. Durable state shares that
+        // database (records reference durable rows by foreign key, trigger
+        // schedules for one) and the in-process worker executes it.
+        tracing::info!("Starting in DEV MODE (embedded PostgreSQL, deleted on exit)");
+        let pg = everruns_pg_embedded::EmbeddedPostgres::shared()
+            .await
+            .context("Failed to start embedded PostgreSQL for DEV_MODE")?;
+        let database = format!("dev_{}", uuid::Uuid::now_v7().simple());
+        pg.create_database(&database, None).await?;
+        let backend = StorageBackend::postgres(&pg.url(&database))
+            .await
+            .context("Failed to connect to embedded PostgreSQL")?;
+        run_migrations(&backend, migrations).await?;
 
-        let db = Arc::new(StorageBackend::in_memory());
-        let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-        let runner =
-            create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store.clone()))
-                .await
-                .context("Failed to create in-memory agent runner")?;
-
-        tracing::info!(
-            "Using in-memory storage and durable execution engine with in-process worker"
-        );
+        let pool = backend
+            .pool()
+            .context("embedded backend has a pool")?
+            .clone();
+        let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
+        let runner = create_runner_with_backend(RunnerBackend::Postgres(pool))
+            .await
+            .context("Failed to create agent runner")?;
         return Ok(StorageInit {
-            db,
+            db: Arc::new(backend),
             background_runner: runner.clone(),
             runner,
             shared_durable_store: Some(shared_store),
@@ -85,24 +98,7 @@ pub(crate) async fn init_storage(
     let backend = backend.with_blob_store(blob_store);
 
     if !config.no_migrations {
-        tracing::info!("Running database migrations...");
-        let pool = backend.pool().expect("PostgreSQL backend should have pool");
-        if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
-            tracing::error!(
-                error = %e,
-                "Database migration failed - check migration files and database state"
-            );
-            return Err(e)
-                .context("Database migration failed - check migration files and database state");
-        }
-        tracing::info!("Database migrations complete");
-
-        for migration_fn in migrations {
-            if let Err(e) = migration_fn(pool.clone()).await {
-                tracing::error!(error = %e, "Custom database migration failed");
-                return Err(e);
-            }
-        }
+        run_migrations(&backend, migrations).await?;
     } else {
         tracing::info!("Skipping database migrations (--no-migrations)");
     }
@@ -159,6 +155,28 @@ pub(crate) async fn init_storage(
     })
 }
 
+async fn run_migrations(backend: &StorageBackend, migrations: Vec<MigrationFn>) -> Result<()> {
+    tracing::info!("Running database migrations...");
+    let pool = backend.pool().expect("PostgreSQL backend should have pool");
+    if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
+        tracing::error!(
+            error = %e,
+            "Database migration failed - check migration files and database state"
+        );
+        return Err(e)
+            .context("Database migration failed - check migration files and database state");
+    }
+    tracing::info!("Database migrations complete");
+
+    for migration_fn in migrations {
+        if let Err(e) = migration_fn(pool.clone()).await {
+            tracing::error!(error = %e, "Custom database migration failed");
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
 /// Forwards the durable runner's "task enqueued" hint to the worker broadcaster.
 pub(crate) struct ServerTaskNotifier {
     pub(crate) broadcaster: Arc<crate::task_notifications::TaskBroadcaster>,
@@ -188,8 +206,12 @@ mod tests {
 
         let storage = init_storage(&config, vec![])
             .await
-            .expect("initialize in-memory storage");
+            .expect("initialize dev storage");
 
         assert!(Arc::ptr_eq(&storage.runner, &storage.background_runner));
+        assert!(
+            storage.db.pool().is_some(),
+            "dev mode keeps records in embedded PostgreSQL"
+        );
     }
 }

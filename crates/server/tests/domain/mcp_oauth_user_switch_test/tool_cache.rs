@@ -530,7 +530,7 @@ async fn oauth_callback_discovery_and_capability_reads_never_write_or_leak_share
                 name: format!("legacy-oauth-{}", Uuid::new_v4()),
                 description: None,
                 url: "http://8.8.8.8/mcp".to_string(),
-                transport_type: "streamable_http".to_string(),
+                transport_type: "http".to_string(),
                 api_key_encrypted: None,
                 headers: None,
                 settings: Some(

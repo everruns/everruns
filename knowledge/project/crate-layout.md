@@ -94,7 +94,9 @@ The worker reaches durable's store only through `everruns-durable-engine`.
 [`check-database-driver-isolation.sh`](../../scripts/lib/check-database-driver-isolation.sh)
 rejects normal and build dependencies on database drivers outside these two owners,
 including optional and renamed edges. Contracts' optional typed-id codecs are the
-only exception and cannot construct a connection. Embedded hosts keep their own
+only exception and cannot construct a connection. `everruns-pg-embedded`, the
+server's throwaway DEV_MODE and test cluster, may connect to create and drop databases;
+it reads no tables. Embedded hosts keep their own
 schemas and shared query callbacks, but open SQLite handles through durable's API.
 [`check-durable-isolation.sh`](../../scripts/lib/check-durable-isolation.sh) also keeps
 durable generic and prevents worker dependencies from bypassing durable-engine.

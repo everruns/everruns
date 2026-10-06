@@ -100,7 +100,7 @@ TLS terminates at the proxy. Worker gRPC traffic stays on the private network, n
 
 The same binaries collapse into smaller deployments for local work:
 
-- **`DEV_MODE=true` (in-memory).** No PostgreSQL, no Docker. Execution runs in-process inside the server binary; the gRPC server is disabled. Data is lost on restart. Useful for UI iteration and API development.
+- **`DEV_MODE=true` (single process).** Nothing to install or run beside the binary: the server starts a temporary PostgreSQL of its own and deletes it on exit. Execution runs in-process inside the server binary; the gRPC server is disabled. Data is lost on restart. Useful for UI iteration and API development.
 - **`just start-all` (full local).** Brings up PostgreSQL, Valkey, and NATS as local processes (no Docker required) and starts the server + worker against them. Mirrors production wiring on a single machine.
 - **Docker Compose.** The production-shaped topology in one machine; see [Docker Compose](/getting-started/docker-compose/).
 

@@ -18,12 +18,10 @@ use axum::{
 use http_body_util::BodyExt;
 use serde::Serialize;
 use serde_json::Value;
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use sqlx::PgPool;
 use tower::ServiceExt;
 
-use everruns_durable::{
-    InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
-};
+use everruns_durable::{PostgresWorkflowEventStore, WorkflowEventStore};
 use everruns_server::{
     api, auth, seed, services,
     storage::{EncryptionService, StorageBackend},
@@ -38,6 +36,10 @@ pub use egress_fakes::{McpServerSlot, WebhookReceiver};
 #[path = "test_harness/response.rs"]
 mod response;
 pub use response::TestResponse;
+#[path = "test_harness/database.rs"]
+mod database;
+#[allow(unused_imports)] // each test binary uses a different subset
+pub use database::{IsolatedDatabase, create_test_pool, get_database_url, isolated_test_database};
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
     headers
@@ -64,22 +66,6 @@ async fn lookup_built_in_harness(db: &Arc<StorageBackend>, name: &str) -> String
         .unwrap_or_else(|| panic!("built-in harness '{name}' not provisioned for default org"))
 }
 
-/// Get test database URL from environment or use default
-pub fn get_database_url() -> String {
-    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        let port = std::env::var("DB_PORT").unwrap_or_else(|_| "9332".to_string());
-        format!("postgres://everruns:everruns@localhost:{port}/everruns_test")
-    })
-}
-
-/// Create a PostgreSQL pool for tests
-pub async fn create_test_pool() -> PgPool {
-    let database_url = get_database_url();
-    PgPool::connect(&database_url)
-        .await
-        .expect("Failed to connect to PostgreSQL. Set DATABASE_URL or ensure postgres is running.")
-}
-
 /// Test server for in-process API testing
 pub struct TestServer {
     router: Router,
@@ -104,9 +90,32 @@ pub struct TestServer {
     /// Inbound MCP Events (`mcp_event` triggers), wired to `mcp_servers`.
     pub mcp_event_triggers: Arc<everruns_server::domains::agent_triggers::McpEventTriggers>,
     pub mcp_servers: Arc<McpServerSlot>,
+    /// The private database of an in-memory-mode server; dropping the last
+    /// handle drops the database.
+    isolated_database: Option<Arc<IsolatedDatabase>>,
 }
 
 impl TestServer {
+    /// Insert a real user and return its id, for tests that need another
+    /// person to point a foreign key at (session owners, members).
+    pub async fn create_user(&self, label: &str) -> uuid::Uuid {
+        self.db
+            .create_user(everruns_server::storage::models::CreateUserRow {
+                email: format!("{label}-{}@example.com", uuid::Uuid::now_v7()),
+                name: format!("Test {label}"),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .expect("create test user")
+            .id
+    }
+
     /// Create a new test server with PostgreSQL backend
     pub async fn new() -> Self {
         Self::with_mode_and_url(TestMode::Postgres, "http://127.0.0.1:0/api".to_string()).await
@@ -553,7 +562,7 @@ impl TestServer {
         policy_override: Option<everruns_server::records::FeatureFlagPolicy>,
     ) -> Self {
         // Create storage backend based on mode
-        let (db, pool, durable_store) = match mode {
+        let (db, pool, durable_store, isolated_database) = match mode {
             TestMode::Postgres => {
                 let pool = create_test_pool().await;
                 let db = Arc::new(StorageBackend::Postgres(
@@ -561,21 +570,21 @@ impl TestServer {
                 ));
                 let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
                     Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
-                (db, pool, durable_store)
+                (db, pool, durable_store, None)
             }
             TestMode::InMemory => {
-                let db = Arc::new(StorageBackend::in_memory());
-                let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-                // In-memory tests do not use PostgreSQL; keep a lazy pool only
-                // to satisfy the test harness return type.
-                let pool = PgPoolOptions::new()
-                    .connect_lazy(&get_database_url())
-                    .expect("Failed to create lazy PostgreSQL pool");
-                (
-                    db,
-                    pool,
-                    shared_store as Arc<dyn WorkflowEventStore + Send + Sync>,
-                )
+                // A private database on the embedded cluster, so these tests
+                // need no external PostgreSQL and see no other test's rows.
+                // Durable state lives there too: records reference durable
+                // rows by foreign key (trigger schedules, for one).
+                let database = isolated_test_database().await;
+                let pool = database.pool.clone();
+                let db = Arc::new(StorageBackend::Postgres(
+                    everruns_server::storage::Database::new(pool.clone()),
+                ));
+                let durable_store: Arc<dyn WorkflowEventStore + Send + Sync> =
+                    Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
+                (db, pool, durable_store, Some(Arc::new(database)))
             }
         };
 
@@ -583,6 +592,18 @@ impl TestServer {
         let grade = everruns_core::DeploymentGrade::from_env();
         let host_composition = Arc::new(everruns_server::oss_host_composition_for_grade(grade));
         let built_in_harnesses = Arc::new(everruns_server::oss_built_in_harnesses());
+        if matches!(mode, TestMode::Postgres) {
+            // Seeding is idempotent but not safe to race on an empty shared
+            // database: the first server of the process seeds it alone.
+            static FIRST_SEED: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+            FIRST_SEED
+                .get_or_init(|| async {
+                    seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
+                        .await
+                        .expect("Failed to seed test data");
+                })
+                .await;
+        }
         seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
             .await
             .expect("Failed to seed test data");
@@ -619,20 +640,9 @@ impl TestServer {
         // Use the requested test runner or a mode-appropriate default.
         let runner = match runner_override {
             Some(runner) => runner,
-            None => match mode {
-                TestMode::Postgres => {
-                    create_runner_with_backend(RunnerBackend::Postgres(pool.clone()))
-                        .await
-                        .expect("Failed to create agent runner")
-                }
-                TestMode::InMemory => {
-                    // For in-memory tests, use in-memory runner
-                    let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-                    create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store))
-                        .await
-                        .expect("Failed to create agent runner")
-                }
-            },
+            None => create_runner_with_backend(RunnerBackend::Postgres(pool.clone()))
+                .await
+                .expect("Failed to create agent runner"),
         };
 
         // Create driver registry
@@ -677,9 +687,18 @@ impl TestServer {
         .into_iter()
         .map(|name| (name.to_string(), true))
         .collect();
-        db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
-            .await
-            .expect("seed org feature flags for test org");
+        {
+            // Postgres-mode servers share one database, and concurrent
+            // replace-all writes to the same org's flags deadlock each other.
+            static SHARED_FLAGS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+            let _shared = match mode {
+                TestMode::Postgres => Some(SHARED_FLAGS.lock().await),
+                TestMode::InMemory => None,
+            };
+            db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
+                .await
+                .expect("seed org feature flags for test org");
+        }
 
         let mut feature_flag_policy = everruns_server::records::FeatureFlagPolicy::from_env(grade);
         for (name, enabled) in &feature_flags.to_map().0 {
@@ -1212,6 +1231,7 @@ impl TestServer {
             webhooks,
             mcp_event_triggers,
             mcp_servers,
+            isolated_database,
         }
     }
 

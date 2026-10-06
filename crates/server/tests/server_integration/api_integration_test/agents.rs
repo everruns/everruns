@@ -9,9 +9,7 @@ use everruns_server::records::Agent;
 use everruns_server::records::Model;
 use everruns_server::records::Session;
 use everruns_server::records::provider::Provider;
-use everruns_server::storage::models::{
-    CreateAgentRow, CreateMcpServerRow, UpdateOrganizationSettings,
-};
+use everruns_server::storage::models::{CreateMcpServerRow, UpdateOrganizationSettings};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
@@ -502,34 +500,36 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .unwrap();
 
     let missing_harness_id = everruns_contracts::typed_id::HarnessId::new();
-    let missing_agent = server
-        .db
-        .create_agent(
-            everruns_core::DEFAULT_ORG_ID,
-            CreateAgentRow {
-                public_id: everruns_contracts::typed_id::AgentId::new().to_string(),
-                name: "missing-harness-card".to_string(),
-                display_name: None,
-                description: None,
-                intro_markdown: None,
-                short_description: None,
-                starters: serde_json::json!([]),
-                system_prompt: "Test".to_string(),
-                default_model_id: None,
-                harness_id: missing_harness_id,
-                tags: vec![],
-                initial_files: json!([]),
-                tools: json!([]),
-                mcp_servers: json!({}),
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                environments: None,
-                is_built_in: false,
-            },
+    // The foreign key keeps a dangling harness out of the database, so plant
+    // one the way a restore or a bad manual edit would: with triggers off.
+    let missing_agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "missing-harness-card",
+                "system_prompt": "Test",
+                "harness_id": generic_id
+            }),
         )
         .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let mut conn = server.pool.acquire().await.unwrap();
+    sqlx::raw_sql("SET session_replication_role = replica")
+        .execute(&mut *conn)
+        .await
         .unwrap();
+    sqlx::query("UPDATE agents SET harness_id = $1 WHERE public_id = $2")
+        .bind(missing_harness_id.uuid())
+        .bind(missing_agent["id"].as_str().unwrap())
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    sqlx::raw_sql("SET session_replication_role = DEFAULT")
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    drop(conn);
 
     let listed: Value = server
         .get("/v1/agents?limit=200")
@@ -567,7 +567,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         "organization_default"
     );
 
-    let missing_item = find(&missing_agent.public_id);
+    let missing_item = find(missing_agent["id"].as_str().unwrap());
     assert_eq!(
         missing_item["effective_harness"]["id"],
         missing_harness_id.to_string()

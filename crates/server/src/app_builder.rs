@@ -1228,7 +1228,6 @@ impl ServerAppBuilder {
         );
         let durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> =
             if let Some(ref shared_store) = shared_durable_store {
-                tracing::info!("Using shared in-memory workflow event store for DEV MODE");
                 Some(shared_store.clone() as Arc<dyn WorkflowEventStore + Send + Sync>)
             } else {
                 db.pool().cloned().map(|p| {
@@ -2001,7 +2000,6 @@ impl ServerAppBuilder {
             if let Some(shared_store) = shared_durable_store {
                 tracing::info!("DEV MODE: Starting task worker for in-process execution");
 
-                // Reuse the shared provider_resolver from Phase 5
                 let mcp_server_service = Arc::new(
                     crate::domains::mcp_servers::McpServerService::with_egress_service(
                         db.clone(),
@@ -2071,7 +2069,9 @@ impl ServerAppBuilder {
                     host_composition.egress_service(),
                 )
                 .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
-                adapters = adapters.with_connection_resolver(connection_resolver);
+                adapters = adapters
+                    .with_connection_resolver(connection_resolver)
+                    .with_dev_mode_in_memory_compaction_checkpoints();
 
                 let worker_config = TaskWorkerConfig::dev_mode();
                 supervisor.spawn(

@@ -11,7 +11,7 @@ a working default; each row links to the section that documents it.
 
 | Variable | Process | Required | Without it |
 |---|---|---|---|
-| [`DATABASE_URL`](#database_url) | API | Yes, unless `DEV_MODE=true` | Startup fails. Dev mode uses in-memory storage instead. |
+| [`DATABASE_URL`](#database_url) | API | Yes, unless `DEV_MODE=true` | Startup fails. Dev mode ignores it and starts its own temporary PostgreSQL. |
 | [`AUTH_MODE`](#other-server-variables) | API | Yes, unless the grade is `dev` | Startup fails: unset means `none`, which is allowed only at `dev` grade. |
 | [`WORKER_GRPC_AUTH_TOKEN`](#worker_grpc_auth_token) | API and workers (same value) | Yes, unless `DEV_MODE=true` | The API fails to start its gRPC server; workers cannot authenticate. |
 | [`SECRETS_ENCRYPTION_KEY`](#llm-provider-api-keys) | API | Recommended | The API starts, but cannot store provider keys or other encrypted values. |
@@ -31,7 +31,7 @@ a working default; each row links to the section that documents it.
 
 ## DEV_MODE
 
-Enable development mode with in-memory storage. No PostgreSQL required.
+Enable development mode. No PostgreSQL to install or run: the server starts a temporary PostgreSQL of its own and deletes it on exit.
 
 | Property | Value |
 |----------|-------|
@@ -41,7 +41,7 @@ Enable development mode with in-memory storage. No PostgreSQL required.
 **Example:**
 
 ```bash
-# Start in dev mode (no database required)
+# Start in dev mode (no database to set up)
 DEV_MODE=true ./target/debug/everruns-server
 
 # Or with 1
@@ -49,7 +49,11 @@ DEV_MODE=1 ./target/debug/everruns-server
 ```
 
 **Notes:**
-- When enabled, uses in-memory storage instead of PostgreSQL
+- When enabled, the server downloads PostgreSQL 17 binaries on first use (cached under
+  `~/.cache/everruns/postgres`, or `EVERRUNS_PG_CACHE`), starts a cluster on a free
+  loopback port, and runs migrations into a fresh database. `DATABASE_URL` is ignored.
+- Data does not survive a restart. Use `just start-all` for a persistent local database.
+- When run as root, the cluster runs as `nobody`, because PostgreSQL refuses to run as root.
 - All data is lost when the server stops
 - gRPC server and worker communication are disabled
 - Stale task reclamation is disabled

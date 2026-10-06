@@ -1,7 +1,6 @@
 //! Background sweeps must not be starved by a request burst (EVE-1081).
 //!
-//! Requirements:
-//! - PostgreSQL running with DATABASE_URL set (or the `just start-infra` default)
+//! Requirements: none; `get_database_url` falls back to the embedded cluster.
 //!
 //! Production evidence (Sentry EVERRUNS-13/15/16/B, release 364f27cf): four
 //! independent background loops — the durable scheduler, the observer scoring
@@ -26,10 +25,7 @@ use std::time::Duration;
 use tower::ServiceExt;
 
 fn database_url() -> String {
-    std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-        let port = std::env::var("DB_PORT").unwrap_or_else(|_| "9332".to_string());
-        format!("postgres://everruns:everruns@localhost:{port}/everruns_test")
-    })
+    crate::test_harness::get_database_url()
 }
 
 /// Prod's shape, scaled down so the test runs in seconds: a small request pool

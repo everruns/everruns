@@ -7,7 +7,9 @@ import re
 import subprocess
 import sys
 
-OWNERS = {"everruns-server", "everruns-durable"}
+# everruns-pg-embedded runs the server's throwaway dev/test cluster: it creates
+# and drops databases and reads no tables.
+OWNERS = {"everruns-server", "everruns-durable", "everruns-pg-embedded"}
 DRIVERS = {
     "sqlx", "rusqlite", "diesel", "postgres", "tokio-postgres", "mysql",
     "mysql_async", "mongodb", "libsql", "duckdb", "sea-orm", "surrealdb",

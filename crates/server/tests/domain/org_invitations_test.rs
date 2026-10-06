@@ -165,13 +165,8 @@ async fn lists_only_actionable_invitations_for_verified_email() {
         now + Duration::days(1),
     )
     .await;
-    seed_invitation(
-        &server,
-        other_org.org_id,
-        ANONYMOUS_USER_EMAIL,
-        now - Duration::days(1),
-    )
-    .await;
+    // An org holds one pending invitation per email, so each closed one is
+    // closed before the next is seeded, and the expired (still pending) last.
     let revoked = seed_invitation(
         &server,
         other_org.org_id,
@@ -196,6 +191,13 @@ async fn lists_only_actionable_invitations_for_verified_email() {
         .accept_org_invitation(accepted.id, ANONYMOUS_USER_ID)
         .await
         .expect("accept invitation");
+    seed_invitation(
+        &server,
+        other_org.org_id,
+        ANONYMOUS_USER_EMAIL,
+        now - Duration::days(1),
+    )
+    .await;
 
     let body: Value = server
         .get("/v1/me/invitations")
