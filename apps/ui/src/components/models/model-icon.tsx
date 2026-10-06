@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 // Per-model vendor icons.
 //
 // Provider icons are keyed by provider *type*, but many notable models are
-// served over OpenAI-compatible gateways (NVIDIA Nemotron, Qwen, MiniMax, Kimi,
+// served over OpenAI-compatible gateways (NVIDIA Nemotron, Qwen, MiniMax, Mistral, Kimi,
 // Grok, Microsoft MAI, ...) where the provider type alone would render an
 // OpenAI mark. The backend model registry tags each model with a vendor
 // (`model_vendor`); we map that tag to a brand icon and fall back to the
@@ -99,6 +99,21 @@ function MoonshotIcon({ size }: { size: number }) {
   );
 }
 
+function MistralIcon({ size }: { size: number }) {
+  // Mistral AI mark from simple-icons (https://simpleicons.org), CC0.
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      width={size}
+      height={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M17.143 3.429v3.428h-3.429v3.429h-3.428V6.857H6.857V3.43H3.43v13.714H0v3.428h10.286v-3.428H6.857v-3.429h3.429v3.429h3.429v-3.429h3.428v3.429h-3.428v3.428H24v-3.428h-3.43V3.429z" />
+    </svg>
+  );
+}
+
 interface VendorIcon {
   label: string;
   Component: React.ComponentType<{ size: number }>;
@@ -112,6 +127,7 @@ const VENDOR_ICONS: Partial<Record<ModelVendor, VendorIcon>> = {
   qwen: { label: "Qwen", Component: QwenIcon },
   microsoft: { label: "Microsoft", Component: MicrosoftIcon },
   minimax: { label: "MiniMax", Component: MiniMaxIcon },
+  mistral: { label: "Mistral AI", Component: MistralIcon },
   moonshot: { label: "Moonshot", Component: MoonshotIcon },
   xai: { label: "xAI", Component: XaiIcon },
 };

@@ -21,6 +21,7 @@ driver, then point `default_model.provider_type` at the matching `DriverId`.
 | `everruns-drivers` feature `gemini` | `DriverId::Gemini` | Google Gemini |
 | `everruns-drivers` feature `openrouter` | `DriverId::OpenRouter` | OpenRouter model gateway |
 | `everruns-drivers` feature `fireworks` | `DriverId::Fireworks` | Fireworks AI, open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
+| `everruns-drivers` feature `mistral` | `DriverId::Mistral` | Mistral AI (La Plateforme): Mistral Large, Medium, Small, Codestral |
 | `everruns-drivers` feature `mai` | `DriverId::Mai` | Microsoft MAI |
 | `everruns-drivers` feature `bedrock` | `DriverId::Bedrock` | AWS Bedrock |
 | built into `everruns-core` | `DriverId::LlmSim` | Deterministic simulator for tests/examples; no real API key |

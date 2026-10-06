@@ -164,13 +164,40 @@ pub(crate) struct OpenAiChatChoice {
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct OpenAiChatMessage {
+    /// A string, or (Mistral with reasoning on) an array of typed chunks;
+    /// read through [`content_chunks_text`] in [`Self::text_and_thinking`].
     #[serde(default)]
-    pub(crate) content: Option<OpenAiContent>,
-    #[serde(default)]
+    pub(crate) content: Option<Value>,
+    /// Mistral sends `"tool_calls": null` on a plain answer.
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub(crate) tool_calls: Vec<OpenAiToolCall>,
     /// DeepSeek-style non-streamed reasoning payload.
     #[serde(default)]
     pub(crate) reasoning_content: Option<String>,
+}
+
+fn null_as_empty<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+impl OpenAiChatMessage {
+    /// The answer text and any reasoning, from either wire shape. A dedicated
+    /// `reasoning_content` field wins over thinking chunks.
+    pub(crate) fn text_and_thinking(&mut self) -> (String, Option<String>) {
+        let (text, thinking) = match self.content.take() {
+            Some(Value::String(text)) => (Some(text), None),
+            Some(Value::Array(chunks)) => content_chunks_text(&chunks),
+            _ => (None, None),
+        };
+        (
+            text.unwrap_or_default(),
+            self.reasoning_content.take().or(thinking),
+        )
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -300,6 +327,7 @@ pub(crate) struct OpenAiStreamChoice {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(try_from = "RawOpenAiDelta")]
 pub(crate) struct OpenAiDelta {
     /// Text for this chunk.
     ///
@@ -310,35 +338,83 @@ pub(crate) struct OpenAiDelta {
     /// which fails the whole chunk, and the token is dropped from the stream
     /// with no error: "1, 2, 3" arrives as ", 2, 3". Accepting a number loses
     /// nothing for a conformant provider, which never sends one.
-    #[serde(default, deserialize_with = "deserialize_lenient_text")]
+    ///
+    /// Mistral sends an array of typed chunks instead once reasoning is on
+    /// (`[{"type":"thinking","thinking":[{"type":"text","text":"…"}]},
+    /// {"type":"text","text":"391"}]`). The text chunks land here and the
+    /// thinking chunks in `reasoning_content`; see [`content_chunks_text`].
     pub(crate) content: Option<String>,
     /// Reasoning text on the Chat Completions wire. Reasoning models reached
     /// over this protocol (DeepSeek-R1, Qwen, Groq, Fireworks) stream it here;
     /// vendors split between two field names for the same thing.
-    #[serde(default)]
     pub(crate) reasoning_content: Option<String>,
-    #[serde(default)]
     pub(crate) reasoning: Option<String>,
-    #[serde(default)]
     pub(crate) tool_calls: Option<Vec<OpenAiStreamToolCall>>,
 }
 
-/// Accept a string, or a number a non-conformant provider sent where a string
-/// belongs. Anything else is still an error: silently accepting an object or an
-/// array would hide a real protocol change.
-fn deserialize_lenient_text<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use serde::Deserialize as _;
-    match Option::<serde_json::Value>::deserialize(deserializer)? {
-        None | Some(serde_json::Value::Null) => Ok(None),
-        Some(serde_json::Value::String(text)) => Ok(Some(text)),
-        Some(serde_json::Value::Number(number)) => Ok(Some(number.to_string())),
-        Some(other) => Err(serde::de::Error::custom(format!(
-            "expected a string or number for streamed text, got {other}"
-        ))),
+/// [`OpenAiDelta`] as it arrives, before typed content chunks are split into
+/// text and reasoning.
+#[derive(Deserialize)]
+struct RawOpenAiDelta {
+    #[serde(default)]
+    content: Option<Value>,
+    #[serde(default)]
+    reasoning_content: Option<String>,
+    #[serde(default)]
+    reasoning: Option<String>,
+    #[serde(default)]
+    tool_calls: Option<Vec<OpenAiStreamToolCall>>,
+}
+
+impl TryFrom<RawOpenAiDelta> for OpenAiDelta {
+    type Error = String;
+
+    fn try_from(raw: RawOpenAiDelta) -> Result<Self, Self::Error> {
+        let (content, thinking) = match raw.content {
+            None | Some(Value::Null) => (None, None),
+            Some(Value::String(text)) => (Some(text), None),
+            Some(Value::Number(number)) => (Some(number.to_string()), None),
+            Some(Value::Array(chunks)) => content_chunks_text(&chunks),
+            // A shape nobody sends stays an error: silently accepting an
+            // object would hide a real protocol change behind an empty delta.
+            Some(other) => {
+                return Err(format!(
+                    "expected a string, number or chunk array for streamed text, got {other}"
+                ));
+            }
+        };
+        Ok(Self {
+            content,
+            reasoning_content: raw.reasoning_content.or(thinking),
+            reasoning: raw.reasoning,
+            tool_calls: raw.tool_calls,
+        })
     }
+}
+
+/// Split Mistral-style typed content chunks into `(text, thinking)`.
+///
+/// `text` chunks carry `text`; `thinking` chunks carry a nested list of text
+/// chunks. Other chunk types (references, images) carry no streamed text and
+/// are skipped rather than failing the chunk, which would drop the text riding
+/// beside them. Each side is `None` when it carried no text.
+pub(crate) fn content_chunks_text(chunks: &[Value]) -> (Option<String>, Option<String>) {
+    fn texts<'a>(chunks: impl IntoIterator<Item = &'a Value>) -> String {
+        chunks
+            .into_iter()
+            .filter(|chunk| chunk.get("type").and_then(Value::as_str) == Some("text"))
+            .filter_map(|chunk| chunk.get("text").and_then(Value::as_str))
+            .collect()
+    }
+    let text = texts(chunks);
+    let thinking: String = chunks
+        .iter()
+        .filter(|chunk| chunk.get("type").and_then(Value::as_str) == Some("thinking"))
+        .filter_map(|chunk| chunk.get("thinking").and_then(Value::as_array))
+        .map(texts)
+        .collect();
+    let non_empty = |text: String| (!text.is_empty()).then_some(text);
+    (non_empty(text), non_empty(thinking))
 }
 
 impl OpenAiDelta {
@@ -421,6 +497,26 @@ mod delta_text_tests {
         let null: OpenAiDelta = serde_json::from_value(serde_json::json!({"content": null}))
             .expect("null content is valid");
         assert_eq!(null.content, None);
+    }
+
+    /// Mistral's typed chunks: text joins the content, thinking the reasoning.
+    #[test]
+    fn a_chunk_array_splits_text_from_thinking() {
+        let delta: OpenAiDelta = serde_json::from_value(serde_json::json!({"content": [
+            {"type": "thinking", "thinking": [{"type": "text", "text": "plan"}]},
+            {"type": "text", "text": "an"}, {"type": "text", "text": "swer"}
+        ]}))
+        .expect("a chunk array should deserialize");
+        assert_eq!(delta.content.as_deref(), Some("answer"));
+        assert_eq!(delta.reasoning_text(), Some("plan"));
+        let empty: OpenAiDelta = serde_json::from_value(
+            serde_json::json!({"content": [{"type": "thinking", "thinking": []}]}),
+        )
+        .expect("an empty thinking chunk is valid");
+        assert_eq!(
+            (empty.content.as_deref(), empty.reasoning_text()),
+            (None, None)
+        );
     }
 
     /// A shape nobody sends stays an error: quietly accepting an object would

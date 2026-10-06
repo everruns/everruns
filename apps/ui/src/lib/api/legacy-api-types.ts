@@ -3233,21 +3233,6 @@ export interface UpdateInstalledPluginRequest {
 // ============================================
 export type ProviderStatus = "active" | "disabled";
 
-/** Vendor/brand of a model, derived from the backend model registry. */
-export type ModelVendor =
-  | "openai"
-  | "anthropic"
-  | "google"
-  | "nvidia"
-  | "qwen"
-  | "microsoft"
-  | "meta"
-  | "minimax"
-  | "moonshot"
-  | "typesafe"
-  | "xai"
-  | "llmsim";
-
 /**
  * Configuration for linking from the chat UI to a provider's observability
  * dashboard ("trace"/"logs"). URL templates support the `{response_id}`,

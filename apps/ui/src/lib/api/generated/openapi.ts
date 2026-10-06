@@ -9671,7 +9671,7 @@ export interface components {
       /** @description Whether the driver declares an interactive "Connect with …" OAuth flow. */
       supports_oauth: boolean;
     };
-    /** @description LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, cloudflare, vercel. Any other string is treated as an embedder-defined external provider. */
+    /** @description LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, mistral, cloudflare, vercel. Any other string is treated as an embedder-defined external provider. */
     DriverId: string;
     /** @description Request to answer a pending URL mode elicitation. */
     ElicitationConsentRequest: {
@@ -15178,6 +15178,7 @@ export interface components {
       | "microsoft"
       | "meta"
       | "minimax"
+      | "mistral"
       | "moonshot"
       | "typesafe"
       | "xai"

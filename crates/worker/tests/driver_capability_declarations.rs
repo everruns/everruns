@@ -98,6 +98,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
             &[ServiceKind::Chat],
             false,
         ),
+        (DriverId::Mistral, "Mistral AI", &[ServiceKind::Chat], false),
         (
             DriverId::LlmSim,
             "LLM Simulator",
