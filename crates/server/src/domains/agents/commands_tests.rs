@@ -1230,3 +1230,6 @@ async fn built_in_agents_do_not_count_toward_limit() {
         .await
         .expect("built-in agent must not consume the org quota");
 }
+
+#[path = "branding_slack_tests.rs"]
+mod branding_slack_tests;

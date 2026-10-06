@@ -203,11 +203,7 @@ pub(crate) fn build_agent_view(
     app_description: Option<&str>,
     starters: &[ConversationStarter],
 ) -> String {
-    let desc = match app_description.filter(|d| !d.trim().is_empty()) {
-        Some(d) => format!("{app_name} — {d}"),
-        None => format!("{app_name}, an AI agent powered by Everruns"),
-    };
-    let desc = truncate_chars(&desc, SLACK_AGENT_DESC_MAX);
+    let desc = build_agent_description(app_name, app_description);
 
     format!(
         "\x20 agent_view:\n\
@@ -216,6 +212,22 @@ pub(crate) fn build_agent_view(
         yaml_escape(&desc),
         build_suggested_prompts(starters)
     )
+}
+
+pub(crate) fn build_agent_description(app_name: &str, app_description: Option<&str>) -> String {
+    let desc = match app_description.filter(|d| !d.trim().is_empty()) {
+        Some(d) => format!("{app_name} — {d}"),
+        None => format!("{app_name}, an AI agent powered by Everruns"),
+    };
+    truncate_chars(&desc, SLACK_AGENT_DESC_MAX)
+}
+
+pub(crate) fn build_short_description(app_name: &str, app_description: Option<&str>) -> String {
+    let description = app_description
+        .filter(|d| !d.trim().is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("{app_name} (Powered by Everruns)"));
+    truncate_chars(&description, 140)
 }
 
 /// The `suggested_prompts` list, or empty when nothing was authored.
@@ -286,9 +298,10 @@ pub(crate) fn build_manifest_yaml(
     agent_surface_enabled: bool,
     starters: &[ConversationStarter],
 ) -> String {
-    let escaped_name = yaml_escape(app_name);
+    let escaped_name = yaml_escape(&truncate_chars(app_name, 35));
     let name = &escaped_name;
     let display_name = yaml_escape(display_name);
+    let short_desc = yaml_escape(&build_short_description(app_name, app_description));
     let long_desc = build_long_description(app_name, app_description);
     let long_desc = yaml_escape(&long_desc);
     let request_url = yaml_escape(request_url);
@@ -318,7 +331,7 @@ pub(crate) fn build_manifest_yaml(
     format!(
         "display_information:\n\
          \x20 name: \"{name}\"\n\
-         \x20 description: \"{name} (Powered by Everruns)\"\n\
+         \x20 description: \"{short_desc}\"\n\
          \x20 long_description: \"{long_desc}\"\n\
          \x20 background_color: \"#1a1a2e\"\n\
          features:\n\
@@ -365,9 +378,13 @@ pub(crate) fn truncate_display_name(name: &str) -> String {
     name[..end].to_string()
 }
 
-/// Simple YAML string escaping: escape backslashes and double quotes.
+/// Escape quoted YAML text, including authored multiline descriptions.
 pub(crate) fn yaml_escape(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 /// Slack requires long_description to be 174–4000 characters.
@@ -388,21 +405,12 @@ pub(crate) fn build_long_description(app_name: &str, app_description: Option<&st
     };
 
     // Pad to meet minimum if needed.
-    if desc.len() < SLACK_LONG_DESC_MIN {
+    if desc.chars().count() < SLACK_LONG_DESC_MIN {
         let pad = " Everruns lets you build, deploy, and run AI agents with durable execution, tool use, and real-time streaming. Learn more at https://everruns.com.";
         desc.push_str(pad);
     }
 
-    // Truncate to max (UTF-8 safe).
-    if desc.len() > SLACK_LONG_DESC_MAX {
-        let mut end = SLACK_LONG_DESC_MAX;
-        while !desc.is_char_boundary(end) {
-            end -= 1;
-        }
-        desc.truncate(end);
-    }
-
-    desc
+    truncate_chars(&desc, SLACK_LONG_DESC_MAX)
 }
 
 /// Percent-encode a string for URL query parameters.

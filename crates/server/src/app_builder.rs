@@ -1,3 +1,5 @@
+mod integrations;
+
 // Server app builder for composable server configurations
 //
 // Decision: Builder pattern lets downstream crates compose custom server setups
@@ -310,39 +312,6 @@ impl ServerAppBuilder {
         self
     }
 
-    /// Replace the connector registry (user connections catalog, EVE-879).
-    ///
-    /// Defaults to the OSS preset (`crate::platform::oss_connector_registry`,
-    /// inventory-discovered). Connectors are hosted control-plane composition,
-    /// not part of the shared `HostComposition` runtime surface.
-    pub fn connector_registry(
-        mut self,
-        registry: everruns_contracts::connector::ConnectorRegistry,
-    ) -> Self {
-        self.connector_registry = Some(registry);
-        self
-    }
-
-    /// Replace the system email sender (EVE-879).
-    ///
-    /// Defaults to the environment-configured sender
-    /// (`crate::platform::system_email_sender`; disabled when no provider is
-    /// configured). Email delivery is hosted product composition, not part of
-    /// the shared `HostComposition` runtime surface.
-    pub fn email_sender(mut self, sender: Arc<dyn crate::records::email::EmailSender>) -> Self {
-        self.email_sender = Some(sender);
-        self
-    }
-
-    /// Supply a deployment-owned Slack app provisioner.
-    pub fn slack_app_provisioner(
-        mut self,
-        provisioner: Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>,
-    ) -> Self {
-        self.slack_app_provisioner = Some(provisioner);
-        self
-    }
-
     /// Add extra API routes merged into the main router.
     ///
     /// Call multiple times to add routes from different modules.
@@ -512,6 +481,7 @@ impl ServerAppBuilder {
             encryption.clone(),
             self.slack_app_provisioner.clone(),
         )?;
+        let slack_provisioner = slack_provisioning.provisioner.clone();
 
         // Seed must run after encryption is resolved: single-tenant/dev seeding materializes
         // DEFAULT_*_API_KEY env vars into the default org's (encrypted) provider rows.
@@ -1037,7 +1007,7 @@ impl ServerAppBuilder {
             built_in_harnesses.clone(),
         )
         .with_org_rate_limiter(org_rate_limiter.clone())
-        .with_slack_provisioner(slack_provisioning.provisioner.clone());
+        .with_slack_provisioner(slack_provisioner.clone());
         let virtual_user_connections_state = api::virtual_user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -1364,7 +1334,8 @@ impl ServerAppBuilder {
         // URL mode elicitation pages hang off the same root `/mcp` is served
         // under, so a client that can reach the endpoint can reach the page.
         .with_elicitation_base_url(mcp_root_url.clone())
-        .with_mcp_events(mcp_events);
+        .with_mcp_events(mcp_events)
+        .with_slack_provisioner(slack_provisioner.clone());
         let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
             mcp_endpoint_state.with_session_sandbox_service(service.clone())
         } else {
@@ -1804,6 +1775,7 @@ impl ServerAppBuilder {
 
         if !self.config.dev_mode {
             // -- gRPC server --
+            let grpc_slack_provisioner = slack_provisioner.clone();
             let grpc_db = db.clone();
             let grpc_encryption = encryption.clone();
             let grpc_event_service = event_service.clone();
@@ -1836,6 +1808,7 @@ impl ServerAppBuilder {
                 RestartPolicy::always_after(std::time::Duration::from_secs(5)),
                 move || {
                     let grpc_event_service = grpc_event_service.clone();
+                    let grpc_slack_provisioner = grpc_slack_provisioner.clone();
                     let grpc_db = grpc_db.clone();
                     let grpc_encryption = grpc_encryption.clone();
                     let grpc_runner = grpc_runner.clone();
@@ -1863,6 +1836,7 @@ impl ServerAppBuilder {
                         if let Some(broadcaster) = grpc_task_broadcaster {
                             grpc_svc.set_task_broadcaster(broadcaster);
                         }
+                        grpc_svc.set_slack_provisioner(grpc_slack_provisioner);
                         grpc_svc.set_connector_registry(grpc_connector_registry);
                         grpc_svc.set_permission_resolver(grpc_permission_resolver);
                         // EVE-1047: the worker and the HTTP routes share one store.
@@ -2036,6 +2010,7 @@ impl ServerAppBuilder {
                     host_composition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )
+                .with_slack_provisioner(slack_provisioner.clone())
                 .with_connector_registry(connector_registry.clone())
                 .with_budget_service(budget_service.clone())
                 .with_encryption(encryption.clone())

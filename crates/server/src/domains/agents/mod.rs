@@ -8,6 +8,7 @@ pub mod analysis;
 pub mod avatar;
 pub mod avatar_presets;
 pub mod avatar_slack;
+mod branding_slack;
 pub mod check_rules;
 pub mod checks;
 mod command_validation;

@@ -162,6 +162,14 @@ form renders the reconnect case as its own state with its own recovery.
 preference.** Each endpoint gets its own Slack app, which is what puts a
 distinctly named and avatared agent in Slack's Agents menu.
 
+Managed apps follow the agent's saved display name (falling back to its name)
+and description after edits, upserts, and version rollbacks. Identity updates
+preserve the exported Slack configuration, including permissions, endpoint URLs,
+agent-surface settings and suggested prompts. They run off the mutation request
+path; failures leave the saved agent intact and are logged. Manual apps remain
+operator-managed. See [identity propagation](../../crates/server/src/domains/agents/branding_slack.rs)
+and [manifest patching](../../crates/server/src/slack_provisioning/branding.rs).
+
 That rules out the cheapest true one-click: a single publicly distributed
 Everruns app behind a standard "Add to Slack" button. It is self-serve and needs
 neither a Marketplace listing nor partner status, but one app is one bot, so

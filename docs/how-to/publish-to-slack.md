@@ -61,6 +61,11 @@ Publish first because Slack verifies the manifest's channel Request URL when it 
 
 The Slack app uses the agent's avatar as its icon. With one-click setup, Everruns sets the icon when it creates the app and again whenever you change the avatar in **Branding**. A Slack app created from the manifest by hand keeps Slack's default icon: upload the avatar's 512 px PNG (`/v1/avatars/{avatar_id}/square-512.png`) under **Basic Information** in Slack.
 
+With one-click setup, later changes to the agent's display name and description
+also update its Slack app automatically. If no display name is set, Slack uses
+the agent's name. Updates preserve the app's permissions and connection settings.
+A manually created Slack app needs its name and description updated in Slack.
+
 ## Verify
 
 1. In Slack, enter `/invite @botname` in a channel.

@@ -62,7 +62,7 @@ pub struct AppState {
     pub built_in_harnesses: Arc<Vec<crate::records::BuiltInHarnessDefinition>>,
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     pub org_rate_limiter: OrgRateLimiter,
-    /// Pushes avatar changes to the agent's one-click Slack apps.
+    /// Pushes agent identity and avatar changes to the agent's one-click Slack apps.
     pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
 }
 
@@ -120,6 +120,7 @@ impl AppState {
             self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
+        .with_slack_provisioner(self.slack_provisioner.clone())
         .with_feature_flags(org.feature_flags.clone())
         .with_fallback_harness_name(
             crate::records::harness_for_role(&self.built_in_harnesses, BuiltInHarnessRole::Default)
