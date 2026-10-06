@@ -130,6 +130,8 @@ mod turn_driver_tests;
 mod turn_recovery_matrix_tests;
 mod turn_start;
 pub mod turn_store;
+#[cfg(test)]
+mod worker_crash_tests;
 
 pub use everruns_core as core;
 pub use everruns_core::{engine, host};

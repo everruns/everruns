@@ -49,6 +49,22 @@ through stale reclamation.
 - Crash during middle step (verify partial progress preserved)
 - Repeated crashes (task retries exhaust → DLQ)
 
+**Turn level.** The scenario above runs the generic `WorkflowExecutor`, which
+turns do not use. [`worker_crash_tests.rs`](../../crates/durable-engine/src/worker_crash_tests.rs)
+crashes a real turn: a worker drives a tool turn through `TurnTaskDriver`
+until its `reason` step blocks in the model call, is killed by dropping the
+task mid-await, and `reap_stale_tasks` returns the step to the queue only
+after the heartbeat goes stale. A second worker runs it as attempt 2 and the
+turn completes. It runs on the in-memory store and on PostgreSQL (the
+durable shard), with a 50 ms heartbeat and a 400 ms threshold.
+
+What it pins: messages, step completions and the turn's own events are
+recorded exactly once. The events a step stores before its model call
+(`reason.started`, `output.message.started`) are at least once: the dead
+attempt's stay, and its started message never completes, so a consumer sees
+one orphaned started message per lost attempt. The worker stores the same
+events before the provider call, so the platform behaves the same.
+
 ### Scenario 2: Control Plane Restart
 
 **What happens in production:** Server process restarts. Workers lose gRPC connections and retry. On restart, the executor replays events from PostgreSQL and resumes workflows from their last persisted state. No in-flight state is lost because all state is event-sourced.
