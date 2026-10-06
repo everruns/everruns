@@ -83,6 +83,8 @@ import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent
 import { AgentServiceAccount } from "@/components/agents/agent-service-account";
 import { AgentConfigColumn, type AgentMoreRow } from "@/components/agents/agent-config-column";
 import { AgentIntegrationsPanel } from "@/components/agents/agent-integrations-panel";
+import { useAgentChannels } from "@/hooks/use-agent-channels";
+import { useAgentTriggers } from "@/hooks/use-agent-triggers";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { AgentPromptPane } from "@/components/agents/agent-prompt-pane";
 import { AgentSessionsPanel } from "@/components/agents/agent-sessions-panel";
@@ -154,6 +156,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: mcpAttachments } = useAgentMcpAttachments(agentId);
   const { data: credentials } = useAgentCredentials(agentId);
   const { data: latestHealth } = useLatestHealthCheckRun(agentId);
+  const { data: channels } = useAgentChannels(agentId);
+  const { data: triggers } = useAgentTriggers(agentId);
+  const integrationCount = channels && triggers ? channels.length + triggers.length : undefined;
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
   const destroyAgent = useDestroyAgent();
@@ -542,7 +547,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               onValueChange={(value) => {
                 if (isAgentTab(value)) selectTab(value);
               }}
-              items={getAgentTabItems(sessionCount)}
+              items={getAgentTabItems(sessionCount, integrationCount)}
               className="border-x border-t bg-background px-2"
             />
           </PageControlStrip>

@@ -8,11 +8,26 @@ import type { SectionTabItem } from "@/components/layout";
 // described how an agent is reached and when it runs.
 export type AgentTab = "agent" | "preview" | "integrations" | "stats" | "sessions";
 
-export function getAgentTabItems(sessionCount?: number): SectionTabItem[] {
+export function getAgentTabItems(
+  sessionCount?: number,
+  integrationCount?: number,
+): SectionTabItem[] {
   return [
     { value: "agent", label: "Agent", icon: <Boxes className="size-4" /> },
     { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
-    { value: "integrations", label: "Integrations", icon: <Plug className="size-4" /> },
+    {
+      value: "integrations",
+      label:
+        integrationCount === undefined ? (
+          "Integrations"
+        ) : (
+          <>
+            Integrations
+            <span className="bg-muted px-1 text-[11px] font-medium">{integrationCount}</span>
+          </>
+        ),
+      icon: <Plug className="size-4" />,
+    },
     { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
     {
       value: "sessions",

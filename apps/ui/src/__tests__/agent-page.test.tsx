@@ -156,6 +156,16 @@ const mockSession: Session = {
 };
 
 const mockUseAgent = jest.fn();
+const mockUseAgentChannels = jest.fn();
+const mockUseAgentTriggers = jest.fn();
+
+jest.mock("@/hooks/use-agent-channels", () => ({
+  useAgentChannels: () => mockUseAgentChannels(),
+}));
+jest.mock("@/hooks/use-agent-triggers", () => ({
+  useAgentTriggers: () => mockUseAgentTriggers(),
+}));
+
 const mockUseSessions = jest.fn();
 const mockUseHarnesses = jest.fn();
 const mockUpdate = jest.fn();
@@ -224,6 +234,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
+  mockUseAgentChannels.mockReturnValue({ data: [] });
+  mockUseAgentTriggers.mockReturnValue({ data: [] });
   mockUseSessions.mockReturnValue({
     data: { data: [mockSession], total: 1 },
     isLoading: false,
@@ -244,10 +256,32 @@ describe("AgentPage layout", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
       "Agent",
       "Preview",
-      "Integrations",
+      "Integrations0",
       "Stats",
       "Sessions3",
     ]);
+  });
+
+  it("counts channels and native triggers while counting legacy schedules once", async () => {
+    mockUseAgentChannels.mockReturnValue({
+      data: [
+        { channel_type: "ag_ui", enabled: true },
+        { channel_type: "slack", enabled: false },
+        { channel_type: "schedule", enabled: false },
+      ],
+    });
+    mockUseAgentTriggers.mockReturnValue({ data: [{ enabled: true }, { enabled: false }] });
+    await renderPage();
+
+    expect(screen.getByRole("tab", { name: "Integrations 5" })).toBeInTheDocument();
+  });
+
+  it.each(["channels", "triggers"])("hides the total until %s have loaded", async (pending) => {
+    mockUseAgentChannels.mockReturnValue({ data: pending === "channels" ? undefined : [{}] });
+    mockUseAgentTriggers.mockReturnValue({ data: pending === "triggers" ? undefined : [{}] });
+    await renderPage();
+
+    expect(screen.getByRole("tab", { name: "Integrations" })).toBeInTheDocument();
   });
 
   it("makes the system prompt the page and lists secondary settings with their values", async () => {
@@ -344,7 +378,7 @@ describe("AgentPage layout", () => {
   it("writes the selected tab into the URL so a refresh keeps it", async () => {
     await renderPage();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Integrations" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Integrations 0" }));
 
     expect(screen.getByText("agent integrations")).toBeInTheDocument();
     expect(replace).toHaveBeenCalledWith("/agents/agent-1?tab=integrations", { scroll: false });
