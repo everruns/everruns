@@ -11,9 +11,11 @@ mod message_projection;
 // Implements GrpcWorkerAdapters' interface using storage, domains, and infra directly.
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::user_layer::{
+    UserMcpTurn, merge_turn_scoped_mcp_servers, user_mcp_layer,
+};
 use crate::domains::mcp_servers::scoped_mcp::{
     build_materialized_scoped_mcp_tool_definitions,
-    merge_effective_scoped_mcp_servers_with_capabilities,
     resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
 };
 use crate::domains::messages::MessageService;
@@ -1162,6 +1164,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
             }
 
+            let user_layer = user_mcp_layer(&UserMcpTurn {
+                db: &self.db,
+                encryption: self.encryption.as_deref(),
+                org_id,
+                harness: &harness,
+                agent: agent.as_ref(),
+                session: &session,
+                registry: &self.capability_registry,
+                input_message: self.input_message_id,
+            })
+            .await;
             if let Some(resolved) = resolve_scoped_mcp_server_with_capabilities(
                 &self.mcp_server_service,
                 org_id,
@@ -1170,6 +1183,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 &session,
                 server_prefix,
                 &self.capability_registry,
+                &user_layer,
             )
             .await
             .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
@@ -1317,11 +1331,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?;
 
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = merge_effective_scoped_mcp_servers_with_capabilities(
+            let user_layer = user_mcp_layer(&UserMcpTurn {
+                db: &self.db,
+                encryption: self.encryption.as_deref(),
+                org_id,
+                harness,
+                agent: agent.as_ref(),
+                session: &session,
+                registry: &self.capability_registry,
+                input_message: self.input_message_id,
+            })
+            .await;
+            let effective = merge_turn_scoped_mcp_servers(
                 harness,
                 agent.as_ref(),
                 &session,
                 &self.capability_registry,
+                &user_layer,
             );
 
             if let Err(error) = validate_effective_mcp_servers(&effective) {

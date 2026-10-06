@@ -10,6 +10,7 @@ pub mod a2a_delegation;
 pub mod ag_ui_delegation;
 pub mod agent_handoff;
 pub mod background_execution;
+pub mod user_mcp;
 pub mod citation_retrieval;
 pub mod citation_verification;
 pub mod data_knowledge;
@@ -50,6 +51,7 @@ pub use agent_handoff::{
     AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, SpawnAgentHandoffTool,
 };
 pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
+pub use user_mcp::{USER_MCP_CAPABILITY_ID, UserMcpCapability, user_mcp_use_enabled};
 pub use citation_retrieval::{
     CITATION_RETRIEVAL_CAPABILITY_ID, CitationRetrievalCapability, CitationRetrievalConfig,
 };
@@ -207,6 +209,9 @@ pub fn register_hosted_capabilities(
         std::sync::Arc::new(everruns_core::builtins::DurableToolApprover),
     ));
     registry.register(UserHooksCapability);
+    // Inert outside the hosted control plane, which resolves the chatting
+    // person's servers per turn.
+    registry.register(UserMcpCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);

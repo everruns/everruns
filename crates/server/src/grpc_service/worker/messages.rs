@@ -237,11 +237,26 @@ impl WorkerServiceImpl {
         // Append org-scoped tool definitions first so scoped definitions win on
         // name collisions when RuntimeAgentBuilder deduplicates with last-wins.
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers_with_capabilities(
+            use crate::domains::mcp_servers::user_layer::{
+                UserMcpTurn, merge_turn_scoped_mcp_servers, user_mcp_layer,
+            };
+            let user_layer = user_mcp_layer(&UserMcpTurn {
+                db: &self.db,
+                encryption: self.encryption.as_deref(),
+                org_id: req.org_id,
+                harness,
+                agent: agent.as_ref(),
+                session: &session,
+                registry: self.capability_service.registry(),
+                input_message,
+            })
+            .await;
+            let effective = merge_turn_scoped_mcp_servers(
                 harness,
                 agent.as_ref(),
                 &session,
                 self.capability_service.registry(),
+                &user_layer,
             );
 
             if let Err(error) =

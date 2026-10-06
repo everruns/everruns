@@ -11,7 +11,8 @@ tags:
 
 # User MCP servers and agent MCP auth modes
 
-> Status: **Accepted 2026-10-06, being implemented** (steps in [Plan](#plan)).
+> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 3 are built (steps in [Plan](#plan)).
+> Public docs: `docs/features/user-mcp-servers.md`, `docs/capabilities/user-mcp-servers.md`.
 > [Agent MCP attachments](agent-mcp-attachments.md),
 > [MCP servers](mcp-servers.md), and [virtual users](../runtime-resources/virtual-users.md)
 > stay authoritative for what exists today. This proposal extends them; where it
@@ -279,7 +280,7 @@ Each step is one PR, shippable alone.
 
 1. **User servers backend.** Owner column on `mcp_servers`, `/v1/virtual-users/{id|me}/mcp-servers` self-service routes (the same authority as preferences; the command catalog is management-only), OAuth authorize/callback for a user-owned row, tests for cross-user and cross-org refusal.
 2. **My MCP servers in settings.** Section in My agent experience; MCP page *My connections* tab redirects there.
-3. **`user_mcp` capability, *use*.** Resolve the initiating virtual user's enabled servers into the turn; unattended and shared sessions get none; name-clash reporting in the agent MCP sheet.
+3. **`user_mcp` capability, *use*.** Resolve the initiating virtual user's enabled servers into the turn; unattended and shared sessions get none; Platform Chat turns *use* on. Built: `crates/server/src/domains/mcp_servers/user_layer.rs`, which the worker turn context, MCP prefix resolution and the tool-call token check all share; channel consumers may sign in to their own servers (`RuntimeAccount::allowed_mcp_providers`). Name-clash reporting in the agent MCP sheet moves to step 4, with the list tool.
 4. **`user_mcp` *manage* and `connect_mcp_server`.** Shared store and prompter traits in `everruns-core`; approval defaults; Platform Chat turns it on; an eval case in `evals/platform-capability` for "add Linear and connect it".
 5. **`user_or_service` and connection-backed presets.** New `actsAs` value with per-call recorded identity; preset field naming a connection provider; GitHub preset backed by the agent's GitHub App.
 6. **`connectInChat` per attachment.**

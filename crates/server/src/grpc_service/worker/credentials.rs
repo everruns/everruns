@@ -142,8 +142,12 @@ impl WorkerServiceImpl {
                     Status::internal("Failed to resolve scoped MCP server")
                 })?
             {
-                if let Some(message) = req.input_message_id.as_ref() {
-                    let message = parse_uuid(Some(message))?;
+                let input_message = req
+                    .input_message_id
+                    .as_ref()
+                    .map(|id| parse_uuid(Some(id)))
+                    .transpose()?;
+                if let Some(message) = input_message {
                     if !self
                         .db
                         .runtime_invocation_exists(session.id, message)
@@ -198,6 +202,19 @@ impl WorkerServiceImpl {
                     *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
                 }
 
+                let user_layer = crate::domains::mcp_servers::user_layer::user_mcp_layer(
+                    &crate::domains::mcp_servers::user_layer::UserMcpTurn {
+                        db: &self.db,
+                        encryption: self.encryption.as_deref(),
+                        org_id: req.org_id,
+                        harness: &harness,
+                        agent: agent.as_ref(),
+                        session: &session,
+                        registry: self.capability_service.registry(),
+                        input_message,
+                    },
+                )
+                .await;
                 if let Some(r) = crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server_with_capabilities(
                     &self.mcp_server_service,
                     req.org_id,
@@ -206,6 +223,7 @@ impl WorkerServiceImpl {
                     &session,
                     &req.server_prefix,
                     self.capability_service.registry(),
+                    &user_layer,
                 )
                 .await
                 .map_err(|error| {

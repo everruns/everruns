@@ -61,6 +61,7 @@ inherited from [Bashkit Worker](/built-ins/harnesses/bashkit-worker/).
 | Citation Verification | Verify citation support before answering |
 | Ask User | Pause for structured user input when required |
 | Error Disclosure | Return detailed platform errors to the managed operator Agent |
+| User MCP Servers | Use the MCP servers the person added for themselves ([User MCP servers](/features/user-mcp-servers/)) |
 
 ## Existing conversations
 
