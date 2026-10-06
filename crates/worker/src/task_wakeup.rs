@@ -22,11 +22,11 @@ use tracing::{debug, info, warn};
 
 use crate::durable::StoreError;
 
-use crate::unified_worker::TaskStore;
+use crate::unified_worker::TurnStore;
 
 /// Receiver side of a push channel: each item means "new work may be claimable".
 /// The channel closing means the push stream ended and the caller should resubscribe.
-pub use everruns_durable_engine::task_store::TaskWakeups;
+pub use everruns_durable_engine::turn_store::TaskWakeups;
 
 /// First resubscribe delay after the stream fails or ends.
 const RESUBSCRIBE_BASE: Duration = Duration::from_secs(1);
@@ -37,7 +37,7 @@ const RESUBSCRIBE_MAX: Duration = Duration::from_secs(30);
 /// notification into a wake-up of the poll loop.
 ///
 /// Returns immediately (the task ends) when the store has no push channel.
-pub(crate) fn spawn_wakeup_listener<S: TaskStore>(
+pub(crate) fn spawn_wakeup_listener<S: TurnStore>(
     store: Arc<S>,
     worker_id: String,
     activity_types: Vec<String>,

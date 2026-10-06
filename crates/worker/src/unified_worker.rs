@@ -198,16 +198,16 @@ impl TaskWorkerConfig {
 // Unified Worker
 // =============================================================================
 
-pub use everruns_durable_engine::task_store::TaskStore;
+pub use everruns_durable_engine::turn_store::TurnStore;
 
 /// Unified worker that executes tasks from the durable task queue
 ///
 /// This worker is generic over:
-/// - `S`: TaskStore implementation (direct store or gRPC store)
+/// - `S`: TurnStore implementation (direct store or gRPC store)
 /// - `A`: WorkerAdapters implementation (Direct or gRPC)
 pub struct TaskWorker<S, A>
 where
-    S: TaskStore,
+    S: TurnStore,
     A: WorkerAdapters,
 {
     config: TaskWorkerConfig,
@@ -223,7 +223,7 @@ where
 
 impl<S, A> TaskWorker<S, A>
 where
-    S: TaskStore,
+    S: TurnStore,
     A: WorkerAdapters,
 {
     /// Create a new unified worker
@@ -608,7 +608,7 @@ mod tests {
         }
 
         #[async_trait::async_trait]
-        impl TaskStore for ConcurrentStore {
+        impl TurnStore for ConcurrentStore {
             async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
                 Ok(())
             }
@@ -662,11 +662,43 @@ mod tests {
                 })
             }
 
-            async fn get_workflow_status(
+            async fn get_workflow(
                 &self,
                 _workflow_id: Uuid,
-            ) -> Result<WorkflowStatus, StoreError> {
-                Ok(WorkflowStatus::Running)
+            ) -> Result<everruns_durable_engine::turn_store::WorkflowSnapshot, StoreError>
+            {
+                Ok(everruns_durable_engine::turn_store::WorkflowSnapshot {
+                    status: WorkflowStatus::Running,
+                    output: None,
+                    error: None,
+                })
+            }
+
+            async fn start_turn(
+                &self,
+                _workflow_id: Uuid,
+                _workflow_type: &str,
+                _input: serde_json::Value,
+                _activity_id: String,
+                _activity_type: String,
+            ) -> Result<crate::durable::RunStart, StoreError> {
+                Ok(crate::durable::RunStart::Active)
+            }
+
+            async fn cancel_pending_tasks(&self, _workflow_id: Uuid) -> Result<u64, StoreError> {
+                Ok(0)
+            }
+
+            async fn count_active_workflows(&self) -> Result<usize, StoreError> {
+                Ok(0)
+            }
+
+            async fn send_signal(
+                &self,
+                _workflow_id: Uuid,
+                _signal: crate::durable::WorkflowSignal,
+            ) -> Result<(), StoreError> {
+                Ok(())
             }
 
             async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}

@@ -11,11 +11,10 @@ use chrono::{TimeZone, Utc};
 use everruns_contracts::tool_types::ToolCall;
 use everruns_contracts::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_durable_engine::engine::{
-    ActOutcome, ActivityOutcome, Execution, HostFacts, ReasonResult, TurnLifecycleEffect, TurnPlan,
-    TurnState,
+    ActOutcome, ActivityOutcome, Execution, HostFacts, ReasonResult, TurnExecution,
+    TurnLifecycleEffect, TurnPlan, TurnState,
 };
 use everruns_durable_engine::host::InProcessExecution;
-use everruns_worker::DurableExecution;
 use serde_json::json;
 
 fn initial_state() -> TurnState {
@@ -93,7 +92,7 @@ fn plan_kind(plan: &TurnPlan) -> &'static str {
 
 fn advance_both(
     immediate: &mut InProcessExecution,
-    durable: &mut DurableExecution,
+    durable: &mut TurnExecution,
     immediate_outcome: ActivityOutcome,
     durable_outcome: ActivityOutcome,
     pending: usize,
@@ -121,8 +120,8 @@ fn advance_both(
 
     // The durable contract is stronger than cloning: discard the live value
     // and restore the exact serialized checkpoint after every phase.
-    let encoded = serde_json::to_vec(durable).expect("serialize durable execution");
-    *durable = serde_json::from_slice(&encoded).expect("restore durable execution");
+    let encoded = serde_json::to_vec(durable).expect("serialize durable checkpoint");
+    *durable = serde_json::from_slice(&encoded).expect("restore durable checkpoint");
 
     (
         plan_kind(&immediate_transition.plan).to_string(),
@@ -144,11 +143,11 @@ fn normalized_debug(value: &impl std::fmt::Debug) -> String {
     rendered
 }
 
-fn drivers() -> (InProcessExecution, DurableExecution) {
+fn drivers() -> (InProcessExecution, TurnExecution) {
     let state = initial_state();
     (
         InProcessExecution::new(state.clone()),
-        DurableExecution::new(state),
+        TurnExecution::new(state),
     )
 }
 
@@ -288,7 +287,7 @@ fn steering_failure_limit_block_and_wait_branches_are_equivalent() {
         ..initial_state()
     };
     let mut immediate = InProcessExecution::new(state.clone());
-    let mut durable = DurableExecution::new(state);
+    let mut durable = TurnExecution::new(state);
     assert_eq!(
         advance_both(
             &mut immediate,

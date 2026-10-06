@@ -9,7 +9,6 @@ pub mod activities;
 pub mod adapters;
 pub mod app_builder;
 mod catalog_cli;
-pub use everruns_durable_engine::durable_execution;
 pub use everruns_durable_engine::durable_runner;
 pub use everruns_durable_engine::durable_turn;
 pub mod grpc_adapters;
@@ -36,7 +35,7 @@ mod stream_heartbeater;
 mod system_decisions;
 pub use everruns_durable_engine::task_error;
 pub use everruns_durable_engine::task_heartbeat;
-pub use everruns_durable_engine::task_store;
+pub use everruns_durable_engine::turn_store;
 pub mod task_wakeup;
 pub use everruns_durable_engine::turn_driver;
 pub mod turn_host;
@@ -49,11 +48,7 @@ pub mod worker_adapters;
 pub mod write_behind;
 
 // Re-export main types
-pub use durable_execution::DurableExecution;
-pub use durable_runner::{
-    DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTaskNotifier, DurableTurnInput,
-    DurableTurnOutput, InMemoryDurableStore,
-};
+pub use durable_runner::{DurableRunner, DurableTaskNotifier, DurableTurnInput, DurableTurnOutput};
 pub use grpc_durable_runner::{
     connect_grpc_durable_runner, create_runner, grpc_durable_runner_from_env,
 };

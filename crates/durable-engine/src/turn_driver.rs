@@ -1,7 +1,7 @@
 //! The durable turn driver: runs one claimed turn task and schedules the next.
 //!
 //! Decision: the driver moved here from the worker so a turn can run against
-//! any `TaskStore` (the in-memory or PostgreSQL durable store, or the worker's
+//! any `TurnStore` (the in-memory or PostgreSQL durable store, or the worker's
 //! gRPC store) with any runtime host. The worker keeps its poll loop, config,
 //! registration and metrics, and hands every claimed task to
 //! [`TurnTaskDriver::execute_task`]. Activity ids, checkpoints, wake-signal
@@ -22,15 +22,15 @@
 
 use crate::durable::{ClaimedTask, TaskFailureOutcome, WorkflowStatus};
 use crate::durable_runner::DurableTurnInput;
-use crate::engine::{ActInput, ActPlan, ReasonInput, ReasonResult, TurnPlan};
+use crate::engine::{ActInput, ActPlan, ReasonInput, ReasonResult, TurnExecution, TurnPlan};
 use crate::host::{
     RuntimeHostAdapter, RuntimeSessionLifecycle, advance_host_execution,
     execute_act_activity as runtime_execute_act_activity,
 };
 use crate::task_error::{is_non_retryable_task_error, summarize_task_failure, user_facing_failure};
 use crate::task_heartbeat::{CancelSignals, spawn_task_heartbeat};
-use crate::task_store::TaskStore;
 use crate::turn_start;
+use crate::turn_store::TurnStore;
 use anyhow::Result;
 use async_trait::async_trait;
 use everruns_contracts::typed_id::MessageId;
@@ -123,12 +123,12 @@ pub trait TurnTaskHost: Clone + Send + Sync + 'static {
     }
 }
 
-/// Runs claimed durable tasks of an agent turn against a [`TaskStore`].
+/// Runs claimed durable tasks of an agent turn against a [`TurnStore`].
 ///
 /// Each call runs one task: it checks the workflow is not cancelled, records
 /// the activity, heartbeats the task, runs the step, then completes or fails
 /// the task and schedules the turn's next step.
-pub struct TurnTaskDriver<S: TaskStore, H: TurnTaskHost> {
+pub struct TurnTaskDriver<S: TurnStore, H: TurnTaskHost> {
     store: Arc<S>,
     hosts: H,
     worker_id: String,
@@ -136,7 +136,7 @@ pub struct TurnTaskDriver<S: TaskStore, H: TurnTaskHost> {
     chain_steps: bool,
 }
 
-impl<S: TaskStore, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
+impl<S: TurnStore, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
     fn clone(&self) -> Self {
         Self {
             store: self.store.clone(),
@@ -148,7 +148,7 @@ impl<S: TaskStore, H: TurnTaskHost> Clone for TurnTaskDriver<S, H> {
     }
 }
 
-impl<S: TaskStore, H: TurnTaskHost> TurnTaskDriver<S, H> {
+impl<S: TurnStore, H: TurnTaskHost> TurnTaskDriver<S, H> {
     /// A driver that claims ownership as `worker_id` and heartbeats each task
     /// every `heartbeat_interval`.
     pub fn new(
@@ -225,7 +225,7 @@ async fn execute_task<S, H>(
     claim_for: Option<&str>,
 ) -> Result<Option<ClaimedTask>>
 where
-    S: TaskStore,
+    S: TurnStore,
     H: TurnTaskHost,
 {
     info!(
@@ -241,7 +241,10 @@ where
     if let Some(wf_id) = task.workflow_id {
         let workflow_status = match task.workflow_status {
             Some(status) => Ok(status),
-            None => store.get_workflow_status(wf_id).await,
+            None => store
+                .get_workflow(wf_id)
+                .await
+                .map(|workflow| workflow.status),
         };
         if let Ok(status) = workflow_status
             && status == WorkflowStatus::Cancelled
@@ -394,7 +397,7 @@ where
     Ok(None)
 }
 
-async fn fail_activity_task<S: TaskStore, H: TurnTaskHost>(
+async fn fail_activity_task<S: TurnStore, H: TurnTaskHost>(
     store: &Arc<S>,
     hosts: &H,
     task: &ClaimedTask,
@@ -500,7 +503,7 @@ async fn execute_act_activity<H: TurnTaskHost>(
 ///
 /// Returns the next step when it was enqueued claimed for `claim_for`.
 #[allow(clippy::too_many_arguments)]
-async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
+async fn schedule_next_activity<S: TurnStore, H: TurnTaskHost>(
     store: &Arc<S>,
     hosts: &H,
     workflow_id: Uuid,
@@ -539,7 +542,7 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
         );
     }
 
-    let mut execution = crate::DurableExecution::new(input.clone());
+    let mut execution = TurnExecution::new(input.clone());
     let plan = advance_host_execution(
         &hosts.host(),
         &mut execution,
@@ -548,7 +551,7 @@ async fn schedule_next_activity<S: TaskStore, H: TurnTaskHost>(
         pending_user_message_count,
     )
     .await?;
-    let checkpoint = execution.checkpoint();
+    let checkpoint = execution.into_state();
     hosts.turn_planned(&checkpoint, &plan, output).await?;
     match plan {
         TurnPlan::ScheduleReason(_) => {
@@ -634,7 +637,7 @@ fn drains_wake_signals_after(completed_activity: &str, reason_final_answer: bool
 /// Consume and count queued `USER_MESSAGE` wakes for `workflow_id` when this
 /// activity boundary is a drain point (see [`drains_wake_signals_after`]).
 /// Returns 0 without touching the store at non-drain boundaries.
-async fn count_drained_wakes<S: TaskStore>(
+async fn count_drained_wakes<S: TurnStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     completed_activity: &str,
@@ -650,7 +653,7 @@ async fn count_drained_wakes<S: TaskStore>(
         .len())
 }
 
-async fn enqueue_reason_task<S: TaskStore>(
+async fn enqueue_reason_task<S: TurnStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     input: &DurableTurnInput,
@@ -671,7 +674,7 @@ async fn enqueue_reason_task<S: TaskStore>(
 }
 
 /// Enqueue a turn step, claimed for `claim_for` when set.
-async fn enqueue_step<S: TaskStore>(
+async fn enqueue_step<S: TurnStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     activity_id: String,
@@ -699,7 +702,7 @@ async fn enqueue_step<S: TaskStore>(
     }
 }
 
-async fn enqueue_act_task<S: TaskStore>(
+async fn enqueue_act_task<S: TurnStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     plan: &ActPlan,
@@ -749,7 +752,7 @@ mod tests {
         )
     }
 
-    /// `TaskStore` stub returning a fixed set of pending signals and counting
+    /// `TurnStore` stub returning a fixed set of pending signals and counting
     /// how many times wake-signal drains are called.
     #[derive(Clone)]
     struct RecordingStore {
@@ -758,7 +761,7 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl TaskStore for RecordingStore {
+    impl TurnStore for RecordingStore {
         async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
             Ok(())
         }
@@ -792,11 +795,42 @@ mod tests {
                 should_cancel: false,
             })
         }
-        async fn get_workflow_status(
+        async fn get_workflow(
             &self,
             _workflow_id: Uuid,
-        ) -> Result<WorkflowStatus, StoreError> {
-            Ok(WorkflowStatus::Running)
+        ) -> Result<crate::turn_store::WorkflowSnapshot, StoreError> {
+            Ok(crate::turn_store::WorkflowSnapshot {
+                status: WorkflowStatus::Running,
+                output: None,
+                error: None,
+            })
+        }
+
+        async fn start_turn(
+            &self,
+            _workflow_id: Uuid,
+            _workflow_type: &str,
+            _input: serde_json::Value,
+            _activity_id: String,
+            _activity_type: String,
+        ) -> Result<crate::durable::RunStart, StoreError> {
+            Ok(crate::durable::RunStart::Active)
+        }
+
+        async fn cancel_pending_tasks(&self, _workflow_id: Uuid) -> Result<u64, StoreError> {
+            Ok(0)
+        }
+
+        async fn count_active_workflows(&self) -> Result<usize, StoreError> {
+            Ok(0)
+        }
+
+        async fn send_signal(
+            &self,
+            _workflow_id: Uuid,
+            _signal: crate::durable::WorkflowSignal,
+        ) -> Result<(), StoreError> {
+            Ok(())
         }
         async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}
         async fn complete_task_and_record(
@@ -1075,7 +1109,7 @@ mod tests {
         let claimed = TaskQueue::claim_task(&store, "worker", &["reason".into()], 1).await;
         let task = claimed.unwrap().pop().unwrap();
 
-        let outcome = TaskStore::fail_task_and_record(&store, &task, "terminal", false)
+        let outcome = TurnStore::fail_task_and_record(&store, &task, "terminal", false)
             .await
             .unwrap();
 

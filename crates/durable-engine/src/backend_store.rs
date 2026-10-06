@@ -20,26 +20,25 @@
 //!   which the framework does not do.
 //! - **Workflow ends wake tickets locally.** Every workflow a routed backend
 //!   starts ends in its own process (driver completion, task failure,
-//!   cancellation, recovery), so status writes through this store and through
-//!   [`RoutedDurableStore`] wake the turn's ticket at once, the way the memory
-//!   store's own end signal does, instead of a 50 ms status poll.
+//!   cancellation, recovery), so status writes through this store, which the
+//!   backend's runner and workers share, wake the turn's ticket at once, the
+//!   way the memory store's own end signal does, instead of a 50 ms status
+//!   poll.
 //! - The PostgreSQL claim records `ActivityStarted` itself, so the routed
 //!   store records nothing more when a step starts.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use anyhow::Result as AnyResult;
 use async_trait::async_trait;
 use everruns_durable::{
     ClaimedTask, HeartbeatResponse, RunStart, StoreError, TaskFailureOutcome, WorkerInfo,
-    WorkflowError, WorkflowEvent, WorkflowSignal, WorkflowStatus,
+    WorkflowError, WorkflowSignal, WorkflowStatus,
 };
 use tokio::sync::watch;
 use uuid::Uuid;
 
-use crate::durable_runner::{DurableStoreBackend, WorkflowEndSignal};
-use crate::task_store::{TaskStore, TaskWakeups};
+use crate::turn_store::{TaskWakeups, TurnStore, WorkflowEndSignal, WorkflowSnapshot};
 
 /// Separates an activity type from the routing key it is tagged with.
 const ROUTE_SEPARATOR: char = '@';
@@ -109,16 +108,16 @@ impl LocalEnds {
     }
 }
 
-/// The task store a backend's workers and drivers use: the backend's store,
-/// routed when the queue is shared.
+/// The turn store a backend's runner, workers and drivers share: the
+/// backend's store, routed when the queue is shared.
 pub(crate) struct BackendTaskStore {
-    inner: Arc<dyn TaskStore>,
+    inner: Arc<dyn TurnStore>,
     routing: Option<Routing>,
 }
 
 impl BackendTaskStore {
     /// `inner` as is: the backend owns the whole queue.
-    pub(crate) fn owned(inner: Arc<dyn TaskStore>) -> Self {
+    pub(crate) fn owned(inner: Arc<dyn TurnStore>) -> Self {
         Self {
             inner,
             routing: None,
@@ -127,7 +126,7 @@ impl BackendTaskStore {
 
     /// `inner`, shared with other backends, of which this one claims only
     /// the tasks `routing` tags.
-    pub(crate) fn routed(inner: Arc<dyn TaskStore>, routing: Routing) -> Self {
+    pub(crate) fn routed(inner: Arc<dyn TurnStore>, routing: Routing) -> Self {
         Self {
             inner,
             routing: Some(routing),
@@ -142,7 +141,7 @@ impl BackendTaskStore {
 }
 
 #[async_trait]
-impl TaskStore for BackendTaskStore {
+impl TurnStore for BackendTaskStore {
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
         self.inner.register_worker(worker).await
     }
@@ -192,10 +191,6 @@ impl TaskStore for BackendTaskStore {
         details: Option<serde_json::Value>,
     ) -> Result<HeartbeatResponse, StoreError> {
         self.inner.heartbeat_task(task_id, worker_id, details).await
-    }
-
-    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
-        self.inner.get_workflow_status(workflow_id).await
     }
 
     async fn record_activity_started(&self, task: &ClaimedTask, worker_id: &str) {
@@ -345,78 +340,8 @@ impl TaskStore for BackendTaskStore {
             .await
     }
 
-    async fn subscribe_task_wakeups(
-        &self,
-        worker_id: &str,
-        activity_types: &[String],
-    ) -> Result<Option<TaskWakeups>, StoreError> {
-        self.inner
-            .subscribe_task_wakeups(worker_id, activity_types)
-            .await
-    }
-}
-
-/// The runner's side of a routed backend: tasks it enqueues carry the
-/// routing key, and the workflow ends it writes wake tickets.
-pub(crate) struct RoutedDurableStore<B> {
-    inner: B,
-    routing: Routing,
-}
-
-impl<B> RoutedDurableStore<B> {
-    pub(crate) fn new(inner: B, routing: Routing) -> Self {
-        Self { inner, routing }
-    }
-}
-
-#[async_trait]
-impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
-    async fn get_workflow_status(
-        &self,
-        workflow_id: Uuid,
-    ) -> AnyResult<(WorkflowStatus, Option<serde_json::Value>, Option<String>)> {
-        self.inner.get_workflow_status(workflow_id).await
-    }
-
-    async fn create_workflow(
-        &self,
-        workflow_id: Uuid,
-        workflow_type: &str,
-        input: serde_json::Value,
-    ) -> AnyResult<Uuid> {
-        self.inner
-            .create_workflow(workflow_id, workflow_type, input)
-            .await
-    }
-
-    async fn update_workflow_status(
-        &self,
-        workflow_id: Uuid,
-        status: WorkflowStatus,
-        output: Option<serde_json::Value>,
-        error: Option<String>,
-    ) -> AnyResult<()> {
-        let result = self
-            .inner
-            .update_workflow_status(workflow_id, status, output, error)
-            .await;
-        if status.is_terminal() {
-            self.routing.ends.notify(workflow_id);
-        }
-        result
-    }
-
-    async fn enqueue_task(
-        &self,
-        workflow_id: Uuid,
-        activity_id: String,
-        activity_type: String,
-        input: serde_json::Value,
-    ) -> AnyResult<Uuid> {
-        let activity_type = self.routing.route(&activity_type);
-        self.inner
-            .enqueue_task(workflow_id, activity_id, activity_type, input)
-            .await
+    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> Result<u64, StoreError> {
+        self.inner.cancel_pending_tasks(workflow_id).await
     }
 
     async fn start_turn(
@@ -426,8 +351,11 @@ impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
-    ) -> AnyResult<RunStart> {
-        let activity_type = self.routing.route(&activity_type);
+    ) -> Result<RunStart, StoreError> {
+        let activity_type = match &self.routing {
+            Some(routing) => routing.route(&activity_type),
+            None => activity_type,
+        };
         self.inner
             .start_turn(
                 workflow_id,
@@ -439,42 +367,44 @@ impl<B: DurableStoreBackend> DurableStoreBackend for RoutedDurableStore<B> {
             .await
     }
 
-    async fn count_active_workflows(&self) -> AnyResult<usize> {
+    async fn get_workflow(&self, workflow_id: Uuid) -> Result<WorkflowSnapshot, StoreError> {
+        self.inner.get_workflow(workflow_id).await
+    }
+
+    async fn count_active_workflows(&self) -> Result<usize, StoreError> {
         self.inner.count_active_workflows().await
-    }
-
-    async fn cancel_pending_tasks(&self, workflow_id: Uuid) -> AnyResult<u64> {
-        self.inner.cancel_pending_tasks(workflow_id).await
-    }
-
-    async fn append_events(
-        &self,
-        workflow_id: Uuid,
-        expected_sequence: i32,
-        events: Vec<WorkflowEvent>,
-    ) -> AnyResult<i32> {
-        self.inner
-            .append_events(workflow_id, expected_sequence, events)
-            .await
-    }
-
-    async fn send_signal(&self, workflow_id: Uuid, signal: WorkflowSignal) -> AnyResult<()> {
-        self.inner.send_signal(workflow_id, signal).await
-    }
-
-    async fn get_and_consume_signals(&self, workflow_id: Uuid) -> AnyResult<Vec<WorkflowSignal>> {
-        self.inner.get_and_consume_signals(workflow_id).await
     }
 
     async fn latest_completion_output(
         &self,
         workflow_id: Uuid,
-    ) -> AnyResult<Option<serde_json::Value>> {
+    ) -> Result<Option<serde_json::Value>, StoreError> {
         self.inner.latest_completion_output(workflow_id).await
     }
 
     fn workflow_end_signal(&self, workflow_id: Uuid) -> Option<WorkflowEndSignal> {
-        Some(self.routing.ends.subscribe(workflow_id))
+        match &self.routing {
+            Some(routing) => Some(routing.ends.subscribe(workflow_id)),
+            None => self.inner.workflow_end_signal(workflow_id),
+        }
+    }
+
+    async fn send_signal(
+        &self,
+        workflow_id: Uuid,
+        signal: WorkflowSignal,
+    ) -> Result<(), StoreError> {
+        self.inner.send_signal(workflow_id, signal).await
+    }
+
+    async fn subscribe_task_wakeups(
+        &self,
+        worker_id: &str,
+        activity_types: &[String],
+    ) -> Result<Option<TaskWakeups>, StoreError> {
+        self.inner
+            .subscribe_task_wakeups(worker_id, activity_types)
+            .await
     }
 }
 

@@ -8,6 +8,12 @@
   Server endpoints opt in with `state_visible` (default off, off for Public
   Chat); client `state` is still not read. See
   [AG-UI Channel](integrations/ag-ui.md#shared-state).
+* **One store trait for turns.** durable-engine's runner store
+  (`DurableStoreBackend`) and task store (`TaskStore`) merged into
+  `TurnStore`, which every `everruns-durable` store gets by a blanket impl and
+  the worker implements for its gRPC client; the `DurableExecution` newtype is
+  gone and turn steps checkpoint `TurnExecution` directly. See
+  [Execution Backends](framework/execution-backends.md).
 
 ## 2026-10-05
 

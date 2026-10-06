@@ -96,14 +96,14 @@ and the platform's worker is one more user of the same driver.
 
 The crate already carries no transport: the worker owns the gRPC stores, the
 gRPC runner constructors, `tonic`, and `everruns-internal-protocol`, and plugs
-its store in through durable-engine's `DurableStoreBackend` and `TaskStore`
-traits. The durable isolation guard keeps it that way.
+its store in through durable-engine's `TurnStore` trait, the one store
+contract its runner and turn driver share. The durable isolation guard keeps it that way.
 
 The turn driver lives in the crate too:
 [`TurnTaskDriver`](../../crates/durable-engine/src/turn_driver.rs) runs one
 claimed turn task (cancellation check, heartbeat, the step, completion or
 failure, then the next step's enqueue or the workflow's completion) against
-any `TaskStore`. A `TurnTaskHost` supplies the runtime host each step runs on
+any `TurnStore`. A `TurnTaskHost` supplies the runtime host each step runs on
 and any activities that are not turn steps. The worker keeps only its poll
 loop, registration and configuration, and supplies `WorkerRuntimeHost` plus
 its cleanup, reaper and scheduled activities; a test drives a whole tool turn

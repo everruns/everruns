@@ -19,7 +19,7 @@
 //!   before it returns. The ticket only observes, so a caller that drops it
 //!   (the `AgentRunner` shim always does) changes nothing.
 //! - The ticket wakes on the store's workflow-end signal
-//!   ([`DurableStoreBackend::workflow_end_signal`]) when the store has one,
+//!   ([`TurnStore::workflow_end_signal`]) when the store has one,
 //!   re-reading the status every [`TICKET_FALLBACK_POLL_INTERVAL`] in case a
 //!   wakeup is missed. The memory store has one: every path that ends a
 //!   workflow (driver completion, task failure, cancel, dead task) writes the
@@ -54,14 +54,15 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::host::{PersistedTurn, TurnBackend, TurnInput, TurnRequest, TurnTicket};
 use everruns_core::turn::TurnStopReason;
-use everruns_durable::{EventLog, RunStart, WorkflowEvent, WorkflowSignal, WorkflowStatus};
+use everruns_durable::{
+    EventLog, RunStart, StoreError, WorkflowError, WorkflowEvent, WorkflowSignal, WorkflowStatus,
+};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::durable_runner::{
-    DurableRunner, DurableStoreBackend, DurableTurnInput, DurableTurnOutput,
-};
+use crate::durable_runner::{DurableRunner, DurableTurnInput, DurableTurnOutput};
 use crate::host::TurnResult;
+use crate::turn_store::{TurnStore, WorkflowSnapshot};
 
 /// How often a [`DurableRunner`] turn ticket re-reads its workflow status
 /// on a store without a workflow-end signal.
@@ -202,8 +203,12 @@ impl DurableRunner {
         let workflow_id = session_id.uuid();
         let store = &self.store;
 
-        let (status, result_json, _) = store
-            .get_workflow_status(workflow_id)
+        let WorkflowSnapshot {
+            status,
+            output: result_json,
+            ..
+        } = store
+            .get_workflow(workflow_id)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to get workflow status: {e}"))?;
 
@@ -237,7 +242,7 @@ impl DurableRunner {
         }
 
         if let Err(error) = store
-            .enqueue_task(
+            .enqueue_task_and_record(
                 workflow_id,
                 crate::durable_turn::waiting_turn_resolution_activity_id(resolution_id),
                 "reason".to_string(),
@@ -272,8 +277,8 @@ impl DurableRunner {
         let workflow_id = session_id.uuid();
         let store = &self.store;
         let was_running = matches!(
-            store.get_workflow_status(workflow_id).await,
-            Ok((status, _, _)) if !status.is_terminal()
+            store.get_workflow(workflow_id).await,
+            Ok(workflow) if !workflow.status.is_terminal()
         );
         store.cancel_pending_tasks(workflow_id).await.map_err(|e| {
             AgentLoopError::store(format!("Failed to cancel pending workflow tasks: {e}"))
@@ -292,7 +297,7 @@ impl DurableRunner {
                 workflow_id,
                 WorkflowStatus::Cancelled,
                 Some(output),
-                Some(message),
+                Some(WorkflowError::new(message)),
             )
             .await
             .map_err(|e| AgentLoopError::store(format!("Failed to cancel workflow: {e}")))?;
@@ -382,8 +387,8 @@ impl TurnBackend for DurableRunner {
     async fn is_running(&self, session_id: SessionId) -> bool {
         let workflow_id = session_id.uuid();
         let store = &self.store;
-        match store.get_workflow_status(workflow_id).await {
-            Ok((status, _, _)) => !status.is_terminal(),
+        match store.get_workflow(workflow_id).await {
+            Ok(workflow) => !workflow.status.is_terminal(),
             Err(_) => false,
         }
     }
@@ -418,7 +423,7 @@ fn store_error(error: anyhow::Error) -> AgentLoopError {
 pub(crate) async fn latest_completion_output<S: EventLog + ?Sized>(
     store: &S,
     workflow_id: Uuid,
-) -> anyhow::Result<Option<serde_json::Value>> {
+) -> std::result::Result<Option<serde_json::Value>, StoreError> {
     // Event sequence numbers count from zero, so `count` is the next one.
     let count = i32::try_from(store.count_events(workflow_id).await?).unwrap_or(i32::MAX);
     let events = store
@@ -456,7 +461,7 @@ struct EndedWorkflow {
 
 /// Wait until `workflow_id` ends, then map the end to a turn result.
 async fn await_workflow(
-    store: Arc<dyn DurableStoreBackend>,
+    store: Arc<dyn TurnStore>,
     workflow_id: Uuid,
     turn_id: TurnId,
     baseline: TurnBaseline,
@@ -466,10 +471,14 @@ async fn await_workflow(
             // Subscribe before reading the status, so an end that lands
             // between the read and the wait still wakes this ticket.
             let end_signal = store.workflow_end_signal(workflow_id);
-            let (status, checkpoint, error) = store
-                .get_workflow_status(workflow_id)
+            let WorkflowSnapshot {
+                status,
+                output: checkpoint,
+                error,
+            } = store
+                .get_workflow(workflow_id)
                 .await
-                .map_err(store_error)?;
+                .map_err(|error| store_error(error.into()))?;
             if status.is_terminal() {
                 let completion = if status == WorkflowStatus::Completed {
                     store

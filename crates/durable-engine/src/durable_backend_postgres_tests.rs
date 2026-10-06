@@ -23,7 +23,7 @@ use crate::durable_backend::{DurableBackend, LEFT_BEHIND};
 use crate::host::{
     AcceptedTurnInput, InProcessRuntime, TurnBackend, TurnInput, TurnRequest, TurnTicket,
 };
-use crate::task_store::TaskStore;
+use crate::turn_store::TurnStore;
 
 /// The test database, or `None` (the test skips) without `DATABASE_URL`.
 async fn store() -> Option<PostgresWorkflowEventStore> {
@@ -236,9 +236,10 @@ async fn a_session_attached_again_ends_the_workflow_a_gone_backend_left_behind()
     assert_ne!(held.status, TaskStatus::Claimed, "{held:?}");
     assert_eq!(held.last_error.as_deref(), Some(LEFT_BEHIND));
     assert_eq!(
-        TaskStore::get_workflow_status(&store, session_id.uuid())
+        TurnStore::get_workflow(&store, session_id.uuid())
             .await
-            .unwrap(),
+            .unwrap()
+            .status,
         WorkflowStatus::Completed
     );
     backend.shutdown().await;
