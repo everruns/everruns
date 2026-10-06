@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { AgentCard } from "@/components/agents/agent-card";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
 import { HarnessCard } from "@/components/harnesses/harness-card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -197,6 +198,7 @@ export default function DevUiComponentsPage() {
             ["identity", "IDs & badges"],
             ["cards", "Cards"],
             ["menus", "Menus"],
+            ["entity-actions", "Entity actions"],
             ["forms", "Forms"],
             ["feedback", "Feedback"],
           ].map(([href, label]) => (
@@ -623,6 +625,43 @@ export default function DevUiComponentsPage() {
               ]}
             />
           </div>
+        </ShowcaseSection>
+
+        <ShowcaseSection
+          id="entity-actions"
+          title="Entity actions menu"
+          description="The one header overflow menu on every entity page: the kind's own actions, then Record (History, Manager notes), then Lifecycle (Archive, Delete). Empty groups drop with their divider; Manager notes is hidden from readers."
+          sources={[
+            "src/components/entity-actions/entity-actions-menu.tsx",
+            "src/components/entity-actions/history-sheet.tsx",
+            "src/components/entity-actions/manager-notes-sheet.tsx",
+          ]}
+        >
+          <Suspense>
+            <div className="flex flex-wrap items-start gap-8">
+              {[
+                { caption: "Manager, every group", manage: true, lifecycle: true },
+                { caption: "Reader, record only", manage: false, lifecycle: false },
+              ].map((variant) => (
+                <div key={variant.caption} className="space-y-2">
+                  <p className="text-xs text-muted-foreground">{variant.caption}</p>
+                  <EntityActionsMenu
+                    entityRef="agent_019fd9b43fa37512b8f25226b21c2c8b"
+                    kind="agent"
+                    entityName="Support triage"
+                    permissions={{ manage: variant.manage }}
+                    actions={
+                      variant.lifecycle
+                        ? [{ id: "copy", label: "Copy", icon: <Layers3 />, onSelect: () => {} }]
+                        : []
+                    }
+                    archive={variant.lifecycle ? { onSelect: () => {} } : undefined}
+                    delete={variant.lifecycle ? { onSelect: () => {} } : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+          </Suspense>
         </ShowcaseSection>
 
         <ShowcaseSection

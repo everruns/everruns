@@ -92,6 +92,12 @@ async function mockAgentDetailApi(page: Page, displayName = "Jokes Agent") {
         input_tokens: 1200,
         output_tokens: 600,
       };
+    } else if (pathname === "/api/v1/agents/config" || pathname === "/api/v1/harnesses/config") {
+      json = { policies: { "agent.manage": true, "harness.manage": true } };
+    } else if (pathname === `/api/v1/history/${AGENT_ID}`) {
+      json = [];
+    } else if (pathname === `/api/v1/context/${AGENT_ID}`) {
+      json = { entity_kind: "agent", entity_ref: AGENT_ID, content: "", revision: 0 };
     } else if (pathname === `/api/v1/harnesses/${HARNESS_ID}`) {
       json = {
         id: HARNESS_ID,
@@ -228,7 +234,9 @@ test.describe("Page masthead responsive layout", () => {
       page.getByRole("menuitem", { name: "Export Markdown", exact: true }),
     ).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Version history" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "History", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Manager notes" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Version history" })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Archive agent" })).toBeVisible();
 
     await page.keyboard.press("Escape");
@@ -247,6 +255,39 @@ test.describe("Page masthead responsive layout", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       await page.evaluate(() => document.documentElement.clientWidth),
     );
+  });
+
+  // History and Manager notes open as sheets from the entity actions menu, and
+  // the open sheet is part of the address so a reload reopens it.
+  test("opens History and Manager notes from the agent menu and keeps them in the URL", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/agents/${AGENT_ID}`);
+
+    const moreActions = page.getByRole("button", { name: "More actions for Jokes Agent" });
+    await moreActions.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("menuitem", { name: "History", exact: true }).click();
+    await expect(page).toHaveURL(/[?&]sheet=history/);
+    await expect(page.getByText("No changes recorded yet.")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("No changes recorded yet.")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page).not.toHaveURL(/sheet=/);
+
+    await moreActions.click();
+    await page.getByRole("menuitem", { name: "Manager notes" }).click();
+    await expect(page).toHaveURL(/[?&]sheet=notes/);
+    await expect(page.getByText("No manager notes yet")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("No manager notes yet")).toBeVisible();
+  });
+
+  test("opens History for retired ?tab=versions links", async ({ page }) => {
+    await page.goto(`/agents/${AGENT_ID}?tab=versions`);
+    await expect(page).toHaveURL(/[?&]sheet=history/);
+    await expect(page.getByText("No changes recorded yet.")).toBeVisible();
   });
 
   for (const viewport of [
@@ -310,7 +351,7 @@ test.describe("Page masthead responsive layout", () => {
     await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
     await expect(edit).toBeVisible();
-    await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "More actions for Responsive Harness" })).toBeVisible();
     await edit.click({ trial: true });
     await expect(masthead.locator("a > button")).toHaveCount(0);
 

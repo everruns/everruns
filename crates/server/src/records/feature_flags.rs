@@ -60,6 +60,10 @@ pub struct FeatureFlags {
     /// failure and input-required webhooks. Experimental and org-opt-in,
     /// because the spec is a draft.
     pub mcp_events: bool,
+    /// Refuse agent-made changes that give no reason (`reason_required`).
+    /// Off, they go through with a warning. Adoption-graded so an org turns
+    /// enforcement on once its agents reliably give reasons.
+    pub agent_change_reasons_required: bool,
     /// Reports: the usage and cost reporting page, its sidebar entry, and
     /// saved-report search results in the UI. Experimental and org-opt-in, so
     /// it is off for every organization until an admin turns it on. The
@@ -242,6 +246,13 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         grade: FeatureFlagGrade::Dev,
     },
     FeatureFlagDefinition {
+        name: "agent_change_reasons_required",
+        label: "Require reasons from agents",
+        description: "Refuses changes that agents make without saying why. Off, the change goes \
+             through and the agent is warned to give a reason next time.",
+        grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
         name: "reports",
         label: "Reports",
         description: "Shows the Reports page for exploring usage and cost across sessions, agents, \
@@ -372,6 +383,10 @@ impl FeatureFlags {
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
             ("mcp_events".to_string(), self.mcp_events),
+            (
+                "agent_change_reasons_required".to_string(),
+                self.agent_change_reasons_required,
+            ),
             ("reports".to_string(), self.reports),
             ("machine_payments".to_string(), self.machine_payments),
             ("openai_agents_api".to_string(), self.openai_agents_api),
@@ -406,6 +421,7 @@ impl FeatureFlags {
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
             "mcp_events" => self.mcp_events,
+            "agent_change_reasons_required" => self.agent_change_reasons_required,
             "reports" => self.reports,
             "machine_payments" => self.machine_payments,
             "openai_agents_api" => self.openai_agents_api,
@@ -429,6 +445,7 @@ impl FeatureFlags {
             "public_chat" => self.public_chat = enabled,
             "webmcp" => self.webmcp = enabled,
             "mcp_events" => self.mcp_events = enabled,
+            "agent_change_reasons_required" => self.agent_change_reasons_required = enabled,
             "reports" => self.reports = enabled,
             "machine_payments" => self.machine_payments = enabled,
             "openai_agents_api" => self.openai_agents_api = enabled,
@@ -502,6 +519,7 @@ impl FeatureFlags {
             public_chat: true,
             webmcp: true,
             mcp_events: true,
+            agent_change_reasons_required: true,
             reports: true,
             machine_payments: true,
             openai_agents_api: true,
@@ -654,6 +672,7 @@ mod tests {
             "agent_delegation",
             "observers",
             "webmcp",
+            "agent_change_reasons_required",
         ];
         let opted_in = adoption_flags
             .iter()

@@ -12,6 +12,8 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { EntityActionsMenu } from "@/components/entity-actions/entity-actions-menu";
+import { usePolicies } from "@/hooks/use-policies";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button, LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -342,6 +344,8 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
   const [activeTab, setActiveTab] = useState("cases");
   const [showAddCase, setShowAddCase] = useState(false);
   const [selectedRuns, setSelectedRuns] = useState<string[]>([]);
+  // Evals expose no policy config; `eval.manage` is the agent manage permission.
+  const { can } = usePolicies("agents");
 
   const toggleRunSelection = (runId: string) =>
     setSelectedRuns((prev) =>
@@ -452,6 +456,12 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
             <Play className="w-4 h-4 mr-2" />
             {createRun.isPending ? "Starting..." : "Run Eval"}
           </Button>
+          <EntityActionsMenu
+            entityRef={ev.id}
+            kind="eval"
+            entityName={ev.name}
+            permissions={{ manage: can("agent.manage") }}
+          />
         </div>
       </div>
 
