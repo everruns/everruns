@@ -18,12 +18,7 @@ use uuid::Uuid;
 pub async fn can_receive_health(ctx: &Ctx) -> Result<bool, CommandError> {
     let mut caller = ctx.caller.clone();
     if let Some(user) = caller.user_id {
-        let Some(member) = ctx
-            .db
-            .get_organization_member(ctx.org_id(), user)
-            .await
-            .map_err(classify_anyhow)?
-        else {
+        let Some(member) = ctx.db.get_organization_member(ctx.org_id(), user).await? else {
             return Ok(false);
         };
         caller.role = member
@@ -58,8 +53,7 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
                 payload: serde_json::json!({"issue_id":row.id,"episode_id":row.episode_id}),
                 dedupe_key: Some(format!("health:{}:{}", row.id, row.episode_id)),
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         notification.map(|n| n.id.to_string())
     } else {
         None
@@ -67,16 +61,14 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     let snoozed_until = if let Some(user) = user {
         ctx.db
             .health_issue_snooze(row.id, user, row.episode_id, None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
     } else {
         None
     };
     let revision = ctx
         .db
         .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     let stale = revision.is_none_or(|e| e.updated_at != row.channel_revision)
         || Utc::now() - row.last_checked_at > chrono::Duration::minutes(15)
         || row.error_code.as_deref() == Some("verification_unavailable");
@@ -113,14 +105,12 @@ async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
     let mut row = ctx
         .db
         .get_health_issue(ctx.org_id(), id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Health issue"))?;
     if let Some(channel) = ctx
         .db
         .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         && (!channel.enabled || channel.channel_status == "disabled")
     {
         row.status = "inapplicable".into();
@@ -162,8 +152,7 @@ impl Command for ListHealthIssues {
         let rows = ctx
             .db
             .list_health_issues(ctx.org_id(), offset, limit, self.channel_id.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let mut data = Vec::with_capacity(rows.len());
         for row in rows {
             data.push(present(ctx, row).await?);
@@ -171,8 +160,7 @@ impl Command for ListHealthIssues {
         let total = ctx
             .db
             .count_health_issues(ctx.org_id(), self.channel_id.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(HealthIssueList {
             data,
             total,
@@ -235,8 +223,7 @@ impl Command for CheckHealthIssue {
         let row = issue(ctx, self.issue_id).await?;
         if !SlackHealthService::new(ctx.db.clone(), ctx.encryption.clone())
             .check_requested(&row.channel_public_id, self.issue_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         {
             return Err(
                 CommandError::rate_limited("Wait a few seconds before checking again")
@@ -282,8 +269,7 @@ impl Command for SnoozeHealthIssue {
                 row.episode_id,
                 Some(Utc::now() + chrono::Duration::days(1)),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         present(ctx, row).await
     }
 }
@@ -307,19 +293,13 @@ pub async fn filter_notifications(
             else {
                 continue;
             };
-            let Some(issue) = ctx
-                .db
-                .get_health_issue(ctx.org_id(), id)
-                .await
-                .map_err(classify_anyhow)?
-            else {
+            let Some(issue) = ctx.db.get_health_issue(ctx.org_id(), id).await? else {
                 continue;
             };
             let channel = ctx
                 .db
                 .get_ingress_channel_by_public_id(&issue.channel_public_id)
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
             if issue.status == "inapplicable"
                 || channel.is_none_or(|e| !e.enabled || e.channel_status == "disabled")
             {

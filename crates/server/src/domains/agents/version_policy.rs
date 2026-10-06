@@ -5,7 +5,7 @@
 // write-side validator, so an endpoint and a trigger cannot disagree on what a
 // valid pin is (EVE-1139).
 
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use crate::records::AgentVersionPolicy;
 use everruns_contracts::typed_id::{AgentId, AgentVersionId};
 
@@ -82,8 +82,7 @@ pub(crate) async fn resolve_version_selection(
     let version = ctx
         .db
         .get_agent_version(ctx.org_id(), version_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .filter(|version| version.agent_id == agent_id);
     let Some(version) = version else {
         return Err(CommandError::bad_request(

@@ -95,9 +95,12 @@ impl From<CommandErrorKind> for CommandError {
     }
 }
 
+// Decision: `?` on an anyhow error classifies it (typed errors, pool
+// exhaustion, uniqueness, known bad-request messages) instead of always
+// mapping to 500, so command code never needs `.map_err(classify_anyhow)`.
 impl From<anyhow::Error> for CommandError {
     fn from(e: anyhow::Error) -> Self {
-        CommandErrorKind::Internal(e).into()
+        classify_anyhow(e)
     }
 }
 

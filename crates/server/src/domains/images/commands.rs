@@ -33,8 +33,7 @@ impl Command for ListImages {
         let rows = ctx
             .db
             .list_images(ctx.org_id(), i64::from(limit), i64::from(offset))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(crate::api::common::ListResponse::new(
             rows.into_iter().map(q::row_to_image_info).collect(),
@@ -72,8 +71,7 @@ impl Command for GetImage {
         let row = ctx
             .db
             .get_image(ctx.org_id(), image_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Image"))?;
         Ok(q::row_to_stored_image(row))
     }

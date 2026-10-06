@@ -175,8 +175,7 @@ impl Command for ListSandboxes {
         let (rows, total) = ctx
             .db
             .list_sandbox_fleet(ctx.org_id(), &filter, limit, offset)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(SandboxFleetPage {
             items: rows.into_iter().map(SandboxFleetItem::from).collect(),
             total,
@@ -213,8 +212,7 @@ impl Command for GetSandboxFleetStats {
         let agg = ctx
             .db
             .sandbox_fleet_aggregates(ctx.org_id(), &filter)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let counts = |pairs: Vec<(String, i64)>| {
             pairs
                 .into_iter()
@@ -280,8 +278,7 @@ impl Command for GetSandboxTimeline {
         let rows = ctx
             .db
             .list_sandbox_transitions(ctx.org_id(), None, from, to)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let spans = spans_by_sandbox(rows);
         if spans.is_empty() {
             return Ok(empty_timeline(from, to));
@@ -292,8 +289,7 @@ impl Command for GetSandboxTimeline {
         let (items, _) = ctx
             .db
             .list_sandbox_fleet(ctx.org_id(), &filter, spans.len() as i64, 0)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let mut lanes: Vec<SandboxTimelineLane> = items
             .into_iter()
             .filter_map(|row| {
@@ -430,19 +426,16 @@ impl Command for GetSandbox {
         let row = ctx
             .db
             .get_sandbox_fleet_row(ctx.org_id(), id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Sandbox"))?;
         let incarnations = ctx
             .db
             .list_sandbox_instances(ctx.org_id(), id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let history = ctx
             .db
             .list_sandbox_transitions(ctx.org_id(), Some(id.uuid()), row.created_at, Utc::now())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(SandboxFleetDetail {
             sandbox: SandboxFleetItem::from(row),
             incarnations: incarnations.into_iter().map(Into::into).collect(),

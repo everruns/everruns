@@ -72,11 +72,7 @@ impl Command for ListAuditLogs {
             action: self.action.as_deref(),
         };
 
-        let rows = ctx
-            .db
-            .list_audit_logs(query)
-            .await
-            .map_err(classify_anyhow)?;
+        let rows = ctx.db.list_audit_logs(query).await?;
         Ok(rows.into_iter().map(AuditLogEntry::from).collect())
     }
 }

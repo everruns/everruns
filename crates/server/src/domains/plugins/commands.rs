@@ -96,8 +96,7 @@ async fn get_marketplace_by_public_id(
     let public_id = parse_marketplace_public_id(id)?;
     ctx.db
         .get_plugin_marketplace_by_public_id(ctx.org_id(), &public_id.to_string())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Plugin marketplace"))
 }
 
@@ -292,8 +291,7 @@ impl Command for ListPluginMarketplaces {
         let rows = ctx
             .db
             .list_plugin_marketplaces(ctx.org_id(), self.search.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_marketplace).collect())
     }
 }
@@ -394,8 +392,7 @@ impl Command for CreatePluginMarketplaceCmd {
         if ctx
             .db
             .list_plugin_marketplaces(ctx.org_id(), Some(&req.name))
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .iter()
             .any(|r| r.name == req.name)
         {
@@ -416,8 +413,7 @@ impl Command for CreatePluginMarketplaceCmd {
                     source,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(q::row_to_marketplace(&row))
     }
@@ -547,8 +543,7 @@ impl Command for UpdatePluginMarketplaceCmd {
                     last_synced_sha: None,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Plugin marketplace"))?;
         Ok(q::row_to_marketplace(&row))
     }
@@ -594,8 +589,7 @@ impl Command for DeletePluginMarketplace {
         let deleted = ctx
             .db
             .delete_plugin_marketplace(ctx.org_id(), row.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             Ok(serde_json::json!({ "deleted": true }))
         } else {
@@ -678,8 +672,7 @@ impl Command for SyncPluginMarketplace {
                     last_synced_sha: Some(resolved_sha),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Plugin marketplace"))?;
 
         Ok(q::row_to_marketplace(&updated))
@@ -735,11 +728,7 @@ impl Command for GetMarketplaceCatalog {
             .ok_or_else(|| CommandError::bad_request("Catalog is missing a 'plugins' array"))?;
 
         // Collect installed plugin names for the org to set the `installed` flag.
-        let installed_rows = ctx
-            .db
-            .list_plugin_installs(ctx.org_id(), None)
-            .await
-            .map_err(classify_anyhow)?;
+        let installed_rows = ctx.db.list_plugin_installs(ctx.org_id(), None).await?;
         let installed_names: std::collections::HashSet<_> =
             installed_rows.iter().map(|r| r.name.as_str()).collect();
 
@@ -818,8 +807,7 @@ impl Command for ListPlugins {
         let installs = ctx
             .db
             .list_plugin_installs(ctx.org_id(), self.search.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         // Batch load marketplace rows to compute `update_available`.
         let marketplace_ids: Vec<Uuid> = installs
@@ -831,12 +819,7 @@ impl Command for ListPlugins {
 
         let mut marketplaces = std::collections::HashMap::new();
         for mid in marketplace_ids {
-            if let Some(mkt) = ctx
-                .db
-                .get_plugin_marketplace(ctx.org_id(), mid)
-                .await
-                .map_err(classify_anyhow)?
-            {
+            if let Some(mkt) = ctx.db.get_plugin_marketplace(ctx.org_id(), mid).await? {
                 marketplaces.insert(mid, mkt);
             }
         }
@@ -890,10 +873,7 @@ impl Command for GetPlugin {
     async fn execute(self, ctx: &Ctx) -> Result<InstalledPlugin, CommandError> {
         let install = get_install_by_public_id(ctx, &self.id).await?;
         let mkt = if let Some(mid) = install.marketplace_id {
-            ctx.db
-                .get_plugin_marketplace(ctx.org_id(), mid)
-                .await
-                .map_err(classify_anyhow)?
+            ctx.db.get_plugin_marketplace(ctx.org_id(), mid).await?
         } else {
             None
         };
@@ -942,8 +922,7 @@ impl Command for InstallPluginCmd {
         let marketplace_row = ctx
             .db
             .get_plugin_marketplace_by_public_id(ctx.org_id(), &marketplace_public_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Plugin marketplace"))?;
 
         // Find the plugin entry in the catalog.
@@ -984,8 +963,7 @@ impl Command for InstallPluginCmd {
         if ctx
             .db
             .get_plugin_install_by_name(ctx.org_id(), &req.plugin_name)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .is_some()
         {
             return Err(CommandError::conflict(format!(
@@ -1071,8 +1049,7 @@ impl Command for InstallPluginCmd {
                     warnings: warnings_json,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(q::row_to_installed_plugin(
             &install_row,
@@ -1121,8 +1098,7 @@ impl Command for UninstallPlugin {
         let deleted = ctx
             .db
             .delete_plugin_install(ctx.org_id(), existing.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             super::oauth_anchor::delete_plugin_oauth_anchors(&ctx.db, ctx.org_id(), &existing.name)
                 .await
@@ -1180,8 +1156,7 @@ impl Command for UpdatePlugin {
         let marketplace_row = ctx
             .db
             .get_plugin_marketplace(ctx.org_id(), marketplace_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| {
                 CommandError::bad_request(
                     "Installed plugin's marketplace no longer exists. \
@@ -1286,8 +1261,7 @@ impl Command for UpdatePlugin {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Installed plugin"))?;
 
         Ok(q::row_to_installed_plugin(&updated, Some(&marketplace_row)))

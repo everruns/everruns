@@ -1,6 +1,7 @@
 //! A worker dies while its `reason` step is in flight: the task is reclaimed
 //! once its lease (the heartbeat) goes stale, a new worker runs it, and the
-//! turn completes with every message and step completion recorded once.
+//! turn completes with every message and step recorded once: started and
+//! completed alike.
 //!
 //! This is a crash at the turn level, above the durable crate's failpoints:
 //! worker A runs the turn's real steps through [`TurnTaskDriver`] until its
@@ -219,22 +220,20 @@ async fn crash_mid_reason<S: WorkflowEventStore + 'static>(shared: Arc<S>) {
         "each message completes once"
     );
 
-    // At least once for what a step announces before its model call: the
-    // dead attempt's `reason.started` and `output.message.started` were
-    // stored before it blocked, and the retry announces its own. The dead
-    // attempt's message never completes and nothing replaces it, so a
-    // consumer sees one orphaned started message per lost attempt. Pinned
-    // here so a change that dedupes or closes it updates this test on
-    // purpose. The worker stores these same events (write-behind, still
-    // before the provider call), so the platform behaves the same.
-    assert_eq!(count("reason.started"), 3, "{kinds:?}");
+    // Exactly once for what a step announces before its model call too. The
+    // dead attempt stored `reason.started` and `output.message.started`
+    // before it blocked; the retry finds that open stream in the runtime's
+    // event log (EVE-532), announces neither again, and completes the
+    // message under the dead attempt's id. `reason.recovered` is the only
+    // trace the lost attempt leaves.
+    assert_eq!(count("reason.started"), 2, "{kinds:?}");
+    assert_eq!(count("reason.recovered"), 1, "{kinds:?}");
     let started_ids = message_ids(&events, "output.message.started");
-    assert_eq!(started_ids.len(), 3, "{kinds:?}");
-    let orphans: Vec<&String> = started_ids
-        .iter()
-        .filter(|id| !completed_ids.contains(id))
-        .collect();
-    assert_eq!(orphans.len(), 1, "{started_ids:?} vs {completed_ids:?}");
+    assert_eq!(started_ids.len(), 2, "{kinds:?}");
+    assert_eq!(
+        started_ids, completed_ids,
+        "every started message completes, in order"
+    );
 }
 
 /// The `message_id` of every `kind` event (`output.message.*`), in order.

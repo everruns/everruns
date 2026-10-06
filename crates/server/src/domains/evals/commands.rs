@@ -262,8 +262,7 @@ impl Command for GetEval {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .get_by_public_id(&ctx.caller, &eval_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Eval"))
     }
 }
@@ -299,8 +298,7 @@ impl Command for UpdateEval {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .update(&ctx.caller, &eval_id.to_string(), self.req)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Eval"))
     }
 }
@@ -334,8 +332,7 @@ impl Command for DeleteEval {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let deleted = q::service(ctx)
             .delete(&ctx.caller, &eval_id.to_string())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             Ok(true)
         } else {
@@ -445,8 +442,7 @@ impl Command for GetEvalCase {
         let case_id = q::parse_case_id(&self.case_id)?;
         q::service(ctx)
             .get_case(&ctx.caller, &eval_id.to_string(), &case_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalCase"))
     }
 }
@@ -489,8 +485,7 @@ impl Command for UpdateEvalCase {
                 &case_id.to_string(),
                 self.req,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalCase"))
     }
 }
@@ -526,8 +521,7 @@ impl Command for DeleteEvalCase {
         let case_id = q::parse_case_id(&self.case_id)?;
         let deleted = q::service(ctx)
             .delete_case(&ctx.caller, &eval_id.to_string(), &case_id.to_string())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             Ok(true)
         } else {
@@ -637,8 +631,7 @@ impl Command for GetEvalRun {
         let run_id = q::parse_run_id(&self.run_id)?;
         q::service(ctx)
             .get_run(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalRun"))
     }
 }
@@ -674,8 +667,7 @@ impl Command for ExportEvalRunArtifacts {
         let run_id = q::parse_run_id(&self.run_id)?;
         let run = q::service(ctx)
             .get_run(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalRun"))?;
 
         let mut body = String::new();
@@ -737,8 +729,7 @@ impl Command for ExportEvalRunDataset {
                 &run_id.to_string(),
                 self.req,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalRun"))
     }
 }
@@ -782,8 +773,7 @@ impl Command for GetEvalRunDataset {
                 &run_id.to_string(),
                 &self.dataset_id,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalRunDataset"))
     }
 }
@@ -819,8 +809,7 @@ impl Command for CancelEvalRun {
         let run_id = q::parse_run_id(&self.run_id)?;
         q::service(ctx)
             .cancel_run(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalRun"))
     }
 }
@@ -892,8 +881,7 @@ impl Command for GetEvalRunShare {
         let run_id = q::parse_run_id(&self.run_id)?;
         let active = q::service(ctx)
             .run_has_active_share(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(EvalRunShareStatus { active })
     }
 }
@@ -975,8 +963,7 @@ impl Command for UpdateEvalResultScores {
                 &result_id.to_string(),
                 self.req,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("EvalCaseResult"))
     }
 }

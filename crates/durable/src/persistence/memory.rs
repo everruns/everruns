@@ -83,7 +83,7 @@ struct SnapshotMemState {
 pub struct InMemoryWorkflowEventStore {
     workflows: RwLock<HashMap<Uuid, WorkflowState>>,
     tasks: RwLock<TaskTable>,
-    dlq: RwLock<HashMap<Uuid, DlqEntry>>,
+    dlq: RwLock<HashMap<Uuid, (DlqEntry, crate::workflow::ActivityOptions)>>,
     circuit_breakers: RwLock<HashMap<String, CircuitBreakerMemState>>,
     workers: RwLock<HashMap<String, WorkerInfo>>,
     /// Snapshots keyed by workflow_id -> list of snapshots (sorted by sequence_num)

@@ -58,12 +58,21 @@ after the heartbeat goes stale. A second worker runs it as attempt 2 and the
 turn completes. It runs on the in-memory store and on PostgreSQL (the
 durable shard), with a 50 ms heartbeat and a 400 ms threshold.
 
-What it pins: messages, step completions and the turn's own events are
-recorded exactly once. The events a step stores before its model call
-(`reason.started`, `output.message.started`) are at least once: the dead
-attempt's stay, and its started message never completes, so a consumer sees
-one orphaned started message per lost attempt. The worker stores the same
-events before the provider call, so the platform behaves the same.
+What it pins: messages, step starts and completions and the turn's own
+events are recorded exactly once, and every `output.message.started` has its
+completion. The dead attempt stored `reason.started` and
+`output.message.started` before it blocked; the retry finds that open stream
+through the host's partial-stream store (EVE-532,
+[`partial_recovery.rs`](../../crates/core/src/engine/execution/reason/partial_recovery.rs)),
+announces neither again, and completes the message under the dead attempt's
+id, leaving `reason.recovered` as the only trace of the lost attempt. The
+in-process runtime answers that store from its own event log; the platform
+worker asks the control plane (`GetPartialStream`, answered by
+`PgPartialStreamStore` over the `events` table), and the server's in-process
+worker reads that table directly. The worker stores a phase's leading events
+write-behind, so the lookup sees only what the dead worker flushed: an
+attempt that died before its `output.message.started` landed is announced
+again, as are the steps of a worker on a control plane without the RPC.
 
 ### Scenario 2: Control Plane Restart
 

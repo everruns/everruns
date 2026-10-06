@@ -159,11 +159,7 @@ impl Command for CreateMcpServer {
             ),
         };
 
-        let row = ctx
-            .db
-            .create_mcp_server(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_mcp_server(ctx.org_id(), input).await?;
 
         Ok(q::row_to_mcp_server(&row))
     }
@@ -216,8 +212,7 @@ impl Command for ListMcpServers {
         let rows = ctx
             .db
             .list_mcp_servers(ctx.org_id(), self.search.as_deref(), self.include_archived)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         Ok(rows.iter().map(q::row_to_mcp_server).collect())
     }
@@ -277,8 +272,7 @@ impl Command for GetMcpServer {
             .map_err(|e| CommandError::bad_request(format!("Invalid MCP server ID: {e}")))?;
 
         q::get_by_id(&ctx.db, ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))
     }
 }
@@ -373,8 +367,7 @@ impl Command for UpdateMcpServerCmd {
 
         // Resolve existing row
         let existing_row = q::get_row(&ctx.db, ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
 
         if !matches!(existing_row.status.as_str(), "active" | "disabled") {
@@ -470,8 +463,7 @@ impl Command for UpdateMcpServerCmd {
         let row = ctx
             .db
             .update_mcp_server(ctx.org_id(), server_id.uuid(), input)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
 
         Ok(q::row_to_mcp_server(&row))
@@ -534,8 +526,7 @@ impl Command for DeleteMcpServer {
         let deleted = ctx
             .db
             .delete_mcp_server(ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if deleted {
             Ok(serde_json::json!({"deleted": true}))
@@ -599,8 +590,7 @@ impl Command for DestroyMcpServer {
             .map_err(|e| CommandError::bad_request(format!("Invalid MCP server ID: {e}")))?;
 
         let existing = q::get_row(&ctx.db, ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("MCP server"))?;
 
         if existing.status != "archived" {
@@ -612,8 +602,7 @@ impl Command for DestroyMcpServer {
         let destroyed = ctx
             .db
             .destroy_mcp_server(ctx.org_id(), server_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if destroyed {
             Ok(serde_json::json!({"destroyed": true}))
