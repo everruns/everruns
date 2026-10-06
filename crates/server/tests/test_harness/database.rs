@@ -98,22 +98,28 @@ impl Drop for IsolatedDatabase {
     fn drop(&mut self) {
         let name = std::mem::take(&mut self.name);
         // Drop runs inside the test's runtime, which cannot block on its own
-        // futures; a short-lived runtime on its own thread can.
-        let dropped = std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
+        // futures, so a short-lived runtime on its own thread drops the
+        // database. Never join it: the pool may have a connection half way
+        // through authentication on the test's runtime, and DROP DATABASE
+        // waits for that backend until the runtime closes its socket (or
+        // authentication_timeout, 60s, passes).
+        std::thread::spawn(move || {
+            let dropped = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
-                .build()?;
-            runtime.block_on(async {
-                everruns_pg_embedded::EmbeddedPostgres::shared()
-                    .await?
-                    .drop_database(&name)
-                    .await
-            })
-        })
-        .join();
-        if let Ok(Err(error)) = dropped {
-            eprintln!("could not drop test database: {error:#}");
-        }
+                .build()
+                .map_err(anyhow::Error::from)
+                .and_then(|runtime| {
+                    runtime.block_on(async {
+                        everruns_pg_embedded::EmbeddedPostgres::shared()
+                            .await?
+                            .drop_database(&name)
+                            .await
+                    })
+                });
+            if let Err(error) = dropped {
+                eprintln!("could not drop test database: {error:#}");
+            }
+        });
     }
 }
 
