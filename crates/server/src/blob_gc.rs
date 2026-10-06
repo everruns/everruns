@@ -25,6 +25,7 @@
 // key prefixes (`workspaces/` for files, `images/` for images) that encode the
 // tenant partition, and caps deletions per run to bound work.
 
+use crate::cluster_jobs::ClusterJob;
 use crate::storage::StorageBackend;
 use crate::storage::blob_store::{BlobObject, SharedBlobStore};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -32,7 +33,6 @@ use sqlx::PgPool;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 /// Default interval between GC sweeps (6 hours). Orphans are harmless besides
@@ -315,25 +315,31 @@ async fn sweep_with_live_keys(
     Ok((total_deleted, total_bytes))
 }
 
-/// Spawn the periodic blob GC background task.
+/// Durable schedule name of the blob GC sweep.
+pub const BLOB_GC_SCHEDULE: &str = "blob-gc";
+/// Activity type the blob GC schedule enqueues.
+pub const BLOB_GC_ACTIVITY: &str = "blob_gc";
+
+/// The periodic blob GC sweep as a cluster-once job (`cluster_jobs.rs`).
 ///
-/// No-ops (and logs) when there is no object-storage backend — i.e. the
-/// in-memory dev backend or a PostgreSQL deployment running the default inline
-/// (`db`) storage. Those backends keep bytes inline in PostgreSQL and have no
+/// Disabled when there is no object-storage backend, i.e. the in-memory dev
+/// backend or a PostgreSQL deployment running the default inline (`db`)
+/// storage. Those backends keep bytes inline in PostgreSQL and have no
 /// external objects, so there is nothing to garbage-collect.
-pub fn spawn_blob_gc_task(db: Arc<StorageBackend>, config: BlobGcConfig) -> Option<JoinHandle<()>> {
+pub fn blob_gc_job(db: Arc<StorageBackend>, config: BlobGcConfig) -> ClusterJob {
+    let disabled = ClusterJob::disabled(BLOB_GC_SCHEDULE, BLOB_GC_ACTIVITY);
     let Some(blob_store) = db.blob_store() else {
         debug!("Blob GC disabled: no object-storage backend (inline/db storage has no orphans)");
-        return None;
+        return disabled;
     };
     let Some(pool) = db.pool().cloned() else {
         // Object-storage is only wired on the PostgreSQL backend; defensive.
         debug!("Blob GC disabled: no PostgreSQL pool");
-        return None;
+        return disabled;
     };
     if !config.enabled() {
         info!("Blob GC disabled (STORAGE_BLOB_GC_INTERVAL_SECONDS=0)");
-        return None;
+        return disabled;
     }
 
     info!(
@@ -341,27 +347,29 @@ pub fn spawn_blob_gc_task(db: Arc<StorageBackend>, config: BlobGcConfig) -> Opti
         interval_secs = config.interval.as_secs(),
         grace_secs = config.grace.num_seconds(),
         max_deletes_per_run = config.max_deletes_per_run,
-        "Starting object-storage blob GC background task"
+        "Scheduling object-storage blob GC"
     );
-
-    Some(tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(config.interval);
-        ticker.tick().await; // skip the immediate first tick
-
-        loop {
-            ticker.tick().await;
-            match run_blob_gc(&pool, &blob_store, &config).await {
-                Ok((deleted, bytes)) => {
-                    if deleted > 0 {
-                        info!(deleted, bytes, "Blob GC sweep completed");
+    let period = config.interval;
+    let config = Arc::new(config);
+    ClusterJob::every(
+        BLOB_GC_SCHEDULE,
+        BLOB_GC_ACTIVITY,
+        "Deletes object-storage blobs with no live pointer, past the grace period.",
+        period,
+        move || {
+            let (pool, blob_store, config) = (pool.clone(), blob_store.clone(), config.clone());
+            Box::pin(async move {
+                match run_blob_gc(&pool, &blob_store, &config).await {
+                    Ok((deleted, bytes)) => {
+                        if deleted > 0 {
+                            info!(deleted, bytes, "Blob GC sweep completed");
+                        }
                     }
+                    Err(e) => error!(error = %e, "Blob GC sweep failed"),
                 }
-                Err(e) => {
-                    error!(error = %e, "Blob GC sweep failed");
-                }
-            }
-        }
-    }))
+            })
+        },
+    )
 }
 
 #[cfg(test)]

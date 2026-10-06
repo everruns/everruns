@@ -1,7 +1,8 @@
 //! Worker pool for task execution
 //!
-//! **Experimental** (`workflows` feature): the API may change in any release.
-//! Everruns' own workers claim tasks through their own loop, not this pool.
+//! Part of the core, outside the `workflows` feature. The Everruns server runs
+//! its cluster-once maintenance jobs on this pool; agent turns are claimed by
+//! the Everruns worker's own loop instead.
 //!
 //! This module provides:
 //! - [`WorkerPool`] - Main worker pool with concurrent task execution

@@ -44,7 +44,7 @@ pub struct WorkerPoolConfig {
     #[serde(with = "duration_millis")]
     pub heartbeat_interval: Duration,
 
-    /// Stale task reclamation interval
+    /// Stale task reclamation interval. Zero disables the pool's reclaim loop.
     #[serde(with = "duration_millis")]
     pub stale_reclaim_interval: Duration,
 
@@ -91,6 +91,17 @@ impl WorkerPoolConfig {
     /// Set the worker ID
     pub fn with_worker_id(mut self, id: impl Into<String>) -> Self {
         self.worker_id = id.into();
+        self
+    }
+
+    /// Do not run the pool's own stale-task reclaim loop.
+    ///
+    /// For a host that already runs one [`StaleTaskReaper`](crate::StaleTaskReaper)
+    /// with its own [`ReapHandler`](crate::ReapHandler): a second reaper
+    /// without that handler could settle a dead task first, and the host
+    /// would never hear about it.
+    pub fn without_stale_reclaim(mut self) -> Self {
+        self.stale_reclaim_interval = Duration::ZERO;
         self
     }
 
@@ -196,7 +207,7 @@ pub type ActivityHandler = Arc<
 /// bounded concurrency, heartbeats its tasks, reclaims stale work and stops
 /// claiming under backpressure. It completes or fails tasks in the store; it
 /// does not advance workflows, so a workflow-driven deployment reports
-/// completions to [`WorkflowExecutor`](crate::WorkflowExecutor) separately.
+/// completions to the workflow executor (`workflows` feature) separately.
 ///
 /// # Example
 ///
@@ -344,7 +355,9 @@ impl WorkerPool {
         }
         self.start_poll_loop();
         self.start_heartbeat_loop();
-        self.start_reclaim_loop();
+        if !self.config.stale_reclaim_interval.is_zero() {
+            self.start_reclaim_loop();
+        }
 
         Ok(())
     }
@@ -544,18 +557,21 @@ impl WorkerPool {
                             let store = Arc::clone(&store);
                             let bp = Arc::clone(&backpressure);
                             let worker_id = config.worker_id.clone();
+                            let heartbeat_interval = config.heartbeat_interval;
 
                             tokio::spawn(async move {
                                 let task_id = task.id;
                                 // Run the handler in its own task so a panic fails the
                                 // attempt instead of skipping the report and leaking the
                                 // backpressure slot.
-                                let result = match tokio::spawn(handler(task)).await {
-                                    Ok(result) => result,
-                                    Err(join_error) => {
-                                        Err(format!("activity handler panicked: {join_error}"))
-                                    }
-                                };
+                                let result = run_with_task_heartbeat(
+                                    store.as_ref(),
+                                    task_id,
+                                    &worker_id,
+                                    heartbeat_interval,
+                                    tokio::spawn(handler(task)),
+                                )
+                                .await;
 
                                 // Report result
                                 match result {
@@ -703,95 +719,20 @@ impl WorkerPool {
             loop {
                 tokio::select! {
                     _ = ticker.tick() => {
-                        match store.reclaim_stale_tasks(threshold).await {
-                            Ok(result) => {
-                                if !result.reclaimed_ids.is_empty() {
-                                    info!(count = result.reclaimed_ids.len(), "Reclaimed stale tasks");
-                                }
-
-                                // Notify workflows about dead tasks so they can transition
-                                // to failed instead of staying stuck in running forever.
-                                for dead in &result.dead_tasks {
-                                    let error_msg = dead.last_error.clone().unwrap_or_else(|| {
-                                        "Worker became unresponsive after exhausting all retry attempts".to_string()
-                                    });
-                                    info!(
-                                        task_id = %dead.task_id,
-                                        workflow_id = ?dead.workflow_id,
-                                        activity_id = %dead.activity_id,
-                                        "Notifying workflow of dead task"
-                                    );
-                                    crate::task_events::record_activity_failed(
-                                        store.as_ref(),
-                                        dead.workflow_id,
-                                        dead.activity_id.clone(),
-                                        error_msg.clone(),
-                                        false, // will_retry = false, all attempts exhausted
-                                    )
-                                    .await;
-                                    if let Some(workflow_id) = dead.workflow_id
-                                        && store
-                                            .try_fail_workflow(
-                                                workflow_id,
-                                                crate::WorkflowError::new(error_msg.clone()),
-                                            )
-                                            .await
-                                            .unwrap_or(false)
-                                    {
-                                        crate::task_events::record_workflow_failed(
-                                            store.as_ref(),
-                                            workflow_id,
-                                            error_msg,
-                                        )
-                                        .await;
-                                    }
-                                }
-
-                                // Sealed tasks (no-progress guard, EVE-534): the task was
-                                // marked dead -> DLQ for making no progress across N
-                                // recoveries. Record a non-retryable ActivityFailed and mark
-                                // the workflow terminal so no further activities are
-                                // scheduled. Anything domain-specific a seal means is up to
-                                // the application consuming `ReclaimResult::sealed_tasks`.
-                                for sealed in &result.sealed_tasks {
-                                    info!(
-                                        task_id = %sealed.task_id,
-                                        workflow_id = ?sealed.workflow_id,
-                                        reason = %sealed.reason,
-                                        no_progress_count = sealed.no_progress_count,
-                                        "Sealing non-progressing task"
-                                    );
-                                    let error_msg = format!(
-                                        "task sealed: no_progress ({} recoveries)",
-                                        sealed.no_progress_count
-                                    );
-                                    crate::task_events::record_activity_failed(
-                                        store.as_ref(),
-                                        sealed.workflow_id,
-                                        sealed.activity_id.clone(),
-                                        error_msg.clone(),
-                                        false,
-                                    )
-                                    .await;
-                                    if let Some(wf_id) = sealed.workflow_id {
-                                        let _ = store
-                                            .update_workflow_status(
-                                                wf_id,
-                                                crate::WorkflowStatus::Failed,
-                                                None,
-                                                Some(crate::WorkflowError::new(error_msg)),
-                                            )
-                                            .await;
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                crate::persistence::log_database_failure(
-                                    "durable.worker.reclaim_stale",
-                                    "stale task reclamation failed",
-                                    &e.to_string(),
-                                );
-                            }
+                        // Dead and sealed tasks are settled by the shared reaper;
+                        // a seal means nothing more to a bare pool.
+                        if let Err(e) = crate::maintenance::reap_stale_tasks(
+                            store.as_ref(),
+                            threshold,
+                            &crate::maintenance::NoopReapHandler,
+                        )
+                        .await
+                        {
+                            crate::persistence::log_database_failure(
+                                "durable.worker.reclaim_stale",
+                                "stale task reclamation failed",
+                                &e.to_string(),
+                            );
                         }
                     }
                     _ = shutdown_rx.changed() => {
@@ -805,6 +746,33 @@ impl WorkerPool {
         });
 
         *self.reclaim_handle.lock().unwrap() = Some(handle);
+    }
+}
+
+/// Await an activity handler, heartbeating its task every `interval` so a
+/// long-running activity is not reclaimed as stale while it still runs.
+async fn run_with_task_heartbeat(
+    store: &dyn WorkflowEventStore,
+    task_id: Uuid,
+    worker_id: &str,
+    interval: Duration,
+    mut handler: JoinHandle<ActivityResult>,
+) -> ActivityResult {
+    let mut ticker = tokio::time::interval(interval.max(Duration::from_millis(10)));
+    ticker.tick().await; // the claim itself just stamped the heartbeat
+    loop {
+        tokio::select! {
+            joined = &mut handler => {
+                return joined.unwrap_or_else(|join_error| {
+                    Err(format!("activity handler panicked: {join_error}"))
+                });
+            }
+            _ = ticker.tick() => {
+                if let Err(e) = store.heartbeat_task(task_id, worker_id, None).await {
+                    debug!(%task_id, "Task heartbeat failed: {}", e);
+                }
+            }
+        }
     }
 }
 
@@ -906,7 +874,9 @@ mod tests {
         assert_eq!(fair_share_claim_limit(1, 100, 10), 1);
     }
 
-    use crate::persistence::{InMemoryWorkflowEventStore, TaskDefinition, TaskStatus};
+    use crate::persistence::{
+        InMemoryWorkflowEventStore, TaskDefinition, TaskStatus, WorkerInfo, WorkerRegistry,
+    };
     use crate::reliability::RetryPolicy;
     use crate::workflow::ActivityOptions;
 
@@ -977,6 +947,53 @@ mod tests {
         assert_eq!(pool.status(), WorkerPoolStatus::Stopped);
         assert!(!pool.is_accepting());
         // Shutting down a stopped pool is a no-op.
+        pool.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pool_heartbeats_a_long_task_so_it_is_not_reclaimed() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let mut config = fast_config(&["slow"]).with_heartbeat_interval(Duration::from_millis(20));
+        config.stale_threshold = Duration::from_millis(100);
+        config.stale_reclaim_interval = Duration::from_millis(20);
+        let pool = WorkerPool::new(store.clone(), config);
+        pool.register_handler("slow", |_task| async move {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            Ok(serde_json::json!("done"))
+        });
+        pool.start().await.unwrap();
+
+        let task_id = enqueue(&store, "slow").await;
+        let info = wait_for_status(&store, task_id, TaskStatus::Completed).await;
+        assert_eq!(info.attempt, 1, "the running task must not be reclaimed");
+
+        pool.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pool_without_stale_reclaim_leaves_stale_tasks_alone() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        store
+            .register_worker(WorkerInfo::new("crashed", ["work"]))
+            .await
+            .unwrap();
+        let task_id = enqueue(&store, "work").await;
+        store
+            .claim_task("crashed", &["work".to_string()], 1)
+            .await
+            .unwrap();
+
+        let mut config = fast_config(&["other"]).without_stale_reclaim();
+        config.stale_threshold = Duration::ZERO;
+        let pool = WorkerPool::new(store.clone(), config);
+        pool.start().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert_eq!(
+            store.get_task(task_id).await.unwrap().status,
+            TaskStatus::Claimed,
+            "another reaper owns stale tasks"
+        );
         pool.shutdown().await.unwrap();
     }
 

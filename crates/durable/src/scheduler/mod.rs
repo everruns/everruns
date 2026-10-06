@@ -8,6 +8,14 @@
 //! - Max concurrent execution limits
 //! - Catch-up execution for missed triggers
 //! - Heartbeat-based instance registration
+//! - Cron (`0 * * * * * *`) and fixed-interval (`@every 60s`) cadences
+//! - Declarative bootstrap of named schedules ([`ensure_schedule`])
+
+mod ensure;
+
+pub use ensure::{
+    Cadence, EnsureOutcome, ScheduleSpec, disable_schedule, ensure_schedule, find_schedule,
+};
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -386,27 +394,14 @@ impl DurableScheduler {
         Ok(())
     }
 
-    /// Calculate next trigger time based on cron expression
+    /// Calculate the next trigger time from the schedule's cadence (a cron
+    /// expression or `@every <secs>s`). Times are UTC; `timezone` is not
+    /// applied.
     fn calculate_next_trigger(
         &self,
         schedule: &ScheduleRow,
     ) -> Result<DateTime<Utc>, SchedulerError> {
-        use cron::Schedule;
-        use std::str::FromStr;
-
-        let cron_schedule = Schedule::from_str(&schedule.cron_expression)
-            .map_err(|e| SchedulerError::CronError(e.to_string()))?;
-
-        // Get next occurrence after now
-        let next = cron_schedule
-            .upcoming(chrono::Utc)
-            .next()
-            .ok_or_else(|| SchedulerError::CronError("no upcoming occurrence".to_string()))?;
-
-        // Note: For simplicity, we're using UTC times here
-        // Full timezone support would require chrono-tz
-
-        Ok(next)
+        ensure::next_after(&schedule.cron_expression, Utc::now())
     }
 
     /// Send heartbeat to register this instance is alive
@@ -628,6 +623,47 @@ mod tests {
 
         let next = scheduler.calculate_next_trigger(&schedule).unwrap();
         assert!(next > Utc::now());
+    }
+
+    #[tokio::test]
+    async fn test_interval_schedule_fires_and_reschedules_by_period() {
+        let store = Arc::new(InMemoryWorkflowEventStore::new());
+        let schedule_id = store
+            .create_schedule(CreateScheduleRow {
+                name: "every-ten-minutes".to_string(),
+                description: None,
+                cron_expression: "@every 600s".to_string(),
+                timezone: "UTC".to_string(),
+                target_type: ScheduleTargetType::Activity,
+                target_name: "sweep".to_string(),
+                target_input: serde_json::json!({}),
+                enabled: true,
+                max_concurrent: None,
+                catch_up_missed: false,
+                max_catch_up: None,
+                retry_policy: None,
+                next_trigger_at: Some(Utc::now() - chrono::Duration::seconds(1)),
+            })
+            .await
+            .unwrap();
+        let scheduler = DurableScheduler::with_defaults(
+            Arc::clone(&store) as Arc<dyn WorkflowEventStore>,
+            "test-interval".to_string(),
+        );
+
+        let before = Utc::now();
+        scheduler.process_due_schedules().await.unwrap();
+
+        let stats = store.get_schedule_stats(schedule_id).await.unwrap();
+        assert_eq!(stats.total_executions, 1);
+        let next = store
+            .get_schedule(schedule_id)
+            .await
+            .unwrap()
+            .next_trigger_at
+            .unwrap();
+        assert!(next >= before + chrono::Duration::seconds(600));
+        assert!(next <= Utc::now() + chrono::Duration::seconds(600));
     }
 
     #[tokio::test]

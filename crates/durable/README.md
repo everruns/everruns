@@ -49,11 +49,11 @@ scheduling; turn semantics, signal payloads and what a sealed task means to a
 session live in `everruns-durable-engine` and the Everruns server.
 
 The general-purpose workflow engine (`WorkflowExecutor` over the
-`Workflow` trait, plus `WorkerPool`) is the other half of the crate:
+`Workflow` trait) is the other half of the crate:
 deterministic state machines replayed from an event log. It is experimental
 and sits behind the default `workflows` feature. Everruns itself builds the
 crate with `default-features = false`, so its services compile only the store,
-queue, reliability and scheduler core. The example below uses the engine, and
+queue, reliability, scheduler and worker pool core. The example below uses the engine, and
 [`examples/order_pipeline.rs`](examples/order_pipeline.rs) is a runnable order
 pipeline (three activities, one retried) on the in-memory store:
 
@@ -336,7 +336,7 @@ and `--summary <file>` appends one JSON line per scenario.
 
 | Flag | Effect |
 | --- | --- |
-| `workflows` | Default. The experimental workflow engine: `Workflow`, `Activity`, `WorkflowExecutor` (timers, child workflows, system tasks), `WorkerPool`, `TimeoutManager`. |
+| `workflows` | Default. The experimental workflow engine: `Workflow`, `Activity`, `WorkflowExecutor` (timers, child workflows, system tasks), `TimeoutManager`. |
 | `sqlite` | The `sqlite` module, a small rusqlite wrapper for local hosts. |
 | `postgres-tests` | Compiles the tests that need a live PostgreSQL. |
 | `failpoints` | Enables `fail-rs` failpoints in the PostgreSQL store. Zero cost when off. |

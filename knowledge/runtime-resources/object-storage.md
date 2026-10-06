@@ -176,9 +176,10 @@ are never *served*, reads always go through the sidecar pointer rows, but they
 accumulate as storage cost. A periodic GC sweep reconciles bucket contents
 against the live pointers and reclaims orphans.
 
-**Sweep.** A background task (`crates/server/src/blob_gc.rs`, spawned from
-`app_builder.rs` next to event retention) runs every
-`STORAGE_BLOB_GC_INTERVAL_SECONDS` (default 6h). Each pass:
+**Sweep.** A cluster-once job (`crates/server/src/blob_gc.rs`, on a durable
+`blob-gc` schedule, see [Scheduled Tasks](../operations/scheduled-tasks.md#cluster-once-maintenance-jobs))
+runs once per cluster every `STORAGE_BLOB_GC_INTERVAL_SECONDS` (default 6h).
+Each pass:
 
 1. Enumerates **all live keys** from `workspace_file_blobs.blob_key` and
    `image_blobs.{data_key, thumbnail_key}` into a set. If this query fails, the
@@ -297,7 +298,7 @@ assertions** run against both backends:
   job is gated on a narrow `object_storage` path filter so it only runs when the
   offload code, its sidecar migration, or its harness changes.
 
-The live-pointer enumeration query and the full GC `spawn_blob_gc_task` path
+The live-pointer enumeration query and the full GC `run_blob_gc` path
 require PostgreSQL and are not unit-tested without a database, consistent with
 the rest of the storage layer; end-to-end offload + GC against SeaweedFS remains
 available for local smoke testing (see *Local development*).

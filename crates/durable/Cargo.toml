@@ -82,10 +82,10 @@ tracing-subscriber.workspace = true
 # everruns-durable` gets the whole engine the README and crate docs describe.
 # Everruns' own crates drive the task queue directly and never run it, so the
 # workspace dependency sets `default-features = false` and they compile only the
-# store, queue, reliability and scheduler core.
+# store, queue, reliability, scheduler and worker pool core.
 default = ["workflows"]
 # Experimental: the `Workflow`/`Activity` traits, `WorkflowExecutor` (timers,
-# child workflows, system tasks), `WorkerPool` and `TimeoutManager`. Exercised
+# child workflows, system tasks) and `TimeoutManager`. Exercised
 # by this crate's tests, benches and `examples/order_pipeline.rs`; no Everruns
 # production path uses it.
 workflows = []

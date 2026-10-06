@@ -78,6 +78,12 @@ and evaluates the 7-field form (`sec min hour day month weekday year`), so
 5-field input is normalized by prefixing seconds (`0`) and suffixing year (`*`).
 Examples: `0 * * * * * *` (every minute), `0 */30 * * * * *` (every 30 minutes).
 
+A schedule can instead carry a fixed period, `@every <secs>s` (`Cadence::Every`).
+Each trigger is one period after the previous trigger was handled, so a period
+that cron cannot express (90 s, 7 h) keeps its exact length. The scheduler
+evaluates both forms; the platform API still accepts only cron, so periods are
+for schedules the server declares itself.
+
 ## Timezone Semantics
 
 - `schedule.timezone` is authoritative for cron interpretation.
@@ -118,6 +124,35 @@ For the complete request/response schemas (`CreateScheduleRequest`, `ScheduleTar
 The `DurableScheduler` component polls for due schedules on a configurable interval. For each due schedule it: checks `max_concurrent`, creates an execution record, triggers the target (workflow or activity), and updates the execution status. See `crates/durable/src/scheduler/mod.rs` for implementation.
 
 App-owned schedule bindings still execute through the same scheduler machinery, but the app-specific activity contract is specified in [app-invocation-channels.md](../integrations/app-invocation-channels.md).
+
+### System Schedules
+
+Server-owned jobs are declared, not hand-bootstrapped: each is a `ScheduleSpec`
+that `everruns_durable::ensure_schedule` makes true on every start (create when
+missing, reset when drifted, leave alone when matching so `next_trigger_at`
+survives restarts; a replica that loses the unique-name race reports
+`AlreadyExists`). `disable_schedule` turns one off when configuration disables
+its job. The worker-run specs (leased-resource cleanup, session-task reaper)
+live in `crates/server/src/system_schedules.rs`.
+
+### Cluster-Once Maintenance Jobs
+
+Blob GC, event retention, Sandbox history retention, Memory source sync and
+Knowledge index sync used to be a `tokio::interval` on every replica, so N replicas ran each N times per
+interval. Each is now a `ClusterJob` (`crates/server/src/cluster_jobs.rs`) on an
+`@every` schedule at its configured interval (`STORAGE_BLOB_GC_INTERVAL_SECONDS`,
+hourly for both retentions, `VOLUME_SOURCE_SYNC_INTERVAL_SECS`,
+`KNOWLEDGE_INDEX_SYNC_INTERVAL_SECS`). The scheduler fires it once per cluster;
+each replica runs a small `WorkerPool` that serves only these activity types,
+and one replica claims the task. They run in the server, not on workers,
+because they need the database pools, object store, connection resolver,
+embeddings and vector store. The env switches still disable each job, and a
+disabled job's schedule is disabled. A job logs its own failure and completes,
+so a failed run waits for the next trigger, as before; a replica that dies
+mid-run leaves a stale claim for the reaper to hand to another replica.
+Behaviour notes: the first run is one interval after the schedule is created
+(the interval loops of the syncs fired at start-up), and a source sync claims
+one row per run cluster-wide rather than one per replica per tick.
 
 ### Multi-Instance Safety
 

@@ -25,12 +25,11 @@
 //!   engine. `Workflow` is a deterministic state machine whose handlers
 //!   return `WorkflowAction`s; `WorkflowExecutor` starts workflows, appends
 //!   [`WorkflowEvent`]s, replays them after a crash, and runs timers and child
-//!   workflows as system tasks. `WorkerPool` runs `Activity` handlers with
-//!   bounded concurrency, heartbeats and backpressure. The API may change in
+//!   workflows as system tasks. The API may change in
 //!   any release; Everruns itself does not run it in production, so it is
 //!   proven by this crate's tests, benches and `examples/order_pipeline.rs`.
 //!   Turn it off with `default-features = false` to compile only the store,
-//!   queue, reliability and scheduler core.
+//!   queue, reliability, scheduler and worker pool core.
 //! - `sqlite`: the `sqlite` module, a small rusqlite wrapper for local hosts.
 //!
 //! # Example
@@ -66,6 +65,7 @@ struct ReadmeDoctests;
 pub mod activity;
 #[cfg(feature = "workflows")]
 pub mod engine;
+pub mod maintenance;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
@@ -73,11 +73,9 @@ pub mod scheduler;
 pub mod sqlite;
 // `/proc` readings for the worker pool's backpressure and the bench reports.
 // Not part of the API.
-#[cfg(feature = "workflows")]
 pub(crate) mod sysstat;
 pub mod task_events;
 pub mod update_field;
-#[cfg(feature = "workflows")]
 pub mod worker;
 pub mod workflow;
 
@@ -108,7 +106,6 @@ pub mod prelude {
     };
     pub use crate::reliability::{CircuitBreakerConfig, RetryPolicy};
     pub use crate::scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
-    #[cfg(feature = "workflows")]
     pub use crate::worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
     pub use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
     #[cfg(feature = "workflows")]
@@ -126,6 +123,9 @@ pub use activity::{Activity, ActivityContext};
 pub use engine::{
     ExecutorConfig, ExecutorError, SYSTEM_ACTIVITY_TYPES, WorkflowExecutor, WorkflowRegistry,
 };
+pub use maintenance::{
+    NoopReapHandler, ReapHandler, ReaperConfig, StaleTaskReaper, reap_stale_tasks,
+};
 pub use persistence::{
     CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
     DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HeartbeatResponse,
@@ -140,9 +140,11 @@ pub use persistence::{
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
 };
-pub use scheduler::{DurableScheduler, SchedulerConfig, SchedulerError};
+pub use scheduler::{
+    Cadence, DurableScheduler, EnsureOutcome, ScheduleSpec, SchedulerConfig, SchedulerError,
+    disable_schedule, ensure_schedule, find_schedule,
+};
 pub use update_field::UpdateField;
-#[cfg(feature = "workflows")]
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal, signal_types};
 #[cfg(feature = "workflows")]

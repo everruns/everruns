@@ -23,9 +23,9 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use tokio::task;
-use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+use crate::cluster_jobs::ClusterJob;
 use crate::domains::git_fetch::{self, FetchRequest};
 use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::services::ProviderResolverService;
@@ -480,63 +480,78 @@ struct PreparedSync {
     vector_dim: Option<i32>,
 }
 
-pub fn spawn_knowledge_index_sync_task(
+/// Durable schedule name of the Knowledge index sync.
+pub const KNOWLEDGE_INDEX_SYNC_SCHEDULE: &str = "knowledge-index-sync";
+/// Activity type the Knowledge index sync schedule enqueues.
+pub const KNOWLEDGE_INDEX_SYNC_ACTIVITY: &str = "knowledge_index_sync";
+
+/// Knowledge index sync as a cluster-once job (`cluster_jobs.rs`): each run
+/// claims and syncs one pending index, as each interval tick did.
+pub fn knowledge_index_sync_job(
     db: Arc<StorageBackend>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     provider_resolver: Arc<ProviderResolverService>,
     driver_registry: Arc<DriverRegistry>,
     vector_store: Arc<dyn VectorStore>,
-) -> Option<JoinHandle<()>> {
+) -> ClusterJob {
+    let disabled =
+        ClusterJob::disabled(KNOWLEDGE_INDEX_SYNC_SCHEDULE, KNOWLEDGE_INDEX_SYNC_ACTIVITY);
     if !env_bool("KNOWLEDGE_INDEX_SYNC_ENABLED", true) {
         tracing::info!("Knowledge index sync background task disabled");
-        return None;
+        return disabled;
     }
 
     let config = KnowledgeIndexSyncConfig::from_env();
     if config.poll_interval.is_zero() {
         tracing::info!("Knowledge index sync background task disabled by zero interval");
-        return None;
+        return disabled;
     }
+    tracing::info!(
+        interval_secs = config.poll_interval.as_secs(),
+        "Scheduling knowledge index sync"
+    );
 
+    let period = config.poll_interval;
     let service = KnowledgeIndexSyncService::new(
         db,
         connection_resolver,
         provider_resolver,
         driver_registry,
         vector_store,
-        config.clone(),
+        config,
     );
-    Some(tokio::spawn(async move {
-        let mut interval = tokio::time::interval(config.poll_interval);
-        tracing::info!(
-            interval_secs = config.poll_interval.as_secs(),
-            "Started knowledge index sync background task"
-        );
-        loop {
-            interval.tick().await;
-            match service.run_once().await {
-                Ok(Some(KnowledgeIndexSyncOutcome::Synced {
-                    index_id,
-                    document_count,
-                    chunk_count,
-                })) => {
-                    tracing::info!(
-                        %index_id,
+    ClusterJob::every(
+        KNOWLEDGE_INDEX_SYNC_SCHEDULE,
+        KNOWLEDGE_INDEX_SYNC_ACTIVITY,
+        "Syncs the next pending Knowledge index.",
+        period,
+        move || {
+            let service = service.clone();
+            Box::pin(async move {
+                match service.run_once().await {
+                    Ok(Some(KnowledgeIndexSyncOutcome::Synced {
+                        index_id,
                         document_count,
                         chunk_count,
-                        "Knowledge index sync completed"
-                    );
+                    })) => {
+                        tracing::info!(
+                            %index_id,
+                            document_count,
+                            chunk_count,
+                            "Knowledge index sync completed"
+                        );
+                    }
+                    Ok(Some(KnowledgeIndexSyncOutcome::Failed { index_id, error })) => {
+                        tracing::warn!(%index_id, %error, "Knowledge index sync failed");
+                    }
+                    Ok(None) => {}
+                    Err(error) => {
+                        tracing::error!(%error, "Knowledge index sync task failed");
+                    }
                 }
-                Ok(Some(KnowledgeIndexSyncOutcome::Failed { index_id, error })) => {
-                    tracing::warn!(%index_id, %error, "Knowledge index sync failed");
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    tracing::error!(%error, "Knowledge index sync task failed");
-                }
-            }
-        }
-    }))
+            })
+        },
+    )
 }
 
 // ============================================================================

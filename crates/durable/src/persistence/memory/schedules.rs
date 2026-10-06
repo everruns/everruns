@@ -31,6 +31,14 @@ impl Schedules for InMemoryWorkflowEventStore {
         };
 
         let mut schedules = self.schedules.write();
+        // Names are unique, as in PostgreSQL (`durable_schedules.name UNIQUE`);
+        // the error mirrors its unique-violation message.
+        if schedules.values().any(|s| s.row.name == row.name) {
+            return Err(StoreError::Database(format!(
+                "duplicate key value violates unique constraint: schedule name '{}'",
+                row.name
+            )));
+        }
         schedules.insert(id, ScheduleMemState { row });
         Ok(id)
     }

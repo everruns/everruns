@@ -3,9 +3,9 @@
 // Decision: Uses session variable app.archival_bypass to bypass append-only trigger
 // Decision: Processes in batches to avoid long-running transactions
 
+use crate::cluster_jobs::ClusterJob;
 use sqlx::PgPool;
 use std::time::Duration;
-use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 /// Default retention period in days (0 = disabled)
@@ -22,44 +22,42 @@ pub fn retention_days_from_env() -> u64 {
         .unwrap_or(DEFAULT_RETENTION_DAYS)
 }
 
-/// Spawn the event retention background task.
-/// Runs every hour and archives events older than the configured retention period.
-pub fn spawn_retention_task(pool: PgPool, retention_days: u64) -> Option<JoinHandle<()>> {
+/// Durable schedule name of the event retention job.
+pub const EVENT_RETENTION_SCHEDULE: &str = "event-retention";
+/// Activity type the event retention schedule enqueues.
+pub const EVENT_RETENTION_ACTIVITY: &str = "event_retention";
+
+/// Event retention as a cluster-once job (`cluster_jobs.rs`): every hour,
+/// archive events older than the configured retention period. Disabled
+/// without a PostgreSQL pool or with a retention of 0 days.
+pub fn retention_job(pool: Option<PgPool>, retention_days: u64) -> ClusterJob {
+    let disabled = ClusterJob::disabled(EVENT_RETENTION_SCHEDULE, EVENT_RETENTION_ACTIVITY);
     if retention_days == 0 {
         info!("Event retention disabled (EVENT_RETENTION_DAYS=0 or unset)");
-        return None;
+        return disabled;
     }
-
-    info!(
-        retention_days = retention_days,
-        "Starting event retention background task"
-    );
-
-    Some(tokio::spawn(async move {
-        let interval = Duration::from_secs(3600); // 1 hour
-        let mut ticker = tokio::time::interval(interval);
-        ticker.tick().await; // skip first immediate tick
-
-        loop {
-            ticker.tick().await;
-            match archive_old_events(&pool, retention_days).await {
-                Ok(count) => {
-                    if count > 0 {
-                        info!(
-                            archived = count,
-                            retention_days = retention_days,
-                            "Archived old events"
-                        );
-                    } else {
-                        debug!("No events to archive");
+    let Some(pool) = pool else {
+        return disabled;
+    };
+    info!(retention_days, "Scheduling event retention");
+    ClusterJob::every(
+        EVENT_RETENTION_SCHEDULE,
+        EVENT_RETENTION_ACTIVITY,
+        "Archives session events older than EVENT_RETENTION_DAYS.",
+        Duration::from_secs(3600),
+        move || {
+            let pool = pool.clone();
+            Box::pin(async move {
+                match archive_old_events(&pool, retention_days).await {
+                    Ok(count) if count > 0 => {
+                        info!(archived = count, retention_days, "Archived old events");
                     }
+                    Ok(_) => debug!("No events to archive"),
+                    Err(e) => error!("Event retention job failed: {}", e),
                 }
-                Err(e) => {
-                    error!("Event retention job failed: {}", e);
-                }
-            }
-        }
-    }))
+            })
+        },
+    )
 }
 
 /// Archive events older than `retention_days` from `events` to `archived_events`.

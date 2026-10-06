@@ -81,7 +81,8 @@ reliability, `DurableScheduler`) is what Everruns runs in production: the
 worker and server drive the queue directly, and turns use durable-engine's
 checkpoints rather than replay. The generic workflow engine (`Workflow`,
 `Activity`, `WorkflowExecutor` with timers, child workflows and system tasks,
-`WorkerPool`, `TimeoutManager`) has no production caller in this repository.
+`TimeoutManager`) has no production caller in this repository. `WorkerPool`
+is core, not engine: the server's cluster-once maintenance jobs run on it.
 
 Decision: keep the engine, so the crate stays usable and optimizable in
 isolation, but put it behind the experimental `workflows` feature. The feature
@@ -300,6 +301,22 @@ That owner records `workflow.failed`, emits the canonical `turn.failed` and
 `session.idled` lifecycle, and returns the session to `idle`. A later message
 can then claim the terminal workflow for a new turn instead of remaining queued
 behind dead work.
+
+### Stale-task reaping
+
+Reclaim and the settling of dead and sealed tasks are engine logic in
+`everruns_durable::maintenance` (`reap_stale_tasks`, `StaleTaskReaper`), not in
+the host. One pass reclaims stale claims, then for each dead task records
+`ActivityFailed` and fails its workflow with the `try_fail_workflow`
+compare-and-set; for each sealed task it records `ActivityFailed` and marks the
+workflow failed (`task sealed: no_progress (N recoveries)`). The host plugs in
+a `ReapHandler` for what that means in its domain: the server's
+(`crates/server/src/durable_reaper.rs`) emits the failed or sealed turn
+lifecycle, and only the reaper that won the workflow transition calls it, so
+replicas racing the same reap notify once. The server reaps every 10 s with a
+30 s stale threshold. `WorkerPool` runs the same pass with a no-op handler, and
+`WorkerPoolConfig::without_stale_reclaim` turns its loop off for a host that
+already runs a reaper with a real handler.
 
 ### Forward-progress guard and Sealed terminal (EVE-534)
 
