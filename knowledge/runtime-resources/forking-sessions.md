@@ -59,13 +59,13 @@ state.
 
 ### Copy
 
-- **Session configuration.** `harness_id`, `agent_id`, `agent_version_id`,
+- **Session configuration.** `harness_id`, `agent_id`,
   `agent_identity_id`, `model_id`, `capabilities`, `tools`, `mcp_servers`,
   `system_prompt`, `initial_files`, `hints`, `network_access`,
   `max_iterations`, `parallel_tool_calls`, `locale`, `tags`. The fork is
   config-identical to the parent unless the request overrides a field (see
-  [API](#api)). `agent_version_id` is copied verbatim so the fork runs the
-  exact same immutable agent config the parent was running.
+  [API](#api)). The fork runs the agent's current configuration, as every
+  session does, and records its own `agent_revision`.
 - **Conversation history (events).** All persisted events for the parent up to
   the fork point are copied into the child in order. Transient delta events are
   not persisted and therefore not copied; message reconstruction

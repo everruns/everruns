@@ -121,4 +121,4 @@ permission evidence keeps the issue open until a current check succeeds.
 ## See also
 
 - [Slack Integration](/capabilities/slack/), including scopes, manual setup, and troubleshooting.
-- [Agent Versions](/features/agent-versions/), including channel version selection.
+- [Change History](/features/change-history/), to see and restore earlier agent configurations.

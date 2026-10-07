@@ -22,9 +22,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::records::eval::Scorer;
-use everruns_contracts::typed_id::{
-    AgentId, AgentVersionId, HarnessId, ObserverId, SessionId, TraceScoreId,
-};
+use everruns_contracts::typed_id::{AgentId, HarnessId, ObserverId, SessionId, TraceScoreId};
 
 use utoipa::ToSchema;
 
@@ -296,10 +294,6 @@ pub struct TraceScore {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub agent_id: Option<AgentId>,
-    /// Agent version active in the session at scoring time.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
-    pub agent_version_id: Option<AgentVersionId>,
     /// Harness of the session.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]

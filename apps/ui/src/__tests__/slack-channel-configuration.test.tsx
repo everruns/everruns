@@ -14,7 +14,7 @@ import {
   getSlackChannelManifest,
   listSlackWorkspaces,
 } from "@/lib/api/agent-channels";
-import type { AgentChannel, OpenApiAppChannel } from "@/lib/api/types";
+import type { AgentChannel } from "@/lib/api/types";
 
 jest.mock("@/providers/feature-flags-provider", () => ({ useFeatureFlag: () => false }));
 jest.mock("@/lib/api/agent-channels", () => ({
@@ -25,7 +25,7 @@ jest.mock("@/lib/api/agent-channels", () => ({
   getSlackChannelManifest: jest.fn(),
   listSlackWorkspaces: jest.fn(),
 }));
-let current: AgentChannel & Pick<OpenApiAppChannel, "agent_version_policy" | "agent_version_id">;
+let current: AgentChannel;
 function Harness({ canManage = true }: { canManage?: boolean }) {
   const { channels } = useAgentChannels("agent_1");
   const [expanded, setExpanded] = useState(false);
@@ -74,8 +74,6 @@ describe("inline Slack channel configuration", () => {
       },
       enabled: true,
       status: "live",
-      agent_version_policy: "pinned",
-      agent_version_id: "version_1",
       created_at: "2026-10-03T00:00:00Z",
       updated_at: "2026-10-03T00:00:00Z",
     };
@@ -118,7 +116,7 @@ describe("inline Slack channel configuration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(screen.getByRole("switch", { name: "Slack agent pane" })).not.toBeChecked();
   });
-  it("saves settings inline without replacing secrets or changing the pinned agent version", async () => {
+  it("saves settings inline without replacing secrets", async () => {
     mount();
     await expand();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
@@ -134,8 +132,6 @@ describe("inline Slack channel configuration", () => {
     const request = (updateAgentChannel as jest.Mock).mock.calls[0][2];
     expect(request.channel_config).not.toHaveProperty("signing_secret");
     expect(request.channel_config).not.toHaveProperty("bot_token");
-    expect(request).not.toHaveProperty("agent_version_policy");
-    expect(request).not.toHaveProperty("agent_version_id");
     await waitFor(() =>
       expect(screen.getByRole("switch", { name: "Slack agent pane" })).toBeChecked(),
     );
@@ -156,7 +152,6 @@ describe("inline Slack channel configuration", () => {
     const request = (updateAgentChannel as jest.Mock).mock.calls[0][2];
     expect(request.channel_config.response_policy).toBe("relevant_messages");
     expect(request.channel_config).not.toHaveProperty("bot_token");
-    expect(request).not.toHaveProperty("agent_version_id");
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
   });
   it("retains the draft and surfaces a failed save", async () => {

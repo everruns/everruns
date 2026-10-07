@@ -458,8 +458,10 @@ message Session {
     optional Uuid owner_principal_id = 16;
     // Resolved user owner, when the principal ultimately maps to a user
     optional Uuid resolved_owner_user_id = 17;
-    // Captured immutable agent version for runtime provenance
-    optional Uuid agent_version_id = 18;
+    // 18 was agent_version_id; agent versions are retired (sessions record
+    // `agent_revision` in the control plane instead).
+    reserved 18;
+    reserved "agent_version_id";
     // Parent session ID for subagent and agent handoff sessions (depth tracking).
     optional Uuid parent_session_id = 19;
     optional string blueprint_id = 23;

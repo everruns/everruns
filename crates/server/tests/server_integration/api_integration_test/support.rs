@@ -48,8 +48,6 @@ pub(crate) async fn seed_archival_app(
                 description: None,
                 harness_id: harness_id.uuid(),
                 agent_id: agent_id.map(|id| id.uuid()),
-                agent_version_policy: "default".to_string(),
-                agent_version_id: None,
                 virtual_user_id: virtual_user_id.map(|id| id.uuid()),
                 owner_principal_id: principal_id,
                 resolved_owner_user_id: None,

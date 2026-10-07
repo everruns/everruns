@@ -24,15 +24,9 @@ Key design points:
 - All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `knowledge/foundations/id-schema.md`.
 - An agent may pin a harness or inherit the organization's current default and platform fallback. Read APIs expose the effective harness and selection provenance so callers do not need to reconstruct runtime resolution from the raw binding.
 - `capabilities` field stores enabled capability references (resolved at runtime from registry)
-- `default_version_id` selects the immutable AgentVersion used by default deployments when `FEATURE_AGENT_VERSIONS` is enabled. See `knowledge/runtime-resources/agent-versions.md`.
+- Earlier configurations are entity history revisions, not agent versions; see [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md).
 - `status`: `active`, `archived`, or `deleted`
 - `archived_at` and `deleted_at` capture lifecycle timestamps
-
-### AgentVersion
-
-Immutable snapshot of an Agent's authored and resolved configuration. AgentVersion is a pilot-specific model, not a generic entity versioning abstraction.
-
-See `crates/server/src/records/agent.rs` for full field definitions and `knowledge/runtime-resources/agent-versions.md` for behavior.
 
 ### Building Block Lifecycle
 
@@ -70,7 +64,7 @@ Key design points:
 - Sessions are direct children of organizations (not agents). The `agent_id` column is a denormalized pointer to the active host agent for existing reads.
 - `session_participants` records the users and agents associated with the session. Existing sessions are backfilled with an owner user participant and, when `agent_id` is present, a host agent participant.
 - The database enforces at most one active host agent participant per session.
-- `agent_version_id` captures the immutable AgentVersion used for runtime execution when agent versions are enabled.
+- `agent_revision` records the agent's history revision the session started on, so `history show` reproduces the configuration that ran. Sessions always run the agent's current configuration.
 - `app_id` is a nullable internal backreference set only when the server creates a session from an App channel. User/API, MCP, and platform-management session creation paths cannot set it.
 - `locale` is an optional session-level BCP 47 tag (for example `uk-UA`). The worker carries it through turn loading and prompt construction so scheduled runs, resumed runs, and subagents can inherit localized behavior.
 - `timezone` should be a separate optional session-level IANA timezone for unattended execution defaults. Interactive turns may override it with live browser timezone for that turn.

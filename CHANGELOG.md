@@ -62,6 +62,9 @@ No integration capability is removed. Delete the deprecated shims in the next pl
 
 - Requeuing a durable dead letter keeps the task's queue, priority, retry policy and timeouts instead of resetting them to defaults, so a framework step no longer lands on a queue nothing claims.
 - Stop a reason step that a dead worker held from being announced twice. The retry finds the stream the lost attempt left open, emits no second `reason.started` or `output.message.started`, and completes the message under the lost attempt's id, so every started message gets its completion. The in-process runtime (and durable turns driven on it) detects that stream from its own event log; platform workers ask the control plane through a new `GetPartialStream` worker RPC, and the in-process server worker reads the events table directly. A worker on an older control plane without the RPC keeps the previous behavior.
+### Removed
+
+- Retire Agent Versions. Entity history and `everruns history restore` replace saved, published and default versions; channels, triggers and session participants no longer pin a version and run the agent's current configuration, and each session records the `agent_revision` it started on. A migration copies existing versions into agent history. `everruns-contracts` drops `AgentVersionId`.
 
 ## [0.41.0] - 2026-10-04
 

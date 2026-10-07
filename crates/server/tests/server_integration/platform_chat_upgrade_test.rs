@@ -165,8 +165,6 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
                 description: None,
                 harness_id: preview.id.uuid(),
                 agent_id: Some(agent.id.uuid()),
-                agent_version_policy: "default".to_string(),
-                agent_version_id: None,
                 virtual_user_id: None,
                 owner_principal_id: owner,
                 resolved_owner_user_id: None,
@@ -195,8 +193,6 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             execution_app_id: Some(app.id),
             legacy_alias_id: None,
             legacy_alias_name: None,
-            agent_version_policy: None,
-            agent_version_id: None,
         })
         .await
         .unwrap();

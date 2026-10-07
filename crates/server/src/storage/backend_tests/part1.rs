@@ -336,35 +336,11 @@ async fn test_user_participant_uses_and_tracks_profile_name() {
 }
 
 #[tokio::test]
-async fn test_create_session_seeds_agent_participant_version() {
+async fn test_create_session_records_agent_revision_and_seeds_agent_participant() {
     let db = StorageBackend::test_database();
     let agent_id = AgentId::from_uuid(db.create_test_agent(DEFAULT_ORG_ID, Uuid::now_v7()).await);
-    let agent_version_id = AgentVersionId::new();
-    db.create_agent_version(CreateAgentVersionRow {
-        id: agent_version_id,
-        public_id: agent_version_id.to_string(),
-        org_id: DEFAULT_ORG_ID,
-        agent_id,
-        version_number: 1,
-        semver_major: 0,
-        semver_minor: 1,
-        semver_patch: 0,
-        version: "0.1.0".to_string(),
-        is_published: true,
-        parent_version_id: None,
-        source_version_id: None,
-        created_by_principal_id: None,
-        change_kind: "minor".to_string(),
-        summary: None,
-        config_hash: "config-hash".to_string(),
-        authored_config: serde_json::json!({}),
-        resolved_config: serde_json::json!({}),
-    })
-    .await
-    .unwrap();
     let mut input = test_session_input(Some(agent_id));
-    input.agent_version_id = Some(agent_version_id);
-    input.agent_config_hash = Some("config-hash".to_string());
+    input.agent_revision = Some(7);
 
     let session = db.create_session(input).await.unwrap();
     let participants = db
@@ -372,14 +348,13 @@ async fn test_create_session_seeds_agent_participant_version() {
         .await
         .unwrap();
 
-    assert_eq!(session.agent_version_id, Some(agent_version_id));
+    assert_eq!(session.agent_revision, Some(7));
     let host = participants
         .iter()
         .map(SessionParticipantRow::to_core)
         .find(|participant| participant.role == SessionParticipantRole::Host)
         .unwrap();
     assert_eq!(host.agent_id, Some(agent_id));
-    assert_eq!(host.agent_version_id, Some(agent_version_id));
 }
 
 #[tokio::test]
@@ -417,7 +392,6 @@ async fn test_create_session_participant_rejects_second_active_host() {
             agent_id: Some(AgentId::from_uuid(
                 db.create_test_agent(DEFAULT_ORG_ID, Uuid::now_v7()).await,
             )),
-            agent_version_id: None,
             principal_id: PrincipalId::from_seed(1),
             display_name: None,
             role: SessionParticipantRole::Host,
@@ -443,7 +417,6 @@ async fn test_ensure_active_user_session_participant_is_idempotent() {
         session_id: session.id,
         kind: SessionParticipantKind::User,
         agent_id: None,
-        agent_version_id: None,
         principal_id,
         display_name: Some("Alice".to_string()),
         role: SessionParticipantRole::Member,
@@ -484,7 +457,6 @@ async fn test_leave_session_participant_preserves_history() {
             agent_id: Some(AgentId::from_uuid(
                 db.create_test_agent(DEFAULT_ORG_ID, Uuid::now_v7()).await,
             )),
-            agent_version_id: None,
             principal_id: PrincipalId::from_seed(1),
             display_name: None,
             role: SessionParticipantRole::Member,

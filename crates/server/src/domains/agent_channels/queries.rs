@@ -3,9 +3,7 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
-use crate::records::{
-    AgentChannel, AgentChannelId, AgentVersionPolicy, ChannelAuthConfig, ChannelStatus, ChannelType,
-};
+use crate::records::{AgentChannel, AgentChannelId, ChannelAuthConfig, ChannelStatus, ChannelType};
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use std::sync::Arc;
@@ -248,8 +246,6 @@ pub fn channel_row_to_channel(
         auth,
         enabled: row.enabled,
         status: ChannelStatus::from(row.status.as_str()),
-        agent_version_policy: AgentVersionPolicy::Default,
-        agent_version_id: None,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }

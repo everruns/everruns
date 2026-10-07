@@ -86,7 +86,7 @@ impl CliExample {
 /// that matter, so the shape is declared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CliRoute {
-    /// Noun path from the root, e.g. `["agents"]` or `["agents", "versions"]`.
+    /// Noun path from the root, e.g. `["agents"]` or `["agents", "triggers"]`.
     pub path: &'static [&'static str],
     /// Leaf verb, e.g. `"list"`.
     pub verb: &'static str,
@@ -116,7 +116,7 @@ impl CliRoute {
         self
     }
 
-    /// Space-joined spelling, e.g. `"agents versions list"`.
+    /// Space-joined spelling, e.g. `"agents triggers list"`.
     pub fn spelling(&self) -> String {
         let mut parts = self.path.to_vec();
         parts.push(self.verb);
@@ -138,8 +138,8 @@ impl CliRoute {
 ///
 /// Two facts each command already carries are enough for almost all of them.
 /// The REST path holds the hierarchy that flat names hide:
-/// `/v1/agents/{id}/versions` is `agents versions`, which no amount of string
-/// surgery on `list_agent_versions` would have found. The verb is the flat
+/// `/v1/agents/{id}/triggers` is `agents triggers`, which no amount of string
+/// surgery on `list_agent_triggers` would have found. The verb is the flat
 /// name's first token.
 ///
 /// Derivation is a default, never an override. A command that declares a route
@@ -190,8 +190,8 @@ mod tests {
     #[test]
     fn the_rest_path_supplies_the_hierarchy_a_flat_name_hides() {
         assert_eq!(
-            derived_route("list_agent_versions", "/v1/agents/{agent_id}/versions"),
-            Some((vec!["agents".into(), "versions".into()], "list".into()))
+            derived_route("list_agent_triggers", "/v1/agents/{agent_id}/triggers"),
+            Some((vec!["agents".into(), "triggers".into()], "list".into()))
         );
         assert_eq!(
             derived_route(
@@ -217,12 +217,12 @@ mod tests {
     fn a_multi_word_verb_is_kebab() {
         assert_eq!(
             derived_route(
-                "set_default_agent_version",
-                "/v1/agents/{id}/versions/default"
+                "get_latest_agent_health_check_run",
+                "/v1/agents/{id}/health-checks/latest"
             ),
             Some((
-                vec!["agents".into(), "versions".into(), "default".into()],
-                "set".into()
+                vec!["agents".into(), "health-checks".into(), "latest".into()],
+                "get".into()
             ))
         );
     }

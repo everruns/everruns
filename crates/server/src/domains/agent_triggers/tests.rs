@@ -162,8 +162,6 @@ fn webhook_req(enabled: bool) -> CreateAgentTriggerRequest {
         mcp_event_arguments: None,
         auth: None,
         enabled,
-        agent_version_policy: None,
-        agent_version_id: None,
     }
 }
 
@@ -241,8 +239,6 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
         mcp_event_arguments: None,
         auth: None,
         enabled,
-        agent_version_policy: None,
-        agent_version_id: None,
     }
 }
 
@@ -274,9 +270,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         harness_id: agent_harness_id,
         harness_source: "explicit".to_string(),
         virtual_user_id: None,
-        default_version_id: None,
         forked_from_agent_id: None,
-        forked_from_version_id: None,
         root_agent_id: None,
         tags: vec![],
         status: "active".to_string(),
@@ -318,10 +312,6 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         execution_app_id: app_id,
         legacy_alias_id: Some("app_frozen".to_string()),
         legacy_alias_name: Some("Frozen App".to_string()),
-        agent_version_policy: Some("pinned".to_string()),
-        agent_version_id: Some(everruns_contracts::typed_id::AgentVersionId::from_uuid(
-            uuid::Uuid::from_u128(61),
-        )),
         status: "active".to_string(),
         created_at: now,
         updated_at: now,
@@ -338,11 +328,6 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     assert_eq!(context.resolved_owner_user_id, resolved_owner_user_id);
     assert_eq!(context.virtual_user_id, virtual_user_id);
     assert_eq!(context.app_id, app_id);
-    assert_eq!(
-        context.agent_version_policy,
-        crate::records::AgentVersionPolicy::Pinned
-    );
-    assert_eq!(context.agent_version_id, trigger.agent_version_id);
 }
 
 #[tokio::test]
@@ -391,8 +376,7 @@ async fn dispatch_trigger_message_uses_preserved_harness() {
             trigger_id: None,
             harness_id: Some(preserved_harness.id),
             agent_id: Some(agent.id),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: owner.id,
             resolved_owner_user_id: owner.resolved_user_id,
@@ -518,84 +502,6 @@ async fn create_enforces_per_org_enabled_cap() {
     .expect("disabled trigger is exempt from the enabled cap");
 
     unsafe { std::env::remove_var("AGENT_TRIGGER_MAX_PER_ORG") };
-}
-
-#[tokio::test]
-async fn native_trigger_version_pin_is_written_surfaced_and_honoured() {
-    use crate::records::AgentVersionPolicy;
-    let db = Arc::new(StorageBackend::test_database());
-    let store = workflow_store(&db);
-    let ctx = test_ctx(db.clone(), store);
-    let (agent_id, _) = seed_agent(&db).await;
-    let agent = db
-        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id)
-        .await
-        .unwrap()
-        .expect("agent row");
-    let version_id = everruns_contracts::typed_id::AgentVersionId::new();
-    db.create_agent_version(crate::storage::models::CreateAgentVersionRow {
-        id: version_id,
-        public_id: version_id.to_string(),
-        org_id: DEFAULT_ORG_ID,
-        agent_id: agent.id,
-        version_number: 1,
-        semver_major: 0,
-        semver_minor: 1,
-        semver_patch: 0,
-        version: "0.1.0".to_string(),
-        is_published: true,
-        parent_version_id: None,
-        source_version_id: None,
-        created_by_principal_id: None,
-        change_kind: "minor".to_string(),
-        summary: None,
-        config_hash: "hash".to_string(),
-        authored_config: serde_json::json!({}),
-        resolved_config: serde_json::json!({}),
-    })
-    .await
-    .expect("create version");
-
-    let created = CreateAgentTrigger {
-        agent_id: agent_id.clone(),
-        req: CreateAgentTriggerRequest {
-            agent_version_policy: Some(AgentVersionPolicy::Pinned),
-            agent_version_id: Some(version_id),
-            ..create_req("0 9 * * *", "hello", false)
-        },
-    }
-    .execute(&ctx)
-    .await
-    .expect("create pinned trigger");
-    assert_eq!(created.agent_version_policy, AgentVersionPolicy::Pinned);
-    assert_eq!(created.agent_version_id, Some(version_id));
-
-    // A native trigger (no persisted App execution context) runs its own pin.
-    let row = db
-        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
-        .await
-        .unwrap()
-        .expect("trigger row");
-    assert!(row.execution_harness_id.is_none());
-    let context = resolve_trigger_execution_context(&db, DEFAULT_ORG_ID, &agent, &row)
-        .await
-        .expect("resolve native context");
-    assert_eq!(context.agent_version_policy, AgentVersionPolicy::Pinned);
-    assert_eq!(context.agent_version_id, Some(version_id));
-
-    let unpinned = UpdateAgentTriggerCmd {
-        agent_id,
-        trigger_id: created.id.to_string(),
-        req: UpdateAgentTriggerRequest {
-            agent_version_policy: Some(AgentVersionPolicy::Default),
-            ..Default::default()
-        },
-    }
-    .execute(&ctx)
-    .await
-    .expect("unpin trigger");
-    assert_eq!(unpinned.agent_version_policy, AgentVersionPolicy::Default);
-    assert_eq!(unpinned.agent_version_id, None);
 }
 
 #[tokio::test]

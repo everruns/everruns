@@ -433,8 +433,8 @@ pub(crate) use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
 // Domain entity re-exports
 // Provider persistence rows live in `crates/server/src/records`; runtime provider contracts live in contracts.
-// EVE-877: the stored `Agent`/`AgentVersion` persistence records, their
-// lifecycle/versioning enums, and the public-name/persistence helpers moved to
+// EVE-877: the stored `Agent` persistence records, their
+// lifecycle enums, and the public-name/persistence helpers moved to
 // the `crates/server/src/records/`. Core keeps only the portable authored
 // execution configuration consumed during a turn.
 pub use agent_definition::AgentDefinition;

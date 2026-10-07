@@ -350,15 +350,7 @@ impl CommandMeta {
             "observers" => Some("observers"),
             "notifications" => Some("notifications"),
             "payments" => Some("machine_payments"),
-            _ => match self.name {
-                "list_agent_versions"
-                | "create_agent_version"
-                | "set_default_agent_version"
-                | "rollback_agent_version"
-                | "diff_agent_versions"
-                | "fork_agent_version" => Some("agent_versions"),
-                _ => None,
-            },
+            _ => None,
         }
     }
 

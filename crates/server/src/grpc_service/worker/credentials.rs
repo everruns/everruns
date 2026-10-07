@@ -187,14 +187,10 @@ impl WorkerServiceImpl {
                         .map_err(|_| Status::internal("Invocation unavailable"))?
                         .map(everruns_contracts::typed_id::AgentId::from_uuid);
 
-                    if session.agent_id != responder {
-                        session.agent_version_id = None;
-                    }
-
                     session.agent_id = responder;
                 }
                 runtime_agent_id = session.agent_id;
-                let mut agent = if let Some(agent_id) = session.agent_id {
+                let agent = if let Some(agent_id) = session.agent_id {
                     crate::domains::agents::queries::get_by_public_id(
                         &self.db,
                         req.org_id,
@@ -208,23 +204,6 @@ impl WorkerServiceImpl {
                 } else {
                     None
                 };
-                if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
-                    && let Some(version_row) = self
-                        .db
-                        .get_agent_version(req.org_id, version_id)
-                        .await
-                        .map_err(|e| {
-                            tracing::error!(
-                                "Failed to get agent version for scoped MCP lookup: {}",
-                                e
-                            );
-                            Status::internal("Failed to resolve scoped MCP server")
-                        })?
-                {
-                    let version =
-                        crate::domains::agents::queries::row_to_agent_version(version_row);
-                    *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
-                }
 
                 let user_layer = crate::domains::mcp_servers::user_layer::user_mcp_layer(
                     &crate::domains::mcp_servers::user_layer::UserMcpTurn {

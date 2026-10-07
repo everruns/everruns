@@ -11,6 +11,13 @@
   decided session-less and logged, not budgeted (TM-LLM-049). See
   [Decisions Service](operations/decisions-service.md#organization-choice-for-deployment-owned-checks).
 
+* **Change reasons and manager context are recorded as built.** The phased
+  design became a specification of the final state: reasons on every surface,
+  entity history with revisions, restore and secret markers, manager-only
+  context, the atomic write with after-commit effects and its opt-outs, agent
+  versions retired into history, and the `⋯` menu, with the limits that remain.
+  See [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
+
 * **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
   now offers `gpt-6-luna-decisions` in its catalog, so an organization can
   pick it as its decision default or bind it to the Jev capability. It runs on
@@ -38,6 +45,15 @@
   request), the `DECISIONS_OPENAI_PREVIEW` opt-in is gone, and a live smoke
   runs in CI. It stays non-default: `DECISIONS_DRIVER=openai` selects it. See
   [Decisions Service](operations/decisions-service.md#decision-drivers).
+
+* **Agent versions retired.** Entity history replaces them: migration 184
+  copies every version into the agent's history as a revision (reason from
+  its summary, `system` actor) in one created_at-ordered timeline, records
+  `agent_revision` on sessions, and drops the pins on channels, triggers,
+  apps and participants, `default_version_id`, `forked_from_version_id` and
+  the table. Version commands, the `agent_versions` flag, the version UI and
+  the Agent Versions concept are gone; fork lineage stays. See
+  [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md#runtime-binding-without-versions).
 
 * **Cut-off tool calls never run, and the turn decides what next.** OpenAI
   Responses and Bedrock drop a call whose arguments never finished or do not

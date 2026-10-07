@@ -130,11 +130,11 @@ async fn build_mcp_tool_definitions_skips_non_mcp_capabilities() {
 }
 
 #[tokio::test]
-async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() {
-    use crate::storage::models::{
-        CreateAgentRow, CreateAgentVersionRow, CreateMcpServerRow, CreateSessionRow,
-    };
-    use everruns_contracts::typed_id::{AgentVersionId, PrincipalId};
+async fn scoped_mcp_lookup_uses_current_agent_config_in_direct_and_grpc_paths() {
+    // Agent versions are retired: both paths resolve the agent's current
+    // MCP attachments, and they must agree.
+    use crate::storage::models::{CreateAgentRow, CreateMcpServerRow, CreateSessionRow};
+    use everruns_contracts::typed_id::PrincipalId;
     use everruns_internal_protocol::proto::{
         GetMcpServerByPrefixRequest, Uuid as ProtoUuid,
         worker_service_server::WorkerService as GrpcWorkerService,
@@ -186,8 +186,8 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
                 tools: serde_json::json!([]),
                 mcp_servers: serde_json::json!({
                     "docs": {
-                        "type": "http",
-                        "url": "https://current.example.com/mcp"
+                        "use": "catalog:pinned-catalog",
+                        "actsAs": "service"
                     }
                 }),
                 network_access: None,
@@ -201,40 +201,6 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
         .expect("create current agent")
         .expect("agent should be created");
 
-    let version_id = AgentVersionId::new();
-    let pinned_config = serde_json::json!({
-        "mcp_servers": {
-            "docs": {
-                "use": "catalog:pinned-catalog",
-                "actsAs": "service"
-            }
-        }
-    });
-    adapters
-        .db
-        .create_agent_version(CreateAgentVersionRow {
-            id: version_id,
-            public_id: version_id.to_string(),
-            org_id,
-            agent_id,
-            version_number: 1,
-            semver_major: 0,
-            semver_minor: 1,
-            semver_patch: 0,
-            version: "0.1.0".to_string(),
-            is_published: true,
-            parent_version_id: None,
-            source_version_id: None,
-            created_by_principal_id: None,
-            change_kind: "minor".to_string(),
-            summary: None,
-            config_hash: "pinned-mcp-config".to_string(),
-            authored_config: pinned_config.clone(),
-            resolved_config: pinned_config,
-        })
-        .await
-        .expect("create pinned agent version");
-
     let session = adapters
         .db
         .create_session(CreateSessionRow {
@@ -247,8 +213,7 @@ async fn scoped_mcp_lookup_uses_pinned_agent_version_in_direct_and_grpc_paths() 
             channel_id: None,
             harness_id: Some(harness_id),
             agent_id: Some(agent_id),
-            agent_version_id: Some(version_id),
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -426,8 +391,7 @@ async fn seed_platform_session(
             channel_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id,
@@ -1291,8 +1255,7 @@ async fn get_session_carries_org_public_id() {
             app_id: None,
             channel_id: None,
             agent_id: Some(AgentId::from_uuid(agent_id)),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             harness_id: Some(HarnessId::from_seed(1)),
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),

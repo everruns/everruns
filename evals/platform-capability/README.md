@@ -51,7 +51,7 @@ Read a failure accordingly:
 - `cli-tree-agents-list` failing means the prompt/discovery pointers are too
   weak, not that the tree is broken.
 - `cli-tree-nested-noun` failing means the hierarchy that flat names hide
-  (`list_agent_versions` is `agents versions list`) is not being composed.
+  (`list_agent_triggers` is `agents triggers list`) is not being composed.
 - `cli-tree-help-instead-of-guessing` failing means the model invents verbs
   rather than asking a surface whose help is bounded on purpose.
 - `cli-tree-wrong-verb-recovers` failing means a wrong first guess is costing

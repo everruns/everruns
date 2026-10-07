@@ -71,19 +71,6 @@
         "required": true
       },
       {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to run when `agent_version_policy` is `pinned`."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
-      },
-      {
         "field": "channel_config",
         "long": "channel-config",
         "kind": "json",
@@ -276,19 +263,6 @@
         "long": "agent-id",
         "kind": "string",
         "required": true
-      },
-      {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to pin."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
       },
       {
         "field": "channel_config",
@@ -1153,19 +1127,6 @@
         "help": "Owning agent's prefixed public identifier."
       },
       {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to run when `agent_version_policy` is `pinned`."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
-      },
-      {
         "field": "auth",
         "long": "auth",
         "kind": "json",
@@ -1473,19 +1434,6 @@
         "long": "agent-id",
         "kind": "string",
         "required": true
-      },
-      {
-        "field": "agent_version_id",
-        "long": "agent-version-id",
-        "kind": "string",
-        "required": false,
-        "help": "Version to pin."
-      },
-      {
-        "field": "agent_version_policy",
-        "long": "agent-version-policy",
-        "kind": "string",
-        "required": false
       },
       {
         "field": "auth",
@@ -1985,245 +1933,6 @@
     ]
   },
   {
-    "wire_name": "create_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "create",
-    "description": "Save the current agent draft as an immutable version.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "change_kind",
-        "long": "change-kind",
-        "kind": "string",
-        "required": false
-      },
-      {
-        "field": "summary",
-        "long": "summary",
-        "kind": "string",
-        "required": false,
-        "help": "Free-text summary of what changed in this version."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Snapshot an agent before a risky change",
-        "command": "everruns agents versions create --agent agt_01h9 --summary 'before the rewrite'"
-      }
-    ]
-  },
-  {
-    "wire_name": "diff_agent_versions",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "diff",
-    "description": "Compare two immutable agent versions.",
-    "method": "GET",
-    "http_path": "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "from_version_id",
-        "long": "from-version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      },
-      {
-        "field": "to_version_id",
-        "long": "to-version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      }
-    ],
-    "examples": [
-      {
-        "intent": "See what changed between two snapshots",
-        "command": "everruns agents versions diff --agent agt_01h9 --from-version-id ver_01h9 --to-version-id ver_01ha"
-      }
-    ]
-  },
-  {
-    "wire_name": "fork_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "fork",
-    "description": "Fork an agent version into a new editable agent.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions/{version_id}/fork",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "description",
-        "long": "description",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable description."
-      },
-      {
-        "field": "display_name",
-        "long": "display-name",
-        "kind": "string",
-        "required": false,
-        "help": "Human-readable display name."
-      },
-      {
-        "field": "name",
-        "long": "name",
-        "kind": "string",
-        "required": true,
-        "help": "Human-readable name."
-      },
-      {
-        "field": "version_id",
-        "long": "version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Start a new agent from an old snapshot",
-        "command": "everruns agents versions fork --agent agt_01h9 --version-id ver_01h9 --name triage-fork"
-      }
-    ]
-  },
-  {
-    "wire_name": "list_agent_versions",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "list",
-    "description": "List immutable versions for an agent.",
-    "method": "GET",
-    "http_path": "/v1/agents/{agent_id}/versions",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Find the version to roll back to",
-        "command": "everruns agents versions list --agent agt_01h9"
-      }
-    ]
-  },
-  {
-    "wire_name": "rollback_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "rollback",
-    "description": "Copy an immutable version back into the editable agent draft.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions/{version_id}/rollback",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "save_version",
-        "long": "save-version",
-        "kind": "boolean",
-        "required": false,
-        "help": "When true, snapshot the current agent state as a new version before rolling back. Use this to..."
-      },
-      {
-        "field": "summary",
-        "long": "summary",
-        "kind": "string",
-        "required": false,
-        "help": "Free-text summary attached to the rollback."
-      },
-      {
-        "field": "version_id",
-        "long": "version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Prefixed identifier with 'agentver' prefix"
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Undo a bad change by restoring a snapshot",
-        "command": "everruns agents versions rollback --agent agt_01h9 --version-id ver_01h9 --save-version"
-      }
-    ]
-  },
-  {
-    "wire_name": "set_default_agent_version",
-    "path": [
-      "agents",
-      "versions"
-    ],
-    "verb": "set-default",
-    "description": "Set an agent's default immutable version.",
-    "method": "POST",
-    "http_path": "/v1/agents/{agent_id}/versions/default",
-    "args": [
-      {
-        "field": "agent_id",
-        "long": "agent",
-        "kind": "string",
-        "required": true,
-        "help": "Agent's prefixed public identifier."
-      },
-      {
-        "field": "version_id",
-        "long": "version-id",
-        "kind": "string",
-        "required": true,
-        "help": "Agent version's prefixed public identifier."
-      }
-    ],
-    "examples": [
-      {
-        "intent": "Point new sessions at a different version",
-        "command": "everruns agents versions set-default --agent agt_01h9 --version-id ver_01h9"
-      }
-    ]
-  },
-  {
     "wire_name": "check_budget",
     "path": [
       "budgets"
@@ -2352,7 +2061,8 @@
         "field": "budget_id",
         "long": "budget-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier (a path parameter)."
       },
       {
         "field": "limit",
@@ -2384,13 +2094,15 @@
         "field": "subject_id",
         "long": "subject-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only budgets on this subject's prefixed public identifier."
       },
       {
         "field": "subject_type",
         "long": "subject-type",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only budgets on this kind of subject (session, agent, user, org, ...)."
       }
     ]
   },

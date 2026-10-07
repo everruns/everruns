@@ -3,7 +3,6 @@
 pub mod agent;
 pub mod agent_channel;
 pub mod agent_trigger;
-pub mod agent_version_policy;
 pub mod app;
 pub mod audit;
 pub mod budget;
@@ -28,15 +27,14 @@ pub mod slack_provisioning;
 pub mod workspace;
 
 pub use agent::{
-    Agent, AgentAvatar, AgentStatus, AgentVersion, AgentVersionChangeKind,
-    MAX_ADDRESSABLE_NAME_LEN, generate_agent_public_id, validate_addressable_name,
-    validate_agent_public_id,
+    Agent, AgentAvatar, AgentStatus, MAX_ADDRESSABLE_NAME_LEN, generate_agent_public_id,
+    validate_addressable_name, validate_agent_public_id,
 };
 pub use agent_channel::{
-    A2aChannelConfig, AgUiChannelConfig, AgentChannel, AgentVersionPolicy, ApiChannelConfig,
-    CaptchaProvider, ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig,
-    ChannelAuthRequirements, ChannelStatus, ChannelType, FcpChannelConfig, PublicChatBranding,
-    PublicChatCaptchaConfig, PublicChatChannelConfig, SlackReplyMode,
+    A2aChannelConfig, AgUiChannelConfig, AgentChannel, ApiChannelConfig, CaptchaProvider,
+    ChannelAuthConfig, ChannelAuthMode, ChannelAuthProviderConfig, ChannelAuthRequirements,
+    ChannelStatus, ChannelType, FcpChannelConfig, PublicChatBranding, PublicChatCaptchaConfig,
+    PublicChatChannelConfig, SlackReplyMode,
 };
 pub use agent_trigger::{
     AgentTrigger, AgentTriggerDelivery, AgentTriggerType, GitHubTriggerConfig,
