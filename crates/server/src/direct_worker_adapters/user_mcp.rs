@@ -74,3 +74,48 @@ impl DirectWorkerAdapters {
         .await
     }
 }
+
+/// Runs the `user_mcp` manage tools' calls in process, for one session.
+struct DirectUserMcpInvoker {
+    db: std::sync::Arc<crate::storage::StorageBackend>,
+    encryption: Option<std::sync::Arc<crate::storage::EncryptionService>>,
+    registry: everruns_core::capabilities::CapabilityRegistry,
+    org_id: i64,
+    session_id: everruns_contracts::typed_id::SessionId,
+}
+
+#[async_trait::async_trait]
+impl everruns_capabilities::capabilities::UserMcpCallInvoker for DirectUserMcpInvoker {
+    async fn invoke(
+        &self,
+        input_message: Option<uuid::Uuid>,
+        call: everruns_core::mcp::UserMcpStoreCall,
+    ) -> everruns_core::mcp::UserMcpStoreResult<everruns_core::mcp::UserMcpStoreReply> {
+        crate::domains::mcp_servers::user_manage::invoke_user_mcp_store_for_session(
+            &self.db,
+            self.encryption.as_deref(),
+            &self.registry,
+            self.org_id,
+            self.session_id,
+            input_message,
+            call,
+        )
+        .await
+    }
+}
+
+impl DirectWorkerAdapters {
+    pub(super) fn user_mcp_invoker_for(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> std::sync::Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker> {
+        std::sync::Arc::new(DirectUserMcpInvoker {
+            db: self.db.clone(),
+            encryption: self.encryption.clone(),
+            registry: self.capability_registry.clone(),
+            org_id,
+            session_id,
+        })
+    }
+}

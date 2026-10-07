@@ -32,10 +32,13 @@ someone finishing a new agent. Both mostly touch a small set of fields; the rest
 ## Decisions
 
 - **Hierarchy through placement, not decoration.** Primary settings (harness, capabilities in
-  precedence order, default model, tags) are always visible. Secondary settings are one **More**
-  row each that shows its current value ("Inherited", "2 files") and opens a side sheet, so the
-  whole configuration reads without opening anything. Side sheets, not accordions, because
-  Branding and Files are large editors.
+  precedence order, default model, tags) are always visible. The capability list is a compact
+  ordered set of chips, so a long set does not stretch the column; the editor stays in the column
+  while the page is in edit mode, with tighter rows. Secondary settings are one **More** row each
+  that shows its current value ("Inherited", "2 files") and opens a side sheet, so the whole
+  configuration reads without opening anything. Side sheets, not accordions, because Branding and
+  Files are large editors. Service account is a More row. Its sheet saves immediately, like MCP
+  servers and Credentials, and stays editable on a built-in agent.
 - **Page-level edit mode.** Edit, change several things, then one **Save changes** or
   **Discard**. A prompt edit and the capability change that goes with it land in one update.
   Changing any config control in view mode enters edit mode with that change pending, so nothing

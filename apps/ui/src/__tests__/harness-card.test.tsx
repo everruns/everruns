@@ -50,7 +50,7 @@ describe("HarnessCard inheritance", () => {
     render(<HarnessCard harness={harness()} showEditButton />);
 
     const edit = screen.getByRole("link", { name: "Edit Child" });
-    expect(edit).toHaveAttribute("href", "/harnesses/harness-child/edit");
+    expect(edit).toHaveAttribute("href", "/harnesses/harness-child?mode=edit");
     expect(edit.querySelector("button")).not.toBeInTheDocument();
   });
 

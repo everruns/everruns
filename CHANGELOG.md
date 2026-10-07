@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-10-07
+
+### What's Changed
+
+- Remove 18 deprecated integration shim crates after their 0.42.0 forwarding release; integration capabilities remain available from `everruns-integrations` and `everruns-integrations-experimental`.
+
+### Crate Releases
+
+All 22 published crates ship at platform version 0.43.0. The 18 retired package names are no longer in the workspace or publish set.
+
 ## [0.42.0] - 2026-10-06
 
 ### What's Changed

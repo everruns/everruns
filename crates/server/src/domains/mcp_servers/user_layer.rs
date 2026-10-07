@@ -209,4 +209,4 @@ pub fn merge_turn_scoped_mcp_servers(
 
 #[cfg(test)]
 #[path = "user_layer_tests.rs"]
-mod tests;
+pub(crate) mod tests;

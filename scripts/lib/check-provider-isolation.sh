@@ -124,14 +124,14 @@ done
 # Extension implementations depend on contracts rather than the hosted product.
 # Include optional/build/dev declarations: an integration test must not quietly
 # pull control-plane records back into a library host's dependency graph.
-for manifest in integrations/*/Cargo.toml crates/integrations/Cargo.toml crates/integrations-experimental/Cargo.toml crates/ard/Cargo.toml crates/turbopuffer/Cargo.toml; do
+for manifest in crates/integrations/Cargo.toml crates/integrations-experimental/Cargo.toml crates/ard/Cargo.toml crates/turbopuffer/Cargo.toml; do
   if matches=$(grep -nE '^[[:space:]]*everruns-(platform|capabilities)[[:space:]]*[.=]' "$manifest"); then
     echo "$manifest must use everruns-contracts extension SPIs, never platform:"
     echo "$matches"
     FAILED=1
   fi
 done
-if matches=$(grep -rnE 'everruns_(platform|capabilities)::' integrations crates/integrations crates/ard crates/turbopuffer --include='*.rs' 2>/dev/null); then
+if matches=$(grep -rnE 'everruns_(platform|capabilities)::' crates/integrations crates/ard crates/turbopuffer --include='*.rs' 2>/dev/null); then
   echo "Extension implementations must not reference platform records:"
   echo "$matches"
   FAILED=1
@@ -142,10 +142,9 @@ fi
 # The tree check covers optional, renamed, and transitive edges alike.
 # crates/integrations and crates/integrations-experimental are feature-module crates for maintained and experimental integrations.
 integration_packages=()
-for manifest in integrations/*/Cargo.toml crates/integrations/Cargo.toml crates/integrations-experimental/Cargo.toml; do
+for manifest in crates/integrations/Cargo.toml crates/integrations-experimental/Cargo.toml; do
   integration_packages+=(-p "$(sed -nE 's/^name[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$manifest" | head -n1)")
 done
-integration_packages+=(-p everruns-integrations-experimental)
 tree=$(guard_cargo_tree "${integration_packages[@]}" --all-features --edges normal,build --prefix none)
 if echo "$tree" | grep -qE '^everruns-core '; then
   echo "Integrations must depend on everruns-contracts, never everruns-core (normal or build edge):"

@@ -2,6 +2,13 @@
 
 ## 2026-10-07
 
+* **Change reasons and manager context are recorded as built.** The phased
+  design became a specification of the final state: reasons on every surface,
+  entity history with revisions, restore and secret markers, manager-only
+  context, the atomic write with after-commit effects and its opt-outs, agent
+  versions retired into history, and the `⋯` menu, with the limits that remain.
+  See [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
+
 * **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
   now offers `gpt-6-luna-decisions` in its catalog, so an organization can
   pick it as its decision default or bind it to the Jev capability. It runs on
@@ -759,7 +766,7 @@
   because `everruns-host` held the classifier, and a host dependency
   cannot point at an integration crate without closing the loop
   (integration → platform → host). Moving the service into
-  `integrations/typesafe` inverts that: `crates/server` and `crates/worker`
+  `crates/integrations/src/typesafe` inverts that: `crates/server` and `crates/worker`
   already depend on integrations, so they compose it into `HostComposition`
   from above. Host no longer knows TypeSafe exists, and the client has one
   home.
@@ -1047,7 +1054,7 @@
   `&'static`, is not. See [Command tree](execution/command-tree.md).
 
 * **`everruns` is a builtin of the agent's own shell, by forwarding rather than a
-  local tree.** The tree in `integrations/bashkit/src/cli.rs` resolves in-process,
+  local tree.** The tree in `crates/integrations/src/bashkit/src/cli.rs` resolves in-process,
   and a hosted worker cannot do that: `CliRoute` is `&'static`, so a tree cannot
   be rebuilt from specs fetched at runtime, and the commands live behind the
   control plane. A tool that already accepts a script now declares a

@@ -36,6 +36,7 @@ pub(super) struct StreamContext {
     /// UI origin, for the `auth-required` projection of a secret question.
     pub frontend_url: String,
     pub version: WireVersion,
+    pub binding: wire::Binding,
     /// The first frame: the task as it stands when the stream opens.
     pub initial_task: Value,
 }
@@ -48,7 +49,7 @@ struct StreamState {
 /// Build the SSE response. `guard` is held for the stream's lifetime so the
 /// connection-limit slot is released only when the client disconnects.
 pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: G) -> Response {
-    let initial_frame = jsonrpc_sse_frame(&ctx.rpc_id, ctx.version, ctx.initial_task.clone());
+    let initial_frame = sse_frame(&ctx, ctx.initial_task.clone());
     let initial = stream::iter(vec![Ok::<SseEvent, Infallible>(initial_frame)]);
 
     let body = stream::unfold(
@@ -64,9 +65,8 @@ pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: 
                 let Some(event) = s.ctx.subscription.recv().await else {
                     // Subscription closed without a terminal turn event: emit
                     // a synthetic failure so clients do not hang.
-                    let frame = jsonrpc_sse_frame(
-                        &s.ctx.rpc_id,
-                        s.ctx.version,
+                    let frame = sse_frame(
+                        &s.ctx,
                         status_update(
                             &s.ctx.task_id,
                             &s.ctx.context_id,
@@ -88,7 +88,7 @@ pub(super) fn sse_response<G: Send + Sync + 'static>(ctx: StreamContext, guard: 
                     // `final` exists only in the 0.3 frame; read it before the
                     // 1.0 rendering drops it.
                     s.finished = frame.get("final").and_then(Value::as_bool) == Some(true);
-                    let frame = jsonrpc_sse_frame(&s.ctx.rpc_id, s.ctx.version, frame);
+                    let frame = sse_frame(&s.ctx, frame);
                     return Some((Ok::<SseEvent, Infallible>(frame), s));
                 }
             }
@@ -167,6 +167,17 @@ pub(super) fn translate_session_event(
             json!({ "state": "canceled" }),
         )),
         _ => None,
+    }
+}
+
+/// One SSE event: a JSON-RPC envelope around the frame, or under HTTP+JSON
+/// (spec §11.7) the bare 1.0 `StreamResponse`.
+fn sse_frame(ctx: &StreamContext, frame: Value) -> SseEvent {
+    match ctx.binding {
+        wire::Binding::JsonRpc => jsonrpc_sse_frame(&ctx.rpc_id, ctx.version, frame),
+        wire::Binding::HttpJson => {
+            SseEvent::default().data(wire::stream_frame(WireVersion::V1_0, frame).to_string())
+        }
     }
 }
 

@@ -7,7 +7,7 @@
 // - Draft sections (Branding, Files, Network access) edit the page's
 //   draft. A change puts the page into edit mode; nothing saves until the
 //   header's Save changes.
-// - Live sections (MCP servers, Credentials) manage their own
+// - Live sections (MCP servers, Credentials, Service account) manage their own
 //   resources and save as they go, as they did when they were tabs.
 
 import { Check, Loader2, X, Zap } from "lucide-react";
@@ -32,15 +32,19 @@ import { SandboxPolicyEditor } from "@/components/agents/sandbox-policy-editor";
 import { AgentMcpPanel } from "@/components/agents/agent-mcp-panel";
 import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
+import { AgentServiceAccount } from "@/components/agents/agent-service-account";
+import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent } from "@/lib/api/types";
 import { formatTokens, pluralize } from "@/lib/formatting";
+import { useRetainedSection } from "@/components/workspace/use-retained-section";
 import { cn } from "@/lib/utils";
 
 export type AgentSettingsSection =
   | "branding"
   | "mcp"
   | "credentials"
+  | "service"
   | "files"
   | "network"
   | "sandbox"
@@ -67,6 +71,11 @@ const SECTIONS: Record<
     description: "Secrets bound to tool parameters for this agent's runs.",
     kind: "live",
     wide: true,
+  },
+  service: {
+    title: "Service account",
+    description: "Connections the agent uses for operations configured to act as a service.",
+    kind: "live",
   },
   files: {
     title: "Files",
@@ -123,21 +132,22 @@ export function AgentSettingsSheet({
   fixedSandbox,
   onDraftChange,
 }: AgentSettingsSheetProps) {
-  const meta = section ? SECTIONS[section] : null;
+  const active = useRetainedSection(section);
+  const meta = active ? SECTIONS[active] : null;
 
   return (
     <Drawer open={section !== null} onOpenChange={onOpenChange}>
       <DrawerContent
         className={cn("gap-0 overflow-y-auto p-0", meta?.wide ? "sm:max-w-3xl" : "sm:max-w-xl")}
       >
-        {section && meta && (
+        {active && meta && (
           <>
             <DrawerHeader className="border-b p-5 pr-12">
               <DrawerTitle>{meta.title}</DrawerTitle>
               <DrawerDescription>{meta.description}</DrawerDescription>
             </DrawerHeader>
             <div className="flex-1 p-5">
-              {section === "branding" && (
+              {active === "branding" && (
                 <BrandingSection
                   agent={agent}
                   draft={draft}
@@ -145,9 +155,17 @@ export function AgentSettingsSheet({
                   onDraftChange={onDraftChange}
                 />
               )}
-              {section === "mcp" && <AgentMcpPanel agent={agent} />}
-              {section === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
-              {section === "files" && (
+              {active === "mcp" && <AgentMcpPanel agent={agent} />}
+              {active === "credentials" && <AgentCredentialsPanel agentId={agent.id} />}
+              {active === "service" && (
+                <AgentServiceAccount
+                  agentId={agent.id}
+                  value={agent.service_virtual_user_id}
+                  // Built-in agents reject definition edits, but this binding stays editable.
+                  disabled={isReadOnlyStatus(agent.status)}
+                />
+              )}
+              {active === "files" && (
                 <InitialFilesEditor
                   value={draft.files}
                   onChange={onDraftChange(draft.setFiles)}
@@ -155,7 +173,7 @@ export function AgentSettingsSheet({
                   description="Starting files for new sessions. Updating these files does not change existing sessions."
                 />
               )}
-              {section === "network" && (
+              {active === "network" && (
                 <NetworkAccessEditor
                   value={draft.networkAccess}
                   onChange={onDraftChange(draft.setNetworkAccess)}
@@ -163,7 +181,7 @@ export function AgentSettingsSheet({
                   description="One pattern per line: example.com, *.example.com, or https://example.com/api/."
                 />
               )}
-              {section === "sandbox" &&
+              {active === "sandbox" &&
                 (fixedSandbox ? (
                   <div className="border bg-muted/40 p-4 text-sm">
                     <p className="font-medium">{fixedSandbox}</p>
@@ -178,8 +196,8 @@ export function AgentSettingsSheet({
                     disabled={readOnly}
                   />
                 ))}
-              {section === "usage" && <UsageSection agent={agent} />}
-              {section === "health" && <AgentHealthCheck agentId={agent.id} />}
+              {active === "usage" && <UsageSection agent={agent} />}
+              {active === "health" && <AgentHealthCheck agentId={agent.id} />}
             </div>
             <DrawerFooter className="items-center border-t p-4 sm:justify-between">
               <p className="text-xs text-muted-foreground">

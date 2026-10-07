@@ -12,22 +12,22 @@ use everruns_contracts::typed_id::{PrincipalId, VirtualUserId};
 use everruns_core::DEFAULT_ORG_ID;
 
 const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-const MESSAGE: Uuid = Uuid::from_u128(91);
+pub(crate) const MESSAGE: Uuid = Uuid::from_u128(91);
 
-struct Fixture {
-    db: StorageBackend,
-    encryption: EncryptionService,
-    registry: CapabilityRegistry,
-    harness: Harness,
-    agent: Agent,
-    session: Session,
-    person: Uuid,
+pub(crate) struct Fixture {
+    pub(crate) db: StorageBackend,
+    pub(crate) encryption: EncryptionService,
+    pub(crate) registry: CapabilityRegistry,
+    pub(crate) harness: Harness,
+    pub(crate) agent: Agent,
+    pub(crate) session: Session,
+    pub(crate) person: Uuid,
 }
 
 impl Fixture {
     /// A session whose input message was sent by `person`, on an agent with
     /// the `user_mcp` capability configured as given (None leaves it off).
-    async fn new(capability: Option<serde_json::Value>) -> Self {
+    pub(crate) async fn new(capability: Option<serde_json::Value>) -> Self {
         let db = StorageBackend::test_database();
         let person = db.create_test_user(Uuid::now_v7()).await;
         db.create_virtual_user(CreateVirtualUserRow {
@@ -74,7 +74,7 @@ impl Fixture {
         }
     }
 
-    fn servers(&self) -> UserMcpServers<'_> {
+    pub(crate) fn servers(&self) -> UserMcpServers<'_> {
         UserMcpServers {
             db: &self.db,
             encryption: Some(&self.encryption),
@@ -101,7 +101,7 @@ impl Fixture {
         self.layer_for(Some(MESSAGE)).await
     }
 
-    async fn join(&self, seed: u128) {
+    pub(crate) async fn join(&self, seed: u128) {
         let principal = self
             .db
             .create_test_principal(PrincipalId::from_seed(seed))
@@ -122,7 +122,11 @@ impl Fixture {
     }
 }
 
-fn custom(name: &str, auth: McpServerAuthMode, api_key: Option<&str>) -> AddUserMcpServerRequest {
+pub(crate) fn custom(
+    name: &str,
+    auth: McpServerAuthMode,
+    api_key: Option<&str>,
+) -> AddUserMcpServerRequest {
     AddUserMcpServerRequest {
         name: Some(name.to_string()),
         url: Some(format!("https://{name}.example.com/mcp")),

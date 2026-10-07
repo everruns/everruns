@@ -118,15 +118,15 @@ No API key is needed even for integration tests (the DuckDuckGo API is free), bu
 
 Dedicated workflow `.github/workflows/duckduckgo-integration.yml`:
 
-- **Path-filtered**: only triggers when `integrations/duckduckgo/**` changes.
+- **Path-filtered**: only triggers when `crates/integrations/src/duckduckgo/**` changes.
 - Runs on both `pull_request` and `push` because the API is free and the smoke coverage is lightweight.
 - No secrets needed (free API).
 - Passes `--features integration` to compile and run the real-API tests.
-- `.github/workflows/integration-live-sweep.yml` reruns the same job weekly and on demand without path filters to catch shared regressions outside `integrations/duckduckgo/**`.
+- `.github/workflows/integration-live-sweep.yml` reruns the same job weekly and on demand without path filters to catch shared regressions outside `crates/integrations/src/duckduckgo/**`.
 
 ## Crate Structure
 
-`integrations/duckduckgo/` → `everruns-integrations`
+`crates/integrations/src/duckduckgo/` → `everruns-integrations`
 
 External integration crate. It publishes plugin consts and is named in
 `crates/integrations-catalog`.

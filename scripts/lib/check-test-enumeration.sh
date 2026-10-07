@@ -190,7 +190,7 @@ while IFS= read -r manifest; do
     grep -qE -- "--test[[:space:]]+${name}([[:space:]]|$)" <<<"$invocations" && continue
     violations+=("${package}: ${path#"$PROJECT_ROOT"/} — not run as '--test ${name}'")
   done
-done < <(git -C "$PROJECT_ROOT" ls-files -- 'crates/**/Cargo.toml' 'integrations/**/Cargo.toml' | sort)
+done < <(git -C "$PROJECT_ROOT" ls-files -- 'crates/**/Cargo.toml' | sort)
 
 if [ "$checked" -eq 0 ]; then
   echo "error: no crate test files discovered — the search paths are probably wrong"
