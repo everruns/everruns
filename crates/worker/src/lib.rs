@@ -58,9 +58,7 @@ pub use grpc_durable_store::{
 // Re-export LLM driver factory helpers
 pub use adapters::{create_chat_driver, create_driver_registry};
 pub use platform::{default_host_composition, default_host_composition_for_grade};
-pub use system_decisions::{
-    DECISIONS_DRIVER_ENV, DECISIONS_MODEL_ENV, DECISIONS_OPENAI_PREVIEW_ENV, SystemDecisions,
-};
+pub use system_decisions::{DECISIONS_DRIVER_ENV, DECISIONS_MODEL_ENV, SystemDecisions};
 
 // Re-export gRPC adapters for worker communication with control plane
 pub use grpc_adapters::{

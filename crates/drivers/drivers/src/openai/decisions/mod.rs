@@ -1,30 +1,20 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
-//! [OpenAI's Decisions API](https://openai.com/index/devday-2026-recap/) as an
-//! Everruns decision driver (preview).
+//! [OpenAI's Decisions API](https://developers.openai.com/api/docs/guides/decisions)
+//! as an Everruns decision driver.
 //!
-//! The Decisions API picks one answer from a closed set, over text context, on
-//! GPT-6 Luna. This crate puts it behind `everruns_contracts::decision_driver::DecisionDriver`, so
-//! it answers the same `DecisionRequest`s TypeSafe does and callers never call
-//! OpenAI directly: guardrails, the `Decisions` facade, and capability
+//! The Decisions API answers typed questions about text, on GPT-6 Luna. This
+//! crate puts it behind `everruns_contracts::decision_driver::DecisionDriver`,
+//! so it answers the same `DecisionRequest`s TypeSafe does and callers never
+//! call OpenAI directly: guardrails, the `Decisions` facade, and capability
 //! internals reach it through the deployment's decision router.
 //!
-//! Mapping, declared in [`OpenAIDecisionDriver::capabilities`]:
-//!
-//! - `Choice` is native.
-//! - `Noul` is asked as a `yes`/`no` choice.
-//! - `Score` is asked as a choice over the levels, labeled by index.
-//! - The API answers one question per call, so a request's questions are sent
-//!   concurrently and their usage summed; callers keep "one request, many
-//!   questions".
-//! - An answer is calibrated only when the response carries a probability for
-//!   every label. Otherwise it is the label, one-hot, and the outcome says
-//!   `calibrated: false`. The single confidence the API reports for its pick
-//!   is not turned into a distribution: spreading the remainder across the
-//!   other labels would be a number nobody measured.
-//!
-//! **The wire shape is provisional**; see [`wire`]. The deployment enables the
-//! driver only on explicit opt-in (`DECISIONS_OPENAI_PREVIEW`), and the crate
-//! stays unpublished until the shape is verified.
+//! Mapping, declared in [`OpenAIDecisionDriver::capabilities`]: all three
+//! primitives are native. `Noul` is a `predicate`, `Choice` a `choice`, and
+//! `Score` a `score`; every answer carries a measured probability or
+//! distribution, so outcomes are calibrated. A request's questions go out in
+//! one call under positional names (`q0`, `q1`, ...), so caller ids never
+//! reach the vendor. A `refusal` answer fails the request rather than
+//! inventing a default.
 
 #![warn(missing_docs)]
 
@@ -38,10 +28,11 @@ use everruns_contracts::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest,
 };
 use everruns_contracts::error::{AgentLoopError, Result};
-use futures::future::try_join_all;
 use serde_json::Value;
 
-use self::wire::{DecisionBody, DecisionResponse, OptionBody, parse_response};
+use self::wire::{
+    AnswerBody, ChoiceBody, DecisionBody, DecisionResponse, LevelBody, QuestionBody, parse_response,
+};
 use everruns_contracts::decision_driver::{
     DecisionDriver, DecisionDriverCapabilities, NativePrimitives,
 };
@@ -49,8 +40,8 @@ use everruns_contracts::decision_driver::{
 /// Driver id for `DECISIONS_DRIVER` and `openai/...` routing.
 pub const OPENAI_DECISION_DRIVER_ID: &str = "openai";
 
-/// Model asked when neither the request nor the driver names one. The API is
-/// announced as built on GPT-6 Luna; the id it expects is unconfirmed.
+/// Model asked when neither the request nor the driver names one; the only
+/// model the endpoint serves today.
 pub const DEFAULT_MODEL: &str = "gpt-6-luna";
 
 /// OpenAI API root.
@@ -60,8 +51,11 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_BACKOFF: Duration = Duration::from_millis(250);
 /// Upper bound on a honored `Retry-After`.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(10);
-/// Questions per request. Each is its own round trip, run concurrently.
+/// Questions per request. The endpoint has no documented cap and accepted 33
+/// in probing; this keeps one call's latency and cost bounded.
 const MAX_QUESTIONS: usize = 24;
+/// Levels per score question, enforced by the endpoint.
+const MAX_SCORE_LEVELS: usize = 10;
 
 /// OpenAI's Decisions API, as a decision driver.
 #[derive(Clone)]
@@ -97,7 +91,7 @@ impl OpenAIDecisionDriver {
         }
     }
 
-    /// Total attempts per question, including the first. 1 disables retry,
+    /// Total attempts per request, including the first. 1 disables retry,
     /// which is what the deployment's guardrail path uses.
     pub fn max_attempts(mut self, attempts: u32) -> Self {
         self.max_attempts = attempts.max(1);
@@ -170,7 +164,7 @@ impl OpenAIDecisionDriver {
                 let json: Value = serde_json::from_str(&text)
                     .map_err(|_| AgentLoopError::llm("openai decision response is not JSON"))?;
                 return parse_response(&json).ok_or_else(|| {
-                    AgentLoopError::llm("openai decision response has no chosen label")
+                    AgentLoopError::llm("openai decision response is not a decision")
                 });
             }
             let retryable = status.as_u16() == 429 || status.is_server_error();
@@ -194,121 +188,153 @@ fn api_error(status: u16, _text: &str) -> AgentLoopError {
     AgentLoopError::llm(format!("OpenAI decision provider returned HTTP {status}"))
 }
 
-fn to_body(model: &str, state: &Value, question: &DecisionQuestion) -> DecisionBody {
+/// The vendor-side name of the question at `index`.
+fn wire_name(index: usize) -> String {
+    format!("q{index}")
+}
+
+fn to_body(model: &str, state: &Value, request: &DecisionRequest) -> DecisionBody {
     let input = match state {
         Value::String(text) => text.clone(),
         other => other.to_string(),
     };
-    let (instructions, options) = match question {
+    let questions = request
+        .questions
+        .iter()
+        .enumerate()
+        .map(|(index, (_, question))| to_question(wire_name(index), question))
+        .collect();
+    DecisionBody {
+        model: model.to_string(),
+        input,
+        questions,
+    }
+}
+
+fn to_question(name: String, question: &DecisionQuestion) -> QuestionBody {
+    match question {
         DecisionQuestion::Noul {
             instructions,
             yes,
             no,
-        } => (
-            instructions.clone(),
-            vec![
-                OptionBody {
-                    label: "yes".into(),
-                    description: yes.clone(),
-                },
-                OptionBody {
-                    label: "no".into(),
-                    description: no.clone(),
-                },
-            ],
-        ),
+        } => {
+            // A predicate has no slots for what yes and no mean, so the
+            // criteria ride in the instructions.
+            let mut instructions = instructions.clone();
+            if let Some(yes) = yes {
+                instructions.push_str(&format!(" True when: {yes}."));
+            }
+            if let Some(no) = no {
+                instructions.push_str(&format!(" False when: {no}."));
+            }
+            QuestionBody::Predicate { name, instructions }
+        }
         DecisionQuestion::Choice {
             instructions,
             options,
-        } => (
-            instructions.clone(),
-            options
+        } => QuestionBody::Choice {
+            name,
+            instructions: instructions.clone(),
+            choices: options
                 .iter()
-                .map(|(label, description)| OptionBody {
-                    label: label.clone(),
+                .map(|(value, description)| ChoiceBody {
+                    value: value.clone(),
                     description: description.clone(),
                 })
                 .collect(),
-        ),
+        },
         DecisionQuestion::Score {
             instructions,
             levels,
-        } => (
-            format!("{instructions} Pick the level that fits best; levels run lowest first."),
-            levels
+        } => QuestionBody::Score {
+            name,
+            instructions: instructions.clone(),
+            levels: levels
                 .iter()
-                .enumerate()
-                .map(|(index, level)| OptionBody {
-                    label: index.to_string(),
-                    description: Some(level.clone()),
+                .map(|level| LevelBody {
+                    label: level.clone(),
+                    description: None,
                 })
                 .collect(),
-        ),
-    };
-    DecisionBody {
-        model: model.to_string(),
-        input,
-        instructions,
-        options,
+        },
     }
 }
 
-/// The typed answer, and whether it came from a full distribution.
-fn to_answer(
-    question: &DecisionQuestion,
-    body: &DecisionBody,
-    response: &DecisionResponse,
-) -> Result<(DecisionAnswer, bool)> {
-    let labels: Vec<&str> = body.options.iter().map(|o| o.label.as_str()).collect();
-    let picked = response.label.trim();
-    if !labels.contains(&picked) {
-        return Err(AgentLoopError::llm(format!(
-            "openai decision picked '{picked}', which is not an offered answer"
-        )));
-    }
-    // Calibrated only when every offered label has a probability.
-    let distribution: Option<BTreeMap<&str, f64>> = response.probabilities.as_ref().and_then(|p| {
-        labels
-            .iter()
-            .map(|label| p.get(*label).map(|value| (*label, *value)))
-            .collect()
-    });
-    let calibrated = distribution.is_some();
-    let answer = match (question, distribution) {
-        (DecisionQuestion::Noul { .. }, Some(dist)) => DecisionAnswer::Noul {
-            probability: dist["yes"],
-        },
-        (DecisionQuestion::Noul { .. }, None) => DecisionAnswer::noul_label(picked == "yes"),
-        (DecisionQuestion::Choice { .. }, Some(dist)) => DecisionAnswer::Choice {
-            selected: picked.to_string(),
-            confidence: dist.values().copied().fold(0.0, f64::max),
-            probabilities: dist
-                .into_iter()
-                .map(|(label, p)| (label.to_string(), p))
-                .collect(),
-        },
-        (DecisionQuestion::Choice { .. }, None) => {
-            DecisionAnswer::choice_label(picked, labels.iter().copied())
-        }
-        (DecisionQuestion::Score { .. }, Some(dist)) => {
-            let probabilities: BTreeMap<usize, f64> = dist
-                .into_iter()
-                .filter_map(|(label, p)| label.parse().ok().map(|index| (index, p)))
-                .collect();
-            DecisionAnswer::Score {
-                score: probabilities
-                    .iter()
-                    .map(|(index, p)| *index as f64 * p)
-                    .sum(),
-                confidence: probabilities.values().copied().fold(0.0, f64::max),
-                probabilities,
-            }
-        }
-        (DecisionQuestion::Score { levels, .. }, None) => {
-            DecisionAnswer::score_label(picked.parse().unwrap_or_default(), levels.len())
-        }
+/// The typed answer for `question` from the vendor's `answer`.
+fn to_answer(question: &DecisionQuestion, answer: &AnswerBody) -> Result<DecisionAnswer> {
+    let mismatch = || {
+        AgentLoopError::llm(format!(
+            "openai decision answered '{}' with the wrong answer type",
+            answer.name()
+        ))
     };
-    Ok((answer, calibrated))
+    match (question, answer) {
+        (_, AnswerBody::Refusal { .. }) => Err(AgentLoopError::llm(
+            "openai decision refused to answer a question",
+        )),
+        (DecisionQuestion::Noul { .. }, AnswerBody::Predicate { probability, .. }) => {
+            Ok(DecisionAnswer::Noul {
+                probability: probability.clamp(0.0, 1.0),
+            })
+        }
+        (
+            DecisionQuestion::Choice { options, .. },
+            AnswerBody::Choice {
+                choice,
+                probabilities,
+                confidence,
+                ..
+            },
+        ) => {
+            if !options.iter().any(|(value, _)| value == choice) {
+                return Err(AgentLoopError::llm(format!(
+                    "openai decision picked '{choice}', which is not an offered answer"
+                )));
+            }
+            let probabilities: BTreeMap<String, f64> = options
+                .iter()
+                .map(|(value, _)| {
+                    let p = probabilities
+                        .iter()
+                        .find(|entry| &entry.value == value)
+                        .map_or(0.0, |entry| entry.probability);
+                    (value.clone(), p)
+                })
+                .collect();
+            Ok(DecisionAnswer::Choice {
+                selected: choice.clone(),
+                confidence: confidence
+                    .unwrap_or_else(|| probabilities.values().copied().fold(0.0, f64::max)),
+                probabilities,
+            })
+        }
+        (
+            DecisionQuestion::Score { levels, .. },
+            AnswerBody::Score {
+                score,
+                probabilities,
+                confidence,
+                ..
+            },
+        ) => {
+            let probabilities: BTreeMap<usize, f64> = (0..levels.len())
+                .map(|index| {
+                    let p = probabilities
+                        .iter()
+                        .find(|entry| entry.value == index)
+                        .map_or(0.0, |entry| entry.probability);
+                    (index, p)
+                })
+                .collect();
+            Ok(DecisionAnswer::Score {
+                score: *score,
+                confidence: confidence
+                    .unwrap_or_else(|| probabilities.values().copied().fold(0.0, f64::max)),
+                probabilities,
+            })
+        }
+        _ => Err(mismatch()),
+    }
 }
 
 #[async_trait]
@@ -318,11 +344,11 @@ impl DecisionDriver for OpenAIDecisionDriver {
     }
 
     fn capabilities(&self) -> DecisionDriverCapabilities {
-        // Calibration is per response; the declaration is the one that
-        // cannot overstate. Image context is announced but the core state is
-        // JSON today, so images are a follow-up.
-        DecisionDriverCapabilities::new(NativePrimitives::CHOICE_ONLY, false)
+        // Image input exists on the API, but the core state is JSON today, so
+        // images are a follow-up.
+        DecisionDriverCapabilities::new(NativePrimitives::ALL, true)
             .with_max_questions(MAX_QUESTIONS)
+            .with_max_score_levels(MAX_SCORE_LEVELS)
     }
 
     async fn evaluate(
@@ -339,30 +365,27 @@ impl DecisionDriver for OpenAIDecisionDriver {
             .model
             .clone()
             .unwrap_or_else(|| DEFAULT_MODEL.to_string());
-        let bodies: Vec<DecisionBody> = request
-            .questions
-            .iter()
-            .map(|(_, question)| to_body(&model, &request.state, question))
-            .collect();
-        let responses = try_join_all(bodies.iter().map(|body| self.decide(endpoint, body))).await?;
+        let body = to_body(&model, &request.state, &request);
+        let response = self.decide(endpoint, &body).await?;
 
         let mut outcome = DecisionOutcome {
-            model: model.clone(),
+            model: response.model.clone().unwrap_or(model),
             calibrated: true,
             attribution: None,
             ..DecisionOutcome::default()
         };
-        for (((id, question), body), response) in
-            request.questions.iter().zip(&bodies).zip(&responses)
-        {
-            let (answer, calibrated) = to_answer(question, body, response)?;
-            outcome.calibrated &= calibrated;
-            outcome.answers.insert(id.clone(), answer);
-            outcome.usage.input_tokens += response.usage.input_tokens;
-            outcome.usage.output_tokens += response.usage.output_tokens;
-            if let Some(served) = &response.model {
-                outcome.model = served.clone();
-            }
+        outcome.usage.input_tokens = response.usage.input_tokens;
+        outcome.usage.output_tokens = response.usage.output_tokens;
+        for (index, (id, question)) in request.questions.iter().enumerate() {
+            let name = wire_name(index);
+            let answer = response
+                .answers
+                .iter()
+                .find(|answer| answer.name() == name)
+                .ok_or_else(|| AgentLoopError::llm("openai decision response missed a question"))?;
+            outcome
+                .answers
+                .insert(id.clone(), to_answer(question, answer)?);
         }
         Ok(outcome)
     }

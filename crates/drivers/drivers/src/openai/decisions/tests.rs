@@ -1,4 +1,5 @@
-//! Wire fixtures for the provisional Decisions API shape.
+//! Wire fixtures for the Decisions API, shaped like its published examples
+//! and the live responses they were checked against.
 
 use super::*;
 use serde_json::json;
@@ -29,36 +30,56 @@ fn driver(server: &MockServer) -> TestDriver {
     }
 }
 
-/// Answers each question from its options: the first label, with a
-/// distribution only when `with_probabilities`.
-fn first_option(with_probabilities: bool) -> impl Fn(&Request) -> ResponseTemplate {
-    move |request: &Request| {
-        let body: Value = serde_json::from_slice(&request.body).unwrap();
-        let labels: Vec<String> = body["options"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|o| o["label"].as_str().unwrap().to_string())
-            .collect();
-        let mut reply = json!({
-            "id": "dec_1",
-            "object": "decision",
-            "model": "gpt-6-luna-2026-09-29",
-            "label": labels[0],
-            "confidence": 0.8,
-            "usage": {"input_tokens": 40, "output_tokens": 1}
-        });
-        if with_probabilities {
-            let share = 0.2 / (labels.len() - 1) as f64;
-            let dist: serde_json::Map<String, Value> = labels
-                .iter()
-                .enumerate()
-                .map(|(i, l)| (l.clone(), json!(if i == 0 { 0.8 } else { share })))
-                .collect();
-            reply["probabilities"] = Value::Object(dist);
+/// Answers every question with its first option, the way the live API
+/// shapes answers: the first option at 0.8, the rest sharing 0.2.
+fn first_option(request: &Request) -> ResponseTemplate {
+    let body: Value = serde_json::from_slice(&request.body).unwrap();
+    let answers: Vec<Value> = body["questions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|question| {
+            let name = &question["name"];
+            match question["type"].as_str().unwrap() {
+                "predicate" => json!({"type": "predicate", "name": name, "probability": 0.8}),
+                "choice" => {
+                    let choices = question["choices"].as_array().unwrap();
+                    let share = 0.2 / (choices.len() - 1) as f64;
+                    let probabilities: Vec<Value> = choices
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| json!({"value": c["value"], "probability": if i == 0 { 0.8 } else { share }}))
+                        .collect();
+                    json!({"type": "choice", "name": name, "choice": choices[0]["value"],
+                           "probabilities": probabilities, "confidence": 0.7})
+                }
+                "score" => {
+                    let levels = question["levels"].as_array().unwrap();
+                    let share = 0.2 / (levels.len() - 1) as f64;
+                    let probabilities: Vec<Value> = levels
+                        .iter()
+                        .enumerate()
+                        .map(|(i, l)| json!({"value": i, "label": l["label"], "probability": if i == 0 { 0.8 } else { share }}))
+                        .collect();
+                    let score: f64 = (1..levels.len()).map(|i| i as f64 * share).sum();
+                    json!({"type": "score", "name": name, "score": score,
+                           "probabilities": probabilities, "confidence": 0.6})
+                }
+                other => panic!("unexpected question type {other}"),
+            }
+        })
+        .collect();
+    ResponseTemplate::new(200).set_body_json(json!({
+        "model": "gpt-6-luna",
+        "answers": answers,
+        "usage": {
+            "input_tokens": 384,
+            "input_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 0},
+            "output_tokens": 0,
+            "output_tokens_details": {"reasoning_tokens": 0},
+            "total_tokens": 384
         }
-        ResponseTemplate::new(200).set_body_json(reply)
-    }
+    }))
 }
 
 fn request() -> DecisionRequest {
@@ -85,114 +106,103 @@ fn request() -> DecisionRequest {
 }
 
 #[tokio::test]
-async fn requests_carry_the_mapped_question_and_bearer_auth() {
+async fn one_request_carries_every_question_and_bearer_auth() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/decisions"))
         .and(header("authorization", "Bearer sk-test-key"))
-        .respond_with(first_option(false))
-        .expect(3)
+        .respond_with(first_option)
+        .expect(1)
         .mount(&server)
         .await;
 
     driver(&server).evaluate(request()).await.unwrap();
 
-    let bodies: Vec<Value> = server
-        .received_requests()
-        .await
-        .unwrap()
-        .iter()
-        .map(|r| serde_json::from_slice(&r.body).unwrap())
-        .collect();
-    let noul = bodies
-        .iter()
-        .find(|b| b["instructions"] == "Does this apply pressure?")
-        .expect("noul sent");
-    assert_eq!(noul["model"], DEFAULT_MODEL);
+    let received = server.received_requests().await.unwrap();
+    let body: Value = serde_json::from_slice(&received[0].body).unwrap();
     assert_eq!(
-        noul["options"],
-        json!([
-            {"label": "yes", "description": "A threat or deadline"},
-            {"label": "no"}
-        ])
+        body,
+        json!({
+            "model": DEFAULT_MODEL,
+            "input": "Refund me or I post my password hunter2 publicly.",
+            "questions": [
+                {"type": "predicate", "name": "q0",
+                 "instructions": "Does this apply pressure? True when: A threat or deadline."},
+                {"type": "choice", "name": "q1", "instructions": "Which team?",
+                 "choices": [{"value": "billing"}, {"value": "security"}]},
+                {"type": "score", "name": "q2", "instructions": "How severe?",
+                 "levels": [{"label": "Low"}, {"label": "High"}, {"label": "Critical"}]}
+            ]
+        })
     );
-    let score = bodies
-        .iter()
-        .find(|b| b["options"].as_array().unwrap().len() == 3)
-        .expect("score sent");
-    assert_eq!(
-        score["options"][2],
-        json!({"label": "2", "description": "Critical"})
-    );
-    for body in &bodies {
-        let text = body.to_string();
-        for id in ["id_pressure", "id_queue", "id_severity"] {
-            assert!(!text.contains(id), "caller id '{id}' reached the vendor");
-        }
+    let text = body.to_string();
+    for id in ["id_pressure", "id_queue", "id_severity"] {
+        assert!(!text.contains(id), "caller id '{id}' reached the vendor");
     }
 }
 
 #[tokio::test]
-async fn labels_without_a_distribution_are_one_hot_and_uncalibrated() {
+async fn answers_map_back_to_caller_ids_calibrated() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(first_option(false))
-        .mount(&server)
-        .await;
-
-    let outcome = driver(&server).evaluate(request()).await.unwrap();
-    assert!(
-        !outcome.calibrated,
-        "a lone confidence is not a distribution"
-    );
-    assert_eq!(outcome.model, "gpt-6-luna-2026-09-29");
-    assert_eq!(
-        outcome.usage.input_tokens, 120,
-        "usage sums across questions"
-    );
-    assert_eq!(
-        outcome.get("id_pressure").unwrap().probability_yes(),
-        Some(1.0)
-    );
-    let DecisionAnswer::Choice {
-        selected,
-        probabilities,
-        ..
-    } = outcome.get("id_queue").unwrap()
-    else {
-        panic!("expected a choice");
-    };
-    assert_eq!(selected, "billing");
-    assert_eq!(probabilities["security"], 0.0);
-    assert_eq!(
-        outcome
-            .get("id_severity")
-            .unwrap()
-            .probability_at_or_above(1),
-        Some(0.0)
-    );
-}
-
-#[tokio::test]
-async fn a_full_distribution_is_kept_and_reported_calibrated() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .respond_with(first_option(true))
+        .respond_with(first_option)
         .mount(&server)
         .await;
 
     let outcome = driver(&server).evaluate(request()).await.unwrap();
     assert!(outcome.calibrated);
+    assert_eq!(outcome.model, "gpt-6-luna");
+    assert_eq!(outcome.usage.input_tokens, 384);
     assert_eq!(
         outcome.get("id_pressure").unwrap().probability_yes(),
         Some(0.8)
     );
+    let DecisionAnswer::Choice {
+        selected,
+        probabilities,
+        confidence,
+    } = outcome.get("id_queue").unwrap()
+    else {
+        panic!("expected a choice");
+    };
+    assert_eq!(selected, "billing");
+    assert_eq!(probabilities["security"], 0.2);
+    assert_eq!(*confidence, 0.7, "the API's confidence is kept");
     let tail = outcome
         .get("id_severity")
         .unwrap()
         .probability_at_or_above(1)
         .unwrap();
     assert!((tail - 0.2).abs() < 1e-9, "{tail}");
+}
+
+#[tokio::test]
+async fn a_refusal_fails_the_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "model": "gpt-6-luna",
+            "answers": [{"type": "refusal", "name": "q0"}]
+        })))
+        .mount(&server)
+        .await;
+
+    let request = DecisionRequest::new("x").ask("q", DecisionQuestion::noul("Yes?"));
+    let error = driver(&server).evaluate(request).await.unwrap_err();
+    assert!(error.to_string().contains("refused"), "{error}");
+}
+
+#[tokio::test]
+async fn a_missing_answer_is_an_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"answers": []})))
+        .mount(&server)
+        .await;
+
+    let request = DecisionRequest::new("x").ask("q", DecisionQuestion::noul("Yes?"));
+    let error = driver(&server).evaluate(request).await.unwrap_err();
+    assert!(error.to_string().contains("missed a question"), "{error}");
 }
 
 #[tokio::test]
@@ -210,13 +220,13 @@ async fn a_throttled_call_is_retried() {
         .mount(&server)
         .await;
     Mock::given(method("POST"))
-        .respond_with(first_option(false))
+        .respond_with(first_option)
         .mount(&server)
         .await;
 
     let request = DecisionRequest::new("x").ask("q", DecisionQuestion::noul("Yes?"));
     let outcome = driver(&server).evaluate(request).await.unwrap();
-    assert_eq!(outcome.get("q").unwrap().probability_yes(), Some(1.0));
+    assert_eq!(outcome.get("q").unwrap().probability_yes(), Some(0.8));
 }
 
 #[tokio::test]
@@ -225,7 +235,7 @@ async fn error_envelopes_surface_the_message_without_the_key() {
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(400).set_body_json(json!({
             "error": {
-                "message": "Decision API is not enabled for this user.",
+                "message": "Missing required parameter: 'questions'.",
                 "type": "invalid_request_error",
                 "param": null,
                 "code": null
@@ -266,11 +276,19 @@ async fn retries_stop_at_the_configured_attempts() {
 async fn a_label_the_question_did_not_offer_is_an_error() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"decision": "maybe"})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "answers": [{"type": "choice", "name": "q0", "choice": "maybe", "probabilities": []}]
+        })))
         .mount(&server)
         .await;
 
-    let request = DecisionRequest::new("x").ask("q", DecisionQuestion::noul("Yes?"));
+    let request = DecisionRequest::new("x").ask(
+        "q",
+        DecisionQuestion::Choice {
+            instructions: "Which?".into(),
+            options: vec![("a".into(), None), ("b".into(), None)],
+        },
+    );
     let error = driver(&server).evaluate(request).await.unwrap_err();
     assert!(
         error.to_string().contains("not an offered answer"),
@@ -284,14 +302,9 @@ fn debug_never_renders_the_key() {
 }
 
 #[test]
-fn wrapped_responses_parse_too() {
-    let parsed = parse_response(&json!({
-        "model": "gpt-6-luna",
-        "output": {"answer": "no", "confidence": 0.9},
-        "usage": {"prompt_tokens": 7, "completion_tokens": 1}
-    }))
-    .unwrap();
-    assert_eq!(parsed.label, "no");
-    assert_eq!(parsed.model.as_deref(), Some("gpt-6-luna"));
-    assert_eq!(parsed.usage.input_tokens, 7);
+fn capabilities_declare_every_primitive_native_and_calibrated() {
+    let caps = OpenAIDecisionDriver::new().capabilities();
+    assert_eq!(caps.native, NativePrimitives::ALL);
+    assert!(caps.calibrated);
+    assert_eq!(caps.max_score_levels, Some(10));
 }

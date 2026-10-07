@@ -1,71 +1,184 @@
 //! Request and response bodies for `POST /v1/decisions`.
 //!
-//! PROVISIONAL. OpenAI has not published a reference for the Decisions API
-//! (limited preview since DevDay, 2026-09-29), and the endpoint refuses our
-//! account with "Decision API is not enabled for this user". What is known:
-//! the path (`/v1/decisions`, confirmed by that refusal), that it takes a
-//! context plus a closed list of answers, that it answers with the chosen
-//! answer and a confidence, and that it runs on GPT-6 Luna. Everything else
-//! here is inferred. It is isolated in this file so that verifying it against
-//! the reference changes one module and its fixtures, and parsing is lenient
-//! (field aliases, optional distribution) so a near miss degrades to an
-//! uncalibrated label rather than a parse failure.
-
-use std::collections::BTreeMap;
+//! Matches the published reference
+//! (<https://developers.openai.com/api/docs/guides/decisions>, public beta)
+//! and was checked against live responses on 2026-10-06. Limits the endpoint
+//! enforces that the guide does not list, probed the same day: names must be
+//! unique within a request, a choice needs at least two choices, and a score
+//! takes at most ten levels. A question the model declines comes back as a
+//! `refusal` answer with HTTP 200.
 
 use serde::{Deserialize, Serialize};
 
-/// One decision: a single question over a closed set of answers.
+/// One request: shared input and every question about it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DecisionBody {
     /// Model id.
     pub model: String,
-    /// The context being decided about, as text.
+    /// The evidence the questions are about, as text.
     pub input: String,
-    /// The question.
-    pub instructions: String,
-    /// The answers the model may pick from.
-    pub options: Vec<OptionBody>,
+    /// The questions, answered together.
+    pub questions: Vec<QuestionBody>,
 }
 
-/// One allowed answer.
+/// One question, tagged by its `type`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct OptionBody {
-    /// The value returned when this answer is picked.
-    pub label: String,
-    /// What the answer means, when the caller said.
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum QuestionBody {
+    /// Whether a condition holds; answered with a probability.
+    Predicate {
+        /// Echoed on the answer.
+        name: String,
+        /// The condition.
+        instructions: String,
+    },
+    /// One value from a fixed set.
+    Choice {
+        /// Echoed on the answer.
+        name: String,
+        /// What to decide.
+        instructions: String,
+        /// At least two.
+        choices: Vec<ChoiceBody>,
+    },
+    /// A position along ordered levels, lowest first.
+    Score {
+        /// Echoed on the answer.
+        name: String,
+        /// What to rate.
+        instructions: String,
+        /// At most ten; indices start at 0.
+        levels: Vec<LevelBody>,
+    },
+}
+
+impl QuestionBody {
+    /// The name the answer comes back under.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Predicate { name, .. } | Self::Choice { name, .. } | Self::Score { name, .. } => {
+                name
+            }
+        }
+    }
+}
+
+/// One allowed choice.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ChoiceBody {
+    /// Returned as the answer's `choice` when picked.
+    pub value: String,
+    /// When this choice applies.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 
-/// The chosen answer.
+/// One score level.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LevelBody {
+    /// Short level name.
+    pub label: String,
+    /// The level's criteria.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// The response.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct DecisionResponse {
     /// The model that answered.
     #[serde(default)]
     pub model: Option<String>,
-    /// The picked label.
-    #[serde(alias = "decision", alias = "answer", alias = "choice")]
-    pub label: String,
-    /// Confidence in the picked label, 0..=1.
+    /// One answer per question, carrying its name.
     #[serde(default)]
-    pub confidence: Option<f64>,
-    /// Probability per label, when the API returns a full distribution.
-    #[serde(default, alias = "scores")]
-    pub probabilities: Option<BTreeMap<String, f64>>,
-    /// Token usage.
+    pub answers: Vec<AnswerBody>,
+    /// Token usage for the whole request.
     #[serde(default)]
     pub usage: Usage,
 }
 
-/// Token usage for one decision.
+/// One answer, tagged by its question's `type`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AnswerBody {
+    /// Probability the condition is true.
+    Predicate {
+        /// The question's name.
+        name: String,
+        /// 0..=1.
+        probability: f64,
+    },
+    /// The picked value and the distribution over choices.
+    Choice {
+        /// The question's name.
+        name: String,
+        /// One of the supplied values.
+        choice: String,
+        /// Probability per choice.
+        #[serde(default)]
+        probabilities: Vec<ChoiceProbability>,
+        /// The API's confidence in its pick.
+        #[serde(default)]
+        confidence: Option<f64>,
+    },
+    /// Probability-weighted level index and the distribution over levels.
+    Score {
+        /// The question's name.
+        name: String,
+        /// Weighted average of level indices.
+        score: f64,
+        /// Probability per level.
+        #[serde(default)]
+        probabilities: Vec<LevelProbability>,
+        /// The API's confidence.
+        #[serde(default)]
+        confidence: Option<f64>,
+    },
+    /// The model declined to answer.
+    Refusal {
+        /// The question's name.
+        name: String,
+    },
+}
+
+impl AnswerBody {
+    /// The question name this answer belongs to.
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Predicate { name, .. }
+            | Self::Choice { name, .. }
+            | Self::Score { name, .. }
+            | Self::Refusal { name } => name,
+        }
+    }
+}
+
+/// One choice's probability.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ChoiceProbability {
+    /// The choice value.
+    pub value: String,
+    /// 0..=1.
+    pub probability: f64,
+}
+
+/// One level's probability.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct LevelProbability {
+    /// Level index, from 0.
+    pub value: usize,
+    /// 0..=1.
+    pub probability: f64,
+}
+
+/// Token usage. The API bills input tokens only; output is reported as 0.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 pub struct Usage {
     /// Input tokens.
-    #[serde(default, alias = "prompt_tokens")]
+    #[serde(default)]
     pub input_tokens: u64,
     /// Output tokens.
-    #[serde(default, alias = "completion_tokens")]
+    #[serde(default)]
     pub output_tokens: u64,
 }
 
@@ -88,18 +201,7 @@ pub struct ErrorBody {
     pub kind: Option<String>,
 }
 
-/// The response, whether it is the object itself or wraps it in `output`.
+/// Parse a success body.
 pub fn parse_response(body: &serde_json::Value) -> Option<DecisionResponse> {
-    let mut parsed: DecisionResponse = serde_json::from_value(body.clone())
-        .ok()
-        .or_else(|| serde_json::from_value(body.get("output")?.clone()).ok())?;
-    if parsed.model.is_none() {
-        parsed.model = body.get("model").and_then(|m| m.as_str()).map(String::from);
-    }
-    if parsed.usage == Usage::default()
-        && let Some(usage) = body.get("usage")
-    {
-        parsed.usage = serde_json::from_value(usage.clone()).unwrap_or_default();
-    }
-    Some(parsed)
+    serde_json::from_value(body.clone()).ok()
 }

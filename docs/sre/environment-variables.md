@@ -475,8 +475,7 @@ platform uses for its own internal work.
 | `UTILITY_OPENROUTER_API_KEY` | The same work, routed through OpenRouter instead. Setting it selects OpenRouter; it wins when both keys are set, and the startup log says so | The utility LLM falls back to `UTILITY_OPENAI_API_KEY` |
 | `UTILITY_LLM_MODEL` | The model the utility LLM calls on whichever backend was selected | Defaults to `gpt-6-luna` on OpenAI, `openai/gpt-6-luna` on OpenRouter |
 | `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"`, answered by TypeSafe | Those checks are skipped with a warning and the turn proceeds, unless `DECISIONS_DRIVER` picks another driver |
-| `DECISIONS_DRIVER` | Which decision driver answers `jev` checks: `typesafe`, `openai` (preview, see below), or `llm` to answer them with the utility LLM when you have no TypeSafe key. `llm` answers are labels, not calibrated probabilities | `typesafe` when its key is set, otherwise disabled. A driver that is not configured stops startup |
-| `DECISIONS_OPENAI_PREVIEW` | Set to `1` to register the `openai` decision driver (OpenAI's Decisions API, in limited preview) using `UTILITY_OPENAI_API_KEY`, so `DECISIONS_DRIVER=openai` or an `openai/<model>` request can reach it | The driver is not registered |
+| `DECISIONS_DRIVER` | Which decision driver answers `jev` checks: `typesafe`, `openai` (OpenAI's Decisions API, using `UTILITY_OPENAI_API_KEY`), or `llm` to answer them with the utility LLM when you have no TypeSafe key. `llm` answers are labels, not calibrated probabilities | `typesafe` when its key is set, otherwise disabled. A driver that is not configured stops startup |
 | `DECISIONS_MODEL` | The model the chosen decision driver is asked for | The driver's own default. Not allowed with `DECISIONS_DRIVER=llm`, which uses `UTILITY_LLM_MODEL` |
 
 The keys are read from the process environment at startup. Missing keys **fail
