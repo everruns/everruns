@@ -679,6 +679,8 @@ message EmitEventResponse {
 
 message EmitEventStreamResponse {
     int32 events_processed = 1;
+    // The last stored event, with id and sequence, when the batch was not empty.
+    Event last_event = 2;
 }
 
 // Commit an execution ID to prevent duplicate processing on retry

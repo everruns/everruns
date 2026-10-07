@@ -1877,7 +1877,7 @@ pub(crate) fn core_event_request_to_proto(request: &EventRequest) -> Result<prot
 }
 
 /// Convert proto::Event to crate::core::Event
-fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
+pub(super) fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
     everruns_internal_protocol::proto_event_to_schema(proto_event)
         .map_err(|e| AgentLoopError::store(format!("Failed to convert proto event: {}", e)))
 }

@@ -23,6 +23,18 @@
 // instead of one round trip each. A store takes every event queued before it
 // ran, so later stores in the chain may find nothing left and do nothing.
 //
+// Decision: streamed `output.message.delta` and `llm.generation` are queued
+// too: nothing reads what their stores return, and a failed store was only
+// logged. A reason phase used to end with three blocking stores in a row
+// (final delta, generation, `output.message.completed`).
+//
+// Decision: a blocking emit takes the events still waiting in the queue and
+// stores them together with its own event, in one round trip and one insert,
+// and gets its own event back as stored. So the final delta and the
+// generation ride along with `output.message.completed`. Events whose store
+// has already started stay with that store; the blocking emit waits for it
+// first, so order is unchanged.
+//
 // Decision: `output.message.started` carrying reasoning state is not queued. It
 // is persisted before the provider call so an interrupted worker can resume,
 // and its caller fails the phase when that store fails.
@@ -43,6 +55,8 @@ const QUEUED: &[&str] = &[
     crate::core::events::REASON_STARTED,
     crate::core::events::CAPABILITY_USAGE,
     crate::core::events::OUTPUT_MESSAGE_STARTED,
+    crate::core::events::OUTPUT_MESSAGE_DELTA,
+    crate::core::events::LLM_GENERATION,
     crate::core::events::ACT_STARTED,
     crate::core::events::TOOL_STARTED,
 ];
@@ -108,6 +122,12 @@ impl WriteBehind {
                 store(batch).await;
             }
         }));
+    }
+
+    /// Take the queued events no store has taken yet. The caller stores them
+    /// itself, after [`WriteBehind::flush`], ahead of its own event.
+    pub fn take_pending(&self) -> Vec<EventRequest> {
+        std::mem::take(&mut *lock(&self.pending))
     }
 
     /// Wait until every queued store has finished.
@@ -239,6 +259,58 @@ mod tests {
             ],
             "events queued while the first store ran share the next store"
         );
+    }
+
+    #[tokio::test]
+    async fn a_blocking_emit_takes_waiting_events_and_leaves_started_stores_alone() {
+        let queue = WriteBehind::new();
+        let batches = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let (open, opened) = tokio::sync::oneshot::channel::<()>();
+        let mut opened = Some(opened);
+        let store = |batches: Arc<Mutex<Vec<Vec<String>>>>,
+                     gate: Option<tokio::sync::oneshot::Receiver<()>>| {
+            move |batch: Vec<EventRequest>| -> Store {
+                Box::pin(async move {
+                    if let Some(gate) = gate {
+                        gate.await.ok();
+                    }
+                    let types = batch.into_iter().map(|r| r.event_type).collect();
+                    batches.lock().unwrap().push(types);
+                })
+            }
+        };
+        // "a" is taken by a store that is still running.
+        queue.enqueue_event(request("a"), store(batches.clone(), opened.take()));
+        tokio::task::yield_now().await;
+        tokio::task::yield_now().await;
+        // "b" and "c" wait; the blocking emit takes them.
+        queue.enqueue_event(request("b"), store(batches.clone(), None));
+        queue.enqueue_event(request("c"), store(batches.clone(), None));
+        let taken: Vec<String> = queue
+            .take_pending()
+            .into_iter()
+            .map(|r| r.event_type)
+            .collect();
+        assert_eq!(taken, vec!["b".to_string(), "c".to_string()]);
+
+        open.send(()).ok();
+        queue.flush().await;
+        assert_eq!(
+            *batches.lock().unwrap(),
+            vec![vec!["a".to_string()]],
+            "the started store keeps its event and the later stores find nothing"
+        );
+    }
+
+    #[test]
+    fn streamed_deltas_and_generations_are_queued() {
+        for event_type in [
+            crate::core::events::OUTPUT_MESSAGE_DELTA,
+            crate::core::events::LLM_GENERATION,
+        ] {
+            assert!(QUEUED.contains(&event_type));
+        }
+        assert!(!QUEUED.contains(&crate::core::events::OUTPUT_MESSAGE_COMPLETED));
     }
 
     #[test]

@@ -37,16 +37,19 @@ impl WorkerServiceImpl {
         }
 
         // Emit all events through the EventService
-        let events_processed = self
+        let (events_processed, last_event) = self
             .event_service
-            .emit_batch(event_requests)
+            .emit_batch_returning_last(event_requests)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to emit event batch: {}", e);
                 Status::internal("Failed to store events")
             })?;
 
-        Ok(Response::new(EmitEventStreamResponse { events_processed }))
+        Ok(Response::new(EmitEventStreamResponse {
+            events_processed,
+            last_event: last_event.as_ref().map(schema_event_to_proto),
+        }))
     }
 
     pub(crate) async fn handle_emit_event(
