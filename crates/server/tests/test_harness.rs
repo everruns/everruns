@@ -79,6 +79,9 @@ pub struct TestServer {
     pub virtual_registry:
         Arc<everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     pub runner: Arc<dyn TurnBackend>,
+    /// Writes events and publishes them to the server's subscribers, for test
+    /// runners that stand in for a worker.
+    pub event_service: Arc<services::EventService>,
     /// Public ID of the built-in `base` harness for the default org (resolved
     /// at construction time; no hardcoded UUIDs).
     pub seed_base_harness_id: String,
@@ -474,18 +477,49 @@ impl TestServer {
         Self::serving_with_mode(TestMode::InMemory).await
     }
 
-    async fn serving_with_mode(mode: TestMode) -> (Self, String) {
-        use tokio::net::TcpListener;
+    /// [`Self::serving_in_memory`] with a test runner. Requests arrive with
+    /// `X-Forwarded-Proto: http`, as they would behind a proxy, so absolute
+    /// URLs the server builds (Agent Cards) point back at this listener.
+    pub async fn serving_in_memory_with_runner(runner: Arc<dyn TurnBackend>) -> (Self, String) {
+        let (listener, base_url) = Self::bind().await;
+        let server = Self::build(
+            TestMode::InMemory,
+            format!("{base_url}/api"),
+            None,
+            true,
+            Some(runner),
+            None,
+        )
+        .await;
+        let router = server.router.clone().layer(axum::middleware::map_request(
+            |mut request: axum::extract::Request| async move {
+                request.headers_mut().insert(
+                    "x-forwarded-proto",
+                    axum::http::HeaderValue::from_static("http"),
+                );
+                request
+            },
+        ));
+        Self::serve(listener, router).await;
+        (server, base_url)
+    }
 
-        let listener = TcpListener::bind("127.0.0.1:0")
+    async fn bind() -> (tokio::net::TcpListener, String) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("Failed to bind TCP listener");
-        let addr = listener.local_addr().unwrap();
-        let base_url = format!("http://{addr}");
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        (listener, base_url)
+    }
 
+    async fn serving_with_mode(mode: TestMode) -> (Self, String) {
+        let (listener, base_url) = Self::bind().await;
         let server = Self::with_mode_and_url(mode, format!("{base_url}/api")).await;
-        let router = server.router.clone();
+        Self::serve(listener, server.router.clone()).await;
+        (server, base_url)
+    }
 
+    async fn serve(listener: tokio::net::TcpListener, router: Router) {
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let handle = tokio::spawn(async move {
             axum::serve(listener, router)
@@ -503,8 +537,6 @@ impl TestServer {
         // adding lifetime complexity to TestServer. The graceful shutdown +
         // oneshot still ensures the server stops promptly on drop.
         std::mem::forget((shutdown_tx, handle));
-
-        (server, base_url)
     }
 
     fn normalize_uri(uri: &str) -> String {
@@ -1224,6 +1256,7 @@ impl TestServer {
             pool,
             virtual_registry,
             runner,
+            event_service,
             seed_base_harness_id,
             seed_generic_harness_id,
             seed_chat_harness_id,
