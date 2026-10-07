@@ -17888,9 +17888,9 @@ export interface components {
         effective_owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * Format: int32
-         * @description Total events recorded for this session (EVE-868). Read from the
-         *     denormalized `sessions.event_count` counter rather than counted, so the
-         *     session detail tab bar costs no extra scan over `events`.
+         * @description Total events recorded for this session (EVE-868). Derived from the
+         *     session's event sequence rather than counted, so the session detail
+         *     tab bar costs no extra scan over `events`.
          *     `None` on payloads built outside the database read path.
          * @example 42
          */
@@ -18484,9 +18484,9 @@ export interface components {
         effective_owner?: components["schemas"]["PrincipalSummary"] | null;
         /**
          * Format: int32
-         * @description Total events recorded for this session (EVE-868). Read from the
-         *     denormalized `sessions.event_count` counter rather than counted, so the
-         *     session detail tab bar costs no extra scan over `events`.
+         * @description Total events recorded for this session (EVE-868). Derived from the
+         *     session's event sequence rather than counted, so the session detail
+         *     tab bar costs no extra scan over `events`.
          *     `None` on payloads built outside the database read path.
          * @example 42
          */
@@ -21318,9 +21318,9 @@ export interface components {
       effective_owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * Format: int32
-       * @description Total events recorded for this session (EVE-868). Read from the
-       *     denormalized `sessions.event_count` counter rather than counted, so the
-       *     session detail tab bar costs no extra scan over `events`.
+       * @description Total events recorded for this session (EVE-868). Derived from the
+       *     session's event sequence rather than counted, so the session detail
+       *     tab bar costs no extra scan over `events`.
        *     `None` on payloads built outside the database read path.
        * @example 42
        */
@@ -26105,9 +26105,9 @@ export interface components {
       effective_owner?: components["schemas"]["PrincipalSummary"] | null;
       /**
        * Format: int32
-       * @description Total events recorded for this session (EVE-868). Read from the
-       *     denormalized `sessions.event_count` counter rather than counted, so the
-       *     session detail tab bar costs no extra scan over `events`.
+       * @description Total events recorded for this session (EVE-868). Derived from the
+       *     session's event sequence rather than counted, so the session detail
+       *     tab bar costs no extra scan over `events`.
        *     `None` on payloads built outside the database read path.
        * @example 42
        */

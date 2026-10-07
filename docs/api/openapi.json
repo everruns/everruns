@@ -44755,7 +44755,7 @@
                     "null"
                   ],
                   "format": "int32",
-                  "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+                  "description": "Total events recorded for this session (EVE-868). Derived from the\nsession's event sequence rather than counted, so the session detail\ntab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
                   "example": 42,
                   "minimum": 0
                 },
@@ -45736,7 +45736,7 @@
                         "null"
                       ],
                       "format": "int32",
-                      "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+                      "description": "Total events recorded for this session (EVE-868). Derived from the\nsession's event sequence rather than counted, so the session detail\ntab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
                       "example": 42,
                       "minimum": 0
                     },
@@ -50714,7 +50714,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+            "description": "Total events recorded for this session (EVE-868). Derived from the\nsession's event sequence rather than counted, so the session detail\ntab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
             "example": 42,
             "minimum": 0
           },
@@ -59502,7 +59502,7 @@
                   "null"
                 ],
                 "format": "int32",
-                "description": "Total events recorded for this session (EVE-868). Read from the\ndenormalized `sessions.event_count` counter rather than counted, so the\nsession detail tab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
+                "description": "Total events recorded for this session (EVE-868). Derived from the\nsession's event sequence rather than counted, so the session detail\ntab bar costs no extra scan over `events`.\n`None` on payloads built outside the database read path.",
                 "example": 42,
                 "minimum": 0
               },
