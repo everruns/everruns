@@ -238,7 +238,7 @@ To prevent the GitHub token from leaking to arbitrary hosts that contain the sub
 - **Validation:** Entries containing `/`, `@`, whitespace, or `..` are rejected with a `tracing::warn!` and the rest of the list is honored. This protects against operator misconfig embedding a credential, scheme, or path-traversal target into the env var.
 - **Credentials helper:** `daytona_git_credentials` writes one `https://oauth2:<token>@<host>` entry per trusted host so all configured GitHub servers authenticate transparently.
 
-The trust-boundary decision and rationale are documented at the top of `integrations/daytona/src/tools.rs`. See `TM-DAYTONA-008` in `knowledge/security/threat-model.md` for the threat analysis.
+The trust-boundary decision and rationale are documented at the top of `crates/integrations/src/daytona/tools.rs`. See `TM-DAYTONA-008` in `knowledge/security/threat-model.md` for the threat analysis.
 
 ## Security
 
@@ -339,7 +339,7 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 
 ## Crate Structure
 
-`integrations/daytona/` → `everruns-integrations`
+`crates/integrations/src/daytona/` → `everruns-integrations`
 
 External integration crate. It publishes plugin consts and is named in
 `crates/integrations-catalog`.
@@ -361,7 +361,7 @@ this crate, otherwise its capabilities and connectors never register.
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
 | `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`; fail-closed on missing `DAYTONA_API_KEY`, see `knowledge/integrations/integrations.md`) |
 
-Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workflows/ci.yml` runs this job only on pushes to `main` when `integrations/daytona/**` changes. The weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml` reruns the same live test without path filters so shared regressions in crates, harness code, or dependencies still surface.
+Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workflows/ci.yml` runs this job only on pushes to `main` when `crates/integrations/src/daytona/**` changes. The weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml` reruns the same live test without path filters so shared regressions in crates, harness code, or dependencies still surface.
 
 ## Capability Registration
 

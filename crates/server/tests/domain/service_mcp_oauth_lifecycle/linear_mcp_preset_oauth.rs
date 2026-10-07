@@ -47,7 +47,7 @@ fn pending_state(jar: &CookieJar, provider: &str) -> PendingState {
 }
 
 async fn fixture() -> (AppState, ResolvedOrg, Uuid, String, MockMcpOAuthServer) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = Arc::new(EncryptionService::new(TEST_KEY, &[]).unwrap());
     let mock = MockMcpOAuthServer::default();
     let auth_config = AuthConfig::default();

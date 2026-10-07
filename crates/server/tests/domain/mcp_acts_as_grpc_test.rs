@@ -43,7 +43,7 @@ struct ActsAsArrangement {
 
 impl ActsAsArrangement {
     async fn new(authenticated: bool) -> Self {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
@@ -298,8 +298,7 @@ impl ActsAsArrangement {
                 trigger_id: None,
                 harness_id: Some(self.harness_id),
                 agent_id: Some(self.agent_id),
-                agent_version_id: None,
-                agent_config_hash: None,
+                agent_revision: None,
                 virtual_user_id: Some(self.identity_id),
                 owner_principal_id,
                 resolved_owner_user_id: Some(self.user_id),

@@ -248,6 +248,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         crate::core::event_emitter::EventEmitter::emit(&emitter, request).await
     }
 
+    async fn emit_events(&self, requests: Vec<EventRequest>) -> Result<()> {
+        GrpcAdapter::new(self.client.clone())
+            .emit_stored_batch(requests)
+            .await
+    }
+
     // =========================================================================
     // LLM Provider Operations
     // =========================================================================
@@ -687,6 +693,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn user_mcp_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
+        Some(Arc::new(crate::grpc_user_mcp::GrpcUserMcpInvoker::new(
+            self.client.clone(),
+            org_id,
+            session_id,
+        )))
+    }
+
     fn sandbox_persistence_store(
         &self,
     ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
@@ -729,6 +747,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn stream_heartbeater(&self) -> Option<Arc<dyn crate::core::durability::StreamHeartbeater>> {
         self.stream_heartbeater.clone()
+    }
+
+    fn partial_stream_store(&self) -> Option<Arc<dyn crate::core::durability::PartialStreamStore>> {
+        Some(Arc::new(
+            crate::grpc_partial_stream::GrpcPartialStreamStore::new(self.client.clone()),
+        ))
     }
 
     async fn invoke_scheduled_channel(

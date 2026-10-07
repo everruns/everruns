@@ -75,7 +75,9 @@ impl ReapHandler for TurnReapHandler {
 }
 
 /// Run the stale-task reaper on `pool` under the supervisor: every 10 s,
-/// reclaiming claims whose heartbeat is older than 30 s.
+/// reclaiming claims whose heartbeat is older than 30 s, and resuming turn
+/// runs left with no task a minute after their last step completed (a
+/// worker that handed off in separate writes and died in between).
 pub fn spawn_stale_task_reaper(
     supervisor: &mut TaskSupervisor,
     pool: PgPool,
@@ -87,7 +89,10 @@ pub fn spawn_stale_task_reaper(
         move || {
             let reaper = StaleTaskReaper::new(
                 Arc::new(PostgresWorkflowEventStore::new(pool.clone())),
-                ReaperConfig::default(),
+                ReaperConfig {
+                    stranded_workflow_type: Some(everruns_worker::durable_turn::TURN_WORKFLOW_TYPE),
+                    ..ReaperConfig::default()
+                },
                 handler.clone(),
             );
             async move { reaper.run().await }

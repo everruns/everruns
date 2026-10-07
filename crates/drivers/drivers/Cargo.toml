@@ -55,6 +55,7 @@ fireworks = []
 gemini = ["dep:tokio", "dep:futures", "dep:eventsource-stream", "dep:tracing"]
 mai = ["dep:tokio", "dep:tracing"]
 meta = []
+mistral = []
 openai = ["dep:futures", "dep:tokio", "dep:tracing", "everruns-contracts/responses-websocket"]
 openrouter = ["dep:tokio", "dep:tracing"]
 typesafe = ["dep:tokio", "dep:tracing"]
@@ -104,7 +105,7 @@ aws-credential-types = { version = "1", optional = true }
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-contracts (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off.
-everruns-contracts = { path = "../../contracts", version = "0.41.0", default-features = false, features = ["http"] }
+everruns-contracts = { path = "../../contracts", version = "0.43.0", default-features = false, features = ["http"] }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures the wire; futures drains the
@@ -114,6 +115,9 @@ futures.workspace = true
 wiremock = "0.6"
 serde_json.workspace = true
 thiserror.workspace = true
+# Encodes AWS event-stream frames so Bedrock ConverseStream wire tests can
+# replay a real stream (already in the tree through the AWS SDK).
+aws-smithy-eventstream = "0.61"
 
 [[test]]
 name = "anthropic_chat_wire"

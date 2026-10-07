@@ -355,7 +355,7 @@ mod tests {
         // One rule set (EVE-873): every ID the Framework's AgentBuilder
         // rejects must be rejected by the server write path with the same
         // neutral reason.
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         for id in [
             "",
             "2fast",
@@ -380,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn non_object_capability_config_fails_like_the_framework() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         for config in [
             serde_json::json!("string"),
             serde_json::json!(42),
@@ -404,7 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn valid_builtin_capability_passes() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let caps = vec![AgentCapabilityConfig::new("current_time")];
 
         validate_capability_refs(&db, DEFAULT_ORG_ID, &caps)
@@ -414,7 +414,7 @@ mod tests {
 
     #[tokio::test]
     async fn plain_declarative_name_normalizes_to_canonical_ref() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         db.create_declarative_capability(
             DEFAULT_ORG_ID,
             CreateDeclarativeCapabilityRow {
@@ -448,7 +448,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_builtin_capability_rejected() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let caps = vec![AgentCapabilityConfig::new("nonexistent_capability")];
 
         let err = validate_capability_refs(&db, DEFAULT_ORG_ID, &caps)
@@ -460,7 +460,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_builtin_capability_config_is_bad_request() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let caps = vec![AgentCapabilityConfig::with_config(
             "gpt_image_gen",
             serde_json::json!({ "partial_images": 4 }),
@@ -500,7 +500,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_plugin_install_ref_passes() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_ref = create_plugin(&db, "resend").await;
 
         validate_capability_refs(
@@ -514,7 +514,7 @@ mod tests {
 
     #[tokio::test]
     async fn plugin_with_unresolved_authenticated_mcp_identity_is_rejected() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_ref = create_plugin(&db, "legacy-oauth").await;
         let public_id = parse_plugin_capability_id(&capability_ref).unwrap();
         let plugin = db
@@ -565,7 +565,7 @@ mod tests {
 
     #[tokio::test]
     async fn plugin_name_is_not_a_capability_identity() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         create_plugin(&db, "resend").await;
 
         let err = validate_capability_refs(
@@ -581,7 +581,7 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_or_uninstalled_plugin_ref_is_actionable() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_ref = create_plugin(&db, "resend").await;
         let public_id = parse_plugin_capability_id(&capability_ref).unwrap();
         let plugin = db
@@ -607,7 +607,7 @@ mod tests {
 
     #[tokio::test]
     async fn valid_mcp_ref_passes() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let server = db
             .create_mcp_server(
                 DEFAULT_ORG_ID,
@@ -615,7 +615,7 @@ mod tests {
                     name: "test-server".to_string(),
                     description: None,
                     url: "http://localhost:3000".to_string(),
-                    transport_type: "sse".to_string(),
+                    transport_type: "http".to_string(),
                     api_key_encrypted: None,
                     headers: None,
                     settings: None,
@@ -633,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn nonexistent_mcp_ref_rejected() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let cap_id = format!("mcp:{}", Uuid::new_v4());
         let caps = vec![AgentCapabilityConfig::new(cap_id)];
 
@@ -646,7 +646,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_mcp_uuid_rejected() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let caps = vec![AgentCapabilityConfig::new("mcp:not-a-uuid")];
 
         let err = validate_capability_refs(&db, DEFAULT_ORG_ID, &caps)
@@ -661,7 +661,7 @@ mod tests {
 
     #[tokio::test]
     async fn valid_skill_ref_passes() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let skill = db
             .create_skill(
                 DEFAULT_ORG_ID,
@@ -674,7 +674,7 @@ mod tests {
                     metadata: serde_json::json!({}),
                     allowed_tools: None,
                     instructions: "Test instructions".to_string(),
-                    source_type: "registry".to_string(),
+                    source_type: "markdown".to_string(),
                     archive_data: None,
                     version: "1.0.0".to_string(),
                 },
@@ -691,7 +691,7 @@ mod tests {
 
     #[tokio::test]
     async fn nonexistent_skill_ref_rejected() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let cap_id = format!("skill:{}", Uuid::new_v4());
         let caps = vec![AgentCapabilityConfig::new(cap_id)];
 
@@ -704,7 +704,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalid_skill_uuid_rejected() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let caps = vec![AgentCapabilityConfig::new("skill:not-a-uuid")];
 
         let err = validate_capability_refs(&db, DEFAULT_ORG_ID, &caps)
@@ -720,7 +720,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_capabilities_passes() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
 
         validate_capability_refs(&db, DEFAULT_ORG_ID, &[])
             .await
@@ -729,18 +729,14 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_ref_from_other_org_rejected() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let other_org_id = db
-            .create_organization_with_id(
-                2,
-                crate::storage::CreateOrganizationRow {
-                    public_id: "org_2".to_string(),
-                    name: "Org 2".to_string(),
-                    created_by: None,
-                },
-            )
+            .create_organization(crate::storage::CreateOrganizationRow {
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
+                name: "Org 2".to_string(),
+                created_by: None,
+            })
             .await
-            .unwrap()
             .unwrap()
             .org_id;
 
@@ -751,7 +747,7 @@ mod tests {
                     name: "other-server".to_string(),
                     description: None,
                     url: "http://localhost:3000".to_string(),
-                    transport_type: "sse".to_string(),
+                    transport_type: "http".to_string(),
                     api_key_encrypted: None,
                     headers: None,
                     settings: None,

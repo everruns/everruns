@@ -12,25 +12,14 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[test]
-fn first_agent_version_is_initial_minor_even_for_major_change() {
-    let (major, minor, patch, version) =
-        bump_published_version(None, &AgentVersionChangeKind::Major);
-
-    assert_eq!((major, minor, patch), (0, 1, 0));
-    assert_eq!(version, "0.1.0");
-}
-
-fn ctx_with_role_and_flags(
+async fn ctx_with_role_and_flags(
     db: Arc<StorageBackend>,
     role: OrgRole,
     feature_flags: FeatureFlags,
 ) -> Ctx {
-    futures::executor::block_on(crate::org_init::initialize_org_harnesses(
-        &db,
-        DEFAULT_ORG_ID,
-    ))
-    .expect("initialize built-in harnesses for agent command tests");
+    crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+        .await
+        .expect("initialize built-in harnesses for agent command tests");
     let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
     Ctx::new(
         Caller {
@@ -49,15 +38,15 @@ fn ctx_with_role_and_flags(
     .with_feature_flags(feature_flags)
 }
 
-fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
+async fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
     ctx_with_role_and_flags(
         db,
         role,
         FeatureFlags {
-            agent_versions: true,
             ..FeatureFlags::default()
         },
     )
+    .await
 }
 
 struct ExhaustedUtilityLlm;
@@ -84,9 +73,10 @@ impl UtilityLlmService for ExhaustedUtilityLlm {
 
 #[tokio::test]
 async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx =
-        ctx_with_role(db, OrgRole::Owner).with_utility_llm_service(Arc::new(ExhaustedUtilityLlm));
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner)
+        .await
+        .with_utility_llm_service(Arc::new(ExhaustedUtilityLlm));
 
     let error = AnalyzeAgent {
         harness_id: None,
@@ -110,33 +100,6 @@ async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
     assert!(detail.contains("out of credits or quota"));
     assert!(!detail.contains("api_key"));
     assert!(!detail.contains("secret"));
-}
-
-fn high_risk_agent_request(name: String) -> CreateAgentRequest {
-    CreateAgentRequest {
-        service_virtual_user_id: None,
-
-        id: None,
-        name,
-        display_name: None,
-        description: None,
-        intro_markdown: None,
-        short_description: None,
-        starters: Vec::new(),
-        system_prompt: "test".to_string(),
-        default_model_id: None,
-        harness_id: None,
-        harness_name: None,
-        tags: Vec::new(),
-        capabilities: vec![AgentCapabilityConfig::new("bashkit_shell")],
-        sandbox_policy: None,
-        initial_files: Vec::new(),
-        tools: Vec::new(),
-        mcp_servers: Default::default(),
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-    }
 }
 
 fn basic_agent_request(name: &str) -> CreateAgentRequest {
@@ -168,7 +131,7 @@ fn basic_agent_request(name: &str) -> CreateAgentRequest {
 
 fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
     UpdateAgentRequest {
-        service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+        service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
         name: None,
         display_name: None,
@@ -182,7 +145,7 @@ fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
         harness_name: None,
         tags: None,
         capabilities: None,
-        sandbox_policy: everruns_durable::UpdateField::Unchanged,
+        sandbox_policy: crate::storage::UpdateField::Unchanged,
         initial_files: None,
         status: None,
         tools: None,
@@ -222,8 +185,8 @@ async fn create_test_harness(db: &StorageBackend, name: &str) -> HarnessId {
 
 #[tokio::test]
 async fn create_agent_defaults_to_conversation_harness() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();
@@ -244,8 +207,8 @@ async fn create_agent_defaults_to_conversation_harness() {
 
 #[tokio::test]
 async fn create_and_update_agent_resolve_harness_name_and_id() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let first_harness_id = create_test_harness(&db, "agent-harness-one").await;
     let second_harness_id = create_test_harness(&db, "agent-harness-two").await;
 
@@ -257,7 +220,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
     let renamed = UpdateAgentCmd {
         id: created.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
             name: None,
             display_name: Some("renamed".to_string()),
@@ -271,7 +234,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
             harness_name: None,
             tags: None,
             capabilities: None,
-            sandbox_policy: everruns_durable::UpdateField::Unchanged,
+            sandbox_policy: crate::storage::UpdateField::Unchanged,
             initial_files: None,
             status: None,
             tools: None,
@@ -289,7 +252,7 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
     let changed = UpdateAgentCmd {
         id: created.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
             harness_id: Some(second_harness_id),
             ..update_prompt_request("changed harness")
@@ -303,8 +266,8 @@ async fn create_and_update_agent_resolve_harness_name_and_id() {
 
 #[tokio::test]
 async fn create_agent_rejects_unknown_archived_or_ambiguous_harness() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
 
     let mut unknown = basic_agent_request("unknown-harness-agent");
     unknown.harness_id = Some(HarnessId::new());
@@ -336,82 +299,10 @@ async fn create_agent_rejects_unknown_archived_or_ambiguous_harness() {
     assert_eq!(err.status(), axum::http::StatusCode::BAD_REQUEST);
 }
 
-async fn create_high_risk_agent_version(ctx: &Ctx, name: &str) -> (Agent, AgentVersion) {
-    let agent = CreateAgent(high_risk_agent_request(name.to_string()))
-        .run(ctx)
-        .await
-        .expect("admin can create high-risk agent");
-    let version = CreateAgentVersionCmd {
-        agent_id: agent.public_id.to_string(),
-        req: CreateAgentVersionRequest {
-            summary: None,
-            change_kind: None,
-        },
-    }
-    .run(ctx)
-    .await
-    .expect("admin can create high-risk version");
-    (agent, version)
-}
-
-#[tokio::test]
-async fn update_agent_creates_unpublished_auto_snapshot() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
-    let agent = CreateAgent(basic_agent_request("auto-snapshot-agent"))
-        .run(&ctx)
-        .await
-        .expect("agent is created");
-
-    UpdateAgentCmd {
-        id: agent.public_id.to_string(),
-        req: update_prompt_request("updated prompt"),
-    }
-    .run(&ctx)
-    .await
-    .expect("agent is updated");
-
-    let snapshots = ListAgentVersions {
-        agent_id: agent.public_id.to_string(),
-    }
-    .run(&ctx)
-    .await
-    .expect("versions are listed");
-    assert_eq!(snapshots.len(), 1);
-    assert_eq!(snapshots[0].change_kind, AgentVersionChangeKind::Auto);
-    assert!(!snapshots[0].is_published);
-    assert_eq!(snapshots[0].version, "draft.1");
-    assert_eq!(
-        snapshots[0].authored_config["system_prompt"],
-        "updated prompt"
-    );
-
-    let published = CreateAgentVersionCmd {
-        agent_id: agent.public_id.to_string(),
-        req: CreateAgentVersionRequest {
-            summary: Some("publish current draft".to_string()),
-            change_kind: None,
-        },
-    }
-    .run(&ctx)
-    .await
-    .expect("published version is created");
-    assert!(published.is_published);
-    assert_eq!(published.version, "0.1.0");
-    assert_eq!(published.version_number, 2);
-
-    let latest_published = db
-        .get_latest_agent_version(DEFAULT_ORG_ID, AgentId::from_uuid(agent.internal_id))
-        .await
-        .expect("latest published lookup succeeds")
-        .expect("published version exists");
-    assert_eq!(latest_published.id, published.public_id);
-}
-
 #[tokio::test]
 async fn update_agent_updates_parallel_tool_calls() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db, OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("parallel-tool-calls-agent"))
         .run(&ctx)
         .await
@@ -441,399 +332,9 @@ async fn update_agent_updates_parallel_tool_calls() {
 }
 
 #[tokio::test]
-async fn update_agent_skips_auto_snapshot_when_versions_disabled() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role_and_flags(db.clone(), OrgRole::Owner, FeatureFlags::default());
-    let agent = CreateAgent(basic_agent_request("auto-snapshot-disabled-agent"))
-        .run(&ctx)
-        .await
-        .expect("agent is created");
-
-    UpdateAgentCmd {
-        id: agent.public_id.to_string(),
-        req: update_prompt_request("updated prompt"),
-    }
-    .run(&ctx)
-    .await
-    .expect("agent is updated");
-
-    let snapshots = db
-        .list_agent_versions(DEFAULT_ORG_ID, AgentId::from_uuid(agent.internal_id))
-        .await
-        .expect("stored versions are listed");
-    assert!(snapshots.is_empty());
-}
-
-#[tokio::test]
-async fn update_agent_skips_auto_snapshot_for_unchanged_config() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
-    let agent = CreateAgent(basic_agent_request("auto-snapshot-noop-agent"))
-        .run(&ctx)
-        .await
-        .expect("agent is created");
-
-    UpdateAgentCmd {
-        id: agent.public_id.to_string(),
-        req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
-
-            name: None,
-            display_name: None,
-            description: None,
-            intro_markdown: None,
-            short_description: None,
-            starters: None,
-            system_prompt: None,
-            default_model_id: None,
-            harness_id: None,
-            harness_name: None,
-            tags: None,
-            capabilities: None,
-            sandbox_policy: everruns_durable::UpdateField::Unchanged,
-            initial_files: None,
-            status: None,
-            tools: None,
-            mcp_servers: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-        },
-    }
-    .run(&ctx)
-    .await
-    .expect("no-op update succeeds");
-
-    let snapshots = ListAgentVersions {
-        agent_id: agent.public_id.to_string(),
-    }
-    .run(&ctx)
-    .await
-    .expect("versions are listed");
-    assert!(snapshots.is_empty());
-}
-
-#[tokio::test]
-async fn update_agent_prunes_old_auto_snapshots() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
-    let agent = CreateAgent(basic_agent_request("auto-snapshot-pruned-agent"))
-        .run(&ctx)
-        .await
-        .expect("agent is created");
-
-    for i in 0..(MAX_AUTO_SNAPSHOTS_PER_AGENT + 2) {
-        UpdateAgentCmd {
-            id: agent.public_id.to_string(),
-            req: update_prompt_request(&format!("updated prompt {i}")),
-        }
-        .run(&ctx)
-        .await
-        .expect("agent is updated");
-    }
-
-    let snapshots = ListAgentVersions {
-        agent_id: agent.public_id.to_string(),
-    }
-    .run(&ctx)
-    .await
-    .expect("versions are listed");
-    assert_eq!(snapshots.len(), MAX_AUTO_SNAPSHOTS_PER_AGENT as usize);
-    assert_eq!(snapshots[0].version, "draft.52");
-    assert_eq!(snapshots.last().unwrap().version, "draft.3");
-}
-
-#[tokio::test]
-async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
-    let agent_id = AgentId::new();
-    let mut req = basic_agent_request("upsert-auto-snapshot-agent");
-    req.system_prompt = "initial upsert prompt".to_string();
-
-    let created = UpsertAgent {
-        replace_capabilities: false,
-        id: agent_id.to_string(),
-        req: req.clone(),
-    }
-    .run(&ctx)
-    .await
-    .expect("agent is created by upsert");
-    assert!(created.was_created);
-
-    req.system_prompt = "updated upsert prompt".to_string();
-    let updated = UpsertAgent {
-        replace_capabilities: false,
-        id: agent_id.to_string(),
-        req,
-    }
-    .run(&ctx)
-    .await
-    .expect("agent is updated by upsert");
-    assert!(!updated.was_created);
-
-    let snapshots = ListAgentVersions {
-        agent_id: agent_id.to_string(),
-    }
-    .run(&ctx)
-    .await
-    .expect("versions are listed");
-    assert_eq!(snapshots.len(), 1);
-    assert_eq!(snapshots[0].change_kind, AgentVersionChangeKind::Auto);
-    assert!(!snapshots[0].is_published);
-    assert_eq!(
-        snapshots[0].authored_config["system_prompt"],
-        "updated upsert prompt"
-    );
-}
-
-#[tokio::test]
-async fn upsert_agent_skips_auto_snapshot_for_unchanged_config() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
-    let agent_id = AgentId::new();
-    let req = basic_agent_request("upsert-auto-snapshot-noop-agent");
-
-    UpsertAgent {
-        replace_capabilities: false,
-        id: agent_id.to_string(),
-        req: req.clone(),
-    }
-    .run(&ctx)
-    .await
-    .expect("agent is created by upsert");
-    UpsertAgent {
-        replace_capabilities: false,
-        id: agent_id.to_string(),
-        req,
-    }
-    .run(&ctx)
-    .await
-    .expect("agent is upserted without changes");
-
-    let snapshots = ListAgentVersions {
-        agent_id: agent_id.to_string(),
-    }
-    .run(&ctx)
-    .await
-    .expect("versions are listed");
-    assert!(snapshots.is_empty());
-}
-
-#[tokio::test]
-async fn create_agent_version_rejects_auto_change_kind() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
-    let agent = CreateAgent(basic_agent_request("manual-auto-kind-agent"))
-        .run(&ctx)
-        .await
-        .expect("agent is created");
-
-    let err = CreateAgentVersionCmd {
-        agent_id: agent.public_id.to_string(),
-        req: CreateAgentVersionRequest {
-            summary: None,
-            change_kind: Some(AgentVersionChangeKind::Auto),
-        },
-    }
-    .run(&ctx)
-    .await
-    .expect_err("manual publish cannot use automatic change kind");
-
-    assert!(
-        matches!(
-            err,
-            CommandError {
-                kind: CommandErrorKind::BadRequest(_),
-                ..
-            }
-        ),
-        "expected BadRequest, got {err:?}"
-    );
-}
-
-#[tokio::test]
-async fn set_default_version_rejects_unpublished_snapshot() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db, OrgRole::Owner);
-    let agent = CreateAgent(basic_agent_request("default-draft-agent"))
-        .run(&ctx)
-        .await
-        .expect("agent is created");
-    UpdateAgentCmd {
-        id: agent.public_id.to_string(),
-        req: update_prompt_request("draft-only prompt"),
-    }
-    .run(&ctx)
-    .await
-    .expect("agent is updated");
-    let snapshots = ListAgentVersions {
-        agent_id: agent.public_id.to_string(),
-    }
-    .run(&ctx)
-    .await
-    .expect("versions are listed");
-
-    let err = SetDefaultAgentVersion {
-        agent_id: agent.public_id.to_string(),
-        req: SetDefaultAgentVersionRequest {
-            version_id: snapshots[0].public_id,
-        },
-    }
-    .run(&ctx)
-    .await
-    .expect_err("draft snapshot cannot become default");
-
-    assert!(
-        matches!(
-            err,
-            CommandError {
-                kind: CommandErrorKind::BadRequest(_),
-                ..
-            }
-        ),
-        "expected BadRequest, got {err:?}"
-    );
-}
-
-#[tokio::test]
-async fn set_default_version_blocks_member_for_high_risk_capabilities() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let admin_ctx = ctx_with_role(db.clone(), OrgRole::Admin);
-    let member_ctx = ctx_with_role(db, OrgRole::Member);
-    let (agent, version) =
-        create_high_risk_agent_version(&admin_ctx, "member-set-default-denied").await;
-
-    let err = SetDefaultAgentVersion {
-        agent_id: agent.public_id.to_string(),
-        req: SetDefaultAgentVersionRequest {
-            version_id: version.public_id,
-        },
-    }
-    .run(&member_ctx)
-    .await
-    .expect_err("member must not activate high-risk version");
-
-    assert!(
-        matches!(
-            err,
-            CommandError {
-                kind: CommandErrorKind::Forbidden(_),
-                ..
-            }
-        ),
-        "expected Forbidden, got {err:?}"
-    );
-
-    SetDefaultAgentVersion {
-        agent_id: agent.public_id.to_string(),
-        req: SetDefaultAgentVersionRequest {
-            version_id: version.public_id,
-        },
-    }
-    .run(&admin_ctx)
-    .await
-    .expect("admin can activate high-risk version");
-}
-
-#[tokio::test]
-async fn rollback_version_restores_versioned_harness() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
-    let first_harness_id = create_test_harness(&db, "rollback-harness-one").await;
-    let second_harness_id = create_test_harness(&db, "rollback-harness-two").await;
-
-    let mut req = basic_agent_request("rollback-harness-agent");
-    req.harness_id = Some(first_harness_id);
-    let agent = CreateAgent(req).run(&ctx).await.expect("agent is created");
-    let version = CreateAgentVersionCmd {
-        agent_id: agent.public_id.to_string(),
-        req: CreateAgentVersionRequest {
-            summary: Some("save first harness".to_string()),
-            change_kind: None,
-        },
-    }
-    .run(&ctx)
-    .await
-    .expect("version is created");
-
-    let changed = UpdateAgentCmd {
-        id: agent.public_id.to_string(),
-        req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
-
-            harness_id: Some(second_harness_id),
-            ..update_prompt_request("switch to second harness")
-        },
-    }
-    .run(&ctx)
-    .await
-    .expect("agent harness changes");
-    assert_eq!(changed.harness_id, second_harness_id);
-
-    let restored = RollbackAgentVersion {
-        agent_id: agent.public_id.to_string(),
-        version_id: version.public_id,
-        req: RollbackAgentVersionRequest {
-            save_version: false,
-            summary: None,
-        },
-    }
-    .run(&ctx)
-    .await
-    .expect("rollback succeeds");
-
-    assert_eq!(restored.harness_id, first_harness_id);
-}
-
-#[tokio::test]
-async fn rollback_version_blocks_member_for_high_risk_capabilities() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let owner_ctx = ctx_with_role(db.clone(), OrgRole::Owner);
-    let member_ctx = ctx_with_role(db, OrgRole::Member);
-    let (agent, version) =
-        create_high_risk_agent_version(&owner_ctx, "member-rollback-denied").await;
-
-    let err = RollbackAgentVersion {
-        agent_id: agent.public_id.to_string(),
-        version_id: version.public_id,
-        req: RollbackAgentVersionRequest {
-            save_version: false,
-            summary: None,
-        },
-    }
-    .run(&member_ctx)
-    .await
-    .expect_err("member must not roll back to high-risk version");
-
-    assert!(
-        matches!(
-            err,
-            CommandError {
-                kind: CommandErrorKind::Forbidden(_),
-                ..
-            }
-        ),
-        "expected Forbidden, got {err:?}"
-    );
-
-    RollbackAgentVersion {
-        agent_id: agent.public_id.to_string(),
-        version_id: version.public_id,
-        req: RollbackAgentVersionRequest {
-            save_version: false,
-            summary: None,
-        },
-    }
-    .run(&owner_ctx)
-    .await
-    .expect("owner can roll back to high-risk version");
-}
-
-#[tokio::test]
 async fn agent_creation_rejected_at_limit_and_allowed_below() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let mut ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let mut ctx = ctx_with_role(db, OrgRole::Owner).await;
     ctx.resource_limits.max_agents_per_org = 2;
 
     CreateAgent(basic_agent_request("a1"))
@@ -855,8 +356,8 @@ async fn agent_creation_rejected_at_limit_and_allowed_below() {
 
 #[tokio::test]
 async fn soft_deleted_agents_do_not_count_toward_limit() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let mut ctx = ctx_with_role(db, OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let mut ctx = ctx_with_role(db, OrgRole::Owner).await;
     ctx.resource_limits.max_agents_per_org = 1;
 
     let a1 = CreateAgent(basic_agent_request("a1"))
@@ -892,8 +393,8 @@ async fn soft_deleted_agents_do_not_count_toward_limit() {
 
 #[tokio::test]
 async fn archiving_agent_revokes_all_identity_connections() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("grant-owner"))
         .execute(&ctx)
         .await
@@ -945,8 +446,8 @@ async fn archiving_agent_revokes_all_identity_connections() {
 
 #[tokio::test]
 async fn patch_archiving_agent_revokes_all_identity_connections() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = CreateAgent(basic_agent_request("patch-grant-owner"))
         .execute(&ctx)
         .await
@@ -982,7 +483,7 @@ async fn patch_archiving_agent_revokes_all_identity_connections() {
     UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
             status: Some(AgentStatus::Archived),
             ..Default::default()
@@ -1031,16 +532,40 @@ fn assert_built_in_rejection(err: &CommandError) {
     );
 }
 
+/// The UI hides edit, archive and delete from `is_built_in`, so the read
+/// model must carry it for built-in agents and leave it false otherwise.
+#[tokio::test]
+async fn built_in_flag_is_exposed_on_reads() {
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
+    let built_in = seed_built_in_agent(&db, &ctx, "chat").await;
+    let regular = CreateAgent(basic_agent_request("regular"))
+        .execute(&ctx)
+        .await
+        .expect("create");
+    assert!(!regular.is_built_in);
+
+    let after = GetAgent {
+        id: built_in.public_id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("get");
+    assert!(after.is_built_in);
+    let json = serde_json::to_value(&after).expect("serialize");
+    assert_eq!(json["is_built_in"], serde_json::json!(true));
+}
+
 #[tokio::test]
 async fn built_in_agent_rejects_update() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     let err = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
             system_prompt: Some("hijacked".to_string()),
             ..Default::default()
@@ -1061,15 +586,15 @@ async fn built_in_agent_rejects_update() {
 
 #[tokio::test]
 async fn built_in_agent_rejects_archive() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     // Archive travels through UpdateAgentCmd as a status change.
     let err = UpdateAgentCmd {
         id: agent.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
             status: Some(AgentStatus::Archived),
             ..Default::default()
@@ -1083,8 +608,8 @@ async fn built_in_agent_rejects_archive() {
 
 #[tokio::test]
 async fn built_in_agent_rejects_delete_and_destroy() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     let err = DeleteAgent {
@@ -1114,8 +639,8 @@ async fn built_in_agent_rejects_delete_and_destroy() {
 
 #[tokio::test]
 async fn built_in_agent_rejects_upsert() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let agent = seed_built_in_agent(&db, &ctx, "chat").await;
 
     let err = UpsertAgent {
@@ -1130,53 +655,9 @@ async fn built_in_agent_rejects_upsert() {
 }
 
 #[tokio::test]
-async fn built_in_agent_rejects_version_mutations() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
-    let agent = seed_built_in_agent(&db, &ctx, "chat").await;
-    let id = agent.public_id.to_string();
-
-    let err = CreateAgentVersionCmd {
-        agent_id: id.clone(),
-        req: CreateAgentVersionRequest {
-            change_kind: Some(AgentVersionChangeKind::Minor),
-            summary: None,
-        },
-    }
-    .execute(&ctx)
-    .await
-    .expect_err("versions are part of the protected definition");
-    assert_built_in_rejection(&err);
-
-    let err = SetDefaultAgentVersion {
-        agent_id: id.clone(),
-        req: SetDefaultAgentVersionRequest {
-            version_id: AgentVersionId::new(),
-        },
-    }
-    .execute(&ctx)
-    .await
-    .expect_err("default version is part of the protected definition");
-    assert_built_in_rejection(&err);
-
-    let err = RollbackAgentVersion {
-        agent_id: id,
-        version_id: AgentVersionId::new(),
-        req: RollbackAgentVersionRequest {
-            save_version: false,
-            summary: None,
-        },
-    }
-    .execute(&ctx)
-    .await
-    .expect_err("rollback rewrites the protected definition");
-    assert_built_in_rejection(&err);
-}
-
-#[tokio::test]
 async fn built_in_agent_can_be_copied() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     let mut request = basic_agent_request("chat");
     request.intro_markdown = Some("Welcome to the platform".into());
     request.short_description = Some("Platform assistant".into());
@@ -1205,7 +686,7 @@ async fn built_in_agent_can_be_copied() {
     UpdateAgentCmd {
         id: copy.public_id.to_string(),
         req: UpdateAgentRequest {
-            service_virtual_user_id: everruns_durable::UpdateField::Unchanged,
+            service_virtual_user_id: crate::storage::UpdateField::Unchanged,
 
             system_prompt: Some("edited".to_string()),
             ..Default::default()
@@ -1218,8 +699,8 @@ async fn built_in_agent_can_be_copied() {
 
 #[tokio::test]
 async fn built_in_agents_do_not_count_toward_limit() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+    let db = Arc::new(StorageBackend::test_database());
+    let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner).await;
     ctx.resource_limits.max_agents_per_org = 1;
 
     seed_built_in_agent(&db, &ctx, "managed-test").await;
@@ -1233,3 +714,6 @@ async fn built_in_agents_do_not_count_toward_limit() {
 
 #[path = "branding_slack_tests.rs"]
 mod branding_slack_tests;
+
+#[path = "lifecycle_slack_tests.rs"]
+mod lifecycle_slack_tests;

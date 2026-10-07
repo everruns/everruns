@@ -194,7 +194,7 @@ impl DecisionDriverCapabilities {
 #[async_trait]
 pub trait DecisionDriver: Send + Sync {
     /// Stable driver id, as used in `driver/model` routing and in
-    /// `DECISIONS_DRIVER`: `typesafe`, `openai`, `llm`.
+    /// `UTILITY_DECISION_DRIVER`: `typesafe`, `openai`, `llm`.
     fn id(&self) -> &str;
 
     /// What this driver answers and within which limits.

@@ -42,11 +42,7 @@ impl Command for ListSessionStorage {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
 
-        let keys = ctx
-            .db
-            .list_session_keys(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let keys = ctx.db.list_session_keys(session_id.uuid()).await?;
 
         let mut items = Vec::with_capacity(keys.len());
         for key_info in keys {
@@ -57,8 +53,7 @@ impl Command for ListSessionStorage {
             let value = ctx
                 .db
                 .get_session_key_value(session_id.uuid(), &key_info.key)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
                 .map(|row| row.value)
                 .unwrap_or_default();
 
@@ -108,11 +103,7 @@ impl Command for ListSessionSecrets {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
 
-        let secrets = ctx
-            .db
-            .list_session_secrets(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let secrets = ctx.db.list_session_secrets(session_id.uuid()).await?;
 
         Ok(secrets
             .into_iter()
@@ -135,22 +126,16 @@ pub struct BatchSetSessionSecrets {
     pub secrets: std::collections::HashMap<String, String>,
 }
 
+#[command(
+    name = "batch_set_session_secrets",
+    category = "session_storage",
+    description = "Encrypt and store multiple session secrets in one request.",
+    method = "PUT",
+    path = "/v1/sessions/{session_id}/storage/secrets",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for BatchSetSessionSecrets {
     type Output = BatchSetSecretsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "batch_set_session_secrets",
-            category: "session_storage",
-            description: "Encrypt and store multiple session secrets in one request.",
-            method: "PUT",
-            path: "/v1/sessions/{session_id}/storage/secrets",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<BatchSetSecretsResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -200,8 +185,7 @@ impl Command for BatchSetSessionSecrets {
                     name: name.clone(),
                     value_encrypted: encrypted,
                 })
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
         }
 
         Ok(BatchSetSecretsResponse {
@@ -209,8 +193,6 @@ impl Command for BatchSetSessionSecrets {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<BatchSetSessionSecrets>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 /// Delete one encrypted secret from a session's private storage.
@@ -223,22 +205,16 @@ pub struct DeleteSessionSecret {
     pub name: String,
 }
 
+#[command(
+    name = "delete_session_secret",
+    category = "session_storage",
+    description = "Delete a user-managed encrypted session secret by name.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/storage/secrets/{name}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for DeleteSessionSecret {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_session_secret",
-            category: "session_storage",
-            description: "Delete a user-managed encrypted session secret by name.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/storage/secrets/{name}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
@@ -252,5 +228,3 @@ impl Command for DeleteSessionSecret {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteSessionSecret>() }

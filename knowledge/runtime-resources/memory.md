@@ -403,7 +403,7 @@ Required coverage:
 * Content-hash stale edits fail on read-write mounts.
 * Directory listing merge order is deterministic.
 * Grep searches mounted content and workspace-local content.
-* Storage parity (in-memory and Postgres) for `memories`, `memory_files`,
+* Storage contract tests (PostgreSQL) for `memories`, `memory_files`,
   `session_memory_mounts`.
 * API CRUD permissions and org scoping.
 * OpenAPI export updated when API surface changes.

@@ -10,18 +10,19 @@ tags:
 
 # Entity Actions Menu
 
-Status: implemented with [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)
-phase 7 (`apps/ui/src/components/entity-actions/`). The bottom-sheet presentation on narrow
-screens and the page guard are not built yet.
+Status: implemented (`apps/ui/src/components/entity-actions/`) for the record functions of
+[Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md), on the
+agent, harness, skill, provider, knowledge index, memory, observer, eval and virtual-user pages.
+The bottom-sheet presentation on narrow screens and the page guard are not built yet.
 
 ## Problem
 
 Entity pages keep growing secondary functions: copy, export, history, manager
-notes, archive, delete. Today only the [agent page](agent-page.md) has a header
-overflow menu; harness, skill, eval and virtual-user pages each place delete
-and similar actions differently, and other pages have none. Adding History and
-Manager notes as tabs or panels on every page would clutter the part of the
-page people use most, for functions they use rarely.
+notes, archive, delete. The [agent page](agent-page.md) and the
+[harness page](harness-page.md) use this menu. Skill, eval, and virtual-user
+pages still place delete and similar actions differently, and other pages have
+none. Adding History and Manager notes as tabs or panels on every page would
+clutter the part of the page people use most, for functions they use rarely.
 
 ## Decision
 

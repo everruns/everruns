@@ -61,15 +61,24 @@ use tools::{
 // Plugin Registration
 // ============================================================================
 
+/// Feature flags this module's plugins name, with their default rollout grades;
+/// the hosted platform lists them in its feature flag settings, and
+/// `FEATURE_<NAME>` overrides the grade per deployment.
+pub const FEATURE_FLAGS: &[everruns_contracts::runtime::FeatureFlagDefinition] =
+    &[everruns_contracts::runtime::FeatureFlagDefinition {
+        name: "daytona",
+        label: "Daytona connection",
+        description: "Connect your own Daytona account for Daytona sandboxes.",
+        grade: everruns_contracts::runtime::FeatureFlagGrade::Adoption,
+    }];
+
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
-        experimental_only: false,
         feature_flag: None,
         factory: || Box::new(DaytonaCapability),
     },
     IntegrationPlugin {
-        experimental_only: false,
         feature_flag: None,
         factory: || Box::new(SandboxFleetCapability),
     },
@@ -77,7 +86,7 @@ pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: true,
+    feature_flag: Some("daytona"),
     factory: || Box::new(DaytonaConnector),
 }];
 inventory::submit! {

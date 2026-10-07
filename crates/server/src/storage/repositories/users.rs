@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -17,11 +18,11 @@ impl Database {
         let email = normalize_email(&input.email);
 
         let row = sqlx::query_as::<_, UserRow>(
-            r#"
+            sql!(r#"
             INSERT INTO users (email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, external_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
-            "#,
+            RETURNING {UserRow}
+            "#),
         )
         .bind(&email)
         .bind(&input.name)
@@ -50,12 +51,12 @@ impl Database {
         let email = normalize_email(&input.email);
 
         let row = sqlx::query_as::<_, UserRow>(
-            r#"
+            sql!(r#"
             INSERT INTO users (id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, external_id)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id) DO NOTHING
-            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
-            "#,
+            RETURNING {UserRow}
+            "#),
         )
         .bind(id)
         .bind(&email)
@@ -77,13 +78,13 @@ impl Database {
         // EVE-704: look up by canonical email against the lower(email) index so
         // any casing of a mailbox resolves to its single account.
         let email = normalize_email(email);
-        let row = sqlx::query_as::<_, UserRow>(
+        let row = sqlx::query_as::<_, UserRow>(sql!(
             r#"
-            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+            SELECT {UserRow}
             FROM users
             WHERE lower(email) = $1
-            "#,
-        )
+            "#
+        ))
         .bind(&email)
         .fetch_optional(&self.pool)
         .await?;
@@ -92,13 +93,13 @@ impl Database {
     }
 
     pub async fn get_user(&self, id: Uuid) -> Result<Option<UserRow>> {
-        let row = sqlx::query_as::<_, UserRow>(
+        let row = sqlx::query_as::<_, UserRow>(sql!(
             r#"
-            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+            SELECT {UserRow}
             FROM users
             WHERE id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -185,7 +186,7 @@ impl Database {
         let roles_json = input.roles.map(|r| serde_json::to_value(&r)).transpose()?;
         let mut tx = self.pool.begin().await?;
 
-        let row = sqlx::query_as::<_, UserRow>(
+        let row = sqlx::query_as::<_, UserRow>(sql!(
             r#"
             UPDATE users
             SET
@@ -196,9 +197,9 @@ impl Database {
                 email_verified = COALESCE($6, email_verified),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
-            "#,
-        )
+            RETURNING {UserRow}
+            "#
+        ))
         .bind(id)
         .bind(&input.name)
         .bind(&input.avatar_url)
@@ -237,26 +238,26 @@ impl Database {
         let rows = match search {
             Some(query) if !query.trim().is_empty() => {
                 let search_pattern = format!("%{}%", query.trim().to_lowercase());
-                sqlx::query_as::<_, UserRow>(
+                sqlx::query_as::<_, UserRow>(sql!(
                     r#"
-                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+                    SELECT {UserRow}
                     FROM users
                     WHERE LOWER(name) LIKE $1 OR LOWER(email) LIKE $1
                     ORDER BY created_at DESC
-                    "#,
-                )
+                    "#
+                ))
                 .bind(&search_pattern)
                 .fetch_all(&self.pool)
                 .await?
             }
             _ => {
-                sqlx::query_as::<_, UserRow>(
+                sqlx::query_as::<_, UserRow>(sql!(
                     r#"
-                    SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+                    SELECT {UserRow}
                     FROM users
                     ORDER BY created_at DESC
-                    "#,
-                )
+                    "#
+                ))
                 .fetch_all(&self.pool)
                 .await?
             }

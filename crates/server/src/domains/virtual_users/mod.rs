@@ -39,32 +39,25 @@ pub async fn connection_target(
     caller: &everruns_core::Caller,
     raw: &str,
 ) -> Result<everruns_contracts::typed_id::VirtualUserId, crate::domains::common::CommandError> {
-    use crate::domains::common::{CommandError, classify_anyhow};
+    use crate::domains::common::CommandError;
     let id = if raw == "me" {
         let uid = caller
             .user_id
             .ok_or_else(|| CommandError::forbidden("Authentication required"))?;
-        db.default_virtual_user(caller.org_id, uid)
-            .await
-            .map_err(classify_anyhow)?
-            .id
+        db.default_virtual_user(caller.org_id, uid).await?.id
     } else {
         raw.parse()
             .map_err(|_| CommandError::bad_request("Invalid virtual user ID"))?
     };
     let v = db
         .get_virtual_user(caller.org_id, id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Virtual user"))?;
     if v.status != "active" {
         return Err(CommandError::forbidden("Runtime account is not active"));
     }
     if v.usage == "end_user" {
-        let bindings = db
-            .list_virtual_user_bindings(caller.org_id, id)
-            .await
-            .map_err(classify_anyhow)?;
+        let bindings = db.list_virtual_user_bindings(caller.org_id, id).await?;
         if caller.user_id.is_none()
             || !bindings
                 .iter()

@@ -420,7 +420,15 @@ pub fn plan_after_reason(
         return (TurnPlan::ScheduleAct(plan), Vec::new());
     }
 
-    if reason_result.success && pending_user_message_count > 0 && !max_turn_requests_reached {
+    // The generation lost tool calls to truncation and the output-truncation
+    // gate retries: the model was told its calls did not run, so it gets
+    // another generation even though it asked for nothing runnable. The
+    // response id is already cleared, so the retry does not chain onto the
+    // cut-off response.
+    let retry_truncation = reason_result.success && reason_result.truncation_retry;
+    if (retry_truncation || (reason_result.success && pending_user_message_count > 0))
+        && !max_turn_requests_reached
+    {
         if pending_user_message_count > 1 {
             info!(
                 session_id = %state.session_id,
@@ -490,7 +498,9 @@ pub fn plan_after_reason(
             _ => TurnStopReason::Error,
         }
     } else if max_turn_requests_reached
-        && (reason_result.has_tool_calls || pending_user_message_count > 0)
+        && (reason_result.has_tool_calls
+            || pending_user_message_count > 0
+            || reason_result.truncation_retry)
     {
         TurnStopReason::MaxTurnRequests
     } else {

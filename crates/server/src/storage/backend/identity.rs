@@ -4,10 +4,14 @@ use super::*;
 
 impl StorageBackend {
     #[cfg(test)]
+    fn test_hooks(&self) -> Option<&crate::storage::test_database::TestHooks> {
+        self.test_database_handle().map(|database| database.hooks())
+    }
+
+    #[cfg(test)]
     pub(crate) async fn record_session_list_lookup(&self) {
-        if let Self::InMemory(db) = self {
-            db.record_session_list_lookup();
-            let delay_ms = db.session_list_lookup_delay_ms();
+        if let Some(hooks) = self.test_hooks() {
+            let delay_ms = hooks.record_session_list_lookup();
             if delay_ms > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             }
@@ -16,17 +20,15 @@ impl StorageBackend {
 
     #[cfg(test)]
     pub(crate) fn reset_session_list_lookup_count(&self) {
-        if let Self::InMemory(db) = self {
-            db.reset_session_list_lookup_count();
+        if let Some(hooks) = self.test_hooks() {
+            hooks.reset_session_list_lookup_count();
         }
     }
 
     #[cfg(test)]
     pub(crate) fn session_list_lookup_count(&self) -> usize {
-        match self {
-            Self::InMemory(db) => db.session_list_lookup_count(),
-            Self::Postgres(_) => 0,
-        }
+        self.test_hooks()
+            .map_or(0, |hooks| hooks.session_list_lookup_count())
     }
 
     /// Test-only fault injection: the next call to `method` fails with
@@ -34,15 +36,16 @@ impl StorageBackend {
     /// storage error never reaches a client verbatim.
     #[cfg(test)]
     pub(crate) fn force_storage_failure(&self, method: &str) {
-        if let Self::InMemory(db) = self {
-            db.force_failure(method);
+        if let Some(hooks) = self.test_hooks() {
+            hooks.force_failure(method);
         }
     }
 
     #[cfg(test)]
     pub(crate) fn fail_if_forced(&self, method: &str) -> Result<()> {
-        if let Self::InMemory(db) = self
-            && db.take_forced_failure(method)
+        if self
+            .test_hooks()
+            .is_some_and(|hooks| hooks.take_forced_failure(method))
         {
             anyhow::bail!(FORCED_STORAGE_FAILURE);
         }
@@ -51,79 +54,48 @@ impl StorageBackend {
 
     #[cfg(test)]
     pub(crate) fn set_session_list_lookup_delay_ms(&self, delay_ms: u64) {
-        if let Self::InMemory(db) = self {
-            db.set_session_list_lookup_delay_ms(delay_ms);
+        if let Some(hooks) = self.test_hooks() {
+            hooks.set_session_list_lookup_delay_ms(delay_ms);
         }
     }
 
     /// Create a PostgreSQL storage backend from a database URL
     pub async fn postgres(database_url: &str) -> Result<Self> {
-        let db = Database::from_url(database_url).await?;
-        Ok(Self::Postgres(db))
+        Ok(Self::from_database(Database::from_url(database_url).await?))
     }
 
-    /// Create an in-memory storage backend
-    pub fn in_memory() -> Self {
-        Self::InMemory(std::sync::Arc::new(InMemoryDatabase::new()))
+    /// The request pool.
+    pub fn pool(&self) -> &PgPool {
+        self.db.pool()
     }
 
-    /// Check if this is dev mode (in-memory)
-    pub fn is_dev_mode(&self) -> bool {
-        matches!(self, Self::InMemory(_))
-    }
-
-    /// Get the PostgreSQL pool if using PostgreSQL backend
-    /// Returns None for in-memory backend
-    pub fn pool(&self) -> Option<&PgPool> {
-        match self {
-            Self::Postgres(db) => Some(db.pool()),
-            Self::InMemory(_) => None,
-        }
-    }
-
-    /// The pool reserved for background sweeps (EVE-1081). `None` for the
-    /// in-memory backend, which has no pool to contend for.
-    pub fn background_pool(&self) -> Option<&PgPool> {
-        match self {
-            Self::Postgres(db) => Some(db.background_pool()),
-            Self::InMemory(_) => None,
-        }
+    /// The pool reserved for background sweeps (EVE-1081).
+    pub fn background_pool(&self) -> &PgPool {
+        self.db.background_pool()
     }
 
     /// The same storage, routed onto the background pool.
     ///
     /// Background loops take this instead of the request-path backend so a
     /// burst of HTTP traffic cannot starve them, and so their own sweeps
-    /// cannot eat the connections requests are waiting for. The in-memory
-    /// backend has no pools, so it is returned unchanged.
+    /// cannot eat the connections requests are waiting for.
     pub fn for_background(&self) -> Self {
-        match self {
-            Self::Postgres(db) => Self::Postgres(db.for_background()),
-            Self::InMemory(db) => Self::InMemory(db.clone()),
-        }
+        Self::from_database(self.db.for_background())
     }
 
-    /// Attach an object-storage blob backend for content offload. Only the PostgreSQL backend offloads content;
-    /// the in-memory dev backend always stores bytes inline.
+    /// Attach an object-storage blob backend for content offload.
     pub fn with_blob_store(
         self,
         blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
     ) -> Self {
-        match self {
-            Self::Postgres(db) => Self::Postgres(db.with_blob_store(blob_store)),
-            other => other,
-        }
+        Self::from_database(self.db.with_blob_store(blob_store))
     }
 
-    /// The configured object-storage blob backend, if any. `None` for the
-    /// in-memory dev backend and for PostgreSQL deployments running with the
-    /// default inline (`db`) storage — both of which have no external objects
-    /// to garbage-collect.
+    /// The configured object-storage blob backend, if any. `None` for
+    /// deployments running with the default inline (`db`) storage, which have
+    /// no external objects to garbage-collect.
     pub fn blob_store(&self) -> Option<crate::storage::blob_store::SharedBlobStore> {
-        match self {
-            Self::Postgres(db) => db.blob_store().cloned(),
-            Self::InMemory(_) => None,
-        }
+        self.db.blob_store().cloned()
     }
 
     // ============================================
@@ -625,54 +597,6 @@ impl StorageBackend {
         #[cfg(test)]
         self.record_session_list_lookup().await;
         dispatch!(self, get_agent_public_id, org_id, id)
-    }
-
-    pub async fn create_agent_version(
-        &self,
-        input: CreateAgentVersionRow,
-    ) -> Result<AgentVersionRow> {
-        dispatch!(self, create_agent_version, input)
-    }
-
-    pub async fn list_agent_versions(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> Result<Vec<AgentVersionRow>> {
-        dispatch!(self, list_agent_versions, org_id, agent_id)
-    }
-
-    pub async fn get_agent_version(
-        &self,
-        org_id: i64,
-        id: everruns_contracts::typed_id::AgentVersionId,
-    ) -> Result<Option<AgentVersionRow>> {
-        dispatch!(self, get_agent_version, org_id, id)
-    }
-
-    pub async fn get_latest_agent_version(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> Result<Option<AgentVersionRow>> {
-        dispatch!(self, get_latest_agent_version, org_id, agent_id)
-    }
-
-    pub async fn get_latest_agent_snapshot(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> Result<Option<AgentVersionRow>> {
-        dispatch!(self, get_latest_agent_snapshot, org_id, agent_id)
-    }
-
-    pub async fn prune_agent_auto_snapshots(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-        keep: i64,
-    ) -> Result<u64> {
-        dispatch!(self, prune_agent_auto_snapshots, org_id, agent_id, keep)
     }
 
     pub async fn upsert_agent_mcp_secret_binding(

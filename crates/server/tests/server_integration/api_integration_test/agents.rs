@@ -318,110 +318,74 @@ async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
+/// Agent versions are retired: a session runs the agent's current
+/// configuration and records the history revision it started on, so
+/// `history show --revision N` reproduces what ran.
 #[tokio::test]
-async fn test_agent_versions_snapshot_diff_default_and_session_capture() {
-    // Feature flags are process-level env in this pilot; enable explicitly for
-    // the in-process server before it computes route state.
-    unsafe {
-        std::env::set_var("FEATURE_AGENT_VERSIONS", "prod");
-    }
+async fn test_session_records_the_agent_revision_it_started_on() {
     let server = TestServer::in_memory().await;
 
     let agent: Agent = server
         .post(
             "/v1/agents",
             json!({
-                "name": "versioned-agent",
-                "display_name": "Versioned Agent",
-                "description": "An agent with versions",
-                "system_prompt": "You are version one"
+                "name": "revisioned-agent",
+                "system_prompt": "You are revision one"
             }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let first: Value = server
-        .post(
-            &format!("/v1/agents/{}/versions", agent.public_id),
-            json!({
-                "summary": "Initial saved prompt",
-                "change_kind": "manual"
-            }),
-        )
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(first["version"], "0.1.0");
-
     let _: Agent = server
         .patch(
             &format!("/v1/agents/{}", agent.public_id),
-            json!({
-                "system_prompt": "You are version two"
-            }),
+            json!({ "system_prompt": "You are revision two" }),
         )
         .await
         .assert_status(StatusCode::OK)
         .json();
 
-    let second: Value = server
-        .post(
-            &format!("/v1/agents/{}/versions", agent.public_id),
-            json!({
-                "summary": "Prompt update",
-                "change_kind": "patch"
-            }),
-        )
+    let history: Value = server
+        .get(&format!("/v1/history/{}", agent.public_id))
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(second["version"], "0.1.1");
-
-    let diff: Value = server
-        .get(&format!(
-            "/v1/agents/{}/versions/{}/diff/{}",
-            agent.public_id,
-            first["id"].as_str().unwrap(),
-            second["id"].as_str().unwrap()
-        ))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(
-        diff["authored_diff"]["system_prompt"]["from"],
-        "You are version one"
-    );
-    assert_eq!(
-        diff["authored_diff"]["system_prompt"]["to"],
-        "You are version two"
-    );
-
-    let updated_agent: Agent = server
-        .post(
-            &format!("/v1/agents/{}/versions/default", agent.public_id),
-            json!({ "version_id": second["id"] }),
-        )
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-    assert_eq!(
-        updated_agent.default_version_id.unwrap().to_string(),
-        second["id"]
-    );
+    let entries = history
+        .as_array()
+        .or_else(|| history["data"].as_array())
+        .expect("history entries");
+    let latest = entries
+        .iter()
+        .filter_map(|entry| entry["revision"].as_i64())
+        .max()
+        .expect("the update made a revision");
 
     let session: Session = server
         .post(
             "/v1/sessions",
             json!({
                 "agent_id": agent.public_id,
-                "title": "Version capture"
+                "title": "Revision capture"
             }),
         )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
-    assert_eq!(session.agent_version_id.unwrap().to_string(), second["id"]);
+    assert_eq!(session.agent_revision, Some(latest));
+
+    let shown: Value = server
+        .get(&format!(
+            "/v1/history/{}/revisions/{latest}",
+            agent.public_id
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(
+        shown.to_string().contains("You are revision two"),
+        "{shown}"
+    );
 }
 
 #[tokio::test]
@@ -492,7 +456,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .patch_organization_settings(
             everruns_core::DEFAULT_ORG_ID,
             UpdateOrganizationSettings {
-                default_harness_id: everruns_durable::UpdateField::Set(base_id),
+                default_harness_id: everruns_server::storage::UpdateField::Set(base_id),
                 ..Default::default()
             },
         )

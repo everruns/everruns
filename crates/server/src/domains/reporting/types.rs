@@ -3,8 +3,8 @@ pub use crate::records::reporting::{
     ReportFilterOp, ReportOrderBy, ReportOrderDirection, ReportQuery, ReportResult, ReportScope,
     ReportTimeRange,
 };
+use crate::storage::UpdateField;
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

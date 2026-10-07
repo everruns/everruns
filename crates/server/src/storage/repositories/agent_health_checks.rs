@@ -1,6 +1,7 @@
 // Agent health check storage (PostgreSQL). See knowledge/evaluation/agent-checks.md.
 
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 use crate::storage::Database;
@@ -12,14 +13,13 @@ impl Database {
         org_id: i64,
         input: CreateAgentHealthCheckRunRow,
     ) -> Result<AgentHealthCheckRunRow> {
-        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(
+        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(sql!(
             r#"
             INSERT INTO agent_health_check_runs (org_id, public_id, agent_id, config_hash, model_id)
             VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, org_id, public_id, agent_id, config_hash, model_id, status, summary,
-                      results, error_message, started_at, completed_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {AgentHealthCheckRunRow}
+            "#
+        ))
         .bind(org_id)
         .bind(&input.public_id)
         .bind(input.agent_id)
@@ -35,14 +35,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<AgentHealthCheckRunRow>> {
-        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(
+        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, agent_id, config_hash, model_id, status, summary,
-                   results, error_message, started_at, completed_at, created_at, updated_at
+            SELECT {AgentHealthCheckRunRow}
             FROM agent_health_check_runs
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -56,16 +55,15 @@ impl Database {
         agent_id: Uuid,
         limit: i64,
     ) -> Result<Vec<AgentHealthCheckRunRow>> {
-        let rows = sqlx::query_as::<_, AgentHealthCheckRunRow>(
+        let rows = sqlx::query_as::<_, AgentHealthCheckRunRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, agent_id, config_hash, model_id, status, summary,
-                   results, error_message, started_at, completed_at, created_at, updated_at
+            SELECT {AgentHealthCheckRunRow}
             FROM agent_health_check_runs
             WHERE org_id = $1 AND agent_id = $2
             ORDER BY created_at DESC
             LIMIT $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(agent_id)
         .bind(limit)
@@ -81,16 +79,15 @@ impl Database {
         agent_id: Uuid,
         config_hash: &str,
     ) -> Result<Option<AgentHealthCheckRunRow>> {
-        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(
+        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, agent_id, config_hash, model_id, status, summary,
-                   results, error_message, started_at, completed_at, created_at, updated_at
+            SELECT {AgentHealthCheckRunRow}
             FROM agent_health_check_runs
             WHERE org_id = $1 AND agent_id = $2 AND config_hash = $3
             ORDER BY created_at DESC
             LIMIT 1
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(agent_id)
         .bind(config_hash)
@@ -133,7 +130,7 @@ impl Database {
             Some("completed") | Some("failed") => Some(now),
             _ => None,
         };
-        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(
+        let row = sqlx::query_as::<_, AgentHealthCheckRunRow>(sql!(
             r#"
             UPDATE agent_health_check_runs
             SET status = COALESCE($2, status),
@@ -144,10 +141,9 @@ impl Database {
                 completed_at = COALESCE(completed_at, $7),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING id, org_id, public_id, agent_id, config_hash, model_id, status, summary,
-                      results, error_message, started_at, completed_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {AgentHealthCheckRunRow}
+            "#
+        ))
         .bind(id)
         .bind(&input.status)
         .bind(&input.summary)

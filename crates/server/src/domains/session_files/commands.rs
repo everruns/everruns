@@ -70,26 +70,17 @@ pub struct ListWorkspaceFiles {
     pub recursive: bool,
 }
 
+#[command(
+    name = "list_workspace_files",
+    category = "files",
+    description = "Get the root directory listing of session files.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/fs",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    positional = "session_id",
+)]
 impl Command for ListWorkspaceFiles {
     type Output = GetResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_workspace_files",
-            category: "files",
-            description: "Get the root directory listing of session files.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/fs",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -113,8 +104,6 @@ impl Command for ListWorkspaceFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListWorkspaceFiles>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -124,22 +113,16 @@ pub struct GetWorkspaceFile {
     pub recursive: bool,
 }
 
+#[command(
+    name = "get_workspace_file",
+    category = "files",
+    description = "Get a file or directory at a path in the session filesystem.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_VIEW,
+)]
 impl Command for GetWorkspaceFile {
     type Output = GetResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_workspace_file",
-            category: "files",
-            description: "Get a file or directory at a path in the session filesystem.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -183,8 +166,6 @@ impl Command for GetWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -194,22 +175,16 @@ pub struct CreateWorkspaceFile {
     pub req: CreateFileRequest,
 }
 
+#[command(
+    name = "create_workspace_file",
+    category = "files",
+    description = "Create a file or directory in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for CreateWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_workspace_file",
-            category: "files",
-            description: "Create a file or directory in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -278,8 +253,6 @@ impl Command for CreateWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -289,22 +262,16 @@ pub struct UpdateWorkspaceFile {
     pub req: UpdateFileRequest,
 }
 
+#[command(
+    name = "update_workspace_file",
+    category = "files",
+    description = "Update a file in the session filesystem.",
+    method = "PUT",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for UpdateWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_workspace_file",
-            category: "files",
-            description: "Update a file in the session filesystem.",
-            method: "PUT",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -388,8 +355,6 @@ impl Command for UpdateWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -399,22 +364,16 @@ pub struct DeleteWorkspaceFile {
     pub recursive: bool,
 }
 
+#[command(
+    name = "delete_workspace_file",
+    category = "files",
+    description = "Delete a file or directory in the session filesystem.",
+    method = "DELETE",
+    path = "/v1/sessions/{session_id}/fs/{path}",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for DeleteWorkspaceFile {
     type Output = DeleteResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_workspace_file",
-            category: "files",
-            description: "Delete a file or directory in the session filesystem.",
-            method: "DELETE",
-            path: "/v1/sessions/{session_id}/fs/{path}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -430,8 +389,6 @@ impl Command for DeleteWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MoveWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -440,22 +397,16 @@ pub struct MoveWorkspaceFile {
     pub req: MoveFileRequest,
 }
 
+#[command(
+    name = "move_workspace_file",
+    category = "files",
+    description = "Move or rename a file in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/move",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for MoveWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "move_workspace_file",
-            category: "files",
-            description: "Move or rename a file in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/move",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -473,8 +424,6 @@ impl Command for MoveWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<MoveWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CopyWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -483,22 +432,16 @@ pub struct CopyWorkspaceFile {
     pub req: CopyFileRequest,
 }
 
+#[command(
+    name = "copy_workspace_file",
+    category = "files",
+    description = "Copy a file in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/copy",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for CopyWorkspaceFile {
     type Output = SessionFile;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "copy_workspace_file",
-            category: "files",
-            description: "Copy a file in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/copy",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -516,8 +459,6 @@ impl Command for CopyWorkspaceFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CopyWorkspaceFile>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GrepWorkspaceFiles {
     /// Session's prefixed public identifier.
@@ -526,26 +467,17 @@ pub struct GrepWorkspaceFiles {
     pub req: GrepRequest,
 }
 
+#[command(
+    name = "grep_workspace_files",
+    category = "files",
+    description = "Search files in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/grep",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    read_only = true,
+)]
 impl Command for GrepWorkspaceFiles {
     type Output = Vec<GrepResult>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "grep_workspace_files",
-            category: "files",
-            description: "Search files in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/grep",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<GrepResult>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -580,8 +512,6 @@ impl Command for GrepWorkspaceFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GrepWorkspaceFiles>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SearchWorkspaceFiles {
     /// Session's prefixed public identifier.
@@ -590,26 +520,17 @@ pub struct SearchWorkspaceFiles {
     pub req: SearchRequest,
 }
 
+#[command(
+    name = "search_workspace_files",
+    category = "files",
+    description = "Search files in the session filesystem, with surrounding context and paging.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/search",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    read_only = true,
+)]
 impl Command for SearchWorkspaceFiles {
     type Output = everruns_core::GrepSearchResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "search_workspace_files",
-            category: "files",
-            description: "Search files in the session filesystem, with surrounding context and paging.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/search",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<everruns_core::GrepSearchResult, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -647,8 +568,6 @@ impl Command for SearchWorkspaceFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<SearchWorkspaceFiles>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StatWorkspaceFile {
     /// Session's prefixed public identifier.
@@ -657,26 +576,17 @@ pub struct StatWorkspaceFile {
     pub req: StatRequest,
 }
 
+#[command(
+    name = "stat_workspace_file",
+    category = "files",
+    description = "Get file metadata in the session filesystem.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/fs/_/stat",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    read_only = true,
+)]
 impl Command for StatWorkspaceFile {
     type Output = FileStat;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "stat_workspace_file",
-            category: "files",
-            description: "Get file metadata in the session filesystem.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/fs/_/stat",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<FileStat, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
@@ -690,8 +600,6 @@ impl Command for StatWorkspaceFile {
             .ok_or_else(|| CommandError::not_found("Path"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<StatWorkspaceFile>() }
 
 #[cfg(test)]
 mod tests {
@@ -738,8 +646,7 @@ mod tests {
             trigger_id: None,
             harness_id: None,
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -786,8 +693,8 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_session_file_read_rejects_other_users_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let owner_user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let owner_user_id = db.create_test_user(Uuid::new_v4()).await;
         let mut row = session_row(None);
         row.resolved_owner_user_id = Some(owner_user_id);
         let session = db.create_session(row).await.expect("create session");
@@ -825,8 +732,8 @@ mod tests {
     /// the private `/memory/user` subtree rather than failing the whole scan.
     #[tokio::test]
     async fn grep_redacts_private_memory_for_non_owner() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let owner_user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let owner_user_id = db.create_test_user(Uuid::new_v4()).await;
         let mut row = session_row(None);
         row.resolved_owner_user_id = Some(owner_user_id);
         let session = db.create_session(row).await.expect("create session");
@@ -884,8 +791,8 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_session_file_read_allows_owner_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
-        let owner_user_id = Uuid::new_v4();
+        let db = Arc::new(StorageBackend::test_database());
+        let owner_user_id = db.create_test_user(Uuid::new_v4()).await;
         let mut row = session_row(None);
         row.resolved_owner_user_id = Some(owner_user_id);
         let session = db.create_session(row).await.expect("create session");
@@ -921,7 +828,7 @@ mod tests {
     /// writes must be rejected (archived workspaces are read-only).
     #[tokio::test]
     async fn legacy_session_file_write_rejects_archived_workspace() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -958,7 +865,7 @@ mod tests {
     /// `OrgSessionsManage` must be denied.
     #[tokio::test]
     async fn legacy_session_write_to_shared_workspace_requires_workspace_manage() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
 
         let workspace = db
@@ -966,7 +873,7 @@ mod tests {
                 DEFAULT_ORG_ID,
                 CreateWorkspaceRow {
                     id: None,
-                    public_id: format!("workspace_{:032x}", 1u128),
+                    public_id: format!("wsp_{:032x}", 1u128),
                     name: "shared".to_string(),
                     description: None,
                     owner_principal_id: None,
@@ -1019,7 +926,7 @@ mod tests {
         path: &str,
         content: &str,
     ) -> (Arc<StorageBackend>, crate::storage::models::SessionRow, Ctx) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -1147,9 +1054,9 @@ mod tests {
 
     #[tokio::test]
     async fn search_excludes_private_memory_before_result_accounting() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut row = session_row(None);
-        row.resolved_owner_user_id = Some(Uuid::new_v4());
+        row.resolved_owner_user_id = Some(db.create_test_user(Uuid::new_v4()).await);
         let session = db.create_session(row).await.expect("create session");
         crate::domains::session_files::WorkspaceFileService::new(db.clone())
             .create_file(
@@ -1208,7 +1115,7 @@ mod tests {
     /// are now the only path to it.
     #[tokio::test]
     async fn commands_address_the_sessions_workspace_not_its_id() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
 
         // A workspace owner, then a second session attached to that workspace.
         let owner = db
@@ -1266,7 +1173,7 @@ mod tests {
     /// all inside the entitlement, none of them being a session runtime.
     #[tokio::test]
     async fn undeclared_internal_caller_cannot_read_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -1307,7 +1214,7 @@ mod tests {
     /// private store).
     #[tokio::test]
     async fn declared_session_runtime_reads_its_own_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = db
             .create_session(session_row(None))
             .await
@@ -1350,7 +1257,7 @@ mod tests {
     /// declared session is that it is checked against the session being read.
     #[tokio::test]
     async fn declaring_one_session_does_not_open_anothers_private_memory() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let victim = db
             .create_session(session_row(None))
             .await

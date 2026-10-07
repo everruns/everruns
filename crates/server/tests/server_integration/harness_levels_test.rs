@@ -1,5 +1,5 @@
 use crate::test_harness::get_database_url;
-use everruns_durable::UpdateField;
+use everruns_server::storage::UpdateField;
 use everruns_server::{
     org_init,
     storage::{
@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn test_harness_levels_upgrade_pins_legacy_agents_atomically() {
-    let backend = StorageBackend::Postgres(Database::new(
+    let backend = StorageBackend::from_database(Database::new(
         sqlx::PgPool::connect(&get_database_url()).await.unwrap(),
     ));
     let org = backend

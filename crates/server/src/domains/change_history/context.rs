@@ -211,7 +211,7 @@ async fn write(
             ManagerContextWriteError::Storage(error) => CommandError::internal(error),
         })?;
     let output = ManagerContext::of(entity_kind, key.entity_ref, Some(row));
-    PendingChange::record(pending, meta, ctx, &output).await;
+    PendingChange::record(pending, meta, ctx, &output).await?;
     Ok(output)
 }
 
@@ -240,36 +240,18 @@ pub struct GetManagerContext {
     pub kind: Option<String>,
 }
 
+#[command(
+    name = "get_manager_context",
+    category = "context",
+    description = "Read the manager context of an entity: notes its managers keep about it (requirements, rationale, ownership). Read it before changing the entity and pass its revision as --context-revision.",
+    method = "GET",
+    path = "/v1/context/{entity_ref}",
+    policy = MANAGER_CONTEXT_ACCESS,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["context"], "get").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("Read what an agent's managers require before changing it", "everruns context get agent_01h9",)]),
+)]
 impl Command for GetManagerContext {
     type Output = ManagerContext;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_manager_context",
-            category: "context",
-            description: "Read the manager context of an entity: notes its managers keep about it (requirements, rationale, ownership). Read it before changing the entity and pass its revision as --context-revision.",
-            method: "GET",
-            path: "/v1/context/{entity_ref}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["context"], "get")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "Read what an agent's managers require before changing it",
-                "everruns context get agent_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MANAGER_CONTEXT_ACCESS)
-    }
 
     fn output_schema() -> serde_json::Value {
         context_output_schema()
@@ -281,17 +263,11 @@ impl Command for GetManagerContext {
 
     async fn execute(self, ctx: &Ctx) -> Result<ManagerContext, CommandError> {
         let key = managed_entity(ctx, &self.entity_ref, self.kind.as_deref()).await?;
-        let row = ctx
-            .db
-            .get_manager_context(&key)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.get_manager_context(&key).await?;
         let kind = EntityKind::parse(&key.entity_kind).expect("resolved above");
         Ok(ManagerContext::of(kind, key.entity_ref, row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetManagerContext>() }
 
 // ============================================================================
 // SetManagerContext
@@ -311,39 +287,27 @@ pub struct SetManagerContext {
     pub expected_revision: Option<i64>,
 }
 
+#[command(
+    name = "set_manager_context",
+    category = "context",
+    description = "Replace the manager context of an entity with a new markdown document. Pass --expected-revision to refuse the write if someone changed it since you read it.",
+    method = "PUT",
+    path = "/v1/context/{entity_ref}",
+    policy = MANAGER_CONTEXT_ACCESS,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["context"], "set").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("Record an agent's requirements from a file", "everruns context set agent_01h9 --content @notes.md --expected-revision 3 --reason 'Product review decisions'",)]),
+)]
 impl Command for SetManagerContext {
     type Output = ManagerContext;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "set_manager_context",
-            category: "context",
-            description: "Replace the manager context of an entity with a new markdown document. Pass --expected-revision to refuse the write if someone changed it since you read it.",
-            method: "PUT",
-            path: "/v1/context/{entity_ref}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["context"], "set")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "Record an agent's requirements from a file",
-                "everruns context set agent_01h9 --content @notes.md --expected-revision 3 --reason 'Product review decisions'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MANAGER_CONTEXT_ACCESS)
-    }
-
     fn change() -> Change {
         EXEMPT
+    }
+
+    // The context write and the `context_updated` entry `write` records
+    // commit together.
+    fn transactional() -> bool {
+        true
     }
 
     fn output_schema() -> serde_json::Value {
@@ -369,8 +333,6 @@ impl Command for SetManagerContext {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<SetManagerContext>() }
-
 // ============================================================================
 // AppendManagerContext
 // ============================================================================
@@ -386,39 +348,27 @@ pub struct AppendManagerContext {
     pub text: String,
 }
 
+#[command(
+    name = "append_manager_context",
+    category = "context",
+    description = "Add a paragraph to the end of an entity's manager context, such as a requirement a user stated. Needs no prior read.",
+    method = "POST",
+    path = "/v1/context/{entity_ref}/append",
+    policy = MANAGER_CONTEXT_ACCESS,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["context"], "append").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("Record a requirement a user stated about an agent", "everruns context append agent_01h9 --text 'Answers must stay suitable for children.' --reason 'User asked in Platform Chat'",)]),
+)]
 impl Command for AppendManagerContext {
     type Output = ManagerContext;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "append_manager_context",
-            category: "context",
-            description: "Add a paragraph to the end of an entity's manager context, such as a requirement a user stated. Needs no prior read.",
-            method: "POST",
-            path: "/v1/context/{entity_ref}/append",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["context"], "append")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "Record a requirement a user stated about an agent",
-                "everruns context append agent_01h9 --text 'Answers must stay suitable for children.' --reason 'User asked in Platform Chat'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MANAGER_CONTEXT_ACCESS)
-    }
-
     fn change() -> Change {
         EXEMPT
+    }
+
+    // The context write and the `context_updated` entry `write` records
+    // commit together.
+    fn transactional() -> bool {
+        true
     }
 
     fn output_schema() -> serde_json::Value {
@@ -446,8 +396,6 @@ impl Command for AppendManagerContext {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<AppendManagerContext>() }
-
 // ============================================================================
 // ClearManagerContext
 // ============================================================================
@@ -463,39 +411,27 @@ pub struct ClearManagerContext {
     pub expected_revision: Option<i64>,
 }
 
+#[command(
+    name = "clear_manager_context",
+    category = "context",
+    description = "Empty the manager context of an entity. The cleared text stays in no history; record why with --reason.",
+    method = "DELETE",
+    path = "/v1/context/{entity_ref}",
+    policy = MANAGER_CONTEXT_ACCESS,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["context"], "clear").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("Drop notes that no longer apply", "everruns context clear agent_01h9 --expected-revision 4 --reason 'Requirements moved to the harness'",)]),
+)]
 impl Command for ClearManagerContext {
     type Output = ManagerContext;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "clear_manager_context",
-            category: "context",
-            description: "Empty the manager context of an entity. The cleared text stays in no history; record why with --reason.",
-            method: "DELETE",
-            path: "/v1/context/{entity_ref}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["context"], "clear")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "Drop notes that no longer apply",
-                "everruns context clear agent_01h9 --expected-revision 4 --reason 'Requirements moved to the harness'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&MANAGER_CONTEXT_ACCESS)
-    }
-
     fn change() -> Change {
         EXEMPT
+    }
+
+    // The context write and the `context_updated` entry `write` records
+    // commit together.
+    fn transactional() -> bool {
+        true
     }
 
     fn output_schema() -> serde_json::Value {
@@ -520,5 +456,3 @@ impl Command for ClearManagerContext {
         .await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ClearManagerContext>() }

@@ -67,7 +67,6 @@ hex.workspace = true
 hmac.workspace = true
 inventory.workspace = true
 reqwest.workspace = true
-everruns-durable = { workspace = true, features = ["sqlite"] }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

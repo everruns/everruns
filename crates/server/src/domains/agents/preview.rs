@@ -41,38 +41,18 @@ pub struct AgentPreview {
     pub findings: Vec<super::checks::Finding>,
 }
 
+#[command(
+    name = "preview_agent",
+    category = "agents",
+    description = "Preview the final agent shape with capabilities applied.",
+    method = "POST",
+    path = "/v1/agents/preview",
+    policy = crate::domains::agents::AGENT_VIEW,
+    read_only = true,
+    cli = CliRoute::new(&["agents"], "preview").with_examples(&[CliExample::new("See the prompt a draft configuration would produce, without creating it", "everruns agents preview --system-prompt 'Triage incoming issues'",)]),
+)]
 impl Command for PreviewAgent {
     type Output = AgentPreview;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "preview_agent",
-            category: "agents",
-            description: "Preview the final agent shape with capabilities applied.",
-            method: "POST",
-            path: "/v1/agents/preview",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // A const so the declared slices get 'static promotion:
-        // `CliArg::new(..).short(..)` is a const fn, but an array of them
-        // is only promoted inside a const initializer.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["agents"], "preview").with_examples(&[CliExample::new(
-                "See the prompt a draft configuration would produce, without creating it",
-                "everruns agents preview --system-prompt 'Triage incoming issues'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
         let authored_prompt = self.system_prompt.clone().unwrap_or_default();
@@ -95,8 +75,7 @@ impl Command for PreviewAgent {
                 ctx.org_id(),
                 harness_id,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
             everruns_core::AgentConfigOverlay::from(&harness).merge(draft)
         } else {
@@ -111,8 +90,7 @@ impl Command for PreviewAgent {
             ctx.org_id(),
             &effective.mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let preview = ctx
             .capability_service
             .preview_with_features(
@@ -120,8 +98,7 @@ impl Command for PreviewAgent {
                 &effective.system_prompt.unwrap_or_default(),
                 &effective.capabilities,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let prompt = preview.system_prompt;
         let mut tools = preview.tools;
         tools.extend(
@@ -134,7 +111,7 @@ impl Command for PreviewAgent {
                 ctx.capability_service.egress_service().as_ref(),
             )
             .await
-            .map_err(classify_anyhow)?,
+            ?,
         );
         tools.extend(self.tools);
         // Apply org rule config (phase 4): override built-in severities/enabled
@@ -160,5 +137,3 @@ impl Command for PreviewAgent {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<PreviewAgent>() }

@@ -18,12 +18,7 @@ use uuid::Uuid;
 pub async fn can_receive_health(ctx: &Ctx) -> Result<bool, CommandError> {
     let mut caller = ctx.caller.clone();
     if let Some(user) = caller.user_id {
-        let Some(member) = ctx
-            .db
-            .get_organization_member(ctx.org_id(), user)
-            .await
-            .map_err(classify_anyhow)?
-        else {
+        let Some(member) = ctx.db.get_organization_member(ctx.org_id(), user).await? else {
             return Ok(false);
         };
         caller.role = member
@@ -57,9 +52,13 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
                 href: Some(href.clone()),
                 payload: serde_json::json!({"issue_id":row.id,"episode_id":row.episode_id}),
                 dedupe_key: Some(format!("health:{}:{}", row.id, row.episode_id)),
+                source: Some(crate::storage::NotificationSourceRow {
+                    source_type: "agent".into(),
+                    source_id: Some(row.agent_public_id.clone()),
+                    source_name: Some(row.agent_name.clone()),
+                }),
             })
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         notification.map(|n| n.id.to_string())
     } else {
         None
@@ -67,16 +66,14 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     let snoozed_until = if let Some(user) = user {
         ctx.db
             .health_issue_snooze(row.id, user, row.episode_id, None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
     } else {
         None
     };
     let revision = ctx
         .db
         .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     let stale = revision.is_none_or(|e| e.updated_at != row.channel_revision)
         || Utc::now() - row.last_checked_at > chrono::Duration::minutes(15)
         || row.error_code.as_deref() == Some("verification_unavailable");
@@ -113,14 +110,12 @@ async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
     let mut row = ctx
         .db
         .get_health_issue(ctx.org_id(), id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Health issue"))?;
     if let Some(channel) = ctx
         .db
         .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         && (!channel.enabled || channel.channel_status == "disabled")
     {
         row.status = "inapplicable".into();
@@ -141,20 +136,16 @@ pub struct ListHealthIssues {
     #[schema(example = 20)]
     pub limit: Option<i64>,
 }
+#[command(
+    name = "list_health_issues",
+    category = "health_issues",
+    description = "List pending operational health issues.",
+    method = "GET",
+    path = "/v1/health-issues",
+    policy = AGENT_VIEW,
+)]
 impl Command for ListHealthIssues {
     type Output = HealthIssueList;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_health_issues",
-            category: "health_issues",
-            description: "List pending operational health issues.",
-            method: "GET",
-            path: "/v1/health-issues",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_access(ctx).await?;
         let offset = self.offset.unwrap_or(0).clamp(0, 1_000_000);
@@ -162,8 +153,7 @@ impl Command for ListHealthIssues {
         let rows = ctx
             .db
             .list_health_issues(ctx.org_id(), offset, limit, self.channel_id.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let mut data = Vec::with_capacity(rows.len());
         for row in rows {
             data.push(present(ctx, row).await?);
@@ -171,8 +161,7 @@ impl Command for ListHealthIssues {
         let total = ctx
             .db
             .count_health_issues(ctx.org_id(), self.channel_id.as_deref())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(HealthIssueList {
             data,
             total,
@@ -181,8 +170,6 @@ impl Command for ListHealthIssues {
         })
     }
 }
-inventory::submit! {CommandDescriptor::of::<ListHealthIssues>()}
-
 /// Read the current evidence and recovery guidance for one health issue.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetHealthIssue {
@@ -190,26 +177,20 @@ pub struct GetHealthIssue {
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
+#[command(
+    name = "get_health_issue",
+    category = "health_issues",
+    description = "Get an operational health issue.",
+    method = "GET",
+    path = "/v1/health-issues/{issue_id}",
+    policy = AGENT_VIEW,
+)]
 impl Command for GetHealthIssue {
     type Output = HealthIssue;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_health_issue",
-            category: "health_issues",
-            description: "Get an operational health issue.",
-            method: "GET",
-            path: "/v1/health-issues/{issue_id}",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         present(ctx, issue(ctx, self.issue_id).await?).await
     }
 }
-inventory::submit! {CommandDescriptor::of::<GetHealthIssue>()}
-
 /// Request fresh, non-mutating verification of one health issue.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CheckHealthIssue {
@@ -217,26 +198,21 @@ pub struct CheckHealthIssue {
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
+#[command(
+    name = "check_health_issue",
+    category = "health_issues",
+    description = "Verify an installation's current health without modifying provider data.",
+    method = "POST",
+    path = "/v1/health-issues/{issue_id}/check",
+    policy = AGENT_MANAGE,
+)]
 impl Command for CheckHealthIssue {
     type Output = HealthIssue;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_health_issue",
-            category: "health_issues",
-            description: "Verify an installation's current health without modifying provider data.",
-            method: "POST",
-            path: "/v1/health-issues/{issue_id}/check",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_MANAGE)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let row = issue(ctx, self.issue_id).await?;
         if !SlackHealthService::new(ctx.db.clone(), ctx.encryption.clone())
             .check_requested(&row.channel_public_id, self.issue_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         {
             return Err(
                 CommandError::rate_limited("Wait a few seconds before checking again")
@@ -246,8 +222,6 @@ impl Command for CheckHealthIssue {
         present(ctx, issue(ctx, self.issue_id).await?).await
     }
 }
-inventory::submit! {CommandDescriptor::of::<CheckHealthIssue>()}
-
 /// Suppress the current user's reminders for one day without resolving the issue.
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct SnoozeHealthIssue {
@@ -255,20 +229,16 @@ pub struct SnoozeHealthIssue {
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub issue_id: Uuid,
 }
+#[command(
+    name = "snooze_health_issue",
+    category = "health_issues",
+    description = "Snooze health reminders for the current user for one day.",
+    method = "POST",
+    path = "/v1/health-issues/{issue_id}/snooze",
+    policy = AGENT_VIEW,
+)]
 impl Command for SnoozeHealthIssue {
     type Output = HealthIssue;
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "snooze_health_issue",
-            category: "health_issues",
-            description: "Snooze health reminders for the current user for one day.",
-            method: "POST",
-            path: "/v1/health-issues/{issue_id}/snooze",
-        }
-    }
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_VIEW)
-    }
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let row = issue(ctx, self.issue_id).await?;
         let user = ctx
@@ -282,13 +252,10 @@ impl Command for SnoozeHealthIssue {
                 row.episode_id,
                 Some(Utc::now() + chrono::Duration::days(1)),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         present(ctx, row).await
     }
 }
-inventory::submit! {CommandDescriptor::of::<SnoozeHealthIssue>()}
-
 pub async fn filter_notifications(
     ctx: &Ctx,
     rows: Vec<crate::storage::NotificationRow>,
@@ -307,19 +274,13 @@ pub async fn filter_notifications(
             else {
                 continue;
             };
-            let Some(issue) = ctx
-                .db
-                .get_health_issue(ctx.org_id(), id)
-                .await
-                .map_err(classify_anyhow)?
-            else {
+            let Some(issue) = ctx.db.get_health_issue(ctx.org_id(), id).await? else {
                 continue;
             };
             let channel = ctx
                 .db
                 .get_ingress_channel_by_public_id(&issue.channel_public_id)
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
             if issue.status == "inapplicable"
                 || channel.is_none_or(|e| !e.enabled || e.channel_status == "disabled")
             {

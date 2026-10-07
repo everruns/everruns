@@ -3,7 +3,7 @@ use super::lookup::get_install_by_public_id;
 use super::queries as q;
 use super::types::{InstalledPlugin, UpdateInstalledPluginRequest, UpdatePluginInstall};
 use crate::domains::common::*;
-use crate::kernel_imports::{McpServerActsAs, Policy};
+use crate::kernel_imports::McpServerActsAs;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -62,26 +62,17 @@ pub struct PatchInstalledPlugin {
     pub req: UpdateInstalledPluginRequest,
 }
 
+#[command(
+    name = "patch_installed_plugin",
+    category = "plugins",
+    description = "Update an installed plugin's status or MCP acting identities.",
+    method = "PATCH",
+    path = "/v1/plugins/{id}",
+    policy = PLUGIN_MANAGE,
+    positional = "id",
+)]
 impl Command for PatchInstalledPlugin {
     type Output = InstalledPlugin;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "patch_installed_plugin",
-            category: "plugins",
-            description: "Update an installed plugin's status or MCP acting identities.",
-            method: "PATCH",
-            path: "/v1/plugins/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PLUGIN_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<InstalledPlugin, CommandError> {
         let existing = get_install_by_public_id(ctx, &self.id).await?;
@@ -125,15 +116,13 @@ impl Command for PatchInstalledPlugin {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Installed plugin"))?;
 
         let marketplace = if let Some(marketplace_id) = updated.marketplace_id {
             ctx.db
                 .get_plugin_marketplace(ctx.org_id(), marketplace_id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
         } else {
             None
         };
@@ -141,8 +130,6 @@ impl Command for PatchInstalledPlugin {
         Ok(q::row_to_installed_plugin(&updated, marketplace.as_ref()))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<PatchInstalledPlugin>() }
 
 #[cfg(test)]
 mod tests {

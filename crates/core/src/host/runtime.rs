@@ -18,10 +18,6 @@ use crate::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData, ToolCompletedData,
 };
 use crate::harness_definition::HarnessDefinition;
-use crate::host::HostComposition;
-use crate::host::InProcessExecution;
-use crate::host::SessionFileSystemFactoryContext;
-use crate::host::SessionMutator;
 use crate::host::backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore, RuntimeSessionStore,
 };
@@ -35,6 +31,9 @@ use crate::host::runtime_host::{
     execute_reason_activity_with_prompt_messages, run_user_prompt_submit_for_message,
 };
 use crate::host::turn_strategy::resolve_pause_hints;
+use crate::host::{
+    HostComposition, InProcessExecution, SessionFileSystemFactoryContext, SessionMutator,
+};
 use crate::lifecycle_hooks::UserPromptDecision;
 use crate::message::{ContentPart, RuntimeMessage};
 use crate::plugins::{PluginFileSet, compile_plugin};
@@ -1643,8 +1642,7 @@ impl InProcessRuntime {
             agent_id,
             mcp_tool_definitions,
             Some(self.file_store.clone()),
-            // Introspection only; channel context is not part of what this
-            // reports, so it does not need the store.
+            // Introspection only: channel context is not reported, so no store.
             None,
         )
         .await
@@ -1659,10 +1657,8 @@ impl RuntimeHostAdapter for InProcessRuntime {
         session_id: SessionId,
         _status: SessionExecutionState,
     ) -> Result<()> {
-        // The in-process runtime does not persist status. Lifecycle callers
-        // still emit their events; downstream consumers in-process don't
-        // observe session.status. Keep the existence check so lifecycle
-        // warnings still surface a missing session.
+        // Not persisted in-process (nothing here observes session.status); the
+        // existence check keeps lifecycle warnings surfacing a missing session.
         self.session_store
             .get_session(session_id)
             .await?
@@ -1772,6 +1768,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn compaction_checkpoint_store(&self) -> Option<Arc<dyn crate::CompactionCheckpointStore>> {
         Some(self.compaction_checkpoint_store.clone())
+    }
+
+    fn partial_stream_store(&self) -> Option<Arc<dyn crate::durability::PartialStreamStore>> {
+        Some(super::partial_stream::over(&self.event_log))
     }
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {

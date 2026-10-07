@@ -5,12 +5,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-pub use everruns_core::FeatureFlagGrade;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::execution_features::{
     AGENT_DELEGATION_DEFAULT_GRADE, CONTAINER_SANDBOX_DEFAULT_GRADE,
     DOCKER_CAPABILITY_DEFAULT_GRADE, LUA_DEFAULT_GRADE, MACHINE_PAYMENTS_DEFAULT_GRADE,
 };
+pub use everruns_core::{FeatureFlagDefinition, FeatureFlagGrade};
 
 /// Feature flags exposed via `GET /v1/feature-flags` and consumed by the frontend.
 ///
@@ -37,9 +37,6 @@ pub struct FeatureFlags {
     /// Agent / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
     /// Experimental.
     pub channel_budgets: bool,
-    /// Immutable agent versions, snapshots, forks, and channel version binding.
-    /// Experimental.
-    pub agent_versions: bool,
     /// Realtime voice endpoints and microphone controls. Experimental.
     pub voice: bool,
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
@@ -83,9 +80,19 @@ pub struct FeatureFlags {
     /// Personal ChatGPT plan connections; deployment availability and org enrolment required.
     #[serde(default)]
     pub chatgpt_plan: bool,
+    /// First-party Mistral AI provider (the `mistral` driver). Off until a
+    /// deployment raises its grade: model sync works, but the key we test with
+    /// is tier-limited, so chat has not been verified end to end.
+    #[serde(default)]
+    pub mistral: bool,
     /// Platform Chat workspace with an integrated Threads panel. Org opt-in.
     #[serde(default)]
     pub chat_threads: bool,
+    /// Flags declared by integration crates (see
+    /// [`everruns_integrations_catalog::feature_flag_definitions`]), keyed by
+    /// flag name. Serialized flat, next to the platform flags.
+    #[serde(flatten, default)]
+    pub integrations: BTreeMap<String, bool>,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -110,20 +117,21 @@ impl From<FeatureFlags> for FeatureFlagMap {
     }
 }
 
-/// Rollout metadata for a feature flag.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
-pub struct FeatureFlagDefinition {
-    /// Stable flag key (matches `FeatureFlags` field / `is_enabled` name).
-    pub name: &'static str,
-    /// Human-readable title for settings UI.
-    pub label: &'static str,
-    /// Short description of what the flag gates.
-    pub description: &'static str,
-    /// Default rollout grade; `FEATURE_<NAME>` overrides this at startup.
-    pub grade: FeatureFlagGrade,
+/// Every hosted feature flag: the platform catalog below, then the flags
+/// integration crates declare for their capabilities and connectors.
+pub fn feature_flag_definitions() -> impl Iterator<Item = &'static FeatureFlagDefinition> {
+    API_FEATURE_FLAG_DEFINITIONS
+        .iter()
+        .chain(everruns_integrations_catalog::feature_flag_definitions())
 }
 
-/// One catalog for hosted flags, including infrastructure capabilities.
+/// Whether `name` is a known hosted feature flag.
+pub fn is_known_feature_flag(name: &str) -> bool {
+    feature_flag_definitions().any(|definition| definition.name == name)
+}
+
+/// One catalog for platform flags, including infrastructure capabilities.
+/// Integration flags live with their integration crates.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "chat_threads",
@@ -135,6 +143,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         name: "chatgpt_plan",
         label: "ChatGPT plan connections",
         description: "Connect your personal ChatGPT plan for private agent conversations.",
+        // Adoption: self-hosted orgs opt in from Settings -> Features without a
+        // deployment env change. Hosted pins `FEATURE_CHATGPT_PLAN=off`.
+        grade: FeatureFlagGrade::Adoption,
+    },
+    FeatureFlagDefinition {
+        name: "mistral",
+        label: "Mistral AI provider",
+        description: "Connect Mistral AI directly with your own API key.",
         grade: FeatureFlagGrade::Off,
     },
     FeatureFlagDefinition {
@@ -186,14 +202,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Adds spending limits scoped to individual agents and channels, with \
              automatic resets on a schedule. It helps you cap and control costs so a single agent \
              or channel can't run away with your usage.",
-        grade: FeatureFlagGrade::Adoption,
-    },
-    FeatureFlagDefinition {
-        name: "agent_versions",
-        label: "Agent versions",
-        description: "Captures immutable snapshots of your agents so you can fork, roll back, and \
-             pin channels to a specific version. This gives you a safety net to experiment freely \
-             and return to a known-good agent at any time.",
         grade: FeatureFlagGrade::Adoption,
     },
     FeatureFlagDefinition {
@@ -295,13 +303,8 @@ pub struct FeatureFlagPolicy {
 
 impl FeatureFlagPolicy {
     pub fn from_env(deployment: DeploymentGrade) -> Self {
-        let grades = API_FEATURE_FLAG_DEFINITIONS
-            .iter()
-            .map(|definition| {
-                let env_var = format!("FEATURE_{}", definition.name.to_ascii_uppercase());
-                let grade = FeatureFlagGrade::from_env(&env_var, definition.grade);
-                (definition.name.to_string(), grade)
-            })
+        let grades = feature_flag_definitions()
+            .map(|definition| (definition.name.to_string(), definition.grade_from_env()))
             .collect();
         Self { deployment, grades }
     }
@@ -318,12 +321,7 @@ impl FeatureFlagPolicy {
     }
 
     pub fn with_grade(mut self, name: &str, grade: FeatureFlagGrade) -> Self {
-        assert!(
-            API_FEATURE_FLAG_DEFINITIONS
-                .iter()
-                .any(|definition| definition.name == name),
-            "unknown feature flag: {name}"
-        );
+        assert!(is_known_feature_flag(name), "unknown feature flag: {name}");
         self.grades.insert(name.to_string(), grade);
         self
     }
@@ -342,7 +340,7 @@ impl FeatureFlagPolicy {
 
     fn resolve(&self, enabled: impl Fn(&str) -> bool) -> FeatureFlags {
         let mut flags = FeatureFlags::default();
-        for definition in API_FEATURE_FLAG_DEFINITIONS {
+        for definition in feature_flag_definitions() {
             flags.set(definition.name, enabled(definition.name));
         }
         flags
@@ -367,11 +365,12 @@ impl FeatureFlags {
     /// (`BTreeMap` sorts keys, whereas the struct serializes in field order), which
     /// is irrelevant to JSON consumers.
     pub fn to_map(&self) -> FeatureFlagMap {
-        FeatureFlagMap(BTreeMap::from([
+        let mut map = BTreeMap::from([
             ("docker_capability".to_string(), self.docker_capability),
             ("container_sandbox".to_string(), self.container_sandbox),
             ("lua".to_string(), self.lua),
             ("chatgpt_plan".to_string(), self.chatgpt_plan),
+            ("mistral".to_string(), self.mistral),
             ("chat_threads".to_string(), self.chat_threads),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
@@ -380,7 +379,6 @@ impl FeatureFlags {
             ("knowledge".to_string(), self.knowledge),
             ("plugins".to_string(), self.plugins),
             ("channel_budgets".to_string(), self.channel_budgets),
-            ("agent_versions".to_string(), self.agent_versions),
             ("voice".to_string(), self.voice),
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
@@ -394,7 +392,13 @@ impl FeatureFlags {
             ("reports".to_string(), self.reports),
             ("machine_payments".to_string(), self.machine_payments),
             ("openai_agents_api".to_string(), self.openai_agents_api),
-        ]))
+        ]);
+        map.extend(
+            self.integrations
+                .iter()
+                .map(|(name, enabled)| (name.clone(), *enabled)),
+        );
+        FeatureFlagMap(map)
     }
 
     /// Look up a flag by name (for dynamic/string-based access).
@@ -404,6 +408,7 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox,
             "lua" => self.lua,
             "chatgpt_plan" => self.chatgpt_plan,
+            "mistral" => self.mistral,
             "chat_threads" => self.chat_threads,
             "notifications" => self.notifications,
             "evals" => self.evals,
@@ -412,7 +417,6 @@ impl FeatureFlags {
             "knowledge" => self.knowledge,
             "plugins" => self.plugins,
             "channel_budgets" => self.channel_budgets,
-            "agent_versions" => self.agent_versions,
             "voice" => self.voice,
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
@@ -423,7 +427,7 @@ impl FeatureFlags {
             "reports" => self.reports,
             "machine_payments" => self.machine_payments,
             "openai_agents_api" => self.openai_agents_api,
-            _ => false,
+            _ => self.integrations.get(flag).copied().unwrap_or(false),
         }
     }
 
@@ -436,7 +440,6 @@ impl FeatureFlags {
             "knowledge" => self.knowledge = enabled,
             "plugins" => self.plugins = enabled,
             "channel_budgets" => self.channel_budgets = enabled,
-            "agent_versions" => self.agent_versions = enabled,
             "voice" => self.voice = enabled,
             "agent_delegation" => self.agent_delegation = enabled,
             "observers" => self.observers = enabled,
@@ -451,8 +454,16 @@ impl FeatureFlags {
             "container_sandbox" => self.container_sandbox = enabled,
             "lua" => self.lua = enabled,
             "chatgpt_plan" => self.chatgpt_plan = enabled,
+            "mistral" => self.mistral = enabled,
             "chat_threads" => self.chat_threads = enabled,
-            _ => unreachable!("catalog and boolean fields must agree"),
+            _ => {
+                assert!(
+                    everruns_integrations_catalog::feature_flag_definitions()
+                        .any(|definition| definition.name == name),
+                    "catalog and boolean fields must agree: {name}"
+                );
+                self.integrations.insert(name.to_string(), enabled);
+            }
         }
     }
 
@@ -477,8 +488,24 @@ impl FeatureFlags {
             everruns_core::capabilities::OPENAI_AGENTS_API_RUNTIME_ID => Some("openai_agents_api"),
             _ if capability_id.starts_with("skill:") => Some("skills"),
             _ if capability_id.starts_with("plugin:") => Some("plugins"),
-            _ => None,
+            _ => everruns_integrations_catalog::capability_feature_flag(capability_id),
         }
+    }
+
+    /// Whether an LLM driver may be listed and connected under these effective
+    /// flags. Ungated drivers are always offered.
+    pub fn is_driver_offered(&self, driver: &str) -> bool {
+        match driver {
+            "chatgpt" => self.chatgpt_plan,
+            "mistral" => self.mistral,
+            _ => true,
+        }
+    }
+
+    /// Whether a connection provider is offered under these effective flags.
+    pub fn is_connector_enabled(&self, provider_id: &str) -> bool {
+        everruns_integrations_catalog::connector_feature_flag(provider_id)
+            .is_none_or(|flag| self.is_enabled(flag))
     }
 
     /// All flags enabled (for testing).
@@ -489,6 +516,7 @@ impl FeatureFlags {
             container_sandbox: true,
             lua: true,
             chatgpt_plan: true,
+            mistral: true,
             chat_threads: true,
             notifications: true,
             evals: true,
@@ -497,7 +525,6 @@ impl FeatureFlags {
             knowledge: true,
             plugins: true,
             channel_budgets: true,
-            agent_versions: true,
             voice: true,
             agent_delegation: true,
             observers: true,
@@ -508,6 +535,9 @@ impl FeatureFlags {
             reports: true,
             machine_payments: true,
             openai_agents_api: true,
+            integrations: everruns_integrations_catalog::feature_flag_definitions()
+                .map(|definition| (definition.name.to_string(), true))
+                .collect(),
         }
     }
 }
@@ -520,8 +550,7 @@ mod tests {
     fn policy(deployment: DeploymentGrade, grade: FeatureFlagGrade) -> FeatureFlagPolicy {
         FeatureFlagPolicy {
             deployment,
-            grades: API_FEATURE_FLAG_DEFINITIONS
-                .iter()
+            grades: feature_flag_definitions()
                 .map(|def| (def.name.to_string(), grade))
                 .collect(),
         }
@@ -559,6 +588,25 @@ mod tests {
     }
 
     #[test]
+    fn chatgpt_plan_is_an_org_opt_in_by_default() {
+        let definition = API_FEATURE_FLAG_DEFINITIONS
+            .iter()
+            .find(|definition| definition.name == "chatgpt_plan")
+            .unwrap();
+        assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
+        for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
+            let defaults = policy(deployment, definition.grade);
+            assert!(
+                !defaults
+                    .for_org(&HashMap::new())
+                    .is_driver_offered("chatgpt")
+            );
+            let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
+            assert!(defaults.for_org(&enrolled).is_driver_offered("chatgpt"));
+        }
+    }
+
+    #[test]
     fn chatgpt_connections_require_deployment_and_org_enrolment() {
         let off = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off);
         let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
@@ -572,6 +620,26 @@ mod tests {
                 .for_org(&HashMap::from([("chatgpt_plan".into(), false)]))
                 .chatgpt_plan
         );
+    }
+
+    #[test]
+    fn mistral_is_off_until_a_deployment_raises_it() {
+        let definition = API_FEATURE_FLAG_DEFINITIONS
+            .iter()
+            .find(|definition| definition.name == "mistral")
+            .unwrap();
+        assert_eq!(definition.grade, FeatureFlagGrade::Off);
+        let enrolled = HashMap::from([("mistral".into(), true)]);
+        for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
+            let flags = policy(deployment, definition.grade).for_org(&enrolled);
+            assert!(!flags.mistral);
+            assert!(!flags.is_driver_offered("mistral"));
+            assert!(flags.is_driver_offered("openai"));
+        }
+        let raised = policy(DeploymentGrade::Prod, FeatureFlagGrade::Off)
+            .with_grade("mistral", FeatureFlagGrade::Adoption)
+            .for_org(&enrolled);
+        assert!(raised.is_driver_offered("mistral"));
     }
 
     #[test]
@@ -642,8 +710,7 @@ mod tests {
     fn hosted_catalog_preserves_opt_in_and_platform_authority() {
         let policy = FeatureFlagPolicy {
             deployment: DeploymentGrade::Prod,
-            grades: API_FEATURE_FLAG_DEFINITIONS
-                .iter()
+            grades: feature_flag_definitions()
                 .map(|def| (def.name.to_string(), def.grade))
                 .collect(),
         };
@@ -652,7 +719,6 @@ mod tests {
             "notifications",
             "evals",
             "channel_budgets",
-            "agent_versions",
             "agent_delegation",
             "observers",
             "webmcp",
@@ -719,12 +785,11 @@ mod tests {
             ] {
                 let policy = policy(deployment, grade);
                 for override_value in [None, Some(true), Some(false)] {
-                    let overrides = API_FEATURE_FLAG_DEFINITIONS
-                        .iter()
+                    let overrides = feature_flag_definitions()
                         .filter_map(|def| override_value.map(|value| (def.name.to_string(), value)))
                         .collect();
                     let flags = policy.for_org(&overrides);
-                    for definition in API_FEATURE_FLAG_DEFINITIONS {
+                    for definition in feature_flag_definitions() {
                         assert_eq!(
                             flags.is_enabled(definition.name),
                             grade.effective(deployment, override_value),
@@ -767,12 +832,12 @@ mod tests {
     fn catalog_and_api_boolean_map_have_exactly_the_same_keys() {
         let flags = FeatureFlags::all_enabled();
         let map = flags.to_map();
-        assert_eq!(map.0.len(), API_FEATURE_FLAG_DEFINITIONS.len());
+        assert_eq!(map.0.len(), feature_flag_definitions().count());
         assert_eq!(
             serde_json::to_value(&flags).unwrap(),
             serde_json::to_value(&map).unwrap()
         );
-        for definition in API_FEATURE_FLAG_DEFINITIONS {
+        for definition in feature_flag_definitions() {
             assert!(flags.is_enabled(definition.name));
             assert!(map.0[definition.name]);
         }
@@ -804,5 +869,46 @@ mod tests {
             assert!(enabled.is_capability_enabled(capability), "{capability}");
         }
         assert!(disabled.is_capability_enabled("unrelated"));
+    }
+
+    #[test]
+    fn integration_flags_gate_their_capabilities_and_connectors() {
+        let disabled = FeatureFlags::default();
+        let enabled = FeatureFlags::all_enabled();
+        for capability in ["modal", "brave_search", "jev", "resource_discovery"] {
+            assert!(!disabled.is_capability_enabled(capability), "{capability}");
+            assert!(enabled.is_capability_enabled(capability), "{capability}");
+        }
+        // Daytona and E2B capabilities are generally available; Daytona's
+        // connection is behind its own flag.
+        assert!(disabled.is_capability_enabled("daytona"));
+        assert!(disabled.is_capability_enabled("e2b"));
+        assert!(!disabled.is_connector_enabled("daytona"));
+        assert!(enabled.is_connector_enabled("daytona"));
+        assert!(disabled.is_connector_enabled("e2b"));
+    }
+
+    #[test]
+    fn integration_flags_follow_the_same_grade_policy() {
+        let prod = FeatureFlagPolicy {
+            deployment: DeploymentGrade::Prod,
+            grades: feature_flag_definitions()
+                .map(|def| (def.name.to_string(), def.grade))
+                .collect(),
+        };
+        assert_eq!(prod.grade("deno"), FeatureFlagGrade::Off);
+        assert!(!prod.deployment_flags().is_enabled("deno"));
+        assert!(!prod.deployment_flags().is_connector_enabled("deno"));
+        assert_eq!(prod.grade("daytona"), FeatureFlagGrade::Adoption);
+        let adopted = prod;
+        assert!(adopted.deployment_flags().is_enabled("daytona"));
+        assert!(!adopted.for_org(&HashMap::new()).is_enabled("daytona"));
+        assert!(
+            adopted
+                .for_org(&HashMap::from([("daytona".into(), true)]))
+                .is_connector_enabled("daytona")
+        );
+        let map = adopted.deployment_flags().to_map();
+        assert_eq!(map.0.get("daytona"), Some(&true));
     }
 }

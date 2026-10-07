@@ -102,7 +102,7 @@ executed. New Slack permissions are granted only through provider consent.
 The regression suite covers repeated failures after reading, recurrence, independent
 snooze state, due reminders, disabled notifications, replacement credentials, unknown
 probe evidence, concurrent checks, revoked membership and cross-organization access.
-PostgreSQL and in-memory API tests exercise persistence, fresh resolution and channel
+PostgreSQL-backed API tests exercise persistence, fresh resolution and channel
 delete behavior. Slack fixtures verify cancelled/replayed callbacks, wrong app/workspace
 rejection and manifest preservation.
 

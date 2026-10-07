@@ -119,9 +119,11 @@ impl Subject for OfflineSubject {
         // failing them would report a fake's limits as a model's. Returning an
         // infra error scores them N/A, the same way the live subject skips a
         // case whose scaffolding did not come up.
-        if sample.metadata.contains_key("expect_scheduled_agent") {
+        if sample.metadata.contains_key("expect_scheduled_agent")
+            || sample.metadata.contains_key("requires_live")
+        {
             return Transcript::infra_error(
-                "this case grades persisted server state; run it without EVERRUNS_EVAL_MODE=offline"
+                "this case grades the live server (persisted state, or tools the shell harness lacks); run it without EVERRUNS_EVAL_MODE=offline"
                     .to_string(),
             );
         }

@@ -31,6 +31,7 @@ import {
   defaultCredentialValues,
   nonEmptyCredentials,
 } from "./credential-fields";
+import { isDriverOffered } from "@/lib/api/provider-driver-types";
 import { useCredentialCheck } from "./use-credential-check";
 import { CredentialCheckStatus } from "./credential-check-status";
 
@@ -48,6 +49,7 @@ const PROVIDER_TYPES: DriverId[] = [
   "mai",
   "fireworks",
   "meta",
+  "mistral",
 ];
 
 // Drivers whose endpoint (`base_url`) is mandatory.
@@ -73,6 +75,8 @@ function getBaseUrlPlaceholder(providerType: DriverId): string {
       return "https://api.fireworks.ai/inference/v1";
     case "meta":
       return "https://api.meta.ai/v1";
+    case "mistral":
+      return "https://api.mistral.ai/v1";
     default:
       return "https://api.example.com";
   }
@@ -108,6 +112,7 @@ export function AddProviderDialog({
 
   const { schema, supportsOAuth } = useDriverCredentialSchema(providerType);
   const createProvider = useCreateProvider();
+  const { data: config } = useProvidersConfig();
 
   // Probe the entered credential as it is typed. Advisory only: a verdict never
   // gates the submit, because multi-field drivers can be valid in ways the probe
@@ -194,19 +199,21 @@ export function AddProviderDialog({
                 </div>
               </SelectTrigger>
               <SelectContent>
-                {PROVIDER_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    <div className="flex items-center gap-2">
-                      <ProviderIcon providerType={type} size="sm" showBackground={false} />
-                      <div className="flex flex-col">
-                        <span>{getProviderLabel(type)}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {getProviderDescription(type)}
-                        </span>
+                {PROVIDER_TYPES.filter((type) => isDriverOffered(type, config?.drivers)).map(
+                  (type) => (
+                    <SelectItem key={type} value={type}>
+                      <div className="flex items-center gap-2">
+                        <ProviderIcon providerType={type} size="sm" showBackground={false} />
+                        <div className="flex flex-col">
+                          <span>{getProviderLabel(type)}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {getProviderDescription(type)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </SelectItem>
-                ))}
+                    </SelectItem>
+                  ),
+                )}
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">{getProviderDescription(providerType)}</p>

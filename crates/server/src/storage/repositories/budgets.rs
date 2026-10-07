@@ -2,6 +2,7 @@
 
 use crate::kernel_imports::{contracts::typed_id::AgentId, contracts::typed_id::SessionId};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 use crate::storage::Database;
@@ -280,7 +281,7 @@ impl Database {
         &self,
         input: CreateUsageJournalRow,
     ) -> Result<UsageJournalRow> {
-        let row = sqlx::query_as::<_, UsageJournalRow>(
+        let row = sqlx::query_as::<_, UsageJournalRow>(sql!(
             r#"
             INSERT INTO usage_journal (
                 org_id, kind, source_type, source_id, event_id, session_id, turn_id,
@@ -289,10 +290,9 @@ impl Database {
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, $9, $10, $11, $12, $13
             )
-            RETURNING id, org_id, kind, source_type, source_id, event_id, session_id, turn_id,
-                      user_id, principal_id, agent_id, harness_id, measures, metadata, created_at
-            "#,
-        )
+            RETURNING {UsageJournalRow}
+            "#
+        ))
         .bind(input.org_id)
         .bind(&input.kind)
         .bind(input.source_type.as_deref())
@@ -312,14 +312,13 @@ impl Database {
     }
 
     pub async fn get_usage_journal(&self, id: Uuid) -> Result<Option<UsageJournalRow>> {
-        let row = sqlx::query_as::<_, UsageJournalRow>(
+        let row = sqlx::query_as::<_, UsageJournalRow>(sql!(
             r#"
-            SELECT id, org_id, kind, source_type, source_id, event_id, session_id, turn_id,
-                   user_id, principal_id, agent_id, harness_id, measures, metadata, created_at
+            SELECT {UsageJournalRow}
             FROM usage_journal
             WHERE id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -366,7 +365,7 @@ impl Database {
             None
         };
 
-        let entry = sqlx::query_as::<_, UsageLedgerRow>(
+        let entry = sqlx::query_as::<_, UsageLedgerRow>(sql!(
             r#"
             INSERT INTO usage_ledger (
                 journal_id, budget_id, org_id, session_id, user_id, principal_id,
@@ -377,11 +376,9 @@ impl Database {
                 $7, $8, $9, $10, $11, $12,
                 $13, $14, $15
             )
-            RETURNING id, journal_id, budget_id, org_id, session_id, user_id, principal_id,
-                      agent_id, harness_id, currency, amount, meter_source, ref_type, ref_id,
-                      description, rating_metadata, created_at
-            "#,
-        )
+            RETURNING {UsageLedgerRow}
+            "#
+        ))
         .bind(input.journal_id)
         .bind(input.budget_id)
         .bind(input.org_id)
@@ -503,17 +500,15 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<UsageLedgerRow>> {
-        let rows = sqlx::query_as::<_, UsageLedgerRow>(
+        let rows = sqlx::query_as::<_, UsageLedgerRow>(sql!(
             r#"
-            SELECT id, journal_id, budget_id, org_id, session_id, user_id, principal_id,
-                   agent_id, harness_id, currency, amount, meter_source, ref_type, ref_id,
-                   description, rating_metadata, created_at
+            SELECT {UsageLedgerRow}
             FROM usage_ledger
             WHERE budget_id = $1
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
-            "#,
-        )
+            "#
+        ))
         .bind(budget_id)
         .bind(limit)
         .bind(offset)

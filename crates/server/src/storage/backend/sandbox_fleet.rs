@@ -228,9 +228,7 @@ impl StorageBackend {
         limit: i64,
         offset: i64,
     ) -> Result<(Vec<SandboxFleetRow>, i64)> {
-        let Self::Postgres(db) = self else {
-            return Ok((Vec::new(), 0));
-        };
+        let db = self.database();
         let search = search_pattern(&filter.search);
         let sql = format!(
             "{} SELECT *, count(*) OVER () AS total FROM filtered \
@@ -280,9 +278,7 @@ impl StorageBackend {
         org_id: i64,
         sandbox_id: Uuid,
     ) -> Result<Vec<SandboxInstanceRow>> {
-        let Self::Postgres(db) = self else {
-            return Ok(Vec::new());
-        };
+        let db = self.database();
         Ok(sqlx::query_as(
             r#"
             SELECT i.generation, i.external_id, i.status, i.last_init_error,
@@ -308,9 +304,7 @@ impl StorageBackend {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> Result<Vec<SandboxTransitionRow>> {
-        let Self::Postgres(db) = self else {
-            return Ok(Vec::new());
-        };
+        let db = self.database();
         Ok(sqlx::query_as(
             r#"
             WITH t AS (
@@ -344,9 +338,7 @@ impl StorageBackend {
         org_id: i64,
         filter: &SandboxFleetFilter,
     ) -> Result<SandboxFleetAggregates> {
-        let Self::Postgres(db) = self else {
-            return Ok(SandboxFleetAggregates::default());
-        };
+        let db = self.database();
         let search = search_pattern(&filter.search);
         let window = format!("make_interval(days => {FLEET_STATS_WINDOW_DAYS})");
 

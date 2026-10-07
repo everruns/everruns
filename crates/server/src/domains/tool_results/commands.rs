@@ -16,26 +16,17 @@ pub struct SubmitToolResults {
     pub tool_results: Vec<ClientToolResult>,
 }
 
+#[command(
+    name = "submit_tool_results",
+    category = "tool_results",
+    description = "Submit client-side tool results back to a waiting session.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/tool-results",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+    positional = "session_id",
+)]
 impl Command for SubmitToolResults {
     type Output = SubmitToolResultsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "submit_tool_results",
-            category: "tool_results",
-            description: "Submit client-side tool results back to a waiting session.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/tool-results",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SubmitToolResultsResponse, CommandError> {
         if self.tool_results.is_empty() {
@@ -45,8 +36,7 @@ impl Command for SubmitToolResults {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         let turn_id = TurnId::from_uuid(session_id.uuid());
@@ -93,8 +83,7 @@ impl Command for SubmitToolResults {
         let claim = match ctx
             .db
             .claim_waiting_turn(ctx.org_id(), session_id, plan)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
         {
             ClaimWaitingTurnResult::Claimed(claim) => claim,
             ClaimWaitingTurnResult::Conflict { current_status } => {
@@ -117,13 +106,10 @@ impl Command for SubmitToolResults {
             session_id,
             &claim,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         Ok(SubmitToolResultsResponse {
             accepted,
             status: "active".to_string(),
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<SubmitToolResults>() }

@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -15,14 +16,13 @@ impl Database {
         org_id: i64,
         input: CreatePluginMarketplaceRow,
     ) -> Result<PluginMarketplaceRow> {
-        Ok(sqlx::query_as::<_, PluginMarketplaceRow>(
+        Ok(sqlx::query_as::<_, PluginMarketplaceRow>(sql!(
             r#"
             INSERT INTO plugin_marketplaces (org_id, public_id, name, source_type, source)
             VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, org_id, public_id, name, source_type, source, status, catalog,
-                      last_synced_at, last_synced_sha, created_at, updated_at
-            "#,
-        )
+            RETURNING {PluginMarketplaceRow}
+            "#
+        ))
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
@@ -37,14 +37,13 @@ impl Database {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<PluginMarketplaceRow>> {
-        Ok(sqlx::query_as::<_, PluginMarketplaceRow>(
+        Ok(sqlx::query_as::<_, PluginMarketplaceRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, source_type, source, status, catalog,
-                   last_synced_at, last_synced_sha, created_at, updated_at
+            SELECT {PluginMarketplaceRow}
             FROM plugin_marketplaces
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -56,14 +55,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<PluginMarketplaceRow>> {
-        Ok(sqlx::query_as::<_, PluginMarketplaceRow>(
+        Ok(sqlx::query_as::<_, PluginMarketplaceRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, source_type, source, status, catalog,
-                   last_synced_at, last_synced_sha, created_at, updated_at
+            SELECT {PluginMarketplaceRow}
             FROM plugin_marketplaces
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -101,7 +99,7 @@ impl Database {
         input: UpdatePluginMarketplace,
     ) -> Result<Option<PluginMarketplaceRow>> {
         Ok(sqlx::query_as::<_, PluginMarketplaceRow>(
-            r#"
+            sql!(r#"
             UPDATE plugin_marketplaces
             SET
                 name = COALESCE($3, name),
@@ -112,9 +110,8 @@ impl Database {
                 last_synced_at = CASE WHEN $8::timestamptz IS NOT NULL THEN $8 ELSE last_synced_at END,
                 last_synced_sha = CASE WHEN $9::bool THEN $10 ELSE last_synced_sha END
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, source_type, source, status, catalog,
-                      last_synced_at, last_synced_sha, created_at, updated_at
-            "#,
+            RETURNING {PluginMarketplaceRow}
+            "#),
         )
         .bind(org_id)
         .bind(id)
@@ -149,16 +146,15 @@ impl Database {
         org_id: i64,
         input: CreatePluginInstallRow,
     ) -> Result<PluginInstallRow> {
-        Ok(sqlx::query_as::<_, PluginInstallRow>(
+        Ok(sqlx::query_as::<_, PluginInstallRow>(sql!(
             r#"
             INSERT INTO plugin_installs
                 (org_id, public_id, name, marketplace_id, source, version, pinned_sha,
                  manifest, definition, warnings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, org_id, public_id, name, marketplace_id, source, version, pinned_sha,
-                      manifest, definition, warnings, status, created_at, updated_at
-            "#,
-        )
+            RETURNING {PluginInstallRow}
+            "#
+        ))
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
@@ -178,14 +174,13 @@ impl Database {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<PluginInstallRow>> {
-        Ok(sqlx::query_as::<_, PluginInstallRow>(
+        Ok(sqlx::query_as::<_, PluginInstallRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, marketplace_id, source, version, pinned_sha,
-                   manifest, definition, warnings, status, created_at, updated_at
+            SELECT {PluginInstallRow}
             FROM plugin_installs
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -197,14 +192,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<PluginInstallRow>> {
-        Ok(sqlx::query_as::<_, PluginInstallRow>(
+        Ok(sqlx::query_as::<_, PluginInstallRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, marketplace_id, source, version, pinned_sha,
-                   manifest, definition, warnings, status, created_at, updated_at
+            SELECT {PluginInstallRow}
             FROM plugin_installs
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -216,14 +210,13 @@ impl Database {
         org_id: i64,
         name: &str,
     ) -> Result<Option<PluginInstallRow>> {
-        Ok(sqlx::query_as::<_, PluginInstallRow>(
+        Ok(sqlx::query_as::<_, PluginInstallRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, marketplace_id, source, version, pinned_sha,
-                   manifest, definition, warnings, status, created_at, updated_at
+            SELECT {PluginInstallRow}
             FROM plugin_installs
             WHERE org_id = $1 AND name = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(name)
         .fetch_optional(&self.pool)
@@ -254,15 +247,14 @@ impl Database {
     }
 
     pub async fn list_active_plugin_installs(&self, org_id: i64) -> Result<Vec<PluginInstallRow>> {
-        Ok(sqlx::query_as::<_, PluginInstallRow>(
+        Ok(sqlx::query_as::<_, PluginInstallRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, marketplace_id, source, version, pinned_sha,
-                   manifest, definition, warnings, status, created_at, updated_at
+            SELECT {PluginInstallRow}
             FROM plugin_installs
             WHERE org_id = $1 AND status = 'active'
             ORDER BY created_at DESC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?)
@@ -274,7 +266,7 @@ impl Database {
         id: Uuid,
         input: UpdatePluginInstall,
     ) -> Result<Option<PluginInstallRow>> {
-        Ok(sqlx::query_as::<_, PluginInstallRow>(
+        Ok(sqlx::query_as::<_, PluginInstallRow>(sql!(
             r#"
             UPDATE plugin_installs
             SET
@@ -286,10 +278,9 @@ impl Database {
                 definition = COALESCE($8, definition),
                 warnings = COALESCE($9, warnings)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, marketplace_id, source, version, pinned_sha,
-                      manifest, definition, warnings, status, created_at, updated_at
-            "#,
-        )
+            RETURNING {PluginInstallRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.status)

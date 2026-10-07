@@ -18,8 +18,9 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::durable::{
-    ClaimedTask, DurableAdmin, Enqueued, EventLog, HeartbeatResponse, InMemoryWorkflowEventStore,
-    RunStart, SignalStore, StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerInfo,
+    ClaimedTask, DurableAdmin, Enqueued, EventLog, HandOff, HeartbeatResponse,
+    InMemoryWorkflowEventStore, NextStep, RunStart, RunSteering, SignalDrain, SignalStore,
+    StoreError, TaskDefinition, TaskFailureOutcome, TaskQueue, WorkerHeartbeat, WorkerInfo,
     WorkerRegistry, WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowSignal,
     WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
     record_activity_started, record_workflow_failed,
@@ -50,12 +51,18 @@ pub trait TurnStore: Send + Sync + 'static {
 
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError>;
 
+    /// Records liveness and load; the reply says whether the worker is
+    /// draining, so it can stop claiming.
     async fn worker_heartbeat(
         &self,
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError>;
+    ) -> Result<WorkerHeartbeat, StoreError>;
+
+    /// Marks the worker draining: the queue hands it no new tasks and no
+    /// chained steps. A worker calls it on itself when it starts shutting down.
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError>;
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError>;
 
@@ -84,21 +91,36 @@ pub trait TurnStore: Send + Sync + 'static {
         output: serde_json::Value,
     ) -> Result<(), StoreError>;
 
-    /// Complete `task`, then consume its workflow's pending signals of type
-    /// `drain`. Returns how many were consumed, or `None` when this store did
-    /// not drain (the caller then consumes them itself). The gRPC store folds
-    /// both into one round trip; an in-process store gains nothing from it.
-    async fn complete_task_and_drain(
+    /// Complete `task` and hand its workflow to the next step in one atomic
+    /// store write: consume the steering signals the next step was planned
+    /// with (`hand_off.drain`), then enqueue that step or end the workflow.
+    /// Returns the next step when it was enqueued claimed by
+    /// `TurnNext::Step::claim_for`. Nothing changes on `TaskNotOwned`.
+    ///
+    /// Decision: one write, so no process exit or lost reply can leave the
+    /// workflow running with no task and a drained wake with nothing to act
+    /// on it. The default makes the writes one after another
+    /// ([`hand_off_in_steps`]), for a store with no atomic form; a run it
+    /// strands is resumed by the stranded-run sweep
+    /// ([`crate::durable::requeue_stranded_workflows`]).
+    async fn complete_task_and_hand_off(
         &self,
         task: &ClaimedTask,
         worker_id: &str,
         output: serde_json::Value,
-        _drain: Option<&str>,
-    ) -> Result<Option<usize>, StoreError> {
-        self.complete_task_and_record(task, worker_id, output)
-            .await?;
-        Ok(None)
+        hand_off: TurnHandOff,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
+        hand_off_in_steps(self, task, worker_id, output, hand_off).await
     }
+
+    /// How many signals of `signal_type` are pending on `workflow_id`,
+    /// without consuming them. A step plans its successor with this count,
+    /// then its hand-off consumes exactly that many.
+    async fn count_pending_signals(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<usize, StoreError>;
 
     async fn fail_task_and_record(
         &self,
@@ -154,8 +176,10 @@ pub trait TurnStore: Send + Sync + 'static {
 
     /// Start a turn: create the session's workflow or start a new run of it,
     /// and enqueue `activity_type` as its first task, in one atomic step
-    /// ([`EventLog::start_run_with_task`]). Returns [`RunStart::Active`],
-    /// changing nothing, while a turn is already running.
+    /// ([`EventLog::start_run_with_task`]). Returns [`RunStart::Active`]
+    /// while a turn is already running, having sent it a `USER_MESSAGE`
+    /// signal with `steer` as payload when given. A new run consumes the
+    /// `USER_MESSAGE` signals still pending from the previous one.
     async fn start_turn(
         &self,
         workflow_id: Uuid,
@@ -163,6 +187,7 @@ pub trait TurnStore: Send + Sync + 'static {
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
+        steer: Option<serde_json::Value>,
     ) -> Result<RunStart, StoreError>;
 
     async fn get_workflow(&self, workflow_id: Uuid) -> Result<WorkflowSnapshot, StoreError>;
@@ -235,6 +260,270 @@ pub trait TurnStore: Send + Sync + 'static {
     ) -> Result<Vec<WorkflowSignal>, StoreError>;
 }
 
+/// What a completed turn step hands its workflow to; see
+/// [`TurnStore::complete_task_and_hand_off`].
+#[derive(Debug, Clone)]
+pub enum TurnNext {
+    /// Enqueue the next step, claimed by `claim_for` when set and able.
+    Step {
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+        claim_for: Option<String>,
+    },
+    /// End the turn: record `event_output` as `WorkflowCompleted` and store
+    /// `stored_output` (the turn checkpoint) on the completed workflow.
+    Complete {
+        event_output: serde_json::Value,
+        stored_output: Option<serde_json::Value>,
+        error: Option<WorkflowError>,
+    },
+}
+
+/// A turn step's hand-off of `workflow_id`; see
+/// [`TurnStore::complete_task_and_hand_off`].
+#[derive(Debug, Clone)]
+pub struct TurnHandOff {
+    pub workflow_id: Uuid,
+    /// The pending signals the plan counted, consumed with the hand-off.
+    pub drain: Option<SignalDrain>,
+    pub next: TurnNext,
+}
+
+/// [`TurnStore::complete_task_and_hand_off`] as separate writes: complete,
+/// drain, then enqueue or end. A store that cannot hand off atomically (or a
+/// server too old to) uses it; see the trait method on what it risks.
+///
+/// The drain consumes every pending signal of its type, as these stores'
+/// consume calls do, not only the ones the plan counted.
+pub async fn hand_off_in_steps<S: TurnStore + ?Sized>(
+    store: &S,
+    task: &ClaimedTask,
+    worker_id: &str,
+    output: serde_json::Value,
+    hand_off: TurnHandOff,
+) -> Result<Option<ClaimedTask>, StoreError> {
+    store
+        .complete_task_and_record(task, worker_id, output)
+        .await?;
+    finish_hand_off_in_steps(store, hand_off).await
+}
+
+/// The writes of [`hand_off_in_steps`] after the completion: drain, then
+/// enqueue or end.
+pub async fn finish_hand_off_in_steps<S: TurnStore + ?Sized>(
+    store: &S,
+    hand_off: TurnHandOff,
+) -> Result<Option<ClaimedTask>, StoreError> {
+    let TurnHandOff {
+        workflow_id,
+        drain,
+        next,
+    } = hand_off;
+    if let Some(drain) = drain.filter(|drain| drain.limit > 0) {
+        store
+            .consume_pending_signals_by_type(workflow_id, &drain.signal_type)
+            .await?;
+    }
+    match next {
+        TurnNext::Step {
+            activity_id,
+            activity_type,
+            input,
+            claim_for: Some(worker_id),
+        } => {
+            store
+                .enqueue_claimed_task_and_record(
+                    workflow_id,
+                    activity_id,
+                    activity_type,
+                    input,
+                    &worker_id,
+                )
+                .await
+        }
+        TurnNext::Step {
+            activity_id,
+            activity_type,
+            input,
+            claim_for: None,
+        } => store
+            .enqueue_task_and_record(workflow_id, activity_id, activity_type, input)
+            .await
+            .map(|_| None),
+        TurnNext::Complete {
+            event_output,
+            stored_output,
+            error,
+        } => store
+            .complete_workflow(workflow_id, event_output, stored_output, error)
+            .await
+            .map(|()| None),
+    }
+}
+
+/// [`TurnStore::complete_task_and_hand_off`] on a durable store, with the
+/// next step in `queue`: one atomic [`TaskQueue::complete_task_and_hand_off`]
+/// moves the queue rows; the history events are appended before it, in the
+/// order separate writes appended them (`ActivityCompleted`, then
+/// `ActivityScheduled` or `WorkflowCompleted`), so a ticket that sees the
+/// workflow end finds its completion event. A hand-off rejected because the
+/// task was reclaimed leaves those events behind; the reclaiming run's own
+/// follow them.
+///
+/// The server's durable gRPC service runs it for its workers, so it takes
+/// the task's id and activity id rather than a claim.
+#[allow(clippy::too_many_arguments)]
+pub async fn hand_off_and_record<S: WorkflowEventStore>(
+    store: &S,
+    queue: Option<&str>,
+    task_id: Uuid,
+    activity_id: &str,
+    worker_id: &str,
+    output: serde_json::Value,
+    hand_off: TurnHandOff,
+) -> Result<RecordedHandOff, StoreError> {
+    let TurnHandOff {
+        workflow_id,
+        drain,
+        next,
+    } = hand_off;
+    let mut ended_turn = None;
+    record_activity_completed(
+        store,
+        Some(workflow_id),
+        activity_id.to_string(),
+        output.clone(),
+    )
+    .await;
+    let next = match next {
+        TurnNext::Step {
+            activity_id,
+            activity_type,
+            input,
+            claim_for,
+        } => {
+            let task = turn_task(queue, workflow_id, activity_id, activity_type, input);
+            if let Err(error) = record_scheduled(store, &task).await {
+                tracing::warn!(%workflow_id, %error, "Failed to record ActivityScheduled");
+            }
+            NextStep::Enqueue {
+                task: Box::new(task),
+                claim_for,
+            }
+        }
+        TurnNext::Complete {
+            event_output,
+            stored_output,
+            error,
+        } => {
+            crate::durable::record_workflow_completed(store, workflow_id, event_output).await;
+            ended_turn = stored_output.clone();
+            NextStep::Complete {
+                result: stored_output,
+                error,
+            }
+        }
+    };
+    let handed = TaskQueue::complete_task_and_hand_off(
+        store,
+        task_id,
+        worker_id,
+        output,
+        HandOff {
+            workflow_id,
+            drain,
+            next,
+        },
+    )
+    .await?;
+    let follow_up_started = match ended_turn {
+        Some(ended_turn) => start_steered_follow_up(store, queue, workflow_id, ended_turn).await,
+        None => false,
+    };
+    Ok(RecordedHandOff {
+        claimed: handed.next.and_then(Enqueued::into_claimed),
+        follow_up_started,
+    })
+}
+
+/// What [`hand_off_and_record`] committed.
+#[derive(Debug, Default)]
+pub struct RecordedHandOff {
+    /// The next step, claimed for the worker the hand-off asked for.
+    pub claimed: Option<ClaimedTask>,
+    /// A follow-up turn's `process_input` task was enqueued (see
+    /// [`start_steered_follow_up`]); wake the workers for it.
+    pub follow_up_started: bool,
+}
+
+/// Start the turn a message steering the turn that just ended asked for.
+///
+/// Decision: the final step counts the `USER_MESSAGE` signals before it
+/// plans, and its hand-off consumes only those, so a message that steers the
+/// turn after that count (sent the moment the turn reported idle) is still
+/// pending when the workflow completes. The run start that sent it found the
+/// run active under the workflow lock (see `RunSteering`), so it is committed
+/// before the hand-off, and reading the pending signals after the hand-off
+/// sees it. Nothing else would act on it: the session would stay active
+/// with its message unanswered. A start that finds a run active (another
+/// message started one) changes nothing; that run reads the message too.
+async fn start_steered_follow_up<S: WorkflowEventStore>(
+    store: &S,
+    queue: Option<&str>,
+    workflow_id: Uuid,
+    ended_turn: serde_json::Value,
+) -> bool {
+    let steering = match SignalStore::get_pending_signals(store, workflow_id).await {
+        Ok(signals) => signals
+            .into_iter()
+            .rfind(|signal| signal.signal_type == crate::durable_turn::USER_MESSAGE),
+        Err(error) => {
+            tracing::warn!(%workflow_id, %error, "Failed to read steering left after a turn");
+            return false;
+        }
+    };
+    let Some(steering) = steering else {
+        return false;
+    };
+    let input = serde_json::from_value(ended_turn)
+        .ok()
+        .and_then(|ended| crate::durable_turn::turn_input_for_steering(&ended, &steering.payload));
+    let Some(input) = input else {
+        tracing::warn!(%workflow_id, "Steering left after a turn names no message to start from");
+        return false;
+    };
+    let input = match serde_json::to_value(&input) {
+        Ok(input) => input,
+        Err(error) => {
+            tracing::warn!(%workflow_id, %error, "Failed to encode a follow-up turn");
+            return false;
+        }
+    };
+    match start_turn_in(
+        store,
+        queue,
+        workflow_id,
+        crate::durable_turn::TURN_WORKFLOW_TYPE,
+        input,
+        format!("input_{}", Uuid::now_v7()),
+        "process_input".to_string(),
+        None,
+    )
+    .await
+    {
+        Ok(RunStart::Started { .. }) => {
+            tracing::info!(%workflow_id, "started the turn a message steering the ended one asked for");
+            true
+        }
+        Ok(RunStart::Active) => false,
+        Err(error) => {
+            tracing::warn!(%workflow_id, %error, "Failed to start a steered follow-up turn");
+            false
+        }
+    }
+}
+
 /// A turn task of `workflow_id` for `queue` (`None`: the default queue),
 /// with the turn options its activity id implies.
 fn turn_task(
@@ -271,6 +560,19 @@ async fn record_scheduled<S: WorkflowEventStore>(
     append_event(store, workflow_id, event).await.map(|_| ())
 }
 
+/// [`TurnStore::count_pending_signals`] on a durable store.
+pub(crate) async fn count_pending_signals_in<S: WorkflowEventStore>(
+    store: &S,
+    workflow_id: Uuid,
+    signal_type: &str,
+) -> Result<usize, StoreError> {
+    Ok(SignalStore::get_pending_signals(store, workflow_id)
+        .await?
+        .iter()
+        .filter(|signal| signal.signal_type == signal_type)
+        .count())
+}
+
 /// [`TurnStore::enqueue_task_and_record`] into `queue`.
 pub(crate) async fn enqueue_task_in<S: WorkflowEventStore>(
     store: &S,
@@ -303,6 +605,7 @@ pub(crate) async fn enqueue_claimed_task_in<S: WorkflowEventStore>(
 }
 
 /// [`TurnStore::start_turn`] with its first task in `queue`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn start_turn_in<S: WorkflowEventStore>(
     store: &S,
     queue: Option<&str>,
@@ -311,6 +614,7 @@ pub(crate) async fn start_turn_in<S: WorkflowEventStore>(
     input: serde_json::Value,
     activity_id: String,
     activity_type: String,
+    steer: Option<serde_json::Value>,
 ) -> Result<RunStart, StoreError> {
     let task = turn_task(
         queue,
@@ -319,7 +623,19 @@ pub(crate) async fn start_turn_in<S: WorkflowEventStore>(
         activity_type,
         input.clone(),
     );
-    EventLog::start_run_with_task(store, workflow_id, workflow_type, input, task).await
+    let steering = RunSteering {
+        signal_type: crate::durable_turn::USER_MESSAGE.to_string(),
+        payload: steer,
+    };
+    EventLog::start_run_with_task(
+        store,
+        workflow_id,
+        workflow_type,
+        input,
+        task,
+        Some(steering),
+    )
+    .await
 }
 
 #[async_trait]
@@ -336,8 +652,12 @@ where
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError> {
+    ) -> Result<WorkerHeartbeat, StoreError> {
         WorkerRegistry::worker_heartbeat(self, worker_id, current_load, accepting_tasks).await
+    }
+
+    async fn drain_worker(&self, worker_id: &str) -> Result<(), StoreError> {
+        WorkerRegistry::drain_worker(self, worker_id).await
     }
 
     async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
@@ -382,6 +702,34 @@ where
         TaskQueue::complete_task(self, task.id, worker_id, output.clone()).await?;
         record_activity_completed(self, task.workflow_id, task.activity_id.clone(), output).await;
         Ok(())
+    }
+
+    async fn complete_task_and_hand_off(
+        &self,
+        task: &ClaimedTask,
+        worker_id: &str,
+        output: serde_json::Value,
+        hand_off: TurnHandOff,
+    ) -> Result<Option<ClaimedTask>, StoreError> {
+        hand_off_and_record(
+            self,
+            None,
+            task.id,
+            &task.activity_id,
+            worker_id,
+            output,
+            hand_off,
+        )
+        .await
+        .map(|recorded| recorded.claimed)
+    }
+
+    async fn count_pending_signals(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<usize, StoreError> {
+        count_pending_signals_in(self, workflow_id, signal_type).await
     }
 
     async fn fail_task_and_record(
@@ -455,6 +803,7 @@ where
         input: serde_json::Value,
         activity_id: String,
         activity_type: String,
+        steer: Option<serde_json::Value>,
     ) -> Result<RunStart, StoreError> {
         start_turn_in(
             self,
@@ -464,6 +813,7 @@ where
             input,
             activity_id,
             activity_type,
+            steer,
         )
         .await
     }

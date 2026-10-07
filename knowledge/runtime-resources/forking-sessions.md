@@ -59,13 +59,13 @@ state.
 
 ### Copy
 
-- **Session configuration.** `harness_id`, `agent_id`, `agent_version_id`,
+- **Session configuration.** `harness_id`, `agent_id`,
   `agent_identity_id`, `model_id`, `capabilities`, `tools`, `mcp_servers`,
   `system_prompt`, `initial_files`, `hints`, `network_access`,
   `max_iterations`, `parallel_tool_calls`, `locale`, `tags`. The fork is
   config-identical to the parent unless the request overrides a field (see
-  [API](#api)). `agent_version_id` is copied verbatim so the fork runs the
-  exact same immutable agent config the parent was running.
+  [API](#api)). The fork runs the agent's current configuration, as every
+  session does, and records its own `agent_revision`.
 - **Conversation history (events).** All persisted events for the parent up to
   the fork point are copied into the child in order. Transient delta events are
   not persisted and therefore not copied; message reconstruction
@@ -225,9 +225,8 @@ Phased so each phase is independently reviewable and lands a coherent slice.
    `SESSION_MANAGE`); `POST /v1/sessions/{id}/fork`. The skip-list is enforced
    by simply not copying those tables.
 2. **KV + secrets copy.** Copy `session_key_values` and `session_secrets`.
-   Requires adding `upsert_session_key_value` and `get_session_secret` to the
-   in-memory backend + `StorageBackend` dispatch (Postgres already has both),
-   then copying in `fork()`.
+   Requires exposing `upsert_session_key_value` and `get_session_secret`
+   through `StorageBackend` dispatch, then copying in `fork()`.
 3. **SQL databases copy.** Page-level copy of `session_databases` /
    `session_database_pages` (gated on the session actually having any).
 4. **Atomicity + arbitrary fork point.** Move the multi-table copy into a single

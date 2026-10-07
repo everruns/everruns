@@ -19,7 +19,6 @@ export interface FeatureFlags {
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
   channel_budgets: boolean;
-  agent_versions: boolean;
   voice: boolean;
   /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
   agent_delegation: boolean;
@@ -32,6 +31,8 @@ export interface FeatureFlags {
   reports: boolean;
   /** Personal ChatGPT plan connections. Requires deployment and organization opt-in. */
   chatgpt_plan?: boolean;
+  /** First-party Mistral AI provider. Off unless the deployment raises it. */
+  mistral?: boolean;
   /** Machine-payment custody, policy, audit, and paid capability surfaces. */
   machine_payments: boolean;
 }

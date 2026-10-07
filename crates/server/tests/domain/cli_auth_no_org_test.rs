@@ -7,6 +7,7 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use uuid::Uuid;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -26,7 +27,7 @@ use everruns_server::storage::{
 #[tokio::test]
 async fn test_cli_exchange_no_orgs_returns_422() {
     // 1. Set up in-memory DB and auth router
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::from_env();
     seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
         .await
@@ -129,7 +130,7 @@ async fn test_cli_exchange_no_orgs_returns_422() {
 
 #[tokio::test]
 async fn test_cli_exchange_code_is_one_time_use() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::from_env();
     seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
         .await
@@ -177,7 +178,7 @@ async fn test_cli_exchange_code_is_one_time_use() {
 
     let org = db
         .create_organization(CreateOrganizationRow {
-            public_id: "org_one_time_use".to_string(),
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
             name: "One Time Org".to_string(),
             created_by: Some(user.id),
         })

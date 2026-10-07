@@ -31,7 +31,7 @@ exclude = ["benches/checkpoints/", "benches/baseline.jsonl"]
 [dependencies]
 # Decision: no `everruns-*` normal dependencies. This crate is a generic
 # durable-execution engine; agent/turn semantics live in the worker and server.
-# Enforced by `scripts/check-durable-isolation.sh`.
+# Enforced by `scripts/lib/check-durable-isolation.sh`.
 
 # Async runtime
 tokio = { workspace = true }
@@ -40,7 +40,6 @@ async-trait.workspace = true
 
 # Database
 sqlx.workspace = true
-rusqlite = { version = "0.39", features = ["bundled", "backup"], optional = true }
 
 # Serialization
 serde = { workspace = true }
@@ -89,7 +88,6 @@ default = ["workflows"]
 # by this crate's tests, benches and `examples/order_pipeline.rs`; no Everruns
 # production path uses it.
 workflows = []
-sqlite = ["dep:rusqlite"]
 failpoints = ["fail/failpoints"]
 postgres-tests = []
 # Metrics, reports and checkpoints used by the bench binaries. Not part of the

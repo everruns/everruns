@@ -25,7 +25,7 @@ use super::commands::{
     resolve_trigger_execution_context,
 };
 use crate::domains::agent_channels::invocation::{render_message_template, template_lookup};
-use crate::domains::common::{CommandError, classify_anyhow};
+use crate::domains::common::CommandError;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::records::{TriggerDeliveryStatus, TriggerEventFilter};
@@ -120,8 +120,7 @@ pub async fn dispatch_trigger_event(
     {
         let claimed = db
             .record_agent_trigger_delivery(new_row(TriggerDeliveryStatus::Filtered, Some(reason)))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if claimed.is_none() {
             record_duplicate(db, new_row(TriggerDeliveryStatus::Duplicate, None)).await?;
             return Ok(TriggerEventOutcome::Duplicate);
@@ -132,8 +131,7 @@ pub async fn dispatch_trigger_event(
 
     let Some(delivery) = db
         .record_agent_trigger_delivery(new_row(TriggerDeliveryStatus::Dispatched, None))
-        .await
-        .map_err(classify_anyhow)?
+        .await?
     else {
         record_duplicate(db, new_row(TriggerDeliveryStatus::Duplicate, None)).await?;
         return Ok(TriggerEventOutcome::Duplicate);
@@ -234,9 +232,7 @@ async fn record_duplicate(
     db: &Arc<StorageBackend>,
     row: CreateAgentTriggerDeliveryRow,
 ) -> Result<(), CommandError> {
-    db.record_agent_trigger_delivery(row)
-        .await
-        .map_err(classify_anyhow)?;
+    db.record_agent_trigger_delivery(row).await?;
     Ok(())
 }
 

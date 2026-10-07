@@ -115,7 +115,7 @@ u4,2026-06-16T00:00:00Z,2026-06-01T00:00:00Z
 
 ## Verified run (dev mode, real Anthropic model)
 
-Captured against `just start-dev` (in-memory) with `claude-sonnet-4-6`,
+Captured against `just start-dev` (embedded PostgreSQL) with `claude-sonnet-4-6`,
 proving the OKF→agent loop end to end:
 
 1. **Import** — `POST /v1/knowledge-bases/{kb}/okf_import` →

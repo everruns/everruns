@@ -516,7 +516,7 @@ mod tests {
 
         #[tokio::test]
         async fn validate_api_key_rejects_after_key_deleted_from_db() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
@@ -547,7 +547,7 @@ mod tests {
 
         #[tokio::test]
         async fn validate_api_key_reflects_fresh_user_state_on_revalidation() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
@@ -586,7 +586,7 @@ mod tests {
 
         #[tokio::test]
         async fn validate_api_key_rejects_invalid_format_without_db_lookup() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
@@ -604,7 +604,7 @@ mod tests {
             use crate::auth::config::AuthMode;
             use crate::records::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             db.create_user_with_id(
                 ANONYMOUS_USER_ID,
                 CreateUserRow {
@@ -666,7 +666,7 @@ mod tests {
         const MCP_RESOURCE: &str = "https://app.example.com/mcp";
 
         async fn backend_with_user_roles(roles: Vec<String>) -> (BuiltinAuthBackend, uuid::Uuid) {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
@@ -770,7 +770,7 @@ mod tests {
         const MCP_RESOURCE: &str = "https://app.example.com/mcp";
 
         async fn backend_with_named_user(name: &str) -> (BuiltinAuthBackend, uuid::Uuid) {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
@@ -874,7 +874,7 @@ mod tests {
         const RESOURCE: &str = "https://app.example.com/mcp";
 
         async fn backend_with_user() -> (BuiltinAuthBackend, uuid::Uuid) {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),

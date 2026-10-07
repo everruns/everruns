@@ -45,6 +45,26 @@ use syn::{
     Type, parse_macro_input,
 };
 
+mod columns;
+
+/// See [`columns`]: emits `pub const COLUMNS: &str` for a `FromRow` struct.
+#[proc_macro_derive(Columns, attributes(sqlx))]
+pub fn derive_columns(item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as syn::DeriveInput);
+    columns::expand(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// See [`columns::expand_sql`]: a static query with `{Row}` column lists.
+#[proc_macro]
+pub fn sql(item: TokenStream) -> TokenStream {
+    let lit = parse_macro_input!(item as syn::LitStr);
+    columns::expand_sql(lit)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
 #[proc_macro_attribute]
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as CommandArgs);
@@ -64,6 +84,7 @@ enum HttpMode {
     NoContent,
     List,
     ListWithUrls,
+    VecWithUrls,
     PaginatedWithUrls,
 }
 
@@ -77,13 +98,15 @@ impl HttpMode {
             "no_content" => Self::NoContent,
             "list" => Self::List,
             "list_with_urls" => Self::ListWithUrls,
+            "vec_with_urls" => Self::VecWithUrls,
             "paginated_with_urls" => Self::PaginatedWithUrls,
             other => {
                 return Err(syn::Error::new(
                     ident.span(),
                     format!(
                         "unknown http mode `{other}`; expected one of plain, with_urls, created, \
-                         created_with_urls, no_content, list, list_with_urls, paginated_with_urls"
+                         created_with_urls, no_content, list, list_with_urls, vec_with_urls, \
+                         paginated_with_urls"
                     ),
                 ));
             }
@@ -99,6 +122,7 @@ impl HttpMode {
             Self::NoContent => "NoContent",
             Self::List => "List",
             Self::ListWithUrls => "ListWithUrls",
+            Self::VecWithUrls => "VecWithUrls",
             Self::PaginatedWithUrls => "PaginatedWithUrls",
         };
         let ident = syn::Ident::new(name, Span::call_site());
@@ -410,6 +434,10 @@ fn expand_http(spec: HttpSpec<'_>) -> syn::Result<TokenStream2> {
             let t = element_type(output, "Vec")?;
             quote!((status = 200, description = "Success",
                 body = #common::ListResponse<#common::WithUrls<#t>>))
+        }
+        HttpMode::VecWithUrls => {
+            let t = element_type(output, "Vec")?;
+            quote!((status = 200, description = "Success", body = [#common::WithUrls<#t>]))
         }
         HttpMode::PaginatedWithUrls => {
             let t = element_type(output, "Paginated")?;

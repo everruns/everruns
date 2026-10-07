@@ -76,6 +76,10 @@ impl RestChange {
             method: "",
             path: "",
         };
-        PendingChange::record(self.pending, &meta, &self.ctx, &json!({ "id": entity_ref })).await;
+        // Not inside a command transaction, so a failed write is logged and
+        // counted by `record` and never returned.
+        let recorded =
+            PendingChange::record(self.pending, &meta, &self.ctx, &json!({ "id": entity_ref }));
+        let _ = recorded.await;
     }
 }

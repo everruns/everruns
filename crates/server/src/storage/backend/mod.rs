@@ -1,8 +1,8 @@
-// Storage backend abstraction
-// Decision: Use enum dispatch for simplicity over trait objects
+// Storage backend: the PostgreSQL repositories behind one handle.
 //
-// This module provides a unified StorageBackend enum that can work with
-// either PostgreSQL (production) or in-memory (dev mode) storage.
+// Decision: there is one backend. DEV_MODE and tests run on embedded
+// PostgreSQL (see storage::test_database), so the hand-written in-memory copy
+// of every repository is gone along with the dispatch between the two.
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -27,7 +27,6 @@ use super::agent_trigger_deliveries::*;
 use super::github_app_rows::*;
 use super::mcp_catalog::*;
 use super::mcp_tool_cache::*;
-use super::memory::InMemoryDatabase;
 use super::models::*;
 use super::org_slack_connections::*;
 use super::reporting::models::ReportingOutboxRow;
@@ -90,52 +89,45 @@ fn task_artifact_delete_root(result_path: &str) -> Option<&str> {
 /// ```
 macro_rules! dispatch {
     ($self:ident, $method:ident $(, $arg:expr)*) => {
-        match $self {
-            Self::Postgres(db) => db.$method($($arg),*).await,
-            Self::InMemory(db) => db.$method($($arg),*).await,
-        }
+        $self.db.$method($($arg),*).await
     };
 }
 
-/// Storage backend that can be either PostgreSQL or in-memory
+/// The PostgreSQL repositories, as one cloneable handle.
 #[derive(Clone)]
-pub enum StorageBackend {
-    /// PostgreSQL database (production)
-    Postgres(Database),
-    /// In-memory database (dev mode)
-    InMemory(std::sync::Arc<InMemoryDatabase>),
+pub struct StorageBackend {
+    db: Database,
 }
 
 /// Keeps an endpoint's Slack app creation serialized until dropped.
-pub enum SlackInstallLock<'a> {
-    Postgres(sqlx::Transaction<'static, sqlx::Postgres>),
-    InMemory(tokio::sync::MutexGuard<'a, ()>),
-}
+pub struct SlackInstallLock(#[allow(dead_code)] sqlx::Transaction<'static, sqlx::Postgres>);
 
 impl StorageBackend {
+    /// Wrap an already connected database.
+    pub fn from_database(db: Database) -> Self {
+        Self { db }
+    }
+
+    /// The repositories this backend runs on.
+    pub fn database(&self) -> &Database {
+        &self.db
+    }
+
     pub async fn clear_provider_credential(
         &self,
         org_id: i64,
         id: uuid::Uuid,
     ) -> anyhow::Result<()> {
-        match self {
-            Self::Postgres(db) => db.clear_provider_credential(org_id, id).await,
-            Self::InMemory(db) => db.clear_provider_credential(org_id, id).await,
-        }
+        self.db.clear_provider_credential(org_id, id).await
     }
 
     pub async fn lock_slack_install(
         &self,
         channel_id: uuid::Uuid,
-    ) -> anyhow::Result<SlackInstallLock<'_>> {
-        match self {
-            Self::Postgres(db) => Ok(SlackInstallLock::Postgres(
-                db.lock_slack_install(channel_id).await?,
-            )),
-            Self::InMemory(db) => Ok(SlackInstallLock::InMemory(
-                db.slack_install_lock.lock().await,
-            )),
-        }
+    ) -> anyhow::Result<SlackInstallLock> {
+        Ok(SlackInstallLock(
+            self.db.lock_slack_install(channel_id).await?,
+        ))
     }
 }
 
@@ -158,11 +150,12 @@ mod orgs_images;
 mod resources_tasks;
 pub mod sandbox_fleet;
 mod sandbox_templates;
+mod user_mcp_servers;
+pub use crate::storage::repositories::{OwnedMcpServerRow, UserMcpServerRow};
 
 #[cfg(test)]
 mod retention_tests {
     use super::*;
-    use everruns_contracts::typed_id::SessionId;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TaskLinks,
         TaskWakePolicy,
@@ -176,9 +169,9 @@ mod retention_tests {
     // live task and its file are untouched.
     #[tokio::test]
     async fn prune_with_artifacts_deletes_rows_and_artifact_files() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let registry = crate::storage::DbSessionTaskRegistry::new(db.clone());
-        let session_id = SessionId::new();
+        let session_id = db.create_test_session().await;
         let sid = session_id.uuid();
 
         // Terminal task with an artifact file under a production background artifact path.

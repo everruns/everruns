@@ -64,6 +64,7 @@ const mockUseProviders = jest.fn();
 const mockUseModels = jest.fn();
 const mockUseCreateModel = jest.fn();
 const mockUseDeleteModel = jest.fn();
+const mockUpdateOrganization = jest.fn((_data: unknown) => Promise.resolve());
 
 jest.mock("@/hooks/use-providers", () => ({
   useDecisionDefault: () => ({ data: null, setDefault: { isPending: false, mutate: jest.fn() } }),
@@ -91,7 +92,7 @@ jest.mock("@/hooks/use-organizations", () => ({
     error: null,
   }),
   useUpdateOrganization: () => ({
-    mutateAsync: jest.fn(),
+    mutateAsync: (data: unknown) => mockUpdateOrganization(data),
     isPending: false,
   }),
 }));
@@ -112,6 +113,19 @@ jest.mock("@/lib/query-keys", () => ({
 }));
 
 describe("ModelsPage", () => {
+  it("lets the organization answer system decisions with its own model", async () => {
+    render(<ModelsPage />, { wrapper });
+    const trigger = screen.getByRole("combobox", { name: "System decisions" });
+    expect(trigger).toHaveTextContent("Deployment default");
+    fireEvent.click(trigger);
+    const option = await screen.findByRole("option", { name: "This organization's model" });
+    fireEvent.pointerDown(option, { pointerType: "mouse" });
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(mockUpdateOrganization).toHaveBeenCalledWith({ system_decisions: "organization" }),
+    );
+  });
+
   it("keeps provider filtering in the toolbar and preserves other URL parameters", async () => {
     mockUseSearchParams.mockReturnValue(new URLSearchParams("mode=grid&provider=provider-1"));
     mockUseModels.mockReturnValue({

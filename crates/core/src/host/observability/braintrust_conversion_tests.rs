@@ -135,6 +135,7 @@ fn test_convert_llm_generation_with_parent() {
             provider_finish_reason: None,
             tool_calls_dropped: 0,
             tool_calls_truncated_executed: 0,
+            truncation_gate: None,
         },
     };
 
@@ -160,11 +161,14 @@ fn test_convert_llm_generation_with_parent() {
         "provider_finish_reason",
         "tool_calls_dropped",
         "tool_calls_truncated_executed",
+        "truncation_gate",
     ] {
         assert!(bt_event.metadata.get(absent).is_none(), "{absent}");
     }
 
-    let truncated = data.with_stop_details(Some("length".into()), 3, 1);
+    let truncated = data
+        .with_stop_details(Some("length".into()), 3, 1)
+        .with_truncation_gate(Some("failed"));
     let event = Event::new(
         SessionId::new(),
         event.context.clone(),
@@ -174,6 +178,7 @@ fn test_convert_llm_generation_with_parent() {
     assert_eq!(bt_event.metadata["provider_finish_reason"], "length");
     assert_eq!(bt_event.metadata["tool_calls_dropped"], 3);
     assert_eq!(bt_event.metadata["tool_calls_truncated_executed"], 1);
+    assert_eq!(bt_event.metadata["truncation_gate"], "failed");
 }
 
 #[test]

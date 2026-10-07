@@ -9,7 +9,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 async fn fixture(role: OrgRole) -> Ctx {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
         .await
         .unwrap();

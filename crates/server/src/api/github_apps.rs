@@ -722,7 +722,7 @@ mod tests {
     }
 
     async fn state(github: &MockServer) -> (AppState, VirtualUserId) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let identity_id = VirtualUserId::from_seed(21);
         let actor_id = Uuid::from_u128(22);
         db.create_user_with_id(

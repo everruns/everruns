@@ -9,30 +9,22 @@ use utoipa::ToSchema;
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListOrgs {}
 
+#[command(
+    name = "list_orgs",
+    category = "organizations",
+    description = "List organizations for the current user.",
+    method = "GET",
+    path = "/v1/orgs"
+)]
 impl Command for ListOrgs {
     type Output = ListOrganizationsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_orgs",
-            category: "organizations",
-            description: "List organizations for the current user.",
-            method: "GET",
-            path: "/v1/orgs",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ListOrganizationsResponse, CommandError> {
         let memberships = q::list_user_organizations(ctx).await?;
         let mut orgs = Vec::with_capacity(memberships.len());
 
         for membership in memberships {
-            if let Some(row) = ctx
-                .db
-                .get_organization(membership.org_id)
-                .await
-                .map_err(classify_anyhow)?
-            {
+            if let Some(row) = ctx.db.get_organization(membership.org_id).await? {
                 orgs.push(q::build_organization_response(&ctx.db, membership.org_id, row).await?);
             }
         }
@@ -41,29 +33,21 @@ impl Command for ListOrgs {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListOrgs>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetOrg {
     pub org: String,
 }
 
+#[command(
+    name = "get_org",
+    category = "organizations",
+    description = "Get organization details.",
+    method = "GET",
+    path = "/v1/orgs/{org}",
+    positional = "org"
+)]
 impl Command for GetOrg {
     type Output = OrganizationResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_org",
-            category: "organizations",
-            description: "Get organization details.",
-            method: "GET",
-            path: "/v1/orgs/{org}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("org")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<OrganizationResponse, CommandError> {
         if !validate_org_public_id(&self.org) {
@@ -74,15 +58,12 @@ impl Command for GetOrg {
         let row = ctx
             .db
             .get_organization_by_public_id(&self.org)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Organization"))?;
 
         q::build_organization_response(&ctx.db, membership.org_id, row).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetOrg>() }
 
 // SECURITY: this is the only domain command that may reveal an `org_id` the
 // caller's active session is not currently scoped to. The shared helper
@@ -96,40 +77,23 @@ pub struct ResolveOrg {
     pub id: String,
 }
 
+#[command(
+    name = "resolve_org",
+    category = "organizations",
+    description = "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
+    method = "GET",
+    path = "/v1/resolve-org",
+    positional = "id",
+    cli = CliRoute::new(&["orgs"], "resolve").with_examples(&[CliExample::new("Look up an organization by its identifier", "everruns orgs resolve --id org_01h9",)]),
+)]
 impl Command for ResolveOrg {
     type Output = ResolveOrgResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "resolve_org",
-            category: "organizations",
-            description: "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
-            method: "GET",
-            path: "/v1/resolve-org",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // `/v1/resolve-org` is an action at the API root, so derivation would
-        // spell it `resolve-org resolve`. It belongs under the noun it acts on.
-        const ROUTE: CliRoute =
-            CliRoute::new(&["orgs"], "resolve").with_examples(&[CliExample::new(
-                "Look up an organization by its identifier",
-                "everruns orgs resolve --id org_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ResolveOrgResponse, CommandError> {
         let user_id = q::require_user_id(ctx)?;
 
         let resolved = org_resolver::resolve_owning_org_for_user(&ctx.db, user_id, &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Resource"))?;
 
         Ok(ResolveOrgResponse {
@@ -138,8 +102,6 @@ impl Command for ResolveOrg {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ResolveOrg>() }
 
 #[cfg(test)]
 mod tests {
@@ -164,7 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_org_returns_owning_org_when_caller_is_member() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         crate::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
@@ -218,7 +180,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_org_returns_not_found_for_non_member() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
 
         // Other-org agent: created in org 42 with no membership for the caller.
         let agent_public_id = "agent_00000000000000000000000000000088".to_string();
@@ -269,7 +231,7 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_org_returns_not_found_for_unknown_prefix() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = Ctx::minimal_for_test(seed_caller(crate::records::ANONYMOUS_USER_ID), db, None);
 
         let err = crate::domains::common::dispatch(
@@ -293,7 +255,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_orgs_dispatch_accepts_empty_object_params() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         crate::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,

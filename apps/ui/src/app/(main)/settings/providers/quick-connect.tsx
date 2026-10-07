@@ -37,6 +37,7 @@ import {
 import { useCreateProvider, useProvidersConfig } from "@/hooks/use-providers";
 import { providerOAuthAuthorizeUrl, providerSupportsOAuth } from "@/lib/api/providers";
 import type { DriverId, Provider } from "@/lib/api/types";
+import { isDriverOffered } from "@/lib/api/provider-driver-types";
 import { useCredentialCheck } from "./use-credential-check";
 import { CredentialCheckStatus } from "./credential-check-status";
 
@@ -47,6 +48,7 @@ const QUICK_CONNECT_DRIVERS: DriverId[] = [
   "chatgpt",
   "gemini",
   "openrouter",
+  "mistral",
   "meta",
 ];
 
@@ -68,6 +70,7 @@ const KEY_CONSOLES: Partial<Record<DriverId, { label: string; href: string }>> =
   openai: { label: "platform.openai.com", href: "https://platform.openai.com/api-keys" },
   gemini: { label: "aistudio.google.com", href: "https://aistudio.google.com/apikey" },
   openrouter: { label: "openrouter.ai/keys", href: "https://openrouter.ai/keys" },
+  mistral: { label: "console.mistral.ai", href: "https://console.mistral.ai/api-keys" },
   meta: { label: "llama.developer.meta.com", href: "https://llama.developer.meta.com/api-keys" },
 };
 
@@ -159,22 +162,22 @@ export function QuickConnect({
       {/* The settings pane is far narrower than the page, so the tiles cap at
           three across: six would truncate every provider name. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {QUICK_CONNECT_DRIVERS.filter(
-          (driver) => driver !== "chatgpt" || config?.drivers.some((d) => d.driver === "chatgpt"),
-        ).map((driver) => (
-          <QuickConnectTile
-            key={driver}
-            driver={driver}
-            connected={connectedCount(driver)}
-            dualAuth={supportsOAuth(driver)}
-            oauthPending={oauthDriver === driver}
-            onKeyConnect={() => {
-              setError(null);
-              setOpenDriver(driver);
-            }}
-            onOAuthConnect={() => void startOAuth(driver)}
-          />
-        ))}
+        {QUICK_CONNECT_DRIVERS.filter((driver) => isDriverOffered(driver, config?.drivers)).map(
+          (driver) => (
+            <QuickConnectTile
+              key={driver}
+              driver={driver}
+              connected={connectedCount(driver)}
+              dualAuth={supportsOAuth(driver)}
+              oauthPending={oauthDriver === driver}
+              onKeyConnect={() => {
+                setError(null);
+                setOpenDriver(driver);
+              }}
+              onOAuthConnect={() => void startOAuth(driver)}
+            />
+          ),
+        )}
 
         <div className="flex flex-col gap-2.5 border border-dashed p-4">
           <div className="flex items-center gap-2.5">

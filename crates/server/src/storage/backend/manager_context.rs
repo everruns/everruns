@@ -14,6 +14,16 @@ impl StorageBackend {
         dispatch!(self, get_manager_context, key)
     }
 
+    /// As `get_manager_context`, locking the row (`FOR SHARE`) until the
+    /// current transaction ends, so a change held to the revision read here
+    /// commits before any context write that would move it.
+    pub async fn get_manager_context_for_share(
+        &self,
+        key: &ManagerContextKey,
+    ) -> Result<Option<ManagerContextRow>> {
+        self.db.get_manager_context_locked(key, true).await
+    }
+
     /// Applies `edit`, refusing it when `expected_revision` is stale; see
     /// `crate::storage::manager_context::plan_write`.
     pub async fn write_manager_context(

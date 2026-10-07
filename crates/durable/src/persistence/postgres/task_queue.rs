@@ -1,5 +1,6 @@
 //! Implementation of [`crate::TaskQueue`].
 
+use super::hand_off;
 use super::*;
 use crate::persistence::store::Enqueued;
 
@@ -189,78 +190,14 @@ impl TaskQueue for PostgresWorkflowEventStore {
         };
 
         let task_id = Uuid::now_v7();
-        let task_input = sanitize_json_null_bytes(task.input.clone());
-        let options_json = serde_json::to_value(&task.options)
-            .map(sanitize_json_null_bytes)
-            .map_err(|e| StoreError::Serialization(e.to_string()))?;
-        let started = serde_json::to_value(WorkflowEvent::ActivityStarted {
-            activity_id: task.activity_id.clone(),
-            attempt: 1,
-            worker_id: worker_id.to_string(),
-        })
-        .map(sanitize_json_null_bytes)
-        .map_err(|e| StoreError::Serialization(e.to_string()))?;
-
-        let inserted: Option<Uuid> = sqlx::query_scalar(
-            r#"
-            WITH task AS (
-                INSERT INTO durable_task_queue (
-                    id, workflow_id, activity_id, activity_type, input, options,
-                    max_attempts, priority, visible_at,
-                    schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms,
-                    status, claimed_by, claimed_at, heartbeat_at, attempt, queue
-                )
-                SELECT $1, $2, $3, $4, $5, $6, $7, $8, NOW(), $9, $10, $11,
-                       'claimed', $12, NOW(), NOW(), 1, $14
-                WHERE EXISTS (
-                    SELECT 1 FROM durable_workers WHERE id = $12 AND status != 'draining'
-                )
-                RETURNING id, workflow_id
-            ),
-            started AS (
-                INSERT INTO durable_workflow_events (workflow_id, sequence_num, event_type, event_data)
-                SELECT task.workflow_id,
-                       COALESCE((
-                           SELECT MAX(sequence_num) + 1 FROM durable_workflow_events
-                           WHERE workflow_id = task.workflow_id
-                       ), 0),
-                       'activity_started', $13
-                FROM task
-                WHERE task.workflow_id IS NOT NULL
-            )
-            SELECT id FROM task
-            "#,
-        )
-        .bind(task_id)
-        .bind(task.workflow_id)
-        .bind(&task.activity_id)
-        .bind(&task.activity_type)
-        .bind(&task_input)
-        .bind(&options_json)
-        .bind(task.options.retry_policy.max_attempts as i32)
-        .bind(task.options.priority)
-        .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
-        .bind(task.options.start_to_close_timeout.as_millis() as i64)
-        .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
-        .bind(worker_id)
-        .bind(&started)
-        .bind(task.options.queue.as_deref())
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| {
-            store_failure(
-                "durable.tasks.enqueue_claimed",
-                "Failed to enqueue claimed task",
-                e,
-            )
-        })?;
+        let inserted = hand_off::insert_claimed_task(&mut tx, task_id, &task, worker_id).await?;
 
         tx.commit().await.map_err(|e| {
             error!(error = %e, "Failed to commit claimed enqueue");
             StoreError::Database(e.to_string())
         })?;
 
-        if inserted.is_none() {
+        if !inserted {
             // Not a registered worker, or draining: the queue hands the task
             // to whoever claims it next.
             return self.enqueue_task(task).await.map(Enqueued::Queued);
@@ -273,7 +210,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
             max_attempts: task.options.retry_policy.max_attempts,
             activity_id: task.activity_id,
             activity_type: task.activity_type,
-            input: task_input,
+            input: sanitize_json_null_bytes(task.input),
             options: task.options,
             attempt: 1,
             workflow_status,
@@ -580,7 +517,7 @@ impl TaskQueue for PostgresWorkflowEventStore {
         let result = sqlx::query(
             r#"
             UPDATE durable_task_queue
-            SET status = 'completed'
+            SET status = 'completed', heartbeat_at = NOW()
             WHERE id = $1 AND claimed_by = $2 AND status = 'claimed'
             RETURNING id
             "#,
@@ -610,6 +547,28 @@ impl TaskQueue for PostgresWorkflowEventStore {
                 Err(StoreError::TaskNotOwned(task_id))
             }
         }
+    }
+
+    #[instrument(skip(self, _result, hand_off))]
+    async fn complete_task_and_hand_off(
+        &self,
+        task_id: Uuid,
+        worker_id: &str,
+        _result: serde_json::Value,
+        hand_off: crate::HandOff,
+    ) -> Result<crate::HandedOff, StoreError> {
+        self.hand_off(task_id, worker_id, hand_off).await
+    }
+
+    #[instrument(skip(self))]
+    async fn requeue_stranded_workflows(
+        &self,
+        workflow_type: &str,
+        completed_before: Duration,
+        limit: usize,
+    ) -> Result<Vec<crate::RequeuedWorkflow>, StoreError> {
+        self.requeue_stranded(workflow_type, completed_before, limit)
+            .await
     }
 
     #[instrument(skip(self))]

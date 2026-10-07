@@ -13,7 +13,7 @@ tags:
 and adds coding behavior plus `github_scout`; it does not select a compute
 provider.
 
-The Agent version owns a Sandbox policy with named template bindings. A Session selects one binding
+The Agent owns a Sandbox policy with named template bindings. A Session selects one binding
 and receives the same model-facing tools on every supported target:
 `bash`, `read_file`, `write_file`, `edit_file`, `glob`, and `grep`. The resolved
 specification is pinned to the Session's logical Sandbox.

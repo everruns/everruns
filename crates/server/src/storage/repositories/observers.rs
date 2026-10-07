@@ -6,6 +6,7 @@
 // attempt budget is exhausted.
 
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 use crate::storage::Database;
@@ -22,12 +23,11 @@ impl Database {
         input: CreateObserverRow,
     ) -> Result<ObserverRow> {
         let row = sqlx::query_as::<_, ObserverRow>(
-            r#"
+            sql!(r#"
             INSERT INTO observers (org_id, public_id, name, description, match_config, sampling_rate, scorers)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, org_id, public_id, name, description, match_config,
-                      sampling_rate, scorers, status, created_at, updated_at, archived_at
-            "#,
+            RETURNING {ObserverRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -46,14 +46,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<ObserverRow>> {
-        let row = sqlx::query_as::<_, ObserverRow>(
+        let row = sqlx::query_as::<_, ObserverRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, match_config,
-                   sampling_rate, scorers, status, created_at, updated_at, archived_at
+            SELECT {ObserverRow}
             FROM observers
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -62,14 +61,13 @@ impl Database {
     }
 
     pub async fn get_observer(&self, id: Uuid) -> Result<Option<ObserverRow>> {
-        let row = sqlx::query_as::<_, ObserverRow>(
+        let row = sqlx::query_as::<_, ObserverRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, match_config,
-                   sampling_rate, scorers, status, created_at, updated_at, archived_at
+            SELECT {ObserverRow}
             FROM observers
             WHERE id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -102,14 +100,13 @@ impl Database {
 
     /// Active observers for an org — the per-turn matching lookup.
     pub async fn list_active_observers(&self, org_id: i64) -> Result<Vec<ObserverRow>> {
-        let rows = sqlx::query_as::<_, ObserverRow>(
+        let rows = sqlx::query_as::<_, ObserverRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, description, match_config,
-                   sampling_rate, scorers, status, created_at, updated_at, archived_at
+            SELECT {ObserverRow}
             FROM observers
             WHERE org_id = $1 AND status = 'active'
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
@@ -132,7 +129,7 @@ impl Database {
         id: Uuid,
         input: UpdateObserverRow,
     ) -> Result<Option<ObserverRow>> {
-        let row = sqlx::query_as::<_, ObserverRow>(
+        let row = sqlx::query_as::<_, ObserverRow>(sql!(
             r#"
             UPDATE observers
             SET
@@ -144,10 +141,9 @@ impl Database {
                 status = COALESCE($8, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, description, match_config,
-                      sampling_rate, scorers, status, created_at, updated_at, archived_at
-            "#,
-        )
+            RETURNING {ObserverRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.name)
@@ -192,8 +188,8 @@ impl Database {
             let result = sqlx::query(
                 r#"
                 INSERT INTO trace_scores (org_id, public_id, observer_id, scorer_key, session_id,
-                                          turn_id, agent_id, agent_version_id, harness_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                          turn_id, agent_id, harness_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (observer_id, scorer_key, session_id, turn_id) DO NOTHING
                 "#,
             )
@@ -204,7 +200,6 @@ impl Database {
             .bind(input.session_id)
             .bind(&input.turn_id)
             .bind(input.agent_id)
-            .bind(input.agent_version_id)
             .bind(input.harness_id)
             .execute(&self.pool)
             .await?;
@@ -237,7 +232,7 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        let rows = sqlx::query_as::<_, TraceScoreRow>(
+        let rows = sqlx::query_as::<_, TraceScoreRow>(sql!(
             r#"
             UPDATE trace_scores
             SET status = 'scoring', attempts = attempts + 1, updated_at = NOW()
@@ -250,12 +245,9 @@ impl Database {
                 LIMIT $3
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id, org_id, public_id, observer_id, scorer_key, session_id,
-                      turn_id, agent_id, agent_version_id, harness_id, status, attempts,
-                      pass, value, label, reason, judge_input_tokens, judge_output_tokens,
-                      judge_cost_usd, error_message, created_at, updated_at
-            "#,
-        )
+            RETURNING {TraceScoreRow}
+            "#
+        ))
         .bind(stale_after_seconds as f64)
         .bind(max_attempts)
         .bind(limit)
@@ -270,16 +262,13 @@ impl Database {
         input: CompleteTraceScoreRow,
     ) -> Result<Option<TraceScoreRow>> {
         let row = sqlx::query_as::<_, TraceScoreRow>(
-            r#"
+            sql!(r#"
             UPDATE trace_scores
             SET status = $2, pass = $3, value = $4, label = $5, reason = $6, judge_input_tokens = $7,
                 judge_output_tokens = $8, judge_cost_usd = $9, error_message = $10, updated_at = NOW()
             WHERE id = $1
-            RETURNING id, org_id, public_id, observer_id, scorer_key, session_id,
-                      turn_id, agent_id, agent_version_id, harness_id, status, attempts,
-                      pass, value, label, reason, judge_input_tokens, judge_output_tokens,
-                      judge_cost_usd, error_message, created_at, updated_at
-            "#,
+            RETURNING {TraceScoreRow}
+            "#),
         )
         .bind(id)
         .bind(&input.status)
@@ -308,7 +297,7 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT id, org_id, public_id, observer_id, scorer_key, session_id,
-                      turn_id, agent_id, agent_version_id, harness_id, status, attempts,
+                      turn_id, agent_id, harness_id, status, attempts,
                       pass, value, label, reason, judge_input_tokens, judge_output_tokens,
                       judge_cost_usd, error_message, created_at, updated_at
                FROM trace_scores

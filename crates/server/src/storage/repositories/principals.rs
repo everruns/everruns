@@ -4,12 +4,13 @@ use super::super::models::*;
 use super::Database;
 use anyhow::Result;
 use everruns_contracts::typed_id::PrincipalId;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
     pub async fn create_principal(&self, input: CreatePrincipalRow) -> Result<PrincipalRow> {
         let row = if input.subject_id.is_some() {
-            sqlx::query_as::<_, PrincipalRow>(
+            sqlx::query_as::<_, PrincipalRow>(sql!(
                 r#"
                 INSERT INTO principals (
                     id,
@@ -32,9 +33,9 @@ impl Database {
                     archived_at = NULL,
                     deleted_at = NULL,
                     updated_at = NOW()
-                RETURNING id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
-                "#,
-            )
+                RETURNING {PrincipalRow}
+                "#
+            ))
             .bind(input.id)
             .bind(input.id.to_string())
             .bind(input.org_id)
@@ -46,7 +47,7 @@ impl Database {
             .fetch_one(&self.pool)
             .await?
         } else {
-            sqlx::query_as::<_, PrincipalRow>(
+            sqlx::query_as::<_, PrincipalRow>(sql!(
                 r#"
                 INSERT INTO principals (
                     id,
@@ -60,9 +61,9 @@ impl Database {
                     status
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
-                RETURNING id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
-                "#,
-            )
+                RETURNING {PrincipalRow}
+                "#
+            ))
             .bind(input.id)
             .bind(input.id.to_string())
             .bind(input.org_id)
@@ -83,13 +84,13 @@ impl Database {
         org_id: i64,
         id: PrincipalId,
     ) -> Result<Option<PrincipalRow>> {
-        let row = sqlx::query_as::<_, PrincipalRow>(
+        let row = sqlx::query_as::<_, PrincipalRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {PrincipalRow}
             FROM principals
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -104,13 +105,13 @@ impl Database {
         kind: &str,
         subject_id: Uuid,
     ) -> Result<Option<PrincipalRow>> {
-        let row = sqlx::query_as::<_, PrincipalRow>(
+        let row = sqlx::query_as::<_, PrincipalRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {PrincipalRow}
             FROM principals
             WHERE org_id = $1 AND kind = $2 AND subject_id = $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(kind)
         .bind(subject_id)
@@ -127,14 +128,14 @@ impl Database {
         resolved_user_ids: &[Uuid],
     ) -> Result<Vec<PrincipalRow>> {
         let principal_ids: Vec<Uuid> = principal_ids.iter().map(|id| id.uuid()).collect();
-        let rows = sqlx::query_as::<_, PrincipalRow>(
+        let rows = sqlx::query_as::<_, PrincipalRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {PrincipalRow}
             FROM principals
             WHERE org_id = $1
               AND (id = ANY($2) OR (kind = 'user' AND subject_id = ANY($3)))
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(&principal_ids)
         .bind(resolved_user_ids)
@@ -149,14 +150,14 @@ impl Database {
         org_id: i64,
         user_id: Uuid,
     ) -> Result<Vec<PrincipalRow>> {
-        let rows = sqlx::query_as::<_, PrincipalRow>(
+        let rows = sqlx::query_as::<_, PrincipalRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
+            SELECT {PrincipalRow}
             FROM principals
             WHERE org_id = $1 AND resolved_user_id = $2 AND status != 'deleted'
             ORDER BY created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -171,7 +172,7 @@ impl Database {
         id: PrincipalId,
         input: UpdatePrincipalRow,
     ) -> Result<Option<PrincipalRow>> {
-        let row = sqlx::query_as::<_, PrincipalRow>(
+        let row = sqlx::query_as::<_, PrincipalRow>(sql!(
             r#"
             UPDATE principals
             SET
@@ -191,9 +192,9 @@ impl Database {
                 END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
-            "#,
-        )
+            RETURNING {PrincipalRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(input.parent_principal_id.is_changed())

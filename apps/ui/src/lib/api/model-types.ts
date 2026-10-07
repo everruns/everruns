@@ -1,5 +1,5 @@
 import type { DriverId } from "./provider-driver-types";
-import type { ModelVendor } from "./legacy-api-types";
+import type { ModelVendor } from "./schema-types";
 export type ModelService = "chat" | "decisions" | "embeddings" | "realtime" | "images" | "rerank";
 export interface DecisionModelProfile {
   primitives: string[];

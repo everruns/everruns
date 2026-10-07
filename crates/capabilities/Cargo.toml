@@ -57,7 +57,7 @@ everruns-integrations = { workspace = true, optional = true }
 
 # Orchestration consumes neutral contracts and portable core execution views.
 # Persistence/API records remain exclusively in the server.
-everruns-core = { workspace = true, default-features = false, features = ["host"] }
+everruns-core = { workspace = true, default-features = false, features = ["host", "mcp"] }
 everruns-contracts = { workspace = true, default-features = false, features = ["session-sandbox"] }
 
 serde.workspace = true

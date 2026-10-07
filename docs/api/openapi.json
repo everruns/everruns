@@ -3096,375 +3096,6 @@
         }
       }
     },
-    "/v1/agents/{agent_id}/versions": {
-      "get": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "GET /v1/agents/{agent_id}/versions - List saved agent versions",
-        "operationId": "list_agent_versions",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Saved agent versions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/AgentVersion"
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions - Save the current agent configuration as a version",
-        "operationId": "create_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Agent version created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentVersion"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent not found or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/default": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions/default - Set the default version for an agent",
-        "operationId": "set_default_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetDefaultAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Default version updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}": {
-      "get": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "GET /v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id} - Diff two agent versions",
-        "operationId": "diff_agent_versions",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from_version_id",
-            "in": "path",
-            "description": "Base agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          },
-          {
-            "name": "to_version_id",
-            "in": "path",
-            "description": "Comparison agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Agent version diff",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentVersionDiffResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/{version_id}/fork": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions/{version_id}/fork - Create a new agent from a saved version",
-        "operationId": "fork_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Source agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version_id",
-            "in": "path",
-            "description": "Agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ForkAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Agent fork created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/agents/{agent_id}/versions/{version_id}/rollback": {
-      "post": {
-        "tags": [
-          "agents"
-        ],
-        "summary": "POST /v1/agents/{agent_id}/versions/{version_id}/rollback - Restore an agent from a saved version",
-        "operationId": "rollback_agent_version",
-        "parameters": [
-          {
-            "name": "agent_id",
-            "in": "path",
-            "description": "Agent ID (prefixed) or name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "version_id",
-            "in": "path",
-            "description": "Agent version ID",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/agentverId"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RollbackAgentVersionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Agent rolled back",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Agent"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Agent or version not found, or agent_versions disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/agents/{agent_id}/voice/sessions": {
       "post": {
         "tags": [
@@ -4382,6 +4013,315 @@
         "security": [
           {}
         ]
+      }
+    },
+    "/v1/budgets": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List budgets. Filter by subject_type and subject_id.",
+        "operationId": "list_budgets",
+        "parameters": [
+          {
+            "name": "subject_type",
+            "in": "query",
+            "description": "Only budgets on this kind of subject (session, agent, user, org, ...).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "description": "Only budgets on this subject's prefixed public identifier.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WithUrls_Budget"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
+        "operationId": "create_budget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Get a single budget by ID.",
+        "operationId": "get_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Delete a budget.",
+        "operationId": "delete_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Update a budget limit, status, or metadata.",
+        "operationId": "update_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}/check": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Check budget status for a session-scoped budget.",
+        "operationId": "check_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetCheckResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}/ledger": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List ledger entries for a budget.",
+        "operationId": "list_budget_ledger",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of items returned in this page.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Zero-based offset into the result set.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}/top-up": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
+        "operationId": "top_up_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
       }
     },
     "/v1/capabilities": {
@@ -12479,6 +12419,232 @@
         }
       }
     },
+    "/v1/observers": {
+      "get": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "List observers.",
+        "operationId": "list_observers",
+        "parameters": [
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived observers.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Observer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "Create an observer (online scoring).",
+        "operationId": "create_observer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateObserverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Observer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/observers/{observer_id}": {
+      "get": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "Get a single observer.",
+        "operationId": "get_observer",
+        "parameters": [
+          {
+            "name": "observer_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Observer"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Observer not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "Archive an observer.",
+        "operationId": "delete_observer",
+        "parameters": [
+          {
+            "name": "observer_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Observer not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "Update an observer.",
+        "operationId": "update_observer",
+        "parameters": [
+          {
+            "name": "observer_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateObserverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Observer"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Observer not found"
+          }
+        }
+      }
+    },
+    "/v1/observers/{observer_id}/scores": {
+      "get": {
+        "tags": [
+          "observers"
+        ],
+        "summary": "List trace scores produced by an observer.",
+        "operationId": "list_observer_scores",
+        "parameters": [
+          {
+            "name": "observer_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Filter to one session.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of scores returned (default 100).",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Zero-based offset into the result set.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_TraceScore"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/orgs": {
       "get": {
         "tags": [
@@ -16529,6 +16695,73 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/budget-check": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Check all budgets for a session.",
+        "operationId": "check_session_budgets",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetCheckResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/budgets": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List all budgets for a session.",
+        "operationId": "list_session_budgets",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WithUrls_Budget"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/cancel": {
       "post": {
         "tags": [
@@ -18118,6 +18351,38 @@
           },
           "404": {
             "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/resume": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Resume all paused session budgets for a session.",
+        "operationId": "resume_session_budgets",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeSessionResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -20925,6 +21190,248 @@
         }
       }
     },
+    "/v1/virtual-users/{identity_id}/mcp-servers": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "List the person's own MCP servers.",
+        "operationId": "list_user_mcp_servers",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Add an MCP server for the person, from the catalog or by URL.",
+        "operationId": "add_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddUserMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "409": {
+            "description": "Name already used"
+          }
+        }
+      }
+    },
+    "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}": {
+      "get": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Read one of the person's MCP servers.",
+        "operationId": "get_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServer"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Remove one of the person's MCP servers and its sign-in.",
+        "operationId": "remove_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "virtual-users"
+        ],
+        "summary": "Rename, enable, disable or replace the API key of one of the person's MCP servers.",
+        "operationId": "update_user_mcp_server",
+        "parameters": [
+          {
+            "name": "identity_id",
+            "in": "path",
+            "description": "`me` or a virtual user id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "server_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserMcpServerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserMcpServer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Permission denied"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "409": {
+            "description": "Name already used"
+          }
+        }
+      }
+    },
     "/v1/virtual-users/{identity_id}/preferences": {
       "get": {
         "tags": [
@@ -22054,6 +22561,80 @@
           }
         }
       },
+      "AddUserMcpServerRequest": {
+        "type": "object",
+        "description": "Add a user MCP server. Give `catalog` to add a catalog preset, or `name`\nand `url` to add a custom server.",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for a custom `api_key` server. Never returned."
+          },
+          "auth_mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/McpServerAuthMode",
+                "description": "Sign-in for a custom server. Defaults to `api_key` when `api_key` is\ngiven, otherwise `none`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "catalog": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog preset name to add.",
+            "example": "linear"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Defaults to true."
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Literal headers for a custom server. Never returned.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name for a custom server; also the tool prefix agents see.",
+            "example": "my-notes"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTPS endpoint of a custom server.",
+            "example": "https://mcp.example.com/mcp"
+          }
+        }
+      },
       "Agent": {
         "type": "object",
         "description": "Agent configuration for agentic loop.\nAn agent defines the behavior and capabilities of an AI assistant.",
@@ -22108,14 +22689,6 @@
             "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
             "example": "model_01933b5a00007000800000000000001"
           },
-          "default_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Default immutable version used by deployments that choose the default policy.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
           "deleted_at": {
             "type": [
               "string",
@@ -22157,14 +22730,6 @@
             "description": "Source agent for a forked agent.",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "forked_from_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Source version for a forked agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
           "harness_id": {
             "type": "string",
             "description": "Harness that supplies the base execution environment for this agent.",
@@ -22189,6 +22754,11 @@
             ],
             "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
             "example": "Hey, I'm Ava. Ask me anything about your account."
+          },
+          "is_built_in": {
+            "type": "boolean",
+            "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
+            "example": false
           },
           "max_iterations": {
             "type": [
@@ -22399,18 +22969,6 @@
           "updated_at"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Which Agent version sessions started through this channel run."
-          },
           "auth": {
             "oneOf": [
               {
@@ -23052,18 +23610,6 @@
             "description": "Agent that owns this trigger.",
             "example": "agent_01933b5a000070008000000000000001"
           },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Which Agent version sessions started by this trigger run."
-          },
           "archived_at": {
             "type": [
               "string",
@@ -23228,168 +23774,6 @@
           "mcp_event"
         ]
       },
-      "AgentVersion": {
-        "type": "object",
-        "description": "Immutable snapshot of an Agent's authored and resolved runtime config.",
-        "required": [
-          "id",
-          "agent_id",
-          "version_number",
-          "semver_major",
-          "semver_minor",
-          "semver_patch",
-          "version",
-          "is_published",
-          "change_kind",
-          "config_hash",
-          "authored_config",
-          "resolved_config",
-          "created_at"
-        ],
-        "properties": {
-          "agent_id": {
-            "type": "string",
-            "description": "Owning agent's prefixed public identifier.",
-            "example": "agent_01933b5a000070008000000000000001"
-          },
-          "authored_config": {
-            "type": "object",
-            "description": "User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here."
-          },
-          "change_kind": {
-            "$ref": "#/components/schemas/AgentVersionChangeKind",
-            "description": "Classification of why this version was created (manual publish, automatic draft, rollback, fork, etc.)."
-          },
-          "config_hash": {
-            "type": "string",
-            "description": "Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.",
-            "example": "blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this version was created (RFC 3339).",
-            "example": "2026-04-20T14:22:00Z"
-          },
-          "created_by_principal_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Identity of the principal (user or virtual user) that created this version. `None` for system-generated snapshots."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "agentver_01933b5a000070008000000000000001"
-          },
-          "is_published": {
-            "type": "boolean",
-            "description": "Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback.",
-            "example": true
-          },
-          "parent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version this one was forked or branched from, if any."
-          },
-          "resolved_config": {
-            "type": "object",
-            "description": "Resolved configuration after applying harness, capability, and platform layers. This is what the runtime executes against."
-          },
-          "semver_major": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Semantic version major component.",
-            "example": 1
-          },
-          "semver_minor": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Semantic version minor component.",
-            "example": 4
-          },
-          "semver_patch": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Semantic version patch component.",
-            "example": 2
-          },
-          "source_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "When this version is a copy of another version (e.g. a manual rollback), the original source. `None` for ordinary snapshots."
-          },
-          "summary": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable summary of changes in this version (release notes). `None` if not provided.",
-            "example": "Switched default model to claude-sonnet-4-6; added refund-runbook capability."
-          },
-          "version": {
-            "type": "string",
-            "description": "Combined semver string for display (e.g. `1.4.2`).",
-            "example": "1.4.2"
-          },
-          "version_number": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot.",
-            "example": 7
-          }
-        }
-      },
-      "AgentVersionChangeKind": {
-        "type": "string",
-        "description": "Reason a version was created. Stored as lower_snake_case text.\nOne of `auto`, `manual`, `patch`, `minor`, `major`, `import`, `rollback`, `fork`.",
-        "enum": [
-          "auto",
-          "manual",
-          "patch",
-          "minor",
-          "major",
-          "import",
-          "rollback",
-          "fork"
-        ],
-        "example": "manual"
-      },
-      "AgentVersionDiffResponse": {
-        "type": "object",
-        "description": "Response body for agent version diff.",
-        "required": [
-          "from_version_id",
-          "to_version_id",
-          "authored_diff",
-          "resolved_diff"
-        ],
-        "properties": {
-          "authored_diff": {},
-          "from_version_id": {
-            "$ref": "#/components/schemas/agentverId"
-          },
-          "resolved_diff": {},
-          "to_version_id": {
-            "$ref": "#/components/schemas/agentverId"
-          }
-        }
-      },
-      "AgentVersionPolicy": {
-        "type": "string",
-        "description": "How an exposure (endpoint or trigger; formerly the App) resolves the\nAgent version its sessions run.",
-        "enum": [
-          "default",
-          "latest",
-          "pinned"
-        ],
-        "example": "pinned"
-      },
       "AgentWithCounts": {
         "allOf": [
           {
@@ -23545,18 +23929,6 @@
             "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned agent version. Required when policy is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Version resolution policy for the optional agent."
-          },
           "archived_at": {
             "type": [
               "string",
@@ -23678,18 +24050,6 @@
           "updated_at"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Pinned Agent version. Set only when `agent_version_policy` is `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy",
-            "description": "Which Agent version sessions started through this channel run."
-          },
           "auth": {
             "oneOf": [
               {
@@ -26633,25 +26993,6 @@
           "channel_type"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Which Agent version sessions started through this channel run.\nOmitted means `default` (the agent's default version)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Transport-specific channel configuration."
           },
@@ -26717,25 +27058,6 @@
           "channel_type"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Which Agent version sessions started through this channel run.\nOmitted means `default` (the agent's default version)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Transport-specific channel configuration."
           },
@@ -26962,25 +27284,6 @@
           "message"
         ],
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to run when `agent_version_policy` is `pinned`. Must be a saved\nversion of this agent.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Which Agent version sessions started by this trigger run. Omitted means\n`default` (the agent's default version)."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "auth": {
             "description": "Shared endpoint auth is not supported by webhook triggers."
           },
@@ -26994,14 +27297,16 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether the trigger is active on creation (default `true`)."
+            "description": "Whether the trigger is active on creation (default `true`).",
+            "example": true
           },
           "event_id_template": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Webhook only: template for the delivery idempotency key."
+            "description": "Webhook only: template for the delivery idempotency key.",
+            "example": "{{webhook.headers.x-github-delivery}}"
           },
           "filter": {
             "oneOf": [
@@ -27022,14 +27327,18 @@
             "items": {
               "type": "string"
             },
-            "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events."
+            "description": "GitHub only: subscribed events (`pull_request` or\n`pull_request.opened`). Defaults to pull request open/update events.",
+            "example": [
+              "pull_request.opened"
+            ]
           },
           "mcp_event": {
             "type": [
               "string",
               "null"
             ],
-            "description": "MCP event only: event name from the server's `events/list`."
+            "description": "MCP event only: event name from the server's `events/list`.",
+            "example": "issue.created"
           },
           "mcp_event_arguments": {
             "type": [
@@ -27043,7 +27352,8 @@
               "string",
               "null"
             ],
-            "description": "MCP event only: name of the agent's MCP server attachment to subscribe to."
+            "description": "MCP event only: name of the agent's MCP server attachment to subscribe to.",
+            "example": "tracker"
           },
           "message": {
             "type": "string",
@@ -27057,6 +27367,7 @@
             ],
             "format": "int32",
             "description": "Optional per-ingress, per-IP webhook request limit.",
+            "example": 60,
             "minimum": 0
           },
           "repositories": {
@@ -27067,7 +27378,10 @@
             "items": {
               "type": "string"
             },
-            "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all."
+            "description": "GitHub only: repositories (`owner/name`) to accept; empty accepts all.",
+            "example": [
+              "everruns/everruns"
+            ]
           },
           "session_mode": {
             "$ref": "#/components/schemas/SessionBinding",
@@ -27078,7 +27392,8 @@
               "string",
               "null"
             ],
-            "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject."
+            "description": "Webhook and MCP event: template for the event subject. Required for\n`session_mode: per_thread`, which keeps one session per subject.",
+            "example": "{{webhook.json.action}}"
           },
           "timezone": {
             "type": "string",
@@ -27095,31 +27410,6 @@
           "trigger_type": {
             "$ref": "#/components/schemas/AgentTriggerType",
             "description": "Trigger kind. Omitted values retain the schedule API default."
-          }
-        }
-      },
-      "CreateAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `create_agent_version` operation.",
-        "properties": {
-          "change_kind": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionChangeKind",
-                "description": "Reason this version was created. See `AgentVersionChangeKind` for the allowed values.\nDefaults to `manual` when omitted."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "summary": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text summary of what changed in this version. Shown in the version timeline.",
-            "example": "Tightened the refund-window check and added a regression test."
           }
         }
       },
@@ -27878,6 +28168,56 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "CreateObserverRequest": {
+        "type": "object",
+        "description": "Request to create a new observer.",
+        "required": [
+          "name",
+          "scorers"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Score replies from the support agent"
+          },
+          "match": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ObserverMatch",
+                "description": "Which production sessions to score. Empty matches all org traffic."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Support quality"
+          },
+          "sampling_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Fraction of matching turns to score (0.0–1.0). Defaults to 0.1.",
+            "example": 0.25
+          },
+          "scorers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObserverScorerConfig"
+            },
+            "description": "Scoring rules. Must contain at least one."
           }
         }
       },
@@ -29214,7 +29554,7 @@
       },
       "DriverId": {
         "type": "string",
-        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, cloudflare, vercel. Any other string is treated as an embedder-defined external provider."
+        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta, mistral, cloudflare, vercel. Any other string is treated as an embedder-defined external provider."
       },
       "ElicitationConsentRequest": {
         "type": "object",
@@ -30602,36 +30942,6 @@
           "llm",
           "health_check"
         ]
-      },
-      "ForkAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `fork_agent_version` operation.",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages.",
-            "example": "Fork to test new refund-flow capabilities before promoting"
-          },
-          "display_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable display name. Safe to render in user-facing messages.",
-            "example": "Support Agent (Experimental)"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "support-agent-experimental"
-          }
-        }
       },
       "ForkSessionRequest": {
         "type": "object",
@@ -33327,14 +33637,6 @@
                   "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                   "example": "model_01933b5a00007000800000000000001"
                 },
-                "default_version_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Default immutable version used by deployments that choose the default policy.",
-                  "example": "agentver_01933b5a00007000800000000000001"
-                },
                 "deleted_at": {
                   "type": [
                     "string",
@@ -33376,14 +33678,6 @@
                   "description": "Source agent for a forked agent.",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
-                "forked_from_version_id": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Source version for a forked agent.",
-                  "example": "agentver_01933b5a00007000800000000000001"
-                },
                 "harness_id": {
                   "type": "string",
                   "description": "Harness that supplies the base execution environment for this agent.",
@@ -33408,6 +33702,11 @@
                   ],
                   "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
                   "example": "Hey, I'm Ava. Ask me anything about your account."
+                },
+                "is_built_in": {
+                  "type": "boolean",
+                  "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
+                  "example": false
                 },
                 "max_iterations": {
                   "type": [
@@ -35163,6 +35462,88 @@
           }
         }
       },
+      "ListResponse_Observer": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "An observer: online scoring config over production sessions.",
+              "required": [
+                "id",
+                "name",
+                "sampling_rate",
+                "scorers",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional description.",
+                  "example": "Grades support replies for grounded answers."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (observer_<32-hex>). Shown as \"id\" in API.",
+                  "example": "observer_01933b5a000070008000000000000001"
+                },
+                "match": {
+                  "$ref": "#/components/schemas/ObserverMatch",
+                  "description": "Which sessions to score."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name.",
+                  "example": "Support answer quality"
+                },
+                "sampling_rate": {
+                  "type": "number",
+                  "format": "double",
+                  "description": "Fraction of matching turns to score (0.0–1.0), applied after match.",
+                  "example": 0.1
+                },
+                "scorers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ObserverScorerConfig"
+                  },
+                  "description": "Scoring rules."
+                },
+                "status": {
+                  "$ref": "#/components/schemas/ObserverStatus",
+                  "description": "Lifecycle status."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_OrganizationResponse": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -35179,10 +35560,19 @@
                 "id",
                 "name",
                 "default_provider_per_service",
+                "system_decisions",
                 "created_at",
                 "updated_at"
               ],
               "properties": {
+                "agentid_agents_per_owner": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+                },
                 "base_harness_id": {
                   "type": [
                     "string",
@@ -35234,6 +35624,10 @@
                   ],
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
+                "system_decisions": {
+                  "$ref": "#/components/schemas/SystemDecisions",
+                  "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
                 },
                 "updated_at": {
                   "type": "string",
@@ -35519,6 +35913,147 @@
           }
         }
       },
+      "ListResponse_TraceScore": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "One score produced by an observer scorer for one trace slice. Linked back\nto the exact session/turn it graded; agent/harness identifiers are\ndenormalized at scoring time for aggregation.",
+              "required": [
+                "id",
+                "observer_id",
+                "scorer_key",
+                "session_id",
+                "turn_id",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "agent_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Agent active in the session at scoring time."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "error_message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Error details if errored."
+                },
+                "harness_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Harness of the session."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (score_<32-hex>). Shown as \"id\" in API.",
+                  "example": "score_01933b5a000070008000000000000001"
+                },
+                "judge_cost_usd": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Judge call cost in USD when the provider reports it (llm_judge only)."
+                },
+                "judge_input_tokens": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "Judge LLM input tokens (llm_judge scores only).",
+                  "minimum": 0
+                },
+                "judge_output_tokens": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "Judge LLM output tokens (llm_judge scores only).",
+                  "minimum": 0
+                },
+                "label": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional categorical label from an LLM judge (e.g. `missing_source`)."
+                },
+                "observer_id": {
+                  "type": "string",
+                  "description": "Observer that produced this score.",
+                  "example": "observer_01933b5a000070008000000000000001"
+                },
+                "pass": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Whether the scorer passed (set when completed)."
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable explanation (set when completed). For LLM judges this is\nthe judge's reasoning — retained as the raw material for the Phase 2\nimprovement loop."
+                },
+                "scorer_key": {
+                  "type": "string",
+                  "description": "Scorer key within the observer.",
+                  "example": "grounded"
+                },
+                "session_id": {
+                  "type": "string",
+                  "description": "Session this score grades.",
+                  "example": "session_01933b5a000070008000000000000001"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/TraceScoreStatus"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "description": "Turn this score grades (turn scope)."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "value": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "format": "double",
+                  "description": "Score value 0.0–1.0 (set when completed).",
+                  "example": 0.85
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_User": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -35610,18 +36145,6 @@
                       ],
                       "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
                       "example": "agent_01933b5a00007000800000000000001"
-                    },
-                    "agent_version_id": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Pinned agent version. Required when policy is `pinned`.",
-                      "example": "agentver_01933b5a00007000800000000000001"
-                    },
-                    "agent_version_policy": {
-                      "$ref": "#/components/schemas/AgentVersionPolicy",
-                      "description": "Version resolution policy for the optional agent."
                     },
                     "archived_at": {
                       "type": [
@@ -37281,9 +37804,17 @@
           "tool_calls_truncated_executed": {
             "type": "integer",
             "format": "int32",
-            "description": "Tool calls handed on for execution although the response was truncated\nor their arguments did not parse, so they may run with incomplete\n(`{}`) arguments. Omitted when zero.",
+            "description": "Tool calls handed on for execution from a response that was cut off.\nTheir own arguments are complete: a call whose arguments were cut off\nor do not parse is dropped (`tool_calls_dropped`), never run with `{}`.\nOmitted when zero.",
             "example": 1,
             "minimum": 0
+          },
+          "truncation_gate": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the output-truncation gate did because this generation lost tool\ncalls (`finish_reason` `length`, or arguments that did not parse):\n`retried` (the model was told and the turn ran another generation) or\n`failed` (the turn ended with an error). Omitted when the gate did not\nact.",
+            "example": "retried"
           },
           "usage": {
             "oneOf": [
@@ -37315,6 +37846,31 @@
               "$ref": "#/components/schemas/ToolCall"
             },
             "description": "Tool calls requested by the model"
+          }
+        }
+      },
+      "LlmJudgeConfig": {
+        "type": "object",
+        "description": "LLM-as-judge scoring configuration. The judge grades the scoped trace\nslice against `rubric` and returns a 0.0–1.0 value, an optional\ncategorical label, and free-text reasoning.",
+        "required": [
+          "rubric"
+        ],
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Org model to judge with. When `None`, the org's default model is used.\nJudge calls go through the org's own providers and are billed to it."
+          },
+          "pass_threshold": {
+            "type": "number",
+            "format": "double",
+            "description": "Score value at/above which `pass` is true."
+          },
+          "rubric": {
+            "type": "string",
+            "description": "Grading rubric shown to the judge model. Should describe what a high\nvs. low score means."
           }
         }
       },
@@ -39151,6 +39707,7 @@
           "microsoft",
           "meta",
           "minimax",
+          "mistral",
           "moonshot",
           "typesafe",
           "xai",
@@ -39481,6 +40038,153 @@
           }
         }
       },
+      "Observer": {
+        "type": "object",
+        "description": "An observer: online scoring config over production sessions.",
+        "required": [
+          "id",
+          "name",
+          "sampling_rate",
+          "scorers",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description.",
+            "example": "Grades support replies for grounded answers."
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (observer_<32-hex>). Shown as \"id\" in API.",
+            "example": "observer_01933b5a000070008000000000000001"
+          },
+          "match": {
+            "$ref": "#/components/schemas/ObserverMatch",
+            "description": "Which sessions to score."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name.",
+            "example": "Support answer quality"
+          },
+          "sampling_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Fraction of matching turns to score (0.0–1.0), applied after match.",
+            "example": 0.1
+          },
+          "scorers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObserverScorerConfig"
+            },
+            "description": "Scoring rules."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ObserverStatus",
+            "description": "Lifecycle status."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ObserverMatch": {
+        "type": "object",
+        "description": "Predicates selecting which production sessions an observer scores.\nAll present predicates must match (AND); within a list, any entry matches (OR).\nAn empty match block matches all org traffic. Sessions tagged `eval` are\nalways excluded so synthetic eval-run sessions are never scored.",
+        "properties": {
+          "agent_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Match sessions running any of these agents."
+          },
+          "harness_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Match sessions on any of these harnesses."
+          },
+          "session_tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Match sessions carrying any of these tags."
+          }
+        }
+      },
+      "ObserverScope": {
+        "type": "string",
+        "description": "What slice of the trace a scorer grades. Phase 1 implements `turn` only;\n`session` and `tool` scopes are reserved for future use.",
+        "enum": [
+          "turn"
+        ]
+      },
+      "ObserverScorerConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ScorerMethod",
+            "description": "How this scorer grades (rule or llm_judge)."
+          },
+          {
+            "type": "object",
+            "required": [
+              "key"
+            ],
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "Stable name within the observer (score series name)."
+              },
+              "scope": {
+                "$ref": "#/components/schemas/ObserverScope",
+                "description": "Trace slice this scorer grades."
+              }
+            }
+          }
+        ],
+        "description": "One scorer inside an observer. `key` names the score series in listings\nand future dashboards; `scope` selects the trace slice; `method` is how\nit grades."
+      },
+      "ObserverStatus": {
+        "type": "string",
+        "description": "Observer lifecycle status. `paused` keeps configuration but stops matching.",
+        "enum": [
+          "active",
+          "paused",
+          "archived",
+          "deleted"
+        ]
+      },
       "OkfFileInput": {
         "type": "object",
         "description": "A single inline bundle file, for callers that send files as JSON rather\nthan a tarball.",
@@ -39604,10 +40308,19 @@
           "id",
           "name",
           "default_provider_per_service",
+          "system_decisions",
           "created_at",
           "updated_at"
         ],
         "properties": {
+          "agentid_agents_per_owner": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+          },
           "base_harness_id": {
             "type": [
               "string",
@@ -39659,6 +40372,10 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "system_decisions": {
+            "$ref": "#/components/schemas/SystemDecisions",
+            "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
           },
           "updated_at": {
             "type": "string",
@@ -39987,13 +40704,14 @@
                   "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                   "example": "agent_01933b5a00007000800000000000001"
                 },
-                "agent_version_id": {
+                "agent_revision": {
                   "type": [
-                    "string",
+                    "integer",
                     "null"
                   ],
-                  "description": "Immutable agent version captured when the session was created or rebound.",
-                  "example": "agentver_01933b5a00007000800000000000001"
+                  "format": "int64",
+                  "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+                  "example": 4
                 },
                 "archived_at": {
                   "type": [
@@ -40967,13 +41685,14 @@
                       "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                       "example": "agent_01933b5a00007000800000000000001"
                     },
-                    "agent_version_id": {
+                    "agent_revision": {
                       "type": [
-                        "string",
+                        "integer",
                         "null"
                       ],
-                      "description": "Immutable agent version captured when the session was created or rebound.",
-                      "example": "agentver_01933b5a00007000800000000000001"
+                      "format": "int64",
+                      "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+                      "example": 4
                     },
                     "archived_at": {
                       "type": [
@@ -43501,25 +44220,6 @@
         ],
         "example": "low"
       },
-      "RollbackAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `rollback_agent_version` operation.",
-        "properties": {
-          "save_version": {
-            "type": "boolean",
-            "description": "When true, snapshot the current agent state as a new version before rolling back.\nUse this to preserve the in-flight work alongside the recovery point.",
-            "example": true
-          },
-          "summary": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Free-text summary attached to the rollback. Shown in the version timeline.",
-            "example": "Reverting refund-window change — false positives in production."
-          }
-        }
-      },
       "RuntimeMessage": {
         "type": "object",
         "description": "A message in the conversation",
@@ -44651,7 +45351,7 @@
               "string",
               "null"
             ],
-            "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent versions are portable and\nlater template revisions cannot change an existing version."
+            "description": "Immutable Sandbox Template revision this specification was copied from.\nThe specification remains complete so Agent snapshots are portable and\nlater template revisions cannot change an existing snapshot."
           }
         }
       },
@@ -45317,6 +46017,366 @@
           }
         }
       },
+      "Scorer": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Final assistant message contains substring.",
+            "required": [
+              "text",
+              "type"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "contains"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Final assistant message does NOT contain substring.",
+            "required": [
+              "text",
+              "type"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "not_contains"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Final assistant message matches regex pattern.",
+            "required": [
+              "pattern",
+              "type"
+            ],
+            "properties": {
+              "pattern": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "regex"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Agent called named tool at least `min` times.",
+            "required": [
+              "tool",
+              "type"
+            ],
+            "properties": {
+              "min": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "tool": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool_called"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Agent did NOT call named tool.",
+            "required": [
+              "tool",
+              "type"
+            ],
+            "properties": {
+              "tool": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool_not_called"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Total tool calls within range.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "max": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "min": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "tool_call_count"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Completed within N turns.",
+            "required": [
+              "max",
+              "type"
+            ],
+            "properties": {
+              "max": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "turns_within"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Session filesystem file contains substring.",
+            "required": [
+              "path",
+              "text",
+              "type"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "file_contains"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Final assistant message parses as JSON matching schema.",
+            "required": [
+              "schema",
+              "type"
+            ],
+            "properties": {
+              "schema": {},
+              "type": {
+                "type": "string",
+                "enum": [
+                  "json_schema"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Citation faithfulness: the answer's citations\nmust cover the claim and be verified as supported. Scored from the\n`TextAnnotation`s on the final message — pair with the\n`citation_verification` capability so verdicts are present.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "min_citations": {
+                "type": "integer",
+                "format": "int32",
+                "description": "Minimum number of citations the answer must carry.",
+                "example": 1,
+                "minimum": 0
+              },
+              "pass_threshold": {
+                "type": "number",
+                "format": "double",
+                "description": "Minimum fraction of citations verified `entailed` to pass.",
+                "example": 0.8
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "citation_faithful"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double",
+                "description": "Relative weight of this scorer in the case's weighted average.",
+                "example": 1.0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Citation faithfulness judged by an LLM: each cited claim/source pair is\ngraded by a model, so the eval works even without the\n`citation_verification` capability.",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "model_id": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/modelId",
+                    "description": "Judge model; the org's default is used when absent."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pass_threshold": {
+                "type": "number",
+                "format": "double",
+                "description": "Minimum judged score `[0,1]` to pass.",
+                "example": 0.8
+              },
+              "rubric": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Rubric override; a citation-faithfulness rubric is used when absent.",
+                "example": "Score the fraction of cited claims supported by their source."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "citation_judged"
+                ]
+              },
+              "weight": {
+                "type": "number",
+                "format": "double",
+                "description": "Relative weight of this scorer in the case's weighted average.",
+                "example": 1.0
+              }
+            }
+          }
+        ],
+        "description": "A scoring rule applied to eval case output."
+      },
+      "ScorerMethod": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Deterministic rule. `file_contains` is rejected for observers (session\nfilesystems are not part of the observable trace contract).",
+            "required": [
+              "rule",
+              "method"
+            ],
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "rule"
+                ]
+              },
+              "rule": {
+                "$ref": "#/components/schemas/Scorer"
+              }
+            }
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LlmJudgeConfig",
+                "description": "LLM-as-judge."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "method"
+                ],
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "llm_judge"
+                    ]
+                  }
+                }
+              }
+            ],
+            "description": "LLM-as-judge."
+          }
+        ],
+        "description": "How a scorer grades a trace slice: a deterministic `rule` (reusing the\neval scorer vocabulary) or an `llm_judge`."
+      },
       "SecretInfo": {
         "type": "object",
         "description": "Secret entry info (name and timestamps only, no value)",
@@ -45420,13 +46480,14 @@
             "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_version_id": {
+          "agent_revision": {
             "type": [
-              "string",
+              "integer",
               "null"
             ],
-            "description": "Immutable agent version captured when the session was created or rebound.",
-            "example": "agentver_01933b5a00007000800000000000001"
+            "format": "int64",
+            "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+            "example": 4
           },
           "archived_at": {
             "type": [
@@ -46133,14 +47194,6 @@
             "description": "Present for agent participants.",
             "example": "agent_01933b5a00007000800000000000001"
           },
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Immutable agent version captured for an agent participant when known.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
           "display_name": {
             "type": [
               "string",
@@ -46772,20 +47825,6 @@
           }
         }
       },
-      "SetDefaultAgentVersionRequest": {
-        "type": "object",
-        "description": "Request body for the `set_default_agent_version` operation.",
-        "required": [
-          "version_id"
-        ],
-        "properties": {
-          "version_id": {
-            "type": "string",
-            "description": "Agent version's prefixed public identifier.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          }
-        }
-      },
       "SetDefaultDecisionModel": {
         "type": "object",
         "description": "Select or clear the organization decision default.",
@@ -47350,6 +48389,14 @@
           }
         ],
         "description": "Response from syncing models from a provider"
+      },
+      "SystemDecisions": {
+        "type": "string",
+        "description": "Who answers an org's deployment-owned decision checks (guardrail `jev`\nchecks and the Slack relevance check).",
+        "enum": [
+          "deployment",
+          "organization"
+        ]
       },
       "TaskArtifact": {
         "type": "object",
@@ -48561,6 +49608,145 @@
           }
         }
       },
+      "TraceScore": {
+        "type": "object",
+        "description": "One score produced by an observer scorer for one trace slice. Linked back\nto the exact session/turn it graded; agent/harness identifiers are\ndenormalized at scoring time for aggregation.",
+        "required": [
+          "id",
+          "observer_id",
+          "scorer_key",
+          "session_id",
+          "turn_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent active in the session at scoring time."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error details if errored."
+          },
+          "harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Harness of the session."
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (score_<32-hex>). Shown as \"id\" in API.",
+            "example": "score_01933b5a000070008000000000000001"
+          },
+          "judge_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Judge call cost in USD when the provider reports it (llm_judge only)."
+          },
+          "judge_input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Judge LLM input tokens (llm_judge scores only).",
+            "minimum": 0
+          },
+          "judge_output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Judge LLM output tokens (llm_judge scores only).",
+            "minimum": 0
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional categorical label from an LLM judge (e.g. `missing_source`)."
+          },
+          "observer_id": {
+            "type": "string",
+            "description": "Observer that produced this score.",
+            "example": "observer_01933b5a000070008000000000000001"
+          },
+          "pass": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the scorer passed (set when completed)."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation (set when completed). For LLM judges this is\nthe judge's reasoning — retained as the raw material for the Phase 2\nimprovement loop."
+          },
+          "scorer_key": {
+            "type": "string",
+            "description": "Scorer key within the observer.",
+            "example": "grounded"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session this score grades.",
+            "example": "session_01933b5a000070008000000000000001"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TraceScoreStatus"
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn this score grades (turn scope)."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "value": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Score value 0.0–1.0 (set when completed).",
+            "example": 0.85
+          }
+        }
+      },
+      "TraceScoreStatus": {
+        "type": "string",
+        "description": "Lifecycle of one trace score. `pending` rows double as the scoring queue.",
+        "enum": [
+          "pending",
+          "scoring",
+          "completed",
+          "errored",
+          "skipped"
+        ]
+      },
       "TranscriptRepairAction": {
         "type": "string",
         "description": "Action taken during transcript repair for a dangling tool call.",
@@ -49024,25 +50210,6 @@
         "type": "object",
         "description": "Request to update an ingress channel owned by an Agent.",
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to pin. Only valid with policy `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Replacement transport-specific channel configuration."
           },
@@ -49059,25 +50226,6 @@
         "type": "object",
         "description": "Request to update an ingress channel owned by an Agent.",
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to pin. Only valid with policy `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "channel_config": {
             "description": "Replacement transport-specific channel configuration."
           },
@@ -49326,25 +50474,6 @@
         "type": "object",
         "description": "Request to update a trigger. Only provided fields change; the rest are\npreserved from the stored config.",
         "properties": {
-          "agent_version_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Version to pin. Only valid with policy `pinned`.",
-            "example": "agentver_01933b5a00007000800000000000001"
-          },
-          "agent_version_policy": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Replacement version policy. `pinned` keeps the current pin when\n`agent_version_id` is omitted; `default` or `latest` clears the pin."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "auth": {
             "description": "Shared endpoint auth is not supported by webhook triggers."
           },
@@ -49353,21 +50482,24 @@
               "string",
               "null"
             ],
-            "description": "Replacement cron expression."
+            "description": "Replacement cron expression.",
+            "example": "0 9 * * 1-5"
           },
           "enabled": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Replacement enabled state."
+            "description": "Replacement enabled state.",
+            "example": true
           },
           "event_id_template": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement idempotency-key template. An empty string removes it."
+            "description": "Replacement idempotency-key template. An empty string removes it.",
+            "example": "{{webhook.headers.x-github-delivery}}"
           },
           "filter": {
             "oneOf": [
@@ -49388,14 +50520,18 @@
             "items": {
               "type": "string"
             },
-            "description": "Replacement GitHub event subscriptions."
+            "description": "Replacement GitHub event subscriptions.",
+            "example": [
+              "pull_request.opened"
+            ]
           },
           "mcp_event": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement MCP event name."
+            "description": "Replacement MCP event name.",
+            "example": "issue.created"
           },
           "mcp_event_arguments": {
             "type": [
@@ -49409,14 +50545,16 @@
               "string",
               "null"
             ],
-            "description": "Replacement MCP server attachment name."
+            "description": "Replacement MCP server attachment name.",
+            "example": "tracker"
           },
           "message": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement message sent when the trigger fires."
+            "description": "Replacement message sent when the trigger fires.",
+            "example": "Run the daily digest"
           },
           "rate_limit_per_minute": {
             "type": [
@@ -49425,6 +50563,7 @@
             ],
             "format": "int32",
             "description": "Replacement per-ingress, per-IP webhook request limit.",
+            "example": 60,
             "minimum": 0
           },
           "repositories": {
@@ -49435,7 +50574,10 @@
             "items": {
               "type": "string"
             },
-            "description": "Replacement GitHub repository scope. An empty list accepts all."
+            "description": "Replacement GitHub repository scope. An empty list accepts all.",
+            "example": [
+              "everruns/everruns"
+            ]
           },
           "session_mode": {
             "oneOf": [
@@ -49453,14 +50595,16 @@
               "string",
               "null"
             ],
-            "description": "Replacement subject template. An empty string removes it."
+            "description": "Replacement subject template. An empty string removes it.",
+            "example": "{{webhook.json.action}}"
           },
           "timezone": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Replacement IANA timezone identifier."
+            "description": "Replacement IANA timezone identifier.",
+            "example": "UTC"
           },
           "token": {
             "type": [
@@ -50117,6 +51261,67 @@
           }
         }
       },
+      "UpdateObserverRequest": {
+        "type": "object",
+        "description": "Request to update an observer. Omitted fields are unchanged.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Score replies from the support agent"
+          },
+          "match": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ObserverMatch"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Support quality"
+          },
+          "sampling_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Fraction of matching turns to score (0.0–1.0).",
+            "example": 0.5
+          },
+          "scorers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ObserverScorerConfig"
+            }
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ObserverStatus",
+                "description": "New lifecycle status (`active`, `paused`, or `archived`)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "UpdateOrgFeatureFlagsRequest": {
         "type": "object",
         "required": [
@@ -50139,6 +51344,16 @@
         "type": "object",
         "description": "Request to update an organization",
         "properties": {
+          "agentid_agents_per_owner": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many agents one AgentID owner may sign in to this organization's\nPublic Chat channels. Pass null to use the platform default (5).",
+            "example": 5,
+            "minimum": 0
+          },
           "base_harness_id": {
             "type": [
               "string",
@@ -50191,6 +51406,17 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "system_decisions": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SystemDecisions",
+                "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -50664,6 +51890,37 @@
           }
         }
       },
+      "UpdateUserMcpServerRequest": {
+        "type": "object",
+        "description": "Change a user MCP server. The URL cannot change; remove and re-add the\nserver instead.",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replace the API key of an `api_key` server."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateVirtualUserRequest": {
         "type": "object",
         "description": "Update a runtime account profile or its management lifecycle.",
@@ -50850,6 +52107,15 @@
           }
         }
       },
+      "UserMcpConnectionStatus": {
+        "type": "string",
+        "description": "Whether the person has signed in to a user MCP server.",
+        "enum": [
+          "connected",
+          "not_connected",
+          "not_needed"
+        ]
+      },
       "UserMcpConnectionsResponse": {
         "type": "object",
         "description": "One page of the current user's MCP connections in the selected organization.",
@@ -50883,6 +52149,123 @@
             ],
             "description": "Cursor for the next page, or null when this is the final page.",
             "example": "01933b5a-0000-7000-8000-000000000002"
+          }
+        }
+      },
+      "UserMcpServer": {
+        "type": "object",
+        "description": "An MCP server a person added for themselves.",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "source",
+          "auth_mode",
+          "enabled",
+          "connection",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "auth_mode": {
+            "$ref": "#/components/schemas/McpServerAuthMode"
+          },
+          "catalog_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Catalog preset name, for servers added from the catalog."
+          },
+          "connection": {
+            "$ref": "#/components/schemas/UserMcpServerConnection"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Disabled servers are kept but never offered to agents."
+          },
+          "header_names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Names of the literal headers sent with each request. Values are\nwrite-only."
+          },
+          "id": {
+            "type": "string",
+            "example": "mcp_01933b5a00007000800000000000001"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/UserMcpServerSource"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "UserMcpServerConnection": {
+        "type": "object",
+        "description": "Sign-in state of a user MCP server.",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Connection provider to pass to the authorize endpoint\n(`/v1/virtual-users/{id}/connections/{provider}/authorize`) when the\nserver signs in with OAuth."
+          },
+          "status": {
+            "$ref": "#/components/schemas/UserMcpConnectionStatus"
+          }
+        }
+      },
+      "UserMcpServerSource": {
+        "type": "string",
+        "description": "Where a user MCP server came from.",
+        "enum": [
+          "catalog",
+          "custom"
+        ]
+      },
+      "UserMcpServersResponse": {
+        "type": "object",
+        "description": "List response for user MCP servers.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserMcpServer"
+            }
           }
         }
       },
@@ -51676,14 +53059,6 @@
                 "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                 "example": "model_01933b5a00007000800000000000001"
               },
-              "default_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Default immutable version used by deployments that choose the default policy.",
-                "example": "agentver_01933b5a00007000800000000000001"
-              },
               "deleted_at": {
                 "type": [
                   "string",
@@ -51725,14 +53100,6 @@
                 "description": "Source agent for a forked agent.",
                 "example": "agent_01933b5a00007000800000000000001"
               },
-              "forked_from_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Source version for a forked agent.",
-                "example": "agentver_01933b5a00007000800000000000001"
-              },
               "harness_id": {
                 "type": "string",
                 "description": "Harness that supplies the base execution environment for this agent.",
@@ -51757,6 +53124,11 @@
                 ],
                 "description": "Optional Markdown intro rendered as an intro box at the top of a fresh\nPlatform Chat thread. Images are allowed. Wins over the harness intro.\nHidden once the user inputs.",
                 "example": "Hey, I'm Ava. Ask me anything about your account."
+              },
+              "is_built_in": {
+                "type": "boolean",
+                "description": "Built-in agents (Platform Chat) are provisioned by the platform and\nare read-only: they cannot be modified or deleted via the API. Copy\none to get an editable version.",
+                "example": false
               },
               "max_iterations": {
                 "type": [
@@ -52017,18 +53389,6 @@
                 "description": "Optional ID of the agent to use (format: agent_{32-hex}).",
                 "example": "agent_01933b5a00007000800000000000001"
               },
-              "agent_version_id": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Pinned agent version. Required when policy is `pinned`.",
-                "example": "agentver_01933b5a00007000800000000000001"
-              },
-              "agent_version_policy": {
-                "$ref": "#/components/schemas/AgentVersionPolicy",
-                "description": "Version resolution policy for the optional agent."
-              },
               "archived_at": {
                 "type": [
                   "string",
@@ -52137,6 +53497,127 @@
                 ],
                 "description": "Optional virtual identity that represents the app in unattended/channel execution.",
                 "example": "identity_01933b5a00007000800000000000001"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+      },
+      "WithUrls_Budget": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "Budget — a stored spending cap for a platform subject.",
+            "required": [
+              "id",
+              "organization_id",
+              "subject_type",
+              "subject_id",
+              "currency",
+              "limit",
+              "balance",
+              "status",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "balance": {
+                "type": "number",
+                "format": "double",
+                "description": "Current remaining balance (limit minus consumed)."
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "currency": {
+                "type": "string",
+                "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+              },
+              "id": {
+                "type": "string",
+                "example": "bdgt_01933b5a00007000800000000000001"
+              },
+              "limit": {
+                "type": "number",
+                "format": "double",
+                "description": "Hard limit — budget ceiling."
+              },
+              "metadata": {
+                "description": "Arbitrary metadata."
+              },
+              "organization_id": {
+                "type": "string"
+              },
+              "period": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BudgetPeriod",
+                    "description": "Optional period for recurring budgets."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "period_started_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+              },
+              "soft_limit": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Soft limit — triggers pause/warn when balance drops below this."
+              },
+              "status": {
+                "$ref": "#/components/schemas/BudgetStatus"
+              },
+              "subject_id": {
+                "type": "string",
+                "description": "Public ID of the subject entity."
+              },
+              "subject_type": {
+                "$ref": "#/components/schemas/BudgetSubjectType"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           },
@@ -53496,13 +54977,14 @@
                 "description": "ID of the agent working in this session (format: agent_{32-hex}). Optional.",
                 "example": "agent_01933b5a00007000800000000000001"
               },
-              "agent_version_id": {
+              "agent_revision": {
                 "type": [
-                  "string",
+                  "integer",
                   "null"
                 ],
-                "description": "Immutable agent version captured when the session was created or rebound.",
-                "example": "agentver_01933b5a00007000800000000000001"
+                "format": "int64",
+                "description": "Revision of the agent's history this session started on, when the\nagent had one. `everruns history show <agent> --revision N` shows the\nconfiguration that ran.",
+                "example": 4
               },
               "archived_at": {
                 "type": [
@@ -54436,12 +55918,6 @@
         "example": "agent_01933b5a000070008000000000000001",
         "pattern": "^agent_[0-9a-f]{32}$"
       },
-      "agentverId": {
-        "type": "string",
-        "description": "Prefixed identifier with 'agentver' prefix",
-        "example": "agentver_01933b5a000070008000000000000001",
-        "pattern": "^agentver_[0-9a-f]{32}$"
-      },
       "eventId": {
         "type": "string",
         "description": "Prefixed identifier with 'event' prefix",
@@ -54453,6 +55929,12 @@
         "description": "Prefixed identifier with 'harness' prefix",
         "example": "harness_01933b5a000070008000000000000001",
         "pattern": "^harness_[0-9a-f]{32}$"
+      },
+      "modelId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'model' prefix",
+        "example": "model_01933b5a000070008000000000000001",
+        "pattern": "^model_[0-9a-f]{32}$"
       },
       "payacctId": {
         "type": "string",

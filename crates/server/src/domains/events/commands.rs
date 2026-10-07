@@ -127,22 +127,16 @@ impl ListEvents {
     }
 }
 
+#[command(
+    name = "list_events",
+    category = "events",
+    description = "List events for a session.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/events",
+    positional = "session_id"
+)]
 impl Command for ListEvents {
     type Output = ListEventsResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_events",
-            category: "events",
-            description: "List events for a session.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/events",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ListEventsResult, CommandError> {
         validate_event_type_list(&self.types, "types")?;
@@ -205,8 +199,7 @@ impl Command for ListEvents {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         let is_paginated = self.limit.is_some();
@@ -234,16 +227,12 @@ impl Command for ListEvents {
                 order_desc: self.order_desc,
                 limit: self.limit,
             };
-            let events = q::event_service(ctx)?
-                .list_advanced(&params)
-                .await
-                .map_err(classify_anyhow)?;
+            let events = q::event_service(ctx)?.list_advanced(&params).await?;
             let total = if is_paginated {
                 Some(
                     q::event_service(ctx)?
                         .count_events(session_id.uuid(), &self.exclude)
-                        .await
-                        .map_err(classify_anyhow)?,
+                        .await?,
                 )
             } else {
                 None
@@ -264,8 +253,7 @@ impl Command for ListEvents {
                 self.before_sequence,
                 self.limit,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
 
         if is_paginated && !events.is_empty() && self.before_sequence.is_some() {
             let first_seq = events[0].sequence.unwrap_or(0);
@@ -296,8 +284,7 @@ impl Command for ListEvents {
             Some(
                 q::event_service(ctx)?
                     .count_events(session_id.uuid(), &self.exclude)
-                    .await
-                    .map_err(classify_anyhow)?,
+                    .await?,
             )
         } else {
             None
@@ -309,8 +296,6 @@ impl Command for ListEvents {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListEvents>() }
 
 /// One row of `EventsSummaryResult.by_type` — the per-event-type count
 /// produced by the events summary query.
@@ -348,35 +333,25 @@ pub struct EventsSummaryCmd {
     pub session_id: String,
 }
 
+#[command(
+    name = "events_summary",
+    category = "events",
+    description = "One-shot debug summary for a session: counts by type, first/last timestamps, turn count, error count.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/events/summary",
+    positional = "session_id"
+)]
 impl Command for EventsSummaryCmd {
     type Output = EventsSummaryResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "events_summary",
-            category: "events",
-            description: "One-shot debug summary for a session: counts by type, first/last timestamps, turn count, error count.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/events/summary",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<EventsSummaryResult, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
-        let summary = q::event_service(ctx)?
-            .summary(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let summary = q::event_service(ctx)?.summary(session_id.uuid()).await?;
 
         let mut turn_count = 0i64;
         let mut error_count = 0i64;
@@ -412,30 +387,22 @@ impl Command for EventsSummaryCmd {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<EventsSummaryCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct StreamSse {
     /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
+#[command(
+    name = "stream_sse",
+    category = "events",
+    description = "Stream events via SSE. Not supported in bash mode.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/sse",
+    positional = "session_id"
+)]
 impl Command for StreamSse {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "stream_sse",
-            category: "events",
-            description: "Stream events via SSE. Not supported in bash mode.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/sse",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, _ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         Err(CommandError::bad_request(
@@ -443,8 +410,6 @@ impl Command for StreamSse {
         ))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<StreamSse>() }
 
 #[cfg(test)]
 mod tests {

@@ -163,8 +163,8 @@ export function createCrudHooks<TItem, TCreate, TUpdate>({
     return useMutation({
       mutationFn: (variables: LifecycleMutationVariables) =>
         api.delete(...lifecycleArgs(variables)),
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.all });
+      onSuccess: (_data, variables) => {
+        invalidateCrudQueries(queryClient, queryKeys, lifecycleArgs(variables)[0]);
       },
     });
   }
@@ -175,8 +175,8 @@ export function createCrudHooks<TItem, TCreate, TUpdate>({
     return useMutation({
       mutationFn: (variables: LifecycleMutationVariables) =>
         api.destroy(...lifecycleArgs(variables)),
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.all });
+      onSuccess: (_data, variables) => {
+        invalidateCrudQueries(queryClient, queryKeys, lifecycleArgs(variables)[0]);
       },
     });
   }

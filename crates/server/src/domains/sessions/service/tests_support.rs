@@ -96,16 +96,12 @@ pub(crate) fn build_create_request(
 }
 
 pub(crate) async fn create_second_org(db: &StorageBackend) -> i64 {
-    db.create_organization_with_id(
-        2,
-        CreateOrganizationRow {
-            public_id: "org_2".to_string(),
-            name: "Org 2".to_string(),
-            created_by: None,
-        },
-    )
+    db.create_organization(CreateOrganizationRow {
+        public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
+        name: "Org 2".to_string(),
+        created_by: None,
+    })
     .await
-    .unwrap()
     .unwrap()
     .org_id
 }

@@ -62,7 +62,8 @@ pub struct HealthCheckTarget {
 
 /// Spawn the run in the background and return immediately.
 pub fn spawn_health_check_run(ctx: Arc<HealthCheckRunContext>, target: HealthCheckTarget) {
-    tokio::spawn(async move {
+    // It reads the run row, so it starts once that commits.
+    crate::storage::transaction::spawn_after_commit(async move {
         if let Err(e) = execute_run(&ctx, &target).await {
             tracing::warn!(error = %e, run_id = %target.run_id, "health check run failed");
             let safe_error = super::super::safe_agent_check_error(&e).fallback_message();

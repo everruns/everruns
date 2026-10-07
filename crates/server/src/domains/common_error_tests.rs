@@ -19,7 +19,6 @@ fn command_metadata_declares_feature_gated_surfaces() {
             "payments",
             Some("machine_payments"),
         ),
-        ("create_agent_version", "agents", Some("agent_versions")),
         ("list_agents", "agents", None),
     ] {
         let meta = CommandMeta {
@@ -35,7 +34,7 @@ fn command_metadata_declares_feature_gated_surfaces() {
 
 #[tokio::test]
 async fn dispatch_accepts_empty_object_for_unit_commands() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = Ctx::minimal_for_test(Caller::internal(1), db, None);
 
     let result = dispatch("get_report_catalog", serde_json::json!({}), &ctx)
@@ -48,7 +47,7 @@ async fn dispatch_accepts_empty_object_for_unit_commands() {
 
 #[tokio::test]
 async fn dispatch_does_not_coerce_nonempty_objects_for_unit_commands() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let ctx = Ctx::minimal_for_test(Caller::internal(1), db, None);
 
     let error = dispatch(

@@ -708,12 +708,9 @@ impl StorageBackend {
     }
 
     /// Whether the session ran on the OpenAI Agents API backend and so has
-    /// provider-held state (EVE-1126). The in-memory backend never does: the
-    /// backend needs the PostgreSQL checkpoint store.
+    /// provider-held state (EVE-1126).
     pub async fn session_has_agents_api_state(&self, org_id: i64, id: SessionId) -> Result<bool> {
-        let Some(pool) = self.pool() else {
-            return Ok(false);
-        };
+        let pool = self.pool();
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM agents_api_sessions WHERE org_id = $1 AND session_id = $2)",
         )

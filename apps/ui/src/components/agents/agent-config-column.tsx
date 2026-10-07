@@ -9,7 +9,7 @@
 // The controls are live in view mode too: changing one puts the page into
 // edit mode with that change pending, so nothing is saved until Save.
 
-import { ChevronRight, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TagInput } from "@/components/ui/tag-input";
@@ -20,13 +20,10 @@ import type { AgentDraft } from "@/components/agents/use-agent-draft";
 import type { Agent, Capability, ModelWithProvider } from "@/lib/api/types";
 import { AgentCapabilityList } from "./agent-capability-list";
 import { normalizeTags } from "@/lib/tags";
+import { MoreSettingsNav, type MoreSettingsRow } from "@/components/workspace/more-settings-nav";
 import { cn } from "@/lib/utils";
 
-export interface AgentMoreRow {
-  id: string;
-  label: string;
-  summary: string;
-}
+export type AgentMoreRow = MoreSettingsRow;
 
 interface AgentConfigColumnProps {
   agent: Agent;
@@ -102,6 +99,7 @@ export function AgentConfigColumn({
               selected={draft.capabilities}
               onChange={draft.setCapabilities}
               label="Capabilities"
+              compact
             />
           ) : (
             <>
@@ -180,23 +178,7 @@ export function AgentConfigColumn({
         </div>
       </div>
 
-      <nav aria-label="More settings" className="flex flex-col pt-2 pb-4">
-        <p className="px-4 pt-2 pb-1 font-mono text-[11px] tracking-[0.08em] text-muted-foreground uppercase">
-          More
-        </p>
-        {moreRows.map((row) => (
-          <button
-            key={row.id}
-            type="button"
-            onClick={() => onOpenRow(row.id)}
-            className="flex items-center gap-2 px-4 py-2 text-left text-[13px] transition-colors hover:bg-muted"
-          >
-            <span className="flex-1">{row.label}</span>
-            <span className="min-w-0 truncate text-muted-foreground">{row.summary}</span>
-            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-          </button>
-        ))}
-      </nav>
+      <MoreSettingsNav rows={moreRows} onOpen={onOpenRow} />
     </aside>
   );
 }

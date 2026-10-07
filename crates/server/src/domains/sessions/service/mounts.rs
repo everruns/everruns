@@ -387,16 +387,23 @@ impl SessionService {
         name: String,
         description: &str,
     ) -> Result<MemoryRow> {
-        if let Some(memory) = self
-            .db
-            .get_memory_by_scope_owner(org_id, scope, owner_agent_id, owner_user_id)
-            .await?
-            .filter(|memory| memory.status == "active")
-        {
+        let find = || async {
+            Ok::<_, anyhow::Error>(
+                self.db
+                    .get_memory_by_scope_owner(org_id, scope, owner_agent_id, owner_user_id)
+                    .await?
+                    .filter(|memory| memory.status == "active"),
+            )
+        };
+        if let Some(memory) = find().await? {
             return Ok(memory);
         }
 
-        self.db
+        // Two sessions created at once for the same agent or user both miss
+        // the read above; the loser of the insert race reads the winner's row
+        // instead of failing session creation with a 409.
+        let created = self
+            .db
             .create_memory(
                 org_id,
                 CreateMemoryRow {
@@ -414,6 +421,10 @@ impl SessionService {
                     resolved_owner_user_id: owner_user_id,
                 },
             )
-            .await
+            .await;
+        match created {
+            Ok(memory) => Ok(memory),
+            Err(error) => find().await?.ok_or(error),
+        }
     }
 }

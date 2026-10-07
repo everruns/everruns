@@ -6,7 +6,6 @@ use crate::storage::models::{
     CreatePaymentAccountRow, CreatePaymentPolicyRow, UpdatePaymentAccountRow,
     UpdatePaymentPolicyRow,
 };
-use everruns_core::Policy;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -95,22 +94,16 @@ impl CommandSchema for CreatePaymentAccount {
     }
 }
 
+#[command(
+    name = "create_payment_account",
+    category = "payments",
+    description = "Create a machine-payment wallet account.",
+    method = "POST",
+    path = "/v1/payments/accounts",
+    policy = PAYMENT_MANAGE,
+)]
 impl Command for CreatePaymentAccount {
     type Output = PaymentAccount;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_payment_account",
-            category: "payments",
-            description: "Create a machine-payment wallet account.",
-            method: "POST",
-            path: "/v1/payments/accounts",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentAccount, CommandError> {
         let req = self.0;
@@ -132,13 +125,10 @@ impl Command for CreatePaymentAccount {
                     metadata: req.metadata.unwrap_or_else(|| serde_json::json!({})),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(q::row_to_account(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreatePaymentAccount>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentAccounts {
@@ -146,22 +136,16 @@ pub struct ListPaymentAccounts {
     pub owner_id: Option<String>,
 }
 
+#[command(
+    name = "list_payment_accounts",
+    category = "payments",
+    description = "List machine-payment wallet accounts.",
+    method = "GET",
+    path = "/v1/payments/accounts",
+    policy = PAYMENT_VIEW,
+)]
 impl Command for ListPaymentAccounts {
     type Output = Vec<PaymentAccount>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_payment_accounts",
-            category: "payments",
-            description: "List machine-payment wallet accounts.",
-            method: "GET",
-            path: "/v1/payments/accounts",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<PaymentAccount>, CommandError> {
         let rows = ctx
@@ -171,49 +155,37 @@ impl Command for ListPaymentAccounts {
                 self.owner_type.as_deref(),
                 self.owner_id.as_deref(),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_account).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListPaymentAccounts>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPaymentAccount {
     pub payment_account_id: String,
 }
 
+#[command(
+    name = "get_payment_account",
+    category = "payments",
+    description = "Get a machine-payment wallet account.",
+    method = "GET",
+    path = "/v1/payments/accounts/{payment_account_id}",
+    policy = PAYMENT_VIEW,
+)]
 impl Command for GetPaymentAccount {
     type Output = PaymentAccount;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_payment_account",
-            category: "payments",
-            description: "Get a machine-payment wallet account.",
-            method: "GET",
-            path: "/v1/payments/accounts/{payment_account_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentAccount, CommandError> {
         let id = q::parse_payment_account_id(&self.payment_account_id)?;
         let row = ctx
             .db
             .get_payment_account(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment account"))?;
         Ok(q::row_to_account(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetPaymentAccount>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePaymentAccountCmd {
@@ -227,22 +199,16 @@ pub struct UpdatePaymentAccountCmd {
     pub metadata: Option<serde_json::Value>,
 }
 
+#[command(
+    name = "update_payment_account",
+    category = "payments",
+    description = "Update a machine-payment wallet account.",
+    method = "PATCH",
+    path = "/v1/payments/accounts/{payment_account_id}",
+    policy = PAYMENT_MANAGE,
+)]
 impl Command for UpdatePaymentAccountCmd {
     type Output = PaymentAccount;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_payment_account",
-            category: "payments",
-            description: "Update a machine-payment wallet account.",
-            method: "PATCH",
-            path: "/v1/payments/accounts/{payment_account_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentAccount, CommandError> {
         if let Some(status) = self.status.as_deref() {
@@ -263,37 +229,28 @@ impl Command for UpdatePaymentAccountCmd {
                     metadata: self.metadata,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment account"))?;
         validate_required_signing_material(&row.rail, row.credential_encrypted.as_deref())?;
         Ok(q::row_to_account(&row))
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdatePaymentAccountCmd>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DisablePaymentAccount {
     pub payment_account_id: String,
 }
 
+#[command(
+    name = "disable_payment_account",
+    category = "payments",
+    description = "Disable a machine-payment wallet account.",
+    method = "DELETE",
+    path = "/v1/payments/accounts/{payment_account_id}",
+    policy = PAYMENT_MANAGE,
+)]
 impl Command for DisablePaymentAccount {
     type Output = PaymentDeleteResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "disable_payment_account",
-            category: "payments",
-            description: "Disable a machine-payment wallet account.",
-            method: "DELETE",
-            path: "/v1/payments/accounts/{payment_account_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentDeleteResult, CommandError> {
         let id = q::parse_payment_account_id(&self.payment_account_id)?;
@@ -307,15 +264,12 @@ impl Command for DisablePaymentAccount {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(PaymentDeleteResult {
             disabled: row.is_some(),
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DisablePaymentAccount>() }
 
 #[derive(Debug, Deserialize, serde::Serialize)]
 pub struct CreatePaymentPolicy(pub CreatePaymentPolicyRequest);
@@ -326,22 +280,16 @@ impl CommandSchema for CreatePaymentPolicy {
     }
 }
 
+#[command(
+    name = "create_payment_policy",
+    category = "payments",
+    description = "Create a machine-payment spend policy.",
+    method = "POST",
+    path = "/v1/payments/policies",
+    policy = PAYMENT_MANAGE,
+)]
 impl Command for CreatePaymentPolicy {
     type Output = PaymentPolicy;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_payment_policy",
-            category: "payments",
-            description: "Create a machine-payment spend policy.",
-            method: "POST",
-            path: "/v1/payments/policies",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentPolicy, CommandError> {
         let mut req = self.0;
@@ -362,8 +310,7 @@ impl Command for CreatePaymentPolicy {
         let _account = ctx
             .db
             .get_payment_account(ctx.org_id(), account_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment account"))?;
         let row = ctx
             .db
@@ -383,13 +330,10 @@ impl Command for CreatePaymentPolicy {
                     metadata: req.metadata.unwrap_or_else(|| serde_json::json!({})),
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(q::row_to_policy(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreatePaymentPolicy>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentPolicies {
@@ -398,22 +342,16 @@ pub struct ListPaymentPolicies {
     pub subject_id: Option<String>,
 }
 
+#[command(
+    name = "list_payment_policies",
+    category = "payments",
+    description = "List machine-payment spend policies.",
+    method = "GET",
+    path = "/v1/payments/policies",
+    policy = PAYMENT_VIEW,
+)]
 impl Command for ListPaymentPolicies {
     type Output = Vec<PaymentPolicy>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_payment_policies",
-            category: "payments",
-            description: "List machine-payment spend policies.",
-            method: "GET",
-            path: "/v1/payments/policies",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<PaymentPolicy>, CommandError> {
         let account_id = self
@@ -435,49 +373,37 @@ impl Command for ListPaymentPolicies {
                 }),
                 self.subject_id.as_deref(),
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_policy).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListPaymentPolicies>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetPaymentPolicy {
     pub payment_policy_id: String,
 }
 
+#[command(
+    name = "get_payment_policy",
+    category = "payments",
+    description = "Get a machine-payment spend policy.",
+    method = "GET",
+    path = "/v1/payments/policies/{payment_policy_id}",
+    policy = PAYMENT_VIEW,
+)]
 impl Command for GetPaymentPolicy {
     type Output = PaymentPolicy;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_payment_policy",
-            category: "payments",
-            description: "Get a machine-payment spend policy.",
-            method: "GET",
-            path: "/v1/payments/policies/{payment_policy_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentPolicy, CommandError> {
         let id = q::parse_payment_policy_id(&self.payment_policy_id)?;
         let row = ctx
             .db
             .get_payment_policy(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment policy"))?;
         Ok(q::row_to_policy(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetPaymentPolicy>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdatePaymentPolicyCmd {
@@ -495,22 +421,16 @@ pub struct UpdatePaymentPolicyCmd {
     pub metadata: Option<serde_json::Value>,
 }
 
+#[command(
+    name = "update_payment_policy",
+    category = "payments",
+    description = "Update a machine-payment spend policy.",
+    method = "PATCH",
+    path = "/v1/payments/policies/{payment_policy_id}",
+    policy = PAYMENT_MANAGE,
+)]
 impl Command for UpdatePaymentPolicyCmd {
     type Output = PaymentPolicy;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_payment_policy",
-            category: "payments",
-            description: "Update a machine-payment spend policy.",
-            method: "PATCH",
-            path: "/v1/payments/policies/{payment_policy_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentPolicy, CommandError> {
         if let Some(status) = self.status.as_deref() {
@@ -545,36 +465,27 @@ impl Command for UpdatePaymentPolicyCmd {
                     metadata: self.metadata,
                 },
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Payment policy"))?;
         Ok(q::row_to_policy(&row))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdatePaymentPolicyCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DisablePaymentPolicy {
     pub payment_policy_id: String,
 }
 
+#[command(
+    name = "disable_payment_policy",
+    category = "payments",
+    description = "Disable a machine-payment spend policy.",
+    method = "DELETE",
+    path = "/v1/payments/policies/{payment_policy_id}",
+    policy = PAYMENT_MANAGE,
+)]
 impl Command for DisablePaymentPolicy {
     type Output = PaymentDeleteResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "disable_payment_policy",
-            category: "payments",
-            description: "Disable a machine-payment spend policy.",
-            method: "DELETE",
-            path: "/v1/payments/policies/{payment_policy_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<PaymentDeleteResult, CommandError> {
         let id = q::parse_payment_policy_id(&self.payment_policy_id)?;
@@ -588,15 +499,12 @@ impl Command for DisablePaymentPolicy {
                     ..Default::default()
                 },
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(PaymentDeleteResult {
             disabled: row.is_some(),
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DisablePaymentPolicy>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListPaymentAttempts {
@@ -606,22 +514,16 @@ pub struct ListPaymentAttempts {
     pub limit: i64,
 }
 
+#[command(
+    name = "list_payment_attempts",
+    category = "payments",
+    description = "List machine-payment attempts.",
+    method = "GET",
+    path = "/v1/payments/attempts",
+    policy = PAYMENT_VIEW,
+)]
 impl Command for ListPaymentAttempts {
     type Output = Vec<PaymentAttempt>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_payment_attempts",
-            category: "payments",
-            description: "List machine-payment attempts.",
-            method: "GET",
-            path: "/v1/payments/attempts",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&PAYMENT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<PaymentAttempt>, CommandError> {
         let session_id = self
@@ -632,13 +534,10 @@ impl Command for ListPaymentAttempts {
         let rows = ctx
             .db
             .list_payment_attempts(ctx.org_id(), session_id, self.limit.clamp(1, 200))
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_attempt).collect())
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListPaymentAttempts>() }
 
 #[cfg(test)]
 mod tests {
@@ -654,7 +553,7 @@ mod tests {
                 .unwrap();
         Ctx::minimal_for_test(
             Caller::internal(DEFAULT_ORG_ID),
-            Arc::new(StorageBackend::in_memory()),
+            Arc::new(StorageBackend::test_database()),
             Some(Arc::new(encryption)),
         )
     }

@@ -50,7 +50,7 @@ struct Seed {
 /// `SessionService::list` resolves a fallback harness for rows without one, so
 /// every org used by these tests needs its built-in harnesses provisioned.
 async fn new_db(orgs: &[i64]) -> Arc<StorageBackend> {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     for org_id in orgs {
         crate::org_init::initialize_org_harnesses(&db, *org_id)
             .await
@@ -100,8 +100,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
             trigger_id: None,
             harness_id: None,
             agent_id: spec.agent_id,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id,
             resolved_owner_user_id: spec.owner_user_id,
@@ -442,8 +441,7 @@ async fn facets_never_count_across_organizations() {
         trigger_id: None,
         harness_id: None,
         agent_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: None,

@@ -1,4 +1,4 @@
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use crate::records::Session;
 use crate::storage::StorageBackend;
 use anyhow::Context;
@@ -89,7 +89,6 @@ pub async fn get_session(
 ) -> Result<Session, CommandError> {
     session_service(ctx)?
         .get(&ctx.caller, session_id.uuid(), user_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Session"))
 }

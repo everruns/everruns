@@ -93,8 +93,8 @@ ordinary entity API.
 Internal numeric organization IDs are storage and authorization details. Public
 APIs, URLs, client logs, and user-facing errors use public prefixed IDs.
 
-These rules apply across all storage implementations. The in-memory backend is
-not allowed to weaken isolation for convenience.
+These rules apply to every storage path; tests run the same PostgreSQL
+repositories as production.
 
 Sessions and their dependent records may inherit organization through their
 owning resource or may store organization directly as the schema evolves. The
@@ -210,7 +210,7 @@ domain and migrations. See [`usage-tracking.md`](usage-tracking.md) and
 - Every resource lookup is scoped before returning existence or content.
 - Internal organization IDs do not cross public boundaries.
 - Cookie/header selection is validated against current membership.
-- In-memory and PostgreSQL backends implement the same isolation behavior.
+- Tests and DEV_MODE run the same PostgreSQL isolation behavior as production.
 - Background and worker paths carry authenticated organization context.
 - Invitation tokens, hashes, and email-provider errors do not leak.
 - Cross-org resolution returns only caller memberships.

@@ -6,6 +6,7 @@ use super::build_search_sql;
 use anyhow::Result;
 use everruns_contracts::typed_id::AgentId;
 use everruns_contracts::typed_id::VirtualUserId;
+use everruns_server_macros::sql;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -55,12 +56,11 @@ impl Database {
 
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
-            r#"
+            sql!(r#"
             INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active')
-            RETURNING id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
-            "#,
+            RETURNING {AgentRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -97,7 +97,7 @@ impl Database {
         input: CreateAgentRow,
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
-            r#"
+            sql!(r#"
             INSERT INTO agents (id, org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'active')
             ON CONFLICT (id) DO UPDATE SET
@@ -135,9 +135,8 @@ impl Database {
                 OR agents.max_iterations IS DISTINCT FROM EXCLUDED.max_iterations
                 OR agents.parallel_tool_calls IS DISTINCT FROM EXCLUDED.parallel_tool_calls
                 OR agents.environments IS DISTINCT FROM EXCLUDED.environments
-            RETURNING id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
-            "#,
+            RETURNING {AgentRow}
+            "#),
         )
         .bind(id.uuid())
         .bind(org_id)
@@ -167,14 +166,13 @@ impl Database {
     }
 
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
-        let row = sqlx::query_as::<_, AgentRow>(
+        let row = sqlx::query_as::<_, AgentRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
+            SELECT {AgentRow}
             FROM agents
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id.uuid())
         .fetch_optional(&self.pool)
@@ -185,14 +183,13 @@ impl Database {
 
     pub async fn get_agents_by_ids(&self, org_id: i64, ids: &[AgentId]) -> Result<Vec<AgentRow>> {
         let ids: Vec<Uuid> = ids.iter().map(|id| id.uuid()).collect();
-        Ok(sqlx::query_as::<_, AgentRow>(
+        Ok(sqlx::query_as::<_, AgentRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
+            SELECT {AgentRow}
             FROM agents
             WHERE org_id = $1 AND id = ANY($2)
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(&ids)
         .fetch_all(&self.pool)
@@ -216,14 +213,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<AgentRow>> {
-        let row = sqlx::query_as::<_, AgentRow>(
+        let row = sqlx::query_as::<_, AgentRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
+            SELECT {AgentRow}
             FROM agents
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -266,7 +262,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
+            r#"SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, forked_from_agent_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -304,14 +300,13 @@ impl Database {
     }
 
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
-        let row = sqlx::query_as::<_, AgentRow>(
+        let row = sqlx::query_as::<_, AgentRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
+            SELECT {AgentRow}
             FROM agents
             WHERE org_id = $1 AND name = $2 AND status != 'deleted'
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(name)
         .fetch_optional(&self.pool)
@@ -336,41 +331,38 @@ impl Database {
         id: AgentId,
         input: UpdateAgent,
     ) -> Result<Option<AgentRow>> {
-        let row = sqlx::query_as::<_, AgentRow>(
+        let row = sqlx::query_as::<_, AgentRow>(sql!(
             r#"
             UPDATE agents
             SET
                 name = COALESCE($3, name),
                 display_name = COALESCE($4, display_name),
                 description = COALESCE($5, description),
-                intro_markdown = CASE WHEN $25 THEN $26 ELSE intro_markdown END,
-                short_description = CASE WHEN $27 THEN $28 ELSE short_description END,
-                starters = COALESCE($29, starters),
+                intro_markdown = CASE WHEN $23 THEN $24 ELSE intro_markdown END,
+                short_description = CASE WHEN $25 THEN $26 ELSE short_description END,
+                starters = COALESCE($27, starters),
                 system_prompt = COALESCE($6, system_prompt),
                 default_model_id = COALESCE($7, default_model_id),
                 harness_id = COALESCE($8, harness_id),
-                harness_source = COALESCE($24, harness_source),
+                harness_source = COALESCE($22, harness_source),
                 tags = COALESCE($9, tags),
                 status = COALESCE($10, status),
-                exposures_suspended = COALESCE($30, exposures_suspended),
+                exposures_suspended = COALESCE($28, exposures_suspended),
                 initial_files = COALESCE($11, initial_files),
                 tools = COALESCE($12, tools),
                 mcp_servers = COALESCE($13, mcp_servers),
                 network_access = CASE WHEN $14 THEN $15 ELSE network_access END,
                 max_iterations = CASE WHEN $16 THEN $17 ELSE max_iterations END,
-                default_version_id = COALESCE($18, default_version_id),
-                forked_from_agent_id = COALESCE($19, forked_from_agent_id),
-                forked_from_version_id = COALESCE($20, forked_from_version_id),
-                root_agent_id = COALESCE($21, root_agent_id),
-                parallel_tool_calls = CASE WHEN $22 THEN $23 ELSE parallel_tool_calls END,
-                virtual_user_id=CASE WHEN $31 THEN $32 ELSE virtual_user_id END,
-                environments = CASE WHEN $33 THEN $34 ELSE environments END,
+                forked_from_agent_id = COALESCE($18, forked_from_agent_id),
+                root_agent_id = COALESCE($19, root_agent_id),
+                parallel_tool_calls = CASE WHEN $20 THEN $21 ELSE parallel_tool_calls END,
+                virtual_user_id=CASE WHEN $29 THEN $30 ELSE virtual_user_id END,
+                environments = CASE WHEN $31 THEN $32 ELSE environments END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
-            "#,
-        )
+            RETURNING {AgentRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id.uuid())
         .bind(&input.name)
@@ -388,9 +380,7 @@ impl Database {
         .bind(input.network_access.flatten())
         .bind(input.max_iterations.is_some())
         .bind(input.max_iterations.flatten())
-        .bind(input.default_version_id)
         .bind(input.forked_from_agent_id)
-        .bind(input.forked_from_version_id)
         .bind(input.root_agent_id)
         .bind(input.parallel_tool_calls.is_some())
         .bind(input.parallel_tool_calls.flatten())
@@ -502,7 +492,7 @@ impl Database {
     ) -> Result<(AgentRow, bool)> {
         // Use CTE to detect insert vs update
         let row = sqlx::query_as::<_, AgentRow>(
-            r#"
+            sql!(r#"
             WITH existing AS (
                 SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
             )
@@ -528,9 +518,8 @@ impl Database {
                 environments = EXCLUDED.environments,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
-            "#,
+            RETURNING {AgentRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -567,7 +556,7 @@ impl Database {
         input: CreateAgentRow,
     ) -> Result<(AgentRow, bool)> {
         let row = sqlx::query_as::<_, AgentRow>(
-            r#"
+            sql!(r#"
             INSERT INTO agents (org_id, public_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, is_built_in, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'active')
             ON CONFLICT (org_id, name) WHERE status != 'deleted' DO UPDATE SET
@@ -589,9 +578,8 @@ impl Database {
                 environments = EXCLUDED.environments,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, display_name, description, intro_markdown, short_description, starters, system_prompt, default_model_id, harness_id, harness_source, virtual_user_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, exposures_suspended, is_built_in, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, environments, avatar_id,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
-            "#,
+            RETURNING {AgentRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -632,181 +620,20 @@ impl Database {
         Ok(row.map(|r| r.0))
     }
 
-    pub async fn create_agent_version(
-        &self,
-        input: CreateAgentVersionRow,
-    ) -> Result<AgentVersionRow> {
-        Ok(sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            INSERT INTO agent_versions (
-                id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version, is_published,
-                parent_version_id, source_version_id, created_by_principal_id,
-                change_kind, summary, config_hash, authored_config, resolved_config
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-            RETURNING id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version, is_published,
-                parent_version_id, source_version_id, created_by_principal_id,
-                change_kind, summary, config_hash, authored_config, resolved_config, created_at
-            "#,
-        )
-        .bind(input.id)
-        .bind(input.public_id)
-        .bind(input.org_id)
-        .bind(input.agent_id)
-        .bind(input.version_number)
-        .bind(input.semver_major)
-        .bind(input.semver_minor)
-        .bind(input.semver_patch)
-        .bind(input.version)
-        .bind(input.is_published)
-        .bind(input.parent_version_id)
-        .bind(input.source_version_id)
-        .bind(input.created_by_principal_id)
-        .bind(input.change_kind)
-        .bind(input.summary)
-        .bind(input.config_hash)
-        .bind(input.authored_config)
-        .bind(input.resolved_config)
-        .fetch_one(&self.pool)
-        .await?)
-    }
-
-    pub async fn list_agent_versions(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> Result<Vec<AgentVersionRow>> {
-        Ok(sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            SELECT id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version, is_published,
-                parent_version_id, source_version_id, created_by_principal_id,
-                change_kind, summary, config_hash, authored_config, resolved_config, created_at
-            FROM agent_versions
-            WHERE org_id = $1 AND agent_id = $2
-            ORDER BY version_number DESC
-            "#,
-        )
-        .bind(org_id)
-        .bind(agent_id)
-        .fetch_all(&self.pool)
-        .await?)
-    }
-
-    pub async fn get_agent_version(
-        &self,
-        org_id: i64,
-        id: everruns_contracts::typed_id::AgentVersionId,
-    ) -> Result<Option<AgentVersionRow>> {
-        Ok(sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            SELECT id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version, is_published,
-                parent_version_id, source_version_id, created_by_principal_id,
-                change_kind, summary, config_hash, authored_config, resolved_config, created_at
-            FROM agent_versions
-            WHERE org_id = $1 AND id = $2
-            "#,
-        )
-        .bind(org_id)
-        .bind(id.uuid())
-        .fetch_optional(&self.pool)
-        .await?)
-    }
-
-    pub async fn get_latest_agent_version(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> Result<Option<AgentVersionRow>> {
-        Ok(sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            SELECT id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version, is_published,
-                parent_version_id, source_version_id, created_by_principal_id,
-                change_kind, summary, config_hash, authored_config, resolved_config, created_at
-            FROM agent_versions
-            WHERE org_id = $1 AND agent_id = $2 AND is_published = TRUE
-            ORDER BY version_number DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(org_id)
-        .bind(agent_id)
-        .fetch_optional(&self.pool)
-        .await?)
-    }
-
-    pub async fn get_latest_agent_snapshot(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> Result<Option<AgentVersionRow>> {
-        Ok(sqlx::query_as::<_, AgentVersionRow>(
-            r#"
-            SELECT id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version, is_published,
-                parent_version_id, source_version_id, created_by_principal_id,
-                change_kind, summary, config_hash, authored_config, resolved_config, created_at
-            FROM agent_versions
-            WHERE org_id = $1 AND agent_id = $2
-            ORDER BY version_number DESC
-            LIMIT 1
-            "#,
-        )
-        .bind(org_id)
-        .bind(agent_id)
-        .fetch_optional(&self.pool)
-        .await?)
-    }
-
-    pub async fn prune_agent_auto_snapshots(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-        keep: i64,
-    ) -> Result<u64> {
-        let keep = keep.max(0);
-        let result = sqlx::query(
-            r#"
-            DELETE FROM agent_versions
-            WHERE id IN (
-                SELECT id
-                FROM agent_versions
-                WHERE org_id = $1
-                    AND agent_id = $2
-                    AND is_published = FALSE
-                    AND change_kind = 'auto'
-                ORDER BY version_number DESC
-                OFFSET $3
-            )
-            "#,
-        )
-        .bind(org_id)
-        .bind(agent_id)
-        .bind(keep)
-        .execute(&self.pool)
-        .await?;
-
-        Ok(result.rows_affected())
-    }
-
     // ============================================
     // Agent Capabilities
     // ============================================
 
     /// Get capabilities for an agent, ordered by position
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
-        let rows = sqlx::query_as::<_, AgentCapabilityRow>(
+        let rows = sqlx::query_as::<_, AgentCapabilityRow>(sql!(
             r#"
-            SELECT id, agent_id, capability_id, position, config, created_at
+            SELECT {AgentCapabilityRow}
             FROM agent_capabilities
             WHERE agent_id = $1
             ORDER BY position ASC
-            "#,
-        )
+            "#
+        ))
         .bind(agent_id)
         .fetch_all(&self.pool)
         .await?;
@@ -879,13 +706,13 @@ impl Database {
         &self,
         input: CreateAgentCapabilityRow,
     ) -> Result<AgentCapabilityRow> {
-        let row = sqlx::query_as::<_, AgentCapabilityRow>(
+        let row = sqlx::query_as::<_, AgentCapabilityRow>(sql!(
             r#"
             INSERT INTO agent_capabilities (agent_id, capability_id, position, config)
             VALUES ($1, $2, $3, $4)
-            RETURNING id, agent_id, capability_id, position, config, created_at
-            "#,
-        )
+            RETURNING {AgentCapabilityRow}
+            "#
+        ))
         .bind(input.agent_id)
         .bind(&input.capability_id)
         .bind(input.position)
