@@ -629,3 +629,114 @@ fn test_glob_initial_files_extras_walks_user_dot_dir() {
         "opt-in must include .mytool/config"
     );
 }
+
+fn parse_agents(args: &[&str]) -> AgentsCommand {
+    use clap::Parser;
+    let argv = ["everruns", "agents"].iter().chain(args).copied();
+    match crate::Cli::try_parse_from(argv).unwrap().command {
+        crate::Commands::Agents { command } => command,
+        _ => unreachable!("an agents command"),
+    }
+}
+
+/// Run `agents <args>` against a one-shot server and return what it received.
+async fn sent_by(args: &[&str]) -> crate::commands::api::capture::Captured {
+    let (url, captured) = crate::commands::api::capture::serve_once(
+        200,
+        r#"{"id":"agent_1","name":"a","output":{"id":"agent_1","name":"a"}}"#,
+    )
+    .await;
+    run(
+        parse_agents(args),
+        &url,
+        "key",
+        None,
+        OutputFormat::Json,
+        true,
+    )
+    .await
+    .unwrap();
+    captured.await.unwrap()
+}
+
+fn agent_file(dir: &tempfile::TempDir) -> String {
+    let path = dir.path().join("agent.md");
+    std::fs::write(&path, "---\nname: a\n---\nBe helpful").unwrap();
+    path.display().to_string()
+}
+
+const REASON_HEADER: &str = crate::commands::api::CHANGE_REASON_HEADER;
+
+#[tokio::test]
+async fn create_from_flags_puts_the_reason_in_the_envelope() {
+    let body = sent_by(&[
+        "create",
+        "--name",
+        "a",
+        "--instructions",
+        "p",
+        "--reason",
+        "first draft",
+    ])
+    .await
+    .json();
+    assert_eq!(body["reason"], "first draft");
+    assert!(body["params"].get("reason").is_none(), "{body}");
+}
+
+#[tokio::test]
+async fn update_from_flags_without_a_reason_sends_none() {
+    let body = sent_by(&["update", "agent_1", "--name", "a", "--instructions", "p"])
+        .await
+        .json();
+    assert!(body.get("reason").is_none(), "{body}");
+}
+
+#[tokio::test]
+async fn create_from_a_file_sends_the_reason_header() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = agent_file(&dir);
+    let request = sent_by(&["create", "--file", &file, "--reason", "kid friendly"]).await;
+    assert_eq!(
+        request.header(REASON_HEADER).as_deref(),
+        Some("kid%20friendly")
+    );
+}
+
+#[tokio::test]
+async fn update_with_initial_files_sends_the_reason_header() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = agent_file(&dir);
+    let files = dir.path().join("files");
+    std::fs::create_dir_all(&files).unwrap();
+    std::fs::write(files.join("hello.txt"), "world").unwrap();
+    let request = sent_by(&[
+        "update",
+        "--file",
+        &file,
+        "--initial-files-dir",
+        &files.display().to_string(),
+        "--reason",
+        "add seed files",
+    ])
+    .await;
+    assert_eq!(
+        request.header(REASON_HEADER).as_deref(),
+        Some("add%20seed%20files")
+    );
+    assert_eq!(
+        request.json()["initial_files"][0]["path"],
+        "/workspace/hello.txt"
+    );
+}
+
+#[tokio::test]
+async fn import_sends_the_reason_header_only_when_given() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = agent_file(&dir);
+    let request = sent_by(&["import", &file, "--reason", "restore"]).await;
+    assert_eq!(request.header(REASON_HEADER).as_deref(), Some("restore"));
+
+    let request = sent_by(&["import", &file]).await;
+    assert_eq!(request.header(REASON_HEADER), None);
+}

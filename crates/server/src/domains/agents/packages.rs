@@ -866,7 +866,7 @@ impl Command for ImportAgent {
                 .with_args(ARGS)
                 .with_examples(&[CliExample::new(
                     "Import an agent folder from the current workspace",
-                    "everruns agents import /agents/triage",
+                    "everruns agents import /agents/triage --reason 'Sync from the repo definition'",
                 )]);
             Some(ROUTE)
         }

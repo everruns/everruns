@@ -356,7 +356,7 @@ pub struct DestroyVirtualUser {
     path = "/v1/virtual-users/{identity_id}/delete",
     policy = VIRTUAL_USER_DANGEROUS,
     positional = "id",
-    cli = CliRoute::new(&["virtual-users"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove a virtual user", "everruns virtual-users destroy vu_01h9",)]),
+    cli = CliRoute::new(&["virtual-users"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove a virtual user", "everruns virtual-users destroy vu_01h9 --reason 'Integration decommissioned'",)]),
 )]
 impl Command for DestroyVirtualUser {
     type Output = serde_json::Value;
