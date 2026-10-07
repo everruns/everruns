@@ -424,6 +424,18 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Runs the `user_mcp` manage tools' calls for one session
+    /// (knowledge/integrations/user-mcp-servers.md). Defaults to none: only a
+    /// host with the control plane behind it can resolve the person, and the
+    /// tools then say managing is not available here.
+    fn user_mcp_invoker(
+        &self,
+        _org_id: i64,
+        _session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
+        None
+    }
+
     /// Logical environment state and checkpoint persistence (EVE-870).
     /// Hosted workers route this composite store through the control plane;
     /// portable Framework hosts may leave it absent and use compatibility

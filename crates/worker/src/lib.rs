@@ -21,6 +21,7 @@ mod grpc_sandbox_persistence;
 pub mod grpc_slack_actions;
 pub mod grpc_sqldb_adapter;
 mod grpc_task_store;
+pub mod grpc_user_mcp;
 pub mod grpc_worker_adapters;
 pub mod leased_resource_cleanup;
 pub mod mcp_elicitation_consent;

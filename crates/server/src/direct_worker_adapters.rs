@@ -1432,6 +1432,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         ))
     }
 
+    fn user_mcp_invoker(
+        &self,
+        org_id: i64,
+        session_id: everruns_contracts::typed_id::SessionId,
+    ) -> Option<Arc<dyn everruns_capabilities::capabilities::UserMcpCallInvoker>> {
+        Some(self.user_mcp_invoker_for(org_id, session_id))
+    }
+
     fn sandbox_persistence_store(
         &self,
     ) -> Option<Arc<dyn everruns_capabilities::sandbox_state::SandboxPersistenceStore>> {
@@ -1864,24 +1872,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
 }
 
 impl DirectWorkerAdapters {
-    async fn hydrate_capability_rows(
-        &self,
-        org_id: i64,
-        capability_rows: Vec<AgentCapabilityRow>,
-    ) -> Result<Vec<AgentCapabilityConfig>> {
-        let capabilities = capability_rows
-            .into_iter()
-            .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
-            .collect();
-        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
-            &self.db,
-            org_id,
-            capabilities,
-        )
-        .await
-        .map_err(|error| store_error(format!("Failed to hydrate capabilities: {error}")))
-    }
-
     /// Build MCP tool definitions from pre-loaded capability rows.
     ///
     /// Shared logic for `build_mcp_tool_definitions` (standalone) and
