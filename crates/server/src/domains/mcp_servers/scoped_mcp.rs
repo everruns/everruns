@@ -415,6 +415,7 @@ pub(crate) async fn resolve_matched_scoped_mcp_server(
         resolved.id = scoped_mcp_server_uuid(session_id, &name);
         resolved.name = name;
         resolved.acts_as = server.acts_as;
+        resolved.connect_in_chat = server.connect_in_chat;
 
         if !server.acts_as.is_none() {
             // A non-`none` attachment resolves its credential from a connection
@@ -456,6 +457,7 @@ pub(crate) async fn resolve_matched_scoped_mcp_server(
         elicitation_policy: server.elicitation_policy,
         oauth_provider_id: server.oauth_provider_id,
         acts_as: server.acts_as,
+        connect_in_chat: server.connect_in_chat,
         api_key: None,
         headers,
     }))

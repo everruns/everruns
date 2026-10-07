@@ -111,12 +111,31 @@ impl McpLoginPrompter for PendingPrompter {
                 provider: "mcp_oauth_456".into(),
                 setup_url: "/agents/agent_1?tab=mcp".into(),
                 for_agent: true,
+                connect_in_chat: Default::default(),
+            });
+        }
+        // Attachments that say `connectInChat: never`.
+        if name == "quiet-github" {
+            return Ok(McpLogin::Pending {
+                provider: "mcp_oauth_789".into(),
+                setup_url: "/settings/connections".into(),
+                for_agent: false,
+                connect_in_chat: everruns_core::McpConnectInChat::Never,
+            });
+        }
+        if name == "quiet-agent-github" {
+            return Ok(McpLogin::Pending {
+                provider: "mcp_oauth_790".into(),
+                setup_url: "/agents/agent_1?tab=mcp".into(),
+                for_agent: true,
+                connect_in_chat: everruns_core::McpConnectInChat::Never,
             });
         }
         Ok(McpLogin::Pending {
             provider: "mcp_oauth_123".into(),
             setup_url: "/settings/connections".into(),
             for_agent: false,
+            connect_in_chat: Default::default(),
         })
     }
 }
@@ -372,6 +391,27 @@ async fn connect_shows_the_connect_card_and_never_a_credential() {
         .execute_with_context(json!({"name": "public"}), &context(store))
         .await;
     assert!(result.is_success());
+}
+
+#[tokio::test]
+async fn connect_in_chat_never_returns_the_settings_link_instead_of_a_card() {
+    let store = Arc::new(MemoryStore::default());
+    let connect = tool(json!({"connect": true}), "connect_mcp_server");
+    for (name, setup_url) in [
+        ("quiet-github", "/settings/connections"),
+        ("quiet-agent-github", "/agents/agent_1?tab=mcp"),
+    ] {
+        let result = connect
+            .execute_with_context(json!({ "name": name }), &context(store.clone()))
+            .await;
+        assert!(
+            !matches!(result, ToolExecutionResult::ConnectionRequired { .. }),
+            "{name}: `never` must not show a card, got {result:?}"
+        );
+        let message = error_text(&result);
+        assert!(message.contains(name), "{message}");
+        assert!(message.contains(setup_url), "{message}");
+    }
 }
 
 #[cfg(feature = "portable-builtins")]

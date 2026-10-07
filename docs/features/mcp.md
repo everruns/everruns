@@ -69,6 +69,31 @@ An agent with a server acting as `user` or `user_or_service` gets the
 `connect_mcp_server` tool, so it can show a **Connect** card in chat before a
 call fails.
 
+### Connecting from chat
+
+When a call needs a sign-in that is missing, the chat pauses on a **Connect**
+card (or, for the agent's own account, an **Authorize** card for someone who
+manages MCP servers and **Ask an admin** for everyone else). Set
+`connectInChat` on the attachment (**Ask to connect in chat** on the agent's
+**MCP servers** sheet) to choose:
+
+| `connectInChat` | A missing sign-in |
+|---|---|
+| `ask` (default) | Pauses the chat with the card |
+| `never` | Fails the call with an error naming the server and its settings link (`/settings/connections` for the person's own sign-in, the agent's **MCP servers** sheet for the agent's), and the turn goes on |
+
+`never` suits agents behind channels that cannot show a card, such as a chat
+bridge. `connect_mcp_server` follows it too and returns the same link instead
+of a card.
+
+```json
+{
+  "mcpServers": {
+    "github": { "use": "catalog:github", "actsAs": "user", "connectInChat": "never" }
+  }
+}
+```
+
 A catalog entry can take the agent's account from an existing connection
 instead of its own sign-in (`service_connection_provider`, **Agent credential**
 in the catalog form). The seeded `github` entry

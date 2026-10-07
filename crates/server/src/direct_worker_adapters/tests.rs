@@ -32,6 +32,7 @@ fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
             protocol_mode: everruns_core::McpProtocolMode::Auto,
             oauth_provider_id: None,
             acts_as,
+            connect_in_chat: Default::default(),
             elicitation_policy: Default::default(),
             api_key: None,
             headers: HashMap::new(),

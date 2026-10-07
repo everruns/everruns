@@ -63,6 +63,7 @@ const attachment: AgentMcpAttachment = {
     { source: "capability", source_label: "Capability: web search" },
   ],
   acts_as: "user",
+  connect_in_chat: "ask",
   preset_name: "github",
   preset_id: "preset-1",
   connection_provider: "github",
@@ -455,6 +456,104 @@ describe("AgentMcpPanel", () => {
         },
       }),
     );
+  });
+
+  it("adds a preset that never asks to connect in chat", async () => {
+    showAttachments({ ...attachment, name: "other" });
+    render(<AgentMcpPanel agent={agent} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add MCP server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /github GitHub MCP server/ }));
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Invoking user" }));
+    const ask = within(dialog).getByRole("checkbox", {
+      name: "Ask to connect in chat when a sign-in is missing",
+    });
+    expect(ask).toBeChecked();
+    fireEvent.click(ask);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add server" }));
+
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+          },
+        },
+      }),
+    );
+  });
+
+  it("toggles connect in chat on an attachment authored on the agent", async () => {
+    const withGithub = {
+      ...agent,
+      mcpServers: {
+        ...agent.mcpServers,
+        github: { use: "catalog:github", actsAs: "user" },
+      },
+    } as Agent;
+    const { rerender } = render(<AgentMcpPanel agent={withGithub} />);
+
+    const toggle = screen.getByRole("switch", { name: "Ask to connect in chat" });
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+          },
+        },
+      }),
+    );
+
+    // Turning it back on drops the field: `ask` is the default.
+    showAttachments({ ...attachment, connect_in_chat: "never" });
+    rerender(
+      <AgentMcpPanel
+        agent={
+          {
+            ...withGithub,
+            mcpServers: {
+              ...withGithub.mcpServers,
+              github: { use: "catalog:github", actsAs: "user", connectInChat: "never" },
+            },
+          } as Agent
+        }
+      />,
+    );
+    expect(screen.getByText(/fails the call with a link to settings/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Ask to connect in chat" }));
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenLastCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user" },
+          },
+        },
+      }),
+    );
+  });
+
+  it("labels a read-only attachment that connects in settings only", () => {
+    showAttachments({
+      ...attachment,
+      source: "harness",
+      editable: false,
+      connect_in_chat: "never",
+    });
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Connects in settings only")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Ask to connect in chat" }),
+    ).not.toBeInTheDocument();
   });
 
   it("uses no identity for a preset without OAuth support", async () => {

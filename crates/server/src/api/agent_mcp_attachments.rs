@@ -10,7 +10,8 @@ use axum::{
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::typed_id::AgentId;
 use everruns_core::{
-    Caller, CapabilityRegistry, McpServerActsAs, ScopedMcpServer, ScopedMcpServers,
+    Caller, CapabilityRegistry, McpConnectInChat, McpServerActsAs, ScopedMcpServer,
+    ScopedMcpServers,
 };
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -93,6 +94,9 @@ pub struct AgentMcpAttachment {
     pub overridden_sources: Vec<AgentMcpAttachmentSourceInfo>,
     /// Identity whose connection is used when the attachment calls the MCP server.
     pub acts_as: McpServerActsAs,
+    /// Whether a missing sign-in pauses the turn with an in-chat card (`ask`)
+    /// or fails the call with a settings link (`never`).
+    pub connect_in_chat: McpConnectInChat,
     /// Catalog preset name referenced by the attachment, including a missing preset.
     pub preset_name: Option<String>,
     /// ID of the active catalog preset when the reference resolves.
@@ -490,6 +494,7 @@ pub async fn list_agent_mcp_attachments(
             contributor: sourced.contributor,
             overridden_sources: sourced.overridden_sources,
             acts_as: sourced.server.acts_as,
+            connect_in_chat: sourced.server.connect_in_chat,
             preset_name,
             preset_id: preset_row.as_ref().map(|row| row.id.to_string()),
             connection_provider: provider,

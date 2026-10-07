@@ -6361,6 +6361,11 @@ export interface components {
       acts_as: components["schemas"]["McpServerActsAs"];
       /** @description Whether the current caller can revoke the active connection. */
       can_revoke: boolean;
+      /**
+       * @description Whether a missing sign-in pauses the turn with an in-chat card (`ask`)
+       *     or fails the call with a settings link (`never`).
+       */
+      connect_in_chat: components["schemas"]["McpConnectInChat"];
       /** @description Connected account name, or the preset name when the provider did not supply one. */
       connected_as?: string | null;
       /** @description OAuth provider key used to create or revoke the attachment connection. */
@@ -6950,6 +6955,12 @@ export interface components {
         auth_mode?: components["schemas"]["McpServerAuthMode"];
         /** @description Executable to spawn for a stdio transport server. */
         command?: string | null;
+        /**
+         * @description Whether a missing sign-in may pause the turn with an in-chat Connect
+         *     card (`ask`, the default) or fails the call with a settings link
+         *     (`never`).
+         */
+        connectInChat?: components["schemas"]["McpConnectInChat"];
         /** @description Which elicitation modes this server may use (`url` by default). */
         elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
         /** @description Environment variables set for the stdio `command`. */
@@ -14783,6 +14794,18 @@ export interface components {
     /** @description Response body for manual memory source. */
     ManualMemorySourceResponse: Record<string, unknown>;
     /**
+     * @description Whether a missing sign-in for an agent MCP attachment may pause the turn
+     *     with an in-chat Connect card.
+     *
+     *     Decision: `never` exists for agents behind channels that cannot render a
+     *     card (user MCP servers D5). The call then fails like any other tool error,
+     *     naming the server and where to connect it, and the turn keeps going. It
+     *     changes only how a missing grant is reported, never which grant is used.
+     * @example ask
+     * @enum {string}
+     */
+    McpConnectInChat: "ask" | "never";
+    /**
      * @description Which MCP elicitation modes the client declares to one server.
      *
      *     An operator decision on the server record, never a per-call negotiation and
@@ -19247,6 +19270,12 @@ export interface components {
       auth_mode?: components["schemas"]["McpServerAuthMode"];
       /** @description Executable to spawn for a stdio transport server. */
       command?: string | null;
+      /**
+       * @description Whether a missing sign-in may pause the turn with an in-chat Connect
+       *     card (`ask`, the default) or fails the call with a settings link
+       *     (`never`).
+       */
+      connectInChat?: components["schemas"]["McpConnectInChat"];
       /** @description Which elicitation modes this server may use (`url` by default). */
       elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
       /** @description Environment variables set for the stdio `command`. */

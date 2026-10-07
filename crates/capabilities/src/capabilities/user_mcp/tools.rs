@@ -575,7 +575,7 @@ impl Tool for ConnectMcpServerTool {
     }
 
     fn description(&self) -> &str {
-        "Ask the person to sign in to an MCP server: one of their own, or one of yours that acts as the person chatting. Shows them a Connect card; they sign in in their own browser and you never see a credential. Use it before a tool of that server fails, e.g. right after adding it."
+        "Ask the person to sign in to an MCP server: one of their own, or one of yours that acts as the person chatting. Shows them a Connect card (or, for a server set not to connect from chat, returns the settings link to pass on); they sign in in their own browser and you never see a credential. Use it before a tool of that server fails, e.g. right after adding it."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -612,10 +612,27 @@ impl Tool for ConnectMcpServerTool {
             );
         };
         match prompter.0.start_login(&name).await {
+            // The agent's attachment opted out of in-chat cards: hand the
+            // model the same link the card would have used.
+            Ok(McpLogin::Pending {
+                setup_url,
+                for_agent,
+                connect_in_chat,
+                ..
+            }) if !connect_in_chat.allows_card() => ToolExecutionResult::tool_error(if for_agent {
+                format!(
+                    "MCP server '{name}' cannot be connected from this chat. An admin must authorize the agent's sign-in at {setup_url}."
+                )
+            } else {
+                format!(
+                    "MCP server '{name}' cannot be connected from this chat. The person can connect it at {setup_url}."
+                )
+            }),
             Ok(McpLogin::Pending {
                 provider,
                 setup_url,
                 for_agent,
+                ..
             }) => ToolExecutionResult::connection_required_with_setup(
                 provider,
                 // An agent sign-in routes to the agent's MCP servers sheet,

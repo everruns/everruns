@@ -100,6 +100,12 @@ row. It is never a default, unattended runs always take the `service` row, and
 each tool call records which row answered (`acted_as`). `none`, `service` and
 `user` keep the table above unchanged.
 
+How a missing grant is *reported* is a separate per-attachment choice,
+`connectInChat` (user MCP servers D5): `ask` (default) is the
+`connection_required` column above, which pauses the turn on a card; `never`
+returns an ordinary tool error carrying the same setup URL and does not pause.
+It never changes which store is read.
+
 The existing identity→user fallback in `DbConnectionResolver` is removed for MCP
 resolution. It stays for the non-MCP providers that rely on it today, or is
 retired with them separately; either way MCP no longer depends on it.

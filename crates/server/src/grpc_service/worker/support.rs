@@ -71,6 +71,7 @@ pub(crate) fn resolved_mcp_server_to_proto(
         oauth_provider_id: resolved.oauth_provider_id,
         secret_bindings: flatten_secret_bindings(secret_bindings),
         acts_as: resolved.acts_as.to_string(),
+        connect_in_chat: resolved.connect_in_chat.to_string(),
     }
 }
 
@@ -415,6 +416,7 @@ mod tests {
                 elicitation_policy: Default::default(),
                 oauth_provider_id: None,
                 acts_as,
+                connect_in_chat: everruns_core::McpConnectInChat::Never,
                 api_key: None,
                 headers: std::collections::HashMap::new(),
             };
@@ -422,6 +424,7 @@ mod tests {
             let proto = resolved_mcp_server_to_proto(resolved, std::collections::HashMap::new());
 
             assert_eq!(proto.acts_as, wire_value);
+            assert_eq!(proto.connect_in_chat, "never");
             assert_eq!(proto.auth_mode, "none");
             assert!(proto.oauth_provider_id.is_none());
             assert!(proto.api_key.is_none());

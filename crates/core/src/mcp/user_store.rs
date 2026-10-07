@@ -154,6 +154,11 @@ pub enum McpLogin {
         /// chatting as themselves.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         for_agent: bool,
+        /// The agent's attachment says `connectInChat: never`: the tool hands
+        /// the model `setup_url` instead of showing a card. Absent means
+        /// `ask`, so an older peer keeps showing the card.
+        #[serde(default, skip_serializing_if = "crate::McpConnectInChat::is_ask")]
+        connect_in_chat: crate::McpConnectInChat,
     },
 }
 
@@ -260,17 +265,21 @@ mod tests {
             provider: "mcp_oauth_1".into(),
             setup_url: "/settings".into(),
             for_agent: false,
+            connect_in_chat: crate::McpConnectInChat::Ask,
         };
         let wire = serde_json::to_value(&login).unwrap();
         assert_eq!(wire["status"], "pending");
         // A person's own sign-in keeps the shape it had before agent sign-ins.
         assert!(wire.get("for_agent").is_none());
+        assert!(wire.get("connect_in_chat").is_none());
         let agent = McpLogin::Pending {
             provider: "mcp_oauth_1".into(),
             setup_url: "/agents/agent_1?tab=mcp".into(),
             for_agent: true,
+            connect_in_chat: crate::McpConnectInChat::Never,
         };
         let wire = serde_json::to_string(&agent).unwrap();
+        assert!(wire.contains(r#""connect_in_chat":"never""#), "{wire}");
         assert_eq!(serde_json::from_str::<McpLogin>(&wire).unwrap(), agent);
     }
 }

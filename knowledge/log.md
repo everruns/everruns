@@ -2,6 +2,13 @@
 
 ## 2026-10-07
 
+* **Agent MCP servers can opt out of in-chat Connect cards.** An attachment
+  with `connectInChat: never` reports a missing sign-in as a tool error naming
+  the server and its settings link instead of pausing the turn on a card, and
+  `connect_mcp_server` returns that link too. `ask` stays the default. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 6 and
+  [agent MCP attachments](integrations/agent-mcp-attachments.md) D2.
+
 * **Agent MCP servers can act as the user with the agent as a fallback.**
   `user_or_service` uses the person's own grant when they have one and the
   agent's otherwise; unattended runs always use the agent's, and every MCP

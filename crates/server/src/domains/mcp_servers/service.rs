@@ -830,6 +830,7 @@ impl McpServerService {
             elicitation_policy: server.elicitation_policy,
             oauth_provider_id: server.oauth_provider_id,
             acts_as: McpServerActsAs::None,
+            connect_in_chat: Default::default(),
             api_key,
             headers,
         }))
@@ -862,6 +863,7 @@ impl McpServerService {
             elicitation_policy: settings.elicitation_policy,
             oauth_provider_id: None,
             acts_as: McpServerActsAs::None,
+            connect_in_chat: Default::default(),
             api_key: None,
             headers,
         }))
@@ -907,6 +909,8 @@ pub struct McpServerResolved {
     pub elicitation_policy: McpElicitationPolicy,
     pub oauth_provider_id: Option<String>,
     pub acts_as: McpServerActsAs,
+    /// Whether a missing grant may pause the turn with an in-chat card.
+    pub connect_in_chat: everruns_core::McpConnectInChat,
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
 }

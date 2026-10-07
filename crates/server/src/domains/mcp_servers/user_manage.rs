@@ -373,6 +373,8 @@ fn start_login(server: &UserMcpServer) -> UserMcpStoreResult<McpLogin> {
             provider: provider.clone(),
             setup_url: SETUP_URL.into(),
             for_agent: false,
+            // A person's own servers have no attachment to opt out with.
+            connect_in_chat: Default::default(),
         }),
         (UserMcpConnectionStatus::NotConnected, None) => Err(UserMcpStoreError::Invalid(
             "This server signs in with an API key, which cannot be given in chat. The person can set it in Settings > My MCP servers.".into(),
@@ -388,6 +390,8 @@ fn start_login(server: &UserMcpServer) -> UserMcpStoreResult<McpLogin> {
 /// servers sheet, where only someone with MCP management permission can
 /// authorize it (the existing Authorize / Ask admin split), so a person
 /// without it is told to ask an admin rather than authorizing anything.
+/// The attachment's `connectInChat` travels with the sign-in, so `never`
+/// hands the model the same link instead of a card.
 async fn agent_server_login(
     turn: &UserMcpManageTurn<'_>,
     resolved: &everruns_core::ResolvedRuntimeCapabilities,
@@ -441,6 +445,7 @@ async fn agent_server_login(
             provider,
             setup_url: SETUP_URL.into(),
             for_agent: false,
+            connect_in_chat: server.connect_in_chat,
         }));
     }
     let agent = turn.agent.ok_or_else(|| {
@@ -457,6 +462,7 @@ async fn agent_server_login(
         provider,
         setup_url: format!("/agents/{}?tab=mcp", agent.public_id),
         for_agent: true,
+        connect_in_chat: server.connect_in_chat,
     }))
 }
 

@@ -188,18 +188,8 @@ impl McpExecutor {
         // Return a connection_required result (the host renders an inline
         // connect prompt) instead of letting the call fail with a 401.
         if let Some(required) = &connection.pending_oauth_provider {
-            let subject = match required.subject {
-                Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
-                Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
-                None => "user",
-            };
             return Ok((
-                connection_required_result(
-                    tool_call.id.clone(),
-                    &connection.name,
-                    subject,
-                    required,
-                ),
+                connection_required_result(tool_call.id.clone(), &connection, required),
                 None,
             ));
         }
@@ -279,18 +269,8 @@ impl McpExecutor {
                 if let Some(connection) = self.resolver.resolve(&server_prefix).await?
                     && let Some(required) = &connection.pending_oauth_provider
                 {
-                    let subject = match required.subject {
-                        Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
-                        Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
-                        None => "user",
-                    };
                     return Ok((
-                        connection_required_result(
-                            tool_call.id.clone(),
-                            &connection.name,
-                            subject,
-                            required,
-                        ),
+                        connection_required_result(tool_call.id.clone(), &connection, required),
                         None,
                     ));
                 }
@@ -343,12 +323,53 @@ impl McpExecutor {
     }
 }
 
+/// The result for a call whose server is missing a grant.
+///
+/// With `connectInChat: ask` it carries `connection_required`, which the host
+/// turns into an in-chat card and pauses the turn on. With `never` it is an
+/// ordinary tool error naming the server and where to connect it, so the turn
+/// continues and a channel that cannot render a card still gets a usable link
+/// (user MCP servers D5).
 fn connection_required_result(
     tool_call_id: String,
-    connection_name: &str,
-    subject: &str,
+    connection: &McpConnection,
     required: &everruns_contracts::ConnectionRequired,
 ) -> ToolResult {
+    let connection_name = &connection.name;
+    let subject = match required.subject {
+        Some(everruns_contracts::ConnectionRequiredSubject::Agent) => "agent",
+        Some(everruns_contracts::ConnectionRequiredSubject::User) => "user",
+        None => "user",
+    };
+    if !connection.connect_in_chat.allows_card() {
+        let setup_url = required
+            .setup_url
+            .clone()
+            .unwrap_or_else(|| "/settings/connections".to_string());
+        let whose = if subject == "agent" {
+            "An admin must authorize the agent's sign-in"
+        } else {
+            "The person must connect their account"
+        };
+        return ToolResult {
+            tool_call_id,
+            result: Some(serde_json::json!({
+                "code": "connection_required",
+                "server": connection_name,
+                "provider": required.provider,
+                "subject": subject,
+                "setup_url": setup_url,
+                "connect_in_chat": connection.connect_in_chat,
+            })),
+            images: None,
+            error: Some(format!(
+                "MCP server '{connection_name}' is not connected and cannot be connected from \
+                 this chat. {whose} at {setup_url}, then try again."
+            )),
+            connection_required: None,
+            raw_output: None,
+        };
+    }
     ToolResult {
         tool_call_id,
         result: None,

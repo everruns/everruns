@@ -96,6 +96,7 @@ fn server_info(
         elicitation_policy: Default::default(),
         oauth_provider_id: Some(format!("mcp_oauth_{}", Uuid::new_v4())),
         acts_as,
+        connect_in_chat: Default::default(),
         api_key: api_key.map(str::to_string),
         headers: headers
             .iter()
@@ -319,6 +320,55 @@ async fn a_missing_grant_becomes_connection_required_never_an_unauthenticated_ca
             required.setup_url.as_deref(),
             Some(expected_setup_url.as_str())
         );
+    }
+}
+
+#[tokio::test]
+async fn connect_in_chat_never_reaches_the_executor_as_a_plain_tool_error() {
+    for acts_as in [
+        McpServerActsAs::Service,
+        McpServerActsAs::User,
+        McpServerActsAs::UserOrService,
+    ] {
+        let mut info = server_info(acts_as, crate::core::McpServerAuthMode::OAuth, None, &[]);
+        info.connect_in_chat = crate::core::McpConnectInChat::Never;
+        let (connection, _resolver) = resolve_with(info, RecordingResolver::default()).await;
+
+        // Still never an unauthenticated call: the grant is missing either way.
+        assert_eq!(authorization_of(&connection), None, "{acts_as}");
+        let required = connection
+            .pending_oauth_provider
+            .clone()
+            .expect("a missing grant is still reported");
+        assert_eq!(
+            connection.connect_in_chat,
+            crate::core::McpConnectInChat::Never
+        );
+
+        // The executor then answers with a tool error carrying the same setup
+        // link the card would have used, and nothing that pauses the turn.
+        let executor = crate::mcp::McpExecutor::new(
+            Arc::new(McpClient::new(
+                Arc::new(crate::core::DisabledEgressService),
+                Arc::new(NoAuthProvider),
+            )),
+            Arc::new(crate::mcp::StaticConnectionResolver::new().with(connection)),
+        );
+        let result = executor
+            .execute_mcp_tool(&everruns_contracts::tool_types::ToolCall {
+                id: "call_1".into(),
+                name: "mcp_linear__search".into(),
+                arguments: serde_json::json!({}),
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.connection_required, None, "{acts_as}");
+        let setup_url = required
+            .setup_url
+            .expect("scoped grants carry a setup link");
+        let error = result.error.expect("a tool error");
+        assert!(error.contains("'linear'"), "{error}");
+        assert!(error.contains(&setup_url), "{error}");
     }
 }
 
