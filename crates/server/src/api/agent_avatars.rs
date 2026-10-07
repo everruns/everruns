@@ -218,6 +218,7 @@ async fn store_avatar(
     if let Some(provisioner) = state.slack_provisioner.clone() {
         let (db, encryption) = (state.db.clone(), state.encryption.clone());
         let (org_id, agent_uuid) = (org.org_id, agent.id.uuid());
+        let api_base_url = state.api_base_url.clone();
         tokio::spawn(async move {
             crate::domains::agents::avatar_slack::push_avatar_to_agent_slack_apps(
                 db,
@@ -226,6 +227,7 @@ async fn store_avatar(
                 org_id,
                 agent_uuid,
                 avatar_id,
+                &api_base_url,
             )
             .await;
         });

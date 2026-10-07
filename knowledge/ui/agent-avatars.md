@@ -38,10 +38,12 @@ immutable. Sources: [`avatar.rs`](../../crates/server/src/domains/agents/avatar.
 - **Variants live in PostgreSQL.** They are tens of KB each, so `bytea` beats the object store's
   extra pointer rows and GC.
 - **Slack gets it as the app icon.** Each Slack endpoint is its own Slack app, and a manifest cannot
-  carry an icon. With one-click provisioning the 512 px preset goes through `apps.icon.set` when
-  the app is created and on every avatar change, best effort (Slack allows about one call a
-  minute). Removing an avatar leaves the last icon, since Slack has no reset. Manually created
-  apps keep Slack's default icon.
+  carry an icon. With one-click provisioning Everruns calls `apps.icon.set` when the app is created,
+  again after it is installed (an icon set before the bot user exists may never appear), and on
+  every avatar change. When the API origin is public HTTPS, Slack fetches the immutable square URL;
+  otherwise the PNG is uploaded. Best effort, and retried when Slack rate-limits the call. Removing
+  an avatar leaves the last icon, since Slack has no reset. Manually created apps keep Slack's
+  default icon. See [`avatar_slack.rs`](../../crates/server/src/domains/agents/avatar_slack.rs).
 - **Agent Cards.** The A2A card carries the 256 px square as `iconUrl` on the card's own origin.
   The MCP agent card inlines the 64 px square as a data URI because its CSP blocks fetches.
 
