@@ -526,7 +526,7 @@ test.describe("Agent settings drawer animation", () => {
   test("can close partway through opening without a blank frame", async ({ page }) => {
     const frames = await sampleDrawerFrames(
       page.getByRole("button", { name: /^Primary sandbox/ }),
-      60,
+      true,
     );
     const visible = frames.filter((frame) => frame.opacity > 0);
     expect(visible.length).toBeGreaterThan(1);
@@ -536,8 +536,8 @@ test.describe("Agent settings drawer animation", () => {
   });
 });
 
-async function sampleDrawerFrames(trigger: Locator, closeAfter?: number) {
-  return trigger.evaluate(async (button, closeAfter) => {
+async function sampleDrawerFrames(trigger: Locator, closeDuringOpening = false) {
+  return trigger.evaluate(async (button, closeDuringOpening) => {
     const frames: {
       opacity: number;
       width: number;
@@ -545,12 +545,7 @@ async function sampleDrawerFrames(trigger: Locator, closeAfter?: number) {
       overlayOpacity: number;
     }[] = [];
     (button as HTMLButtonElement).click();
-    if (closeAfter !== undefined) {
-      setTimeout(
-        () => document.querySelector<HTMLButtonElement>('[data-slot="drawer-close"]')?.click(),
-        closeAfter,
-      );
-    }
+    let openingFrames = 0;
     const started = performance.now();
     await new Promise<void>((resolve) => {
       const sample = () => {
@@ -562,11 +557,19 @@ async function sampleDrawerFrames(trigger: Locator, closeAfter?: number) {
           title: drawer?.querySelector('[data-slot="drawer-title"]')?.textContent ?? null,
           overlayOpacity: overlay ? Number(getComputedStyle(overlay).opacity) : 0,
         });
+        // A wall-clock timer can fire before CI paints the first visible frame.
+        // Interrupt only after observing the opening transition in progress.
+        if (closeDuringOpening && frames.at(-1)!.opacity > 0 && frames.at(-1)!.opacity < 1) {
+          openingFrames += 1;
+          if (openingFrames === 2) {
+            document.querySelector<HTMLButtonElement>('[data-slot="drawer-close"]')?.click();
+          }
+        }
         if (performance.now() - started < 400) requestAnimationFrame(sample);
         else resolve();
       };
       requestAnimationFrame(sample);
     });
     return frames;
-  }, closeAfter);
+  }, closeDuringOpening);
 }
