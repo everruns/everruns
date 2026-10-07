@@ -207,7 +207,7 @@ function McpAttachmentRow({
               <AlertTriangle className="size-4" />
               This preset is no longer available.
             </span>
-            <LinkButton href="/mcp-servers" variant="outline" size="sm">
+            <LinkButton href="/settings/mcp-catalog" variant="outline" size="sm">
               View catalog
             </LinkButton>
           </div>

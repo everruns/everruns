@@ -15,7 +15,7 @@ This is the third place an MCP server can live:
 
 | Where | Who adds it | Who it signs in as |
 |---|---|---|
-| Organization catalog | An admin, under **MCP Servers** | Whatever the agent attaching it chooses |
+| Organization catalog | An admin, under **Settings > Organization > MCP catalog** | Whatever the agent attaching it chooses |
 | Agent | Whoever edits the agent | The agent's service account, the user, or the user with the agent as a fallback, per server ([acts as](/features/mcp/#who-a-server-acts-as)) |
 | **User** | You, for yourself | Always you |
 
