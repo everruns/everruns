@@ -13033,6 +13033,12 @@ export interface components {
     ListResponse_OrganizationResponse: {
       /** @description Array of items returned by the list operation. */
       data: {
+        /**
+         * Format: int32
+         * @description How many agents one AgentID owner may sign in; null means the platform
+         *     default.
+         */
+        agentid_agents_per_owner?: number | null;
         /** @description Base harness used when session creation omits harness_id. */
         base_harness_id?: string | null;
         /**
@@ -15396,6 +15402,12 @@ export interface components {
     };
     /** @description Response for organization operations */
     OrganizationResponse: {
+      /**
+       * Format: int32
+       * @description How many agents one AgentID owner may sign in; null means the platform
+       *     default.
+       */
+      agentid_agents_per_owner?: number | null;
       /** @description Base harness used when session creation omits harness_id. */
       base_harness_id?: string | null;
       /**
@@ -21245,6 +21257,13 @@ export interface components {
     };
     /** @description Request to update an organization */
     UpdateOrganizationRequest: {
+      /**
+       * Format: int32
+       * @description How many agents one AgentID owner may sign in to this organization's
+       *     Public Chat channels. Pass null to use the platform default (5).
+       * @example 5
+       */
+      agentid_agents_per_owner?: number | null;
       /**
        * @description Base harness to use when a session is started without an explicit harness_id.
        * @example harness_01933b5a000070008000000000000601

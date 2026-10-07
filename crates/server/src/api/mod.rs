@@ -15,6 +15,7 @@ pub mod agent_discovery;
 pub mod agent_examples;
 pub mod agent_mcp_attachments;
 pub mod agent_triggers;
+pub mod agentid_login;
 pub mod agents;
 pub mod apps;
 pub mod audit_logs;
