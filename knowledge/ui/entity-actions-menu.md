@@ -10,9 +10,10 @@ tags:
 
 # Entity Actions Menu
 
-Status: implemented with [Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md)
-phase 7 (`apps/ui/src/components/entity-actions/`). The bottom-sheet presentation on narrow
-screens and the page guard are not built yet.
+Status: implemented (`apps/ui/src/components/entity-actions/`) for the record functions of
+[Change Reasons and Manager Context](../execution/change-reasons-and-manager-context.md), on the
+agent, harness, skill, provider, knowledge index, memory, observer, eval and virtual-user pages.
+The bottom-sheet presentation on narrow screens and the page guard are not built yet.
 
 ## Problem
 
