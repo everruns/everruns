@@ -102,6 +102,7 @@ export function AgentConfigColumn({
               selected={draft.capabilities}
               onChange={draft.setCapabilities}
               label="Capabilities"
+              compact
             />
           ) : (
             <>
