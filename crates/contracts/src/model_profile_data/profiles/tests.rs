@@ -20,6 +20,7 @@ fn versioned_and_canonical_aliases_resolve_to_the_same_profile() {
         ("anthropic", "claude-sonnet-5-latest", "claude-sonnet-5"),
         ("anthropic", "claude-sonnet-5-5", "claude-sonnet-5-5"),
         ("anthropic", "claude-sonnet-5-5-latest", "claude-sonnet-5-5"),
+        ("anthropic", "claude-haiku-5-5", "claude-haiku-5-5"),
         ("gemini", "gemini-2.0-flash", "gemini-2.0-flash"),
         (
             "gemini",
@@ -1045,6 +1046,7 @@ fn test_anthropic_native_tool_search_by_family() {
         "claude-opus-4",
         "claude-sonnet-5-5",
         "claude-sonnet-4-6",
+        "claude-haiku-5-5",
         "claude-haiku-4-5",
     ] {
         let p = get_model_profile("anthropic", id)

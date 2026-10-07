@@ -170,7 +170,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5.1, Fable 5, Opus 5.5, Opus 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
+/// (Fable 5.x, Opus 5.5/5/4.x, Sonnet 5.5/5/4.6, Haiku 5.5)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -387,6 +387,8 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-haiku-5-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-haiku-5-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini

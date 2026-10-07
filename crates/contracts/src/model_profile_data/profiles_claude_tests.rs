@@ -109,6 +109,8 @@ fn threshold_server_compaction_is_explicitly_profile_gated() {
         "claude-opus-5-5[1m]",
         "claude-sonnet-5-5",
         "claude-sonnet-5-5[1m]",
+        "claude-haiku-5-5",
+        "claude-haiku-5-5[1m]",
         "claude-haiku-4-5",
     ] {
         assert!(
@@ -132,6 +134,8 @@ fn test_clear_at_capability_is_profile_gated() {
         "claude-sonnet-5-5",
         "claude-opus-5-5[1m]",
         "claude-sonnet-5-5[1m]",
+        "claude-haiku-5-5",
+        "claude-haiku-5-5[1m]",
         "claude-opus-5-5-20260101[1m]",
         "claude-fable-5-1-20260901[1m]",
     ] {
@@ -227,6 +231,48 @@ fn test_claude_sonnet_5_5_1m_variant() {
     // Sonnet 5.5 must not collapse onto the Sonnet 5 profile.
     let sonnet5 = get_model_profile("anthropic", "claude-sonnet-5").unwrap();
     assert_eq!(sonnet5.family, "claude-sonnet-5");
+}
+
+#[test]
+fn test_claude_haiku_5_5_profile() {
+    let base = get_model_profile("anthropic", "claude-haiku-5-5").unwrap();
+    assert_eq!(base.name, "Claude Haiku 5.5");
+    assert_eq!(base.family, "claude-haiku-5-5");
+    assert!(base.reasoning);
+    assert!(!base.temperature);
+    assert!(base.tool_search);
+    let effort = base.reasoning_effort.as_ref().unwrap();
+    assert_eq!(effort.default, ReasoningEffort::Medium);
+    assert_eq!(effort.values.len(), 4);
+    let cost = base.cost.as_ref().unwrap();
+    assert_eq!((cost.input, cost.output), (0.10, 0.50));
+    assert_eq!(
+        (cost.cache_read, cost.cache_write),
+        (Some(0.01), Some(0.125))
+    );
+    let tier = &cost.cost_tiers[0];
+    assert_eq!(tier.above_tokens, 100_000);
+    assert_eq!((tier.input, tier.output), (0.50, 2.50));
+    assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+    assert_eq!(base.limits.as_ref().unwrap().output, 128_000);
+
+    let m1 = get_model_profile("anthropic", "claude-haiku-5-5[1m]").unwrap();
+    assert_eq!(m1.name, "Claude Haiku 5.5 (1M)");
+    assert_eq!(m1.family, "claude-haiku-5-5");
+    assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+    assert_eq!(m1.cost.unwrap().cost_tiers.len(), 1);
+
+    // The prompt length picks the rate card: 100K in + 1M out stays on the
+    // small card, one more prompt token moves the whole request to the large one.
+    let small = estimate_cost_usd("anthropic", "claude-haiku-5-5", 100_000, 1_000_000, 0, 0);
+    assert!((small.unwrap() - 0.51).abs() < 1e-9);
+    let large = estimate_cost_usd("anthropic", "claude-haiku-5-5", 100_001, 1_000_000, 0, 0);
+    assert!((large.unwrap() - (0.050_000_5 + 2.50)).abs() < 1e-9);
+
+    // Haiku 4.5 keeps its own budget-thinking profile.
+    let haiku45 = get_model_profile("anthropic", "claude-haiku-4-5").unwrap();
+    assert_eq!(haiku45.family, "claude-haiku-4-5");
+    assert!(haiku45.temperature);
 }
 
 #[test]
