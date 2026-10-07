@@ -186,6 +186,9 @@ pub(crate) fn normalize_and_validate_channel_config(
                     ));
                 }
             }
+            if let Some(pact) = config.pact.as_ref() {
+                validate_pact_profile(pact)?;
+            }
         }
         ChannelType::ApiEndpoint => {
             let config: ApiChannelConfig =
@@ -469,6 +472,20 @@ fn validate_channel_auth_config(
                         |e| CommandError::bad_request(format!("Invalid OIDC JWKS URL: {e}")),
                     )?;
                 }
+                // Every OIDC token must name its audience, and an AgentID token
+                // names the operator's registered client id. Reject at save time
+                // what would otherwise fail every request as misconfigured.
+                if auth.is_agentid()
+                    && !auth
+                        .requirements
+                        .audiences
+                        .iter()
+                        .any(|audience| !audience.trim().is_empty())
+                {
+                    return Err(CommandError::bad_request(
+                        "AgentID auth requires requirements.audiences to hold your AgentID client id",
+                    ));
+                }
                 Ok(())
             }
             _ => Err(CommandError::bad_request(
@@ -699,10 +716,70 @@ fn merge_preserved_channel_auth_secrets(
     }
 }
 
+/// Most personal agents one PACT endpoint trusts, and the largest inline JWKS
+/// it stores per agent. Both bound what one channel write can store.
+const MAX_PACT_PERSONAL_AGENTS: usize = 50;
+const MAX_PACT_INLINE_JWKS_BYTES: usize = 16 * 1024;
+
+fn validate_pact_profile(
+    pact: &crate::records::agent_channel::PactProfileConfig,
+) -> Result<(), CommandError> {
+    let invalid = |message: &str| Err(CommandError::bad_request(format!("A2A pact: {message}")));
+    if pact.audience.trim().is_empty() {
+        return invalid("audience must be non-empty");
+    }
+    if pact.personal_agents.is_empty() {
+        return invalid("personal_agents must list at least one personal agent");
+    }
+    if pact.personal_agents.len() > MAX_PACT_PERSONAL_AGENTS {
+        return invalid("personal_agents lists more than 50 personal agents");
+    }
+    for agent in &pact.personal_agents {
+        if agent.issuer.trim().is_empty() {
+            return invalid("every personal agent needs a non-empty issuer");
+        }
+        match (agent.jwks_uri.as_deref(), agent.jwks.as_ref()) {
+            (Some(uri), None) => {
+                // The server fetches this URL, so only HTTPS is stored; the
+                // fetch itself still refuses private addresses
+                // (`channel_auth::build_pinned_client`).
+                if !uri.starts_with("https://") || url::Url::parse(uri).is_err() {
+                    return invalid("jwks_uri must be an https URL");
+                }
+            }
+            (None, Some(jwks)) => {
+                if serde_json::to_vec(jwks).map_or(0, |bytes| bytes.len())
+                    > MAX_PACT_INLINE_JWKS_BYTES
+                {
+                    return invalid("inline jwks must be at most 16 KiB");
+                }
+                if serde_json::from_value::<jsonwebtoken::jwk::JwkSet>(jwks.clone()).is_err() {
+                    return invalid("jwks must be a JWKS document ({\"keys\": [...]})");
+                }
+            }
+            _ => return invalid("set exactly one of jwks_uri or jwks per personal agent"),
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn agentid_preset_requires_a_client_id_audience() {
+        let config = json!({});
+        let preset = ChannelAuthConfig::agentid_preset("agentid-client");
+        assert!(validate_channel_auth_config(&ChannelType::A2a, &config, &preset).is_ok());
+
+        let mut without_audience = preset.clone();
+        without_audience.requirements.audiences.clear();
+        assert!(
+            validate_channel_auth_config(&ChannelType::A2a, &config, &without_audience).is_err()
+        );
+    }
 
     #[test]
     fn slack_settings_edits_preserve_connection_evidence_and_provisioning() {

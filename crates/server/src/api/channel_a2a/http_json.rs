@@ -450,7 +450,7 @@ async fn unwrap_json_rpc(response: Response) -> Response {
     a2a_json(StatusCode::OK, &result)
 }
 
-fn a2a_json(status: StatusCode, body: &Value) -> Response {
+pub(super) fn a2a_json(status: StatusCode, body: &Value) -> Response {
     (status, [(header::CONTENT_TYPE, A2A_JSON)], body.to_string()).into_response()
 }
 
@@ -488,7 +488,7 @@ fn error_mapping(code: i64) -> (StatusCode, &'static str, &'static str) {
 }
 
 /// The spec §11.6 error body for a JSON-RPC error code.
-fn a2a_error(code: i64, message: &str) -> Response {
+pub(super) fn a2a_error(code: i64, message: &str) -> Response {
     let (status, status_name, reason) = error_mapping(code);
     a2a_json(
         status,

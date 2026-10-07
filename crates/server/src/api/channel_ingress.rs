@@ -67,6 +67,13 @@ pub struct IngressContext {
 }
 
 impl IngressContext {
+    /// The id [`Self::matches_legacy_app_id`] accepts for this context.
+    pub fn legacy_app_id(&self) -> String {
+        self.legacy_alias_id
+            .clone()
+            .unwrap_or_else(|| self.public_id.to_string())
+    }
+
     pub fn matches_legacy_app_id(&self, legacy_app_id: &str) -> bool {
         match self.legacy_alias_id.as_deref() {
             Some(legacy) => legacy == legacy_app_id,

@@ -23,8 +23,9 @@
 # The `server-turn-latency` job runs `crates/server/benches/turn_latency.rs`:
 # the real server and a gRPC worker in process, one chat turn at a time
 # (HTTP message, worker claims over gRPC, turn.completed), p50/p95 per turn.
-# The bench migrates the service database itself. It gates on throughput
-# against turn_latency_baseline.jsonl the same way.
+# The bench migrates the database itself. It gates on throughput against
+# turn_latency_baseline.jsonl the same way, and on DB statements per turn
+# (pg_stat_statements), which unlike wall time is steady on shared runners.
 name: Durable Benchmarks
 
 on:
@@ -189,24 +190,27 @@ jobs:
     runs-on: ubuntu-latest
     # A release build of the whole server (thin LTO) is most of the time.
     timeout-minutes: 75
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: everruns
-          POSTGRES_PASSWORD: everruns
-          POSTGRES_DB: everruns_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U everruns"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
     steps:
       - uses: actions/checkout@v7
+
+      # Not a service container: those cannot pass server flags, and the
+      # bench reads DB statements per turn from pg_stat_statements, which
+      # must be preloaded. `track=all` also counts statements run inside
+      # trigger functions (event inserts fire several), which are a large part
+      # of a turn's database work.
+      - name: Start PostgreSQL with pg_stat_statements
+        run: |
+          docker run -d --name bench-postgres -p 5432:5432 \
+            -e POSTGRES_USER=everruns -e POSTGRES_PASSWORD=everruns -e POSTGRES_DB=everruns_test \
+            postgres:17-alpine -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all
+          for _ in $(seq 60); do
+            docker exec bench-postgres pg_isready -U everruns -d everruns_test && exit 0
+            sleep 1
+          done
+          docker logs bench-postgres
+          exit 1
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -219,7 +223,7 @@ jobs:
       - name: Run turn_latency
         run: |
           cargo bench -p everruns-server --bench turn_latency -- \
-            --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
+            --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl" --top 15
 
       - name: Compare with baseline
         run: |
@@ -227,9 +231,9 @@ jobs:
           {
             echo "### Server turn latency"
             echo
-            echo "| Scenario | Turns | Turns/s | e2e p50 ms | e2e p95 ms | server p50 ms | server p95 ms | pickup p50 ms |"
-            echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
-            jq -r '"| \(.scenario) | \(.tasks) | \(.tasks_per_sec) | \(.e2e_p50_ms) | \(.e2e_p95_ms) | \(.server_p50_ms) | \(.server_p95_ms) | \(.s2s_p50_ms) |"' \
+            echo "| Scenario | Turns | Turns/s | e2e p50 ms | e2e p95 ms | server p50 ms | server p95 ms | pickup p50 ms | DB stmts/turn | DB ms/turn |"
+            echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+            jq -r '"| \(.scenario) | \(.tasks) | \(.tasks_per_sec) | \(.e2e_p50_ms) | \(.e2e_p95_ms) | \(.server_p50_ms) | \(.server_p95_ms) | \(.s2s_p50_ms) | \(.db_statements_per_turn) | \(.db_ms_per_turn) |"' \
               "$RUNNER_TEMP/summary.jsonl"
             echo
           } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -116,10 +116,7 @@ async fn agent_card(
         .path()
         .strip_suffix("/.well-known/agent-card.json")
         .unwrap_or_else(|| original_uri.path());
-    let endpoint = match host {
-        Some(host) => format!("{scheme}://{host}{endpoint_path}"),
-        None => endpoint_path.to_string(),
-    };
+    let endpoint = absolute_url(&headers, endpoint_path);
     // The agent's avatar, served from the same origin and API prefix as the
     // card. A2A 1.0 and 0.3 both name it `iconUrl`.
     let api_prefix = endpoint_path
@@ -209,6 +206,23 @@ async fn agent_card(
         fields.insert("iconUrl".to_string(), Value::String(icon_url));
     }
     Ok(Json(card))
+}
+
+/// `path` as an absolute URL on the origin the request came in on (the Host
+/// header, and `X-Forwarded-Proto` behind a proxy). Relative when the request
+/// carried no Host.
+pub(super) fn absolute_url(headers: &HeaderMap, path: &str) -> String {
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("https");
+    match headers
+        .get(axum::http::header::HOST)
+        .and_then(|h| h.to_str().ok())
+    {
+        Some(host) => format!("{scheme}://{host}{path}"),
+        None => path.to_string(),
+    }
 }
 
 /// 0.3 / OpenAPI requirements (`[{"scheme": ["scope"]}]`) in the 1.0 shape
@@ -396,6 +410,7 @@ mod tests {
                 },
             }),
             signing_secret: None,
+            pact: None,
         };
 
         let (schemes, requirements) = a2a_security_for_config(&config, config.auth.as_ref());
