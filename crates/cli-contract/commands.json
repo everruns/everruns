@@ -6267,7 +6267,8 @@
         "field": "include_archived",
         "long": "include-archived",
         "kind": "boolean",
-        "required": false
+        "required": false,
+        "help": "Include archived observers."
       }
     ]
   },
@@ -6286,7 +6287,7 @@
         "field": "limit",
         "long": "limit",
         "kind": "integer",
-        "required": true
+        "required": false
       },
       {
         "field": "observer_id",
@@ -6298,7 +6299,7 @@
         "field": "offset",
         "long": "offset",
         "kind": "integer",
-        "required": true
+        "required": false
       },
       {
         "field": "session_id",
@@ -6348,7 +6349,8 @@
         "field": "sampling_rate",
         "long": "sampling-rate",
         "kind": "number",
-        "required": false
+        "required": false,
+        "help": "Fraction of matching turns to score (0.0–1.0)."
       },
       {
         "field": "scorers",
