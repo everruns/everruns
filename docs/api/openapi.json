@@ -35207,6 +35207,14 @@
                 "updated_at"
               ],
               "properties": {
+                "agentid_agents_per_owner": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+                },
                 "base_harness_id": {
                   "type": [
                     "string",
@@ -39634,6 +39642,14 @@
           "updated_at"
         ],
         "properties": {
+          "agentid_agents_per_owner": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many agents one AgentID owner may sign in; null means the platform\ndefault."
+          },
           "base_harness_id": {
             "type": [
               "string",
@@ -50097,6 +50113,16 @@
         "type": "object",
         "description": "Request to update an organization",
         "properties": {
+          "agentid_agents_per_owner": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "How many agents one AgentID owner may sign in to this organization's\nPublic Chat channels. Pass null to use the platform default (5).",
+            "example": 5,
+            "minimum": 0
+          },
           "base_harness_id": {
             "type": [
               "string",

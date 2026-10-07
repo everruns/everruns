@@ -49,6 +49,7 @@ pub async fn build_organization_response(
             .as_ref()
             .map(|s| crate::storage::SystemDecisions::from_db(&s.system_decisions))
             .unwrap_or_default(),
+        agentid_agents_per_owner: db.agentid_agents_per_owner_setting(org_id).await?,
         created_at: row.created_at,
         updated_at: row.updated_at,
         onboarding_completed_at: row.onboarding_completed_at,
