@@ -27,19 +27,14 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-<<<<<<< HEAD:crates/core/src/builtins/tool_output_persistence.rs
 use crate::builtins::tool_hooks::PostToolExecHook;
 use crate::builtins::tool_output_sanitizer::{
-    output_verbosity_budget, priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
-=======
-use crate::tool_hooks::PostToolExecHook;
-use crate::tool_output_sanitizer::{
     AUTO_SUCCESS_BUDGET, output_verbosity_budget, output_verbosity_budget_with_auto_success,
     priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
->>>>>>> d25730033 (feat(core): raise auto success budget to 1KiB with per-agent override):crates/builtins/src/tool_output_persistence.rs
 };
 use crate::builtins::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::builtins::typed_id::SessionId;
+
 use crate::{session_files::SessionFileSystem, tool_context::ToolContext};
 
 /// Max bytes persisted per output stream file to avoid storage exhaustion.
