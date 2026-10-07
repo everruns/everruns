@@ -93,6 +93,13 @@ agent property.
 | `service` | `agent_identity_connections` for the agent's identity | `user_connections`, org `api_key_encrypted` of a user-bound preset | `connection_required` naming the **agent**, setup URL = agent MCP servers sheet (admin action) |
 | `user` | `user_connections` for the invoking user | `agent_identity_connections`, org API keys, catalog `Authorization` headers | `connection_required` naming the **user**, setup URL = their connections page |
 
+**One explicit exception:** `user_or_service`, added by
+[user MCP servers](user-mcp-servers.md) D4, falls back by design: the `user` row
+when the run is attended and the person has a grant, otherwise the `service`
+row. It is never a default, unattended runs always take the `service` row, and
+each tool call records which row answered (`acted_as`). `none`, `service` and
+`user` keep the table above unchanged.
+
 The existing identity→user fallback in `DbConnectionResolver` is removed for MCP
 resolution. It stays for the non-MCP providers that rely on it today, or is
 retired with them separately; either way MCP no longer depends on it.

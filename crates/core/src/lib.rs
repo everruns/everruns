@@ -499,7 +499,9 @@ pub use harness_definition::HarnessDefinition;
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
-pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
+pub use mcp_proxy::{
+    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+};
 pub use mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
     McpContent, McpElicitationPolicy, McpError, McpProtocolMode, McpSecretBindingMetadata,

@@ -106,9 +106,17 @@ impl McpLoginPrompter for PendingPrompter {
         if name == "public" {
             return Ok(McpLogin::NotNeeded);
         }
+        if name == "agent-github" {
+            return Ok(McpLogin::Pending {
+                provider: "mcp_oauth_456".into(),
+                setup_url: "/agents/agent_1?tab=mcp".into(),
+                for_agent: true,
+            });
+        }
         Ok(McpLogin::Pending {
             provider: "mcp_oauth_123".into(),
             setup_url: "/settings/connections".into(),
+            for_agent: false,
         })
     }
 }
@@ -151,6 +159,7 @@ fn settings_default_and_validate() {
     for ok in [
         json!({"use": true}),
         json!({"manage": true, "allow_custom_urls": false}),
+        json!({"use": false, "connect": true}),
     ] {
         assert!(UserMcpCapability.validate_config(&ok).is_ok(), "{ok}");
     }
@@ -158,6 +167,7 @@ fn settings_default_and_validate() {
         json!({"use": "yes"}),
         json!({"manage": 1}),
         json!({"in_shared_sessions": true}),
+        json!({"connect": "yes"}),
     ] {
         assert!(UserMcpCapability.validate_config(&bad).is_err(), "{bad}");
     }
@@ -299,6 +309,44 @@ async fn remove_disable_and_missing_names() {
         .execute_with_context(json!({"name": "linear"}), &context(store))
         .await;
     assert!(error_text(&result).contains("No MCP server named 'linear'"));
+}
+
+#[test]
+fn connect_setting_offers_only_the_connect_tool() {
+    let config = json!({"use": false, "connect": true});
+    assert!(user_mcp_connect_enabled(&config));
+    assert!(!user_mcp_connect_enabled(&json!({})));
+    let names: Vec<_> = UserMcpCapability
+        .tools_with_config(&config)
+        .iter()
+        .map(|tool| tool.name().to_string())
+        .collect();
+    assert_eq!(names, ["connect_mcp_server"]);
+    assert!(
+        UserMcpCapability
+            .pre_tool_use_hooks_with_config(&config)
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn connect_for_an_agent_server_asks_for_the_agents_login() {
+    let store = Arc::new(MemoryStore::default());
+    let connect = tool(json!({"connect": true}), "connect_mcp_server");
+    let result = connect
+        .execute_with_context(json!({"name": "agent-github"}), &context(store))
+        .await;
+    let ToolExecutionResult::ConnectionRequired {
+        provider,
+        subject,
+        setup_url,
+    } = result
+    else {
+        panic!("expected a Connect card, got {result:?}");
+    };
+    assert_eq!(provider, "mcp_oauth_456");
+    assert_eq!(subject, Some(ConnectionRequiredSubject::Agent));
+    assert_eq!(setup_url.as_deref(), Some("/agents/agent_1?tab=mcp"));
 }
 
 #[tokio::test]

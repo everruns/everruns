@@ -52,6 +52,10 @@ pub struct McpConnection {
     /// Write-only Agent credentials bound to exact MCP tool parameters. Values
     /// are resolved by the control plane and injected only inside the executor.
     pub secret_bindings: HashMap<String, Vec<McpSecretBinding>>,
+    /// Account whose grant supplied this connection's credential (`user` or
+    /// `service`), when the resolver picked one. Recorded on the tool call's
+    /// event and used to invalidate the right grant after a rejection.
+    pub acted_as: Option<crate::McpServerActsAs>,
 }
 
 #[derive(Clone)]
@@ -89,6 +93,7 @@ impl McpConnection {
             oauth_provider_id: None,
             pending_oauth_provider: None,
             secret_bindings: HashMap::new(),
+            acted_as: None,
         }
     }
 

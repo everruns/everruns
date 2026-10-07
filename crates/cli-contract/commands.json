@@ -5276,6 +5276,13 @@
         "required": false
       },
       {
+        "field": "service_connection_provider",
+        "long": "service-connection-provider",
+        "kind": "string",
+        "required": false,
+        "help": "Connection provider whose connection on an agent's service virtual user supplies the service ..."
+      },
+      {
         "field": "transport_type",
         "long": "transport-type",
         "kind": "string",
@@ -5472,6 +5479,13 @@
         "long": "protocol-mode",
         "kind": "string",
         "required": false
+      },
+      {
+        "field": "service_connection_provider",
+        "long": "service-connection-provider",
+        "kind": "string",
+        "required": false,
+        "help": "Connection provider whose connection on an agent's service virtual user supplies the service ..."
       },
       {
         "field": "status",

@@ -126,6 +126,14 @@ fn client_definitions(
 
 /// Same per-call context server execution builds, so approval and guardrail
 /// hooks see session services whether or not this process runs the tool.
+/// Account an MCP call recorded in its context's identity slot, if any.
+pub(super) fn mcp_acted_as(tool_context: &ToolContext) -> Option<crate::McpServerActsAs> {
+    tool_context
+        .extensions
+        .get::<crate::McpCallIdentity>()
+        .and_then(|identity| identity.get())
+}
+
 pub(super) fn tool_context_for_call<T, E>(
     atom: &ActAtom<T, E>,
     context: &ExecutionContext,
@@ -154,6 +162,11 @@ where
     {
         tool_context.mcp_invoker = Some(bound);
     }
+    // An MCP call reports which account it ran as through this per-call slot,
+    // so `tool.completed` can record it (user MCP servers D4).
+    tool_context
+        .extensions
+        .insert(Arc::new(crate::McpCallIdentity::default()));
     if let Some(authority) = tool_context.session_creation_authority.as_ref()
         && let Some(bound) = authority.for_execution(context.input_message_id.uuid())
     {

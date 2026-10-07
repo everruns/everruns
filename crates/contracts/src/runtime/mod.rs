@@ -124,7 +124,9 @@ pub use self::compaction_policy::{
 pub use self::config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
-pub use self::connection_services::{ServiceApiKeyConnection, UserConnectionResolver};
+pub use self::connection_services::{
+    McpResolvedCredential, ServiceApiKeyConnection, UserConnectionResolver,
+};
 pub use self::decisions::{
     DecisionAnswer, DecisionOutcome, DecisionQuestion, DecisionRequest, DecisionUsage,
     DecisionsService, DisabledDecisionsService,
@@ -178,7 +180,7 @@ pub use self::llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
 };
 pub use self::mcp_proxy::{
-    McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
+    McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
 };
 pub use self::mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,

@@ -20,6 +20,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ScopedMcpServer;
 
+pub use everruns_contracts::runtime::mcp_server::{
+    USER_MCP_CAPABILITY_ID, USER_MCP_CONNECT_SETTING,
+};
+
 /// One server in a person's list: whether it is enabled, and how to reach it.
 ///
 /// A server added from an organization catalog sets `server.preset`
@@ -145,6 +149,11 @@ pub enum McpLogin {
         provider: String,
         /// Where the person can finish it if no card can be shown.
         setup_url: String,
+        /// The sign-in is the agent's own (a `service` attachment): someone
+        /// with MCP management permission authorizes it, never the person
+        /// chatting as themselves.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        for_agent: bool,
     },
 }
 
@@ -250,8 +259,18 @@ mod tests {
         let login = McpLogin::Pending {
             provider: "mcp_oauth_1".into(),
             setup_url: "/settings".into(),
+            for_agent: false,
         };
         let wire = serde_json::to_value(&login).unwrap();
         assert_eq!(wire["status"], "pending");
+        // A person's own sign-in keeps the shape it had before agent sign-ins.
+        assert!(wire.get("for_agent").is_none());
+        let agent = McpLogin::Pending {
+            provider: "mcp_oauth_1".into(),
+            setup_url: "/agents/agent_1?tab=mcp".into(),
+            for_agent: true,
+        };
+        let wire = serde_json::to_string(&agent).unwrap();
+        assert_eq!(serde_json::from_str::<McpLogin>(&wire).unwrap(), agent);
     }
 }

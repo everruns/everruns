@@ -175,7 +175,10 @@ fn scoped_config_acts_as_is_strict_and_omits_none() {
     for (wire_name, expected) in [
         ("service", McpServerActsAs::Service),
         ("user", McpServerActsAs::User),
+        ("user_or_service", McpServerActsAs::UserOrService),
     ] {
+        assert_eq!(expected.to_string(), wire_name);
+        assert_eq!(McpServerActsAs::from(wire_name), expected);
         let config: ScopedMcpServer = serde_json::from_value(json!({
             "url": "https://example.com/mcp",
             "actsAs": wire_name
@@ -712,4 +715,25 @@ fn auth_modes_use_canonical_wire_values_and_accept_legacy_oauth_spelling() {
     let legacy: McpServerAuthMode = serde_json::from_value(json!("o_auth")).unwrap();
     assert_eq!(legacy, McpServerAuthMode::OAuth);
     assert_eq!(serde_json::to_value(legacy).unwrap(), json!("oauth"));
+}
+
+#[test]
+fn user_or_service_tries_the_user_before_the_agent() {
+    assert_eq!(
+        McpServerActsAs::UserOrService.resolution_order(),
+        &[McpServerActsAs::User, McpServerActsAs::Service]
+    );
+    assert_eq!(
+        McpServerActsAs::User.resolution_order(),
+        &[McpServerActsAs::User]
+    );
+    assert_eq!(
+        McpServerActsAs::Service.resolution_order(),
+        &[McpServerActsAs::Service]
+    );
+    assert!(McpServerActsAs::None.resolution_order().is_empty());
+    assert!(McpServerActsAs::UserOrService.uses_user_grant());
+    assert!(McpServerActsAs::UserOrService.uses_service_grant());
+    assert!(!McpServerActsAs::User.uses_service_grant());
+    assert!(!McpServerActsAs::Service.uses_user_grant());
 }

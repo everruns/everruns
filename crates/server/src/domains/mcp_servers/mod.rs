@@ -5,6 +5,7 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub mod connection_backed;
 pub mod queries;
 pub mod scoped_mcp;
 pub mod service;

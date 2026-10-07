@@ -1276,6 +1276,9 @@ async fn playground_and_delegated_runs_never_resolve_private_user_grants() {
     );
 }
 
+#[path = "connection_resolver_user_or_service_tests.rs"]
+mod user_or_service;
+
 async fn agentmail_grant(fixture: &McpFixture, service: bool, key: &str) {
     let token = Some(fixture.encryption.encrypt_string(key).unwrap());
     let metadata = Some(serde_json::json!({ "inbox_id": format!("{key}@agentmail.to") }));

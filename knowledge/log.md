@@ -2,6 +2,17 @@
 
 ## 2026-10-07
 
+* **Agent MCP servers can act as the user with the agent as a fallback.**
+  `user_or_service` uses the person's own grant when they have one and the
+  agent's otherwise; unattended runs always use the agent's, and every MCP
+  call records which one it used. Catalog presets can take the agent's
+  credential from a host-pinned connection, and the seeded GitHub preset uses
+  the agent's GitHub App. Agents with a server acting as the person get
+  `connect_mcp_server` on its own. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 5,
+  [agent MCP attachments](integrations/agent-mcp-attachments.md) D2 and
+  TM-TOOL-059.
+
 * **Agents can finish other apps' AgentID sign-ins.** The experimental
   `agentid` capability's `agentid_authorize` tool approves an app's AgentID
   waiting page with the agent's own AgentMail inbox, read only from the

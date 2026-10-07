@@ -23,7 +23,8 @@
 use std::collections::HashSet;
 
 use everruns_capabilities::capabilities::{
-    USER_MCP_CAPABILITY_ID, user_mcp_custom_urls_allowed, user_mcp_manage_enabled,
+    USER_MCP_CAPABILITY_ID, user_mcp_connect_enabled, user_mcp_custom_urls_allowed,
+    user_mcp_manage_enabled,
 };
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
 use everruns_core::mcp::{
@@ -48,6 +49,8 @@ const NO_PERSON: &str = "No person is chatting in this turn, so there is no MCP 
 const SHARED: &str = "This conversation has several people in it, so the agent cannot change one person's MCP servers here.";
 const NOT_MANAGED: &str =
     "This agent is not allowed to manage MCP servers (user_mcp `manage` is off).";
+const PRESET_GONE: &str =
+    "This MCP server's catalog preset is no longer available, so there is nothing to sign in to.";
 
 /// One manage call's turn: the loaded records the call is checked against.
 pub struct UserMcpManageTurn<'a> {
@@ -78,8 +81,17 @@ pub async fn invoke_user_mcp_store(
         .iter()
         .find(|config| config.capability_id() == USER_MCP_CAPABILITY_ID)
         .map(|config| config.config_value().clone())
-        .filter(user_mcp_manage_enabled)
-        .ok_or_else(|| UserMcpStoreError::Unavailable(NOT_MANAGED.into()))?;
+        .unwrap_or_default();
+    // `connect_mcp_server` alone is available with `manage`, or when one of
+    // the agent's own servers signs in as the person chatting (D5); the host
+    // derives `connect` for that case. Every other call needs `manage`.
+    let allowed = match &call {
+        UserMcpStoreCall::StartLogin { .. } => user_mcp_connect_enabled(&config),
+        _ => user_mcp_manage_enabled(&config),
+    };
+    if !allowed {
+        return Err(UserMcpStoreError::Unavailable(NOT_MANAGED.into()));
+    }
     let person = initiating_person(turn).await?;
     let servers = UserMcpServers {
         db: turn.db,
@@ -143,6 +155,10 @@ pub async fn invoke_user_mcp_store(
             })
         }
         UserMcpStoreCall::StartLogin { name } => {
+            // The agent's own servers win a name clash, as they do at runtime.
+            if let Some(login) = agent_server_login(turn, &resolved, person, &name).await? {
+                return Ok(UserMcpStoreReply::Login { login });
+            }
             let server = find(&servers, &name)
                 .await?
                 .ok_or(UserMcpStoreError::NotFound(name))?;
@@ -154,9 +170,9 @@ pub async fn invoke_user_mcp_store(
 }
 
 /// The records a manage call is checked against, loaded from storage as the
-/// turn sees them: the agent that answers this input message (pinned to the
-/// session's version when it is the session's own agent) and its effective
-/// harness. Shared by the in-process worker and the gRPC edge.
+/// turn sees them: the agent that answers this input message, in its current
+/// configuration, and its effective harness. Shared by the in-process worker
+/// and the gRPC edge.
 pub struct ManageTurnRecords {
     pub harness: Harness,
     pub agent: Option<Agent>,
@@ -356,11 +372,92 @@ fn start_login(server: &UserMcpServer) -> UserMcpStoreResult<McpLogin> {
         (UserMcpConnectionStatus::NotConnected, Some(provider)) => Ok(McpLogin::Pending {
             provider: provider.clone(),
             setup_url: SETUP_URL.into(),
+            for_agent: false,
         }),
         (UserMcpConnectionStatus::NotConnected, None) => Err(UserMcpStoreError::Invalid(
             "This server signs in with an API key, which cannot be given in chat. The person can set it in Settings > My MCP servers.".into(),
         )),
     }
+}
+
+/// Sign-in for one of the agent's own MCP servers (agent, harness, session or
+/// capability layer) named `name`, or None when the agent has no such server.
+///
+/// `user` and `user_or_service` servers sign in as the person chatting.
+/// `service` servers sign in as the agent: the card routes to the agent's MCP
+/// servers sheet, where only someone with MCP management permission can
+/// authorize it (the existing Authorize / Ask admin split), so a person
+/// without it is told to ask an admin rather than authorizing anything.
+async fn agent_server_login(
+    turn: &UserMcpManageTurn<'_>,
+    resolved: &everruns_core::ResolvedRuntimeCapabilities,
+    person: Uuid,
+    name: &str,
+) -> UserMcpStoreResult<Option<McpLogin>> {
+    let server = merge_effective_scoped_mcp_servers(turn.harness, turn.agent, turn.session)
+        .remove(name)
+        .or_else(|| {
+            collect_capability_mcp_servers(&resolved.resolved_capability_configs, turn.registry)
+                .remove(name)
+        });
+    let Some(server) = server else {
+        return Ok(None);
+    };
+    if server.acts_as.is_none() {
+        return Ok(Some(McpLogin::NotNeeded));
+    }
+    let (provider, service_provider) = match &server.preset {
+        Some(preset) => {
+            let row = turn
+                .db
+                .get_mcp_server_by_name(turn.org_id, preset.catalog_name())
+                .await
+                .map_err(internal)?
+                .filter(|row| row.status == "active")
+                .ok_or_else(|| UserMcpStoreError::Invalid(PRESET_GONE.into()))?;
+            let provider = everruns_core::mcp_oauth_provider_id_for_uuid(row.id.uuid());
+            let backing =
+                super::McpServerService::settings_from_row(&row).service_connection_provider;
+            (provider.clone(), backing.unwrap_or(provider))
+        }
+        None => match server.oauth_provider_id.clone() {
+            Some(provider) => (provider.clone(), provider),
+            None => return Ok(Some(McpLogin::NotNeeded)),
+        },
+    };
+    let connected = |identity: everruns_contracts::typed_id::VirtualUserId, provider: String| async move {
+        turn.db
+            .get_virtual_user_connection(identity, &provider)
+            .await
+            .map(|row| row.is_some())
+            .map_err(internal)
+    };
+    if server.acts_as.uses_user_grant() {
+        let person = everruns_contracts::typed_id::VirtualUserId::from_uuid(person);
+        if connected(person, provider.clone()).await? {
+            return Ok(Some(McpLogin::AlreadyConnected));
+        }
+        return Ok(Some(McpLogin::Pending {
+            provider,
+            setup_url: SETUP_URL.into(),
+            for_agent: false,
+        }));
+    }
+    let agent = turn.agent.ok_or_else(|| {
+        UserMcpStoreError::Unavailable(
+            "This server signs in as an agent, and no agent is answering.".into(),
+        )
+    })?;
+    if let Some(identity) = agent.service_virtual_user_id
+        && connected(identity, service_provider).await?
+    {
+        return Ok(Some(McpLogin::AlreadyConnected));
+    }
+    Ok(Some(McpLogin::Pending {
+        provider,
+        setup_url: format!("/agents/{}?tab=mcp", agent.public_id),
+        for_agent: true,
+    }))
 }
 
 async fn find(

@@ -263,12 +263,13 @@ pub fn resolve_runtime_capabilities(
     session: &ExecutionSession,
     capability_registry: &CapabilityRegistry,
 ) -> ResolvedRuntimeCapabilities {
-    let effective_overlay = AgentConfigOverlay::fold(
+    let mut effective_overlay = AgentConfigOverlay::fold(
         [AgentConfigOverlay::from(harness)]
             .into_iter()
             .chain(agent.into_iter().map(AgentConfigOverlay::from))
             .chain([AgentConfigOverlay::from(session)]),
     );
+    imply_mcp_connect_tool(&mut effective_overlay, capability_registry);
     let resolved_capability_configs =
         resolve_capability_configs(&effective_overlay.capabilities, capability_registry)
             .unwrap_or_else(|error| {
@@ -278,6 +279,56 @@ pub fn resolve_runtime_capabilities(
     ResolvedRuntimeCapabilities {
         effective_overlay,
         resolved_capability_configs,
+    }
+}
+
+/// Give an agent `connect_mcp_server` when one of its MCP servers can sign in
+/// as the person chatting (`actsAs` `user` or `user_or_service`), so it can
+/// offer the Connect card before a call fails (user MCP servers D5).
+///
+/// Decision: this is derived, never authored. It turns on the `user_mcp`
+/// capability's `connect` setting, which contributes that one tool and nothing
+/// else; an agent that already has `user_mcp` keeps its own settings. Hosts
+/// whose registry has no `user_mcp` capability are left unchanged.
+fn imply_mcp_connect_tool(overlay: &mut AgentConfigOverlay, registry: &CapabilityRegistry) {
+    use crate::mcp_server::{USER_MCP_CAPABILITY_ID, USER_MCP_CONNECT_SETTING};
+    if registry.get(USER_MCP_CAPABILITY_ID).is_none() {
+        return;
+    }
+    let signs_in_as_person = overlay
+        .mcp_servers
+        .values()
+        .chain(
+            crate::capabilities::collect_capability_mcp_servers(&overlay.capabilities, registry)
+                .values(),
+        )
+        .any(|server| server.acts_as.uses_user_grant());
+    if !signs_in_as_person {
+        return;
+    }
+    match overlay
+        .capabilities
+        .iter_mut()
+        .find(|config| config.capability_id() == USER_MCP_CAPABILITY_ID)
+    {
+        Some(config) => {
+            let value = config.config_mut();
+            if !value.is_object() {
+                *value = serde_json::json!({});
+            }
+            if let Some(object) = value.as_object_mut() {
+                object.insert(
+                    USER_MCP_CONNECT_SETTING.into(),
+                    serde_json::Value::Bool(true),
+                );
+            }
+        }
+        None => overlay
+            .capabilities
+            .push(AgentCapabilityConfig::with_config(
+                USER_MCP_CAPABILITY_ID,
+                serde_json::json!({ "use": false, USER_MCP_CONNECT_SETTING: true }),
+            )),
     }
 }
 
@@ -383,5 +434,86 @@ mod tests {
         assert!(debug.contains("provider-account"));
         assert!(debug.contains("<opaque>"));
         assert!(!debug.contains(secret));
+    }
+
+    struct UserMcpStub;
+    impl crate::capabilities::Capability for UserMcpStub {
+        fn id(&self) -> &str {
+            crate::mcp_server::USER_MCP_CAPABILITY_ID
+        }
+        fn name(&self) -> &str {
+            "User MCP"
+        }
+        fn description(&self) -> &str {
+            "stub"
+        }
+    }
+
+    fn overlay_with_server(acts_as: &str) -> AgentConfigOverlay {
+        let server: crate::ScopedMcpServer = serde_json::from_value(
+            serde_json::json!({ "url": "https://mcp.example.com/mcp", "actsAs": acts_as }),
+        )
+        .unwrap();
+        AgentConfigOverlay {
+            mcp_servers: [("example".to_string(), server)].into_iter().collect(),
+            ..Default::default()
+        }
+    }
+
+    fn user_mcp_config(overlay: &AgentConfigOverlay) -> Option<serde_json::Value> {
+        overlay
+            .capabilities
+            .iter()
+            .find(|config| config.capability_id() == crate::mcp_server::USER_MCP_CAPABILITY_ID)
+            .map(|config| config.config_value().clone())
+    }
+
+    #[test]
+    fn servers_signing_in_as_the_person_bring_the_connect_tool() {
+        let registry = crate::capabilities::CapabilityRegistryBuilder::new()
+            .capability(UserMcpStub)
+            .build();
+        for acts_as in ["user", "user_or_service"] {
+            let mut overlay = overlay_with_server(acts_as);
+            imply_mcp_connect_tool(&mut overlay, &registry);
+            assert_eq!(
+                user_mcp_config(&overlay),
+                Some(serde_json::json!({ "use": false, "connect": true })),
+                "{acts_as}"
+            );
+        }
+        for acts_as in ["service", "none"] {
+            let mut overlay = overlay_with_server(acts_as);
+            imply_mcp_connect_tool(&mut overlay, &registry);
+            assert_eq!(user_mcp_config(&overlay), None, "{acts_as}");
+        }
+    }
+
+    #[test]
+    fn an_existing_user_mcp_config_keeps_its_settings_and_gains_connect() {
+        let registry = crate::capabilities::CapabilityRegistryBuilder::new()
+            .capability(UserMcpStub)
+            .build();
+        let mut overlay = overlay_with_server("user");
+        overlay
+            .capabilities
+            .push(AgentCapabilityConfig::with_config(
+                crate::mcp_server::USER_MCP_CAPABILITY_ID,
+                serde_json::json!({ "manage": true }),
+            ));
+        imply_mcp_connect_tool(&mut overlay, &registry);
+        assert_eq!(
+            user_mcp_config(&overlay),
+            Some(serde_json::json!({ "manage": true, "connect": true }))
+        );
+        assert_eq!(overlay.capabilities.len(), 1);
+    }
+
+    #[test]
+    fn hosts_without_user_mcp_are_left_unchanged() {
+        let registry = crate::capabilities::CapabilityRegistryBuilder::new().build();
+        let mut overlay = overlay_with_server("user");
+        imply_mcp_connect_tool(&mut overlay, &registry);
+        assert!(overlay.capabilities.is_empty());
     }
 }

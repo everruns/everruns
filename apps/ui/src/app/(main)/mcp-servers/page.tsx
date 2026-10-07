@@ -58,6 +58,7 @@ import {
   apiKeySecretSchema,
   getFieldErrors,
   mcpServerEditFormSchema,
+  type McpServiceConnectionChoice,
   mcpServerFormSchema,
   type FieldErrors,
 } from "@/lib/form-validation";
@@ -74,6 +75,7 @@ import {
 } from "@/components/layout";
 import { registryDomainIcons } from "@/lib/registry-navigation";
 import { pluralize } from "@/lib/formatting";
+import { ElicitationPolicyField, ServiceConnectionField } from "@/components/mcp/mcp-server-fields";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 
 const McpIcon = registryDomainIcons.mcpServers;
@@ -88,40 +90,6 @@ function protocolModeLabel(mode?: McpProtocolMode): string {
     default:
       return "Auto";
   }
-}
-
-/**
- * Elicitation policy select, shared by the create and edit dialogs.
- * Spec: knowledge/integrations/mcp-form-elicitation.md (D1).
- */
-function ElicitationPolicyField({
-  id,
-  value,
-  onChange,
-}: {
-  id: string;
-  value: McpElicitationPolicy;
-  onChange: (value: McpElicitationPolicy) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <Label htmlFor={id}>Elicitation</Label>
-      <Select value={value} onValueChange={(next) => onChange(next as McpElicitationPolicy)}>
-        <SelectTrigger id={id}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="url">Links only</SelectItem>
-          <SelectItem value="url_and_form">Links and questions</SelectItem>
-          <SelectItem value="none">Off</SelectItem>
-        </SelectContent>
-      </Select>
-      <p className="text-xs text-muted-foreground">
-        Whether this server may ask the user to open a link or answer questions mid-call. Questions
-        are shown as coming from the server and never ask for passwords or keys.
-      </p>
-    </div>
-  );
 }
 
 function McpServerRow({
@@ -297,6 +265,7 @@ function AddMcpServerDialog({
   const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
+  const [serviceConnection, setServiceConnection] = useState<McpServiceConnectionChoice>("none");
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [headerErrors, setHeaderErrors] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -313,6 +282,7 @@ function AddMcpServerDialog({
     setAuthMode("none");
     setProtocolMode("auto");
     setElicitationPolicy("url");
+    setServiceConnection("none");
     setHeaders([]);
     setHeaderErrors(null);
     setFormError(null);
@@ -328,6 +298,7 @@ function AddMcpServerDialog({
       url,
       auth_mode: authMode,
       api_key: apiKey,
+      service_connection_provider: serviceConnection,
     });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
@@ -354,6 +325,10 @@ function AddMcpServerDialog({
       auth_mode: parsed.data.auth_mode,
       protocol_mode: protocolMode === "auto" ? undefined : protocolMode,
       elicitation_policy: elicitationPolicy === "url" ? undefined : elicitationPolicy,
+      service_connection_provider:
+        parsed.data.service_connection_provider === "none"
+          ? undefined
+          : parsed.data.service_connection_provider,
       api_key: parsed.data.auth_mode === "api_key" ? parsed.data.api_key : undefined,
       headers: headersRecord,
     };
@@ -483,6 +458,11 @@ function AddMcpServerDialog({
             value={elicitationPolicy}
             onChange={setElicitationPolicy}
           />
+          <ServiceConnectionField
+            id="service-connection"
+            value={serviceConnection}
+            onChange={setServiceConnection}
+          />
           {authMode === "api_key" && (
             <div className="space-y-2">
               <Label htmlFor="api-key">API Key</Label>
@@ -603,6 +583,7 @@ function EditMcpServerDialog({
   const [url, setUrl] = useState("");
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [elicitationPolicy, setElicitationPolicy] = useState<McpElicitationPolicy>("url");
+  const [serviceConnection, setServiceConnection] = useState<McpServiceConnectionChoice>("none");
   const [apiKey, setApiKey] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
@@ -623,6 +604,7 @@ function EditMcpServerDialog({
     setUrl(server.url);
     setProtocolMode(server.protocol_mode ?? "auto");
     setElicitationPolicy(server.elicitation_policy ?? "url");
+    setServiceConnection(server.service_connection_provider === "github" ? "github" : "none");
     setApiKey("");
     setFieldErrors({});
     updateServer.reset();
@@ -639,6 +621,7 @@ function EditMcpServerDialog({
       url,
       protocol_mode: protocolMode,
       elicitation_policy: elicitationPolicy,
+      service_connection_provider: serviceConnection,
     });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
@@ -662,6 +645,11 @@ function EditMcpServerDialog({
         url: parsed.data.url,
         protocol_mode: parsed.data.protocol_mode,
         elicitation_policy: parsed.data.elicitation_policy,
+        // An empty string clears it.
+        service_connection_provider:
+          parsed.data.service_connection_provider === "none"
+            ? ""
+            : parsed.data.service_connection_provider,
         ...(needsFreshApiKey ? { api_key: freshApiKey } : {}),
         ...(clearsHeaders ? { headers: {} } : {}),
       });
@@ -778,6 +766,11 @@ function EditMcpServerDialog({
             id="edit-elicitation-policy"
             value={elicitationPolicy}
             onChange={setElicitationPolicy}
+          />
+          <ServiceConnectionField
+            id="edit-service-connection"
+            value={serviceConnection}
+            onChange={setServiceConnection}
           />
           <p className="text-xs text-muted-foreground">
             Authentication ({server?.auth_mode ?? "none"}) is managed separately. Use the Set Key

@@ -23,6 +23,11 @@ struct RecordingResolver {
     legacy_calls: Arc<StdMutex<usize>>,
     execution_inputs: Arc<StdMutex<Vec<Uuid>>>,
     acts_as_token: Option<String>,
+    /// When set, the `actsAs` lookup answers per identity instead of with
+    /// `acts_as_token`, so a test can give the person and the agent different
+    /// grants (or none).
+    per_identity: Option<Vec<(McpServerActsAs, String)>>,
+    invalidated: Arc<StdMutex<Vec<McpServerActsAs>>>,
     legacy_token: Option<String>,
     fail: bool,
 }
@@ -55,7 +60,24 @@ impl UserConnectionResolver for RecordingResolver {
         if self.fail {
             return Err(everruns_contracts::error::AgentLoopError::store("db down"));
         }
+        if let Some(per_identity) = &self.per_identity {
+            return Ok(per_identity
+                .iter()
+                .find(|(identity, _)| *identity == acts_as)
+                .map(|(_, token)| token.clone()));
+        }
         Ok(self.acts_as_token.clone())
+    }
+
+    async fn invalidate_mcp_connection(
+        &self,
+        _session_id: CoreSessionId,
+        _provider: &str,
+        acts_as: McpServerActsAs,
+        _rejected_credential_fingerprint: &str,
+    ) -> CoreResult<()> {
+        self.invalidated.lock().unwrap().push(acts_as);
+        Ok(())
     }
 }
 
@@ -254,10 +276,9 @@ async fn an_attachment_without_an_acting_identity_never_uses_personal_credential
 
     assert_eq!(authorization_of(&connection).as_deref(), None);
     assert_eq!(*resolver.legacy_calls.lock().unwrap(), 0);
-    assert_eq!(
-        *resolver.acts_as_calls.lock().unwrap(),
-        vec![McpServerActsAs::None]
-    );
+    // `none` names no identity, so no connection store is even asked.
+    assert!(resolver.acts_as_calls.lock().unwrap().is_empty());
+    assert_eq!(connection.acted_as, None);
 }
 
 #[tokio::test]
@@ -284,7 +305,7 @@ async fn a_missing_grant_becomes_connection_required_never_an_unauthenticated_ca
             Some(match acts_as {
                 McpServerActsAs::Service => ConnectionRequiredSubject::Agent,
                 McpServerActsAs::User => ConnectionRequiredSubject::User,
-                McpServerActsAs::None => unreachable!(),
+                McpServerActsAs::UserOrService | McpServerActsAs::None => unreachable!(),
             })
         );
         let expected_setup_url = match acts_as {
@@ -292,7 +313,7 @@ async fn a_missing_grant_becomes_connection_required_never_an_unauthenticated_ca
                 format!("/agents/{}?tab=mcp", AgentId::from_seed(7))
             }
             McpServerActsAs::User => "/settings/connections".to_string(),
-            McpServerActsAs::None => unreachable!(),
+            McpServerActsAs::UserOrService | McpServerActsAs::None => unreachable!(),
         };
         assert_eq!(
             required.setup_url.as_deref(),
@@ -316,10 +337,8 @@ async fn an_unscoped_missing_grant_keeps_the_provider_only_shape_without_private
 
     assert_eq!(authorization_of(&connection), None);
     assert_eq!(*resolver.legacy_calls.lock().unwrap(), 0);
-    assert_eq!(
-        *resolver.acts_as_calls.lock().unwrap(),
-        vec![McpServerActsAs::None]
-    );
+    // `none` names no identity, so no connection store is asked.
+    assert!(resolver.acts_as_calls.lock().unwrap().is_empty());
     let required = connection
         .pending_oauth_provider
         .expect("unscoped missing grant must still prompt");
@@ -715,5 +734,150 @@ impl WorkerAdapters for StubAdapters {
         &self,
     ) -> Arc<dyn crate::core::session_task::SessionTaskRegistry> {
         unimplemented!()
+    }
+}
+
+fn per_identity(grants: &[(McpServerActsAs, &str)]) -> RecordingResolver {
+    RecordingResolver {
+        per_identity: Some(
+            grants
+                .iter()
+                .map(|(identity, token)| (*identity, token.to_string()))
+                .collect(),
+        ),
+        legacy_token: Some("fallback-token".to_string()),
+        ..Default::default()
+    }
+}
+
+/// User MCP servers D4: `user_or_service` uses the person's own grant when
+/// they have one, and the connection records that it acted as the user.
+#[tokio::test]
+async fn user_or_service_prefers_the_persons_grant_and_records_it() {
+    let (connection, resolver) = resolve_with(
+        server_info(
+            McpServerActsAs::UserOrService,
+            crate::core::McpServerAuthMode::OAuth,
+            None,
+            &[],
+        ),
+        per_identity(&[
+            (McpServerActsAs::User, "person-token"),
+            (McpServerActsAs::Service, "agent-token"),
+        ]),
+    )
+    .await;
+
+    assert_eq!(
+        authorization_of(&connection).as_deref(),
+        Some("Bearer person-token")
+    );
+    assert_eq!(connection.acted_as, Some(McpServerActsAs::User));
+    assert_eq!(
+        *resolver.acts_as_calls.lock().unwrap(),
+        vec![McpServerActsAs::User]
+    );
+    assert_eq!(*resolver.legacy_calls.lock().unwrap(), 0);
+    assert!(connection.pending_oauth_provider.is_none());
+}
+
+/// Without the person's grant (including every unattended run, which has no
+/// person) the agent's grant answers, and the connection says so.
+#[tokio::test]
+async fn user_or_service_falls_back_to_the_agent_and_records_it() {
+    let (connection, resolver) = resolve_with(
+        server_info(
+            McpServerActsAs::UserOrService,
+            crate::core::McpServerAuthMode::OAuth,
+            None,
+            &[],
+        ),
+        per_identity(&[(McpServerActsAs::Service, "agent-token")]),
+    )
+    .await;
+
+    assert_eq!(
+        authorization_of(&connection).as_deref(),
+        Some("Bearer agent-token")
+    );
+    assert_eq!(connection.acted_as, Some(McpServerActsAs::Service));
+    assert_eq!(
+        *resolver.acts_as_calls.lock().unwrap(),
+        vec![McpServerActsAs::User, McpServerActsAs::Service]
+    );
+}
+
+/// Neither grant: the call is held for the agent's login (an admin
+/// authorizes it), never sent unauthenticated.
+#[tokio::test]
+async fn user_or_service_without_any_grant_asks_for_the_agent_login() {
+    let (connection, _resolver) = resolve_with(
+        server_info(
+            McpServerActsAs::UserOrService,
+            crate::core::McpServerAuthMode::OAuth,
+            None,
+            &[],
+        ),
+        per_identity(&[]),
+    )
+    .await;
+
+    assert_eq!(authorization_of(&connection), None);
+    assert_eq!(connection.acted_as, None);
+    let required = connection
+        .pending_oauth_provider
+        .expect("missing grants must surface connection_required");
+    assert_eq!(required.subject, Some(ConnectionRequiredSubject::Agent));
+    assert_eq!(
+        required.setup_url.as_deref(),
+        Some(format!("/agents/{}?tab=mcp", AgentId::from_seed(7)).as_str())
+    );
+}
+
+/// A concrete identity records itself too, so every resolved call's event
+/// says which account it used.
+#[tokio::test]
+async fn concrete_identities_record_the_account_they_used() {
+    for acts_as in [McpServerActsAs::Service, McpServerActsAs::User] {
+        let (connection, _resolver) = resolve_with(
+            server_info(acts_as, crate::core::McpServerAuthMode::OAuth, None, &[]),
+            RecordingResolver {
+                acts_as_token: Some("scoped-token".to_string()),
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(connection.acted_as, Some(acts_as), "{acts_as}");
+    }
+}
+
+/// A rejected `user_or_service` credential invalidates the grant that served
+/// it, never the other identity's.
+#[tokio::test]
+async fn user_or_service_invalidates_only_the_grant_that_served_the_call() {
+    for (served_by, token) in [
+        (McpServerActsAs::User, "person-token"),
+        (McpServerActsAs::Service, "agent-token"),
+    ] {
+        let recording = per_identity(&[(served_by, token)]);
+        let invalidated = recording.invalidated.clone();
+        let worker_resolver = hosted_resolver(
+            server_info(
+                McpServerActsAs::UserOrService,
+                crate::core::McpServerAuthMode::OAuth,
+                None,
+                &[],
+            ),
+            recording,
+        );
+        let connection = McpConnectionResolver::resolve(&worker_resolver, "linear")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(connection.acted_as, Some(served_by));
+        McpConnectionResolver::invalidate(&worker_resolver, "linear", &connection)
+            .await
+            .unwrap();
+        assert_eq!(*invalidated.lock().unwrap(), vec![served_by]);
     }
 }

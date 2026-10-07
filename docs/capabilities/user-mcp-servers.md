@@ -64,7 +64,14 @@ agent has [Tool Approval](/capabilities/tool-approval/) on. `remove` and
 
 A server added or enabled in a turn is usable from the person's next message.
 `connect_mcp_server` never sees a credential: the person signs in in their own
-browser, as with any Connect card. Servers added in chat cannot carry API keys
+browser, as with any Connect card.
+
+`connect_mcp_server` is also added on its own, without `manage` and without
+the capability being configured, when one of the agent's own MCP servers acts
+as `user` or `user_or_service`, so the agent can offer the sign-in before a
+call fails. For a server that acts as the agent (`service`), the card leads to
+the agent's **MCP servers** sheet, where only someone allowed to manage MCP
+servers can authorize it; anyone else is told to ask an admin. Servers added in chat cannot carry API keys
 or headers; the person adds those in Settings.
 
 ## Behaviour

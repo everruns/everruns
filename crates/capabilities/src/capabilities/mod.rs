@@ -113,7 +113,8 @@ pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
 pub use user_mcp::{
     ForwardingUserMcpStore, McpLoginPrompterExt, USER_MCP_APPROVAL_TOOLS, USER_MCP_CAPABILITY_ID,
     UserMcpCallInvoker, UserMcpCapability, UserMcpStoreExt, install_user_mcp_store,
-    user_mcp_custom_urls_allowed, user_mcp_manage_enabled, user_mcp_use_enabled,
+    user_mcp_connect_enabled, user_mcp_custom_urls_allowed, user_mcp_manage_enabled,
+    user_mcp_use_enabled,
 };
 
 /// Register the hosted platform-management capabilities on a registry.

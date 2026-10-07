@@ -353,7 +353,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -1534,7 +1535,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -3908,7 +3910,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -4368,6 +4371,14 @@
             {
               "type": "null"
             }
+          ]
+        },
+        "service_connection_provider": {
+          "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential (currently `github`: the agent's GitHub\nApp installation). Only allowed for MCP hosts that accept that\nprovider's tokens.",
+          "example": "github",
+          "type": [
+            "string",
+            "null"
           ]
         },
         "transport_type": {
@@ -6689,7 +6700,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -13723,7 +13735,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -14196,7 +14209,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -14602,7 +14616,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -16089,7 +16104,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -18329,7 +18345,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"
@@ -18935,6 +18952,14 @@
                 {
                   "type": "null"
                 }
+              ]
+            },
+            "service_connection_provider": {
+              "description": "Connection provider whose connection on an agent's service virtual user\nsupplies the service credential (`github`). An empty string clears it.",
+              "example": "github",
+              "type": [
+                "string",
+                "null"
               ]
             },
             "status": {
@@ -21508,7 +21533,8 @@
           "enum": [
             "none",
             "service",
-            "user"
+            "user",
+            "user_or_service"
           ],
           "example": "service",
           "type": "string"

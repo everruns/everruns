@@ -181,6 +181,7 @@ async fn seed_catalog_server(
         elicitation_policy: Default::default(),
         oauth: oauth
             .then_some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
+        service_connection_provider: None,
     };
     db.create_mcp_server(
         everruns_core::DEFAULT_ORG_ID,
@@ -805,6 +806,7 @@ async fn user_attachment_discards_preset_api_key_and_authorization_header() {
         protocol_mode: McpProtocolMode::V2025June,
         elicitation_policy: Default::default(),
         oauth: Some(crate::domains::mcp_servers::service::McpServerOAuthSettings::default()),
+        service_connection_provider: None,
     };
     db.create_mcp_server(
         everruns_core::DEFAULT_ORG_ID,

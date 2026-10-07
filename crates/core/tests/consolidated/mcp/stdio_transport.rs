@@ -24,6 +24,7 @@ fn fixture_connection() -> McpConnection {
         oauth_provider_id: None,
         pending_oauth_provider: None,
         secret_bindings: HashMap::new(),
+        acted_as: None,
     }
 }
 
