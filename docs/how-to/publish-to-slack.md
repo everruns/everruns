@@ -59,7 +59,7 @@ Your organization must have a Slack workspace connected in **Settings** > **Slac
 
 Publish first because Slack verifies the manifest's channel Request URL when it creates the Slack app. New installs use `/v1/channels/{channel_id}/slack/events`.
 
-The Slack app uses the agent's avatar as its icon. With one-click setup, Everruns sets the icon when it creates the app and again whenever you change the avatar in **Branding**. A Slack app created from the manifest by hand keeps Slack's default icon: upload the avatar's 512 px PNG (`/v1/avatars/{avatar_id}/square-512.png`) under **Basic Information** in Slack.
+The Slack app uses the agent's avatar as its icon. With one-click setup, Everruns sets the icon when it creates the app, again once the app is installed, and whenever you change the avatar in **Branding**. When this deployment's API is reachable on the public internet, Slack fetches that image; otherwise Everruns uploads the 512 px PNG. A Slack app created from the manifest by hand keeps Slack's default icon: upload the avatar's 512 px PNG (`/v1/avatars/{avatar_id}/square-512.png`) under **Basic Information** in Slack.
 
 With one-click setup, later changes to the agent's display name and description
 also update its Slack app automatically. If no display name is set, Slack uses
