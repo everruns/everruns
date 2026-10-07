@@ -13,6 +13,22 @@ const COMMAND_RETRY_DELAY: Duration = if cfg!(test) {
     Duration::from_millis(500)
 };
 
+/// REST request header carrying a change reason; the server records it in the
+/// changed entity's history. The value is UTF-8 percent-encoded, which is how
+/// the server decodes it (`change_history::intent`).
+pub const CHANGE_REASON_HEADER: &str = "Everruns-Change-Reason";
+
+/// `request` with the change reason header, when there is a reason.
+pub fn with_change_reason(
+    request: reqwest::RequestBuilder,
+    reason: Option<&str>,
+) -> reqwest::RequestBuilder {
+    match reason {
+        Some(reason) => request.header(CHANGE_REASON_HEADER, urlencoding::encode(reason).as_ref()),
+        None => request,
+    }
+}
+
 #[derive(Clone)]
 pub struct ApiClient<'a> {
     api_url: &'a str,
@@ -32,11 +48,22 @@ impl<'a> ApiClient<'a> {
     }
 
     pub async fn get(&self, path: &str) -> Result<Value> {
-        self.send(Method::GET, path, None).await
+        self.send(Method::GET, path, None, None).await
     }
 
     pub async fn post(&self, path: &str, body: Option<&Value>) -> Result<Value> {
-        self.send(Method::POST, path, body).await
+        self.send(Method::POST, path, body, None).await
+    }
+
+    /// POST to a REST route, recording `reason` (when given) in the changed
+    /// entity's history. Contract commands carry it in the envelope instead.
+    pub async fn post_with_reason(
+        &self,
+        path: &str,
+        body: Option<&Value>,
+        reason: Option<&str>,
+    ) -> Result<Value> {
+        self.send(Method::POST, path, body, reason).await
     }
 
     /// An authenticated request to `path` under the API URL, for callers that
@@ -107,8 +134,14 @@ impl<'a> ApiClient<'a> {
         }
     }
 
-    async fn send(&self, method: Method, path: &str, body: Option<&Value>) -> Result<Value> {
-        let mut request = self.request(method.clone(), path);
+    async fn send(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+        reason: Option<&str>,
+    ) -> Result<Value> {
+        let mut request = with_change_reason(self.request(method.clone(), path), reason);
         if let Some(body) = body {
             request = request.json(body);
         }
@@ -157,11 +190,121 @@ pub fn with_query(path: &str, query: &[(&str, &str)]) -> String {
     format!("{path}?{}", pairs.join("&"))
 }
 
+/// A one-shot HTTP server for tests that need to see what the CLI sent.
+#[cfg(test)]
+pub(crate) mod capture {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// One request as received: header lines (names lowercased) and the body.
+    pub struct Captured {
+        pub headers: Vec<String>,
+        pub body: String,
+    }
+
+    impl Captured {
+        pub fn header(&self, name: &str) -> Option<String> {
+            let prefix = format!("{}: ", name.to_lowercase());
+            self.headers
+                .iter()
+                .find_map(|line| line.strip_prefix(&prefix))
+                .map(|value| value.trim().to_string())
+        }
+
+        pub fn json(&self) -> serde_json::Value {
+            serde_json::from_str(&self.body).expect("a JSON body")
+        }
+    }
+
+    /// Answer one request with `status` and `body`, reporting what was sent.
+    pub async fn serve_once(
+        status: u16,
+        body: &'static str,
+    ) -> (String, tokio::sync::oneshot::Receiver<Captured>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let (sender, received) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buffer = Vec::new();
+            let mut chunk = vec![0u8; 8192];
+            let (head_len, content_length) = loop {
+                let read = socket.read(&mut chunk).await.unwrap();
+                assert!(read > 0, "connection closed before the request ended");
+                buffer.extend_from_slice(&chunk[..read]);
+                let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    continue;
+                };
+                let head = String::from_utf8_lossy(&buffer[..end]).to_lowercase();
+                let length = head
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length: "))
+                    .and_then(|value| value.trim().parse::<usize>().ok())
+                    .unwrap_or(0);
+                break (end + 4, length);
+            };
+            while buffer.len() < head_len + content_length {
+                let read = socket.read(&mut chunk).await.unwrap();
+                assert!(read > 0, "connection closed before the body ended");
+                buffer.extend_from_slice(&chunk[..read]);
+            }
+            // Names lowercased for lookup; values kept as sent.
+            let headers = String::from_utf8_lossy(&buffer[..head_len])
+                .lines()
+                .map(|line| match line.split_once(':') {
+                    Some((name, value)) => format!("{}:{value}", name.to_lowercase()),
+                    None => line.to_owned(),
+                })
+                .collect();
+            let request_body =
+                String::from_utf8_lossy(&buffer[head_len..head_len + content_length]).into_owned();
+            let reply = format!(
+                "HTTP/1.1 {status} X\r\ncontent-type: application/json\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            socket.write_all(reply.as_bytes()).await.unwrap();
+            sender
+                .send(Captured {
+                    headers,
+                    body: request_body,
+                })
+                .ok();
+        });
+        (url, received)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn a_reason_is_sent_percent_encoded_in_the_header() {
+        let (url, captured) = capture::serve_once(200, "{}").await;
+        let client = ApiClient::new(&url, "key", None);
+        client
+            .post_with_reason("/v1/agents/import", None, Some("kid friendly: ok"))
+            .await
+            .unwrap();
+        let request = captured.await.unwrap();
+        assert_eq!(
+            request.header(CHANGE_REASON_HEADER).as_deref(),
+            Some("kid%20friendly%3A%20ok")
+        );
+    }
+
+    #[tokio::test]
+    async fn no_reason_sends_no_header() {
+        let (url, captured) = capture::serve_once(200, "{}").await;
+        let client = ApiClient::new(&url, "key", None);
+        client
+            .post_with_reason("/v1/agents/import", None, None)
+            .await
+            .unwrap();
+        assert_eq!(captured.await.unwrap().header(CHANGE_REASON_HEADER), None);
+    }
 
     /// Answer one connection per scripted response, reporting each request's
     /// `Idempotency-Key`. `None` drops the connection without answering.

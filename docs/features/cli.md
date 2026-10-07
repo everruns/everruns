@@ -82,12 +82,13 @@ export EVERRUNS_API_KEY=evr_pat_...   # or run `everruns login`
 everruns agents create \
   --name "my-agent" \
   --system-prompt "You are a helpful assistant." \
-  --tag production
+  --tag production \
+  --reason "Support pilot"
 
 # From a file (TOML, YAML, JSON, or Markdown front matter)
 everruns agents create -f agent.toml
 everruns agents create -f agent.yaml
-everruns agents create -f agent.md
+everruns agents create -f agent.md --reason "Import from repo"
 ```
 
 If `./agent.toml` exists and you don't pass inline flags, `everruns agents create` picks it up automatically. The file formats are documented in [Define agents as files](/how-to/define-agents-as-files/).
@@ -102,7 +103,7 @@ everruns agents delete agent_... --reason "Replaced by a newer agent"
 
 ```bash
 everruns sessions create --agent agent_...
-everruns sessions create --agent agent_... --title "Debug session"
+everruns sessions create --agent agent_... --title "Debug session" --reason "Reproduce ticket 42"
 
 # With session-level overrides
 everruns sessions create \
@@ -169,7 +170,7 @@ A repeat with the same key returns the first result. Reusing a key for a differe
 
 ### Reasons and manager context
 
-Every command takes `--reason "..."`, which is stored on the changed entity's history entry, and `--context-revision N`, which says which revision of the entity's manager notes you read. `everruns history list <id>` shows who changed an entity and why. `everruns context get <id>` shows its notes. See [Change history](/features/change-history/).
+Every command that changes something takes `--reason "..."`, which is stored on the changed entity's history entry. That includes `agents create`, `agents update`, `agents import` and `sessions create`. [Platform commands](#platform-commands) also take `--context-revision N`, which says which revision of the entity's manager notes you read. `everruns history list <id>` shows who changed an entity and why. `everruns context get <id>` shows its notes. See [Change history](/features/change-history/).
 
 ## See also
 
