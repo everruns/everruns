@@ -59,6 +59,7 @@ The channel then serves:
 | Path | What it is |
 | --- | --- |
 | `POST /v1/channels/{channel_id}/a2a` | The A2A JSON-RPC endpoint. Needs `Authorization: Bearer <key>`. |
+| `/v1/channels/{channel_id}/a2a/message:send`, `/tasks`, ... | The same operations over A2A's plain HTTP binding (HTTP+JSON). Same key. |
 | `GET /v1/channels/{channel_id}/a2a/.well-known/agent-card.json` | The public Agent Card, served only while the channel is live. |
 
 When the agent has an avatar, the Agent Card carries it as `iconUrl`: the 256 px square preset, on the same origin as the card.
@@ -119,6 +120,32 @@ and follow it with `GetTask`, `SubscribeToTask`, or a push notification.
 The `A2A-Version` header picks the wire format: `1.0`, or `0.3` for older
 clients. Without it, 1.0 method names such as `SendMessage` are answered in
 1.0 and 0.3 names such as `message/send` in 0.3.
+
+Clients that speak A2A's plain HTTP binding (HTTP+JSON) use paths below the
+same URL instead of a JSON-RPC envelope. The Agent Card lists both bindings.
+This binding is A2A 1.0 only:
+
+```bash
+curl -sS -X POST "$EVERRUNS/v1/channels/$CHANNEL_ID/a2a/message:send" \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/a2a+json' \
+  -d '{
+    "message": {
+      "role": "ROLE_USER",
+      "messageId": "msg-1",
+      "parts": [{ "text": "Summarize the A2A spec in three bullets." }]
+    }
+  }'
+```
+
+| HTTP+JSON | Operation |
+| --- | --- |
+| `POST message:send`, `POST message:stream` | `SendMessage`, `SendStreamingMessage` |
+| `GET tasks/{id}`, `GET tasks?…`, `POST tasks/{id}:cancel`, `POST tasks/{id}:subscribe` | `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask` |
+| `POST`/`GET tasks/{id}/pushNotificationConfigs`, `GET`/`DELETE tasks/{id}/pushNotificationConfigs/{configId}` | The push notification config operations |
+
+Errors come back with the matching HTTP status and a `google.rpc.Status` body
+whose `details[0].reason` names the A2A error, for example `TASK_NOT_FOUND`.
 
 ### Supported methods
 

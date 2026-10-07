@@ -179,6 +179,7 @@ async fn agent_card_advertises_1_0_and_0_3() {
         .as_array()
         .unwrap()
         .iter()
+        .filter(|i| i["protocolBinding"] == "JSONRPC")
         .map(|i| i["protocolVersion"].as_str().unwrap())
         .collect();
     assert_eq!(versions, ["1.0", "0.3"], "{card}");

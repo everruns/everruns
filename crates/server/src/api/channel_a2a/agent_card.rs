@@ -8,7 +8,8 @@
 // Design Decision: one card serves A2A 1.0 and 0.3 clients, the union shape
 // a2a-go's `a2acompat/a2av0` producer publishes. 1.0 clients read
 // `supportedInterfaces` (one JSONRPC interface per protocol version, same URL),
-// `securityRequirements` and the wrapped `securitySchemes`; 0.3 clients read
+// `securityRequirements` and the wrapped `securitySchemes`, plus one HTTP+JSON
+// interface for 1.0 on the same URL; 0.3 clients read
 // the top-level `url` / `protocolVersion` / `preferredTransport`, `security`,
 // and the flat OpenAPI `type` fields of the same schemes. Each side ignores the
 // other's fields.
@@ -22,8 +23,8 @@ use axum::{
 use serde_json::{Value, json};
 
 use super::{
-    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_JSONRPC, ChannelA2aState, channel_app_id,
-    internal_error, not_found,
+    A2A_AGENT_VERSION, A2A_PROTOCOL_BINDING_HTTP_JSON, A2A_PROTOCOL_BINDING_JSONRPC,
+    ChannelA2aState, channel_app_id, internal_error, not_found,
 };
 use crate::api::a2a_signing::A2A_SIGNATURE_HEADER;
 use crate::api::common::ErrorResponse;
@@ -157,7 +158,7 @@ async fn agent_card(
     // Shared-session channels reject it because events cannot be safely
     // correlated across concurrent callers.
     let streaming = config.session_mode == crate::records::agent_channel::SessionBinding::Ephemeral;
-    let interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
+    let mut interfaces: Vec<Value> = super::wire::SUPPORTED_VERSIONS
         .iter()
         .map(|version| {
             json!({
@@ -167,6 +168,15 @@ async fn agent_card(
             })
         })
         .collect();
+    // HTTP+JSON shares the interface URL (`http_json.rs`), A2A 1.0 only. The
+    // legacy App route never carried it.
+    if !endpoint_path.contains("/v1/apps/") {
+        interfaces.push(json!({
+            "url": endpoint,
+            "protocolBinding": A2A_PROTOCOL_BINDING_HTTP_JSON,
+            "protocolVersion": "1.0",
+        }));
+    }
     let card = json!({
         "name": name,
         "description": description,
