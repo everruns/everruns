@@ -123,6 +123,8 @@ everruns-core = { path = "../core", features = ["agent-package", "ag-ui", "ag-ui
 everruns = { workspace = true, default-features = false, features = ["utility-llm"] }
 [dev-dependencies]
 a2a.workspace = true
+# Generates throwaway P-256 keys for AgentID token tests; already linked via jsonwebtoken.
+aws-lc-rs = "1"
 a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }
 futures.workspace = true

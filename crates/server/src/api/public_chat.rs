@@ -254,6 +254,7 @@ async fn run_public_chat(
             (
                 true,
                 signed_in_visitor_tag(&ChannelAuthPrincipal {
+                    provider: binding.provider.clone(),
                     issuer: binding.realm.clone(),
                     subject: binding.subject.clone(),
                     identity_realm: binding.realm.clone(),
@@ -285,7 +286,7 @@ async fn run_public_chat(
                 signed_in_visitor_tag(&principal),
                 None,
                 Some((
-                    "oidc".into(),
+                    principal.provider,
                     principal.identity_realm,
                     principal.subject,
                     None,
@@ -679,16 +680,19 @@ mod tests {
     #[test]
     fn signed_in_visitor_tags_are_stable_and_subject_scoped() {
         let alice = ChannelAuthPrincipal {
+            provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
             identity_realm: "google".to_string(),
         };
         let alice_again = ChannelAuthPrincipal {
+            provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "alice".to_string(),
             identity_realm: "google".to_string(),
         };
         let bob = ChannelAuthPrincipal {
+            provider: "oidc".to_string(),
             issuer: "https://accounts.google.com".to_string(),
             subject: "bob".to_string(),
             identity_realm: "google".to_string(),

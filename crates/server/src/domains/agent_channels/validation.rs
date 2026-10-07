@@ -469,6 +469,20 @@ fn validate_channel_auth_config(
                         |e| CommandError::bad_request(format!("Invalid OIDC JWKS URL: {e}")),
                     )?;
                 }
+                // Every OIDC token must name its audience, and an AgentID token
+                // names the operator's registered client id. Reject at save time
+                // what would otherwise fail every request as misconfigured.
+                if auth.is_agentid()
+                    && !auth
+                        .requirements
+                        .audiences
+                        .iter()
+                        .any(|audience| !audience.trim().is_empty())
+                {
+                    return Err(CommandError::bad_request(
+                        "AgentID auth requires requirements.audiences to hold your AgentID client id",
+                    ));
+                }
                 Ok(())
             }
             _ => Err(CommandError::bad_request(
@@ -703,6 +717,19 @@ fn merge_preserved_channel_auth_secrets(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn agentid_preset_requires_a_client_id_audience() {
+        let config = json!({});
+        let preset = ChannelAuthConfig::agentid_preset("agentid-client");
+        assert!(validate_channel_auth_config(&ChannelType::A2a, &config, &preset).is_ok());
+
+        let mut without_audience = preset.clone();
+        without_audience.requirements.audiences.clear();
+        assert!(
+            validate_channel_auth_config(&ChannelType::A2a, &config, &without_audience).is_err()
+        );
+    }
 
     #[test]
     fn slack_settings_edits_preserve_connection_evidence_and_provisioning() {

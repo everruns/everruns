@@ -3218,6 +3218,7 @@ dependencies = [
  "argon2",
  "async-nats",
  "async-trait",
+ "aws-lc-rs",
  "axum",
  "axum-extra",
  "base64 0.23.1",

@@ -56,6 +56,7 @@ import type {
   SlackResponsePolicy,
   WebhookChannelConfig,
 } from "@/lib/api/types";
+import { agentIdChannelAuth, agentIdClientId, isAgentIdChannelAuth } from "@/lib/agentid";
 import {
   getAgUiToolVisibilityDisplayName,
   getChannelTypeDisplayName,
@@ -119,6 +120,8 @@ export type ChannelFormState = {
   agUiToken: string;
   agUiAnonymous: boolean;
   agUiAuth?: ChannelAuthConfig;
+  agUiAgentIdEnabled: boolean;
+  agUiAgentIdClientId: string;
   agUiExpirationHours: number;
   agUiRateLimitPerMinute: string;
   agUiToolVisibility: AgUiToolVisibility;
@@ -145,6 +148,8 @@ export type ChannelFormState = {
   publicChatGoogleEnabled: boolean;
   publicChatGoogleClientId: string;
   publicChatGoogleAllowedDomains: string;
+  publicChatAgentIdEnabled: boolean;
+  publicChatAgentIdClientId: string;
 };
 
 function secretValue(value?: string, configured?: boolean): string {
@@ -178,6 +183,8 @@ export function getDefaultChannelFormState(
     agUiToken: kind === "ag_ui" && !channel ? generateChannelToken() : "",
     agUiAnonymous: true,
     agUiAuth: undefined,
+    agUiAgentIdEnabled: false,
+    agUiAgentIdClientId: "",
     agUiExpirationHours: DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600,
     agUiRateLimitPerMinute: "",
     agUiToolVisibility: "generic",
@@ -204,6 +211,8 @@ export function getDefaultChannelFormState(
     publicChatGoogleEnabled: false,
     publicChatGoogleClientId: "",
     publicChatGoogleAllowedDomains: "",
+    publicChatAgentIdEnabled: false,
+    publicChatAgentIdClientId: "",
   };
 
   if (!channel) return base;
@@ -238,6 +247,8 @@ export function getDefaultChannelFormState(
       agUiToken: secretValue(config.token, config.token_configured),
       agUiAnonymous: config.anonymous ?? true,
       agUiAuth: auth,
+      agUiAgentIdEnabled: isAgentIdChannelAuth(auth),
+      agUiAgentIdClientId: agentIdClientId(auth),
       agUiExpirationHours:
         typeof config.session_expiration_seconds === "number"
           ? config.session_expiration_seconds / 3600
@@ -305,6 +316,8 @@ export function getDefaultChannelFormState(
         auth?.provider?.type === "google_oidc"
           ? (auth.provider.allowed_domains ?? []).join(", ")
           : "",
+      publicChatAgentIdEnabled: isAgentIdChannelAuth(auth),
+      publicChatAgentIdClientId: agentIdClientId(auth),
     };
   }
   if (channel.channel_type === "slack") {
@@ -346,9 +359,16 @@ export function buildChannelConfig(state: ChannelFormState) {
       };
     case "ag_ui": {
       const rateLimit = Number.parseInt(state.agUiRateLimitPerMinute, 10);
+      // AgentID replaces whatever auth the channel had; turning it off keeps a
+      // non-AgentID config that was set elsewhere (for example through the API).
+      const agUiAuth = state.agUiAgentIdEnabled
+        ? agentIdChannelAuth(state.agUiAgentIdClientId)
+        : isAgentIdChannelAuth(state.agUiAuth)
+          ? undefined
+          : state.agUiAuth;
       return {
         anonymous: state.agUiAnonymous,
-        ...(state.agUiAuth ? { auth: state.agUiAuth } : {}),
+        ...(agUiAuth ? { auth: agUiAuth } : {}),
         ...(state.agUiToken.trim() ? { token: state.agUiToken.trim() } : {}),
         session_expiration_seconds: Math.max(0, Math.round(state.agUiExpirationHours * 3600)),
         ...(Number.isFinite(rateLimit) && rateLimit > 0
@@ -413,7 +433,9 @@ export function buildChannelConfig(state: ChannelFormState) {
                 ...(allowedDomains.length > 0 ? { allowed_domains: allowedDomains } : {}),
               },
             }
-          : undefined;
+          : state.publicChatAgentIdEnabled && state.publicChatAgentIdClientId.trim()
+            ? agentIdChannelAuth(state.publicChatAgentIdClientId)
+            : undefined;
       return {
         anonymous: state.publicChatAnonymous,
         ...(state.publicChatToken.trim() ? { token: state.publicChatToken.trim() } : {}),
@@ -443,6 +465,7 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   }
   if (state.kind === "webhook") return !!state.channelMessage.trim();
   if (state.kind === "ag_ui") {
+    if (state.agUiAgentIdEnabled && !state.agUiAgentIdClientId.trim()) return false;
     return state.agUiToolVisibility !== "generic" || state.agUiGenericToolText.trim().length <= 120;
   }
   if (state.kind === "fcp") {
@@ -469,16 +492,67 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
     if (state.publicChatGoogleEnabled && !state.publicChatGoogleClientId.trim()) {
       return false;
     }
+    if (state.publicChatAgentIdEnabled && !state.publicChatAgentIdClientId.trim()) {
+      return false;
+    }
     // Turning anonymous access off requires a sign-in provider; otherwise the
     // server forbids every request and the chat is unreachable. (A shared token
     // only gates the anonymous path, so it cannot substitute here.)
-    if (!state.publicChatAnonymous && !state.publicChatGoogleEnabled) {
+    if (
+      !state.publicChatAnonymous &&
+      !state.publicChatGoogleEnabled &&
+      !state.publicChatAgentIdEnabled
+    ) {
       return false;
     }
     return true;
   }
   if (state.kind === "slack") return true;
   return false;
+}
+
+function AgentIdSignInFields({
+  idPrefix,
+  description,
+  enabled,
+  clientId,
+  onEnabledChange,
+  onClientIdChange,
+}: {
+  idPrefix: string;
+  description: string;
+  enabled: boolean;
+  clientId: string;
+  onEnabledChange: (checked: boolean) => void;
+  onClientIdChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between border p-3">
+        <div>
+          <p className="text-sm font-medium">AgentID sign-in</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+        <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label="AgentID sign-in" />
+      </div>
+      {enabled && (
+        <div className="space-y-2">
+          <Label htmlFor={`${idPrefix}_agentid_client_id`}>AgentID client ID</Label>
+          <Input
+            id={`${idPrefix}_agentid_client_id`}
+            value={clientId}
+            onChange={(event) => onClientIdChange(event.target.value)}
+            className="font-mono"
+            placeholder="b7d41e0a-2c65-4f8b-9d31-0a5e7c2f4b18"
+          />
+          <p className="text-xs text-muted-foreground">
+            The client ID of your app in the AgentID console. Tokens must be issued for it and last
+            ten minutes; AgentID is a sign-in, not a long-lived API key.
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function channelIcon(kind: ChannelType) {
@@ -868,6 +942,14 @@ export function ChannelForm({
               </Button>
             </div>
           </div>
+          <AgentIdSignInFields
+            idPrefix="ag_ui"
+            description="Accept AgentID tokens from AI agents. When on, every request must present a valid AgentID token for your client and the bearer token above is not used."
+            enabled={state.agUiAgentIdEnabled}
+            clientId={state.agUiAgentIdClientId}
+            onEnabledChange={(checked) => update("agUiAgentIdEnabled", checked)}
+            onClientIdChange={(value) => update("agUiAgentIdClientId", value)}
+          />
           <FieldGrid>
             <div className="space-y-2">
               <Label htmlFor="ag_ui_tool_visibility">Tool visibility</Label>
@@ -1158,7 +1240,10 @@ export function ChannelForm({
               </div>
               <Switch
                 checked={state.publicChatGoogleEnabled}
-                onCheckedChange={(checked) => update("publicChatGoogleEnabled", checked)}
+                onCheckedChange={(checked) => {
+                  update("publicChatGoogleEnabled", checked);
+                  if (checked) update("publicChatAgentIdEnabled", false);
+                }}
               />
             </div>
             {state.publicChatGoogleEnabled && (
@@ -1190,6 +1275,17 @@ export function ChannelForm({
               </FieldGrid>
             )}
           </div>
+          <AgentIdSignInFields
+            idPrefix="public_chat"
+            description="Let AI agents sign in with their AgentID. Every request must present a valid AgentID token for your client; signed-in agents skip the Turnstile challenge."
+            enabled={state.publicChatAgentIdEnabled}
+            clientId={state.publicChatAgentIdClientId}
+            onEnabledChange={(checked) => {
+              update("publicChatAgentIdEnabled", checked);
+              if (checked) update("publicChatGoogleEnabled", false);
+            }}
+            onClientIdChange={(value) => update("publicChatAgentIdClientId", value)}
+          />
 
           <FieldGrid>
             <div className="space-y-2">

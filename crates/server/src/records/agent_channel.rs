@@ -422,6 +422,49 @@ pub struct ChannelAuthConfig {
     pub requirements: ChannelAuthRequirements,
 }
 
+/// Issuer of AgentID, AgentMail's OpenID Connect provider for AI agents.
+pub const AGENTID_ISSUER: &str = "https://auth.agentid.com";
+
+impl ChannelAuthConfig {
+    /// The AgentID channel preset.
+    ///
+    /// Decision: AgentID is ordinary `oidc` channel auth, not a verifier mode of
+    /// its own. The preset pins the issuer, leaves the keys to AgentID discovery,
+    /// requires the operator's registered client id as audience, and requires
+    /// `actor_type = "agent"` (every AgentID subject is an agent inbox).
+    pub fn agentid_preset(client_id: &str) -> Self {
+        let mut claims = serde_json::Map::new();
+        claims.insert(
+            "actor_type".to_string(),
+            serde_json::Value::String("agent".to_string()),
+        );
+        Self {
+            mode: ChannelAuthMode::Oidc,
+            provider: Some(ChannelAuthProviderConfig::Oidc {
+                issuer: AGENTID_ISSUER.to_string(),
+                jwks_url: None,
+            }),
+            requirements: ChannelAuthRequirements {
+                audiences: vec![client_id.trim().to_string()],
+                claims,
+                ..Default::default()
+            },
+        }
+    }
+
+    /// Whether this config verifies AgentID tokens against AgentID's own
+    /// discovered keys. A config that names its own JWKS URL is not AgentID,
+    /// whatever issuer it claims.
+    pub fn is_agentid(&self) -> bool {
+        self.mode == ChannelAuthMode::Oidc
+            && matches!(
+                self.provider.as_ref(),
+                Some(ChannelAuthProviderConfig::Oidc { issuer, jwks_url: None })
+                    if issuer.trim().trim_end_matches('/') == AGENTID_ISSUER
+            )
+    }
+}
+
 /// Typed AG-UI channel configuration.
 ///
 /// Parsed from the `channel_config` JSON field on App.
