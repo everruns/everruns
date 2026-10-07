@@ -2,6 +2,7 @@
 
 use super::super::models::*;
 use super::Database;
+use crate::storage::CreateOrganizationConnectionRow;
 use anyhow::Result;
 use everruns_contracts::typed_id::{AgentId, VirtualUserId};
 use everruns_server_macros::sql;

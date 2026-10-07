@@ -112,7 +112,7 @@ pub fn resolve_sandbox_selection(
             })?;
             (r#use.clone(), spec)
         }
-        Some(SandboxSelection::Inline(profile)) => ("inline".to_string(), profile),
+        Some(SandboxSelection::Inline(profile)) => ("inline".to_string(), profile.as_ref()),
         None => {
             let Some(set) = sandbox_policy else {
                 return Ok(None);
@@ -929,9 +929,11 @@ mod tests {
             default: "scratch".to_string(),
             templates: BTreeMap::from([("scratch".to_string(), selected.clone())]),
         };
-        let error =
-            resolve_sandbox_selection(Some(&set), Some(&SandboxSelection::Inline(selected)))
-                .unwrap_err();
+        let error = resolve_sandbox_selection(
+            Some(&set),
+            Some(&SandboxSelection::Inline(Box::new(selected))),
+        )
+        .unwrap_err();
         assert!(error.contains("declared Sandbox Template"));
     }
 

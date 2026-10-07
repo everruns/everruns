@@ -459,8 +459,10 @@ mod tests {
 
     #[test]
     fn timeout_is_bounded() {
-        let mut config = SessionSandboxConfig::default();
-        config.provider_config = json!({ "timeout_seconds": 0 });
+        let mut config = SessionSandboxConfig {
+            provider_config: json!({ "timeout_seconds": 0 }),
+            ..Default::default()
+        };
         assert!(timeout_seconds(&config).is_err());
         config.provider_config = json!({ "timeout_seconds": 3600 });
         assert_eq!(timeout_seconds(&config).unwrap(), 3600);

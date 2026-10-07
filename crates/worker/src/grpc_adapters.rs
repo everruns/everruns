@@ -908,6 +908,12 @@ fn proto_uuid_to_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<Uuid> {
     Uuid::parse_str(uuid_str).map_err(|e| AgentLoopError::store(format!("Invalid UUID: {}", e)))
 }
 
+fn optional_proto_uuid(proto_uuid: Option<&proto::Uuid>) -> Result<Option<Uuid>> {
+    proto_uuid
+        .map(|id| proto_uuid_to_uuid(Some(id)))
+        .transpose()
+}
+
 fn proto_mcp_server_to_info(
     proto_server: proto::McpServerInfo,
 ) -> Result<crate::mcp_executor::McpServerInfo> {
@@ -2355,26 +2361,14 @@ fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<Leas
 
     Ok(LeasedResource {
         id: LeasedResourceId::from_uuid(id_uuid),
-        session_id: s
-            .session_id
-            .as_ref()
-            .map(|id| proto_uuid_to_uuid(Some(id)).map(SessionId::from_uuid))
-            .transpose()?,
+        session_id: optional_proto_uuid(s.session_id.as_ref())?.map(SessionId::from_uuid),
         provider: s.provider,
         resource_type: s.resource_type,
         external_id: s.external_id,
         display_name: s.display_name,
         status,
-        owner_user_id: s
-            .owner_user_id
-            .as_ref()
-            .map(|id| proto_uuid_to_uuid(Some(id)))
-            .transpose()?,
-        connection_id: s
-            .connection_id
-            .as_ref()
-            .map(|id| proto_uuid_to_uuid(Some(id)))
-            .transpose()?,
+        owner_user_id: optional_proto_uuid(s.owner_user_id.as_ref())?,
+        connection_id: optional_proto_uuid(s.connection_id.as_ref())?,
         lease_duration_seconds: s.lease_duration_seconds,
         last_touched_at: proto_timestamp_or_now(s.last_touched_at.as_ref()),
         lease_expires_at: proto_timestamp_or_now(s.lease_expires_at.as_ref()),

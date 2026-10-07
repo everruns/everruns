@@ -2227,9 +2227,7 @@ pub struct UpdateOAuthConnectionTokens {
     pub scopes: Option<String>,
 }
 
-// ============================================
 // Virtual User Connection models
-// ============================================
 
 /// Agent identity connection row from database
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
@@ -2267,16 +2265,6 @@ pub struct CreateVirtualUserConnectionRow {
     pub expires_at: Option<DateTime<Utc>>,
     pub installation_id: Option<i64>,
     /// Provider-specific metadata (e.g. Deno org slug for personal tokens)
-    pub provider_metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateOrganizationConnectionRow {
-    pub org_id: i64,
-    pub name: String,
-    pub provider: String,
-    pub access_token_encrypted: Vec<u8>,
-    pub provider_username: Option<String>,
     pub provider_metadata: Option<serde_json::Value>,
 }
 
@@ -2343,9 +2331,7 @@ pub struct UpdateSessionScheduleRow {
     pub trigger_count_increment: bool,
 }
 
-// ============================================
 // Leased resource models
-// ============================================
 
 #[derive(Debug, Clone, FromRow)]
 pub struct LeasedResourceRow {

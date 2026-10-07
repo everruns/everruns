@@ -1,6 +1,7 @@
 //! Installations, schedules, leased resources, session tasks, and apps.
 
 use super::*;
+use crate::storage::CreateOrganizationConnectionRow;
 
 impl StorageBackend {
     pub async fn list_agent_channel_summaries(

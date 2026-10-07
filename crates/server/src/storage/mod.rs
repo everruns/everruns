@@ -38,6 +38,7 @@ mod message_history_timing;
 pub mod message_store;
 pub mod models;
 pub mod native_async_store;
+mod organization_connection_models;
 mod system_decisions;
 // Server storage updates share durable's `UpdateField`: the server already
 // depends on `everruns-durable` and passes these fields to its schedule store.
@@ -99,6 +100,7 @@ pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
 pub use native_async_store::PgNativeAsyncStore;
 pub use org_slack_connections::*;
+pub use organization_connection_models::CreateOrganizationConnectionRow;
 pub use partial_stream::PgPartialStreamStore;
 pub use provider_store::{DbProviderStore, create_db_provider_store};
 pub use repositories::*;

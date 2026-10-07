@@ -36,8 +36,7 @@ export type {
 } from "./model-types";
 // From legacy virtual-user-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 
-// Enums that stay generated (closed sets the server owns) while the entity they
-// annotate is still hand-maintained here.
+// Generated enums used by entities that remain hand-maintained here.
 import type { Agent, AgentStatus, ConversationStarter } from "./agent-types";
 export type {
   Agent,

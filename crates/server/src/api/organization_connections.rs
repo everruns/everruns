@@ -1,7 +1,7 @@
 //! Organization-owned provider accounts for managed sandboxes.
 
-use crate::auth::{AuthState, middleware::OrgAdmin};
-use crate::storage::{EncryptionService, StorageBackend, models::CreateOrganizationConnectionRow};
+use crate::auth::middleware::OrgAdmin;
+use crate::storage::CreateOrganizationConnectionRow;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -9,26 +9,18 @@ use axum::{
     routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
-use everruns_contracts::connector::{ConnectorRegistry, ConnectorType};
+use everruns_contracts::connector::ConnectorType;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::{
-    common::{ErrorResponse, impl_auth_state},
+    common::ErrorResponse,
     user_connections::{CreateApiKeyConnectionRequest, VerifyConnectionResponse},
 };
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db: Arc<StorageBackend>,
-    pub encryption: Option<Arc<EncryptionService>>,
-    pub auth: AuthState,
-    pub connectors: ConnectorRegistry,
-}
-
-impl_auth_state!(AppState);
+pub type AppState = super::virtual_user_connections::AppState;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveOrganizationConnectionRequest {

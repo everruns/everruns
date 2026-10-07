@@ -315,7 +315,7 @@ pub struct SandboxBootstrap {
 #[serde(untagged)]
 pub enum SandboxSelection {
     Named { r#use: String },
-    Inline(SandboxTemplateSpec),
+    Inline(Box<SandboxTemplateSpec>),
 }
 
 /// Organization-scoped reusable Sandbox Template.
