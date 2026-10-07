@@ -326,3 +326,7 @@ required-features = ["typesafe"]
 [[example]]
 name = "typesafe_triage"
 required-features = ["typesafe"]
+
+[[example]]
+name = "openai_decisions_triage"
+required-features = ["openai-decisions"]

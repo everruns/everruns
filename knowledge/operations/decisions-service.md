@@ -30,7 +30,7 @@ an explicit default model. The utility LLM fallback remains opt-in and reports u
 The [OpenAI driver](../../crates/drivers/drivers/src/openai/decisions/mod.rs) follows the published
 Decisions API (public beta): every primitive is native, all questions go out in one call under
 positional names, and a refusal fails the request. The deployment's OpenAI utility key makes it
-available; `DECISIONS_DRIVER=openai` makes it the default. It is not advertised in the tenant decision
+available; `UTILITY_DECISION_DRIVER=openai` makes it the default. It is not advertised in the tenant decision
 catalog. A [live smoke](../../crates/integrations/tests/openai_decisions_live.rs) runs on every main push
 that touches it and in the weekly live sweep.
 

@@ -183,7 +183,7 @@ impl SystemDecisionsConfig {
     /// The deployment's TypeSafe driver, when a key is configured.
     ///
     /// The platform registers it with the other decision drivers; which one
-    /// answers by default is `DECISIONS_DRIVER`'s call, not this crate's.
+    /// answers by default is `UTILITY_DECISION_DRIVER`'s call, not this crate's.
     pub fn into_driver(self) -> Option<TypeSafeAI> {
         match self {
             Self::Disabled => None,

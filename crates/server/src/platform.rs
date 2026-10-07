@@ -44,7 +44,7 @@ pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
     // Deployment-owned typed decisions, routed across the configured decision
-    // drivers (`DECISIONS_DRIVER`, `UTILITY_TYPESAFE_API_KEY`, the utility LLM).
+    // drivers (`UTILITY_DECISION_DRIVER`, `UTILITY_TYPESAFE_API_KEY`, the utility LLM).
     // Nothing configured = disabled service; guardrail checks configured for
     // it then fail open, the same contract as a missing utility model. A
     // driver that is chosen but not configured stops startup here.

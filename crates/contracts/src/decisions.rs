@@ -352,7 +352,7 @@ impl DecisionsService for DisabledDecisionsService {
     async fn evaluate(&self, _request: DecisionRequest) -> Result<DecisionOutcome> {
         Err(AgentLoopError::llm(
             "decisions is disabled (no decision driver configured: set \
-             UTILITY_TYPESAFE_API_KEY, or DECISIONS_DRIVER=llm with a utility LLM)",
+             UTILITY_TYPESAFE_API_KEY, or UTILITY_DECISION_DRIVER=llm with a utility LLM)",
         ))
     }
 
