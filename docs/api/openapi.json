@@ -8294,6 +8294,1050 @@
         "deprecated": true
       }
     },
+    "/v1/evals": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List evals.",
+        "operationId": "list_evals",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Case-insensitive name filter.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived evals.",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_Eval"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Create a new eval.",
+        "operationId": "create_eval",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Eval"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/import": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Import externally-executed eval results.",
+        "operationId": "import_eval_run",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportEvalRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalRun"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/import/preflight": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Report whether the caller can import eval results.",
+        "operationId": "eval_import_preflight",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalImportPreflight"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Get a single eval.",
+        "operationId": "get_eval",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Eval"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Delete an eval.",
+        "operationId": "delete_eval",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Eval not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Update an eval.",
+        "operationId": "update_eval",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEvalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Eval"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval not found"
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/atif_import": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Import ATIF trajectories as eval cases.",
+        "operationId": "import_atif",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Eval ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "ATIF trajectories as NDJSON or JSON",
+          "content": {
+            "application/x-ndjson": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Import report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtifImportReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/cases": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List eval cases.",
+        "operationId": "list_eval_cases",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalCase"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Create an eval case.",
+        "operationId": "create_eval_case",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvalCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/cases/{case_id}": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Get an eval case.",
+        "operationId": "get_eval_case",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval case not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Delete an eval case.",
+        "operationId": "delete_eval_case",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Eval case not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Update an eval case.",
+        "operationId": "update_eval_case",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "case_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEvalCaseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCase"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval case not found"
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "List eval runs.",
+        "operationId": "list_eval_runs",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalRun"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Create an eval run.",
+        "operationId": "create_eval_run",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEvalRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRun"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Get an eval run.",
+        "operationId": "get_eval_run",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval run not found"
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}/artifacts": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Export eval run artifacts as NDJSON.",
+        "operationId": "export_run_artifacts",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Eval ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Eval run ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "NDJSON artifacts",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Cancel an eval run.",
+        "operationId": "cancel_eval_run",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval run not found"
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}/dataset": {
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Start an async dataset export for an eval run.",
+        "description": "The NDJSON is produced by a background job; fetch it once ready via\n`GET .../dataset/{dataset_id}`.",
+        "operationId": "export_run_dataset",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Eval ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Eval run ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportEvalRunDatasetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Export enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunDataset"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Fetch an eval-run dataset export handle (status + NDJSON body).",
+        "operationId": "get_eval_run_dataset",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunDataset"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Dataset export not found"
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores": {
+      "patch": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Update scores for one eval result.",
+        "operationId": "update_eval_result_scores",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "result_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEvalResultScoresRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalCaseResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Eval result not found"
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}/scores": {
+      "patch": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Bulk update scores for all results in an eval run.",
+        "operationId": "bulk_update_eval_run_scores",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUpdateEvalRunScoresRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_EvalCaseResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evals/{eval_id}/runs/{run_id}/share": {
+      "get": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Whether an eval run has an active share link.",
+        "operationId": "get_eval_run_share",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunShareStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Mint a read-only share link for an eval run.",
+        "operationId": "create_eval_run_share",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvalRunShareLink"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "evals"
+        ],
+        "summary": "Revoke all share links for an eval run.",
+        "operationId": "revoke_eval_run_share",
+        "parameters": [
+          {
+            "name": "eval_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          }
+        }
+      }
+    },
     "/v1/files": {
       "get": {
         "tags": [
@@ -24629,6 +25673,61 @@
           }
         }
       },
+      "ArtifactSpec": {
+        "type": "object",
+        "description": "Named session file to collect after an eval case completes.",
+        "required": [
+          "name",
+          "path"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Export key for this artifact (for example `patch` or `log`).",
+            "example": "patch"
+          },
+          "path": {
+            "type": "string",
+            "description": "Absolute path in the session filesystem.",
+            "example": "/workspace/fix.patch"
+          }
+        }
+      },
+      "AtifImportReport": {
+        "type": "object",
+        "description": "Result of an ATIF trajectory import: eval cases\ncreated/updated from imported trajectories, upserted by case name.",
+        "required": [
+          "created",
+          "updated",
+          "case_ids"
+        ],
+        "properties": {
+          "case_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Public ids of the affected cases, in import order.",
+            "example": [
+              "evalcase_01933b5a000070008000000000000001"
+            ]
+          },
+          "created": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of eval cases created.",
+            "example": 3,
+            "minimum": 0
+          },
+          "updated": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of existing eval cases updated (matched by name).",
+            "example": 1,
+            "minimum": 0
+          }
+        }
+      },
       "AuditLogEntry": {
         "type": "object",
         "description": "Domain-level audit log view. Mirrors `AuditLogRow` but omits `org_id`\n(derived from the caller) and formats IDs as strings, matching the\nshape returned by the HTTP and MCP adapters.",
@@ -25247,6 +26346,58 @@
           }
         }
       },
+      "BulkUpdateEvalResultScoresItem": {
+        "type": "object",
+        "description": "Score update for one eval case result.",
+        "required": [
+          "result_id",
+          "scores"
+        ],
+        "properties": {
+          "result_id": {
+            "type": "string",
+            "description": "Eval case result to update.",
+            "example": "evalresult_01933b5a000070008000000000000001"
+          },
+          "scores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Score"
+            },
+            "description": "Externally computed scores to store on the result."
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExternalScoreStatus",
+                "description": "Current lifecycle status."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "BulkUpdateEvalRunScoresRequest": {
+        "type": "object",
+        "description": "Request to write external scores to several results of an eval run.",
+        "required": [
+          "results"
+        ],
+        "properties": {
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkUpdateEvalResultScoresItem"
+            },
+            "description": "Per-result score updates applied together."
+          }
+        }
+      },
       "CancelStatus": {
         "type": "string",
         "description": "Status of the cancel operation",
@@ -25538,6 +26689,19 @@
             "description": "Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`)."
           }
         }
+      },
+      "CaseResultStatus": {
+        "type": "string",
+        "description": "Status of an individual eval case result.",
+        "enum": [
+          "pending",
+          "running",
+          "passed",
+          "failed",
+          "errored",
+          "timeout",
+          "skipped"
+        ]
       },
       "Channel": {
         "type": "object",
@@ -27861,6 +29025,220 @@
           }
         }
       },
+      "CreateEvalCaseRequest": {
+        "type": "object",
+        "description": "Request to create an eval case",
+        "required": [
+          "name",
+          "conversation",
+          "scorers"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ArtifactSpec"
+            },
+            "description": "Session files to capture after scoring completes.",
+            "example": [
+              {
+                "name": "patch",
+                "path": "/workspace/fix.patch"
+              }
+            ]
+          },
+          "conversation": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalInputMessage"
+            },
+            "description": "Input messages sent to the agent sequentially.",
+            "example": [
+              {
+                "content": "Fix the failing test in src/lib.rs"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Agent fixes a failing unit test"
+          },
+          "max_turns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum agent turns before the case stops.",
+            "example": 10,
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "fix-failing-test"
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Display order within the eval.",
+            "example": 0
+          },
+          "post": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/EvalInputMessage"
+            },
+            "description": "Verification messages sent after conversation completes and session idles.",
+            "example": [
+              {
+                "content": "Run the tests again and report the result"
+              }
+            ]
+          },
+          "scorers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scorer"
+            },
+            "description": "Scoring rules applied to the case output.",
+            "example": [
+              {
+                "text": "tests pass",
+                "type": "contains"
+              }
+            ]
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags attached to this resource.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Optional per-case target override."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Per-case timeout in seconds.",
+            "example": 120,
+            "minimum": 0
+          }
+        }
+      },
+      "CreateEvalRequest": {
+        "type": "object",
+        "description": "Request to create a new eval",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Regression suite for the support agent"
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default model override applied to runs of this eval.",
+            "example": "gpt-5.1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Support agent regression"
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags attached to this resource.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Session setup target (harness+agent, app, or full session params)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "CreateEvalRunRequest": {
+        "type": "object",
+        "description": "Request to create an eval run",
+        "properties": {
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model override for this run.",
+            "example": "gpt-5.1"
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Optional per-run target override."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "CreateFileRequest": {
         "type": "object",
         "description": "Request to create a file",
@@ -29520,6 +30898,38 @@
           }
         }
       },
+      "DatasetFilters": {
+        "type": "object",
+        "description": "Selection filters applied per case. `org_id` is never part of this — it is\ninjected by the command from the authenticated caller, so a filter can never\nwiden the org scope.",
+        "properties": {
+          "min_score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Keep only cases whose mean scorer value is >= this (0.0–1.0).",
+            "example": 0.8
+          },
+          "pass": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Keep only cases whose pass/fail equals this.",
+            "example": true
+          }
+        }
+      },
+      "DatasetFormat": {
+        "type": "string",
+        "description": "Output schema for the exported dataset.",
+        "enum": [
+          "trajectory",
+          "sft",
+          "atif"
+        ]
+      },
       "DatasetProjectorLag": {
         "type": "object",
         "description": "Per-dataset projector freshness telemetry. One entry per active dataset\nthe reporting projector is materializing.",
@@ -30213,6 +31623,849 @@
           }
         }
       },
+      "Eval": {
+        "type": "object",
+        "description": "An eval: a named collection of test cases for an agent.",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the eval was archived, if archived.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "case_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of cases.",
+            "example": 12
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the eval was created.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the eval was deleted, if deleted.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description.",
+            "example": "Regression suite for the support agent"
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (eval_<32-hex>). Shown as \"id\" in API.",
+            "example": "eval_01933b5a000070008000000000000001"
+          },
+          "last_run": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalRunSummaryView",
+                "description": "Last run summary (if any)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional default model override for runs.",
+            "example": "gpt-5.1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name.",
+            "example": "Support agent regression"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalStatus",
+            "description": "Lifecycle status."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Organization tags.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Session setup target. Defines how to create sessions for eval cases."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the eval was last updated.",
+            "example": "2026-01-15T10:30:00Z"
+          }
+        }
+      },
+      "EvalCase": {
+        "type": "object",
+        "description": "A single test case within an eval.",
+        "required": [
+          "id",
+          "name",
+          "conversation",
+          "scorers",
+          "position",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ArtifactSpec"
+            },
+            "description": "Session files to collect after scoring completes.",
+            "example": [
+              {
+                "name": "patch",
+                "path": "/workspace/fix.patch"
+              }
+            ]
+          },
+          "conversation": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalInputMessage"
+            },
+            "description": "Input messages sent sequentially.",
+            "example": [
+              {
+                "content": "Fix the failing test in src/lib.rs"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the case was created.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional description of what the case checks.",
+            "example": "Agent fixes a failing unit test"
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (evalcase_<32-hex>).",
+            "example": "evalcase_01933b5a000070008000000000000001"
+          },
+          "max_turns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Max agent turns (default: 10).",
+            "example": 10,
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "Case name.",
+            "example": "fix-failing-test"
+          },
+          "position": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Display order.",
+            "example": 0
+          },
+          "post": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/EvalInputMessage"
+            },
+            "description": "Verification messages sent after conversation completes and session idles.\nScorers run after post messages complete (not after conversation).",
+            "example": [
+              {
+                "content": "Run the tests again and report the result"
+              }
+            ]
+          },
+          "scorers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Scorer"
+            },
+            "description": "Scoring rules.",
+            "example": [
+              {
+                "text": "tests pass",
+                "type": "contains"
+              }
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags for filtering runs.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Optional per-case target override."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Per-case timeout in seconds (default: 120).",
+            "example": 120,
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the case was last updated.",
+            "example": "2026-01-15T10:30:00Z"
+          }
+        }
+      },
+      "EvalCaseResult": {
+        "type": "object",
+        "description": "Result of a single case within a run.",
+        "required": [
+          "id",
+          "eval_case_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Collected session file contents keyed by artifact name.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "example": {
+              "patch": "diff --git a/src/lib.rs b/src/lib.rs"
+            }
+          },
+          "case_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Case name (denormalized for display).",
+            "example": "fix-failing-test"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the result was created.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error message if errored.",
+            "example": "Session timed out"
+          },
+          "eval_case_id": {
+            "type": "string",
+            "description": "The case this result is for.",
+            "example": "evalcase_01933b5a000070008000000000000001"
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (evalresult_<32-hex>).",
+            "example": "evalresult_01933b5a000070008000000000000001"
+          },
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Token usage.",
+            "example": 1200,
+            "minimum": 0
+          },
+          "latency_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Execution time in milliseconds.",
+            "example": 8450,
+            "minimum": 0
+          },
+          "metadata": {
+            "description": "External scorer metadata captured during deferred write-back."
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Output tokens used.",
+            "example": 850,
+            "minimum": 0
+          },
+          "scores": {
+            "description": "Per-scorer results."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session created for this case (browsable in UI).",
+            "example": "session_01933b5a00007000800000000000001"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CaseResultStatus",
+            "description": "Execution status of the case."
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Resolved target used for this result (live reference)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_snapshot": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Frozen snapshot of the resolved target at execution time."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "turns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Turn count.",
+            "example": 3,
+            "minimum": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the result was last updated.",
+            "example": "2026-01-15T10:30:00Z"
+          }
+        }
+      },
+      "EvalDatasetStatus": {
+        "type": "string",
+        "description": "Status of an async dataset export.",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
+      "EvalImportPreflight": {
+        "type": "object",
+        "description": "Preflight capability report so optional-feature clients (e.g. Mira) can\ncheck before publishing instead of failing mid-import.",
+        "required": [
+          "evals_enabled",
+          "can_import"
+        ],
+        "properties": {
+          "can_import": {
+            "type": "boolean",
+            "description": "Whether the caller may import (holds eval-management permission).",
+            "example": true
+          },
+          "evals_enabled": {
+            "type": "boolean",
+            "description": "Whether the `evals` feature is enabled for this org.",
+            "example": true
+          }
+        }
+      },
+      "EvalInputMessage": {
+        "type": "object",
+        "description": "A message to send to the agent during an eval case.",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "The text content to send.",
+            "example": "Fix the failing test in src/lib.rs"
+          }
+        }
+      },
+      "EvalRun": {
+        "type": "object",
+        "description": "An eval run: one execution of all/some cases.",
+        "required": [
+          "id",
+          "status",
+          "triggered_by",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "attribution": {
+            "description": "Provenance for external runs: which system produced them, version, link\nback, and any environment labels. `None` for internal runs. Open-vocab\nJSON so new attribution fields need no schema change."
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the run finished.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the run was created.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "filter_tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Only run cases matching these tags.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (evalrun_<32-hex>).",
+            "example": "evalrun_01933b5a000070008000000000000001"
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model override for this run.",
+            "example": "gpt-5.1"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvalCaseResult"
+            },
+            "description": "Case results (populated on detail view)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/EvalRunSource",
+            "description": "Whether everruns executed this run (`internal`) or it was imported from\nan external eval system (`external`)."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the run started executing.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalRunStatus",
+            "description": "Run lifecycle status."
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunSummary",
+                "description": "Aggregate metrics (set on completion)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Optional per-run target override."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "triggered_by": {
+            "type": "string",
+            "description": "What triggered this run.",
+            "example": "manual"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the run was last updated.",
+            "example": "2026-01-15T10:30:00Z"
+          }
+        }
+      },
+      "EvalRunDataset": {
+        "type": "object",
+        "description": "An async dataset-export handle: the durable result of enqueuing a dataset\nexport from a completed eval run. The `body` (NDJSON) is only populated on\nthe `GET .../dataset/{dataset_id}` detail view once `status` is `completed`.",
+        "required": [
+          "id",
+          "eval_run_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The produced NDJSON. Only present on the detail view once completed.",
+            "example": "{\"source_key\": \"evalrun_a/evalresult_b\"}"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the export was enqueued.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Failure detail when `status` is `failed`.",
+            "example": "Export failed"
+          },
+          "eval_run_id": {
+            "type": "string",
+            "description": "The eval run this dataset was exported from.",
+            "example": "evalrun_01933b5a000070008000000000000001"
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (evaldataset_<32-hex>).",
+            "example": "evaldataset_01933b5a000070008000000000000001"
+          },
+          "record_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Number of NDJSON records (surviving cases). Set on completion.",
+            "example": 24,
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalDatasetStatus",
+            "description": "Export lifecycle status."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the export was last updated.",
+            "example": "2026-01-15T10:30:00Z"
+          }
+        }
+      },
+      "EvalRunShareLink": {
+        "type": "object",
+        "description": "A freshly minted share link. The raw `token` is returned once and never\nstored; build the public URL `/shared/eval-runs/<token>` from it.",
+        "required": [
+          "token",
+          "token_prefix",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the share link was created.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "token": {
+            "type": "string",
+            "description": "Raw share token, returned once and never stored.",
+            "example": "evr_share_3f9a1c7e5b2d4086a1f3c9e7b5d2408613579bdf02468ace13579bdf02468ace"
+          },
+          "token_prefix": {
+            "type": "string",
+            "description": "Short, non-secret prefix identifying the token.",
+            "example": "evr_share_3f9a1c7e..."
+          }
+        }
+      },
+      "EvalRunShareStatus": {
+        "type": "object",
+        "description": "Whether a run currently has an active share link.",
+        "required": [
+          "active"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Whether an active share link exists for the run.",
+            "example": true
+          }
+        }
+      },
+      "EvalRunSource": {
+        "type": "string",
+        "description": "Where an eval run came from.\n\n`Internal` runs are executed by everruns (sessions spawned per case).\n`External` runs are ingested already-complete from an external eval system\n(e.g. Mira) via the import API; everruns hosts and visualizes them but never\nexecutes them.",
+        "enum": [
+          "internal",
+          "external"
+        ]
+      },
+      "EvalRunStatus": {
+        "type": "string",
+        "description": "Status of an eval run.",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "EvalRunSummaryView": {
+        "type": "object",
+        "description": "Compact run summary for listing evals.",
+        "required": [
+          "id",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the run was created.",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "id": {
+            "type": "string",
+            "description": "Eval run identifier."
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvalRunStatus",
+            "description": "Run lifecycle status."
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunSummary",
+                "description": "Aggregate metrics, if the run has completed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "EvalStatus": {
+        "type": "string",
+        "description": "Eval lifecycle status (standard building-block lifecycle).",
+        "enum": [
+          "active",
+          "archived",
+          "deleted"
+        ]
+      },
+      "EvalTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Session creation parameters (mirrors CreateSessionRequest).",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Agent to work in this session."
+              },
+              "harness_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Harness for the session. If omitted, org default harness is used."
+              },
+              "harness_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Addressable harness name (alternative to harness_id)."
+              },
+              "max_iterations": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "Max LLM iterations per turn.",
+                "minimum": 0
+              },
+              "model_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "LLM model override."
+              },
+              "system_prompt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "System prompt override (prepended to agent prompt)."
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "session"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reference to a deployed app.",
+            "required": [
+              "app_id",
+              "type"
+            ],
+            "properties": {
+              "app_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "app"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Label-only target for externally-executed runs (e.g. imported from Mira).\n\nCarries provider/model labels and opaque params instead of session setup:\nexternal runs are ingested already-complete, so everruns never builds a\nsession from this. Mirrors a provider-agnostic `(provider, model)` pair.",
+            "required": [
+              "provider",
+              "model",
+              "type"
+            ],
+            "properties": {
+              "model": {
+                "type": "string"
+              },
+              "params": {},
+              "provider": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "external"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Defines how to instantiate a session for an eval case.\n\nTwo modes:\n- `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.\n- `App`: references a deployed app by ID.\n\nResolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness."
+      },
       "Event": {
         "type": "object",
         "description": "Standard event following the Everruns event protocol.\n\nAll events have a consistent structure:\n- `id`: Unique event identifier (format: event_{32-hex})\n- `type`: Event type in dot notation (e.g., \"input.message\", \"reason.started\")\n- `ts`: ISO 8601 timestamp with millisecond precision\n- `session_id`: Session this event belongs to (format: session_{32-hex})\n- `context`: Correlation context for tracing\n- `data`: Event-specific payload (typed via EventData enum)\n- `metadata`: Optional arbitrary metadata\n- `tags`: Optional list of tags for filtering",
@@ -30593,6 +32846,24 @@
           "final_answer"
         ]
       },
+      "ExportEvalRunDatasetRequest": {
+        "type": "object",
+        "description": "Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`.",
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/DatasetFilters",
+            "description": "Per-case selection filters."
+          },
+          "format": {
+            "$ref": "#/components/schemas/DatasetFormat",
+            "description": "Output schema (defaults to `trajectory`)."
+          },
+          "redaction": {
+            "$ref": "#/components/schemas/RedactionOptions",
+            "description": "Redaction controls."
+          }
+        }
+      },
       "ExportReportQueryRequest": {
         "type": "object",
         "description": "Request body for the `export_report_query` operation.",
@@ -30851,6 +33122,15 @@
             "description": "Source channel identifier (e.g. \"slack\", \"discord\")"
           }
         }
+      },
+      "ExternalScoreStatus": {
+        "type": "string",
+        "description": "Result status reported alongside externally computed scores.",
+        "enum": [
+          "passed",
+          "failed",
+          "errored"
+        ]
       },
       "FailedReportingOutboxRow": {
         "type": "object",
@@ -32986,6 +35266,244 @@
           }
         }
       },
+      "ImportCaseStatus": {
+        "type": "string",
+        "description": "Verdict for an imported case (trusted as-is; not recomputed).",
+        "enum": [
+          "passed",
+          "failed",
+          "errored",
+          "timeout",
+          "skipped"
+        ]
+      },
+      "ImportEvalCaseEntry": {
+        "type": "object",
+        "description": "One case result. The case is upserted by `name` (identity-only: everruns\nnever re-executes it).",
+        "required": [
+          "name",
+          "target",
+          "status"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional case description.",
+            "example": "Agent fixes a failing unit test"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error detail when the case errored.",
+            "example": "Session timed out"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Display-only input turns shown in the UI.",
+            "example": [
+              "Fix the failing test in src/lib.rs"
+            ]
+          },
+          "input_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Input tokens used.",
+            "example": 1200,
+            "minimum": 0
+          },
+          "latency_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Execution time in milliseconds.",
+            "example": 8450,
+            "minimum": 0
+          },
+          "metrics": {
+            "description": "Open-vocab metrics bag (cost_usd, cache/reasoning tokens, ttft, ...)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Case name; the case is upserted by it.",
+            "example": "fix-failing-test"
+          },
+          "output_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Output tokens used.",
+            "example": 850,
+            "minimum": 0
+          },
+          "scores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportScore"
+            },
+            "description": "Named, attributed scores. Stored opaque; everruns does not re-grade."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ImportCaseStatus",
+            "description": "Verdict for the case, trusted as reported."
+          },
+          "target": {
+            "$ref": "#/components/schemas/ImportEvalTarget",
+            "description": "Provider/model labels this result was produced against."
+          },
+          "transcript": {
+            "description": "Normalized transcript (messages, tool calls, events, parts, files)."
+          },
+          "turns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of agent turns taken.",
+            "example": 3,
+            "minimum": 0
+          }
+        }
+      },
+      "ImportEvalGroup": {
+        "type": "object",
+        "description": "One eval's worth of results within the run. The eval is upserted by `name`.",
+        "required": [
+          "name",
+          "cases"
+        ],
+        "properties": {
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportEvalCaseEntry"
+            },
+            "description": "Case results for this eval."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional eval description.",
+            "example": "Regression suite for the support agent"
+          },
+          "name": {
+            "type": "string",
+            "description": "Eval name; the eval is upserted by it.",
+            "example": "Support agent regression"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags for the eval.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          }
+        }
+      },
+      "ImportEvalRunRequest": {
+        "type": "object",
+        "description": "A whole external run group: one external run, one entry per eval. Maps to\none everruns EvalRun per eval, all sharing `source.run_id`.",
+        "required": [
+          "source",
+          "evals"
+        ],
+        "properties": {
+          "evals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportEvalGroup"
+            },
+            "description": "Evals and their case results in this run."
+          },
+          "source": {
+            "$ref": "#/components/schemas/ImportEvalSource",
+            "description": "External system that produced the run."
+          }
+        }
+      },
+      "ImportEvalSource": {
+        "type": "object",
+        "description": "Attribution for the external system that produced the run.",
+        "required": [
+          "system",
+          "run_id"
+        ],
+        "properties": {
+          "metadata": {
+            "description": "Optional environment/labels (git commit, host, etc.)."
+          },
+          "run_id": {
+            "type": "string",
+            "description": "Stable external run id: cross-eval group key + idempotency key.",
+            "example": "run-2026-01-15-001"
+          },
+          "system": {
+            "type": "string",
+            "description": "External system name, e.g. \"mira\".",
+            "example": "mira"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Link back to the run in the external system.",
+            "example": "https://ci.example.com/runs/42"
+          },
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Version of the external system.",
+            "example": "0.4.0"
+          }
+        }
+      },
+      "ImportEvalTarget": {
+        "type": "object",
+        "description": "Provider/model labels for an externally-executed result.",
+        "required": [
+          "provider",
+          "model"
+        ],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model name.",
+            "example": "gpt-5.1"
+          },
+          "params": {
+            "description": "Opaque provider parameters."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider name.",
+            "example": "openai"
+          }
+        }
+      },
       "ImportOkfBundleRequest": {
         "type": "object",
         "description": "Request body for `okf_import`.",
@@ -33007,6 +35525,43 @@
           "prune": {
             "type": "boolean",
             "description": "When true, delete previously-imported entries absent from this bundle."
+          }
+        }
+      },
+      "ImportScore": {
+        "type": "object",
+        "description": "A single named score from an external scorer.",
+        "required": [
+          "scorer",
+          "value",
+          "pass"
+        ],
+        "properties": {
+          "na": {
+            "type": "boolean",
+            "description": "Scorer was not applicable (excluded from aggregate).",
+            "example": false
+          },
+          "pass": {
+            "type": "boolean",
+            "description": "Whether the scorer passed.",
+            "example": true
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable explanation of the score.",
+            "example": "Output contains expected text"
+          },
+          "scorer": {
+            "type": "string",
+            "description": "Scorer name.",
+            "example": "contains"
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "description": "Score value from 0.0 to 1.0.",
+            "example": 1.0
           }
         }
       },
@@ -34585,6 +37140,581 @@
                 "updated_at": {
                   "type": "string",
                   "description": "Timestamp when this resource was last updated (RFC 3339)."
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_Eval": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "An eval: a named collection of test cases for an agent.",
+              "required": [
+                "id",
+                "name",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When the eval was archived, if archived.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "case_count": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Number of cases.",
+                  "example": 12
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the eval was created.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When the eval was deleted, if deleted.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional description.",
+                  "example": "Regression suite for the support agent"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (eval_<32-hex>). Shown as \"id\" in API.",
+                  "example": "eval_01933b5a000070008000000000000001"
+                },
+                "last_run": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvalRunSummaryView",
+                      "description": "Last run summary (if any)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "model_override": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional default model override for runs.",
+                  "example": "gpt-5.1"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Display name.",
+                  "example": "Support agent regression"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/EvalStatus",
+                  "description": "Lifecycle status."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Organization tags.",
+                  "example": [
+                    "regression",
+                    "nightly"
+                  ]
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvalTarget",
+                      "description": "Session setup target. Defines how to create sessions for eval cases."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the eval was last updated.",
+                  "example": "2026-01-15T10:30:00Z"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_EvalCase": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A single test case within an eval.",
+              "required": [
+                "id",
+                "name",
+                "conversation",
+                "scorers",
+                "position",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "artifacts": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "$ref": "#/components/schemas/ArtifactSpec"
+                  },
+                  "description": "Session files to collect after scoring completes.",
+                  "example": [
+                    {
+                      "name": "patch",
+                      "path": "/workspace/fix.patch"
+                    }
+                  ]
+                },
+                "conversation": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EvalInputMessage"
+                  },
+                  "description": "Input messages sent sequentially.",
+                  "example": [
+                    {
+                      "content": "Fix the failing test in src/lib.rs"
+                    }
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the case was created.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional description of what the case checks.",
+                  "example": "Agent fixes a failing unit test"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (evalcase_<32-hex>).",
+                  "example": "evalcase_01933b5a000070008000000000000001"
+                },
+                "max_turns": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Max agent turns (default: 10).",
+                  "example": 10,
+                  "minimum": 0
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Case name.",
+                  "example": "fix-failing-test"
+                },
+                "position": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "Display order.",
+                  "example": 0
+                },
+                "post": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "$ref": "#/components/schemas/EvalInputMessage"
+                  },
+                  "description": "Verification messages sent after conversation completes and session idles.\nScorers run after post messages complete (not after conversation).",
+                  "example": [
+                    {
+                      "content": "Run the tests again and report the result"
+                    }
+                  ]
+                },
+                "scorers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Scorer"
+                  },
+                  "description": "Scoring rules.",
+                  "example": [
+                    {
+                      "text": "tests pass",
+                      "type": "contains"
+                    }
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Free-form tags for filtering runs.",
+                  "example": [
+                    "regression",
+                    "nightly"
+                  ]
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvalTarget",
+                      "description": "Optional per-case target override."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timeout_seconds": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Per-case timeout in seconds (default: 120).",
+                  "example": 120,
+                  "minimum": 0
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the case was last updated.",
+                  "example": "2026-01-15T10:30:00Z"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_EvalCaseResult": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Result of a single case within a run.",
+              "required": [
+                "id",
+                "eval_case_id",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "artifacts": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "Collected session file contents keyed by artifact name.",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "patch": "diff --git a/src/lib.rs b/src/lib.rs"
+                  }
+                },
+                "case_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Case name (denormalized for display).",
+                  "example": "fix-failing-test"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the result was created.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "error_message": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Error message if errored.",
+                  "example": "Session timed out"
+                },
+                "eval_case_id": {
+                  "type": "string",
+                  "description": "The case this result is for.",
+                  "example": "evalcase_01933b5a000070008000000000000001"
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (evalresult_<32-hex>).",
+                  "example": "evalresult_01933b5a000070008000000000000001"
+                },
+                "input_tokens": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "Token usage.",
+                  "example": 1200,
+                  "minimum": 0
+                },
+                "latency_ms": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "Execution time in milliseconds.",
+                  "example": 8450,
+                  "minimum": 0
+                },
+                "metadata": {
+                  "description": "External scorer metadata captured during deferred write-back."
+                },
+                "output_tokens": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "Output tokens used.",
+                  "example": 850,
+                  "minimum": 0
+                },
+                "scores": {
+                  "description": "Per-scorer results."
+                },
+                "session_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Session created for this case (browsable in UI).",
+                  "example": "session_01933b5a00007000800000000000001"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/CaseResultStatus",
+                  "description": "Execution status of the case."
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvalTarget",
+                      "description": "Resolved target used for this result (live reference)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "target_snapshot": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvalTarget",
+                      "description": "Frozen snapshot of the resolved target at execution time."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "turns": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Turn count.",
+                  "example": 3,
+                  "minimum": 0
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the result was last updated.",
+                  "example": "2026-01-15T10:30:00Z"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_EvalRun": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "An eval run: one execution of all/some cases.",
+              "required": [
+                "id",
+                "status",
+                "triggered_by",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "attribution": {
+                  "description": "Provenance for external runs: which system produced them, version, link\nback, and any environment labels. `None` for internal runs. Open-vocab\nJSON so new attribution fields need no schema change."
+                },
+                "completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When the run finished.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the run was created.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "filter_tags": {
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Only run cases matching these tags.",
+                  "example": [
+                    "regression",
+                    "nightly"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "description": "External identifier (evalrun_<32-hex>).",
+                  "example": "evalrun_01933b5a000070008000000000000001"
+                },
+                "model_override": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Model override for this run.",
+                  "example": "gpt-5.1"
+                },
+                "results": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EvalCaseResult"
+                  },
+                  "description": "Case results (populated on detail view)."
+                },
+                "source": {
+                  "$ref": "#/components/schemas/EvalRunSource",
+                  "description": "Whether everruns executed this run (`internal`) or it was imported from\nan external eval system (`external`)."
+                },
+                "started_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When the run started executing.",
+                  "example": "2026-01-15T10:30:00Z"
+                },
+                "status": {
+                  "$ref": "#/components/schemas/EvalRunStatus",
+                  "description": "Run lifecycle status."
+                },
+                "summary": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/RunSummary",
+                      "description": "Aggregate metrics (set on completion)."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "target": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvalTarget",
+                      "description": "Optional per-run target override."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "triggered_by": {
+                  "type": "string",
+                  "description": "What triggered this run.",
+                  "example": "manual"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the run was last updated.",
+                  "example": "2026-01-15T10:30:00Z"
                 }
               }
             },
@@ -44101,6 +47231,17 @@
           "restart"
         ]
       },
+      "RedactionOptions": {
+        "type": "object",
+        "description": "Redaction controls. Secret scrubbing is always applied regardless of these.",
+        "properties": {
+          "redact_content": {
+            "type": "boolean",
+            "description": "When true, replace message text/tool content with a placeholder, keeping\nonly structure (roles, tool names, ids). Secret scrubbing still runs.",
+            "example": true
+          }
+        }
+      },
       "ReportColumn": {
         "type": "object",
         "description": "One column header in a `ReportResult`. The ordered `columns` list\ndeclares the key set of each row in `rows`.",
@@ -44823,6 +47964,91 @@
           "high"
         ],
         "example": "low"
+      },
+      "RunSummary": {
+        "type": "object",
+        "description": "Aggregate metrics for a completed eval run.",
+        "required": [
+          "total",
+          "passed",
+          "failed",
+          "errored",
+          "pass_rate",
+          "avg_score",
+          "avg_turns",
+          "avg_latency_ms",
+          "total_input_tokens",
+          "total_output_tokens"
+        ],
+        "properties": {
+          "avg_latency_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Mean case latency in milliseconds.",
+            "example": 8450,
+            "minimum": 0
+          },
+          "avg_score": {
+            "type": "number",
+            "format": "double",
+            "description": "Mean score across cases, 0.0 to 1.0.",
+            "example": 0.85
+          },
+          "avg_turns": {
+            "type": "number",
+            "format": "double",
+            "description": "Mean agent turns per case.",
+            "example": 3.2
+          },
+          "errored": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of cases that errored.",
+            "example": 1,
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of cases that failed.",
+            "example": 2,
+            "minimum": 0
+          },
+          "pass_rate": {
+            "type": "number",
+            "format": "double",
+            "description": "Fraction of cases that passed, 0.0 to 1.0.",
+            "example": 0.75
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of cases that passed.",
+            "example": 9,
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Total number of cases in the run.",
+            "example": 12,
+            "minimum": 0
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total input tokens across cases.",
+            "example": 14400,
+            "minimum": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total output tokens across cases.",
+            "example": 10200,
+            "minimum": 0
+          }
+        }
       },
       "RuntimeMessage": {
         "type": "object",
@@ -46622,6 +49848,33 @@
                 "type": "null"
               }
             ]
+          }
+        }
+      },
+      "Score": {
+        "type": "object",
+        "description": "Result from a single scorer evaluation.",
+        "required": [
+          "pass",
+          "value",
+          "reason"
+        ],
+        "properties": {
+          "pass": {
+            "type": "boolean",
+            "description": "Whether this scorer passed.",
+            "example": true
+          },
+          "reason": {
+            "type": "string",
+            "description": "Human-readable explanation.",
+            "example": "Output contains expected text"
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "description": "Score value 0.0–1.0.",
+            "example": 1.0
           }
         }
       },
@@ -51282,6 +54535,229 @@
             ],
             "description": "Optional lifecycle state update. Use `disabled` to hide from runtime selection without archiving.",
             "example": "disabled"
+          }
+        }
+      },
+      "UpdateEvalCaseRequest": {
+        "type": "object",
+        "description": "Request to update an eval case",
+        "properties": {
+          "artifacts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ArtifactSpec"
+            },
+            "description": "Session files to capture after scoring completes.",
+            "example": [
+              {
+                "name": "patch",
+                "path": "/workspace/fix.patch"
+              }
+            ]
+          },
+          "conversation": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/EvalInputMessage"
+            },
+            "description": "Input messages sent to the agent sequentially.",
+            "example": [
+              {
+                "content": "Fix the failing test in src/lib.rs"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Agent fixes a failing unit test"
+          },
+          "max_turns": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum agent turns before the case stops.",
+            "example": 10,
+            "minimum": 0
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "fix-failing-test"
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Display order within the eval.",
+            "example": 0
+          },
+          "post": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/EvalInputMessage"
+            },
+            "description": "Verification messages sent after conversation completes.",
+            "example": [
+              {
+                "content": "Run the tests again and report the result"
+              }
+            ]
+          },
+          "scorers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Scorer"
+            },
+            "description": "Scoring rules applied to the case output.",
+            "example": [
+              {
+                "text": "tests pass",
+                "type": "contains"
+              }
+            ]
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags attached to this resource.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Optional per-case target override."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Per-case timeout in seconds.",
+            "example": 120,
+            "minimum": 0
+          }
+        }
+      },
+      "UpdateEvalRequest": {
+        "type": "object",
+        "description": "Request to update an eval",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Regression suite for the support agent"
+          },
+          "model_override": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default model override applied to runs of this eval.",
+            "example": "gpt-5.1"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Support agent regression"
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags attached to this resource.",
+            "example": [
+              "regression",
+              "nightly"
+            ]
+          },
+          "target": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EvalTarget",
+                "description": "Session setup target (harness+agent, app, or full session params)."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "UpdateEvalResultScoresRequest": {
+        "type": "object",
+        "description": "Request to write external scores to one eval case result.",
+        "required": [
+          "scores"
+        ],
+        "properties": {
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
+          "scores": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Score"
+            },
+            "description": "Externally computed scores to store on the result."
+          },
+          "status": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExternalScoreStatus",
+                "description": "Current lifecycle status."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

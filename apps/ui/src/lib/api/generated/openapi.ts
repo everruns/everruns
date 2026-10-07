@@ -2191,6 +2191,291 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/evals": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List evals. */
+    get: operations["list_evals"];
+    put?: never;
+    /** Create a new eval. */
+    post: operations["create_eval"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Import externally-executed eval results. */
+    post: operations["import_eval_run"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/import/preflight": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Report whether the caller can import eval results. */
+    get: operations["eval_import_preflight"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a single eval. */
+    get: operations["get_eval"];
+    put?: never;
+    post?: never;
+    /** Delete an eval. */
+    delete: operations["delete_eval"];
+    options?: never;
+    head?: never;
+    /** Update an eval. */
+    patch: operations["update_eval"];
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/atif_import": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Import ATIF trajectories as eval cases. */
+    post: operations["import_atif"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/cases": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List eval cases. */
+    get: operations["list_eval_cases"];
+    put?: never;
+    /** Create an eval case. */
+    post: operations["create_eval_case"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/cases/{case_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get an eval case. */
+    get: operations["get_eval_case"];
+    put?: never;
+    post?: never;
+    /** Delete an eval case. */
+    delete: operations["delete_eval_case"];
+    options?: never;
+    head?: never;
+    /** Update an eval case. */
+    patch: operations["update_eval_case"];
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List eval runs. */
+    get: operations["list_eval_runs"];
+    put?: never;
+    /** Create an eval run. */
+    post: operations["create_eval_run"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get an eval run. */
+    get: operations["get_eval_run"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}/artifacts": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Export eval run artifacts as NDJSON. */
+    get: operations["export_run_artifacts"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}/cancel": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Cancel an eval run. */
+    post: operations["cancel_eval_run"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}/dataset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start an async dataset export for an eval run.
+     * @description The NDJSON is produced by a background job; fetch it once ready via
+     *     `GET .../dataset/{dataset_id}`.
+     */
+    post: operations["export_run_dataset"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Fetch an eval-run dataset export handle (status + NDJSON body). */
+    get: operations["get_eval_run_dataset"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update scores for one eval result. */
+    patch: operations["update_eval_result_scores"];
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}/scores": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Bulk update scores for all results in an eval run. */
+    patch: operations["bulk_update_eval_run_scores"];
+    trace?: never;
+  };
+  "/v1/evals/{eval_id}/runs/{run_id}/share": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Whether an eval run has an active share link. */
+    get: operations["get_eval_run_share"];
+    put?: never;
+    /** Mint a read-only share link for an eval run. */
+    post: operations["create_eval_run_share"];
+    /** Revoke all share links for an eval run. */
+    delete: operations["revoke_eval_run_share"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/files": {
     parameters: {
       query?: never;
@@ -6916,6 +7201,44 @@ export interface components {
       /** @description The paragraph to add, markdown. */
       text: string;
     };
+    /** @description Named session file to collect after an eval case completes. */
+    ArtifactSpec: {
+      /**
+       * @description Export key for this artifact (for example `patch` or `log`).
+       * @example patch
+       */
+      name: string;
+      /**
+       * @description Absolute path in the session filesystem.
+       * @example /workspace/fix.patch
+       */
+      path: string;
+    };
+    /**
+     * @description Result of an ATIF trajectory import: eval cases
+     *     created/updated from imported trajectories, upserted by case name.
+     */
+    AtifImportReport: {
+      /**
+       * @description Public ids of the affected cases, in import order.
+       * @example [
+       *       "evalcase_01933b5a000070008000000000000001"
+       *     ]
+       */
+      case_ids: string[];
+      /**
+       * Format: int64
+       * @description Number of eval cases created.
+       * @example 3
+       */
+      created: number;
+      /**
+       * Format: int64
+       * @description Number of existing eval cases updated (matched by name).
+       * @example 1
+       */
+      updated: number;
+    };
     /**
      * @description Domain-level audit log view. Mirrors `AuditLogRow` but omits `org_id`
      *     (derived from the caller) and formats IDs as strings, matching the
@@ -7225,6 +7548,24 @@ export interface components {
       /** @description Tool policy (auto or requires_approval) */
       policy?: components["schemas"]["ToolPolicy"];
     };
+    /** @description Score update for one eval case result. */
+    BulkUpdateEvalResultScoresItem: {
+      /**
+       * @description Eval case result to update.
+       * @example evalresult_01933b5a000070008000000000000001
+       */
+      result_id: string;
+      /** @description Externally computed scores to store on the result. */
+      scores: components["schemas"]["Score"][];
+      status?: components["schemas"]["ExternalScoreStatus"] | null;
+    };
+    /** @description Request to write external scores to several results of an eval run. */
+    BulkUpdateEvalRunScoresRequest: {
+      /** @description Free-form metadata attached to this resource. */
+      metadata?: unknown;
+      /** @description Per-result score updates applied together. */
+      results: components["schemas"]["BulkUpdateEvalResultScoresItem"][];
+    };
     /**
      * @description Status of the cancel operation
      * @enum {string}
@@ -7413,6 +7754,18 @@ export interface components {
       /** @description Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`). */
       usage_kind: components["schemas"]["CapabilityUsageKind"];
     };
+    /**
+     * @description Status of an individual eval case result.
+     * @enum {string}
+     */
+    CaseResultStatus:
+      | "pending"
+      | "running"
+      | "passed"
+      | "failed"
+      | "errored"
+      | "timeout"
+      | "skipped";
     /**
      * @description Portable channel intent. Authentication and installation are host bindings.
      *     Channels default to disabled; enabled intent still requires host publication.
@@ -8719,6 +9072,120 @@ export interface components {
       /** @description Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref. */
       definition: Record<string, unknown>;
     };
+    /** @description Request to create an eval case */
+    CreateEvalCaseRequest: {
+      /**
+       * @description Session files to capture after scoring completes.
+       * @example [
+       *       {
+       *         "name": "patch",
+       *         "path": "/workspace/fix.patch"
+       *       }
+       *     ]
+       */
+      artifacts?: components["schemas"]["ArtifactSpec"][] | null;
+      /**
+       * @description Input messages sent to the agent sequentially.
+       * @example [
+       *       {
+       *         "content": "Fix the failing test in src/lib.rs"
+       *       }
+       *     ]
+       */
+      conversation: components["schemas"]["EvalInputMessage"][];
+      /**
+       * @description Human-readable description. Safe to render in user-facing messages.
+       * @example Agent fixes a failing unit test
+       */
+      description?: string | null;
+      /**
+       * Format: int32
+       * @description Maximum agent turns before the case stops.
+       * @example 10
+       */
+      max_turns?: number | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example fix-failing-test
+       */
+      name: string;
+      /**
+       * Format: int32
+       * @description Display order within the eval.
+       * @example 0
+       */
+      position?: number | null;
+      /**
+       * @description Verification messages sent after conversation completes and session idles.
+       * @example [
+       *       {
+       *         "content": "Run the tests again and report the result"
+       *       }
+       *     ]
+       */
+      post?: components["schemas"]["EvalInputMessage"][] | null;
+      /**
+       * @description Scoring rules applied to the case output.
+       * @example [
+       *       {
+       *         "text": "tests pass",
+       *         "type": "contains"
+       *       }
+       *     ]
+       */
+      scorers: components["schemas"]["Scorer"][];
+      /**
+       * @description Free-form tags attached to this resource.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      tags?: string[] | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: int32
+       * @description Per-case timeout in seconds.
+       * @example 120
+       */
+      timeout_seconds?: number | null;
+    };
+    /** @description Request to create a new eval */
+    CreateEvalRequest: {
+      /**
+       * @description Human-readable description. Safe to render in user-facing messages.
+       * @example Regression suite for the support agent
+       */
+      description?: string | null;
+      /**
+       * @description Default model override applied to runs of this eval.
+       * @example gpt-5.1
+       */
+      model_override?: string | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example Support agent regression
+       */
+      name: string;
+      /**
+       * @description Free-form tags attached to this resource.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      tags?: string[] | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+    };
+    /** @description Request to create an eval run */
+    CreateEvalRunRequest: {
+      /**
+       * @description Model override for this run.
+       * @example gpt-5.1
+       */
+      model_override?: string | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+    };
     /** @description Request to create a file */
     CreateFileRequest: {
       /**
@@ -9677,6 +10144,29 @@ export interface components {
       name: string;
     };
     /**
+     * @description Selection filters applied per case. `org_id` is never part of this — it is
+     *     injected by the command from the authenticated caller, so a filter can never
+     *     widen the org scope.
+     */
+    DatasetFilters: {
+      /**
+       * Format: double
+       * @description Keep only cases whose mean scorer value is >= this (0.0–1.0).
+       * @example 0.8
+       */
+      min_score?: number | null;
+      /**
+       * @description Keep only cases whose pass/fail equals this.
+       * @example true
+       */
+      pass?: boolean | null;
+    };
+    /**
+     * @description Output schema for the exported dataset.
+     * @enum {string}
+     */
+    DatasetFormat: "trajectory" | "sft" | "atif";
+    /**
      * @description Per-dataset projector freshness telemetry. One entry per active dataset
      *     the reporting projector is materializing.
      */
@@ -10102,6 +10592,493 @@ export interface components {
        */
       type?: string | null;
     };
+    /** @description An eval: a named collection of test cases for an agent. */
+    Eval: {
+      /**
+       * Format: date-time
+       * @description When the eval was archived, if archived.
+       * @example 2026-01-15T10:30:00Z
+       */
+      archived_at?: string | null;
+      /**
+       * Format: int64
+       * @description Number of cases.
+       * @example 12
+       */
+      case_count?: number;
+      /**
+       * Format: date-time
+       * @description When the eval was created.
+       * @example 2026-01-15T10:30:00Z
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description When the eval was deleted, if deleted.
+       * @example 2026-01-15T10:30:00Z
+       */
+      deleted_at?: string | null;
+      /**
+       * @description Optional description.
+       * @example Regression suite for the support agent
+       */
+      description?: string | null;
+      /**
+       * @description External identifier (eval_<32-hex>). Shown as "id" in API.
+       * @example eval_01933b5a000070008000000000000001
+       */
+      id: string;
+      last_run?: components["schemas"]["EvalRunSummaryView"] | null;
+      /**
+       * @description Optional default model override for runs.
+       * @example gpt-5.1
+       */
+      model_override?: string | null;
+      /**
+       * @description Display name.
+       * @example Support agent regression
+       */
+      name: string;
+      /** @description Lifecycle status. */
+      status: components["schemas"]["EvalStatus"];
+      /**
+       * @description Organization tags.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      tags?: string[];
+      target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: date-time
+       * @description When the eval was last updated.
+       * @example 2026-01-15T10:30:00Z
+       */
+      updated_at: string;
+    };
+    /** @description A single test case within an eval. */
+    EvalCase: {
+      /**
+       * @description Session files to collect after scoring completes.
+       * @example [
+       *       {
+       *         "name": "patch",
+       *         "path": "/workspace/fix.patch"
+       *       }
+       *     ]
+       */
+      artifacts?: components["schemas"]["ArtifactSpec"][] | null;
+      /**
+       * @description Input messages sent sequentially.
+       * @example [
+       *       {
+       *         "content": "Fix the failing test in src/lib.rs"
+       *       }
+       *     ]
+       */
+      conversation: components["schemas"]["EvalInputMessage"][];
+      /**
+       * Format: date-time
+       * @description When the case was created.
+       * @example 2026-01-15T10:30:00Z
+       */
+      created_at: string;
+      /**
+       * @description Optional description of what the case checks.
+       * @example Agent fixes a failing unit test
+       */
+      description?: string | null;
+      /**
+       * @description External identifier (evalcase_<32-hex>).
+       * @example evalcase_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * Format: int32
+       * @description Max agent turns (default: 10).
+       * @example 10
+       */
+      max_turns?: number | null;
+      /**
+       * @description Case name.
+       * @example fix-failing-test
+       */
+      name: string;
+      /**
+       * Format: int32
+       * @description Display order.
+       * @example 0
+       */
+      position: number;
+      /**
+       * @description Verification messages sent after conversation completes and session idles.
+       *     Scorers run after post messages complete (not after conversation).
+       * @example [
+       *       {
+       *         "content": "Run the tests again and report the result"
+       *       }
+       *     ]
+       */
+      post?: components["schemas"]["EvalInputMessage"][] | null;
+      /**
+       * @description Scoring rules.
+       * @example [
+       *       {
+       *         "text": "tests pass",
+       *         "type": "contains"
+       *       }
+       *     ]
+       */
+      scorers: components["schemas"]["Scorer"][];
+      /**
+       * @description Free-form tags for filtering runs.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      tags?: string[];
+      target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: int32
+       * @description Per-case timeout in seconds (default: 120).
+       * @example 120
+       */
+      timeout_seconds?: number | null;
+      /**
+       * Format: date-time
+       * @description When the case was last updated.
+       * @example 2026-01-15T10:30:00Z
+       */
+      updated_at: string;
+    };
+    /** @description Result of a single case within a run. */
+    EvalCaseResult: {
+      /**
+       * @description Collected session file contents keyed by artifact name.
+       * @example {
+       *       "patch": "diff --git a/src/lib.rs b/src/lib.rs"
+       *     }
+       */
+      artifacts?: {
+        [key: string]: string;
+      } | null;
+      /**
+       * @description Case name (denormalized for display).
+       * @example fix-failing-test
+       */
+      case_name?: string | null;
+      /**
+       * Format: date-time
+       * @description When the result was created.
+       * @example 2026-01-15T10:30:00Z
+       */
+      created_at: string;
+      /**
+       * @description Error message if errored.
+       * @example Session timed out
+       */
+      error_message?: string | null;
+      /**
+       * @description The case this result is for.
+       * @example evalcase_01933b5a000070008000000000000001
+       */
+      eval_case_id: string;
+      /**
+       * @description External identifier (evalresult_<32-hex>).
+       * @example evalresult_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * Format: int64
+       * @description Token usage.
+       * @example 1200
+       */
+      input_tokens?: number | null;
+      /**
+       * Format: int64
+       * @description Execution time in milliseconds.
+       * @example 8450
+       */
+      latency_ms?: number | null;
+      /** @description External scorer metadata captured during deferred write-back. */
+      metadata?: unknown;
+      /**
+       * Format: int64
+       * @description Output tokens used.
+       * @example 850
+       */
+      output_tokens?: number | null;
+      /** @description Per-scorer results. */
+      scores?: unknown;
+      /**
+       * @description Session created for this case (browsable in UI).
+       * @example session_01933b5a00007000800000000000001
+       */
+      session_id?: string | null;
+      /** @description Execution status of the case. */
+      status: components["schemas"]["CaseResultStatus"];
+      target?: components["schemas"]["EvalTarget"] | null;
+      target_snapshot?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: int32
+       * @description Turn count.
+       * @example 3
+       */
+      turns?: number | null;
+      /**
+       * Format: date-time
+       * @description When the result was last updated.
+       * @example 2026-01-15T10:30:00Z
+       */
+      updated_at: string;
+    };
+    /**
+     * @description Status of an async dataset export.
+     * @enum {string}
+     */
+    EvalDatasetStatus: "pending" | "running" | "completed" | "failed";
+    /**
+     * @description Preflight capability report so optional-feature clients (e.g. Mira) can
+     *     check before publishing instead of failing mid-import.
+     */
+    EvalImportPreflight: {
+      /**
+       * @description Whether the caller may import (holds eval-management permission).
+       * @example true
+       */
+      can_import: boolean;
+      /**
+       * @description Whether the `evals` feature is enabled for this org.
+       * @example true
+       */
+      evals_enabled: boolean;
+    };
+    /** @description A message to send to the agent during an eval case. */
+    EvalInputMessage: {
+      /**
+       * @description The text content to send.
+       * @example Fix the failing test in src/lib.rs
+       */
+      content: string;
+    };
+    /** @description An eval run: one execution of all/some cases. */
+    EvalRun: {
+      /**
+       * @description Provenance for external runs: which system produced them, version, link
+       *     back, and any environment labels. `None` for internal runs. Open-vocab
+       *     JSON so new attribution fields need no schema change.
+       */
+      attribution?: unknown;
+      /**
+       * Format: date-time
+       * @description When the run finished.
+       * @example 2026-01-15T10:30:00Z
+       */
+      completed_at?: string | null;
+      /**
+       * Format: date-time
+       * @description When the run was created.
+       * @example 2026-01-15T10:30:00Z
+       */
+      created_at: string;
+      /**
+       * @description Only run cases matching these tags.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      filter_tags?: string[] | null;
+      /**
+       * @description External identifier (evalrun_<32-hex>).
+       * @example evalrun_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * @description Model override for this run.
+       * @example gpt-5.1
+       */
+      model_override?: string | null;
+      /** @description Case results (populated on detail view). */
+      results?: components["schemas"]["EvalCaseResult"][];
+      /**
+       * @description Whether everruns executed this run (`internal`) or it was imported from
+       *     an external eval system (`external`).
+       */
+      source?: components["schemas"]["EvalRunSource"];
+      /**
+       * Format: date-time
+       * @description When the run started executing.
+       * @example 2026-01-15T10:30:00Z
+       */
+      started_at?: string | null;
+      /** @description Run lifecycle status. */
+      status: components["schemas"]["EvalRunStatus"];
+      summary?: components["schemas"]["RunSummary"] | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * @description What triggered this run.
+       * @example manual
+       */
+      triggered_by: string;
+      /**
+       * Format: date-time
+       * @description When the run was last updated.
+       * @example 2026-01-15T10:30:00Z
+       */
+      updated_at: string;
+    };
+    /**
+     * @description An async dataset-export handle: the durable result of enqueuing a dataset
+     *     export from a completed eval run. The `body` (NDJSON) is only populated on
+     *     the `GET .../dataset/{dataset_id}` detail view once `status` is `completed`.
+     */
+    EvalRunDataset: {
+      /**
+       * @description The produced NDJSON. Only present on the detail view once completed.
+       * @example {"source_key": "evalrun_a/evalresult_b"}
+       */
+      body?: string | null;
+      /**
+       * Format: date-time
+       * @description When the export was enqueued.
+       * @example 2026-01-15T10:30:00Z
+       */
+      created_at: string;
+      /**
+       * @description Failure detail when `status` is `failed`.
+       * @example Export failed
+       */
+      error_message?: string | null;
+      /**
+       * @description The eval run this dataset was exported from.
+       * @example evalrun_01933b5a000070008000000000000001
+       */
+      eval_run_id: string;
+      /**
+       * @description External identifier (evaldataset_<32-hex>).
+       * @example evaldataset_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * Format: int64
+       * @description Number of NDJSON records (surviving cases). Set on completion.
+       * @example 24
+       */
+      record_count?: number | null;
+      /** @description Export lifecycle status. */
+      status: components["schemas"]["EvalDatasetStatus"];
+      /**
+       * Format: date-time
+       * @description When the export was last updated.
+       * @example 2026-01-15T10:30:00Z
+       */
+      updated_at: string;
+    };
+    /**
+     * @description A freshly minted share link. The raw `token` is returned once and never
+     *     stored; build the public URL `/shared/eval-runs/<token>` from it.
+     */
+    EvalRunShareLink: {
+      /**
+       * Format: date-time
+       * @description When the share link was created.
+       * @example 2026-01-15T10:30:00Z
+       */
+      created_at: string;
+      /**
+       * @description Raw share token, returned once and never stored.
+       * @example evr_share_3f9a1c7e5b2d4086a1f3c9e7b5d2408613579bdf02468ace13579bdf02468ace
+       */
+      token: string;
+      /**
+       * @description Short, non-secret prefix identifying the token.
+       * @example evr_share_3f9a1c7e...
+       */
+      token_prefix: string;
+    };
+    /** @description Whether a run currently has an active share link. */
+    EvalRunShareStatus: {
+      /**
+       * @description Whether an active share link exists for the run.
+       * @example true
+       */
+      active: boolean;
+    };
+    /**
+     * @description Where an eval run came from.
+     *
+     *     `Internal` runs are executed by everruns (sessions spawned per case).
+     *     `External` runs are ingested already-complete from an external eval system
+     *     (e.g. Mira) via the import API; everruns hosts and visualizes them but never
+     *     executes them.
+     * @enum {string}
+     */
+    EvalRunSource: "internal" | "external";
+    /**
+     * @description Status of an eval run.
+     * @enum {string}
+     */
+    EvalRunStatus: "pending" | "running" | "completed" | "failed" | "cancelled";
+    /** @description Compact run summary for listing evals. */
+    EvalRunSummaryView: {
+      /**
+       * Format: date-time
+       * @description When the run was created.
+       * @example 2026-01-15T10:30:00Z
+       */
+      created_at: string;
+      /** @description Eval run identifier. */
+      id: string;
+      /** @description Run lifecycle status. */
+      status: components["schemas"]["EvalRunStatus"];
+      summary?: components["schemas"]["RunSummary"] | null;
+    };
+    /**
+     * @description Eval lifecycle status (standard building-block lifecycle).
+     * @enum {string}
+     */
+    EvalStatus: "active" | "archived" | "deleted";
+    /**
+     * @description Defines how to instantiate a session for an eval case.
+     *
+     *     Two modes:
+     *     - `Session`: mirrors `CreateSessionRequest` — full control over session creation parameters.
+     *     - `App`: references a deployed app by ID.
+     *
+     *     Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness.
+     */
+    EvalTarget:
+      | {
+          /** @description Agent to work in this session. */
+          agent_id?: string | null;
+          /** @description Harness for the session. If omitted, org default harness is used. */
+          harness_id?: string | null;
+          /** @description Addressable harness name (alternative to harness_id). */
+          harness_name?: string | null;
+          /** @description Max LLM iterations per turn. */
+          max_iterations?: number | null;
+          /** @description LLM model override. */
+          model_id?: string | null;
+          /** @description System prompt override (prepended to agent prompt). */
+          system_prompt?: string | null;
+          /** @enum {string} */
+          type: "session";
+        }
+      | {
+          app_id: string;
+          /** @enum {string} */
+          type: "app";
+        }
+      | {
+          model: string;
+          params?: unknown;
+          provider: string;
+          /** @enum {string} */
+          type: "external";
+        };
     /**
      * @description Standard event following the Everruns event protocol.
      *
@@ -10323,6 +11300,15 @@ export interface components {
      * @enum {string}
      */
     ExecutionPhase: "commentary" | "final_answer";
+    /** @description Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`. */
+    ExportEvalRunDatasetRequest: {
+      /** @description Per-case selection filters. */
+      filters?: components["schemas"]["DatasetFilters"];
+      /** @description Output schema (defaults to `trajectory`). */
+      format?: components["schemas"]["DatasetFormat"];
+      /** @description Redaction controls. */
+      redaction?: components["schemas"]["RedactionOptions"];
+    };
     /** @description Request body for the `export_report_query` operation. */
     ExportReportQueryRequest: {
       /** @description Export format. Defaults to `csv` when omitted. */
@@ -10486,6 +11472,11 @@ export interface components {
       /** @description Source channel identifier (e.g. "slack", "discord") */
       source: string;
     };
+    /**
+     * @description Result status reported alongside externally computed scores.
+     * @enum {string}
+     */
+    ExternalScoreStatus: "passed" | "failed" | "errored";
     /**
      * @description One failed reporting-outbox row, surfaced in
      *     `ReportingOutboxDiagnostics.failed_rows` so operators can triage
@@ -11667,6 +12658,146 @@ export interface components {
       /** Format: int64 */
       size_bytes: number;
     };
+    /**
+     * @description Verdict for an imported case (trusted as-is; not recomputed).
+     * @enum {string}
+     */
+    ImportCaseStatus: "passed" | "failed" | "errored" | "timeout" | "skipped";
+    /**
+     * @description One case result. The case is upserted by `name` (identity-only: everruns
+     *     never re-executes it).
+     */
+    ImportEvalCaseEntry: {
+      /**
+       * @description Optional case description.
+       * @example Agent fixes a failing unit test
+       */
+      description?: string | null;
+      /**
+       * @description Error detail when the case errored.
+       * @example Session timed out
+       */
+      error_message?: string | null;
+      /**
+       * @description Display-only input turns shown in the UI.
+       * @example [
+       *       "Fix the failing test in src/lib.rs"
+       *     ]
+       */
+      input?: string[];
+      /**
+       * Format: int64
+       * @description Input tokens used.
+       * @example 1200
+       */
+      input_tokens?: number | null;
+      /**
+       * Format: int64
+       * @description Execution time in milliseconds.
+       * @example 8450
+       */
+      latency_ms?: number | null;
+      /** @description Open-vocab metrics bag (cost_usd, cache/reasoning tokens, ttft, ...). */
+      metrics?: unknown;
+      /**
+       * @description Case name; the case is upserted by it.
+       * @example fix-failing-test
+       */
+      name: string;
+      /**
+       * Format: int64
+       * @description Output tokens used.
+       * @example 850
+       */
+      output_tokens?: number | null;
+      /** @description Named, attributed scores. Stored opaque; everruns does not re-grade. */
+      scores?: components["schemas"]["ImportScore"][];
+      /** @description Verdict for the case, trusted as reported. */
+      status: components["schemas"]["ImportCaseStatus"];
+      /** @description Provider/model labels this result was produced against. */
+      target: components["schemas"]["ImportEvalTarget"];
+      /** @description Normalized transcript (messages, tool calls, events, parts, files). */
+      transcript?: unknown;
+      /**
+       * Format: int32
+       * @description Number of agent turns taken.
+       * @example 3
+       */
+      turns?: number | null;
+    };
+    /** @description One eval's worth of results within the run. The eval is upserted by `name`. */
+    ImportEvalGroup: {
+      /** @description Case results for this eval. */
+      cases: components["schemas"]["ImportEvalCaseEntry"][];
+      /**
+       * @description Optional eval description.
+       * @example Regression suite for the support agent
+       */
+      description?: string | null;
+      /**
+       * @description Eval name; the eval is upserted by it.
+       * @example Support agent regression
+       */
+      name: string;
+      /**
+       * @description Free-form tags for the eval.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      tags?: string[];
+    };
+    /**
+     * @description A whole external run group: one external run, one entry per eval. Maps to
+     *     one everruns EvalRun per eval, all sharing `source.run_id`.
+     */
+    ImportEvalRunRequest: {
+      /** @description Evals and their case results in this run. */
+      evals: components["schemas"]["ImportEvalGroup"][];
+      /** @description External system that produced the run. */
+      source: components["schemas"]["ImportEvalSource"];
+    };
+    /** @description Attribution for the external system that produced the run. */
+    ImportEvalSource: {
+      /** @description Optional environment/labels (git commit, host, etc.). */
+      metadata?: unknown;
+      /**
+       * @description Stable external run id: cross-eval group key + idempotency key.
+       * @example run-2026-01-15-001
+       */
+      run_id: string;
+      /**
+       * @description External system name, e.g. "mira".
+       * @example mira
+       */
+      system: string;
+      /**
+       * @description Link back to the run in the external system.
+       * @example https://ci.example.com/runs/42
+       */
+      url?: string | null;
+      /**
+       * @description Version of the external system.
+       * @example 0.4.0
+       */
+      version?: string | null;
+    };
+    /** @description Provider/model labels for an externally-executed result. */
+    ImportEvalTarget: {
+      /**
+       * @description Model name.
+       * @example gpt-5.1
+       */
+      model: string;
+      /** @description Opaque provider parameters. */
+      params?: unknown;
+      /**
+       * @description Provider name.
+       * @example openai
+       */
+      provider: string;
+    };
     /** @description Request body for `okf_import`. */
     ImportOkfBundleRequest: {
       /** @description A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`. */
@@ -11675,6 +12806,35 @@ export interface components {
       files?: components["schemas"]["OkfFileInput"][];
       /** @description When true, delete previously-imported entries absent from this bundle. */
       prune?: boolean;
+    };
+    /** @description A single named score from an external scorer. */
+    ImportScore: {
+      /**
+       * @description Scorer was not applicable (excluded from aggregate).
+       * @example false
+       */
+      na?: boolean;
+      /**
+       * @description Whether the scorer passed.
+       * @example true
+       */
+      pass: boolean;
+      /**
+       * @description Human-readable explanation of the score.
+       * @example Output contains expected text
+       */
+      reason?: string;
+      /**
+       * @description Scorer name.
+       * @example contains
+       */
+      scorer: string;
+      /**
+       * Format: double
+       * @description Score value from 0.0 to 1.0.
+       * @example 1
+       */
+      value: number;
     };
     /** @description Private credential handoff emitted by the local login helper for this installation. */
     ImportedConnection: {
@@ -12606,6 +13766,339 @@ export interface components {
         /** Format: int64 */
         size_bytes: number;
         /** @description Timestamp when this resource was last updated (RFC 3339). */
+        updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_Eval: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * Format: date-time
+         * @description When the eval was archived, if archived.
+         * @example 2026-01-15T10:30:00Z
+         */
+        archived_at?: string | null;
+        /**
+         * Format: int64
+         * @description Number of cases.
+         * @example 12
+         */
+        case_count?: number;
+        /**
+         * Format: date-time
+         * @description When the eval was created.
+         * @example 2026-01-15T10:30:00Z
+         */
+        created_at: string;
+        /**
+         * Format: date-time
+         * @description When the eval was deleted, if deleted.
+         * @example 2026-01-15T10:30:00Z
+         */
+        deleted_at?: string | null;
+        /**
+         * @description Optional description.
+         * @example Regression suite for the support agent
+         */
+        description?: string | null;
+        /**
+         * @description External identifier (eval_<32-hex>). Shown as "id" in API.
+         * @example eval_01933b5a000070008000000000000001
+         */
+        id: string;
+        last_run?: components["schemas"]["EvalRunSummaryView"] | null;
+        /**
+         * @description Optional default model override for runs.
+         * @example gpt-5.1
+         */
+        model_override?: string | null;
+        /**
+         * @description Display name.
+         * @example Support agent regression
+         */
+        name: string;
+        /** @description Lifecycle status. */
+        status: components["schemas"]["EvalStatus"];
+        /**
+         * @description Organization tags.
+         * @example [
+         *       "regression",
+         *       "nightly"
+         *     ]
+         */
+        tags?: string[];
+        target?: components["schemas"]["EvalTarget"] | null;
+        /**
+         * Format: date-time
+         * @description When the eval was last updated.
+         * @example 2026-01-15T10:30:00Z
+         */
+        updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_EvalCase: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * @description Session files to collect after scoring completes.
+         * @example [
+         *       {
+         *         "name": "patch",
+         *         "path": "/workspace/fix.patch"
+         *       }
+         *     ]
+         */
+        artifacts?: components["schemas"]["ArtifactSpec"][] | null;
+        /**
+         * @description Input messages sent sequentially.
+         * @example [
+         *       {
+         *         "content": "Fix the failing test in src/lib.rs"
+         *       }
+         *     ]
+         */
+        conversation: components["schemas"]["EvalInputMessage"][];
+        /**
+         * Format: date-time
+         * @description When the case was created.
+         * @example 2026-01-15T10:30:00Z
+         */
+        created_at: string;
+        /**
+         * @description Optional description of what the case checks.
+         * @example Agent fixes a failing unit test
+         */
+        description?: string | null;
+        /**
+         * @description External identifier (evalcase_<32-hex>).
+         * @example evalcase_01933b5a000070008000000000000001
+         */
+        id: string;
+        /**
+         * Format: int32
+         * @description Max agent turns (default: 10).
+         * @example 10
+         */
+        max_turns?: number | null;
+        /**
+         * @description Case name.
+         * @example fix-failing-test
+         */
+        name: string;
+        /**
+         * Format: int32
+         * @description Display order.
+         * @example 0
+         */
+        position: number;
+        /**
+         * @description Verification messages sent after conversation completes and session idles.
+         *     Scorers run after post messages complete (not after conversation).
+         * @example [
+         *       {
+         *         "content": "Run the tests again and report the result"
+         *       }
+         *     ]
+         */
+        post?: components["schemas"]["EvalInputMessage"][] | null;
+        /**
+         * @description Scoring rules.
+         * @example [
+         *       {
+         *         "text": "tests pass",
+         *         "type": "contains"
+         *       }
+         *     ]
+         */
+        scorers: components["schemas"]["Scorer"][];
+        /**
+         * @description Free-form tags for filtering runs.
+         * @example [
+         *       "regression",
+         *       "nightly"
+         *     ]
+         */
+        tags?: string[];
+        target?: components["schemas"]["EvalTarget"] | null;
+        /**
+         * Format: int32
+         * @description Per-case timeout in seconds (default: 120).
+         * @example 120
+         */
+        timeout_seconds?: number | null;
+        /**
+         * Format: date-time
+         * @description When the case was last updated.
+         * @example 2026-01-15T10:30:00Z
+         */
+        updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_EvalCaseResult: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * @description Collected session file contents keyed by artifact name.
+         * @example {
+         *       "patch": "diff --git a/src/lib.rs b/src/lib.rs"
+         *     }
+         */
+        artifacts?: {
+          [key: string]: string;
+        } | null;
+        /**
+         * @description Case name (denormalized for display).
+         * @example fix-failing-test
+         */
+        case_name?: string | null;
+        /**
+         * Format: date-time
+         * @description When the result was created.
+         * @example 2026-01-15T10:30:00Z
+         */
+        created_at: string;
+        /**
+         * @description Error message if errored.
+         * @example Session timed out
+         */
+        error_message?: string | null;
+        /**
+         * @description The case this result is for.
+         * @example evalcase_01933b5a000070008000000000000001
+         */
+        eval_case_id: string;
+        /**
+         * @description External identifier (evalresult_<32-hex>).
+         * @example evalresult_01933b5a000070008000000000000001
+         */
+        id: string;
+        /**
+         * Format: int64
+         * @description Token usage.
+         * @example 1200
+         */
+        input_tokens?: number | null;
+        /**
+         * Format: int64
+         * @description Execution time in milliseconds.
+         * @example 8450
+         */
+        latency_ms?: number | null;
+        /** @description External scorer metadata captured during deferred write-back. */
+        metadata?: unknown;
+        /**
+         * Format: int64
+         * @description Output tokens used.
+         * @example 850
+         */
+        output_tokens?: number | null;
+        /** @description Per-scorer results. */
+        scores?: unknown;
+        /**
+         * @description Session created for this case (browsable in UI).
+         * @example session_01933b5a00007000800000000000001
+         */
+        session_id?: string | null;
+        /** @description Execution status of the case. */
+        status: components["schemas"]["CaseResultStatus"];
+        target?: components["schemas"]["EvalTarget"] | null;
+        target_snapshot?: components["schemas"]["EvalTarget"] | null;
+        /**
+         * Format: int32
+         * @description Turn count.
+         * @example 3
+         */
+        turns?: number | null;
+        /**
+         * Format: date-time
+         * @description When the result was last updated.
+         * @example 2026-01-15T10:30:00Z
+         */
+        updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_EvalRun: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /**
+         * @description Provenance for external runs: which system produced them, version, link
+         *     back, and any environment labels. `None` for internal runs. Open-vocab
+         *     JSON so new attribution fields need no schema change.
+         */
+        attribution?: unknown;
+        /**
+         * Format: date-time
+         * @description When the run finished.
+         * @example 2026-01-15T10:30:00Z
+         */
+        completed_at?: string | null;
+        /**
+         * Format: date-time
+         * @description When the run was created.
+         * @example 2026-01-15T10:30:00Z
+         */
+        created_at: string;
+        /**
+         * @description Only run cases matching these tags.
+         * @example [
+         *       "regression",
+         *       "nightly"
+         *     ]
+         */
+        filter_tags?: string[] | null;
+        /**
+         * @description External identifier (evalrun_<32-hex>).
+         * @example evalrun_01933b5a000070008000000000000001
+         */
+        id: string;
+        /**
+         * @description Model override for this run.
+         * @example gpt-5.1
+         */
+        model_override?: string | null;
+        /** @description Case results (populated on detail view). */
+        results?: components["schemas"]["EvalCaseResult"][];
+        /**
+         * @description Whether everruns executed this run (`internal`) or it was imported from
+         *     an external eval system (`external`).
+         */
+        source?: components["schemas"]["EvalRunSource"];
+        /**
+         * Format: date-time
+         * @description When the run started executing.
+         * @example 2026-01-15T10:30:00Z
+         */
+        started_at?: string | null;
+        /** @description Run lifecycle status. */
+        status: components["schemas"]["EvalRunStatus"];
+        summary?: components["schemas"]["RunSummary"] | null;
+        target?: components["schemas"]["EvalTarget"] | null;
+        /**
+         * @description What triggered this run.
+         * @example manual
+         */
+        triggered_by: string;
+        /**
+         * Format: date-time
+         * @description When the run was last updated.
+         * @example 2026-01-15T10:30:00Z
+         */
         updated_at: string;
       }[];
     };
@@ -17925,6 +19418,15 @@ export interface components {
      * @enum {string}
      */
     RecoveryMode: "finalize" | "restart";
+    /** @description Redaction controls. Secret scrubbing is always applied regardless of these. */
+    RedactionOptions: {
+      /**
+       * @description When true, replace message text/tool content with a placeholder, keeping
+       *     only structure (roles, tool names, ids). Secret scrubbing still runs.
+       * @example true
+       */
+      redact_content?: boolean;
+    };
     /**
      * @description One column header in a `ReportResult`. The ordered `columns` list
      *     declares the key set of each row in `rows`.
@@ -18412,6 +19914,69 @@ export interface components {
      * @enum {string}
      */
     RiskLevel: "low" | "medium" | "high";
+    /** @description Aggregate metrics for a completed eval run. */
+    RunSummary: {
+      /**
+       * Format: int64
+       * @description Mean case latency in milliseconds.
+       * @example 8450
+       */
+      avg_latency_ms: number;
+      /**
+       * Format: double
+       * @description Mean score across cases, 0.0 to 1.0.
+       * @example 0.85
+       */
+      avg_score: number;
+      /**
+       * Format: double
+       * @description Mean agent turns per case.
+       * @example 3.2
+       */
+      avg_turns: number;
+      /**
+       * Format: int32
+       * @description Number of cases that errored.
+       * @example 1
+       */
+      errored: number;
+      /**
+       * Format: int32
+       * @description Number of cases that failed.
+       * @example 2
+       */
+      failed: number;
+      /**
+       * Format: double
+       * @description Fraction of cases that passed, 0.0 to 1.0.
+       * @example 0.75
+       */
+      pass_rate: number;
+      /**
+       * Format: int32
+       * @description Number of cases that passed.
+       * @example 9
+       */
+      passed: number;
+      /**
+       * Format: int32
+       * @description Total number of cases in the run.
+       * @example 12
+       */
+      total: number;
+      /**
+       * Format: int64
+       * @description Total input tokens across cases.
+       * @example 14400
+       */
+      total_input_tokens: number;
+      /**
+       * Format: int64
+       * @description Total output tokens across cases.
+       * @example 10200
+       */
+      total_output_tokens: number;
+    };
     /** @description A message in the conversation */
     RuntimeMessage: {
       /** @description Message content as array of content parts (text, images, tool calls, tool results) */
@@ -19351,6 +20916,25 @@ export interface components {
        */
       url?: string;
       use?: components["schemas"]["McpServerPresetRef"] | null;
+    };
+    /** @description Result from a single scorer evaluation. */
+    Score: {
+      /**
+       * @description Whether this scorer passed.
+       * @example true
+       */
+      pass: boolean;
+      /**
+       * @description Human-readable explanation.
+       * @example Output contains expected text
+       */
+      reason: string;
+      /**
+       * Format: double
+       * @description Score value 0.0–1.0.
+       * @example 1
+       */
+      value: number;
     };
     /** @description A scoring rule applied to eval case output. */
     Scorer:
@@ -21810,6 +23394,119 @@ export interface components {
        * @example disabled
        */
       status?: string | null;
+    };
+    /** @description Request to update an eval case */
+    UpdateEvalCaseRequest: {
+      /**
+       * @description Session files to capture after scoring completes.
+       * @example [
+       *       {
+       *         "name": "patch",
+       *         "path": "/workspace/fix.patch"
+       *       }
+       *     ]
+       */
+      artifacts?: components["schemas"]["ArtifactSpec"][] | null;
+      /**
+       * @description Input messages sent to the agent sequentially.
+       * @example [
+       *       {
+       *         "content": "Fix the failing test in src/lib.rs"
+       *       }
+       *     ]
+       */
+      conversation?: components["schemas"]["EvalInputMessage"][] | null;
+      /**
+       * @description Human-readable description. Safe to render in user-facing messages.
+       * @example Agent fixes a failing unit test
+       */
+      description?: string | null;
+      /**
+       * Format: int32
+       * @description Maximum agent turns before the case stops.
+       * @example 10
+       */
+      max_turns?: number | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example fix-failing-test
+       */
+      name?: string | null;
+      /**
+       * Format: int32
+       * @description Display order within the eval.
+       * @example 0
+       */
+      position?: number | null;
+      /**
+       * @description Verification messages sent after conversation completes.
+       * @example [
+       *       {
+       *         "content": "Run the tests again and report the result"
+       *       }
+       *     ]
+       */
+      post?: components["schemas"]["EvalInputMessage"][] | null;
+      /**
+       * @description Scoring rules applied to the case output.
+       * @example [
+       *       {
+       *         "text": "tests pass",
+       *         "type": "contains"
+       *       }
+       *     ]
+       */
+      scorers?: components["schemas"]["Scorer"][] | null;
+      /**
+       * @description Free-form tags attached to this resource.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      tags?: string[] | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+      /**
+       * Format: int32
+       * @description Per-case timeout in seconds.
+       * @example 120
+       */
+      timeout_seconds?: number | null;
+    };
+    /** @description Request to update an eval */
+    UpdateEvalRequest: {
+      /**
+       * @description Human-readable description. Safe to render in user-facing messages.
+       * @example Regression suite for the support agent
+       */
+      description?: string | null;
+      /**
+       * @description Default model override applied to runs of this eval.
+       * @example gpt-5.1
+       */
+      model_override?: string | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example Support agent regression
+       */
+      name?: string | null;
+      /**
+       * @description Free-form tags attached to this resource.
+       * @example [
+       *       "regression",
+       *       "nightly"
+       *     ]
+       */
+      tags?: string[] | null;
+      target?: components["schemas"]["EvalTarget"] | null;
+    };
+    /** @description Request to write external scores to one eval case result. */
+    UpdateEvalResultScoresRequest: {
+      /** @description Free-form metadata attached to this resource. */
+      metadata?: unknown;
+      /** @description Externally computed scores to store on the result. */
+      scores: components["schemas"]["Score"][];
+      status?: components["schemas"]["ExternalScoreStatus"] | null;
     };
     /** @description Request to update a file */
     UpdateFileRequest: {
@@ -31103,6 +32800,745 @@ export interface operations {
       };
       /** @description Permission denied */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_evals: {
+    parameters: {
+      query?: {
+        /** @description Case-insensitive name filter. */
+        search?: string;
+        /** @description Include archived evals. */
+        include_archived?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_Eval"];
+        };
+      };
+    };
+  };
+  create_eval: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateEvalRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Eval"];
+        };
+      };
+    };
+  };
+  import_eval_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ImportEvalRunRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalRun"];
+        };
+      };
+    };
+  };
+  eval_import_preflight: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalImportPreflight"];
+        };
+      };
+    };
+  };
+  get_eval: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Eval"];
+        };
+      };
+      /** @description Eval not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_eval: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Eval not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_eval: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateEvalRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Eval"];
+        };
+      };
+      /** @description Eval not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  import_atif: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Eval ID */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    /** @description ATIF trajectories as NDJSON or JSON */
+    requestBody: {
+      content: {
+        "application/x-ndjson": string;
+      };
+    };
+    responses: {
+      /** @description Import report */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AtifImportReport"];
+        };
+      };
+      /** @description Invalid payload */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Eval not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_eval_cases: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalCase"];
+        };
+      };
+    };
+  };
+  create_eval_case: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateEvalCaseRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCase"];
+        };
+      };
+    };
+  };
+  get_eval_case: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        case_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCase"];
+        };
+      };
+      /** @description Eval case not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_eval_case: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        case_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Eval case not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_eval_case: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        case_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateEvalCaseRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCase"];
+        };
+      };
+      /** @description Eval case not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_eval_runs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalRun"];
+        };
+      };
+    };
+  };
+  create_eval_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateEvalRunRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalRun"];
+        };
+      };
+    };
+  };
+  get_eval_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalRun"];
+        };
+      };
+      /** @description Eval run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  export_run_artifacts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Eval ID */
+        eval_id: string;
+        /** @description Eval run ID */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description NDJSON artifacts */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/x-ndjson": string;
+        };
+      };
+      /** @description Eval run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  cancel_eval_run: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalRun"];
+        };
+      };
+      /** @description Eval run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  export_run_dataset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Eval ID */
+        eval_id: string;
+        /** @description Eval run ID */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ExportEvalRunDatasetRequest"];
+      };
+    };
+    responses: {
+      /** @description Export enqueued */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalRunDataset"];
+        };
+      };
+      /** @description Eval run not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_eval_run_dataset: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+        /** @description Prefixed public identifier */
+        dataset_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalRunDataset"];
+        };
+      };
+      /** @description Dataset export not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_eval_result_scores: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+        /** @description Prefixed public identifier */
+        result_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateEvalResultScoresRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalCaseResult"];
+        };
+      };
+      /** @description Eval result not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  bulk_update_eval_run_scores: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["BulkUpdateEvalRunScoresRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_EvalCaseResult"];
+        };
+      };
+    };
+  };
+  get_eval_run_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalRunShareStatus"];
+        };
+      };
+    };
+  };
+  create_eval_run_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["EvalRunShareLink"];
+        };
+      };
+    };
+  };
+  revoke_eval_run_share: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        eval_id: string;
+        /** @description Prefixed public identifier */
+        run_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
         headers: {
           [name: string]: unknown;
         };
