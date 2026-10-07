@@ -3739,6 +3739,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List non-secret metadata for organization-owned sandbox provider accounts. */
     get: operations["list_connections"];
     put?: never;
     post?: never;
@@ -3757,6 +3758,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Create and validate an encrypted organization-owned sandbox provider account. */
     post: operations["create_connection"];
     delete?: never;
     options?: never;
@@ -3772,8 +3774,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
+    /** @description Replace the name and credential for an organization-owned sandbox provider account. */
     put: operations["update_connection"];
     post?: never;
+    /** @description Delete an organization-owned provider account when no active sandbox configuration or lease references it. */
     delete: operations["delete_connection"];
     options?: never;
     head?: never;
@@ -3789,6 +3793,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
+    /** @description Revalidate an organization-owned sandbox provider credential without returning the secret. */
     post: operations["verify_connection"];
     delete?: never;
     options?: never;
@@ -17597,15 +17602,40 @@ export interface components {
     OrgFeatureFlagsSettingsResponse: {
       flags: components["schemas"]["OrgFeatureFlagSetting"][];
     };
+    /** @description Non-secret metadata for an organization-owned sandbox provider account. */
     OrganizationConnectionResponse: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time at which the provider account was first connected.
+       * @example 2026-10-07T12:00:00Z
+       */
       connected_at: string;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Stable connection identifier used by Sandbox Templates.
+       * @example 00000000-0000-0000-0000-000000000002
+       */
       id: string;
+      /**
+       * @description Human-readable account name.
+       * @example Production Daytona
+       */
       name: string;
+      /**
+       * @description Sandbox provider connector identifier.
+       * @example daytona
+       */
       provider: string;
+      /**
+       * @description Provider identity returned while validating the credential, when available.
+       * @example platform-team
+       */
       provider_username?: string | null;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time at which the account name or credential was last replaced.
+       * @example 2026-10-07T12:30:00Z
+       */
       updated_at: string;
     };
     /** @description Response for organization operations */
@@ -20645,7 +20675,12 @@ export interface components {
       /** @description Spans clipped to the window, oldest first. */
       spans: components["schemas"]["SandboxStateSpan"][];
     };
+    /** @description Organization-owned sandbox provider account input. */
     SaveOrganizationConnectionRequest: components["schemas"]["CreateConnectionRequest"] & {
+      /**
+       * @description Human-readable account name shown in Sandbox Template selectors.
+       * @example Production Daytona
+       */
       name: string;
     };
     /**
@@ -21793,12 +21828,15 @@ export interface components {
        * Format: uuid
        * @description Exact connection for organization grants, which may have several
        *     accounts for one provider.
+       * @example 00000000-0000-0000-0000-000000000002
        */
       connection_id?: string | null;
+      /** @description Identity scope from which the provider credential is resolved. */
       source: components["schemas"]["SessionSandboxCredentialSource"];
       /**
        * Format: uuid
        * @description Exact virtual-user owner for user, Agent, and organization grants.
+       * @example 00000000-0000-0000-0000-000000000001
        */
       virtual_user_id?: string | null;
     };

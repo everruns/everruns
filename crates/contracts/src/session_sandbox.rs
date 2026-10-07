@@ -70,13 +70,23 @@ pub enum SessionSandboxCredentialSource {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionSandboxCredential {
+    /// Identity scope from which the provider credential is resolved.
+    #[cfg_attr(feature = "openapi", schema(example = "session_user"))]
     pub source: SessionSandboxCredentialSource,
     /// Exact virtual-user owner for user, Agent, and organization grants.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "00000000-0000-0000-0000-000000000001")
+    )]
     pub virtual_user_id: Option<Uuid>,
     /// Exact connection for organization grants, which may have several
     /// accounts for one provider.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "00000000-0000-0000-0000-000000000002")
+    )]
     pub connection_id: Option<Uuid>,
 }
 
