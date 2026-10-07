@@ -42,6 +42,8 @@ if [ -n "$violations" ]; then
   violations="$(printf '%s\n' "$violations" | grep -vE $'^R[0-9]+\tcrates/server/migrations/076_generation_reconciliation_backoff\\.sql\tcrates/server/migrations/077_generation_reconciliation_backoff\\.sql$' || true)"
   # #4264 and #4265 both merged a migration 178; the later one moves to 179.
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/178_durable_task_queue_queue.sql\tcrates/server/migrations/179_durable_task_queue_queue.sql' || true)"
+  # #4333 and #4334 both merged a migration 186; the later one moves to 187.
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/186_agentid_sign_in.sql\tcrates/server/migrations/187_agentid_sign_in.sql' || true)"
 fi
 
 if [ -n "$violations" ]; then
