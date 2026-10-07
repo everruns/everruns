@@ -69,9 +69,10 @@ session whose last turn errored is simply `idle`. The list and the masthead
 both need failure, so `SessionActivity` derives an outcome-oriented value from
 the execution status plus the outcome of the most recent terminal turn.
 
-`sessions.last_turn_status` carries that outcome, maintained by statement-level
-triggers on `events`, the same incremental-counter pattern
-`turn_count`/`tool_call_count` established, for the same reason: the list must
+`sessions.last_turn_status` carries that outcome, maintained by triggers on
+`events` (once per turn, when its terminal event lands, see
+[Session Counts](../operations/session-counts.md)), the same incremental-counter
+pattern `turn_count`/`tool_call_count` established, for the same reason: the list must
 not rescan event history per row.
 
 The derivation exists twice, in Rust
