@@ -2,6 +2,14 @@
 
 ## 2026-10-07
 
+* **One session record for MCP servers added mid-conversation.** ARD
+  attachments and servers a person adds "for this chat only" (`user_mcp` add
+  with `scope: "chat"`) write the same `session_mcp:<name>` record, folded into
+  session `mcpServers` from the next turn; removing it drops the tools. Every
+  turn-context and MCP prefix path now folds it, which also makes ARD MCP
+  attachments work on the in-process worker. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 7b.
+
 * **MCP servers can load their tools on demand.** A server marked `deferred`
   is not listed at turn start (no `tools/list`); the model sees one
   placeholder line per server and reveals it through `tool_search` (or by

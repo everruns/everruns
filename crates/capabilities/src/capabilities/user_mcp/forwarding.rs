@@ -6,6 +6,7 @@
 // supplies (in-process, or over gRPC), bound to that input message.
 
 use async_trait::async_trait;
+use everruns_core::ScopedMcpServer;
 use everruns_core::mcp::{
     McpLogin, McpLoginPrompter, UserMcpServerEntry, UserMcpServerSummary, UserMcpStore,
     UserMcpStoreCall, UserMcpStoreError, UserMcpStoreReply, UserMcpStoreResult,
@@ -81,6 +82,21 @@ impl UserMcpStore for ForwardingUserMcpStore {
         };
         match self.call(call).await? {
             UserMcpStoreReply::Removed { removed } => Ok(removed),
+            other => Err(unexpected(other)),
+        }
+    }
+
+    async fn add_to_chat(
+        &self,
+        name: &str,
+        server: ScopedMcpServer,
+    ) -> UserMcpStoreResult<UserMcpServerSummary> {
+        let call = UserMcpStoreCall::AddToChat {
+            name: name.to_string(),
+            server: Box::new(server),
+        };
+        match self.call(call).await? {
+            UserMcpStoreReply::Server { server } => Ok(server),
             other => Err(unexpected(other)),
         }
     }

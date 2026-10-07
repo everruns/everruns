@@ -52,7 +52,7 @@ fn direct_mcp_adapter_preserves_neutral_catalog_descriptors() {
 // =========================================================================
 
 /// Build a DirectWorkerAdapters with in-memory backends for unit tests.
-fn test_adapters() -> DirectWorkerAdapters {
+pub(super) fn test_adapters() -> DirectWorkerAdapters {
     let db = Arc::new(crate::storage::StorageBackend::test_database());
     let event_service = Arc::new(crate::services::EventService::new(
         db.clone(),
@@ -341,7 +341,7 @@ async fn grep_files_returns_bounded_merged_context() {
     assert_eq!(result.blocks[0].lines.len(), 5);
 }
 
-async fn seed_harness_for_platform_store(
+pub(super) async fn seed_harness_for_platform_store(
     db: &StorageBackend,
     org_id: i64,
     name: &str,

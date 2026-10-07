@@ -4,6 +4,7 @@
 use super::DirectWorkerAdapters;
 use crate::domains::mcp_servers::McpServerResolved;
 use crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server_with_capabilities;
+use crate::domains::mcp_servers::session_servers::fold_session_records;
 use crate::domains::mcp_servers::user_layer::{
     UserMcpTurn, merge_turn_scoped_mcp_servers, user_mcp_layer,
 };
@@ -11,6 +12,21 @@ use crate::kernel_imports::ScopedMcpServers;
 use crate::records::{Agent, Harness, Session};
 
 impl DirectWorkerAdapters {
+    /// The stored session with its run-time records (ARD attachments,
+    /// chat-only user MCP servers) folded in, exactly as the gRPC turn context
+    /// and prefix resolution fold them.
+    pub(super) async fn get_turn_session(
+        &self,
+        org_id: i64,
+        session_id: uuid::Uuid,
+    ) -> everruns_contracts::error::Result<Option<Session>> {
+        let mut session = self.get_stored_session(org_id, session_id).await?;
+        if let (Some(session), Some(storage)) = (session.as_mut(), self.storage_store.as_deref()) {
+            fold_session_records(storage, session).await;
+        }
+        Ok(session)
+    }
+
     /// Empty unless the agent uses the person's servers and the turn's input
     /// message was sent by exactly one person.
     async fn user_mcp_layer(
@@ -82,6 +98,7 @@ struct DirectUserMcpInvoker {
     registry: everruns_core::capabilities::CapabilityRegistry,
     org_id: i64,
     session_id: everruns_contracts::typed_id::SessionId,
+    storage: Option<std::sync::Arc<dyn everruns_core::session_services::SessionStorageStore>>,
 }
 
 #[async_trait::async_trait]
@@ -98,6 +115,7 @@ impl everruns_capabilities::capabilities::UserMcpCallInvoker for DirectUserMcpIn
             self.org_id,
             self.session_id,
             input_message,
+            self.storage.as_deref(),
             call,
         )
         .await
@@ -116,6 +134,11 @@ impl DirectWorkerAdapters {
             registry: self.capability_registry.clone(),
             org_id,
             session_id,
+            storage: self.storage_store.clone(),
         })
     }
 }
+
+#[cfg(test)]
+#[path = "session_server_tests.rs"]
+mod session_server_tests;

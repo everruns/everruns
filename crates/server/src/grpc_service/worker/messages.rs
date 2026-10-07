@@ -59,22 +59,15 @@ impl WorkerServiceImpl {
                 .as_ref()
                 .and_then(|resolver| resolver.for_execution(id))
         });
-        // Fold any runtime ARD attachments (knowledge/integrations/integrations.md, resource_discovery)
-        // into the session config layer before scoped MCP servers / capabilities
-        // are resolved, so attached MCP servers and A2A agents become usable on
-        // the next turn with no change to the agent loop.
+        // Fold run-time session records (ARD attachments, chat-only user MCP
+        // servers) into the session config layer before scoped MCP servers /
+        // capabilities are resolved, so they are usable from the next turn.
         if let Ok(store) = self.storage_store() {
-            // Attachments merge into the portable config layer (EVE-882);
-            // fold the merged fields back onto the stored record so proto
-            // conversion and scoped-MCP resolution below see them.
-            let mut execution_session = session.execution_session();
-            everruns_core::ard_attachment::apply_session_attachments(
+            crate::domains::mcp_servers::session_servers::fold_session_records(
                 store.as_ref(),
-                &mut execution_session,
+                &mut session,
             )
             .await;
-            session.mcp_servers = execution_session.mcp_servers;
-            session.capabilities = execution_session.capabilities;
         }
 
         // Get agent with capabilities via domain query (optional)

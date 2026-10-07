@@ -10,6 +10,7 @@ pub mod deferred;
 pub mod queries;
 pub mod scoped_mcp;
 pub mod service;
+pub mod session_servers;
 pub mod types;
 pub mod user_layer;
 pub mod user_manage;

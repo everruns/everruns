@@ -83,6 +83,11 @@ pub struct UserMcpServerSummary {
     /// enabled, e.g. a server of the agent with the same name wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skipped: Option<String>,
+    /// Added for this conversation only: a session MCP server record, not an
+    /// entry in the person's list. It applies to every later turn of this
+    /// conversation and to no other.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chat_only: bool,
 }
 
 /// Why a store or prompter refused a request.
@@ -120,8 +125,23 @@ pub trait UserMcpStore: Send + Sync {
         entry: UserMcpServerEntry,
     ) -> UserMcpStoreResult<UserMcpServerSummary>;
 
-    /// Remove `name`. `false` when it was not in the list.
+    /// Remove `name`: a server added for this conversation only, otherwise the
+    /// entry in the list. `false` when there was neither.
     async fn remove(&self, name: &str) -> UserMcpStoreResult<bool>;
+
+    /// Add `server` under `name` to this conversation only, as a session MCP
+    /// server record (see `crate::session_mcp_servers`), leaving the person's
+    /// list alone. Hosts without conversations refuse it.
+    async fn add_to_chat(
+        &self,
+        name: &str,
+        server: ScopedMcpServer,
+    ) -> UserMcpStoreResult<UserMcpServerSummary> {
+        let _ = (name, server);
+        Err(UserMcpStoreError::Unavailable(
+            "Adding an MCP server for this conversation only is not available here.".into(),
+        ))
+    }
 
     /// Enable or disable `name`.
     async fn set_enabled(
@@ -183,6 +203,13 @@ pub enum UserMcpStoreCall {
         /// The entry to store. Boxed: it dwarfs the other calls.
         entry: Box<UserMcpServerEntry>,
     },
+    /// [`UserMcpStore::add_to_chat`].
+    AddToChat {
+        /// Server name.
+        name: String,
+        /// The server to add. Boxed: it dwarfs the other calls.
+        server: Box<ScopedMcpServer>,
+    },
     /// [`UserMcpStore::remove`].
     Remove {
         /// Server name.
@@ -211,14 +238,15 @@ pub enum UserMcpStoreReply {
         /// Every server in the list.
         servers: Vec<UserMcpServerSummary>,
     },
-    /// Answer to [`UserMcpStoreCall::Upsert`] and [`UserMcpStoreCall::SetEnabled`].
+    /// Answer to [`UserMcpStoreCall::Upsert`], [`UserMcpStoreCall::AddToChat`]
+    /// and [`UserMcpStoreCall::SetEnabled`].
     Server {
         /// The server as stored.
         server: UserMcpServerSummary,
     },
     /// Answer to [`UserMcpStoreCall::Remove`].
     Removed {
-        /// Whether the server was in the list.
+        /// Whether there was such a server.
         removed: bool,
     },
     /// Answer to [`UserMcpStoreCall::StartLogin`].

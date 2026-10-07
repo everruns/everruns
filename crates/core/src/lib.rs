@@ -131,6 +131,7 @@ pub use everruns_contracts::runtime::agent_definition;
 #[cfg(feature = "agent-package")]
 pub mod agent_package;
 pub mod ard_attachment;
+pub mod session_mcp_servers;
 pub use everruns_contracts::runtime::capability_dto;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
@@ -488,6 +489,11 @@ pub use guardrail_checks::{
 };
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,
+};
+pub use session_mcp_servers::{
+    SESSION_MCP_SERVER_KV_PREFIX, SessionMcpServer, SessionMcpServerSource, get_session_mcp_server,
+    load_session_mcp_servers, put_session_mcp_server, remove_session_mcp_server,
+    session_mcp_server_kv_key,
 };
 // EVE-881: the stored `Harness` persistence record, its lifecycle enum, the
 // chain-merge helpers, and the built-in provisioning templates moved to the
