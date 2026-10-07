@@ -431,7 +431,7 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
     },
     SeedProvider {
         id: seed_ids::META_PROVIDER,
-        name: "Meta Model API",
+        name: "Meta",
         provider_type: "meta",
     },
 ];

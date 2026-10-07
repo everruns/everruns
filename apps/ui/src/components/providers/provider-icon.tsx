@@ -234,7 +234,7 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
   bedrock: "AWS Bedrock",
   mai: "Microsoft MAI",
   fireworks: "Fireworks AI",
-  meta: "Meta Model API",
+  meta: "Meta",
   mistral: "Mistral AI",
   cloudflare: "Cloudflare AI Gateway",
   vercel: "Vercel AI Gateway",
