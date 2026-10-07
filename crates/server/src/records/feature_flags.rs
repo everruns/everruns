@@ -596,7 +596,11 @@ mod tests {
         assert_eq!(definition.grade, FeatureFlagGrade::Adoption);
         for deployment in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
             let defaults = policy(deployment, definition.grade);
-            assert!(!defaults.for_org(&HashMap::new()).is_driver_offered("chatgpt"));
+            assert!(
+                !defaults
+                    .for_org(&HashMap::new())
+                    .is_driver_offered("chatgpt")
+            );
             let enrolled = HashMap::from([("chatgpt_plan".into(), true)]);
             assert!(defaults.for_org(&enrolled).is_driver_offered("chatgpt"));
         }
