@@ -68,6 +68,12 @@ Two reasons to prefer `jev` once your deployment has a key configured. It is che
 
 `utility_llm` stays the default, so existing configs are unchanged. Both engines fail open, honor `on_fail` and advisory mode identically, and send the same bounded excerpt. A check set to `jev` in a deployment with no TypeSafe key configured is skipped with a warning.
 
+#### Use your organization's decision model
+
+By default, `jev` checks use the deployment's decision model. An organization can answer them with its own model instead: pick a **Default decision model** on the Models page, then set **System decisions** to **This organization's model** (or `PATCH /v1/orgs/{org}` with `"system_decisions": "organization"`). The checks then run on your provider account, count against the session's budget, and show up in its usage, the same as the `jev_decision` tool.
+
+Once you opt in, the deployment's model is never used for your checks. If your default decision model is missing, disabled, or failing, `jev` checks fail open with a warning. Switch back with `"system_decisions": "deployment"`.
+
 ### On-fail
 
 - `block`, suppresses the matched content: an `output`/`tool_output` block replaces the content with a notice; a `tool_use` block refuses the call and feeds the reason back to the model, which can self-correct. The model's original tokens are never persisted.
@@ -111,7 +117,7 @@ The `id` is optional but recommended, it is surfaced in reason codes and logs.
 ## Data egress and failure behavior
 
 - **Deterministic checks** (`regex`, `blocklist`, `tool_pattern`) run entirely in-process; no data leaves the platform.
-- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's TypeSafe Jev model. Either way it is an operator-configured destination, not a per-agent one.
+- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's decision model, or your organization's default decision model when **System decisions** is set to it. Either way it is an operator-configured destination, not a per-agent one.
 - **`mcp`** sends a bounded content excerpt to an external, operator-configured MCP guardrail endpoint. Tenant scoping is enforced by the host's per-session scoped-MCP resolver, so a config can only reach servers scoped to its own session/org.
 
 Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per invocation, and one batched request for all `jev` checks on a stage) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.

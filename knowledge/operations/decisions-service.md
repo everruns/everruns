@@ -41,7 +41,24 @@ that touches it and in the weekly live sweep.
 [System configuration](../../crates/worker/src/system_decisions.rs) composes server and worker guardrails
 from utility credentials. Guardrail authors cannot select another account or model. With no configured
 default, the service is disabled. Guardrails keep their established fail-open behavior on unavailable
-or failing utility services. Tenant model defaults never affect these calls.
+or failing utility services. Tenant model defaults affect these calls only through the org setting
+below.
+
+## Organization choice for deployment-owned checks
+
+An org's `system_decisions` setting ([migration](../../crates/server/migrations/185_org_system_decisions.sql))
+picks who answers guardrail `jev` checks and the Slack relevance check. `deployment` (the default)
+keeps the deployment service above. `organization` sends them to the org's decision default on its own
+account. The [session decisions wrapper](../../crates/core/src/system_decisions.rs) resolves
+the choice per check through the session's credential store and runs an org model through the host's
+[bound executor](../../crates/integrations/src/typesafe/bound.rs), the Jev tool's egress, budget and
+usage path. An org that opted in with no usable model gets an error: guardrails fail open and Slack
+stays silent. Nothing falls back to deployment keys.
+
+[Slack](../../crates/server/src/api/slack_events/org_decisions.rs) decides a message in a thread that
+has a session on that session's budget and ledger. A message that would start a session runs
+session-less: personal providers fail closed, the call uses host runtime egress with DNS pinning, no
+budget is checked, and usage goes to a structured log line instead of a session ledger.
 
 ## Tenant authority
 

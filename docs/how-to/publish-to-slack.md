@@ -38,10 +38,18 @@ The Slack endpoint editor shows a **Response policy** selector:
 - **Relevant messages** also responds to clear requests within the agent's purpose,
   including contextual thread follow-ups. Unrelated and uncertain messages stay silent.
 
-Relevant messages requires a configured deployment Decisions service. For Jev, set
-`UTILITY_TYPESAFE_API_KEY` and select `UTILITY_DECISION_DRIVER=typesafe`. Mentions and direct
-messages work without a classifier. A missing classifier or a failed decision leaves
-unmentioned messages silent, without posting an acknowledgement or running the agent.
+Relevant messages requires a decision model. By default that is the deployment's Decisions
+service: for Jev, set `UTILITY_TYPESAFE_API_KEY` and select `UTILITY_DECISION_DRIVER=typesafe`.
+An organization can use its own model instead: pick a **Default decision model** on the Models
+page and set **System decisions** to **This organization's model**. The check then runs on your
+provider account. In a thread that already has a session it counts against that session's
+budget and usage. A message that would start a new session is checked before any session
+exists, so it is not budget-checked.
+
+Mentions and direct messages work without a classifier. A missing classifier or a failed
+decision leaves unmentioned messages silent, without posting an acknowledgement or running the
+agent. An organization that chose its own model stays silent when that model is missing or
+failing; it never falls back to the deployment's model.
 
 Reply mode still controls what an accepted turn posts to Slack. Response policy
 controls whether that turn starts. Select **All messages** to restore the previous

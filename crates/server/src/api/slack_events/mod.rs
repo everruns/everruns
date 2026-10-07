@@ -20,6 +20,7 @@ mod content;
 mod events;
 mod interactivity;
 mod manifest;
+mod org_decisions;
 mod response_policy;
 mod thread;
 mod wire;
@@ -29,6 +30,7 @@ pub(crate) use content::*;
 pub(crate) use events::*;
 pub(crate) use interactivity::*;
 pub(crate) use manifest::*;
+pub use org_decisions::SlackOrgDecisions;
 pub(crate) use thread::*;
 pub(crate) use wire::*;
 
@@ -63,12 +65,25 @@ pub struct SlackState {
     /// The generated manifest needs it to name this server's own webhook URL.
     pub api_base_url: String,
     pub decisions: Arc<dyn everruns_core::DecisionsService>,
+    /// What an org with `system_decisions: organization` decides with instead.
+    pub org_decisions: Option<SlackOrgDecisions>,
 }
 
 impl SlackState {
-    /// Inject the same deployment decisions service used by the runtime.
-    pub fn with_decisions(mut self, decisions: Arc<dyn everruns_core::DecisionsService>) -> Self {
-        self.decisions = decisions;
+    /// Inject the runtime's deployment decisions service, and the host
+    /// services an org's own decision model runs on.
+    pub fn with_decisions(
+        mut self,
+        host: &everruns_core::host::HostComposition,
+        provider_resolver: &Arc<crate::services::ProviderResolverService>,
+        budget_service: &Arc<crate::domains::budgets::BudgetService>,
+    ) -> Self {
+        self.decisions = host.decisions();
+        self.org_decisions = Some(SlackOrgDecisions {
+            provider_resolver: provider_resolver.clone(),
+            budget_service: budget_service.clone(),
+            egress: host.egress_service(),
+        });
         self
     }
 
@@ -96,6 +111,7 @@ impl SlackState {
             delivery_dispatcher,
             api_base_url,
             decisions: Arc::new(everruns_core::DisabledDecisionsService),
+            org_decisions: None,
         }
     }
 }

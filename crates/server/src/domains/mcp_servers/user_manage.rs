@@ -185,6 +185,9 @@ impl ManageTurnRecords {
                 .runtime_invocation_responder(session.id, message)
                 .await?
                 .map(everruns_contracts::typed_id::AgentId::from_uuid);
+            if session.agent_id != responder {
+                session.agent_revision = None;
+            }
             session.agent_id = responder;
         }
         let agent = match session.agent_id {
@@ -196,8 +199,6 @@ impl ManageTurnRecords {
                         row.id.uuid(),
                     )
                     .await?;
-                    // Every exposure runs the agent's current configuration
-                    // (agent versions are retired, #4312).
                     Some(crate::domains::agents::queries::row_to_agent(
                         row,
                         capabilities,

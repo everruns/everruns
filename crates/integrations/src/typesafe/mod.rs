@@ -87,3 +87,6 @@ pub const TYPESAFE_API_KEY_SECRET: &str = client::API_KEY_ENV;
 pub const TYPESAFE_CONNECTION_PROVIDER: &str = "typesafe";
 
 mod bound;
+
+/// Org-selected decision models on the host's budget, egress, and usage path.
+pub use bound::{BoundDecisionExecutor, evaluate_unmetered};

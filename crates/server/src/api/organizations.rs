@@ -187,6 +187,13 @@ pub struct UpdateOrganizationRequest {
             everruns_contracts::typed_id::ProviderId,
         >,
     >,
+    /// Who answers deployment-owned decision checks (guardrail `jev` checks
+    /// and the Slack relevance check). `organization` uses the org's default
+    /// decision model (`PUT /v1/models/decision-default`) on its own provider
+    /// account; when that model is missing or failing, guardrail checks fail
+    /// open and Slack stays silent, never falling back to the deployment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_decisions: Option<crate::storage::SystemDecisions>,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
@@ -220,6 +227,9 @@ pub struct OrganizationResponse {
         everruns_contracts::driver_registry::ServiceKind,
         everruns_contracts::typed_id::ProviderId,
     >,
+    /// Who answers deployment-owned decision checks: `deployment` (default)
+    /// or `organization` (the org's default decision model).
+    pub system_decisions: crate::storage::SystemDecisions,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
@@ -602,6 +612,7 @@ pub async fn update_organization(
         default_harness_name,
         base_harness_id,
         default_provider_per_service,
+        system_decisions,
     } = req;
 
     // Resolve default_harness_name to default_harness_id (mutually exclusive)
@@ -706,6 +717,7 @@ pub async fn update_organization(
         || default_harness_id.is_some()
         || base_harness_id.is_some()
         || default_provider_per_service.is_some()
+        || system_decisions.is_some()
     {
         state
             .db
@@ -723,6 +735,7 @@ pub async fn update_organization(
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
                     default_provider_per_service: default_provider_per_service
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
+                    system_decisions,
                 },
             )
             .await
@@ -871,6 +884,10 @@ async fn build_organization_response(
         default_provider_per_service: settings
             .as_ref()
             .map(|s| s.default_provider_per_service.0.clone())
+            .unwrap_or_default(),
+        system_decisions: settings
+            .as_ref()
+            .map(|s| crate::storage::SystemDecisions::from_db(&s.system_decisions))
             .unwrap_or_default(),
         created_at: org.created_at,
         updated_at: org.updated_at,

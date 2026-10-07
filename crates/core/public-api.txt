@@ -338,6 +338,9 @@ everruns_core::runtime_context::TurnContextResolver	trait
 everruns_core::runtime_context::assemble_resolved_turn_context	function
 everruns_core::runtime_context::resolve_runtime_capabilities	function
 everruns_core::runtime_context::resolve_snapshot_capabilities	function
+everruns_core::system_decisions	module
+everruns_core::system_decisions::for_context	function
+everruns_core::system_decisions::for_turn	function
 everruns_core::task_observer	module
 everruns_core::task_observer::ObservingTaskRegistry	struct
 everruns_core::task_observer::TaskTransition	enum
