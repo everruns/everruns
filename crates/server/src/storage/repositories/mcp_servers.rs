@@ -102,7 +102,7 @@ impl Database {
             return Ok(None);
         };
         let row: Option<(i64,)> =
-            sqlx::query_as("SELECT org_id FROM mcp_servers WHERE id = $1 LIMIT 1")
+            sqlx::query_as("SELECT org_id FROM mcp_servers WHERE id = $1 AND owner_virtual_user_id IS NULL LIMIT 1")
                 .bind(id.uuid())
                 .fetch_optional(&self.pool)
                 .await?;
@@ -114,7 +114,7 @@ impl Database {
             r#"
             SELECT {McpServerRow}
             FROM mcp_servers
-            WHERE org_id = $1 AND id = $2
+            WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NULL
             "#
         ))
         .bind(org_id)
@@ -138,7 +138,7 @@ impl Database {
             r#"
             SELECT {McpServerRow}
             FROM mcp_servers
-            WHERE org_id = $1 AND id = ANY($2)
+            WHERE org_id = $1 AND id = ANY($2) AND owner_virtual_user_id IS NULL
             "#
         ))
         .bind(org_id)
@@ -162,6 +162,7 @@ impl Database {
             -- (EVE-964), so a name can now match a dead row and a live one;
             -- callers asking "which server is called X" mean the live one.
             WHERE org_id = $1 AND name = $2 AND status IN ('active', 'disabled')
+              AND owner_virtual_user_id IS NULL
             "#
         ))
         .bind(org_id)
@@ -188,7 +189,7 @@ impl Database {
         let sql = format!(
             r#"SELECT id, org_id, name, description, url, transport_type, status, api_key_encrypted, api_key_set, headers, settings, cached_tools, tools_cached_at, created_at, updated_at, archived_at, deleted_at
                 FROM mcp_servers
-                WHERE org_id = $1{status_sql}{search_sql}
+                WHERE org_id = $1 AND owner_virtual_user_id IS NULL{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
         );
         let mut query =
@@ -209,6 +210,7 @@ impl Database {
             SELECT {McpServerRow}
             FROM mcp_servers
             WHERE org_id = $1
+              AND owner_virtual_user_id IS NULL
               AND status != 'deleted'
               AND ($2::uuid IS NULL OR id < $2)
             ORDER BY id DESC
@@ -242,6 +244,7 @@ impl Database {
                  WHERE attachment.value->>'use' = 'catalog:' || ms.name
              )
             WHERE ms.org_id = $1
+              AND ms.owner_virtual_user_id IS NULL
               AND ms.status != 'deleted'
             GROUP BY ms.id
             "#,
@@ -275,6 +278,7 @@ impl Database {
              )
             WHERE ms.org_id = $1
               AND ms.id = ANY($2)
+              AND ms.owner_virtual_user_id IS NULL
               AND ms.status != 'deleted'
             GROUP BY ms.id
             "#,
@@ -308,6 +312,7 @@ impl Database {
                  )
                 WHERE ms.org_id = $1
                   AND ms.id = $2
+                  AND ms.owner_virtual_user_id IS NULL
                   AND ms.status != 'deleted'
             )
             SELECT COALESCE(
@@ -335,7 +340,7 @@ impl Database {
             r#"
             SELECT {McpServerRow}
             FROM mcp_servers
-            WHERE org_id = $1 AND status = 'active'
+            WHERE org_id = $1 AND status = 'active' AND owner_virtual_user_id IS NULL
             ORDER BY name ASC
             "#
         ))
@@ -349,6 +354,18 @@ impl Database {
     pub async fn update_mcp_server(
         &self,
         org_id: i64,
+        id: Uuid,
+        input: UpdateMcpServer,
+    ) -> Result<Option<McpServerRow>> {
+        self.update_mcp_server_owned_by(org_id, None, id, input)
+            .await
+    }
+
+    /// Update a row owned by `owner`, or a catalog row when `owner` is None.
+    pub(super) async fn update_mcp_server_owned_by(
+        &self,
+        org_id: i64,
+        owner: Option<Uuid>,
         id: Uuid,
         input: UpdateMcpServer,
     ) -> Result<Option<McpServerRow>> {
@@ -381,7 +398,7 @@ impl Database {
                 api_key_set = COALESCE($9, api_key_set),
                 headers = COALESCE($10, headers),
                 settings = COALESCE($11, settings)
-            WHERE org_id = $1 AND id = $2
+            WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NOT DISTINCT FROM $13
             RETURNING {McpServerRow}
             "#),
         )
@@ -397,6 +414,7 @@ impl Database {
         .bind(&input.headers)
         .bind(&input.settings)
         .bind(clear_api_key)
+        .bind(owner)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -416,7 +434,7 @@ impl Database {
             SET
                 cached_tools = $3,
                 tools_cached_at = NOW()
-            WHERE org_id = $1 AND id = $2
+            WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NULL
             RETURNING {McpServerRow}
             "#
         ))
@@ -438,7 +456,7 @@ impl Database {
             r#"
             UPDATE mcp_servers
             SET cached_tools = '[]'::jsonb, tools_cached_at = NULL
-            WHERE org_id = $1 AND id = $2
+            WHERE org_id = $1 AND id = $2 AND owner_virtual_user_id IS NULL
             RETURNING {McpServerRow}
             "#
         ))
@@ -586,6 +604,7 @@ impl Database {
             UPDATE mcp_servers
             SET status = 'archived', archived_at = COALESCE(archived_at, NOW()), updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status IN ('active', 'disabled')
+              AND owner_virtual_user_id IS NULL
             "#,
         )
         .bind(org_id)
@@ -602,6 +621,7 @@ impl Database {
             UPDATE mcp_servers
             SET status = 'deleted', deleted_at = COALESCE(deleted_at, NOW()), updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status = 'archived'
+              AND owner_virtual_user_id IS NULL
             "#,
         )
         .bind(org_id)

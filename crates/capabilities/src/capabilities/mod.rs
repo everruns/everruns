@@ -31,6 +31,7 @@ pub mod session_tasks;
 pub mod slack;
 pub mod subagents;
 pub mod user_hooks;
+pub mod user_mcp;
 pub mod util;
 
 pub use everruns_core::capabilities::{
@@ -109,6 +110,7 @@ pub use subagents::{
     SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
 };
 pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
+pub use user_mcp::{USER_MCP_CAPABILITY_ID, UserMcpCapability, user_mcp_use_enabled};
 
 /// Register the hosted platform-management capabilities on a registry.
 pub fn register_platform_capabilities(
@@ -207,6 +209,9 @@ pub fn register_hosted_capabilities(
         std::sync::Arc::new(everruns_core::builtins::DurableToolApprover),
     ));
     registry.register(UserHooksCapability);
+    // Inert outside the hosted control plane, which resolves the chatting
+    // person's servers per turn.
+    registry.register(UserMcpCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);

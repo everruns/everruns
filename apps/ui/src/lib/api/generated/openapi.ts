@@ -5402,6 +5402,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/virtual-users/{identity_id}/mcp-servers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List the person's own MCP servers. */
+    get: operations["list_user_mcp_servers"];
+    put?: never;
+    /** Add an MCP server for the person, from the catalog or by URL. */
+    post: operations["add_user_mcp_server"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/virtual-users/{identity_id}/mcp-servers/{server_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read one of the person's MCP servers. */
+    get: operations["get_user_mcp_server"];
+    put?: never;
+    post?: never;
+    /** Remove one of the person's MCP servers and its sign-in. */
+    delete: operations["remove_user_mcp_server"];
+    options?: never;
+    head?: never;
+    /** Rename, enable, disable or replace the API key of one of the person's MCP servers. */
+    patch: operations["update_user_mcp_server"];
+    trace?: never;
+  };
   "/v1/virtual-users/{identity_id}/preferences": {
     parameters: {
       query?: never;
@@ -5686,6 +5723,37 @@ export interface components {
       /** @description Participant kind to add. */
       kind: components["schemas"]["SessionParticipantKind"];
       role?: components["schemas"]["SessionParticipantRole"] | null;
+    };
+    /**
+     * @description Add a user MCP server. Give `catalog` to add a catalog preset, or `name`
+     *     and `url` to add a custom server.
+     */
+    AddUserMcpServerRequest: {
+      /** @description API key for a custom `api_key` server. Never returned. */
+      api_key?: string | null;
+      auth_mode?: components["schemas"]["McpServerAuthMode"] | null;
+      /**
+       * @description Catalog preset name to add.
+       * @example linear
+       */
+      catalog?: string | null;
+      description?: string | null;
+      /** @description Defaults to true. */
+      enabled?: boolean | null;
+      /** @description Literal headers for a custom server. Never returned. */
+      headers?: {
+        [key: string]: string;
+      } | null;
+      /**
+       * @description Name for a custom server; also the tool prefix agents see.
+       * @example my-notes
+       */
+      name?: string | null;
+      /**
+       * @description HTTPS endpoint of a custom server.
+       * @example https://mcp.example.com/mcp
+       */
+      url?: string | null;
     };
     /**
      * @description Agent configuration for agentic loop.
@@ -21574,6 +21642,17 @@ export interface components {
       /** @description New target URL. */
       url?: string | null;
     };
+    /**
+     * @description Change a user MCP server. The URL cannot change; remove and re-add the
+     *     server instead.
+     */
+    UpdateUserMcpServerRequest: {
+      /** @description Replace the API key of an `api_key` server. */
+      api_key?: string | null;
+      description?: string | null;
+      enabled?: boolean | null;
+      name?: string | null;
+    };
     /** @description Update a runtime account profile or its management lifecycle. */
     UpdateVirtualUserRequest: {
       /**
@@ -21662,6 +21741,11 @@ export interface components {
        */
       server_url: string;
     };
+    /**
+     * @description Whether the person has signed in to a user MCP server.
+     * @enum {string}
+     */
+    UserMcpConnectionStatus: "connected" | "not_connected" | "not_needed";
     /** @description One page of the current user's MCP connections in the selected organization. */
     UserMcpConnectionsResponse: {
       /**
@@ -21685,6 +21769,51 @@ export interface components {
        * @example 01933b5a-0000-7000-8000-000000000002
        */
       next_cursor?: string | null;
+    };
+    /** @description An MCP server a person added for themselves. */
+    UserMcpServer: {
+      auth_mode: components["schemas"]["McpServerAuthMode"];
+      /** @description Catalog preset name, for servers added from the catalog. */
+      catalog_name?: string | null;
+      connection: components["schemas"]["UserMcpServerConnection"];
+      /** Format: date-time */
+      created_at: string;
+      description?: string | null;
+      /** @description Disabled servers are kept but never offered to agents. */
+      enabled: boolean;
+      /**
+       * @description Names of the literal headers sent with each request. Values are
+       *     write-only.
+       */
+      header_names?: string[];
+      /** @example mcp_01933b5a00007000800000000000001 */
+      id: string;
+      name: string;
+      source: components["schemas"]["UserMcpServerSource"];
+      /** Format: date-time */
+      updated_at: string;
+      url: string;
+    };
+    /** @description Sign-in state of a user MCP server. */
+    UserMcpServerConnection: {
+      /** Format: date-time */
+      connected_at?: string | null;
+      /**
+       * @description Connection provider to pass to the authorize endpoint
+       *     (`/v1/virtual-users/{id}/connections/{provider}/authorize`) when the
+       *     server signs in with OAuth.
+       */
+      provider?: string | null;
+      status: components["schemas"]["UserMcpConnectionStatus"];
+    };
+    /**
+     * @description Where a user MCP server came from.
+     * @enum {string}
+     */
+    UserMcpServerSource: "catalog" | "custom";
+    /** @description List response for user MCP servers. */
+    UserMcpServersResponse: {
+      data: components["schemas"]["UserMcpServer"][];
     };
     /** @description Request to validate a SKILL.md */
     ValidateSkillRequest: {
@@ -40122,6 +40251,249 @@ export interface operations {
       };
       /** @description Permission denied */
       403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_user_mcp_servers: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpServersResponse"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  add_user_mcp_server: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddUserMcpServerRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpServer"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Name already used */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_user_mcp_server: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpServer"];
+        };
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  remove_user_mcp_server: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_user_mcp_server: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description `me` or a virtual user id */
+        identity_id: string;
+        server_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateUserMcpServerRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["UserMcpServer"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Authentication required */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Permission denied */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Name already used */
+      409: {
         headers: {
           [name: string]: unknown;
         };

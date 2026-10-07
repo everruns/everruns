@@ -447,6 +447,7 @@ export default defineConfig({
                         { label: "GitHub", slug: "capabilities/github" },
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
                         { label: "Slack", slug: "capabilities/slack" },
+                        { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
                       ],
                     },
                     {

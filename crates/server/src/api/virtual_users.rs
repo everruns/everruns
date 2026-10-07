@@ -63,6 +63,7 @@ pub fn routes(state: ApiState) -> Router {
             "/v1/virtual-users/{identity_id}/delete",
             post(destroy_virtual_user),
         )
+        .merge(super::user_mcp_servers::routes())
         .with_state(state)
 }
 
@@ -186,7 +187,7 @@ pub async fn destroy_virtual_user(
         .await
 }
 
-async fn authorized_profile(
+pub(crate) async fn authorized_profile(
     state: &ApiState,
     org: &RuntimeAccount,
     raw: &str,

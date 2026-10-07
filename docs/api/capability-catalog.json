@@ -1575,6 +1575,21 @@
       "tools": []
     },
     {
+      "category": "Integrations",
+      "dependencies": [],
+      "docs_slug": "user-mcp-servers",
+      "feature_flag": null,
+      "features": [],
+      "grades": [
+        "prod",
+        "dev"
+      ],
+      "id": "user_mcp",
+      "name": "User MCP Servers",
+      "status": "available",
+      "tools": []
+    },
+    {
       "category": "Network",
       "dependencies": [],
       "docs_slug": "web-fetch",

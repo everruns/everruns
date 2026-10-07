@@ -11,7 +11,8 @@ tags:
 
 # User MCP servers and agent MCP auth modes
 
-> Status: **Accepted 2026-10-06, being implemented** (steps in [Plan](#plan)).
+> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 3 are built (steps in [Plan](#plan)).
+> Public docs: `docs/features/user-mcp-servers.md`, `docs/capabilities/user-mcp-servers.md`.
 > [Agent MCP attachments](agent-mcp-attachments.md),
 > [MCP servers](mcp-servers.md), and [virtual users](../runtime-resources/virtual-users.md)
 > stay authoritative for what exists today. This proposal extends them; where it
@@ -54,7 +55,7 @@ Verified against `origin/main` at `0e0150f`.
 | `use: catalog:<name>` references | Implemented | same contract file |
 | Agent MCP side sheet (source, acts as, state, Connect/Authorize/Ask admin) | Implemented | `apps/ui/src/components/agents/agent-mcp-panel.tsx`, `/v1/agents/{id}/mcp-attachments` |
 | MCP page with **Catalog** and **My connections** tabs | Implemented | `apps/ui/src/app/(main)/mcp-servers/page.tsx` |
-| Virtual-user connections, including MCP OAuth grants keyed `mcp:<server uuid>` | Implemented | `crates/server/src/api/user_connections.rs`, `virtual_user_connections.rs` |
+| Virtual-user connections, including MCP OAuth grants keyed `mcp_oauth_<server uuid>` | Implemented | `crates/server/src/api/user_connections.rs`, `virtual_user_connections.rs` |
 | OAuth from chat: a missing grant becomes an inline Connect card (`setup_connection` hint) | Implemented | [client hints](../runtime-resources/client-hints.md) |
 | URL and form elicitation from servers | Implemented | [mcp-servers.md](mcp-servers.md), [form elicitation](mcp-form-elicitation.md) |
 | Adding an MCP server mid-session | Implemented for ARD only (`attach_resource` → session resource → session `mcpServers` on the next turn) | `crates/ard`, test case `ard_discovery/TC001` |
@@ -86,7 +87,8 @@ would duplicate that code; an owner column reuses it.
 
 A user server is either:
 
-- **from the catalog**: `use: catalog:<name>`, copying nothing; the catalog's
+- **from the catalog**: the row points at its preset
+  (`catalog_mcp_server_id`) and copies nothing that matters; the catalog's
   OAuth client is reused, the grant is the person's own (same as an agent
   attachment acting as `user` today), or
 - **custom**: name, URL, optional literal headers. If it speaks OAuth, its
@@ -94,7 +96,7 @@ A user server is either:
   preset stores it.
 
 Its grant is an ordinary virtual-user connection with provider
-`mcp:<server uuid>`, so it shows up, refreshes and revokes like every other
+`mcp_oauth_<server uuid>` (the preset's uuid for a catalog server), so it shows up, refreshes and revokes like every other
 connection. User servers always act as their owner. There is no way to
 make them act as an agent, and nobody else's session can resolve them.
 
@@ -135,9 +137,9 @@ owner or the agent's service account. Consequences:
 
 ### D3. Management tools act on the person's own resources, not on the org
 
-The `manage` tools call the same virtual-user self-service commands the
-Settings page uses (`/v1/virtual-users/me/mcp-servers`, added to the command
-catalog so CLI and MCP get them too). They do not need, and never receive,
+The `manage` tools use the same virtual-user self-service operations the
+Settings page uses (`/v1/virtual-users/me/mcp-servers`, implemented in
+`crates/server/src/domains/mcp_servers/user_servers.rs`). They do not need, and never receive,
 Everruns-user management authority. This keeps them working after Platform
 Chat stops having org write access, and makes them available to external
 consumers using a published agent.
@@ -276,9 +278,9 @@ Nothing is removed. These existing behaviors change:
 
 Each step is one PR, shippable alone.
 
-1. **User servers backend.** Owner column on `mcp_servers`, `/v1/virtual-users/{id|me}/mcp-servers` CRUD in the command catalog, OAuth authorize/callback for a user-owned row, tests for cross-user and cross-org refusal.
+1. **User servers backend.** Owner column on `mcp_servers`, `/v1/virtual-users/{id|me}/mcp-servers` self-service routes (the same authority as preferences; the command catalog is management-only), OAuth authorize/callback for a user-owned row, tests for cross-user and cross-org refusal.
 2. **My MCP servers in settings.** Section in My agent experience; MCP page *My connections* tab redirects there.
-3. **`user_mcp` capability, *use*.** Resolve the initiating virtual user's enabled servers into the turn; unattended and shared sessions get none; name-clash reporting in the agent MCP sheet.
+3. **`user_mcp` capability, *use*.** Resolve the initiating virtual user's enabled servers into the turn; unattended and shared sessions get none; Platform Chat turns *use* on. Built: `crates/server/src/domains/mcp_servers/user_layer.rs`, which the worker turn context, MCP prefix resolution and the tool-call token check all share; channel consumers may sign in to their own servers (`RuntimeAccount::allowed_mcp_providers`). Name-clash reporting in the agent MCP sheet moves to step 4, with the list tool.
 4. **`user_mcp` *manage* and `connect_mcp_server`.** Shared store and prompter traits in `everruns-core`; approval defaults; Platform Chat turns it on; an eval case in `evals/platform-capability` for "add Linear and connect it".
 5. **`user_or_service` and connection-backed presets.** New `actsAs` value with per-call recorded identity; preset field naming a connection provider; GitHub preset backed by the agent's GitHub App.
 6. **`connectInChat` per attachment.**

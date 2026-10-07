@@ -1,7 +1,7 @@
 mod command_context;
-
 mod definition_reads;
 mod message_projection;
+mod user_mcp;
 
 // Direct implementation of WorkerAdapters for in-process worker
 //
@@ -12,9 +12,7 @@ mod message_projection;
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::{
-    build_materialized_scoped_mcp_tool_definitions,
-    merge_effective_scoped_mcp_servers_with_capabilities,
-    resolve_scoped_mcp_server_with_capabilities, validate_effective_mcp_servers,
+    build_materialized_scoped_mcp_tool_definitions, validate_effective_mcp_servers,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -1162,17 +1160,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
             }
 
-            if let Some(resolved) = resolve_scoped_mcp_server_with_capabilities(
-                &self.mcp_server_service,
-                org_id,
-                &harness,
-                agent.as_ref(),
-                &session,
-                server_prefix,
-                &self.capability_registry,
-            )
-            .await
-            .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
+            if let Some(resolved) = self
+                .resolve_turn_mcp_server(org_id, &harness, agent.as_ref(), &session, server_prefix)
+                .await
+                .map_err(|e| store_error(format!("Failed to resolve scoped MCP server: {e}")))?
             {
                 let secret_bindings =
                     crate::domains::agents::credentials::resolve_runtime_secret_bindings(
@@ -1317,12 +1308,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?;
 
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = merge_effective_scoped_mcp_servers_with_capabilities(
-                harness,
-                agent.as_ref(),
-                &session,
-                &self.capability_registry,
-            );
+            let effective = self
+                .turn_mcp_servers(org_id, harness, agent.as_ref(), &session)
+                .await;
 
             if let Err(error) = validate_effective_mcp_servers(&effective) {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");

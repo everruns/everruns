@@ -308,7 +308,7 @@ async fn contributed_identity_discovery_uses_only_the_declared_grant_path() {
     );
 }
 
-fn test_harness() -> Harness {
+pub(crate) fn test_harness() -> Harness {
     Harness {
         id: HarnessId::new(),
         name: "test-harness".to_string(),
@@ -337,7 +337,7 @@ fn test_harness() -> Harness {
     }
 }
 
-fn test_agent() -> Agent {
+pub(crate) fn test_agent() -> Agent {
     let public_id = generate_agent_public_id();
     Agent {
         is_built_in: false,
@@ -379,7 +379,10 @@ fn test_agent() -> Agent {
     }
 }
 
-fn test_session(harness_id: HarnessId, agent_id: everruns_contracts::typed_id::AgentId) -> Session {
+pub(crate) fn test_session(
+    harness_id: HarnessId,
+    agent_id: everruns_contracts::typed_id::AgentId,
+) -> Session {
     let session_id = SessionId::new();
     Session {
         playground_user_id: None,

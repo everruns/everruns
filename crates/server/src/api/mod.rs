@@ -97,6 +97,7 @@ pub mod tool_approvals;
 pub mod tool_results;
 pub mod turnstile;
 pub mod user_connections;
+pub mod user_mcp_servers;
 pub mod user_preferences;
 pub mod users;
 pub mod validation;

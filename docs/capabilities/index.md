@@ -123,6 +123,7 @@ External-service capabilities and blueprint-backed workflows.
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 | Cursor | `cursor` | 9 |
+| [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 0 |
 
 ### Platform
 

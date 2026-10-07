@@ -212,6 +212,12 @@ export const queryKeys = {
     mcp: (org?: string) => ["user-connections", "mcp", org] as const,
   },
 
+  // User MCP servers (servers a person adds for themselves)
+  userMcpServers: {
+    all: ["user-mcp-servers"] as const,
+    list: (org?: string, identityId = "me") => ["user-mcp-servers", org, identityId] as const,
+  },
+
   // User preference (key/value) queries
   userPreferences: {
     all: ["user-preferences"] as const,
