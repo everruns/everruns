@@ -57,6 +57,8 @@ pub(crate) mod ask_user;
 mod http_json;
 mod pact;
 mod pact_identity;
+mod pact_keys;
+mod pact_oauth;
 mod push;
 mod stream;
 mod task_view;
@@ -147,7 +149,7 @@ impl ChannelA2aState {
 }
 
 pub fn routes(state: ChannelA2aState) -> Router {
-    pact::routes(http_json::routes(Router::new()))
+    pact_oauth::routes(pact::routes(http_json::routes(Router::new())))
         .route(
             "/v1/apps/{app_id}/a2a/{channel_id}",
             post(invoke_a2a_legacy),

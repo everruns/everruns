@@ -44,6 +44,7 @@ mod system_decisions;
 pub use everruns_durable::UpdateField;
 pub mod agentid;
 pub mod org_slack_connections;
+pub mod pact_delegation;
 pub mod partial_stream;
 pub mod password;
 pub mod provider_store;

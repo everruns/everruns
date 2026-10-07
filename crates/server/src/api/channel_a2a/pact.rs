@@ -47,6 +47,7 @@ use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::agent_channels::invocation::A2A_MESSAGE_ID_METADATA;
 use crate::domains::agent_channels::{A2aInvocationRequest, invoke_channel_a2a_with_hook};
 use crate::records::agent_channel::PactProfileConfig;
+use crate::records::pact_delegation::PactDelegationConfig;
 
 const BASE: &str = "/v1/a2a/{channel_id}";
 
@@ -89,7 +90,7 @@ pub(super) fn routes(router: Router<ChannelA2aState>) -> Router<ChannelA2aState>
         .route(&format!("{BASE}/extendedAgentCard"), get(unsupported))
 }
 
-type Peer = Option<Extension<ConnectInfo<std::net::SocketAddr>>>;
+pub(super) type Peer = Option<Extension<ConnectInfo<std::net::SocketAddr>>>;
 type ReqId = Option<Extension<crate::middleware::RequestId>>;
 
 /// A PACT request that passed routing and authentication.
@@ -102,7 +103,7 @@ struct Caller {
 
 /// The live A2A channel at `channel_id` and its PACT profile, or `None` when
 /// there is no such PACT endpoint. Every `None` is the same `404`.
-async fn pact_channel(
+pub(super) async fn pact_channel(
     state: &ChannelA2aState,
     channel_id: &str,
 ) -> Result<
@@ -149,9 +150,30 @@ async fn admit(
     let user = pact_identity::verify(&state.auth_verifier, &pact, headers)
         .await
         .map_err(|()| unauthorized())?;
-    // THREAT[TM-A2A-013]: the channel's per-IP cap applies to PACT traffic
-    // too, checked after authentication so an anonymous caller cannot grow the
-    // limiter or probe the endpoint through it.
+    rate_limit(state, &app, &channel, &config, headers, peer).await?;
+    Ok(Caller {
+        legacy_app_id: app.legacy_app_id(),
+        auth: AuthorizedA2a {
+            org_id: app.org_id,
+            app_public_id: app.public_id.to_string(),
+            channel_public_id: channel.public_id,
+            session_mode: config.session_mode,
+        },
+        user,
+    })
+}
+
+/// THREAT[TM-A2A-013]: the channel's per-IP cap applies to PACT traffic
+/// too, checked after authentication so an anonymous caller cannot grow the
+/// limiter or probe the endpoint through it.
+pub(super) async fn rate_limit(
+    state: &ChannelA2aState,
+    app: &channel_ingress::IngressContext,
+    channel: &channel_ingress::IngressChannel,
+    config: &crate::records::A2aChannelConfig,
+    headers: &HeaderMap,
+    peer: Peer,
+) -> Result<(), Response> {
     let channel_scope = format!("{}:{}", app.public_id, channel.public_id);
     if let Some(limit) = config.rate_limit_per_minute
         && limit > 0
@@ -169,20 +191,11 @@ async fn admit(
             );
         }
     }
-    Ok(Caller {
-        legacy_app_id: app.legacy_app_id(),
-        auth: AuthorizedA2a {
-            org_id: app.org_id,
-            app_public_id: app.public_id.to_string(),
-            channel_public_id: channel.public_id,
-            session_mode: config.session_mode,
-        },
-        user,
-    })
+    Ok(())
 }
 
 /// §3.4: one `401` for every authentication failure, with no A2A body.
-fn unauthorized() -> Response {
+pub(super) fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
         [(
@@ -199,8 +212,8 @@ async fn agent_card(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    let (app, config) = match pact_channel(&state, &channel_id).await {
-        Ok(Some((app, _, config, _))) => (app, config),
+    let (app, config, pact) = match pact_channel(&state, &channel_id).await {
+        Ok(Some((app, _, config, pact))) => (app, config, pact),
         Ok(None) => return super::not_found().into_response(),
         Err(response) => return response,
     };
@@ -221,7 +234,14 @@ async fn agent_card(
         .unwrap_or_default();
     (
         [(header::CONTENT_TYPE, "application/json")],
-        pact_card(&name, &description, &app.name, &interface_url).to_string(),
+        pact_card(
+            &name,
+            &description,
+            &app.name,
+            &interface_url,
+            pact.delegation.as_ref(),
+        )
+        .to_string(),
     )
         .into_response()
 }
@@ -232,10 +252,32 @@ async fn agent_card(
 /// `paJwt` (the spec's name) and `platformJwt` (the name PACT's conformance
 /// suite and reference clients look up), each alone in its own requirement.
 /// Both describe the same token, so either lookup finds it.
-fn pact_card(name: &str, description: &str, skill_name: &str, interface_url: &str) -> Value {
+///
+/// With delegation (§5.1) the card adds a `userDelegation` OAuth 2.0
+/// device-code scheme and a requirement pairing it with `paJwt`; the
+/// JWT-only requirements stay, so a personal agent may always talk with §3
+/// alone.
+fn pact_card(
+    name: &str,
+    description: &str,
+    skill_name: &str,
+    interface_url: &str,
+    delegation: Option<&PactDelegationConfig>,
+) -> Value {
     let jwt = json!({
         "httpAuthSecurityScheme": { "scheme": "Bearer", "bearerFormat": "JWT" }
     });
+    let mut schemes = json!({ "paJwt": jwt, "platformJwt": jwt });
+    let mut requirements = vec![
+        json!({ "schemes": { "paJwt": { "list": [] } } }),
+        json!({ "schemes": { "platformJwt": { "list": [] } } }),
+    ];
+    if let Some(delegation) = delegation {
+        schemes["userDelegation"] = super::pact_oauth::security_scheme(interface_url, delegation);
+        requirements.push(json!({
+            "schemes": { "paJwt": { "list": [] }, "userDelegation": { "list": [] } }
+        }));
+    }
     json!({
         "name": name,
         "description": description,
@@ -250,11 +292,8 @@ fn pact_card(name: &str, description: &str, skill_name: &str, interface_url: &st
             "pushNotifications": false,
             "extendedAgentCard": false,
         },
-        "securitySchemes": { "paJwt": jwt, "platformJwt": jwt },
-        "securityRequirements": [
-            { "schemes": { "paJwt": { "list": [] } } },
-            { "schemes": { "platformJwt": { "list": [] } } },
-        ],
+        "securitySchemes": schemes,
+        "securityRequirements": requirements,
         "defaultInputModes": ["text/plain"],
         "defaultOutputModes": ["text/plain"],
         "skills": [{
@@ -767,7 +806,13 @@ mod tests {
 
     #[test]
     fn card_declares_http_json_and_the_personal_agent_jwt() {
-        let card = pact_card("Shop", "Orders", "Shop", "https://x.example/v1/a2a/ch");
+        let card = pact_card(
+            "Shop",
+            "Orders",
+            "Shop",
+            "https://x.example/v1/a2a/ch",
+            None,
+        );
         assert_eq!(
             card["supportedInterfaces"],
             json!([{
