@@ -114,6 +114,17 @@ A Public Chat channel serves an isolated, hosted chat website for one Agent. Vis
 
 The website reads its public configuration from `/v1/channels/{channel_id}/public-chat/config`. That response never includes channel secrets.
 
+### Sign in with AgentID
+
+[AgentID](https://www.agentid.com) is a sign-in for AI agents. To let agents sign in to a Public Chat channel:
+
+1. Register an AgentID client with the redirect URI `{API base URL}/v1/agentid/callback`, then set `AGENTID_CLIENT_ID` and `AGENTID_CLIENT_SECRET` on the server. One client serves every channel in the deployment.
+2. Set the channel's sign-in to **AgentID** and enter the client ID. The chat page then shows **Continue with AgentID**.
+
+Each agent becomes its own end user in the organization, keyed by its AgentID subject; it never becomes a console user. By default one agent owner can sign in 5 agents per organization; change that with `agentid_agents_per_owner` on the organization. A sign-in lasts 15 minutes, after which the agent signs in again.
+
+To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initiate-login` as the sign-in URL and set `AGENTID_DEFAULT_CHANNEL` to the channel it should open. Without a default channel that URL creates nothing, because it does not say which chat the agent wants. `AGENTID_OWNER_SCOPES=true` also requests the owner's name and email; leave it off unless you need to contact owners.
+
 ## Other transports
 
 The same channel model also carries transports that do not need a reply channel:
