@@ -668,48 +668,65 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted(#[case] config: Prov
 async fn test_anthropic_opus_hosted_search_calls_bash_contract(
     #[case] config: ProviderModelConfig,
 ) {
-    let Some((runner, result)) = live_turn(
-        &config,
-        "Use Bash to run `printf everruns-bash-contract`.",
-        |model| async move {
-            InMemoryAgenticLoop::builder()
-                .agent_name("Claude Bash Tool Search Agent")
-                .system_prompt("Use the bash tool for shell commands.")
-                .model(model)
-                .driver_registry(all_providers_registry())
-                .capability(BashkitShellCapability)
-                .capability(FileSystemCapability)
-                .capability(TestMathCapability)
-                .capability(AutoToolSearchCapability::with_threshold(3))
-                .max_iterations(6)
-                .build()
-                .await
-                .unwrap()
-        },
-    )
-    .await
-    else {
-        return;
-    };
-    assert!(result.success, "Turn should succeed: {:?}", result.error);
-    assert_hosted_tool_search_was_enabled(&runner).await;
+    // A turn that calls no tool at all is model sampling (nightly 2026-10-06 saw
+    // Opus 5 answer without one), so it is re-sampled. A call to any other tool
+    // name is the regression this test exists for (`bash_run`) and never retries.
+    const MAX_ATTEMPTS: usize = 3;
+    let mut tool_names: Vec<String> = Vec::new();
+    let mut bash_calls = Vec::new();
 
-    let generations = runner.events_by_type(LLM_GENERATION).await;
-    let bash_calls: Vec<_> = generations
-        .iter()
-        .filter_map(|event| {
-            let EventData::LlmGeneration(data) = &event.data else {
-                return None;
-            };
-            Some(data.output.tool_calls.iter())
-        })
-        .flatten()
-        .filter(|call| call.name == "bash")
-        .collect();
+    for attempt in 1..=MAX_ATTEMPTS {
+        let Some((runner, result)) = live_turn(
+            &config,
+            "Use Bash to run `printf everruns-bash-contract`.",
+            |model| async move {
+                InMemoryAgenticLoop::builder()
+                    .agent_name("Claude Bash Tool Search Agent")
+                    .system_prompt("Use the bash tool for shell commands.")
+                    .model(model)
+                    .driver_registry(all_providers_registry())
+                    .capability(BashkitShellCapability)
+                    .capability(FileSystemCapability)
+                    .capability(TestMathCapability)
+                    .capability(AutoToolSearchCapability::with_threshold(3))
+                    .max_iterations(6)
+                    .build()
+                    .await
+                    .unwrap()
+            },
+        )
+        .await
+        else {
+            return;
+        };
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+        assert_hosted_tool_search_was_enabled(&runner).await;
+
+        let calls: Vec<_> = runner
+            .events_by_type(LLM_GENERATION)
+            .await
+            .into_iter()
+            .filter_map(|event| match event.data {
+                EventData::LlmGeneration(data) => Some(data.output.tool_calls),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        tool_names = calls.iter().map(|call| call.name.clone()).collect();
+        bash_calls = calls
+            .into_iter()
+            .filter(|call| call.name == "bash")
+            .collect();
+        if !bash_calls.is_empty() || !tool_names.is_empty() {
+            break;
+        }
+        eprintln!("{config}: attempt {attempt}/{MAX_ATTEMPTS}: no tool call; re-sampling");
+    }
 
     assert!(
         !bash_calls.is_empty(),
-        "{config} should call the `bash` tool"
+        "{config} should call the `bash` tool within {MAX_ATTEMPTS} attempts; \
+         tool calls seen: {tool_names:?}"
     );
     assert!(bash_calls.iter().all(|call| {
         call.arguments.get("commands").is_some() && call.arguments.get("command").is_none()
