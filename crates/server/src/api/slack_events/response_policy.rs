@@ -93,42 +93,13 @@ async fn decision_state(
         .get_agent(app.org_id, agent_id)
         .await?
         .ok_or_else(|| anyhow::anyhow!("Slack endpoint agent missing"))?;
-    let version = match existing
-        .as_ref()
-        .and_then(|session| session.agent_version_id)
-    {
-        Some(id) => state.db.get_agent_version(app.org_id, id).await?,
-        None if existing.is_some() => None,
-        None => {
-            crate::domains::agents::version_policy::resolve_exposure_version(
-                &state.db,
-                app.org_id,
-                &agent,
-                app.agent_version_policy.clone(),
-                app.agent_version_id,
-                state.agent_versions_enabled,
-            )
-            .await?
-        }
-    };
-    let (name, description, purpose) = match &version {
-        Some(version) => (
-            version.authored_config["name"]
-                .as_str()
-                .unwrap_or(&agent.name),
-            version.authored_config["description"]
-                .as_str()
-                .unwrap_or_default(),
-            version.authored_config["system_prompt"]
-                .as_str()
-                .unwrap_or_default(),
-        ),
-        None => (
-            agent.name.as_str(),
-            agent.description.as_deref().unwrap_or_default(),
-            agent.system_prompt.as_str(),
-        ),
-    };
+    // Judge the purpose the session will run: the agent's current
+    // configuration (agent versions and pinning are retired).
+    let (name, description, purpose) = (
+        agent.name.as_str(),
+        agent.description.as_deref().unwrap_or_default(),
+        agent.system_prompt.as_str(),
+    );
     let recent = match (&existing, event.thread_ts.as_deref()) {
         (Some(session), Some(thread_ts)) => {
             let events = state

@@ -2,7 +2,6 @@ use super::redact_channel_for_response;
 use super::types::{CreateAgentChannelRequest, UpdateAgentChannelRequest};
 use super::validation::{merge_preserved_secret_fields, normalize_and_validate_channel_config};
 use crate::api::channel_ingress::{channel_liveness, row_to_ingress};
-use crate::domains::agents::version_policy::{VersionSelection, resolve_version_selection};
 use crate::domains::agents::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::domains::virtual_users::lifecycle::ensure_identity_for_agent;
@@ -43,17 +42,8 @@ async fn find_agent(
 }
 
 fn row_to_channel(ctx: &Ctx, row: IngressChannelRow) -> Result<AgentChannel, CommandError> {
-    let (context, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
-    Ok(redact_channel_for_response(channel.into_channel(&context)))
-}
-
-fn stored_version_selection(row: &IngressChannelRow) -> VersionSelection {
-    VersionSelection {
-        policy: crate::records::AgentVersionPolicy::from(row.agent_version_policy.as_str()),
-        version_id: row
-            .agent_version_id
-            .map(everruns_contracts::typed_id::AgentVersionId::from_uuid),
-    }
+    let (_, channel) = row_to_ingress(ctx.encryption.as_ref(), row)?;
+    Ok(redact_channel_for_response(channel.into_channel()))
 }
 
 fn decrypted_config(ctx: &Ctx, row: IngressChannelRow) -> Result<Value, CommandError> {
@@ -198,18 +188,6 @@ impl Command for CreateAgentChannel {
             ));
         }
         let agent = resolve_agent(ctx, &self.agent_id).await?;
-        let version = resolve_version_selection(
-            ctx,
-            agent.id,
-            None,
-            self.req.agent_version_policy,
-            self.req.agent_version_id,
-        )
-        .await?
-        .unwrap_or(VersionSelection {
-            policy: crate::records::AgentVersionPolicy::Default,
-            version_id: None,
-        });
         let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent).await?;
         let mut config = self.req.channel_config;
         // A builder may configure transport credentials, but cannot select an
@@ -240,8 +218,6 @@ impl Command for CreateAgentChannel {
                     }
                     .to_string(),
                     virtual_user_id: Some(identity_id.uuid()),
-                    agent_version_policy: version.policy_str(),
-                    agent_version_id: version.version_id.map(|id| id.uuid()),
                     owner_principal_id: owner.id.uuid(),
                     resolved_owner_user_id: owner.resolved_user_id,
                 },
@@ -291,14 +267,6 @@ impl Command for UpdateAgentChannelCmd {
         }
         let channel_type = ChannelType::from_str_opt(&existing.channel_type)
             .ok_or_else(|| CommandError::bad_request("Channel has an unsupported channel type"))?;
-        let version = resolve_version_selection(
-            ctx,
-            agent.id,
-            Some(&stored_version_selection(&existing)),
-            self.req.agent_version_policy,
-            self.req.agent_version_id,
-        )
-        .await?;
         let (channel_config, channel_config_encrypted, auth, auth_encrypted) =
             if let Some(config) = self.req.channel_config {
                 let config =
@@ -349,10 +317,6 @@ impl Command for UpdateAgentChannelCmd {
                     auth_encrypted,
                     enabled: self.req.enabled,
                     status,
-                    agent_version_policy: version.as_ref().map(VersionSelection::policy_str),
-                    agent_version_id: version.map_or(UpdateField::Unchanged, |version| {
-                        UpdateField::from_option(version.version_id.map(|id| id.uuid()))
-                    }),
                     ..Default::default()
                 },
             )

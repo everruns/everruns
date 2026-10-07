@@ -4,7 +4,7 @@ description: Expose an Agent to Slack, AG-UI clients, A2A agents, FCP callers, a
 appliesTo: [platform, cloud]
 ---
 
-A **channel** is an Agent-owned way for an external caller to reach that Agent and get a reply. Each channel belongs to exactly one Agent and has its own transport configuration, authentication, session routing, version policy, and publish state. One Agent can have several channels, and publishing or unpublishing one does not change the others.
+A **channel** is an Agent-owned way for an external caller to reach that Agent and get a reply. Each channel belongs to exactly one Agent and has its own transport configuration, authentication, session routing, and publish state. One Agent can have several channels, and publishing or unpublishing one does not change the others.
 
 Use a channel when an external peer sends a request and waits for a reply. Use an [Agent trigger](/features/agent-triggers/) when a schedule or event starts Agent work without a reply channel.
 
@@ -31,7 +31,7 @@ Routes are relative to the API base, for example `https://your-everruns-host/api
 3. Configure the type-specific fields and select **Save channel**.
 4. Select **Publish** to make the channel live.
 
-The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Each channel can follow the Agent's default version, its latest version, or a pinned version; see [Agent Versions](/features/agent-versions/).
+The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Every channel runs the Agent's current configuration.
 
 ## Channel lifecycle
 
@@ -137,4 +137,4 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 - [Publish an Agent to Slack](/how-to/publish-to-slack/): a step-by-step Slack setup.
 - [A2A](/features/a2a/): inbound A2A channels and outbound delegation.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
-- [Agent Versions](/features/agent-versions/): choose which Agent version a channel runs.
+- [Change History](/features/change-history/): see and restore earlier Agent configurations.

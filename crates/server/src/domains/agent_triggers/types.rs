@@ -4,9 +4,8 @@
 // column is a JSONB blob parsed through its trigger-specific config type; the
 // request DTOs below are the flat shape callers send, which commands normalize.
 
-use crate::records::{AgentTriggerType, AgentVersionPolicy, TriggerEventFilter};
+use crate::records::{AgentTriggerType, TriggerEventFilter};
 use chrono::{DateTime, Utc};
-use everruns_contracts::typed_id::AgentVersionId;
 use everruns_core::channel::SessionBinding;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -57,13 +56,16 @@ pub struct CreateAgentTriggerRequest {
     pub token: Option<String>,
     /// Optional per-ingress, per-IP webhook request limit.
     #[serde(default)]
+    #[schema(example = 60)]
     pub rate_limit_per_minute: Option<u32>,
     /// Webhook only: template for the delivery idempotency key.
     #[serde(default)]
+    #[schema(example = "{{webhook.headers.x-github-delivery}}")]
     pub event_id_template: Option<String>,
     /// Webhook and MCP event: template for the event subject. Required for
     /// `session_mode: per_thread`, which keeps one session per subject.
     #[serde(default)]
+    #[schema(example = "{{webhook.json.action}}")]
     pub subject_template: Option<String>,
     /// Webhook, GitHub and MCP event: conditions an event must meet to start a run.
     #[serde(default)]
@@ -71,15 +73,19 @@ pub struct CreateAgentTriggerRequest {
     /// GitHub only: subscribed events (`pull_request` or
     /// `pull_request.opened`). Defaults to pull request open/update events.
     #[serde(default)]
+    #[schema(example = json!(["pull_request.opened"]))]
     pub github_events: Option<Vec<String>>,
     /// GitHub only: repositories (`owner/name`) to accept; empty accepts all.
     #[serde(default)]
+    #[schema(example = json!(["everruns/everruns"]))]
     pub repositories: Option<Vec<String>>,
     /// MCP event only: name of the agent's MCP server attachment to subscribe to.
     #[serde(default)]
+    #[schema(example = "tracker")]
     pub mcp_server: Option<String>,
     /// MCP event only: event name from the server's `events/list`.
     #[serde(default)]
+    #[schema(example = "issue.created")]
     pub mcp_event: Option<String>,
     /// MCP event only: subscription arguments object (the event's `inputSchema`).
     #[serde(default)]
@@ -90,16 +96,8 @@ pub struct CreateAgentTriggerRequest {
     pub auth: Option<Value>,
     /// Whether the trigger is active on creation (default `true`).
     #[serde(default = "default_enabled")]
+    #[schema(example = true)]
     pub enabled: bool,
-    /// Which Agent version sessions started by this trigger run. Omitted means
-    /// `default` (the agent's default version).
-    #[serde(default)]
-    pub agent_version_policy: Option<AgentVersionPolicy>,
-    /// Version to run when `agent_version_policy` is `pinned`. Must be a saved
-    /// version of this agent.
-    #[serde(default)]
-    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
-    pub agent_version_id: Option<AgentVersionId>,
 }
 
 /// Request to update a trigger. Only provided fields change; the rest are
@@ -108,42 +106,52 @@ pub struct CreateAgentTriggerRequest {
 pub struct UpdateAgentTriggerRequest {
     /// Replacement cron expression.
     #[serde(default)]
+    #[schema(example = "0 9 * * 1-5")]
     pub cron_expression: Option<String>,
     /// Replacement IANA timezone identifier.
     #[serde(default)]
+    #[schema(example = "UTC")]
     pub timezone: Option<String>,
     /// Replacement session reuse strategy.
     #[serde(default)]
     pub session_mode: Option<SessionBinding>,
     /// Replacement message sent when the trigger fires.
     #[serde(default)]
+    #[schema(example = "Run the daily digest")]
     pub message: Option<String>,
     /// Replacement webhook token.
     #[serde(default)]
     pub token: Option<String>,
     /// Replacement per-ingress, per-IP webhook request limit.
     #[serde(default)]
+    #[schema(example = 60)]
     pub rate_limit_per_minute: Option<u32>,
     /// Replacement idempotency-key template. An empty string removes it.
     #[serde(default)]
+    #[schema(example = "{{webhook.headers.x-github-delivery}}")]
     pub event_id_template: Option<String>,
     /// Replacement subject template. An empty string removes it.
     #[serde(default)]
+    #[schema(example = "{{webhook.json.action}}")]
     pub subject_template: Option<String>,
     /// Replacement filter. A filter with no conditions removes it.
     #[serde(default)]
     pub filter: Option<TriggerEventFilter>,
     /// Replacement GitHub event subscriptions.
     #[serde(default)]
+    #[schema(example = json!(["pull_request.opened"]))]
     pub github_events: Option<Vec<String>>,
     /// Replacement GitHub repository scope. An empty list accepts all.
     #[serde(default)]
+    #[schema(example = json!(["everruns/everruns"]))]
     pub repositories: Option<Vec<String>>,
     /// Replacement MCP server attachment name.
     #[serde(default)]
+    #[schema(example = "tracker")]
     pub mcp_server: Option<String>,
     /// Replacement MCP event name.
     #[serde(default)]
+    #[schema(example = "issue.created")]
     pub mcp_event: Option<String>,
     /// Replacement MCP event subscription arguments.
     #[serde(default)]
@@ -154,15 +162,8 @@ pub struct UpdateAgentTriggerRequest {
     pub auth: Option<Value>,
     /// Replacement enabled state.
     #[serde(default)]
+    #[schema(example = true)]
     pub enabled: Option<bool>,
-    /// Replacement version policy. `pinned` keeps the current pin when
-    /// `agent_version_id` is omitted; `default` or `latest` clears the pin.
-    #[serde(default)]
-    pub agent_version_policy: Option<AgentVersionPolicy>,
-    /// Version to pin. Only valid with policy `pinned`.
-    #[serde(default)]
-    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
-    pub agent_version_id: Option<AgentVersionId>,
 }
 
 fn default_timezone() -> String {

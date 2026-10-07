@@ -19,9 +19,6 @@ export const queryKeys = {
     detail: (agentId: string) => ["agent", agentId] as const,
     stats: (org?: string, agentId?: string) => ["agent", org, agentId, "stats"] as const,
     mcpAttachments: (agentId?: string) => ["agent", agentId, "mcp-attachments"] as const,
-    versions: (org?: string, agentId?: string) => ["agent", org, agentId, "versions"] as const,
-    versionDiff: (org?: string, agentId?: string, from?: string, to?: string) =>
-      ["agent", org, agentId, "versions", "diff", from, to] as const,
   },
 
   agentChannels: {

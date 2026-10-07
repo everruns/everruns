@@ -49,7 +49,7 @@ impl WorkerServiceImpl {
                 .map(everruns_contracts::typed_id::AgentId::from_uuid);
 
             if session.agent_id != responder {
-                session.agent_version_id = None;
+                session.agent_revision = None;
             }
 
             session.agent_id = responder;
@@ -92,19 +92,6 @@ impl WorkerServiceImpl {
         } else {
             None
         };
-        if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
-            && let Some(version_row) = self
-                .db
-                .get_agent_version(req.org_id, version_id)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to get agent version: {}", e);
-                    Status::internal("Failed to get agent version")
-                })?
-        {
-            let version = crate::domains::agents::queries::row_to_agent_version(version_row);
-            *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
-        }
 
         // Load effective harness, including inherited parent config.
         let mut harness = crate::domains::harnesses::queries::resolve_effective(

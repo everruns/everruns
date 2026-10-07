@@ -657,8 +657,6 @@ pub(crate) async fn process_slack_message(
                     Some(app.agent_internal_id),
                     app.agent_id,
                     app.historical_app_id,
-                    app.agent_version_policy.clone(),
-                    app.agent_version_id,
                     Some(slack_channel.internal_id),
                     // Channel ingress, not a trigger.
                     None,
@@ -915,7 +913,6 @@ pub(crate) async fn ensure_slack_user_participant(
             session_id,
             kind: SessionParticipantKind::User,
             agent_id: None,
-            agent_version_id: None,
             principal_id: principal.id,
             display_name: Some(actor.display_label().to_string()),
             role: SessionParticipantRole::Member,

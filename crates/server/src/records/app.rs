@@ -1,9 +1,8 @@
 // Frozen App records retained for archival API responses and attribution.
 use crate::records::agent_channel::{AgentChannel, ChannelType};
-use crate::records::agent_version_policy::AgentVersionPolicy;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{
-    AgentChannelId, AgentId, AgentVersionId, AppId, HarnessId, PrincipalId, VirtualUserId,
+    AgentChannelId, AgentId, AppId, HarnessId, PrincipalId, VirtualUserId,
 };
 use everruns_core::principal::PrincipalSummary;
 use serde::{Deserialize, Serialize};
@@ -73,13 +72,6 @@ pub struct App {
     /// Optional ID of the agent to use (format: agent_{32-hex}).
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
-    /// Version resolution policy for the optional agent.
-    #[serde(default)]
-    pub agent_version_policy: AgentVersionPolicy,
-    /// Pinned agent version. Required when policy is `pinned`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
-    pub agent_version_id: Option<AgentVersionId>,
     /// Optional virtual identity that represents the app in unattended/channel execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]

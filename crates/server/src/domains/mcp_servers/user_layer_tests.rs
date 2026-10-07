@@ -112,7 +112,6 @@ impl Fixture {
                 session_id: self.session.id,
                 kind: SessionParticipantKind::User,
                 agent_id: None,
-                agent_version_id: None,
                 principal_id: principal,
                 display_name: None,
                 role: SessionParticipantRole::Member,

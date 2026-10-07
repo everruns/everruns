@@ -52,6 +52,8 @@ export default defineConfig({
     "/features/agent-instructions/": "/capabilities/agent-instructions/",
     "/features/apps/": "/features/channels/",
     "/features/endpoints/": "/features/channels/",
+    // Agent versions were retired: entity history and restore replace them.
+    "/features/agent-versions/": "/features/change-history/",
     "/capabilities/auto-tool-search/": "/capabilities/tool-search/",
     "/capabilities/openai-tool-search/": "/capabilities/tool-search/",
     "/capabilities/claude-tool-search/": "/capabilities/tool-search/",

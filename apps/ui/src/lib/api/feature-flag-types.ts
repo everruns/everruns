@@ -19,7 +19,6 @@ export interface FeatureFlags {
   /** Plugin marketplace and installed-plugin management UI. Experimental. */
   plugins: boolean;
   channel_budgets: boolean;
-  agent_versions: boolean;
   voice: boolean;
   /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
   agent_delegation: boolean;

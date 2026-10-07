@@ -82,7 +82,7 @@ actsAs ∈ { none, service, user }
   user's own.
 
 `actsAs` is stored in the agent definition, not in a side table, so it travels
-with agent versions, exports and the declarative blueprint like every other
+with agent history snapshots, exports and the declarative blueprint like every other
 agent property.
 
 ### D2. Resolution is fail-closed on `actsAs`, with no fallback
@@ -311,7 +311,7 @@ user-visible change.
   the strip produces.
 - Sessions that today resolve through an identity connection change behavior
   only when the attachment is explicitly set to `service`. The switch is a
-  config edit, visible in the agent version diff.
+  config edit, visible in the agent's history diff.
 
 ## Open questions
 

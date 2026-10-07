@@ -123,13 +123,13 @@ test.describe("channel budget refusal", () => {
       `WITH seeded AS (
          INSERT INTO agent_channels (
            id, agent_id, app_id, legacy_alias_id, public_id, channel_type,
-           channel_config, enabled, status, virtual_user_id, agent_version_policy,
-           agent_version_id, owner_principal_id, resolved_owner_user_id
+           channel_config, enabled, status, virtual_user_id, owner_principal_id,
+           resolved_owner_user_id
          )
          SELECT
            :'channel_uuid'::uuid, agent_id, NULL, NULL, :'channel_id', 'schedule',
-           :'channel_config'::jsonb, true, 'live', virtual_user_id, agent_version_policy,
-           agent_version_id, owner_principal_id, resolved_owner_user_id
+           :'channel_config'::jsonb, true, 'live', virtual_user_id, owner_principal_id,
+           resolved_owner_user_id
          FROM agent_channels
          WHERE public_id = :'bootstrap_channel_id'
          RETURNING public_id

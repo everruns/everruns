@@ -244,6 +244,38 @@ pub fn create_test_database() -> (PgPool, Arc<TestDatabase>) {
     )
 }
 
+/// A database of its own on the embedded cluster, migrated up to but not
+/// including `version`, for tests that convert pre-migration data with that
+/// migration. Slower than [`create_test_database`]: it runs the migrations
+/// instead of copying a template.
+pub async fn create_database_migrated_before(
+    version: i64,
+) -> anyhow::Result<(PgPool, Arc<TestDatabase>)> {
+    let pg = everruns_pg_embedded::EmbeddedPostgres::shared().await?;
+    let name = format!("test_{}", uuid::Uuid::now_v7().simple());
+    pg.create_database(&name, None).await?;
+    let url = pg.url(&name);
+    let database = Arc::new(TestDatabase {
+        name,
+        url: url.clone(),
+        hooks: TestHooks::default(),
+    });
+    let pool = PgPoolOptions::new()
+        .max_connections(2)
+        .connect(&url)
+        .await?;
+    let mut migrator = sqlx::migrate!("./migrations");
+    migrator.migrations = migrator
+        .migrations
+        .iter()
+        .filter(|migration| migration.version < version)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into();
+    migrator.run(&pool).await?;
+    Ok((pool, database))
+}
+
 impl StorageBackend {
     /// A backend on a private, migrated database, for tests.
     ///
@@ -271,8 +303,7 @@ pub fn test_session_row(org_id: i64) -> super::CreateSessionRow {
         trigger_id: None,
         harness_id: None,
         agent_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -394,8 +425,6 @@ impl StorageBackend {
                 description: None,
                 harness_id: uuid::Uuid::nil(),
                 agent_id: Some(uuid::Uuid::nil()),
-                agent_version_policy: "default".to_string(),
-                agent_version_id: None,
                 virtual_user_id: None,
                 owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,

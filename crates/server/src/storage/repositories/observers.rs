@@ -188,8 +188,8 @@ impl Database {
             let result = sqlx::query(
                 r#"
                 INSERT INTO trace_scores (org_id, public_id, observer_id, scorer_key, session_id,
-                                          turn_id, agent_id, agent_version_id, harness_id)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                          turn_id, agent_id, harness_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (observer_id, scorer_key, session_id, turn_id) DO NOTHING
                 "#,
             )
@@ -200,7 +200,6 @@ impl Database {
             .bind(input.session_id)
             .bind(&input.turn_id)
             .bind(input.agent_id)
-            .bind(input.agent_version_id)
             .bind(input.harness_id)
             .execute(&self.pool)
             .await?;
@@ -298,7 +297,7 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT id, org_id, public_id, observer_id, scorer_key, session_id,
-                      turn_id, agent_id, agent_version_id, harness_id, status, attempts,
+                      turn_id, agent_id, harness_id, status, attempts,
                       pass, value, label, reason, judge_input_tokens, judge_output_tokens,
                       judge_cost_usd, error_message, created_at, updated_at
                FROM trace_scores

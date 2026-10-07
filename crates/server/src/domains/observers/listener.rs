@@ -87,7 +87,6 @@ impl ObserverMatchListener {
                     session_id: session_id.uuid(),
                     turn_id: turn_id.clone(),
                     agent_id: session.agent_id.map(|a| a.uuid()),
-                    agent_version_id: session.agent_version_id.map(|a| a.uuid()),
                     harness_id: session.harness_id.map(|h| h.uuid()),
                 });
             }

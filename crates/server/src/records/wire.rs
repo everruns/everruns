@@ -197,10 +197,6 @@ pub fn proto_session_to_schema(
     // (see knowledge/runtime-resources/workspace.md). Revisit when shared workspaces add it to proto.
     let workspace_id_str = prefixed_id("wsp", session_uuid);
     let agent_id_str = value.agent_id.as_ref().map(|u| prefixed_id("agent", u));
-    let agent_version_id_str = value
-        .agent_version_id
-        .as_ref()
-        .map(|u| prefixed_id("agentver", u));
     let harness_id_str = value
         .harness_id
         .as_ref()
@@ -269,7 +265,6 @@ pub fn proto_session_to_schema(
         "organization_id": value.organization_id,
         "harness_id": harness_id_str,
         "agent_id": agent_id_str,
-        "agent_version_id": agent_version_id_str,
         "owner_principal_id": owner_principal_id_str,
         "resolved_owner_user_id": value
             .resolved_owner_user_id
@@ -302,9 +297,6 @@ pub fn schema_session_to_proto(value: &crate::records::Session) -> proto::Sessio
     proto::Session {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         agent_id: value.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
-        agent_version_id: value
-            .agent_version_id
-            .map(|id| uuid_to_proto_uuid(id.uuid())),
         title: value.title.clone().unwrap_or_default(),
         goal: value.goal.clone(),
         locale: value.locale.clone().unwrap_or_default(),

@@ -37,16 +37,6 @@ import {
 } from "@/components/agents/channels/channel-form";
 import { CronLabel } from "@/components/apps/cron-label";
 import {
-  AgentVersionPolicyField,
-  AgentVersionSelectionBadge,
-  isVersionSelectionValid,
-  sameVersionSelection,
-  useShowVersionSelection,
-  versionSelectionOf,
-  versionSelectionRequest,
-  type AgentVersionSelection,
-} from "@/components/agents/agent-version-policy-field";
-import {
   BackLink,
   PageBreadcrumb,
   PageColumns,
@@ -146,9 +136,6 @@ function AgentChannelForm({
   const [formState, setFormState] = useState<ChannelFormState>(() =>
     getDefaultChannelFormState(channel.channel_type, channel),
   );
-  const storedVersion = versionSelectionOf(channel);
-  const [versionSelection, setVersionSelection] = useState<AgentVersionSelection>(storedVersion);
-  const showVersion = useShowVersionSelection(storedVersion);
   const agentName = getDisplayName(agent);
   const lifecycle = getChannelLifecyclePresentation(channel);
   const slackInstallAvailable = slackInstallCapability?.connected === true;
@@ -181,7 +168,6 @@ function AgentChannelForm({
               Editing
             </Badge>
             <Badge variant={lifecycle.isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
-            <AgentVersionSelectionBadge agentId={agentId} selection={storedVersion} />
           </>
         }
         description={
@@ -199,12 +185,7 @@ function AgentChannelForm({
             <Button
               type="submit"
               form="channel-edit-form"
-              disabled={
-                !canManage ||
-                !isChannelFormValid(formState) ||
-                !isVersionSelectionValid(versionSelection) ||
-                updateEndpoint.isPending
-              }
+              disabled={!canManage || !isChannelFormValid(formState) || updateEndpoint.isPending}
             >
               <Check className="size-4" />
               {updateEndpoint.isPending ? "Saving..." : "Save"}
@@ -253,11 +234,6 @@ function AgentChannelForm({
             {
               channel_config: buildChannelConfig(formState),
               enabled: formState.enabled,
-              // Only send the selection when it changed, so saving transport
-              // config never rewrites a pin the editor did not touch.
-              ...(sameVersionSelection(versionSelection, storedVersion)
-                ? {}
-                : versionSelectionRequest(versionSelection)),
             },
             { onSuccess: () => router.push(returnHref) },
           );
@@ -298,17 +274,6 @@ function AgentChannelForm({
                 Save configuration changes before publishing this channel.
               </p>
             </RailSection>
-            {showVersion && (
-              <RailSection label="Agent version">
-                <AgentVersionPolicyField
-                  agentId={agentId}
-                  value={versionSelection}
-                  onChange={setVersionSelection}
-                  disabled={!canManage}
-                  idPrefix="channel-agent-version"
-                />
-              </RailSection>
-            )}
           </PageRail>
         </PageColumns>
       </form>

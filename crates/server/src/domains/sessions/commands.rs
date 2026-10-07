@@ -340,7 +340,7 @@ impl Command for AddSessionParticipant {
             ));
         }
 
-        let (agent_id, agent_version_id) = match self.req.kind {
+        let agent_id = match self.req.kind {
             SessionParticipantKind::Agent => {
                 let agent_id = self
                     .req
@@ -351,7 +351,7 @@ impl Command for AddSessionParticipant {
                     .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
                     .await?
                     .ok_or_else(|| CommandError::not_found("Agent"))?;
-                (Some(agent.id), agent.default_version_id)
+                Some(agent.id)
             }
             SessionParticipantKind::User => {
                 if self.req.agent_id.is_some() {
@@ -359,7 +359,7 @@ impl Command for AddSessionParticipant {
                         "User participants cannot include agent_id",
                     ));
                 }
-                (None, None)
+                None
             }
         };
 
@@ -412,7 +412,6 @@ impl Command for AddSessionParticipant {
             session_id,
             kind: self.req.kind,
             agent_id,
-            agent_version_id,
             principal_id,
             display_name,
             role,

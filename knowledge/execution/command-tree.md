@@ -51,8 +51,8 @@ not of help. A tree bounds every help response structurally.
 2. **The shape is declared, not inferred.** A route carries a `path` slice plus
    a `verb`, because flat names hide a hierarchy (`list_session_participants`
    is `sessions participants list`) and string surgery is wrong for exactly the
-   irregular names that matter (`set_default_agent_version`,
-   `diff_agent_versions`).
+   irregular names that matter (`get_latest_agent_health_check_run`,
+   `list_agent_trigger_deliveries`).
 3. **The wire name stays the identity.** Flat spellings keep working as
    aliases, and dispatch, schema coercion, authorization, and error
    sanitization are the same code they were before the tree existed.

@@ -51,8 +51,6 @@ async fn app_archival_reads_remain_available() {
                     .expect("generic harness ID")
                     .uuid(),
                 agent_id: None,
-                agent_version_policy: "default".to_string(),
-                agent_version_id: None,
                 virtual_user_id: None,
                 owner_principal_id: principal_id,
                 resolved_owner_user_id: None,

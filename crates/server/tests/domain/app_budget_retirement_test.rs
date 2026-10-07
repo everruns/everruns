@@ -137,8 +137,8 @@ async fn seed_app(tx: &mut Transaction<'_, Postgres>, org: &Org, with_agent: boo
     let public_id = format!("app_{}", hex32());
     sqlx::query(
         "INSERT INTO apps (id, org_id, public_id, name, harness_id, agent_id, status,
-                           agent_version_policy, owner_principal_id, channel_type, channel_config)
-         VALUES ($1, $2, $3, $4, $5, $6, 'published', 'default', $7, 'slack', '{}'::jsonb)",
+                           owner_principal_id, channel_type, channel_config)
+         VALUES ($1, $2, $3, $4, $5, $6, 'published', $7, 'slack', '{}'::jsonb)",
     )
     .bind(app_id)
     .bind(org.org_id)

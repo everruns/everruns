@@ -6,7 +6,7 @@
 // supply the NOT NULL columns the endpoint carries (`agent_id`,
 // `owner_principal_id`).
 //
-// The lifted identity, version policy, and owner are derived from the owning
+// The lifted identity and owner are derived from the owning
 // App on insert, which is exactly where those values came from before the
 // re-parenting. A new endpoint's status is independent of App publish state.
 
@@ -25,7 +25,7 @@ fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
     .into()
 }
 
-/// Insert an endpoint, deriving its agent, identity, version policy, and owner
+/// Insert an endpoint, deriving its agent, identity and owner
 /// from the owning App. Selecting from `apps` rather than binding the values
 /// keeps the derivation atomic with the insert. Yields no row when the App is
 /// missing or still agent-less, which callers turn into `missing_agent_error`.
@@ -33,14 +33,12 @@ const INSERT_CHANNEL_SQL: &str = r#"
     INSERT INTO agent_channels (
         app_id, legacy_alias_id, agent_id, public_id, channel_type, channel_config,
         channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled,
-        status, virtual_user_id, agent_version_policy, agent_version_id,
-        owner_principal_id, resolved_owner_user_id
+        status, virtual_user_id, owner_principal_id, resolved_owner_user_id
     )
     SELECT
         app.id, app.public_id, app.agent_id, $2, $3, $4, $5, $6, $7, $8, $9,
         CASE WHEN $9 THEN 'draft' ELSE 'disabled' END,
-        app.virtual_user_id, app.agent_version_policy, app.agent_version_id,
-        app.owner_principal_id, app.resolved_owner_user_id
+        app.virtual_user_id, app.owner_principal_id, app.resolved_owner_user_id
     FROM apps AS app
     WHERE app.id = $1 AND app.agent_id IS NOT NULL
     RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
@@ -131,8 +129,6 @@ impl Database {
                 agent.status AS agent_status,
                 agent.exposures_suspended,
                 ae.virtual_user_id,
-                ae.agent_version_policy,
-                ae.agent_version_id,
                 ae.owner_principal_id,
                 ae.resolved_owner_user_id,
                 ae.channel_type,
@@ -168,7 +164,7 @@ impl Database {
                 COALESCE(NULLIF(agent.display_name, ''), agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
                 agent.status AS agent_status, agent.exposures_suspended,
-                ae.virtual_user_id, ae.agent_version_policy, ae.agent_version_id,
+                ae.virtual_user_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
                 ae.enabled, ae.status AS channel_status, ae.created_at, ae.updated_at
@@ -199,7 +195,7 @@ impl Database {
                 COALESCE(NULLIF(agent.display_name, ''), agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
                 agent.status AS agent_status, agent.exposures_suspended,
-                ae.virtual_user_id, ae.agent_version_policy, ae.agent_version_id,
+                ae.virtual_user_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
                 ae.enabled, ae.status AS channel_status, ae.created_at, ae.updated_at
@@ -226,11 +222,11 @@ impl Database {
             INSERT INTO agent_channels (
                 agent_id, app_id, legacy_alias_id, public_id, channel_type,
                 channel_config, channel_config_encrypted, auth, auth_encrypted,
-                enabled, status, virtual_user_id, agent_version_policy,
-                agent_version_id, owner_principal_id, resolved_owner_user_id
+                enabled, status, virtual_user_id, owner_principal_id,
+                resolved_owner_user_id
             )
             SELECT $2, NULL, NULL, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15
+                $11, $12, $13
             FROM agents
             WHERE org_id = $1 AND id = $2 AND status = 'active'
             RETURNING id
@@ -247,8 +243,6 @@ impl Database {
         .bind(input.enabled)
         .bind(&input.status)
         .bind(input.virtual_user_id)
-        .bind(&input.agent_version_policy)
-        .bind(input.agent_version_id)
         .bind(input.owner_principal_id)
         .bind(input.resolved_owner_user_id)
         .fetch_optional(&self.pool)
@@ -278,8 +272,6 @@ impl Database {
                 auth_encrypted = CASE WHEN $10 THEN $11 ELSE ae.auth_encrypted END,
                 enabled = COALESCE($12, ae.enabled),
                 status = COALESCE($13, ae.status),
-                agent_version_policy = COALESCE($14, ae.agent_version_policy),
-                agent_version_id = CASE WHEN $15 THEN $16 ELSE ae.agent_version_id END,
                 updated_at = NOW()
             FROM agents AS agent
             WHERE agent.org_id = $1 AND agent.id = $2
@@ -299,9 +291,6 @@ impl Database {
         .bind(input.auth_encrypted.into_value())
         .bind(input.enabled)
         .bind(&input.status)
-        .bind(&input.agent_version_policy)
-        .bind(input.agent_version_id.is_changed())
-        .bind(input.agent_version_id.into_value())
         .execute(&self.pool)
         .await?;
         self.get_agent_channel(org_id, agent_id, public_id).await
@@ -391,8 +380,6 @@ impl Database {
                 agent.status AS agent_status,
                 agent.exposures_suspended,
                 ae.virtual_user_id,
-                ae.agent_version_policy,
-                ae.agent_version_id,
                 ae.owner_principal_id,
                 ae.resolved_owner_user_id,
                 ae.channel_type,

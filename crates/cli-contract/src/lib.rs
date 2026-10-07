@@ -133,7 +133,7 @@ pub struct ContractExample {
 pub struct ContractCommand {
     /// Canonical identity, e.g. `list_agents`.
     pub wire_name: String,
-    /// Noun path from the root, e.g. `["agents", "versions"]`.
+    /// Noun path from the root, e.g. `["agents", "triggers"]`.
     pub path: Vec<String>,
     /// Leaf verb, e.g. `list`.
     pub verb: String,
@@ -172,7 +172,7 @@ impl ContractCommand {
         text
     }
 
-    /// Space-joined spelling, e.g. `agents versions list`.
+    /// Space-joined spelling, e.g. `agents triggers list`.
     pub fn spelling(&self) -> String {
         let mut parts = self.path.clone();
         parts.push(self.verb.clone());

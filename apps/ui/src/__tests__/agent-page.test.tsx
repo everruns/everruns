@@ -46,9 +46,6 @@ jest.mock("@/components/agents/agent-mcp-panel", () => ({
 jest.mock("@/components/agents/agent-integrations-panel", () => ({
   AgentIntegrationsPanel: () => <div>agent integrations</div>,
 }));
-jest.mock("@/components/agents/agent-version-history", () => ({
-  AgentVersionHistory: () => <div>agent versions</div>,
-}));
 jest.mock("@/components/agents/agent-health-check", () => ({
   AgentHealthCheck: () => <div data-testid="agent-health-check" />,
 }));
@@ -227,7 +224,7 @@ jest.mock("@/hooks/use-change-history", () => ({
 jest.mock("@/hooks/use-members", () => ({ useMembers: () => ({ data: [] }) }));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: (flag: string) => flag === "agent_versions",
+  useFeatureFlag: () => false,
 }));
 
 async function renderPage() {
