@@ -750,7 +750,7 @@
   because `everruns-host` held the classifier, and a host dependency
   cannot point at an integration crate without closing the loop
   (integration → platform → host). Moving the service into
-  `integrations/typesafe` inverts that: `crates/server` and `crates/worker`
+  `crates/integrations/src/typesafe` inverts that: `crates/server` and `crates/worker`
   already depend on integrations, so they compose it into `HostComposition`
   from above. Host no longer knows TypeSafe exists, and the client has one
   home.
@@ -1038,7 +1038,7 @@
   `&'static`, is not. See [Command tree](execution/command-tree.md).
 
 * **`everruns` is a builtin of the agent's own shell, by forwarding rather than a
-  local tree.** The tree in `integrations/bashkit/src/cli.rs` resolves in-process,
+  local tree.** The tree in `crates/integrations/src/bashkit/src/cli.rs` resolves in-process,
   and a hosted worker cannot do that: `CliRoute` is `&'static`, so a tree cannot
   be rebuilt from specs fetched at runtime, and the commands live behind the
   control plane. A tool that already accepts a script now declares a

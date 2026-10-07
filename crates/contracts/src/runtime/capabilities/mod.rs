@@ -60,7 +60,7 @@ pub use spawn_agent::*;
 /// # Example
 ///
 /// ```ignore
-/// // In integrations/daytona/src/lib.rs:
+/// // In crates/integrations/src/daytona/lib.rs:
 /// pub const CAPABILITY_PLUGINS: &[everruns_contracts::runtime::capabilities::IntegrationPlugin] =
 ///     &[everruns_contracts::runtime::capabilities::IntegrationPlugin {
 ///         feature_flag: None,

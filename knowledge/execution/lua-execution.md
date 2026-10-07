@@ -9,7 +9,7 @@ tags:
 # Lua Execution Capability (experimental)
 
 > **Status: EXPERIMENTAL, Phase 1 skeleton.** Implemented by the opt-in
-> `everruns-integrations-lua` crate, selected by the Framework/host `lua`
+> `lua` feature of `everruns-integrations`, selected by the Framework/host `lua`
 > feature, and gated by the `FEATURE_LUA` internal feature flag at registry
 > build time. Not registered in production grades yet.
 
@@ -185,7 +185,7 @@ pathological synchronous C ops (out-of-process execution is the robust fix).
 
 ## Code-mode routing capability (`lua_code_mode`)
 
-A separate, composable capability (`integrations/lua/src/code_mode.rs`)
+A separate, composable capability (`crates/integrations/src/lua/code_mode.rs`)
 that turns code mode from an occasional optimization into the agent's default
 action path. It exists to satisfy three constraints:
 
