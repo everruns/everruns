@@ -134,8 +134,10 @@ production server (`ServerAppBuilder`) and a standalone worker
 PostgreSQL, which it migrates, then drives turns over HTTP with an llmsim
 model that answers at once. One turn is `POST /v1/sessions/{id}/messages`, the
 worker claiming its steps over gRPC, and `turn.completed`. It reports per turn,
-as p50/p95/p99, the client's wall time to seeing `turn.completed` (`e2e`,
-events polled every 5 ms), `input.message` to `turn.completed` from the event
+as p50/p95/p99, the client's wall time to receiving `turn.completed` on the
+session's SSE stream (`e2e`; one stream per session, as the UI holds, because
+polling the events endpoint added about ten HTTP requests per turn and their
+database reads), `input.message` to `turn.completed` from the event
 timestamps (`server`), and `input.message` to `turn.started` (`pickup`), at one
 session and at eight concurrent sessions of five turns each.
 

@@ -11,9 +11,8 @@
 //! gRPC and runs them, and the turn ends with `turn.completed`.
 //!
 //! Reported per turn, as p50/p95/p99:
-//! - `e2e`: client wall time from sending the POST to seeing `turn.completed`
-//!   in the session's events (polled every 5 ms, so it carries up to that
-//!   much polling slack).
+//! - `e2e`: client wall time from sending the POST to receiving
+//!   `turn.completed` on the session's SSE stream.
 //! - `server`: `input.message` to `turn.completed`, from the events' own
 //!   timestamps: the server's view, free of the client's polling.
 //! - `pickup`: `input.message` to `turn.started`: enqueue, wakeup and claim.
@@ -67,7 +66,6 @@ use serde_json::{Value, json};
 
 /// A turn may take this long before the run counts as broken.
 const TURN_TIMEOUT: Duration = Duration::from_secs(60);
-const POLL: Duration = Duration::from_millis(5);
 const TURNS_PER_SESSION: usize = 5;
 const WORKER_TOKEN: &str = "server-turn-latency-bench";
 
@@ -494,10 +492,11 @@ async fn create_agent(client: &reqwest::Client, base: &str) -> String {
 
 struct Session {
     id: String,
-    /// The highest event sequence seen, so each turn reads only its own
-    /// events. A sequence cursor, not `since_id`: lifecycle events are stored
-    /// in the background (write-behind), so ids do not arrive in id order.
-    last_sequence: Option<i64>,
+    /// The session's SSE stream, opened once, as the UI does. Polling the
+    /// events endpoint instead put about ten extra HTTP requests per turn on
+    /// the server (each with its auth and session reads), which swamped the
+    /// turn's own database work in the per-turn statement counts.
+    stream: everruns_sdk::sse::EventStream,
 }
 
 async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Session {
@@ -507,43 +506,23 @@ async fn create_session(client: &reqwest::Client, base: &str, agent: &str) -> Se
         json!({"harness_name": "base", "agent_id": agent, "title": "Turn latency bench"}),
     )
     .await;
-    let mut session = Session {
-        id: session["id"].as_str().expect("session id").to_owned(),
-        last_sequence: None,
-    };
-    // Skip the session's creation events.
-    events_after(client, base, &mut session).await;
-    session
-}
-
-async fn get_events(client: &reqwest::Client, url: &str) -> Vec<Value> {
-    let body: Value = client
-        .get(url)
-        .send()
-        .await
-        .unwrap_or_else(|error| panic!("GET {url}: {error}"))
-        .json()
-        .await
-        .unwrap_or_else(|error| panic!("GET {url}: {error}"));
-    body["data"].as_array().cloned().unwrap_or_default()
-}
-
-/// The session's events after the last one seen, advancing the cursor.
-async fn events_after(client: &reqwest::Client, base: &str, session: &mut Session) -> Vec<Value> {
-    let mut url = format!("{base}/v1/sessions/{}/events", session.id);
-    match session.last_sequence {
-        Some(sequence) => url.push_str(&format!("?after_sequence={sequence}")),
-        None => url.push_str("?limit=1000"),
+    let id = session["id"].as_str().expect("session id").to_owned();
+    let sdk =
+        everruns_sdk::Everruns::with_base_url("turn-latency-bench", base).expect("sdk client");
+    let mut stream = sdk.events().stream(&id);
+    // Connect before the first message: the stream connects on its first
+    // poll, and the session's creation events are already there to read.
+    match tokio::time::timeout(Duration::from_secs(10), stream.next()).await {
+        Ok(Some(Ok(_))) => {}
+        other => panic!("SSE connect for {id}: {other:?}"),
     }
-    let events = get_events(client, &url).await;
-    if let Some(sequence) = events.iter().filter_map(|e| e["sequence"].as_i64()).max() {
-        session.last_sequence = Some(sequence.max(session.last_sequence.unwrap_or(0)));
-    }
-    events
+    Session { id, stream }
 }
 
-/// Send one message and wait for its turn to complete.
+/// Send one message and wait for its turn to complete on the SSE stream.
 async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) -> Turn {
+    use futures::StreamExt as _;
+
     let sent = Instant::now();
     post(
         client,
@@ -552,49 +531,36 @@ async fn send_turn(client: &reqwest::Client, base: &str, session: &mut Session) 
     )
     .await;
     let mut seen = Vec::new();
-    let completed = loop {
-        let events = events_after(client, base, session).await;
-        if let Some(failed) = events.iter().find(|event| event["type"] == "turn.failed") {
-            panic!("turn failed: {failed}");
+    let turn_id = loop {
+        let remaining = TURN_TIMEOUT
+            .checked_sub(sent.elapsed())
+            .unwrap_or_else(|| panic!("turn did not finish: {seen:?}"));
+        let event = match tokio::time::timeout(remaining, session.stream.next()).await {
+            Ok(Some(Ok(event))) => event,
+            other => panic!("SSE for {}: {other:?} after {seen:?}", session.id),
+        };
+        if event.event_type == "turn.failed" {
+            panic!("turn failed: {event:?}");
         }
-        let completed = events
-            .iter()
-            .find(|event| event["type"] == "turn.completed")
-            .cloned();
-        seen.extend(events);
-        if let Some(completed) = completed {
-            break completed;
+        let completed = event.event_type == "turn.completed";
+        let turn_id = event.context.turn_id.clone();
+        seen.push(event);
+        if completed {
+            break turn_id.expect("turn.completed names its turn");
         }
-        assert!(
-            sent.elapsed() < TURN_TIMEOUT,
-            "turn did not finish: {seen:?}"
-        );
-        tokio::time::sleep(POLL).await;
     };
     let e2e = sent.elapsed();
 
-    // Read the whole turn once it ended, so an event stored after the cursor
-    // moved past its sequence still counts.
-    let turn_id = completed["data"]["turn_id"]
-        .as_str()
-        .expect("turn.completed names its turn");
-    let mut turn = get_events(
-        client,
-        &format!(
-            "{base}/v1/sessions/{}/events?turn_id={turn_id}&limit=1000",
-            session.id
-        ),
-    )
-    .await;
-    turn.extend(seen);
+    // A previous turn's trailing events (session.idled) can arrive after this
+    // POST; only this turn's events count.
     let at = |kind: &str| {
-        turn.iter()
-            .filter(|event| event["type"] == kind)
-            .filter_map(|event| event["ts"].as_str())
-            .filter_map(|ts| DateTime::parse_from_rfc3339(ts).ok())
+        seen.iter()
+            .filter(|event| event.event_type == kind)
+            .filter(|event| event.context.turn_id.as_deref() == Some(turn_id.as_str()))
+            .filter_map(|event| DateTime::parse_from_rfc3339(&event.ts).ok())
             .map(|ts| ts.with_timezone(&Utc))
             .min()
-            .unwrap_or_else(|| panic!("turn has no {kind}: {turn:?}"))
+            .unwrap_or_else(|| panic!("turn has no {kind}: {seen:?}"))
     };
     let input = at("input.message");
     let ms = |to: DateTime<Utc>| (to - input).num_microseconds().unwrap_or(0) as f64 / 1_000.0;
