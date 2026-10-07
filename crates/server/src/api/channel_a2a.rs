@@ -56,6 +56,7 @@ pub use push::A2aPushListener;
 pub(crate) mod ask_user;
 mod http_json;
 mod pact;
+mod pact_delegated;
 mod pact_identity;
 mod pact_keys;
 mod pact_oauth;
@@ -818,6 +819,7 @@ async fn handle_message_send(
             role: parsed_msg.role,
             continue_session,
             caller_tag: None,
+            runtime_subject: None,
         },
         request_id,
         move |session_id| async move {
@@ -1198,6 +1200,7 @@ async fn handle_message_stream(
             role: parsed_msg.role,
             continue_session,
             caller_tag: None,
+            runtime_subject: None,
         },
         request_id,
         move |session_id| async move {

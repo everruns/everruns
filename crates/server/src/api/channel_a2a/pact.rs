@@ -35,12 +35,13 @@ use axum::{
 use everruns_contracts::typed_id::SessionId;
 use everruns_core::events::{
     INPUT_MESSAGE, InputMessageData, OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData,
-    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
+    TOOL_COMPLETED, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED,
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::http_json::{a2a_error, a2a_json};
+use super::pact_delegated::{self, Delegation, ToolRun};
 use super::{AuthorizedA2a, ChannelA2aState, pact_identity, task_view};
 use crate::api::channel_ingress;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
@@ -99,6 +100,10 @@ struct Caller {
     /// The id `invoke_channel_a2a_with_hook` resolves the channel's app by.
     legacy_app_id: String,
     user: pact_identity::PersonalAgentUser,
+    /// The channel's internal id, which keys its PACT signing key and grants.
+    channel_internal_id: Uuid,
+    /// The Delegated profile (§5), when the endpoint offers it.
+    delegation: Option<PactDelegationConfig>,
 }
 
 /// The live A2A channel at `channel_id` and its PACT profile, or `None` when
@@ -160,6 +165,8 @@ async fn admit(
             session_mode: config.session_mode,
         },
         user,
+        channel_internal_id: channel.internal_id,
+        delegation: pact.delegation,
     })
 }
 
@@ -234,14 +241,16 @@ async fn agent_card(
         .unwrap_or_default();
     (
         [(header::CONTENT_TYPE, "application/json")],
-        pact_card(
-            &name,
-            &description,
-            &app.name,
-            &interface_url,
+        super::pact_oauth::card_json(
+            pact_card(
+                &name,
+                &description,
+                &app.name,
+                &interface_url,
+                pact.delegation.as_ref(),
+            ),
             pact.delegation.as_ref(),
-        )
-        .to_string(),
+        ),
     )
         .into_response()
 }
@@ -360,6 +369,7 @@ fn parse_message(body: &[u8]) -> Result<UserMessage, (i64, &'static str)> {
 async fn send_message(
     State(state): State<ChannelA2aState>,
     Path(channel_id): Path<String>,
+    OriginalUri(uri): OriginalUri,
     req_id: ReqId,
     peer: Peer,
     headers: HeaderMap,
@@ -368,6 +378,28 @@ async fn send_message(
     let caller = match admit(&state, &channel_id, &headers, peer).await {
         Ok(caller) => caller,
         Err(response) => return response,
+    };
+    let path = uri.path();
+    let interface_url = super::agent_card::absolute_url(
+        &headers,
+        path.strip_suffix("/message:send").unwrap_or(path),
+    );
+    // §5.5: a delegation token is checked only where the endpoint offers
+    // delegation; elsewhere the header means nothing.
+    let delegation = match &caller.delegation {
+        Some(_) => match pact_delegated::verify(
+            &state,
+            caller.channel_internal_id,
+            &interface_url,
+            &caller.user.issuer,
+            &headers,
+        )
+        .await
+        {
+            Ok(delegation) => delegation,
+            Err(response) => return response,
+        },
+        None => None,
     };
     let message = match parse_message(&body) {
         Ok(message) => message,
@@ -380,29 +412,75 @@ async fn send_message(
             None => return a2a_error(INVALID_PARAMS, "Unknown contextId"),
         },
     };
+    // THREAT[TM-A2A-018]: a context that ran under one company user never
+    // continues under another's token.
+    if let (Some((_, tags)), Some(delegation)) = (&session, &delegation)
+        && !pact_delegated::context_admits(tags, caller.channel_internal_id, &delegation.sub)
+    {
+        return a2a_error(
+            INVALID_PARAMS,
+            "contextId belongs to another account at this endpoint",
+        );
+    }
+    let session = session.map(|(id, _)| id);
+    let answer = Answer {
+        state: &state,
+        caller: &caller,
+        delegation: delegation.as_ref(),
+        interface_url: &interface_url,
+    };
     if let Some(session_id) = session {
         match stored_reply(&state, session_id, &message.message_id).await {
             Ok(None) => {}
-            Ok(Some(Reply::Ready { message_id, text })) => {
-                return reply(session_id, &message_id, &text);
-            }
-            Ok(Some(Reply::Pending | Reply::Failed)) => {
+            Ok(Some((Reply::Pending, _))) => {
                 return a2a_error(INVALID_PARAMS, "No stored reply for this messageId");
+            }
+            Ok(Some((reply, runs))) => {
+                return answer.respond(session_id, reply, &runs, true).await;
             }
             Err(err) => return internal(err),
         }
     }
 
+    let runtime_user = match &delegation {
+        Some(delegation) => match pact_delegated::runtime_subject(
+            &state,
+            caller.auth.org_id,
+            caller.channel_internal_id,
+            &delegation.sub,
+        )
+        .await
+        {
+            Ok(subject) => Some(subject),
+            Err(err) => return internal(err),
+        },
+        None => None,
+    };
+
     let subscription_slot = Arc::new(tokio::sync::Mutex::new(None));
     let hook_slot = subscription_slot.clone();
     let event_delivery = state.event_delivery.clone();
+    let hook_state = state.clone();
+    let org_id = caller.auth.org_id;
+    let channel_internal_id = caller.channel_internal_id;
+    let hook_delegation = caller.delegation.clone();
+    let hook_user = delegation
+        .as_ref()
+        .zip(runtime_user)
+        .map(|(delegation, (_, virtual_user))| {
+            (
+                delegation.token.clone(),
+                virtual_user,
+                delegation.sub.clone(),
+            )
+        });
     let result = invoke_channel_a2a_with_hook(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,
         &state.message_service,
         A2aInvocationRequest {
-            legacy_app_id: caller.legacy_app_id,
+            legacy_app_id: caller.legacy_app_id.clone(),
             channel_id: caller.auth.channel_public_id.to_string(),
             params: serde_json::from_slice(&body).unwrap_or(Value::Null),
             text: message.text,
@@ -412,9 +490,28 @@ async fn send_message(
             role: Some("ROLE_USER".to_string()),
             continue_session: session,
             caller_tag: Some(caller.user.session_tag()),
+            runtime_subject: runtime_user.map(|(principal, _)| principal),
         },
         req_id.map(|Extension(id)| id.0),
         move |session_id| async move {
+            if let Some(config) = &hook_delegation {
+                pact_delegated::prepare_session(
+                    &hook_state,
+                    org_id,
+                    session_id,
+                    config,
+                    hook_user.as_ref().map(|(token, virtual_user, sub)| {
+                        (
+                            token.as_str(),
+                            *virtual_user,
+                            channel_internal_id,
+                            sub.as_str(),
+                        )
+                    }),
+                )
+                .await
+                .map_err(crate::domains::common::CommandError::internal)?;
+            }
             // Subscribed before dispatch, so the turn cannot settle unseen.
             let subscription = event_delivery
                 .subscribe(session_id.uuid())
@@ -441,9 +538,118 @@ async fn send_message(
         .await;
     }
     match stored_reply(&state, result.session_id, &message.message_id).await {
-        Ok(Some(Reply::Ready { message_id, text })) => reply(result.session_id, &message_id, &text),
-        Ok(_) => a2a_error(INTERNAL, "The agent did not reply"),
+        Ok(Some((Reply::Pending, _)) | None) => a2a_error(INTERNAL, "The agent did not reply"),
+        Ok(Some((reply, runs))) => answer.respond(result.session_id, reply, &runs, false).await,
         Err(err) => internal(err),
+    }
+}
+
+/// Composes the answer to a finished turn: the reply, a step-up request
+/// when the turn needed a scope the user has not granted (§5.5), and the
+/// receipt for a reply under a delegation token (§5.6).
+struct Answer<'a> {
+    state: &'a ChannelA2aState,
+    caller: &'a Caller,
+    delegation: Option<&'a Delegation>,
+    interface_url: &'a str,
+}
+
+impl Answer<'_> {
+    /// `retry` is a repeated `messageId` (§4.3), whose missing reply is the
+    /// caller's error rather than the agent's.
+    async fn respond(
+        &self,
+        session_id: SessionId,
+        reply: Reply,
+        runs: &[ToolRun],
+        retry: bool,
+    ) -> Response {
+        let no_reply = || match retry {
+            true => a2a_error(INVALID_PARAMS, "No stored reply for this messageId"),
+            false => a2a_error(INTERNAL, "The agent did not reply"),
+        };
+        let Some(config) = &self.caller.delegation else {
+            return match reply {
+                Reply::Ready { message_id, text } => {
+                    agent_reply(session_id, &message_id, &text, None)
+                }
+                _ => no_reply(),
+            };
+        };
+        let granted = self
+            .delegation
+            .map(|delegation| delegation.scopes.as_slice())
+            .unwrap_or_default();
+        let missing = pact_delegated::missing_scopes(config, granted, runs);
+        if !missing.is_empty() {
+            return self.step_up(session_id, config, &missing, reply).await;
+        }
+        let Reply::Ready { message_id, text } = reply else {
+            return no_reply();
+        };
+        let receipt = match self.delegation {
+            Some(delegation) => {
+                let claims =
+                    pact_delegated::receipt_claims(config, delegation, self.interface_url, runs);
+                match pact_delegated::receipt(self.state, self.caller.channel_internal_id, &claims)
+                    .await
+                {
+                    Ok(receipt) => Some(receipt),
+                    Err(err) => return internal(err),
+                }
+            }
+            None => None,
+        };
+        agent_reply(session_id, &message_id, &text, receipt)
+    }
+
+    /// §5.5: `TASK_STATE_AUTH_REQUIRED` with the missing scopes and a fresh
+    /// sign-in link asking for them. The agent's own words, when it had any,
+    /// are the status message.
+    async fn step_up(
+        &self,
+        session_id: SessionId,
+        config: &PactDelegationConfig,
+        missing: &[String],
+        reply: Reply,
+    ) -> Response {
+        let authorization = match super::pact_oauth::start_device_authorization(
+            self.state,
+            self.caller.channel_internal_id,
+            config,
+            &super::pact_oauth::Urls::new(self.interface_url),
+            &self.caller.user.issuer,
+            missing,
+        )
+        .await
+        {
+            Ok(authorization) => authorization,
+            Err(err) => return internal(err),
+        };
+        let mut status = json!({ "state": "TASK_STATE_AUTH_REQUIRED" });
+        if let Reply::Ready { message_id, text } = reply {
+            status["message"] = json!({
+                "messageId": message_id,
+                "contextId": session_id.to_string(),
+                "role": "ROLE_AGENT",
+                "parts": [{ "text": text }],
+            });
+        }
+        a2a_json(
+            StatusCode::OK,
+            &json!({
+                "task": {
+                    "id": Uuid::now_v7().to_string(),
+                    "contextId": session_id.to_string(),
+                    "status": status,
+                    "metadata": {
+                        "pact.missingScopes": missing,
+                        "pact.verificationUriComplete":
+                            authorization["verification_uri_complete"],
+                    },
+                }
+            }),
+        )
     }
 }
 
@@ -454,7 +660,7 @@ async fn owned_context(
     state: &ChannelA2aState,
     caller: &Caller,
     context_id: &str,
-) -> Option<SessionId> {
+) -> Option<(SessionId, Vec<String>)> {
     let session_id = context_id.parse::<SessionId>().ok()?;
     let session = state
         .db
@@ -464,7 +670,7 @@ async fn owned_context(
     let caller_tag = caller.user.session_tag();
     (super::session_belongs_to_a2a_channel(&session, &caller.auth)
         && session.tags.iter().any(|tag| tag == &caller_tag))
-    .then_some(session.id)
+    .then_some((session.id, session.tags))
 }
 
 /// The agent's answer to one user message.
@@ -478,19 +684,23 @@ enum Reply {
     Failed,
 }
 
+/// Event types a reply and its tool calls are read from.
+const REPLY_EVENT_TYPES: [&str; 7] = [
+    INPUT_MESSAGE,
+    OUTPUT_MESSAGE_COMPLETED,
+    TOOL_STARTED,
+    TOOL_COMPLETED,
+    TURN_COMPLETED,
+    TURN_FAILED,
+    TURN_CANCELLED,
+];
+
 async fn stored_reply(
     state: &ChannelA2aState,
     session_id: SessionId,
     message_id: &str,
-) -> anyhow::Result<Option<Reply>> {
-    let filter_types = [
-        INPUT_MESSAGE,
-        OUTPUT_MESSAGE_COMPLETED,
-        TURN_COMPLETED,
-        TURN_FAILED,
-        TURN_CANCELLED,
-    ]
-    .map(str::to_string);
+) -> anyhow::Result<Option<(Reply, Vec<ToolRun>)>> {
+    let filter_types = REPLY_EVENT_TYPES.map(str::to_string);
     let events = state
         .db
         .list_events(
@@ -503,13 +713,20 @@ async fn stored_reply(
             Some(REPLY_EVENT_TAIL),
         )
         .await?;
-    Ok(reply_to(&events, message_id))
+    Ok(reply_to(&events, message_id).map(|reply| {
+        let runs = turn_events(&events, message_id)
+            .map(pact_delegated::tool_runs)
+            .unwrap_or_default();
+        (reply, runs)
+    }))
 }
 
-/// Pure: the reply to the user message carrying `message_id`, from a
-/// session's filtered event tail (ascending). `None` when no stored message
-/// carries it.
-fn reply_to(events: &[crate::storage::EventRow], message_id: &str) -> Option<Reply> {
+/// Pure: the events after the user message carrying `message_id`, up to the
+/// next user message. `None` when no stored message carries it.
+fn turn_events<'a>(
+    events: &'a [crate::storage::EventRow],
+    message_id: &str,
+) -> Option<&'a [crate::storage::EventRow]> {
     let start = events.iter().rposition(|event| {
         event.event_type == INPUT_MESSAGE
             && serde_json::from_value::<InputMessageData>(event.data.clone())
@@ -518,10 +735,21 @@ fn reply_to(events: &[crate::storage::EventRow], message_id: &str) -> Option<Rep
                 .and_then(|metadata| metadata.get(A2A_MESSAGE_ID_METADATA).cloned())
                 .is_some_and(|id| id.as_str() == Some(message_id))
     })?;
+    let rest = &events[start + 1..];
+    let end = rest
+        .iter()
+        .position(|event| event.event_type == INPUT_MESSAGE)
+        .unwrap_or(rest.len());
+    Some(&rest[..end])
+}
+
+/// Pure: the reply to the user message carrying `message_id`, from a
+/// session's filtered event tail (ascending). `None` when no stored message
+/// carries it.
+fn reply_to(events: &[crate::storage::EventRow], message_id: &str) -> Option<Reply> {
     let mut outputs: Vec<(String, String)> = Vec::new();
-    for event in &events[start + 1..] {
+    for event in turn_events(events, message_id)? {
         match event.event_type.as_str() {
-            INPUT_MESSAGE => break,
             OUTPUT_MESSAGE_COMPLETED => {
                 if let Ok(data) =
                     serde_json::from_value::<OutputMessageCompletedData>(event.data.clone())
@@ -551,19 +779,24 @@ fn reply_to(events: &[crate::storage::EventRow], message_id: &str) -> Option<Rep
     Some(Reply::Pending)
 }
 
-/// §4.2: the synchronous reply, a Message (never a Task).
-fn reply(session_id: SessionId, message_id: &str, text: &str) -> Response {
-    a2a_json(
-        StatusCode::OK,
-        &json!({
-            "message": {
-                "messageId": message_id,
-                "contextId": session_id.to_string(),
-                "role": "ROLE_AGENT",
-                "parts": [{ "text": text }],
-            }
-        }),
-    )
+/// §4.2: the synchronous reply, a Message. Under a delegation token it
+/// carries the receipt (§5.6).
+fn agent_reply(
+    session_id: SessionId,
+    message_id: &str,
+    text: &str,
+    receipt: Option<Value>,
+) -> Response {
+    let mut message = json!({
+        "messageId": message_id,
+        "contextId": session_id.to_string(),
+        "role": "ROLE_AGENT",
+        "parts": [{ "text": text }],
+    });
+    if let Some(receipt) = receipt {
+        message["metadata"] = json!({ "pact.receipt": receipt });
+    }
+    a2a_json(StatusCode::OK, &json!({ "message": message }))
 }
 
 fn internal(err: anyhow::Error) -> Response {

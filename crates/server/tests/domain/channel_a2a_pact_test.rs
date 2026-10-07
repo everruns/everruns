@@ -28,7 +28,7 @@ pub(crate) struct PersonalAgentKey {
     encoding: jsonwebtoken::EncodingKey,
     pub(crate) jwk: Value,
     /// The private scalar, for handing the key to PACT's conformance suite.
-    d: String,
+    pub(crate) d: String,
 }
 
 impl PersonalAgentKey {
@@ -418,7 +418,9 @@ async fn authentication_failures_are_a_bare_401() {
         None,
         Some(unpublished.token("u")),
         Some(key.token_with(json!({ "aud": "someone-else" }))),
-        Some(key.token_with(json!({ "iat": now + 31, "exp": now + 151 }))),
+        // Well past the 30 s skew, so a second ticking during the test cannot
+        // bring it back inside.
+        Some(key.token_with(json!({ "iat": now + 120, "exp": now + 240 }))),
         Some(key.token_with(json!({ "iat": now - 200, "exp": now - 100 }))),
         Some(key.token_with(json!({ "iss": "https://disabled.example" }))),
         Some(key.token_with(json!({ "iss": "https://unknown.example" }))),
