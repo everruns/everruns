@@ -40,7 +40,7 @@ impl CommandSchema for CreateSkill {
     method = "POST",
     path = "/v1/skills",
     policy = SKILL_MANAGE,
-    cli = CliRoute::new(&["skills"], "create").with_examples(&[CliExample::new("Add a skill from a local file", "everruns skills create --skill-md \"$(cat SKILL.md)\"",)]),
+    cli = CliRoute::new(&["skills"], "create").with_examples(&[CliExample::new("Add a skill from a local file", "everruns skills create --skill-md \"$(cat SKILL.md)\" --reason 'Share the code-review checklist'",)]),
     http = created_with_urls,
     request_body(CreateSkillRequest),
     responses(
@@ -64,8 +64,7 @@ impl Command for CreateSkill {
         if ctx
             .db
             .get_skill_by_name(ctx.org_id(), &parsed.name)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .is_some()
         {
             return Err(CommandError::conflict(format!(
@@ -102,11 +101,7 @@ impl Command for CreateSkill {
             version: parsed.version,
         };
 
-        let row = ctx
-            .db
-            .create_skill(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_skill(ctx.org_id(), input).await?;
         ctx.capability_service
             .invalidate_skills_cache(ctx.org_id())
             .await;
@@ -147,8 +142,7 @@ impl Command for ListSkills {
         let rows = ctx
             .db
             .list_skills(ctx.org_id(), self.search.as_deref(), self.include_archived)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         Ok(rows.iter().map(q::row_to_skill).collect())
     }
 }
@@ -188,8 +182,7 @@ impl Command for GetSkill {
         let row = ctx
             .db
             .get_skill(ctx.org_id(), skill_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|r| r.status != "deleted")
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
@@ -232,8 +225,7 @@ impl Command for GetSkillContent {
         let row = ctx
             .db
             .get_skill(ctx.org_id(), skill_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|r| r.status != "deleted")
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
@@ -261,11 +253,7 @@ impl Command for GetSkillContent {
 
         // Get files for archive-based skills
         let files = if row.source_type == "archive" {
-            let file_rows = ctx
-                .db
-                .list_skill_files(row.id.uuid())
-                .await
-                .map_err(classify_anyhow)?;
+            let file_rows = ctx.db.list_skill_files(row.id.uuid()).await?;
             file_rows
                 .into_iter()
                 .filter_map(|f| {
@@ -308,7 +296,7 @@ pub struct UpdateSkillCmd {
     path = "/v1/skills/{id}",
     policy = SKILL_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["skills"], "update") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Replace a skill's content from a local file", "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\"",)]),
+    cli = CliRoute::new(&["skills"], "update") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Replace a skill's content from a local file", "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\" --reason 'Add the security review step'",)]),
     http = with_urls,
     request_body(UpdateSkillRequest),
     responses(
@@ -338,12 +326,7 @@ impl Command for UpdateSkillCmd {
         // (see DeleteSkill), so archived skills accept a status-only PATCH
         // (the restore path) but no content edits; deleted skills stay
         // immutable.
-        if let Some(existing) = ctx
-            .db
-            .get_skill(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if let Some(existing) = ctx.db.get_skill(ctx.org_id(), id).await? {
             match existing.status.as_str() {
                 "active" | "disabled" => {}
                 "archived" => {
@@ -369,17 +352,12 @@ impl Command for UpdateSkillCmd {
             })?;
 
             // Check name uniqueness if name changed
-            if let Some(existing) = ctx
-                .db
-                .get_skill(ctx.org_id(), id)
-                .await
-                .map_err(classify_anyhow)?
+            if let Some(existing) = ctx.db.get_skill(ctx.org_id(), id).await?
                 && existing.name != parsed.name
                 && ctx
                     .db
                     .get_skill_by_name(ctx.org_id(), &parsed.name)
-                    .await
-                    .map_err(classify_anyhow)?
+                    .await?
                     .is_some()
             {
                 return Err(CommandError::conflict(format!(
@@ -429,8 +407,7 @@ impl Command for UpdateSkillCmd {
         let row = ctx
             .db
             .update_skill(ctx.org_id(), id, input)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
         ctx.capability_service
@@ -459,7 +436,7 @@ pub struct DeleteSkill {
     path = "/v1/skills/{id}",
     policy = SKILL_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["skills"], "delete") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Archive a skill, keeping it restorable", "everruns skills delete skl_01h9",)]),
+    cli = CliRoute::new(&["skills"], "delete") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Archive a skill, keeping it restorable", "everruns skills delete skl_01h9 --reason 'Superseded by the shared review skill'",)]),
     http = no_content,
     responses((status = 404, description = "Skill not found")),
 )]
@@ -472,11 +449,7 @@ impl Command for DeleteSkill {
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid skill ID: {e}")))?;
 
-        let deleted = ctx
-            .db
-            .delete_skill(ctx.org_id(), skill_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = ctx.db.delete_skill(ctx.org_id(), skill_id.uuid()).await?;
 
         if !deleted {
             return Err(CommandError::not_found("Skill"));
@@ -508,7 +481,7 @@ pub struct DestroySkill {
     path = "/v1/skills/{id}/delete",
     policy = SKILL_DANGEROUS,
     positional = "id",
-    cli = CliRoute::new(&["skills"], "destroy") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Permanently remove an already-archived skill", "everruns skills destroy skl_01h9",)]),
+    cli = CliRoute::new(&["skills"], "destroy") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Permanently remove an already-archived skill", "everruns skills destroy skl_01h9 --reason 'Retired after the archive window'",)]),
     http = no_content,
     responses(
         (status = 400, description = "Skill is not archived", body = crate::api::common::ErrorResponse),
@@ -529,8 +502,7 @@ impl Command for DestroySkill {
         let existing = ctx
             .db
             .get_skill(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
         if existing.status != "archived" {
@@ -539,10 +511,7 @@ impl Command for DestroySkill {
             ));
         }
 
-        ctx.db
-            .destroy_skill(ctx.org_id(), id)
-            .await
-            .map_err(classify_anyhow)?;
+        ctx.db.destroy_skill(ctx.org_id(), id).await?;
 
         ctx.capability_service
             .invalidate_skills_cache(ctx.org_id())
@@ -580,8 +549,7 @@ impl Command for ListSkillsUsage {
             ctx.db.list_non_deleted_skill_ids(ctx.org_id()),
             ctx.db.count_agent_capability_references(ctx.org_id()),
             ctx.db.count_harness_capability_references(ctx.org_id()),
-        )
-        .map_err(classify_anyhow)?;
+        )?;
         let visible_skill_ids = visible_skill_ids
             .into_iter()
             .collect::<std::collections::HashSet<_>>();

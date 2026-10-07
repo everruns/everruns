@@ -417,7 +417,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
                   onClick={() => openNotification(toast)}
                 >
                   <p className="text-sm font-medium">{toast.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{toast.body}</p>
+                  <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{toast.body}</p>
+                  {toast.source?.name && (
+                    <p className="mt-1 text-xs text-muted-foreground">{toast.source.name}</p>
+                  )}
                 </button>
                 <button
                   type="button"

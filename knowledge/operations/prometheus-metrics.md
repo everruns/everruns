@@ -103,7 +103,8 @@ each successful `llm.generation` (see
 `everruns_llm_finish_reason_total` (labels `provider`, `model`,
 `finish_reason`), `everruns_llm_tool_calls_dropped_total` and
 `everruns_llm_tool_calls_truncated_executed_total` (labels `provider`,
-`model`, `reason`), `everruns_llm_retries_total` and the
+`model`, `reason`), `everruns_llm_truncation_gate_total` (labels `provider`,
+`model`, `action`: `retried` or `failed`), `everruns_llm_retries_total` and the
 `everruns_llm_retry_wait_seconds` histogram (label `provider`).
 
 ## Architecture

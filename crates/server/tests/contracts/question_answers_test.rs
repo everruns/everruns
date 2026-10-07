@@ -127,7 +127,7 @@ async fn platform_chat_waiting_session(server: &TestServer, owner: Uuid) -> Sess
                         .parse()
                         .expect("platform-chat harness id"),
                 ),
-                resolved_owner_user_id: everruns_durable::UpdateField::Set(owner),
+                resolved_owner_user_id: everruns_server::storage::UpdateField::Set(owner),
                 ..Default::default()
             },
         )

@@ -99,36 +99,10 @@ impl RuntimeAccount {
             .get_ingress_channel_by_public_id(channel_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Channel unavailable"))?;
-        let mut agent =
+        let agent =
             crate::domains::agents::queries::resolve(db, self.org_id, &channel.agent_public_id)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("Agent unavailable"))?;
-        // Same selection session creation applies, so consumer setup sees the
-        // configuration the channel actually runs.
-        let version =
-            match crate::records::AgentVersionPolicy::from(channel.agent_version_policy.as_str()) {
-                crate::records::AgentVersionPolicy::Pinned => match channel.agent_version_id {
-                    Some(id) => db.get_agent_version(self.org_id, id.into()).await?,
-                    None => None,
-                },
-                crate::records::AgentVersionPolicy::Latest => {
-                    db.get_latest_agent_version(
-                        self.org_id,
-                        everruns_contracts::typed_id::AgentId::from_uuid(channel.agent_id),
-                    )
-                    .await?
-                }
-                crate::records::AgentVersionPolicy::Default => match agent.default_version_id {
-                    Some(id) => db.get_agent_version(self.org_id, id).await?,
-                    None => None,
-                },
-            };
-        if let Some(version) = version {
-            agent = crate::domains::agents::queries::version_to_agent(
-                &agent,
-                &crate::domains::agents::queries::row_to_agent_version(version),
-            );
-        }
         let harness = crate::domains::harnesses::queries::resolve_effective(
             db,
             self.org_id,
@@ -162,6 +136,22 @@ impl RuntimeAccount {
                 }
             } else if let Some(provider) = &server.oauth_provider_id {
                 providers.insert(provider.clone());
+            }
+        }
+        // An agent that uses the person's own MCP servers lets them sign in to
+        // those servers: a custom server signs in under its own id, a
+        // catalog-sourced one under its preset's.
+        let uses_user_servers = expanded.iter().any(|config| {
+            config.capability_id() == everruns_capabilities::capabilities::USER_MCP_CAPABILITY_ID
+                && everruns_capabilities::capabilities::user_mcp_use_enabled(config.config_value())
+        });
+        if uses_user_servers {
+            for server in db
+                .list_user_mcp_servers(self.org_id, self.id.uuid())
+                .await?
+            {
+                let id = server.catalog_mcp_server_id.unwrap_or(server.row.id.uuid());
+                providers.insert(everruns_core::mcp_oauth_provider_id_for_uuid(id));
             }
         }
         Ok(Some(providers))

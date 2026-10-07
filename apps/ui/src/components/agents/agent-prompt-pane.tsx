@@ -35,6 +35,11 @@ interface AgentPromptPaneProps {
   /** Rendered under the editor in edit mode: checks about the prompt sit beside it. */
   checks?: React.ReactNode;
   className?: string;
+  /** Shown when the prompt is empty. A harness uses this to say it contributes none. */
+  emptyMessage?: string;
+  placeholder?: string;
+  /** Shorter editor, for a side sheet rather than the page. */
+  compact?: boolean;
 }
 
 export function AgentPromptPane({
@@ -46,6 +51,9 @@ export function AgentPromptPane({
   error,
   checks,
   className,
+  emptyMessage = "No instructions yet.",
+  placeholder = "You are a helpful assistant...",
+  compact = false,
 }: AgentPromptPaneProps) {
   const [showSource, setShowSource] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -102,18 +110,26 @@ export function AgentPromptPane({
             id="system_prompt"
             aria-label="Instructions"
             aria-invalid={!!error}
-            placeholder="You are a helpful assistant..."
+            placeholder={placeholder}
             value={value}
             onChange={(event) => onChange?.(event.target.value)}
-            className="min-h-[320px] flex-1 resize-y lg:min-h-[520px] font-mono text-sm leading-relaxed md:text-sm"
+            className={cn(
+              "min-h-[240px] flex-1 resize-y font-mono text-sm leading-relaxed md:text-sm",
+              compact ? "lg:min-h-[240px]" : "lg:min-h-[520px]",
+            )}
           />
           {error && <p className="text-xs text-destructive">{error}</p>}
           {checks}
         </div>
       ) : (
-        <div className="min-h-[240px] flex-1 px-4 py-5 sm:px-6 lg:min-h-[520px]">
+        <div
+          className={cn(
+            "min-h-[240px] flex-1 px-4 py-5 sm:px-6",
+            compact ? "lg:min-h-0" : "lg:min-h-[520px]",
+          )}
+        >
           {!value.trim() ? (
-            <p className="text-sm italic text-muted-foreground">No instructions yet.</p>
+            <p className="text-sm italic text-muted-foreground">{emptyMessage}</p>
           ) : showSource ? (
             <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed">
               {value}

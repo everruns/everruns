@@ -34,14 +34,13 @@ use tools::{
 
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
     feature_flag: None,
     factory: || Box::new(CursorCapability),
 }];
 
 /// Connector plugins this crate contributes to a hosted catalog.
 pub const CONNECTOR_PLUGINS: &[ConnectorPlugin] = &[ConnectorPlugin {
-    experimental_only: false,
+    feature_flag: None,
     factory: || Box::new(CursorConnector),
 }];
 pub const CURSOR_API_BASE: &str = "https://api.cursor.com";

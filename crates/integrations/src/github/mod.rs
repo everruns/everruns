@@ -57,12 +57,10 @@ use tools::{ReadGitHubFileTool, SearchGitHubCodeTool, SearchGitHubIssuesTool};
 /// Capability plugins this crate contributes to a hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[
     IntegrationPlugin {
-        experimental_only: false,
         feature_flag: None,
         factory: || Box::new(GitHubCapability),
     },
     IntegrationPlugin {
-        experimental_only: false,
         feature_flag: None,
         factory: || Box::new(GitHubScoutCapability),
     },

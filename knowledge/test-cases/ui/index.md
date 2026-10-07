@@ -10,7 +10,6 @@
 * [Agent packages](agent_packages/) - 1 manual UI case.
 * [Agent MCP attachments](agent_mcp_attachments/) - 1 manual UI case.
 * [Agent triggers](agent_triggers/) - 1 manual UI case.
-* [Agent versions](agent_versions/) - 1 manual UI case.
 * [ARD discovery](ard_discovery/) - 1 manual UI case.
 * [Ask user](ask_user/) - 3 manual UI cases.
 * [Capabilities](capabilities/) - 2 manual UI cases.

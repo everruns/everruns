@@ -201,10 +201,10 @@ mod tests {
 
     #[tokio::test]
     async fn encrypted_checkpoint_round_trips_and_forks_at_source_boundary() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let store = DbCompactionCheckpointStore::new(db.clone(), encryption());
-        let source = SessionId::new();
-        let child = SessionId::new();
+        let source = db.create_test_session().await;
+        let child = db.create_test_session().await;
 
         assert!(store.install(checkpoint(source, 7)).await.unwrap());
         assert!(!store.install(checkpoint(source, 6)).await.unwrap());
@@ -243,9 +243,9 @@ mod tests {
 
     #[tokio::test]
     async fn oversized_anthropic_prefix_is_rejected_before_storage() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
+        let session_id = db.create_test_session().await;
         let store = DbCompactionCheckpointStore::new(db, encryption());
-        let session_id = SessionId::new();
         let checkpoint = CompactionCheckpoint {
             id: Uuid::now_v7(),
             session_id,

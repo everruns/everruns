@@ -9,15 +9,22 @@
 //! - `UTILITY_TYPESAFE_API_KEY` registers the `typesafe` driver.
 //! - A configured utility LLM (`UTILITY_OPENAI_API_KEY` or
 //!   `UTILITY_OPENROUTER_API_KEY`) registers the `llm` driver.
-//! - `DECISIONS_OPENAI_PREVIEW=1` with `UTILITY_OPENAI_API_KEY` registers the
-//!   `openai` driver (OpenAI's Decisions API). Opt-in because the API is in
-//!   limited preview and the driver's wire shape is unverified (EVE-1118).
-//! - `DECISIONS_DRIVER` picks the default driver. Unset keeps today's
+//! - `UTILITY_OPENAI_API_KEY` makes the `openai` driver (OpenAI's Decisions
+//!   API) available. It answers only when `UTILITY_DECISION_DRIVER=openai` picks it,
+//!   so a deployment that already has an OpenAI utility key keeps its current
+//!   driver. The preview opt-in was dropped once the API reached public beta
+//!   and the wire shape was verified against it (2026-10-06).
+//! - `UTILITY_DECISION_DRIVER` picks the default driver. Unset keeps today's
 //!   behavior: `typesafe` when its key is present, otherwise disabled. The
 //!   `llm` fallback is opt-in, because it spends utility-model tokens on every
 //!   `jev` check and answers uncalibrated.
-//! - `DECISIONS_MODEL` is the model the default driver is asked for when a
+//! - `UTILITY_DECISION_MODEL` is the model the default driver is asked for when a
 //!   request names none.
+//!
+//! The two selectors were `DECISIONS_DRIVER` and `DECISIONS_MODEL` until
+//! 2026-10-07. They are deployment utility settings like `UTILITY_LLM_MODEL`,
+//! so they took its prefix. The old names stop startup with the new name
+//! rather than being silently ignored.
 //!
 //! Every value here is deployment-owned; none is reachable from agent or
 //! session config (THREAT[TM-LLM-037]).
@@ -33,13 +40,16 @@ use everruns_integrations::openai_decisions::OpenAIDecisions;
 use everruns_integrations::typesafe::SystemDecisionsConfig;
 
 /// Environment variable naming the default decision driver.
-pub const DECISIONS_DRIVER_ENV: &str = "DECISIONS_DRIVER";
+pub const UTILITY_DECISION_DRIVER_ENV: &str = "UTILITY_DECISION_DRIVER";
 
 /// Environment variable naming the default driver's model.
-pub const DECISIONS_MODEL_ENV: &str = "DECISIONS_MODEL";
+pub const UTILITY_DECISION_MODEL_ENV: &str = "UTILITY_DECISION_MODEL";
 
-/// Environment variable that opts into the preview `openai` driver.
-pub const DECISIONS_OPENAI_PREVIEW_ENV: &str = "DECISIONS_OPENAI_PREVIEW";
+/// Names replaced by the two above, refused at startup.
+const RENAMED_ENV: [(&str, &str); 2] = [
+    ("DECISIONS_DRIVER", UTILITY_DECISION_DRIVER_ENV),
+    ("DECISIONS_MODEL", UTILITY_DECISION_MODEL_ENV),
+];
 
 /// The deployment's OpenAI key, shared with the utility LLM.
 const UTILITY_OPENAI_API_KEY_ENV: &str = "UTILITY_OPENAI_API_KEY";
@@ -52,6 +62,8 @@ pub struct SystemDecisions {
     openrouter_key: Option<String>,
     driver: Option<String>,
     model: Option<String>,
+    /// A renamed variable that is still set, with its new name.
+    renamed: Option<(&'static str, &'static str)>,
 }
 
 impl std::fmt::Debug for SystemDecisions {
@@ -72,11 +84,12 @@ impl SystemDecisions {
         Self {
             typesafe: Some(SystemDecisionsConfig::from_env()),
             openrouter_key: env_value("UTILITY_OPENROUTER_API_KEY"),
-            openai_key: env_value(DECISIONS_OPENAI_PREVIEW_ENV)
-                .filter(|flag| matches!(flag.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
-                .and_then(|_| env_value(UTILITY_OPENAI_API_KEY_ENV)),
-            driver: env_value(DECISIONS_DRIVER_ENV),
-            model: env_value(DECISIONS_MODEL_ENV),
+            openai_key: env_value(UTILITY_OPENAI_API_KEY_ENV),
+            driver: env_value(UTILITY_DECISION_DRIVER_ENV),
+            model: env_value(UTILITY_DECISION_MODEL_ENV),
+            renamed: RENAMED_ENV
+                .into_iter()
+                .find(|(old, _)| env_value(old).is_some()),
         }
     }
 
@@ -86,8 +99,8 @@ impl SystemDecisions {
         self
     }
 
-    /// Enable the preview `openai` driver with a deployment-owned key.
-    pub fn openai_preview(mut self, api_key: impl Into<String>) -> Self {
+    /// Enable the `openai` driver with a deployment-owned key.
+    pub fn openai(mut self, api_key: impl Into<String>) -> Self {
         self.openai_key = Some(api_key.into());
         self
     }
@@ -112,6 +125,9 @@ impl SystemDecisions {
         self,
         utility: Arc<dyn UtilityLlmService>,
     ) -> Result<Arc<dyn DecisionsService>, String> {
+        if let Some((old, new)) = self.renamed {
+            return Err(format!("{old} was renamed to {new}"));
+        }
         let mut registry = ProviderRegistry::new();
         if let Some(SystemDecisionsConfig::TypeSafeAI { api_key }) = self.typesafe {
             registry
@@ -129,7 +145,7 @@ impl SystemDecisions {
         if self.driver.as_deref() == Some(LLM_DECISION_DRIVER_ID) {
             if self.model.is_some() {
                 return Err(format!(
-                    "{DECISIONS_MODEL_ENV} cannot be combined with {DECISIONS_DRIVER_ENV}=llm: set UTILITY_LLM_MODEL instead"
+                    "{UTILITY_DECISION_MODEL_ENV} cannot be combined with {UTILITY_DECISION_DRIVER_ENV}=llm: set UTILITY_LLM_MODEL instead"
                 ));
             }
             if !utility.is_configured() {
@@ -145,9 +161,9 @@ impl SystemDecisions {
             None => return Ok(Arc::new(DisabledDecisionsService)),
         };
         if default == "openai" {
-            let key = self.openai_key.ok_or_else(|| {
-                "openai needs DECISIONS_OPENAI_PREVIEW=1 and UTILITY_OPENAI_API_KEY".to_string()
-            })?;
+            let key = self
+                .openai_key
+                .ok_or_else(|| "openai needs UTILITY_OPENAI_API_KEY".to_string())?;
             return Ok(Arc::new(OpenAIDecisions::new(key).model(
                 self.model.unwrap_or_else(|| {
                     everruns_integrations::openai_decisions::DEFAULT_MODEL.into()
@@ -155,7 +171,7 @@ impl SystemDecisions {
             )));
         }
         let router = DecisionRouter::new(registry, ModelSpec::on(default.as_str(), self.model.unwrap_or_else(|| "jev-latest".into())))
-            .map_err(|error| format!("{DECISIONS_DRIVER_ENV}={default}: {error}; typesafe needs UTILITY_TYPESAFE_API_KEY; openrouter needs UTILITY_OPENROUTER_API_KEY"))?;
+            .map_err(|error| format!("{UTILITY_DECISION_DRIVER_ENV}={default}: {error}; typesafe needs UTILITY_TYPESAFE_API_KEY; openrouter needs UTILITY_OPENROUTER_API_KEY"))?;
         tracing::info!(
             decisions.default_driver = router.default_driver(),
             decisions.drivers = ?router.registry().ids(),
@@ -281,20 +297,35 @@ mod tests {
     }
 
     #[test]
-    fn the_openai_driver_is_preview_opt_in() {
+    fn the_openai_driver_needs_only_the_utility_key() {
         let error = SystemDecisions::default()
             .driver("openai")
             .into_service(no_utility())
             .err()
             .expect("a configuration error");
-        assert!(error.contains("DECISIONS_OPENAI_PREVIEW=1"), "{error}");
+        assert!(error.contains("UTILITY_OPENAI_API_KEY"), "{error}");
 
         let service = SystemDecisions::default()
-            .openai_preview("sk-test")
+            .openai("sk-test")
             .driver("openai")
             .into_service(no_utility())
             .unwrap();
-        assert_eq!(service.name(), "OpenAIDecisionsPreview");
+        assert_eq!(service.name(), "OpenAIDecisions");
+    }
+
+    #[test]
+    fn a_renamed_variable_stops_startup_with_its_new_name() {
+        let error = SystemDecisions {
+            renamed: Some(RENAMED_ENV[0]),
+            ..SystemDecisions::default()
+        }
+        .into_service(no_utility())
+        .err()
+        .expect("a configuration error");
+        assert_eq!(
+            error,
+            "DECISIONS_DRIVER was renamed to UTILITY_DECISION_DRIVER"
+        );
     }
 
     #[test]

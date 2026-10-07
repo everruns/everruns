@@ -1,6 +1,7 @@
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -10,11 +11,11 @@ impl Database {
         input: CreateDeclarativeCapabilityRow,
     ) -> Result<DeclarativeCapabilityRow> {
         Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(
-            r#"
+            sql!(r#"
             INSERT INTO declarative_capabilities (org_id, public_id, name, display_name, description, definition)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, org_id, public_id, name, display_name, description, status, definition, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {DeclarativeCapabilityRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.public_id)
@@ -31,13 +32,13 @@ impl Database {
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<DeclarativeCapabilityRow>> {
-        Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(
+        Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, display_name, description, status, definition, created_at, updated_at, archived_at, deleted_at
+            SELECT {DeclarativeCapabilityRow}
             FROM declarative_capabilities
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -49,13 +50,13 @@ impl Database {
         org_id: i64,
         name: &str,
     ) -> Result<Option<DeclarativeCapabilityRow>> {
-        Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(
+        Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, display_name, description, status, definition, created_at, updated_at, archived_at, deleted_at
+            SELECT {DeclarativeCapabilityRow}
             FROM declarative_capabilities
             WHERE org_id = $1 AND name = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(name)
         .fetch_optional(&self.pool)
@@ -67,13 +68,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<DeclarativeCapabilityRow>> {
-        Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(
+        Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(sql!(
             r#"
-            SELECT id, org_id, public_id, name, display_name, description, status, definition, created_at, updated_at, archived_at, deleted_at
+            SELECT {DeclarativeCapabilityRow}
             FROM declarative_capabilities
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -120,7 +121,7 @@ impl Database {
         input: UpdateDeclarativeCapability,
     ) -> Result<Option<DeclarativeCapabilityRow>> {
         Ok(sqlx::query_as::<_, DeclarativeCapabilityRow>(
-            r#"
+            sql!(r#"
             UPDATE declarative_capabilities
             SET
                 name = COALESCE($3, name),
@@ -134,8 +135,8 @@ impl Database {
                 definition = COALESCE($7, definition),
                 archived_at = CASE WHEN $6 = 'archived' THEN COALESCE(archived_at, NOW()) ELSE archived_at END
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, public_id, name, display_name, description, status, definition, created_at, updated_at, archived_at, deleted_at
-            "#,
+            RETURNING {DeclarativeCapabilityRow}
+            "#),
         )
         .bind(org_id)
         .bind(id)

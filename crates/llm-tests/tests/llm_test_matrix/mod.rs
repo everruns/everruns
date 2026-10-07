@@ -415,6 +415,24 @@ pub const FIREWORKS_KIMI_K3: ProviderModelConfig = ProviderModelConfig::new(
     everruns_drivers::fireworks::descriptor,
 );
 
+// Mistral Large 4 on Mistral's own Chat Completions API. Its reasoning arrives
+// as typed `thinking` content chunks rather than a string, which the shared
+// protocol must split from the answer, so this cell also carries the
+// reasoning scenarios.
+pub const MISTRAL_LARGE_4: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Mistral,
+    "mistral-large-4",
+    everruns_drivers::mistral::descriptor,
+);
+
+// The same model through OpenRouter: the gateway alias must resolve to the
+// same profile, and OpenRouter's normalized wire must carry it end to end.
+pub const OPENROUTER_MISTRAL_LARGE_4: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenRouter,
+    "mistralai/mistral-large-4-0",
+    everruns_drivers::openrouter::descriptor,
+);
+
 // Vercel AI Gateway routes to upstream providers over the Open Responses
 // spec. The point of this case is to exercise the Open Responses driver
 // against a gateway rather than a first-party host, so the model must call

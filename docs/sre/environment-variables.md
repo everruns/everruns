@@ -23,7 +23,7 @@ a working default; each row links to the section that documents it.
 | [`STORAGE_*`](#object-storage-s3-compatible-blob-backend) | API | No | File and image bytes stay in PostgreSQL. |
 | [`SERVER_GRPC_ADDRESS`](#server_grpc_address), [`SERVER_GRPC_BIND_ADDR`](#server_grpc_bind_addr), [`WORKER_GRPC_CONNECT_TIMEOUT`](#worker_grpc_connect_timeout), [`WORKER_GRPC_TLS_*`](#worker_grpc_tls_cert) | API or workers | No | Plain gRPC on `127.0.0.1:9001` / `0.0.0.0:9001`. |
 | [`DEFAULT_*_API_KEY`](#default-api-keys-development-convenience) | API | No | Providers need keys configured in Settings > Providers. |
-| [`UTILITY_*`](#system-model-keys), [`DECISIONS_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
+| [`UTILITY_*`](#system-model-keys) | API and workers | No | Analyze, Health, and model-backed guardrail checks are unavailable or skipped. |
 | [`EMAIL_PROVIDER`](#system-email-delivery), [`RESEND_*`](#system-email-delivery) | API | When sending email | Email delivery is disabled. |
 | [`RATE_LIMIT_API_REQUESTS_PER_MINUTE`](#other-server-variables), [`TRUSTED_PROXY_HOPS`](#other-server-variables), [`EXPECTED_INSTANCES`](#other-server-variables), [`EVENT_RETENTION_DAYS`](#other-server-variables), [`SSE_*`](#sse-streaming-configuration) | API | No | 1200 requests per minute, one trusted proxy, one instance, no event archiving, default SSE limits. |
 | [`OTEL_*`](#opentelemetry-configuration), [`EVERRUNS_TRACE_CONVENTIONS`](#everruns_trace_conventions), [`BRAINTRUST_*`](#braintrust-integration) | API and workers | No | Tracing and Braintrust export are off. |
@@ -474,10 +474,9 @@ platform uses for its own internal work.
 | `UTILITY_OPENAI_API_KEY` | Agent Analyze/Health checks, and guardrail checks with `engine: "utility_llm"` (the default), called directly against OpenAI | Those checks are skipped; Analyze and Health are unavailable |
 | `UTILITY_OPENROUTER_API_KEY` | The same work, routed through OpenRouter instead. Setting it selects OpenRouter; it wins when both keys are set, and the startup log says so | The utility LLM falls back to `UTILITY_OPENAI_API_KEY` |
 | `UTILITY_LLM_MODEL` | The model the utility LLM calls on whichever backend was selected | Defaults to `gpt-6-luna` on OpenAI, `openai/gpt-6-luna` on OpenRouter |
-| `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"`, answered by TypeSafe | Those checks are skipped with a warning and the turn proceeds, unless `DECISIONS_DRIVER` picks another driver |
-| `DECISIONS_DRIVER` | Which decision driver answers `jev` checks: `typesafe`, `openai` (preview, see below), or `llm` to answer them with the utility LLM when you have no TypeSafe key. `llm` answers are labels, not calibrated probabilities | `typesafe` when its key is set, otherwise disabled. A driver that is not configured stops startup |
-| `DECISIONS_OPENAI_PREVIEW` | Set to `1` to register the `openai` decision driver (OpenAI's Decisions API, in limited preview) using `UTILITY_OPENAI_API_KEY`, so `DECISIONS_DRIVER=openai` or an `openai/<model>` request can reach it | The driver is not registered |
-| `DECISIONS_MODEL` | The model the chosen decision driver is asked for | The driver's own default. Not allowed with `DECISIONS_DRIVER=llm`, which uses `UTILITY_LLM_MODEL` |
+| `UTILITY_TYPESAFE_API_KEY` | Guardrail checks with `engine: "jev"`, answered by TypeSafe | Those checks are skipped with a warning and the turn proceeds, unless `UTILITY_DECISION_DRIVER` picks another driver |
+| `UTILITY_DECISION_DRIVER` | Which decision driver answers `jev` checks and the Slack respond-or-not check: `typesafe`, `openai` (OpenAI's Decisions API, using `UTILITY_OPENAI_API_KEY`), `openrouter` (Jev through `UTILITY_OPENROUTER_API_KEY`), or `llm` to answer them with the utility LLM when you have no TypeSafe key. `llm` answers are labels, not calibrated probabilities | `typesafe` when its key is set, otherwise disabled. A driver that is not configured stops startup. Replaces `DECISIONS_DRIVER`, which now stops startup |
+| `UTILITY_DECISION_MODEL` | The model the chosen decision driver is asked for | The driver's own default. Not allowed with `UTILITY_DECISION_DRIVER=llm`, which uses `UTILITY_LLM_MODEL`. Replaces `DECISIONS_MODEL` |
 
 The keys are read from the process environment at startup. Missing keys **fail
 open**: a guardrail whose engine is not configured never blocks, so a missing
@@ -496,6 +495,8 @@ UTILITY_OPENAI_API_KEY=sk-...
 UTILITY_OPENROUTER_API_KEY=sk-or-...
 UTILITY_LLM_MODEL=openai/gpt-6-luna
 UTILITY_TYPESAFE_API_KEY=ts-...
+# ...or answer jev checks with OpenAI's Decisions API:
+UTILITY_DECISION_DRIVER=openai
 ```
 
 Agents can also be given the TypeSafe capability directly, which is a
@@ -924,6 +925,7 @@ For setup instructions and configuration details, see the [Braintrust Integratio
 
 ## FEATURE_CHATGPT_PLAN
 
-Enable personal ChatGPT plan connections in self-hosted deployments. Defaults to
-`off`; set `adoption` to make the feature available for organization opt-in. Requires a stable
+Rollout grade for personal ChatGPT plan connections. Defaults to `adoption`: an
+organization administrator enables **ChatGPT plan connections** in Settings → Features.
+Set `off` to remove the feature from the deployment. Requires a stable
 `SECRETS_ENCRYPTION_KEY`. See [ChatGPT plan](/features/chatgpt/).

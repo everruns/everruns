@@ -166,7 +166,7 @@ async fn run(backend: &StorageBackend, label: &str, harness_id: HarnessId) {
 
 #[tokio::test]
 async fn in_memory_agent_avatar_storage() {
-    let backend = StorageBackend::in_memory();
+    let backend = StorageBackend::test_database();
     run(&backend, "memory", HarnessId::from_uuid(Uuid::nil())).await;
 }
 
@@ -175,7 +175,7 @@ async fn postgres_agent_avatar_storage() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("Failed to connect to PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool));
+    let backend = StorageBackend::from_database(Database::new(pool));
     org_init::initialize_org_harnesses(&backend, DEFAULT_ORG_ID)
         .await
         .expect("initialize built-in harnesses");

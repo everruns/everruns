@@ -372,6 +372,7 @@ impl EventLog for InMemoryWorkflowEventStore {
         workflow_type: &str,
         input: serde_json::Value,
         mut task: TaskDefinition,
+        steering: Option<RunSteering>,
     ) -> Result<RunStart, StoreError> {
         task.workflow_id = Some(workflow_id);
         // Lock order: workflows, then tasks. Nothing else nests these locks,
@@ -414,6 +415,22 @@ impl EventLog for InMemoryWorkflowEventStore {
                         .is_some_and(|t| t.status == TaskStatus::Claimed)
                 });
                 if workflow.status == WorkflowStatus::Running || has_claimed_task {
+                    // A run stranded between two steps resumes, so the
+                    // signal the caller sends next has a run to act on it.
+                    if workflow.status == WorkflowStatus::Running {
+                        tasks.requeue_stranded(workflow_id, now);
+                    }
+                    if let Some(RunSteering {
+                        signal_type,
+                        payload: Some(payload),
+                    }) = steering
+                    {
+                        workflow.signals.push(WorkflowSignal {
+                            signal_type,
+                            payload,
+                            sent_at: now,
+                        });
+                    }
                     return Ok(RunStart::Active);
                 }
                 workflow.status = WorkflowStatus::Running;
@@ -421,6 +438,13 @@ impl EventLog for InMemoryWorkflowEventStore {
                 workflow.error = None;
                 workflow.started_at = Some(now);
                 workflow.completed_at = None;
+                // The new run acts on what signals sent to the previous one
+                // announced.
+                if let Some(steering) = &steering {
+                    workflow
+                        .signals
+                        .retain(|signal| signal.signal_type != steering.signal_type);
+                }
                 for id in ids {
                     tasks.update(id, |t| {
                         if t.status == TaskStatus::Pending {

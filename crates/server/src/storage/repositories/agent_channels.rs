@@ -6,7 +6,7 @@
 // supply the NOT NULL columns the endpoint carries (`agent_id`,
 // `owner_principal_id`).
 //
-// The lifted identity, version policy, and owner are derived from the owning
+// The lifted identity and owner are derived from the owning
 // App on insert, which is exactly where those values came from before the
 // re-parenting. A new endpoint's status is independent of App publish state.
 
@@ -15,6 +15,7 @@ use super::super::{CreateAgentChannelRow, IngressChannelRow, UpdateAgentChannelR
 use super::Database;
 use crate::errors::BadRequestError;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
@@ -24,7 +25,7 @@ fn missing_agent_error(app_id: Uuid) -> anyhow::Error {
     .into()
 }
 
-/// Insert an endpoint, deriving its agent, identity, version policy, and owner
+/// Insert an endpoint, deriving its agent, identity and owner
 /// from the owning App. Selecting from `apps` rather than binding the values
 /// keeps the derivation atomic with the insert. Yields no row when the App is
 /// missing or still agent-less, which callers turn into `missing_agent_error`.
@@ -32,14 +33,12 @@ const INSERT_CHANNEL_SQL: &str = r#"
     INSERT INTO agent_channels (
         app_id, legacy_alias_id, agent_id, public_id, channel_type, channel_config,
         channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled,
-        status, virtual_user_id, agent_version_policy, agent_version_id,
-        owner_principal_id, resolved_owner_user_id
+        status, virtual_user_id, owner_principal_id, resolved_owner_user_id
     )
     SELECT
         app.id, app.public_id, app.agent_id, $2, $3, $4, $5, $6, $7, $8, $9,
         CASE WHEN $9 THEN 'draft' ELSE 'disabled' END,
-        app.virtual_user_id, app.agent_version_policy, app.agent_version_id,
-        app.owner_principal_id, app.resolved_owner_user_id
+        app.virtual_user_id, app.owner_principal_id, app.resolved_owner_user_id
     FROM apps AS app
     WHERE app.id = $1 AND app.agent_id IS NOT NULL
     RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
@@ -130,8 +129,6 @@ impl Database {
                 agent.status AS agent_status,
                 agent.exposures_suspended,
                 ae.virtual_user_id,
-                ae.agent_version_policy,
-                ae.agent_version_id,
                 ae.owner_principal_id,
                 ae.resolved_owner_user_id,
                 ae.channel_type,
@@ -167,7 +164,7 @@ impl Database {
                 COALESCE(NULLIF(agent.display_name, ''), agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
                 agent.status AS agent_status, agent.exposures_suspended,
-                ae.virtual_user_id, ae.agent_version_policy, ae.agent_version_id,
+                ae.virtual_user_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
                 ae.enabled, ae.status AS channel_status, ae.created_at, ae.updated_at
@@ -198,7 +195,7 @@ impl Database {
                 COALESCE(NULLIF(agent.display_name, ''), agent.name) AS agent_name,
                 agent.description AS agent_description, agent.harness_id,
                 agent.status AS agent_status, agent.exposures_suspended,
-                ae.virtual_user_id, ae.agent_version_policy, ae.agent_version_id,
+                ae.virtual_user_id,
                 ae.owner_principal_id, ae.resolved_owner_user_id, ae.channel_type,
                 ae.channel_config, ae.channel_config_encrypted, ae.auth, ae.auth_encrypted,
                 ae.enabled, ae.status AS channel_status, ae.created_at, ae.updated_at
@@ -225,11 +222,11 @@ impl Database {
             INSERT INTO agent_channels (
                 agent_id, app_id, legacy_alias_id, public_id, channel_type,
                 channel_config, channel_config_encrypted, auth, auth_encrypted,
-                enabled, status, virtual_user_id, agent_version_policy,
-                agent_version_id, owner_principal_id, resolved_owner_user_id
+                enabled, status, virtual_user_id, owner_principal_id,
+                resolved_owner_user_id
             )
             SELECT $2, NULL, NULL, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15
+                $11, $12, $13
             FROM agents
             WHERE org_id = $1 AND id = $2 AND status = 'active'
             RETURNING id
@@ -246,8 +243,6 @@ impl Database {
         .bind(input.enabled)
         .bind(&input.status)
         .bind(input.virtual_user_id)
-        .bind(&input.agent_version_policy)
-        .bind(input.agent_version_id)
         .bind(input.owner_principal_id)
         .bind(input.resolved_owner_user_id)
         .fetch_optional(&self.pool)
@@ -277,8 +272,6 @@ impl Database {
                 auth_encrypted = CASE WHEN $10 THEN $11 ELSE ae.auth_encrypted END,
                 enabled = COALESCE($12, ae.enabled),
                 status = COALESCE($13, ae.status),
-                agent_version_policy = COALESCE($14, ae.agent_version_policy),
-                agent_version_id = CASE WHEN $15 THEN $16 ELSE ae.agent_version_id END,
                 updated_at = NOW()
             FROM agents AS agent
             WHERE agent.org_id = $1 AND agent.id = $2
@@ -298,9 +291,6 @@ impl Database {
         .bind(input.auth_encrypted.into_value())
         .bind(input.enabled)
         .bind(&input.status)
-        .bind(&input.agent_version_policy)
-        .bind(input.agent_version_id.is_changed())
-        .bind(input.agent_version_id.into_value())
         .execute(&self.pool)
         .await?;
         self.get_agent_channel(org_id, agent_id, public_id).await
@@ -345,6 +335,30 @@ impl Database {
         Ok(deleted.rows_affected() > 0)
     }
 
+    /// Slack deletion is irreversible; keep its progress even if the enclosing
+    /// Agent mutation rolls back after another app fails. The lifecycle lock
+    /// prevents installs from replacing these credentials during cleanup.
+    pub async fn record_slack_app_removed(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+        config: serde_json::Value,
+        encrypted: Option<Vec<u8>>,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin_detached().await?;
+        let result = sqlx::query(
+            "UPDATE agent_channels AS channel SET channel_config = $4, \
+             channel_config_encrypted = $5, enabled = false, status = 'disabled', updated_at = NOW() \
+             FROM agents AS agent WHERE agent.org_id = $1 AND agent.id = $2 \
+             AND channel.agent_id = agent.id AND channel.public_id = $3 AND channel.channel_type = 'slack'",
+        )
+        .bind(org_id).bind(agent_id).bind(public_id).bind(config).bind(encrypted)
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn list_ingress_channels_by_legacy_alias(
         &self,
         legacy_alias_id: &str,
@@ -366,8 +380,6 @@ impl Database {
                 agent.status AS agent_status,
                 agent.exposures_suspended,
                 ae.virtual_user_id,
-                ae.agent_version_policy,
-                ae.agent_version_id,
                 ae.owner_principal_id,
                 ae.resolved_owner_user_id,
                 ae.channel_type,
@@ -395,14 +407,14 @@ impl Database {
     }
 
     pub async fn list_legacy_alias_channels(&self, app_id: Uuid) -> Result<Vec<AgentChannelRow>> {
-        let rows = sqlx::query_as::<_, AgentChannelRow>(
+        let rows = sqlx::query_as::<_, AgentChannelRow>(sql!(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
+            SELECT {AgentChannelRow}
             FROM agent_channels
             WHERE app_id = $1
             ORDER BY created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(app_id)
         .fetch_all(&self.pool)
         .await?;
@@ -422,13 +434,13 @@ impl Database {
         &self,
         public_id: &str,
     ) -> Result<Option<AgentChannelRow>> {
-        let row = sqlx::query_as::<_, AgentChannelRow>(
+        let row = sqlx::query_as::<_, AgentChannelRow>(sql!(
             r#"
-            SELECT id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, auth, auth_encrypted, durable_schedule_id, enabled, status, created_at, updated_at
+            SELECT {AgentChannelRow}
             FROM agent_channels
             WHERE public_id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(public_id)
         .fetch_optional(&self.pool)
         .await?;

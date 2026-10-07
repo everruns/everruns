@@ -214,7 +214,7 @@ fn build_service(
 
 #[tokio::test]
 async fn search_returns_ordered_citations() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption =
         Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
@@ -261,7 +261,7 @@ async fn search_returns_ordered_citations() {
 
 #[tokio::test]
 async fn search_excludes_archived_cross_org_and_unknown_without_error() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption =
         Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
     let vector_store: Arc<dyn VectorStore> = Arc::new(InMemoryVectorStore::new());
@@ -339,7 +339,7 @@ async fn search_excludes_archived_cross_org_and_unknown_without_error() {
 
 #[tokio::test]
 async fn search_respects_top_k_across_indexes() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption =
         Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
@@ -373,7 +373,7 @@ async fn search_respects_top_k_across_indexes() {
 
 #[tokio::test]
 async fn search_reports_embedding_usage_per_index() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption =
         Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
@@ -421,7 +421,7 @@ async fn search_reports_embedding_usage_per_index() {
 
 #[tokio::test]
 async fn search_reports_embedding_usage_when_nothing_matches() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption =
         Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;

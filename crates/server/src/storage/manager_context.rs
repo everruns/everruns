@@ -4,13 +4,14 @@
 //! deletes.
 
 use chrono::{DateTime, Utc};
+use everruns_server_macros::Columns;
 use uuid::Uuid;
 
 /// Largest manager context document, in bytes.
 pub const MAX_MANAGER_CONTEXT_BYTES: usize = 16 * 1024;
 
 /// The stored document for one entity.
-#[derive(Debug, Clone, PartialEq, sqlx::FromRow)]
+#[derive(Debug, Clone, PartialEq, sqlx::FromRow, Columns)]
 pub struct ManagerContextRow {
     pub org_id: i64,
     pub entity_kind: String,

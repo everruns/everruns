@@ -9,6 +9,9 @@ pub mod queries;
 pub mod scoped_mcp;
 pub mod service;
 pub mod types;
+pub mod user_layer;
+pub mod user_manage;
+pub mod user_servers;
 
 pub use commands::*;
 pub use service::{

@@ -125,11 +125,7 @@ impl WorkerServiceImpl {
     ) -> Result<Response<proto::SandboxPersistenceResponse>, Status> {
         let request = request.into_inner();
         let value = payload(&request)?;
-        let pool = self
-            .db
-            .pool()
-            .ok_or_else(|| Status::unavailable("Sandbox persistence requires PostgreSQL"))?;
-        let store = crate::storage::PgSandboxCheckpointStore::new(pool.clone());
+        let store = crate::storage::PgSandboxCheckpointStore::new(self.db.pool().clone());
 
         let response =
             match request.operation.as_str() {

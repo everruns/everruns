@@ -30,7 +30,6 @@
 //!   proven by this crate's tests, benches and `examples/order_pipeline.rs`.
 //!   Turn it off with `default-features = false` to compile only the store,
 //!   queue, reliability, scheduler and worker pool core.
-//! - `sqlite`: the `sqlite` module, a small rusqlite wrapper for local hosts.
 //!
 //! # Example
 //!
@@ -69,13 +68,11 @@ pub mod maintenance;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
-#[cfg(feature = "sqlite")]
-pub mod sqlite;
+mod update_field;
 // `/proc` readings for the worker pool's backpressure and the bench reports.
 // Not part of the API.
 pub(crate) mod sysstat;
 pub mod task_events;
-pub mod update_field;
 pub mod worker;
 pub mod workflow;
 
@@ -125,17 +122,20 @@ pub use engine::{
 };
 pub use maintenance::{
     NoopReapHandler, ReapHandler, ReaperConfig, StaleTaskReaper, reap_stale_tasks,
+    requeue_stranded_workflows,
 };
 pub use persistence::{
     CircuitBreakerState, CircuitBreakers, ClaimedTask, CreateScheduleRow, DeadLetters,
-    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HeartbeatResponse,
-    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ReclaimResult, RunStart,
+    DeadTaskInfo, DlqEntry, DlqFilter, DurableAdmin, Enqueued, EventLog, HandOff, HandedOff,
+    HeartbeatResponse, InMemoryWorkflowEventStore, NextStep, Pagination,
+    PostgresWorkflowEventStore, ReclaimResult, RequeuedWorkflow, RunStart, RunSteering,
     ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter,
     ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo, Schedules,
-    SealedTaskInfo, SignalStore, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome,
-    TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter,
-    WorkerInfo, WorkerRegistry, WorkflowEndSubscription, WorkflowEventInfo, WorkflowEventStore,
-    WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    SealedTaskInfo, SignalDrain, SignalStore, StoreError, SystemHealth, TaskDefinition,
+    TaskFailureOutcome, TaskFilter, TaskInfo, TaskQueue, TaskStatus, TraceContext, UpdateSchedule,
+    WorkerFilter, WorkerHeartbeat, WorkerInfo, WorkerRegistry, WorkflowEndSubscription,
+    WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
+    WorkflowStatus,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,
@@ -144,6 +144,7 @@ pub use scheduler::{
     Cadence, DurableScheduler, EnsureOutcome, ScheduleSpec, SchedulerConfig, SchedulerError,
     disable_schedule, ensure_schedule, find_schedule,
 };
+// `ScheduleUpdate` fields are `UpdateField`s, so the type stays nameable here.
 pub use update_field::UpdateField;
 pub use worker::{WorkerPool, WorkerPoolConfig, WorkerPoolError};
 pub use workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal, signal_types};

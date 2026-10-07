@@ -4,7 +4,7 @@
 
 use std::sync::Mutex;
 
-use everruns_durable::sqlite as rusqlite;
+use everruns::sqlite as rusqlite;
 use rusqlite::Connection;
 use rusqlite::types::ValueRef;
 use serve::prelude::*;

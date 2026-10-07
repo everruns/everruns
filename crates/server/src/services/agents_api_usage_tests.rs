@@ -25,7 +25,7 @@ struct Fixture {
 }
 
 async fn fixture(base_url: Option<&str>) -> Fixture {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let encryption = Arc::new(
         EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap(),
     );
@@ -45,7 +45,7 @@ async fn fixture(base_url: Option<&str>) -> Fixture {
     let session = db
         .create_session(CreateSessionRow {
             org_id: 1,
-            owner_principal_id: PrincipalId::new(),
+            owner_principal_id: PrincipalId::from_seed(1),
             title: Some("Late usage session".into()),
             capabilities: json!({}),
             mcp_servers: json!([]),

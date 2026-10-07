@@ -8,7 +8,8 @@
 //! configurations on the same dataset.
 //!
 //! The matrix:
-//! - **target** (model): key-gated `anthropic`/`openai`/`openrouter` defaults,
+//! - **target** (model): key-gated `anthropic`/`openai`/`openrouter` defaults
+//!   (`mistral/<model>` on request),
 //!   or `EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-5,openai/gpt-5.5,openrouter/z-ai/glm-5.2"`
 //! - **effort** axis: `EVERRUNS_EVAL_EFFORTS="default,low,high"`
 //! - **harness** axis: `EVERRUNS_EVAL_HARNESSES="minimal,workspace,coding"`
@@ -47,7 +48,7 @@ const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
 const DEFAULT_OPENROUTER_MODEL: &str = "z-ai/glm-5.2";
 
 /// Model matrix axis. `EVERRUNS_EVAL_TARGETS` is a comma-separated list of
-/// `provider/model` entries (`anthropic/...`, `openai/...`,
+/// `provider/model` entries (`anthropic/...`, `openai/...`, `mistral/...`,
 /// `openrouter/<vendor>/<model>`). Unset → key-gated provider defaults.
 fn targets() -> Vec<Target> {
     let spec = std::env::var("EVERRUNS_EVAL_TARGETS").unwrap_or_default();
@@ -65,6 +66,7 @@ fn targets() -> Vec<Target> {
             Some(("anthropic", model)) => Target::anthropic(model),
             Some(("openai", model)) => Target::openai(model),
             Some(("openrouter", model)) => Target::cloud("openrouter", model, "OPENROUTER_API_KEY"),
+            Some(("mistral", model)) => Target::cloud("mistral", model, "MISTRAL_API_KEY"),
             // Unknown providers stay in the matrix; the subject rejects them
             // with a clear infra error naming the supported set.
             Some((provider, model)) => Target::new(entry, provider, model),

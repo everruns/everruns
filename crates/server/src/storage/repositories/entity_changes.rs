@@ -101,6 +101,24 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn latest_entity_revision(
+        &self,
+        org_id: i64,
+        entity_kind: &str,
+        entity_ref: &str,
+    ) -> Result<Option<i64>> {
+        let revision: Option<i64> = sqlx::query_scalar(
+            "SELECT max(revision) FROM entity_changes \
+             WHERE org_id = $1 AND entity_kind = $2 AND entity_ref = $3",
+        )
+        .bind(org_id)
+        .bind(entity_kind)
+        .bind(entity_ref)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(revision)
+    }
+
     pub async fn get_entity_revision(
         &self,
         key: &EntityRevisionKey,

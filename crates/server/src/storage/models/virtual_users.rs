@@ -1,4 +1,5 @@
 use super::*;
+use everruns_server_macros::Columns;
 
 #[derive(Debug, Clone, FromRow)]
 pub struct VirtualUserRow {
@@ -60,7 +61,7 @@ impl From<VirtualUserConnectionRow> for UserConnectionRow {
     }
 }
 
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
+#[derive(Debug, Clone, FromRow, serde::Serialize, Columns)]
 pub struct VirtualUserPreferenceRow {
     pub id: Uuid,
     pub virtual_user_id: VirtualUserId,

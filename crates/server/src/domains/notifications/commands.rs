@@ -17,42 +17,31 @@ pub struct ListNotifications {
     pub limit: Option<i64>,
 }
 
+#[command(
+    name = "list_notifications",
+    category = "notifications",
+    description = "List notifications for the current user.",
+    method = "GET",
+    path = "/v1/notifications"
+)]
 impl Command for ListNotifications {
     type Output = ListNotificationsResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_notifications",
-            category: "notifications",
-            description: "List notifications for the current user.",
-            method: "GET",
-            path: "/v1/notifications",
-        }
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ListNotificationsResponse, CommandError> {
         let user_id = require_user_id(ctx)?;
         let limit = self.limit.unwrap_or(50).clamp(1, 100);
         let service = crate::domains::notifications::NotificationService::new(ctx.db.clone());
-        let notifications = service
-            .list(ctx.org_id(), user_id, limit)
-            .await
-            .map_err(classify_anyhow)?;
-        let unviewed_count = service
-            .count_unviewed(ctx.org_id(), user_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let notifications = service.list(ctx.org_id(), user_id, limit).await?;
+        let unviewed_count = service.count_unviewed(ctx.org_id(), user_id).await?;
 
         let health_count = ctx
             .db
             .count_unviewed_notifications_by_kind(ctx.org_id(), user_id, "health.issue")
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let health_visible = if crate::domains::health_issues::can_receive_health(ctx).await? {
             ctx.db
                 .count_visible_health_notifications(ctx.org_id(), user_id)
-                .await
-                .map_err(classify_anyhow)?
+                .await?
         } else {
             0
         };
@@ -71,33 +60,22 @@ impl Command for ListNotifications {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListNotifications>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct MarkNotificationViewed {
     pub notification_id: String,
 }
 
+#[command(
+    name = "mark_notification_viewed",
+    category = "notifications",
+    description = "Mark a notification as viewed.",
+    method = "POST",
+    path = "/v1/notifications/{notification_id}/view",
+    policy = super::NOTIFICATION_ACCESS,
+    positional = "notification_id",
+)]
 impl Command for MarkNotificationViewed {
     type Output = Notification;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "mark_notification_viewed",
-            category: "notifications",
-            description: "Mark a notification as viewed.",
-            method: "POST",
-            path: "/v1/notifications/{notification_id}/view",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("notification_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&super::NOTIFICATION_ACCESS)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Notification, CommandError> {
         let user_id = require_user_id(ctx)?;
@@ -108,8 +86,7 @@ impl Command for MarkNotificationViewed {
         let existing = ctx
             .db
             .get_notification(ctx.org_id(), user_id, notification_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Notification"))?;
         if crate::domains::health_issues::filter_notifications(ctx, vec![existing])
             .await?
@@ -119,11 +96,8 @@ impl Command for MarkNotificationViewed {
         }
         let notification = crate::domains::notifications::NotificationService::new(ctx.db.clone())
             .mark_viewed(ctx.org_id(), user_id, notification_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Notification"))?;
         Ok(q::row_to_notification(notification))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<MarkNotificationViewed>() }

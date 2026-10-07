@@ -48,6 +48,10 @@ pub enum AgentsCommand {
         target: Option<String>,
         #[arg(long)]
         format: Option<String>,
+
+        /// Why you are making this change. Recorded in the agent's history
+        #[arg(long, value_name = "TEXT")]
+        reason: Option<String>,
     },
     /// Export an agent by name without IDs or credentials
     Export {
@@ -109,6 +113,10 @@ pub enum AgentsCommand {
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
+
+        /// Why you are making this change. Recorded in the agent's history
+        #[arg(long, value_name = "TEXT")]
+        reason: Option<String>,
     },
 
     /// Update an existing agent from a file definition
@@ -151,6 +159,10 @@ pub enum AgentsCommand {
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
+
+        /// Why you are making this change. Recorded in the agent's history
+        #[arg(long, value_name = "TEXT")]
+        reason: Option<String>,
     },
 }
 
@@ -186,6 +198,7 @@ pub async fn run(
             model,
             harness,
             tag,
+            reason,
         } => {
             let use_default_file = name.is_none()
                 && system_prompt.is_none()
@@ -211,6 +224,7 @@ pub async fn run(
                     &path,
                     initial_files_dir.as_deref(),
                     writable,
+                    reason.as_deref(),
                     output,
                     quiet,
                 )
@@ -231,6 +245,7 @@ pub async fn run(
                     model,
                     harness,
                     tag,
+                    reason,
                 )
                 .await
             }
@@ -246,6 +261,7 @@ pub async fn run(
             model,
             harness,
             tag,
+            reason,
         } => {
             let use_default_file = agent_id.is_none()
                 && name.is_none()
@@ -273,6 +289,7 @@ pub async fn run(
                     &path,
                     initial_files_dir.as_deref(),
                     writable,
+                    reason.as_deref(),
                     output,
                     quiet,
                 )
@@ -295,6 +312,7 @@ pub async fn run(
                     model,
                     harness,
                     tag,
+                    reason,
                 )
                 .await
             }
@@ -314,9 +332,11 @@ async fn import_from_file(
     path: &str,
     initial_files_dir: Option<&str>,
     writable: bool,
+    reason: Option<&str>,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
+    let client = super::api::ApiClient::new(api_url, api_key, org_id);
     let legacy_hidden_policy = std::fs::read_to_string(path)
         .ok()
         .is_some_and(|s| s.contains("initial_files_allow_hidden"));
@@ -351,8 +371,8 @@ async fn import_from_file(
                 file["is_readonly"] = serde_json::json!(false);
             }
         }
-        let response = super::api::ApiClient::new(api_url, api_key, org_id)
-            .post("/v1/agents/import", Some(&payload))
+        let response = client
+            .post_with_reason("/v1/agents/import", Some(&payload), reason)
             .await?;
         print_package_report(output, &response);
         return Ok(());
@@ -402,20 +422,15 @@ async fn import_from_file(
         (content, "text/plain")
     };
 
-    let http = reqwest::Client::new();
-    let mut req = http
-        .post(format!("{}/v1/agents/import", api_url))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", content_type);
-    let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
-    if let Some(org) = org_id.or(env_org.as_deref()) {
-        req = req.header("X-Org-Id", org);
-    }
-    let resp = req
-        .body(body)
-        .send()
-        .await
-        .context("Failed to send import request")?;
+    let resp = super::api::with_change_reason(
+        client.request(reqwest::Method::POST, "/v1/agents/import"),
+        reason,
+    )
+    .header("Content-Type", content_type)
+    .body(body)
+    .send()
+    .await
+    .context("Failed to send import request")?;
 
     let status = resp.status();
     if !status.is_success() {
@@ -1021,6 +1036,7 @@ async fn save_from_flags(
     model: Option<String>,
     harness: Option<String>,
     tags: Vec<String>,
+    reason: Option<String>,
 ) -> Result<()> {
     let without_file = if agent_id.is_some() {
         " for update without --file"
@@ -1031,14 +1047,17 @@ async fn save_from_flags(
     let system_prompt =
         system_prompt.with_context(|| format!("--system-prompt is required{without_file}"))?;
 
-    let params = agent_params(
-        agent_id,
-        name,
-        system_prompt,
-        description,
-        model,
-        harness,
-        tags,
+    let params = crate::contract::with_reason(
+        agent_params(
+            agent_id,
+            name,
+            system_prompt,
+            description,
+            model,
+            harness,
+            tags,
+        ),
+        reason.as_deref(),
     );
     let command = if agent_id.is_some() {
         "upsert_agent"

@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -16,15 +17,15 @@ impl Database {
         user_id: Uuid,
         limit: usize,
     ) -> Result<Vec<UserPreferenceRow>> {
-        let rows = sqlx::query_as::<_, UserPreferenceRow>(
+        let rows = sqlx::query_as::<_, UserPreferenceRow>(sql!(
             r#"
-            SELECT id, user_id, key, value, created_at, updated_at
+            SELECT {UserPreferenceRow}
             FROM user_preferences
             WHERE user_id = $1
             ORDER BY key ASC
             LIMIT $2
-            "#,
-        )
+            "#
+        ))
         .bind(user_id)
         .bind(limit as i64)
         .fetch_all(&self.pool)
@@ -39,13 +40,13 @@ impl Database {
         user_id: Uuid,
         key: &str,
     ) -> Result<Option<UserPreferenceRow>> {
-        let row = sqlx::query_as::<_, UserPreferenceRow>(
+        let row = sqlx::query_as::<_, UserPreferenceRow>(sql!(
             r#"
-            SELECT id, user_id, key, value, created_at, updated_at
+            SELECT {UserPreferenceRow}
             FROM user_preferences
             WHERE user_id = $1 AND key = $2
-            "#,
-        )
+            "#
+        ))
         .bind(user_id)
         .bind(key)
         .fetch_optional(&self.pool)
@@ -86,15 +87,15 @@ impl Database {
             }
         }
 
-        let row = sqlx::query_as::<_, UserPreferenceRow>(
+        let row = sqlx::query_as::<_, UserPreferenceRow>(sql!(
             r#"
             INSERT INTO user_preferences (user_id, key, value)
             VALUES ($1, $2, $3)
             ON CONFLICT (user_id, key)
             DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
-            RETURNING id, user_id, key, value, created_at, updated_at
-            "#,
-        )
+            RETURNING {UserPreferenceRow}
+            "#
+        ))
         .bind(user_id)
         .bind(key)
         .bind(value)

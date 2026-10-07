@@ -18,6 +18,11 @@
 // queue before the phase completes. A failed background store is logged, as
 // these emits already were on failure.
 //
+// Decision: queued events that pile up while an earlier store is in flight go
+// out together in one batched store (one RPC, one insert on the control plane)
+// instead of one round trip each. A store takes every event queued before it
+// ran, so later stores in the chain may find nothing left and do nothing.
+//
 // Decision: `output.message.started` carrying reasoning state is not queued. It
 // is persisted before the provider call so an interrupted worker can resume,
 // and its caller fails the phase when that store fails.
@@ -47,6 +52,9 @@ const QUEUED: &[&str] = &[
 pub struct WriteBehind {
     /// Turns true once every store queued so far has finished.
     tail: Arc<Mutex<watch::Receiver<bool>>>,
+    /// Events queued by [`WriteBehind::enqueue_event`] and not yet taken by a
+    /// store.
+    pending: Arc<Mutex<Vec<EventRequest>>>,
 }
 
 impl Default for WriteBehind {
@@ -59,6 +67,7 @@ impl WriteBehind {
     pub fn new() -> Self {
         Self {
             tail: Arc::new(Mutex::new(watch::channel(true).1)),
+            pending: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -83,6 +92,24 @@ impl WriteBehind {
         });
     }
 
+    /// Queue `request` and store it, together with every event queued after
+    /// it before the store starts, by calling `store` once with the batch.
+    pub fn enqueue_event<F>(&self, request: EventRequest, store: F)
+    where
+        F: FnOnce(Vec<EventRequest>) -> Store + Send + 'static,
+    {
+        lock(&self.pending).push(request);
+        let pending = self.pending.clone();
+        self.enqueue(Box::pin(async move {
+            // Let a phase's burst of start events land before taking them.
+            tokio::task::yield_now().await;
+            let batch = std::mem::take(&mut *lock(&pending));
+            if !batch.is_empty() {
+                store(batch).await;
+            }
+        }));
+    }
+
     /// Wait until every queued store has finished.
     pub async fn flush(&self) {
         let tail = self.lock().clone();
@@ -90,12 +117,16 @@ impl WriteBehind {
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, watch::Receiver<bool>> {
-        // The guarded receiver is replaced whole, so a poisoned lock still
-        // holds a valid one.
-        self.tail
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        lock(&self.tail)
     }
+}
+
+/// The guarded values are replaced or drained whole, so a poisoned lock still
+/// holds a valid one.
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Wait for a store to finish. A store whose task ended without reporting
@@ -155,6 +186,59 @@ mod tests {
         open.send(()).ok();
         waiter.await.unwrap();
         assert_eq!(*order.lock().unwrap(), vec![1, 2]);
+    }
+
+    fn request(event_type: &str) -> EventRequest {
+        use crate::core::{EventContext, OutputMessageStartedData};
+        use everruns_contracts::typed_id::{MessageId, SessionId, TurnId};
+        let mut request = EventRequest::new(
+            SessionId::new(),
+            EventContext::empty(),
+            OutputMessageStartedData {
+                reasoning_state: None,
+                turn_id: TurnId::new(),
+                message_id: MessageId::new(),
+                model: None,
+                iteration: None,
+                phase: None,
+            },
+        );
+        request.event_type = event_type.to_string();
+        request
+    }
+
+    #[tokio::test]
+    async fn events_queued_behind_a_store_in_flight_go_out_as_one_batch() {
+        let queue = WriteBehind::new();
+        let batches = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
+        let (open, opened) = tokio::sync::oneshot::channel::<()>();
+        let mut opened = Some(opened);
+        for event_type in ["a", "b", "c"] {
+            let batches = batches.clone();
+            let gate = opened.take();
+            queue.enqueue_event(request(event_type), move |batch| {
+                Box::pin(async move {
+                    if let Some(gate) = gate {
+                        gate.await.ok();
+                    }
+                    let types = batch.into_iter().map(|r| r.event_type).collect();
+                    batches.lock().unwrap().push(types);
+                })
+            });
+            // The first store has started and holds its batch.
+            tokio::task::yield_now().await;
+            tokio::task::yield_now().await;
+        }
+        open.send(()).ok();
+        queue.flush().await;
+        assert_eq!(
+            *batches.lock().unwrap(),
+            vec![
+                vec!["a".to_string()],
+                vec!["b".to_string(), "c".to_string()]
+            ],
+            "events queued while the first store ran share the next store"
+        );
     }
 
     #[test]

@@ -102,7 +102,7 @@ struct CacheFixture {
 
 impl CacheFixture {
     async fn new(scope: &'static str, ttl_ms: i64) -> Self {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         everruns_server::seed::seed_all(
             &db,
             everruns_core::DeploymentGrade::Dev,
@@ -119,7 +119,7 @@ impl CacheFixture {
                     name: format!("cache-{}", Uuid::new_v4()),
                     description: None,
                     url: "http://8.8.8.8/mcp".to_string(),
-                    transport_type: "streamable_http".to_string(),
+                    transport_type: "http".to_string(),
                     api_key_encrypted: None,
                     headers: None,
                     settings: Some(
@@ -312,8 +312,7 @@ async fn create_persisted_session(
             channel_id: None,
             harness_id: None,
             agent_id: Some(AgentId::from_uuid(agent_id)),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: Some(identity_id),
             owner_principal_id: principal_id,
             resolved_owner_user_id: None,

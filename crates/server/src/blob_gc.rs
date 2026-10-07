@@ -332,11 +332,7 @@ pub fn blob_gc_job(db: Arc<StorageBackend>, config: BlobGcConfig) -> ClusterJob 
         debug!("Blob GC disabled: no object-storage backend (inline/db storage has no orphans)");
         return disabled;
     };
-    let Some(pool) = db.pool().cloned() else {
-        // Object-storage is only wired on the PostgreSQL backend; defensive.
-        debug!("Blob GC disabled: no PostgreSQL pool");
-        return disabled;
-    };
+    let pool = db.pool().clone();
     if !config.enabled() {
         info!("Blob GC disabled (STORAGE_BLOB_GC_INTERVAL_SECONDS=0)");
         return disabled;

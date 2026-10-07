@@ -1117,7 +1117,7 @@ mod tests {
     use crate::storage::models::{UpdateHarness, UpdateMcpServer, UpdateProvider};
 
     fn make_db() -> StorageBackend {
-        StorageBackend::in_memory()
+        StorageBackend::test_database()
     }
 
     fn built_in_harnesses() -> Vec<crate::records::BuiltInHarnessDefinition> {
@@ -2082,7 +2082,7 @@ mod tests {
         // Create a second org.
         let second_org = db
             .create_organization(CreateOrganizationRow {
-                public_id: "org-second".into(),
+                public_id: format!("org_{}", uuid::Uuid::now_v7().simple()),
                 name: "Second Org".into(),
                 created_by: None,
             })

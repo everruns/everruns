@@ -52,6 +52,8 @@ export default defineConfig({
     "/features/agent-instructions/": "/capabilities/agent-instructions/",
     "/features/apps/": "/features/channels/",
     "/features/endpoints/": "/features/channels/",
+    // Agent versions were retired: entity history and restore replace them.
+    "/features/agent-versions/": "/features/change-history/",
     "/capabilities/auto-tool-search/": "/capabilities/tool-search/",
     "/capabilities/openai-tool-search/": "/capabilities/tool-search/",
     "/capabilities/claude-tool-search/": "/capabilities/tool-search/",
@@ -447,6 +449,7 @@ export default defineConfig({
                         { label: "GitHub", slug: "capabilities/github" },
                         { label: "GitHub Scout", slug: "capabilities/github-scout" },
                         { label: "Slack", slug: "capabilities/slack" },
+                        { label: "User MCP Servers", slug: "capabilities/user-mcp-servers" },
                       ],
                     },
                     {
@@ -474,6 +477,7 @@ export default defineConfig({
                         { label: "Tool Approval", slug: "capabilities/tool-approval" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
+                        { label: "Output Truncation", slug: "capabilities/output-truncation" },
                         { label: "Soft Approval", slug: "capabilities/soft-approval" },
                         { label: "Tool Loop Detection", slug: "capabilities/loop-detection" },
                       ],

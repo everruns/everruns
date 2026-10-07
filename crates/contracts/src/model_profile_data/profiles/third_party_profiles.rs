@@ -1,7 +1,7 @@
 use super::*;
 
 /// Profile payloads for non-OpenAI models exposed through OpenAI-compatible
-/// APIs (NVIDIA NIM, Alibaba, MiniMax, Moonshot, xAI, Microsoft). Pure value
+/// APIs (NVIDIA NIM, Alibaba, MiniMax, Mistral, Moonshot, xAI, Microsoft). Pure value
 /// store keyed by canonical id; which provider surfaces each model is offered
 /// under is decided by `REGISTRY`, not here. Sourced from models.dev unless
 /// noted otherwise.
@@ -291,6 +291,63 @@ pub(super) fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+            supports_server_compaction: false,
+            decisions: None,
+        }),
+
+        // Mistral Large 4: Mistral's 1T-parameter (49B active) multimodal MoE,
+        // a hybrid instruct-and-reasoning model, public preview 2026-10-06.
+        // Source: models.dev (mistral provider) for limits and capabilities,
+        // checked against Mistral's own `/v1/models` (524,288 context, vision,
+        // function calling, reasoning) and the launch post
+        // (mistral.ai/news/mistral-large-4) for list price: $1.36 / $4.18.
+        // models.dev's mistral entry carries $0.68 / $2.09, which is the
+        // launch discount (`/v1/models` bills it as
+        // `mistral-large-4-0-launch-discount`); the table keeps list price so
+        // estimates do not silently halve when the promotion ends. Cache read
+        // is models.dev's 10% of input at list price.
+        //
+        // Reasoning is a toggle, not a grade: the API accepts only
+        // `reasoning_effort` "none" and "high" (anything else is a 400), and
+        // omitting it answers without thinking. Weights are promised for the
+        // end of October 2026 under an unannounced license, so `open_weights`
+        // stays false until they ship. Knowledge cutoff not published.
+        "mistral-large-4" => Some(ModelProfile {
+            name: "Mistral Large 4".into(),
+            family: "mistral-large".into(),
+            description: None,
+            release_date: Some("2026-10-06".into()),
+            last_updated: Some("2026-10-06".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 1.36,
+                output: 4.18,
+                cache_read: Some(0.14),
+                cache_write: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                context: 524_288,
+                input: None,
+                output: 262_144,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_toggle()),
             speed: None,
             verbosity: None,
             tool_search: false,

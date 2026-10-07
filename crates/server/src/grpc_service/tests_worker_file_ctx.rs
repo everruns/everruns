@@ -26,7 +26,7 @@ async fn worker_service_with_virtual_mounts() -> (
     WorkerServiceImpl,
     Arc<crate::domains::session_files::VirtualMountRegistry>,
 ) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::Dev;
     let host_composition = crate::oss_host_composition_for_grade(grade);
     let encryption = Some(Arc::new(

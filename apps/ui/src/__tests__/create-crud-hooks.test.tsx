@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { createCrudHooks } from "@/hooks/create-crud-hooks";
@@ -84,5 +84,46 @@ describe("createCrudHooks", () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["widgets"] });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["widget", "widget-1"] });
+  });
+
+  it.each(["archive", "destroy"] as const)("refreshes the open detail after %s", async (action) => {
+    let status = "active";
+    const api = {
+      create: jest.fn(),
+      list: jest.fn(),
+      update: jest.fn(),
+      get: jest.fn(async () => ({ id: "widget-1", status })),
+      delete: jest.fn(async () => {
+        status = "archived";
+      }),
+      destroy: jest.fn(async () => {
+        status = "deleted";
+      }),
+    };
+    const hooks = createCrudHooks({
+      api,
+      staleTime: 60_000,
+      queryKeys: {
+        all: ["widgets"],
+        list: () => ["widgets"],
+        detail: (id: string) => ["widget", id],
+      },
+    });
+    const { result } = renderHook(
+      () => ({
+        detail: hooks.useDetail("widget-1"),
+        mutation: action === "archive" ? hooks.useDelete() : hooks.useDestroy(),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.detail.data?.status).toBe("active"));
+    await act(async () => {
+      await result.current.mutation.mutateAsync({ id: "widget-1" });
+    });
+    await waitFor(() =>
+      expect(result.current.detail.data?.status).toBe(
+        action === "archive" ? "archived" : "deleted",
+      ),
+    );
   });
 });

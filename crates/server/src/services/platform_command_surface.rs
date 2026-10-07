@@ -440,6 +440,7 @@ mod tests {
             container_sandbox: true,
             lua: true,
             chatgpt_plan: false,
+            mistral: false,
             chat_threads: true,
             notifications: true,
             evals: true,
@@ -448,7 +449,6 @@ mod tests {
             knowledge: true,
             plugins: true,
             channel_budgets: true,
-            agent_versions: true,
             voice: true,
             agent_delegation: true,
             observers: true,
@@ -459,6 +459,7 @@ mod tests {
             machine_payments: true,
             openai_agents_api: true,
             agent_change_reasons_required: false,
+            integrations: Default::default(),
         }
     }
 
@@ -470,6 +471,7 @@ mod tests {
                 container_sandbox: true,
                 lua: true,
                 chatgpt_plan: false,
+                mistral: false,
                 chat_threads: true,
                 notifications: true,
                 evals: true,
@@ -478,7 +480,6 @@ mod tests {
                 knowledge: true,
                 plugins: true,
                 channel_budgets: true,
-                agent_versions: true,
                 voice: true,
                 agent_delegation: true,
                 observers: true,
@@ -489,6 +490,7 @@ mod tests {
                 machine_payments: true,
                 openai_agents_api: true,
                 agent_change_reasons_required: false,
+                integrations: Default::default(),
             },
         )
     }

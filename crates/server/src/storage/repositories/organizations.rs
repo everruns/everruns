@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
-use sqlx::{Postgres, Transaction};
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 fn organization_member_cap_lock_key(org_id: i64) -> i64 {
@@ -12,7 +12,7 @@ fn organization_member_cap_lock_key(org_id: i64) -> i64 {
 }
 
 async fn add_organization_member_with_capacity_in_transaction(
-    tx: &mut Transaction<'_, Postgres>,
+    tx: &mut sqlx::PgConnection,
     org_id: i64,
     user_id: Uuid,
     role: &str,
@@ -20,15 +20,15 @@ async fn add_organization_member_with_capacity_in_transaction(
 ) -> Result<AddOrganizationMemberOutcome> {
     sqlx::query("SELECT pg_advisory_xact_lock($1)")
         .bind(organization_member_cap_lock_key(org_id))
-        .execute(&mut **tx)
+        .execute(&mut *tx)
         .await?;
 
     let existing = sqlx::query_as::<_, OrganizationMemberRow>(
-        "SELECT org_id, user_id, role, created_at FROM organization_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE",
+        sql!("SELECT {OrganizationMemberRow} FROM organization_members WHERE org_id = $1 AND user_id = $2 FOR UPDATE"),
     )
     .bind(org_id)
     .bind(user_id)
-    .fetch_optional(&mut **tx)
+    .fetch_optional(&mut *tx)
     .await?;
     if let Some(existing) = existing {
         return Ok(AddOrganizationMemberOutcome::AlreadyMember(existing));
@@ -37,23 +37,23 @@ async fn add_organization_member_with_capacity_in_transaction(
     let member_count =
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM organization_members WHERE org_id = $1")
             .bind(org_id)
-            .fetch_one(&mut **tx)
+            .fetch_one(&mut *tx)
             .await?;
     if member_count >= max_members {
         return Ok(AddOrganizationMemberOutcome::MemberLimitReached);
     }
 
-    let member = sqlx::query_as::<_, OrganizationMemberRow>(
+    let member = sqlx::query_as::<_, OrganizationMemberRow>(sql!(
         r#"
         INSERT INTO organization_members (org_id, user_id, role)
         VALUES ($1, $2, $3)
-        RETURNING org_id, user_id, role, created_at
-        "#,
-    )
+        RETURNING {OrganizationMemberRow}
+        "#
+    ))
     .bind(org_id)
     .bind(user_id)
     .bind(role)
-    .fetch_one(&mut **tx)
+    .fetch_one(&mut *tx)
     .await?;
     Ok(AddOrganizationMemberOutcome::Added(member))
 }
@@ -68,9 +68,9 @@ impl Database {
         &self,
         org_id: i64,
     ) -> Result<Option<OrganizationSettingsRow>> {
-        let row = sqlx::query_as::<_, OrganizationSettingsRow>(
-            "SELECT org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, created_at, updated_at FROM organization_settings WHERE org_id = $1",
-        )
+        let row = sqlx::query_as::<_, OrganizationSettingsRow>(sql!(
+            "SELECT {OrganizationSettingsRow} FROM organization_settings WHERE org_id = $1"
+        ))
         .bind(org_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -83,16 +83,16 @@ impl Database {
         org_id: i64,
         default_model_id: Option<uuid::Uuid>,
     ) -> Result<OrganizationSettingsRow> {
-        let row = sqlx::query_as::<_, OrganizationSettingsRow>(
+        let row = sqlx::query_as::<_, OrganizationSettingsRow>(sql!(
             r#"
             INSERT INTO organization_settings (org_id, default_model_id)
             VALUES ($1, $2)
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = EXCLUDED.default_model_id,
                 updated_at = NOW()
-            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, created_at, updated_at
-            "#,
-        )
+            RETURNING {OrganizationSettingsRow}
+            "#
+        ))
         .bind(org_id)
         .bind(default_model_id)
         .fetch_one(&self.pool)
@@ -116,9 +116,9 @@ impl Database {
             };
 
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
-            r#"
-            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service)
-            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb))
+            sql!(r#"
+            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, system_decisions)
+            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb), COALESCE($10, 'deployment'))
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = CASE
                     WHEN $3 THEN $2
@@ -136,9 +136,10 @@ impl Database {
                     WHEN $8 THEN COALESCE($9, '{}'::jsonb)
                     ELSE organization_settings.default_provider_per_service
                 END,
+                system_decisions = COALESCE($10, organization_settings.system_decisions),
                 updated_at = NOW()
-            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, created_at, updated_at
-            "#,
+            RETURNING {OrganizationSettingsRow}
+            "#),
         )
         .bind(org_id)
         .bind(input.default_model_id.clone().into_value().map(|id| id.uuid()))
@@ -149,6 +150,7 @@ impl Database {
         .bind(input.base_harness_id.is_changed())
         .bind(default_providers_changed)
         .bind(default_providers_json)
+        .bind(input.system_decisions.map(crate::storage::SystemDecisions::as_str))
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -191,13 +193,13 @@ impl Database {
         &self,
         input: CreateOrganizationRow,
     ) -> Result<OrganizationRow> {
-        let row = sqlx::query_as::<_, OrganizationRow>(
+        let row = sqlx::query_as::<_, OrganizationRow>(sql!(
             r#"
             INSERT INTO organizations (public_id, name, created_by)
             VALUES ($1, $2, $3)
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by, onboarding_completed_at
-            "#,
-        )
+            RETURNING {OrganizationRow}
+            "#
+        ))
         .bind(&input.public_id)
         .bind(&input.name)
         .bind(input.created_by)
@@ -214,16 +216,16 @@ impl Database {
         org_id: i64,
         input: CreateOrganizationRow,
     ) -> Result<Option<OrganizationRow>> {
-        let row = sqlx::query_as::<_, OrganizationRow>(
+        let row = sqlx::query_as::<_, OrganizationRow>(sql!(
             r#"
             -- Seeded orgs (default org) are created already-onboarded so their
             -- members are never sent to /setup. See migration 090.
             INSERT INTO organizations (org_id, public_id, name, created_by, onboarding_completed_at)
             VALUES ($1, $2, $3, $4, NOW())
             ON CONFLICT (org_id) DO NOTHING
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by, onboarding_completed_at
-            "#,
-        )
+            RETURNING {OrganizationRow}
+            "#
+        ))
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
@@ -349,14 +351,14 @@ impl Database {
         user_id: Uuid,
         role: &str,
     ) -> Result<OrganizationMemberRow> {
-        let row = sqlx::query_as::<_, OrganizationMemberRow>(
+        let row = sqlx::query_as::<_, OrganizationMemberRow>(sql!(
             r#"
             INSERT INTO organization_members (org_id, user_id, role)
             VALUES ($1, $2, $3)
             ON CONFLICT (org_id, user_id) DO UPDATE SET role = EXCLUDED.role
-            RETURNING org_id, user_id, role, created_at
-            "#,
-        )
+            RETURNING {OrganizationMemberRow}
+            "#
+        ))
         .bind(org_id)
         .bind(user_id)
         .bind(role)
@@ -401,14 +403,14 @@ impl Database {
         &self,
         org_id: i64,
     ) -> Result<Vec<OrganizationMemberRow>> {
-        let rows = sqlx::query_as::<_, OrganizationMemberRow>(
+        let rows = sqlx::query_as::<_, OrganizationMemberRow>(sql!(
             r#"
-            SELECT org_id, user_id, role, created_at
+            SELECT {OrganizationMemberRow}
             FROM organization_members
             WHERE org_id = $1
             ORDER BY created_at DESC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
@@ -466,13 +468,13 @@ impl Database {
         user_id: Uuid,
         role: &str,
     ) -> Result<Option<OrganizationMemberRow>> {
-        let row = sqlx::query_as::<_, OrganizationMemberRow>(
+        let row = sqlx::query_as::<_, OrganizationMemberRow>(sql!(
             r#"
             UPDATE organization_members SET role = $3
             WHERE org_id = $1 AND user_id = $2
-            RETURNING org_id, user_id, role, created_at
-            "#,
-        )
+            RETURNING {OrganizationMemberRow}
+            "#
+        ))
         .bind(org_id)
         .bind(user_id)
         .bind(role)
@@ -552,13 +554,13 @@ impl Database {
 
     /// Get user by external identity provider ID
     pub async fn get_user_by_external_id(&self, external_id: &str) -> Result<Option<UserRow>> {
-        let row = sqlx::query_as::<_, UserRow>(
+        let row = sqlx::query_as::<_, UserRow>(sql!(
             r#"
-            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+            SELECT {UserRow}
             FROM users
             WHERE external_id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(external_id)
         .fetch_optional(&self.pool)
         .await?;
@@ -651,10 +653,10 @@ impl Database {
         let mut tx = self.pool.begin().await?;
 
         // Read current memberships inside the transaction (lock rows)
-        let current: Vec<OrganizationMemberRow> = sqlx::query_as(
-            "SELECT org_id, user_id, role, created_at \
-             FROM organization_members WHERE org_id = $1 FOR UPDATE",
-        )
+        let current: Vec<OrganizationMemberRow> = sqlx::query_as(sql!(
+            "SELECT {OrganizationMemberRow} \
+             FROM organization_members WHERE org_id = $1 FOR UPDATE"
+        ))
         .bind(org_id)
         .fetch_all(&mut *tx)
         .await?;
@@ -718,14 +720,14 @@ impl Database {
     // ============================================
 
     pub async fn list_org_task_webhooks(&self, org_id: i64) -> Result<Vec<OrgTaskWebhookRow>> {
-        let rows = sqlx::query_as::<_, OrgTaskWebhookRow>(
+        let rows = sqlx::query_as::<_, OrgTaskWebhookRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            SELECT {OrgTaskWebhookRow}
             FROM organization_task_webhooks
             WHERE org_id = $1
             ORDER BY created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
@@ -736,14 +738,14 @@ impl Database {
         &self,
         org_id: i64,
     ) -> Result<Vec<OrgTaskWebhookRow>> {
-        let rows = sqlx::query_as::<_, OrgTaskWebhookRow>(
+        let rows = sqlx::query_as::<_, OrgTaskWebhookRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            SELECT {OrgTaskWebhookRow}
             FROM organization_task_webhooks
             WHERE org_id = $1 AND enabled = TRUE
             ORDER BY created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
@@ -754,13 +756,13 @@ impl Database {
         &self,
         input: CreateOrgTaskWebhook,
     ) -> Result<OrgTaskWebhookRow> {
-        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(
+        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(sql!(
             r#"
             INSERT INTO organization_task_webhooks (public_id, org_id, url, secret, enabled)
             VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, public_id, org_id, url, secret, enabled, created_at, updated_at
-            "#,
-        )
+            RETURNING {OrgTaskWebhookRow}
+            "#
+        ))
         .bind(&input.public_id)
         .bind(input.org_id)
         .bind(&input.url)
@@ -776,13 +778,13 @@ impl Database {
         org_id: i64,
         public_id: &str,
     ) -> Result<Option<OrgTaskWebhookRow>> {
-        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(
+        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            SELECT {OrgTaskWebhookRow}
             FROM organization_task_webhooks
             WHERE org_id = $1 AND public_id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .fetch_optional(&self.pool)
@@ -796,7 +798,7 @@ impl Database {
         public_id: &str,
         input: UpdateOrgTaskWebhook,
     ) -> Result<Option<OrgTaskWebhookRow>> {
-        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(
+        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(sql!(
             r#"
             UPDATE organization_task_webhooks SET
                 url = CASE WHEN $3 THEN $4 ELSE url END,
@@ -804,9 +806,9 @@ impl Database {
                 enabled = CASE WHEN $7 THEN $8 ELSE enabled END,
                 updated_at = NOW()
             WHERE org_id = $1 AND public_id = $2
-            RETURNING id, public_id, org_id, url, secret, enabled, created_at, updated_at
-            "#,
-        )
+            RETURNING {OrgTaskWebhookRow}
+            "#
+        ))
         .bind(org_id)
         .bind(public_id)
         .bind(input.url.is_some())
@@ -840,11 +842,11 @@ impl Database {
         input: CreateOrgInvitation,
     ) -> Result<OrgInvitationRow> {
         let row = sqlx::query_as::<_, OrgInvitationRow>(
-            r#"
+            sql!(r#"
             INSERT INTO org_invitations (public_id, org_id, email, role, invited_by, token_hash, expires_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
-            "#,
+            RETURNING {OrgInvitationRow}
+            "#),
         )
         .bind(&input.public_id)
         .bind(input.org_id)
@@ -859,14 +861,14 @@ impl Database {
     }
 
     pub async fn list_pending_org_invitations(&self, org_id: i64) -> Result<Vec<OrgInvitationRow>> {
-        let rows = sqlx::query_as::<_, OrgInvitationRow>(
+        let rows = sqlx::query_as::<_, OrgInvitationRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            SELECT {OrgInvitationRow}
             FROM org_invitations
             WHERE org_id = $1 AND accepted_at IS NULL AND revoked_at IS NULL
             ORDER BY created_at DESC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
@@ -877,13 +879,13 @@ impl Database {
         &self,
         token_hash: &str,
     ) -> Result<Option<OrgInvitationRow>> {
-        let row = sqlx::query_as::<_, OrgInvitationRow>(
+        let row = sqlx::query_as::<_, OrgInvitationRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            SELECT {OrgInvitationRow}
             FROM org_invitations
             WHERE token_hash = $1
-            "#,
-        )
+            "#
+        ))
         .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
@@ -895,13 +897,13 @@ impl Database {
         public_id: &str,
         email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
-        let row = sqlx::query_as::<_, OrgInvitationRow>(
+        let row = sqlx::query_as::<_, OrgInvitationRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            SELECT {OrgInvitationRow}
             FROM org_invitations
             WHERE public_id = $1 AND email = $2
-            "#,
-        )
+            "#
+        ))
         .bind(public_id)
         .bind(email)
         .fetch_optional(&self.pool)
@@ -941,14 +943,14 @@ impl Database {
         org_id: i64,
         email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
-        let row = sqlx::query_as::<_, OrgInvitationRow>(
+        let row = sqlx::query_as::<_, OrgInvitationRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            SELECT {OrgInvitationRow}
             FROM org_invitations
             WHERE org_id = $1 AND email = $2
               AND accepted_at IS NULL AND revoked_at IS NULL
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(email)
         .fetch_optional(&self.pool)
@@ -978,7 +980,7 @@ impl Database {
         invitation_id: i64,
         accepted_by: Uuid,
     ) -> Result<Option<OrgInvitationRow>> {
-        let row = sqlx::query_as::<_, OrgInvitationRow>(
+        let row = sqlx::query_as::<_, OrgInvitationRow>(sql!(
             r#"
             UPDATE org_invitations
             SET accepted_at = NOW(), accepted_by = $2
@@ -986,9 +988,9 @@ impl Database {
               AND accepted_at IS NULL
               AND revoked_at IS NULL
               AND expires_at > NOW()
-            RETURNING id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {OrgInvitationRow}
+            "#
+        ))
         .bind(invitation_id)
         .bind(accepted_by)
         .fetch_optional(&self.pool)
@@ -1003,15 +1005,14 @@ impl Database {
         max_members: i64,
     ) -> Result<AcceptOrgInvitationOutcome> {
         let mut tx = self.pool.begin().await?;
-        let Some(invitation) = sqlx::query_as::<_, OrgInvitationRow>(
+        let Some(invitation) = sqlx::query_as::<_, OrgInvitationRow>(sql!(
             r#"
-            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at,
-                   accepted_at, accepted_by, revoked_at, created_at, updated_at
+            SELECT {OrgInvitationRow}
             FROM org_invitations
             WHERE id = $1
             FOR UPDATE
-            "#,
-        )
+            "#
+        ))
         .bind(invitation_id)
         .fetch_optional(&mut *tx)
         .await?

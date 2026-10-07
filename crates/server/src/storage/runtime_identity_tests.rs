@@ -14,7 +14,7 @@ fn identity(org: i64, realm: &str, subject: &str) -> VerifiedRuntimeIdentity {
 }
 #[tokio::test]
 async fn identity_namespace_is_scoped_by_org_and_verified_realm() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let org = db
         .create_organization(CreateOrganizationRow {
             public_id: "org_00000000000000000000000000000010".into(),
@@ -48,7 +48,7 @@ async fn identity_namespace_is_scoped_by_org_and_verified_realm() {
 }
 #[tokio::test]
 async fn concurrent_first_use_has_one_binding_and_account() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut tasks = vec![];
     for _ in 0..32 {
         let db = db.clone();
@@ -74,7 +74,7 @@ async fn concurrent_first_use_has_one_binding_and_account() {
 }
 #[tokio::test]
 async fn unlink_is_a_tombstone_and_cannot_reclaim_state() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let input = identity(DEFAULT_ORG_ID, "issuer", "alice");
     let user = db.resolve_runtime_identity(input.clone()).await.unwrap();
     let binding = db
@@ -102,7 +102,7 @@ async fn unlink_is_a_tombstone_and_cannot_reclaim_state() {
 }
 #[tokio::test]
 async fn console_default_requires_current_membership_and_cannot_be_unlinked() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let human = db
         .create_user(CreateUserRow {
             email: "manager@example.com".into(),
@@ -146,7 +146,7 @@ async fn console_default_requires_current_membership_and_cannot_be_unlinked() {
 }
 #[tokio::test]
 async fn connection_rotation_preserves_id_and_private_owner() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let alice = db
         .resolve_runtime_identity(identity(DEFAULT_ORG_ID, "issuer", "alice"))
         .await
@@ -187,7 +187,7 @@ async fn connection_rotation_preserves_id_and_private_owner() {
 
 #[tokio::test]
 async fn stale_refresh_and_revocation_cannot_overwrite_reconnected_credentials() {
-    let db = StorageBackend::in_memory();
+    let db = StorageBackend::test_database();
     let account = db
         .resolve_runtime_identity(identity(DEFAULT_ORG_ID, "issuer", "alice"))
         .await
@@ -254,7 +254,7 @@ async fn stale_refresh_and_revocation_cannot_overwrite_reconnected_credentials()
 
 #[tokio::test]
 async fn setup_state_is_hash_bound_single_use_and_provider_scoped() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     db.register_connection_setup("opaque", "github", &[1; 32])
         .await
         .unwrap();

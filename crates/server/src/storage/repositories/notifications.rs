@@ -5,6 +5,7 @@ use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::{MessageId, NotificationId};
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -39,13 +40,13 @@ impl Database {
         &self,
         input_message_id: MessageId,
     ) -> Result<Option<NotificationTurnRequestRow>> {
-        sqlx::query_as::<_, NotificationTurnRequestRow>(
+        sqlx::query_as::<_, NotificationTurnRequestRow>(sql!(
             r#"
-            SELECT input_message_id, org_id, user_id, session_id, created_at
+            SELECT {NotificationTurnRequestRow}
             FROM notification_turn_requests
             WHERE input_message_id = $1
-            "#,
-        )
+            "#
+        ))
         .bind(input_message_id)
         .fetch_optional(&self.pool)
         .await
@@ -57,11 +58,12 @@ impl Database {
         input: CreateNotificationRow,
     ) -> Result<NotificationRow> {
         let row = sqlx::query_as::<_, NotificationRow>(
-            r#"
+            sql!(r#"
             INSERT INTO notifications (
-                org_id, user_id, kind, title, body, target_type, target_id, href, payload, dedupe_key
+                org_id, user_id, kind, title, body, target_type, target_id, href, payload, dedupe_key,
+                source_type, source_id, source_name
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (org_id, user_id, dedupe_key)
                 WHERE dedupe_key IS NOT NULL AND viewed_at IS NULL
             DO UPDATE SET
@@ -71,12 +73,14 @@ impl Database {
                 target_id = EXCLUDED.target_id,
                 href = EXCLUDED.href,
                 payload = EXCLUDED.payload,
+                source_type = EXCLUDED.source_type,
+                source_id = EXCLUDED.source_id,
+                source_name = EXCLUDED.source_name,
                 occurrence_count = notifications.occurrence_count + 1,
                 updated_at = NOW()
             RETURNING
-                id, org_id, user_id, kind, title, body, target_type, target_id, href,
-                payload, dedupe_key, occurrence_count, viewed_at, created_at, updated_at
-            "#,
+                {NotificationRow}
+            "#),
         )
         .bind(input.org_id)
         .bind(input.user_id)
@@ -88,6 +92,9 @@ impl Database {
         .bind(&input.href)
         .bind(&input.payload)
         .bind(&input.dedupe_key)
+        .bind(input.source.as_ref().map(|s| s.source_type.clone()))
+        .bind(input.source.as_ref().and_then(|s| s.source_id.clone()))
+        .bind(input.source.as_ref().and_then(|s| s.source_name.clone()))
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -99,15 +106,14 @@ impl Database {
         user_id: Uuid,
         id: NotificationId,
     ) -> Result<Option<NotificationRow>> {
-        sqlx::query_as::<_, NotificationRow>(
+        sqlx::query_as::<_, NotificationRow>(sql!(
             r#"
             SELECT
-                id, org_id, user_id, kind, title, body, target_type, target_id, href,
-                payload, dedupe_key, occurrence_count, viewed_at, created_at, updated_at
+                {NotificationRow}
             FROM notifications
             WHERE org_id = $1 AND user_id = $2 AND id = $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(user_id)
         .bind(id)
@@ -122,17 +128,16 @@ impl Database {
         user_id: Uuid,
         limit: i64,
     ) -> Result<Vec<NotificationRow>> {
-        sqlx::query_as::<_, NotificationRow>(
+        sqlx::query_as::<_, NotificationRow>(sql!(
             r#"
             SELECT
-                id, org_id, user_id, kind, title, body, target_type, target_id, href,
-                payload, dedupe_key, occurrence_count, viewed_at, created_at, updated_at
+                {NotificationRow}
             FROM notifications
             WHERE org_id = $1 AND user_id = $2
             ORDER BY created_at DESC, id DESC
             LIMIT $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(user_id)
         .bind(limit)
@@ -148,19 +153,18 @@ impl Database {
         updated_since: Option<DateTime<Utc>>,
         limit: i64,
     ) -> Result<Vec<NotificationRow>> {
-        sqlx::query_as::<_, NotificationRow>(
+        sqlx::query_as::<_, NotificationRow>(sql!(
             r#"
             SELECT
-                id, org_id, user_id, kind, title, body, target_type, target_id, href,
-                payload, dedupe_key, occurrence_count, viewed_at, created_at, updated_at
+                {NotificationRow}
             FROM notifications
             WHERE org_id = $1
               AND user_id = $2
               AND ($3::timestamptz IS NULL OR updated_at > $3)
             ORDER BY updated_at ASC, id ASC
             LIMIT $4
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(user_id)
         .bind(updated_since)
@@ -212,7 +216,7 @@ impl Database {
         user_id: Uuid,
         id: NotificationId,
     ) -> Result<Option<NotificationRow>> {
-        sqlx::query_as::<_, NotificationRow>(
+        sqlx::query_as::<_, NotificationRow>(sql!(
             r#"
             UPDATE notifications
             SET
@@ -220,10 +224,9 @@ impl Database {
                 updated_at = NOW()
             WHERE org_id = $1 AND user_id = $2 AND id = $3
             RETURNING
-                id, org_id, user_id, kind, title, body, target_type, target_id, href,
-                payload, dedupe_key, occurrence_count, viewed_at, created_at, updated_at
-            "#,
-        )
+                {NotificationRow}
+            "#
+        ))
         .bind(org_id)
         .bind(user_id)
         .bind(id)

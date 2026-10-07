@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::tool_types::ToolDefinition;
 use everruns_contracts::typed_id::{
-    AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId, SessionParticipantId,
-    VirtualUserId, WorkspaceId,
+    AgentId, HarnessId, ModelId, PrincipalId, SessionId, SessionParticipantId, VirtualUserId,
+    WorkspaceId,
 };
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
@@ -348,13 +348,6 @@ pub struct SessionParticipant {
             example = "agent_01933b5a00007000800000000000001"
         )]
     pub agent_id: Option<AgentId>,
-    /// Immutable agent version captured for an agent participant when known.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(
-            value_type = Option<String>,
-            example = "agentver_01933b5a00007000800000000000001"
-        )]
-    pub agent_version_id: Option<AgentVersionId>,
     /// Principal that joined the session.
     #[schema(
             value_type = String,
@@ -392,10 +385,12 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
-    /// Immutable agent version captured when the session was created or rebound.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
-    pub agent_version_id: Option<AgentVersionId>,
+    /// Revision of the agent's history this session started on, when the
+    /// agent had one. `everruns history show <agent> --revision N` shows the
+    /// configuration that ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 4)]
+    pub agent_revision: Option<i64>,
     /// Optional resident virtual user for unattended/background execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
@@ -629,7 +624,7 @@ impl Session {
             workspace_id: execution.workspace_id,
             harness_id: execution.harness_id,
             agent_id: execution.agent_id,
-            agent_version_id: None,
+            agent_revision: None,
             virtual_user_id: None,
             playground_user_id: None,
             owner_principal_id,

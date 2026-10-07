@@ -49,10 +49,7 @@ pub(crate) async fn init_storage(
             .context("Failed to connect to embedded PostgreSQL")?;
         run_migrations(&backend, migrations).await?;
 
-        let pool = backend
-            .pool()
-            .context("embedded backend has a pool")?
-            .clone();
+        let pool = backend.pool().clone();
         let shared_store = Arc::new(PostgresWorkflowEventStore::new(pool.clone()));
         tracing::info!("Creating Durable execution engine runner (PostgreSQL mode)");
         let runner: Arc<dyn TurnBackend> = Arc::new(DurableRunner::new_with_pool(pool));
@@ -101,14 +98,8 @@ pub(crate) async fn init_storage(
         tracing::info!("Skipping database migrations (--no-migrations)");
     }
 
-    let request_pool = backend
-        .pool()
-        .expect("PostgreSQL backend should have pool")
-        .clone();
-    let background_pool = backend
-        .background_pool()
-        .expect("PostgreSQL backend should have background pool")
-        .clone();
+    let request_pool = backend.pool().clone();
+    let background_pool = backend.background_pool().clone();
     let task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(
         Some(database_url.as_str()),
         database_unpooled_url.as_deref(),
@@ -158,7 +149,7 @@ fn durable_runner(
 
 async fn run_migrations(backend: &StorageBackend, migrations: Vec<MigrationFn>) -> Result<()> {
     tracing::info!("Running database migrations...");
-    let pool = backend.pool().expect("PostgreSQL backend should have pool");
+    let pool = backend.pool();
     if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
         tracing::error!(
             error = %e,
@@ -211,7 +202,7 @@ mod tests {
 
         assert!(Arc::ptr_eq(&storage.runner, &storage.background_runner));
         assert!(
-            storage.db.pool().is_some(),
+            !storage.db.pool().is_closed(),
             "dev mode keeps records in embedded PostgreSQL"
         );
     }

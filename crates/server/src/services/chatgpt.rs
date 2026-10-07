@@ -80,26 +80,24 @@ struct PostgresLease {
 #[async_trait]
 impl TokenStore for DbTokenStore {
     async fn lock(&self) -> Result<Box<dyn Send>> {
-        match self.db.as_ref() {
-            StorageBackend::Postgres(db) => {
-                // The lease spans a load and save through the shared pool and,
-                // on expiry, an OAuth refresh. Queue same-replica callers on
-                // the in-process mutex, then poll the cross-replica lock so no
-                // waiter parks a pool connection the holder needs.
-                let local = memory_lock(self.org, self.provider).await;
-                let transaction = db
-                    .advisory_xact_lock_polling(
-                        "chatgpt_token",
-                        &self.provider.uuid().to_string(),
-                        crate::storage::repositories::ADVISORY_LOCK_WAIT,
-                    )
-                    .await?;
-                Ok(Box::new(PostgresLease {
-                    _transaction: transaction,
-                    _local: local,
-                }))
-            }
-            StorageBackend::InMemory(_) => Ok(Box::new(memory_lock(self.org, self.provider).await)),
+        {
+            let db = self.db.database();
+            // The lease spans a load and save through the shared pool and,
+            // on expiry, an OAuth refresh. Queue same-replica callers on
+            // the in-process mutex, then poll the cross-replica lock so no
+            // waiter parks a pool connection the holder needs.
+            let local = memory_lock(self.org, self.provider).await;
+            let transaction = db
+                .advisory_xact_lock_polling(
+                    "chatgpt_token",
+                    &self.provider.uuid().to_string(),
+                    crate::storage::repositories::ADVISORY_LOCK_WAIT,
+                )
+                .await?;
+            Ok(Box::new(PostgresLease {
+                _transaction: transaction,
+                _local: local,
+            }))
         }
     }
     async fn load(&self) -> Result<Option<CodexAuth>> {

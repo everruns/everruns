@@ -52,11 +52,7 @@ impl Command for ListAgentCheckRules {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
-        let rows = ctx
-            .db
-            .list_agent_check_rules(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let rows = ctx.db.list_agent_check_rules(ctx.org_id()).await?;
         Ok(build_response(&rows))
     }
 }
@@ -72,44 +68,26 @@ pub struct UpsertAgentCheckRule {
     pub req: UpsertCheckRuleRequest,
 }
 
+#[command(
+    name = "upsert_agent_check_rule",
+    category = "agents",
+    description = "Create or update an agent check rule (built-in override or custom rule).",
+    method = "PUT",
+    path = "/v1/agents/check-rules/{rule_id}",
+    policy = AGENT_CHECKS_MANAGE,
+    read_only = false,
+)]
 impl Command for UpsertAgentCheckRule {
     type Output = CheckRulesResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "upsert_agent_check_rule",
-            category: "agents",
-            description: "Create or update an agent check rule (built-in override or custom rule).",
-            method: "PUT",
-            path: "/v1/agents/check-rules/{rule_id}",
-        }
-    }
-
-    fn read_only() -> bool {
-        false
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_CHECKS_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
         let row = build_upsert_row(&self.rule_id, &self.req)?;
         enforce_custom_rule_quota(ctx, &row).await?;
-        ctx.db
-            .upsert_agent_check_rule(ctx.org_id(), row)
-            .await
-            .map_err(classify_anyhow)?;
-        let rows = ctx
-            .db
-            .list_agent_check_rules(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        ctx.db.upsert_agent_check_rule(ctx.org_id(), row).await?;
+        let rows = ctx.db.list_agent_check_rules(ctx.org_id()).await?;
         Ok(build_response(&rows))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpsertAgentCheckRule>() }
 
 /// Delete a check rule (removes a built-in override or a custom rule).
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
@@ -117,42 +95,26 @@ pub struct DeleteAgentCheckRule {
     pub rule_id: String,
 }
 
+#[command(
+    name = "delete_agent_check_rule",
+    category = "agents",
+    description = "Delete an agent check rule (built-in override or custom rule).",
+    method = "DELETE",
+    path = "/v1/agents/check-rules/{rule_id}",
+    policy = AGENT_CHECKS_MANAGE,
+    read_only = false,
+)]
 impl Command for DeleteAgentCheckRule {
     type Output = CheckRulesResponse;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_agent_check_rule",
-            category: "agents",
-            description: "Delete an agent check rule (built-in override or custom rule).",
-            method: "DELETE",
-            path: "/v1/agents/check-rules/{rule_id}",
-        }
-    }
-
-    fn read_only() -> bool {
-        false
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&AGENT_CHECKS_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
         ctx.db
             .delete_agent_check_rule(ctx.org_id(), &self.rule_id)
-            .await
-            .map_err(classify_anyhow)?;
-        let rows = ctx
-            .db
-            .list_agent_check_rules(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
+        let rows = ctx.db.list_agent_check_rules(ctx.org_id()).await?;
         Ok(build_response(&rows))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteAgentCheckRule>() }
 
 /// Validate the request and build the storage row.
 fn build_upsert_row(
@@ -232,8 +194,7 @@ async fn enforce_custom_rule_quota(
     let existing_custom_rules = ctx
         .db
         .count_custom_agent_check_rules_excluding(ctx.org_id(), &row.rule_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     if existing_custom_rules >= MAX_CUSTOM_RULES_PER_ORG {
         return Err(CommandError::conflict(format!(
             "Custom agent check rule limit reached ({MAX_CUSTOM_RULES_PER_ORG})"

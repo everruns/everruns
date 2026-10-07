@@ -106,6 +106,7 @@ async fn lifecycle(server: TestServer) {
         href: Some(format!("/settings/health?issue={id}")),
         payload: json!({"episode_id":canonical.episode_id}),
         dedupe_key: Some(format!("health:{id}:{}", canonical.episode_id)),
+        source: None,
     };
     let alert = server
         .db

@@ -10,7 +10,7 @@
 //!
 //! No compatibility with earlier serve databases: an older schema is dropped.
 
-use everruns_durable::sqlite as rusqlite;
+use everruns::sqlite as rusqlite;
 use std::path::Path;
 use std::sync::Mutex;
 

@@ -62,7 +62,7 @@ async fn help_is_bounded_and_composes_with_a_pipeline() {
     let node = run(&server, Operation::Query, "everruns agents")
         .await
         .expect("a bare noun lists its verbs");
-    assert!(node.contains("versions"), "{node}");
+    assert!(node.contains("triggers"), "{node}");
 
     let leaf = run(&server, Operation::Query, "everruns agents list --help")
         .await

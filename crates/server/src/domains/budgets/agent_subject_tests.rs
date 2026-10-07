@@ -17,7 +17,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 fn make_service() -> (BudgetService, Arc<StorageBackend>) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let svc = BudgetService::new(db.clone());
     (svc, db)
 }
@@ -38,10 +38,9 @@ async fn create_session_with_owner(
         trigger_id: None,
         harness_id: None,
         agent_id,
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
-        owner_principal_id: PrincipalId::new(),
+        owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id,
         title: Some("Agent subject budget test session".into()),
         locale: None,
@@ -82,7 +81,7 @@ pub(super) async fn seed_agent(db: &Arc<StorageBackend>, name: &str) -> AgentRow
             starters: serde_json::json!([]),
             system_prompt: String::new(),
             default_model_id: None,
-            harness_id: everruns_contracts::typed_id::HarnessId::new(),
+            harness_id: everruns_contracts::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             tags: vec![],
             initial_files: serde_json::json!([]),
             tools: serde_json::json!([]),

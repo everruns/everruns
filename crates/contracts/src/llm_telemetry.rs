@@ -9,8 +9,10 @@
 //! count and alert on.
 //!
 //! Decision: observation only. Nothing here changes what a driver does with a
-//! truncated response or which errors are retried; fixes land separately once
-//! the numbers say they are worth it.
+//! truncated response or which errors are retried. The fix for truncated tool
+//! calls landed separately: drivers now drop a cut-off call instead of running
+//! it with `{}`, and the engine's output-truncation gate decides what happens
+//! next; `warn_truncation_gate` records each time it acts.
 
 use crate::error::AgentLoopError;
 
@@ -182,8 +184,9 @@ pub fn warn_tool_calls_dropped(provider: &str, model: &str, count: u32, stop_rea
     );
 }
 
-/// Log tool calls handed on for execution although the response was truncated
-/// or their arguments did not parse. No-op for a zero count.
+/// Log tool calls handed on for execution from a truncated response. Their own
+/// arguments are complete (a cut-off call is dropped instead). No-op for a zero
+/// count.
 pub fn warn_tool_calls_truncated_executed(
     provider: &str,
     model: &str,
@@ -199,7 +202,33 @@ pub fn warn_tool_calls_truncated_executed(
         model,
         tool_calls_truncated_executed = count,
         stop_reason,
-        "LLM tool calls from a truncated response will run with possibly incomplete arguments"
+        "LLM tool calls from a truncated response will run; the response was cut off after them"
+    );
+}
+
+/// Log that the engine's output-truncation gate acted on a generation that lost
+/// tool calls: `action` is `retried` (another generation was scheduled and the
+/// model told why) or `failed` (the turn ends with an error). `consecutive` is
+/// how many generations in a row, this one included, lost calls.
+pub fn warn_truncation_gate(
+    provider: &str,
+    model: &str,
+    action: &str,
+    policy: &str,
+    tool_calls_lost: u32,
+    consecutive: u32,
+    finish_reason: &str,
+) {
+    tracing::warn!(
+        target: "everruns::llm_telemetry",
+        provider,
+        model,
+        truncation_gate = action,
+        policy,
+        tool_calls_lost,
+        consecutive,
+        finish_reason,
+        "LLM response lost tool calls; output-truncation gate acted"
     );
 }
 

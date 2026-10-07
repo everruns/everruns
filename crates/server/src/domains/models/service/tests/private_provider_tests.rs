@@ -1,7 +1,7 @@
 use super::*;
 #[tokio::test]
 async fn chatgpt_catalog_is_private_and_cannot_be_an_org_default() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let service = ModelService::new(db.clone());
     let user = Uuid::new_v4();
     let mut owner = Caller::internal(DEFAULT_ORG_ID);

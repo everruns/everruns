@@ -60,7 +60,7 @@ fn sanitize_session_capabilities_keeps_non_sandbox_capabilities() {
 
 #[tokio::test]
 async fn session_list_lookup_count_is_independent_of_page_size() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
@@ -273,7 +273,7 @@ async fn session_list_lookup_count_is_independent_of_page_size() {
 
 #[tokio::test]
 async fn session_list_batch_hydration_preserves_response_fields() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
 
@@ -425,11 +425,10 @@ async fn session_list_batch_hydration_preserves_response_fields() {
             channel_id: None,
             trigger_id: None,
             harness_id: Some(harness.id),
-            agent_id: Some(missing_agent_id),
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_id: None,
+            agent_revision: None,
             virtual_user_id: None,
-            owner_principal_id: missing_owner_id,
+            owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("missing references".to_string()),
             locale: None,
@@ -449,6 +448,14 @@ async fn session_list_batch_hydration_preserves_response_fields() {
             parent_session_id: None,
             budget_root_session_id: None,
         })
+        .await
+        .unwrap();
+    // Foreign keys forbid dangling references, so write them past them.
+    sqlx::query("UPDATE sessions SET agent_id = $2, owner_principal_id = $3 WHERE id = $1")
+        .bind(missing_reference_session.id.uuid())
+        .bind(missing_agent_id.uuid())
+        .bind(missing_owner_id.uuid())
+        .execute(&mut db.unchecked_connection().await)
         .await
         .unwrap();
 
@@ -536,7 +543,7 @@ async fn session_list_batch_hydration_preserves_response_fields() {
 
 #[tokio::test]
 async fn resolved_model_id_tracks_default_and_preserves_explicit_binding() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let _ctx = test_ctx(caller.clone(), db.clone()).await;
     let service = SessionService::new(db.clone());
@@ -647,7 +654,7 @@ async fn resolved_model_id_tracks_default_and_preserves_explicit_binding() {
 
 #[tokio::test]
 async fn app_backreference_is_only_set_by_app_session_create() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(1);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -673,7 +680,7 @@ async fn app_backreference_is_only_set_by_app_session_create() {
     .await
     .unwrap();
 
-    let app_internal_id = Uuid::now_v7();
+    let app_internal_id = db.create_test_app(1).await;
     // Build a real user principal to act as the App owner. This must be
     // distinct from the caller-derived default (the system principal that
     // `Caller::internal` resolves to) so the assertions below actually
@@ -716,9 +723,7 @@ async fn app_backreference_is_only_set_by_app_session_create() {
             None,
             None,
             Some(app_internal_id),
-            AgentVersionPolicy::Default,
             None,
-            Some(Uuid::new_v4()),
             None,
             app_owner.id,
             app_owner.resolved_user_id,
@@ -769,7 +774,7 @@ async fn app_backreference_is_only_set_by_app_session_create() {
 
 #[tokio::test]
 async fn fork_copies_history_files_and_records_lineage() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(1);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -913,7 +918,7 @@ async fn fork_copies_history_files_and_records_lineage() {
 
 #[tokio::test]
 async fn starter_files_are_copied_into_new_sessions() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(1);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -1033,7 +1038,7 @@ async fn starter_files_are_copied_into_new_sessions() {
 
 #[tokio::test]
 async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let user = db
         .create_user(crate::storage::CreateUserRow {
@@ -1164,7 +1169,7 @@ async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
 
 #[tokio::test]
 async fn session_initial_files_cannot_claim_reserved_memory_paths() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(DEFAULT_ORG_ID);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -1218,7 +1223,7 @@ async fn session_initial_files_cannot_claim_reserved_memory_paths() {
 
 #[tokio::test]
 async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(1);
     let ctx = test_ctx(caller.clone(), db.clone()).await;
@@ -1313,7 +1318,7 @@ async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
 
 #[tokio::test]
 async fn archived_dependencies_cannot_be_assigned_in_dev_mode() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_service = SessionService::new(db.clone());
     let caller = Caller::internal(1);
     let ctx = test_ctx(caller.clone(), db.clone()).await;

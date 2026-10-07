@@ -354,7 +354,9 @@ async fn resolve_install_channel(
                 ErrorResponse::new("Internal server error")
                     .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             })?
-            .filter(|(_, endpoint)| endpoint.channel_type == ChannelType::Slack)
+            .filter(|(context, endpoint)| {
+                endpoint.channel_type == ChannelType::Slack && context.agent_is_active()
+            })
             .ok_or_else(|| {
                 ErrorResponse::new("Endpoint not found").into_response(StatusCode::NOT_FOUND)
             })?;
@@ -400,6 +402,15 @@ async fn begin_install(
     // Serialize it in PostgreSQL across server instances, then re-read under
     // the lock so concurrent requests reuse the winner instead of creating
     // orphaned apps. The guard stays live through persistence.
+    let _agent_lock = state
+        .slack
+        .db
+        .lock_slack_install(app.agent_internal_id)
+        .await
+        .map_err(|_| {
+            ErrorResponse::new("Could not lock Slack agent lifecycle")
+                .into_response(StatusCode::SERVICE_UNAVAILABLE)
+        })?;
     let _install_lock = state
         .slack
         .db
@@ -581,9 +592,18 @@ async fn finish_install(
         tracing::warn!(%channel_id, reason, "Slack install callback rejected");
         Redirect::to(&format!("{ui_base}/agents?slack_install=failed")).into_response()
     };
-    let (_context, endpoint) = match resolve_install_channel(&state.slack, &channel_id).await {
+    let (context, endpoint) = match resolve_install_channel(&state.slack, &channel_id).await {
         Ok(endpoint) => endpoint,
         Err(_) => return rejected("endpoint not found"),
+    };
+    let _agent_lock = match state
+        .slack
+        .db
+        .lock_slack_install(context.agent_internal_id)
+        .await
+    {
+        Ok(lock) => lock,
+        Err(_) => return rejected("could not lock agent lifecycle"),
     };
     let _install_lock = match state
         .slack
@@ -1246,7 +1266,7 @@ mod tests {
 
     #[tokio::test]
     async fn concurrent_installs_for_one_channel_are_serialized() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let channel_id = uuid::Uuid::now_v7();
         let first = db.lock_slack_install(channel_id).await.expect("first lock");
 

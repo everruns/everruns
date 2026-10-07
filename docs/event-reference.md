@@ -553,8 +553,11 @@ Full visibility into LLM API calls. Emitted after each call.
 `length`, `content_filter`). When the call was cut off, `metadata` also carries
 `provider_finish_reason` (the provider's own value, such as `max_tokens`) and,
 when non-zero, `tool_calls_dropped` (tool calls discarded because the response
-ended mid-call) and `tool_calls_truncated_executed` (calls run although their
-arguments may be incomplete).
+ended mid-call or their arguments were not valid JSON; they never run) and
+`tool_calls_truncated_executed` (complete calls run from a response that was
+cut off after them). `truncation_gate` is `retried` or `failed` when the
+[output truncation](/capabilities/output-truncation/) policy acted on the
+dropped calls.
 
 ```json
 {

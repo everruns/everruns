@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { EntityStatus } from "@/components/ui/entity-status";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -439,7 +440,11 @@ function AddMcpServerDialog({
               value={authMode}
               onValueChange={(value) => {
                 setAuthMode(value as McpServerAuthMode);
-                setFieldErrors((prev) => ({ ...prev, auth_mode: undefined, api_key: undefined }));
+                setFieldErrors((prev) => ({
+                  ...prev,
+                  auth_mode: undefined,
+                  api_key: undefined,
+                }));
               }}
             >
               <SelectTrigger id="auth-mode">
@@ -1215,7 +1220,10 @@ export default function McpServersPage() {
             <SectionTabs
               value={statusTab}
               onValueChange={(value) => setStatusTab(value as StatusTab)}
-              items={statusItems.map((item) => ({ ...item, count: counts[item.value] }))}
+              items={statusItems.map((item) => ({
+                ...item,
+                count: counts[item.value],
+              }))}
             />
           </>
         )}
@@ -1316,88 +1324,97 @@ export default function McpServersPage() {
             )}
           </QueryStateWrapper>
         ) : (
-          <QueryStateWrapper
-            isLoading={connections.isLoading}
-            error={connections.error}
-            data={connections.data ?? []}
-            errorMessagePrefix="Failed to load your MCP connections"
-            loadingSkeleton={<Skeleton className="h-32 w-full" />}
-            emptyState={
-              <EmptyState
-                icon={<McpIcon />}
-                title="No MCP connections"
-                description="Connections you authorize for acts-as-user MCP attachments will appear here."
-              />
-            }
-          >
-            {(items) => (
-              <div className="space-y-3">
-                <div className="border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Server</TableHead>
-                        <TableHead>Host</TableHead>
-                        <TableHead>Account</TableHead>
-                        <TableHead>Scopes</TableHead>
-                        <TableHead>Connected</TableHead>
-                        <TableHead>State</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((connection) => {
-                        let host = connection.server_url;
-                        try {
-                          host = new URL(connection.server_url).host;
-                        } catch {}
-                        const unavailable = connection.server_status === "deleted";
-                        return (
-                          <TableRow key={connection.provider}>
-                            <TableCell className="font-medium">
-                              {unavailable ? "Preset unavailable" : connection.server_name}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">{host}</TableCell>
-                            <TableCell>{connection.provider_username || "—"}</TableCell>
-                            <TableCell>{connection.scopes || "—"}</TableCell>
-                            <TableCell>
-                              {new Date(connection.connected_at).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={unavailable ? "secondary" : "outline"}>
-                                {unavailable ? "unavailable" : "connected"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={revokeConnection.isPending}
-                                onClick={() => revokeConnection.mutate(connection.provider)}
-                              >
-                                Revoke
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-                {connections.hasNextPage && (
-                  <div className="flex justify-center">
-                    <Button
-                      variant="outline"
-                      disabled={connections.isFetchingNextPage}
-                      onClick={() => connections.fetchNextPage()}
-                    >
-                      {connections.isFetchingNextPage ? "Loading…" : "Load more connections"}
-                    </Button>
+          <>
+            <p className="mb-3 text-sm text-muted-foreground">
+              MCP servers you add for yourself live in{" "}
+              <Link className="text-primary underline" href="/settings/agent-experience">
+                Settings, My agent experience
+              </Link>
+              .
+            </p>
+            <QueryStateWrapper
+              isLoading={connections.isLoading}
+              error={connections.error}
+              data={connections.data ?? []}
+              errorMessagePrefix="Failed to load your MCP connections"
+              loadingSkeleton={<Skeleton className="h-32 w-full" />}
+              emptyState={
+                <EmptyState
+                  icon={<McpIcon />}
+                  title="No MCP connections"
+                  description="Connections you authorize for acts-as-user MCP attachments will appear here."
+                />
+              }
+            >
+              {(items) => (
+                <div className="space-y-3">
+                  <div className="border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Server</TableHead>
+                          <TableHead>Host</TableHead>
+                          <TableHead>Account</TableHead>
+                          <TableHead>Scopes</TableHead>
+                          <TableHead>Connected</TableHead>
+                          <TableHead>State</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {items.map((connection) => {
+                          let host = connection.server_url;
+                          try {
+                            host = new URL(connection.server_url).host;
+                          } catch {}
+                          const unavailable = connection.server_status === "deleted";
+                          return (
+                            <TableRow key={connection.provider}>
+                              <TableCell className="font-medium">
+                                {unavailable ? "Preset unavailable" : connection.server_name}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">{host}</TableCell>
+                              <TableCell>{connection.provider_username || "—"}</TableCell>
+                              <TableCell>{connection.scopes || "—"}</TableCell>
+                              <TableCell>
+                                {new Date(connection.connected_at).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={unavailable ? "secondary" : "outline"}>
+                                  {unavailable ? "unavailable" : "connected"}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={revokeConnection.isPending}
+                                  onClick={() => revokeConnection.mutate(connection.provider)}
+                                >
+                                  Revoke
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
-                )}
-              </div>
-            )}
-          </QueryStateWrapper>
+                  {connections.hasNextPage && (
+                    <div className="flex justify-center">
+                      <Button
+                        variant="outline"
+                        disabled={connections.isFetchingNextPage}
+                        onClick={() => connections.fetchNextPage()}
+                      >
+                        {connections.isFetchingNextPage ? "Loading…" : "Load more connections"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </QueryStateWrapper>
+          </>
         )}
       </PageMain>
 

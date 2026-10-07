@@ -55,75 +55,6 @@ import type { ChannelStatus, LlmRetryInfo, SessionActivity, SessionSource } from
 // ============================================
 // Agent types (M2)
 // ============================================
-export type AgentVersionChangeKind =
-  | "auto"
-  | "manual"
-  | "patch"
-  | "minor"
-  | "major"
-  | "import"
-  | "rollback"
-  | "fork";
-
-export interface AgentVersion {
-  id: string;
-  agent_id: string;
-  version_number: number;
-  semver_major: number;
-  semver_minor: number;
-  semver_patch: number;
-  version: string;
-  is_published: boolean;
-  parent_version_id: string | null;
-  source_version_id: string | null;
-  created_by_principal_id: string | null;
-  change_kind: AgentVersionChangeKind;
-  summary: string | null;
-  config_hash: string;
-  authored_config: Record<string, unknown>;
-  resolved_config: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface CreateAgentVersionRequest {
-  summary?: string;
-  change_kind?: AgentVersionChangeKind;
-}
-
-export interface SetDefaultAgentVersionRequest {
-  version_id: string;
-}
-
-export interface RollbackAgentVersionRequest {
-  save_version: boolean;
-  summary?: string;
-}
-
-export interface ForkAgentVersionRequest {
-  name: string;
-  display_name?: string;
-  description?: string;
-}
-
-export interface AgentVersionDiffResponse {
-  from_version_id: string;
-  to_version_id: string;
-  authored_diff: Record<
-    string,
-    {
-      from: unknown;
-      to: unknown;
-    }
-  >;
-  resolved_diff: Record<
-    string,
-    {
-      from: unknown;
-      to: unknown;
-    }
-  >;
-}
-
 export interface CreateAgentRequest {
   service_virtual_user_id?: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens */
@@ -449,8 +380,6 @@ export type InvocationSessionMode = Extract<
 
 export type AgUiToolVisibility = "none" | "generic" | "narrated";
 
-export type AgentVersionPolicy = "default" | "latest" | "pinned";
-
 export type ChannelAuthMode =
   | "anonymous"
   | "shared_secret"
@@ -691,8 +620,6 @@ export interface App {
   description: string | null;
   harness_id: string;
   agent_id: string | null;
-  agent_version_policy: AgentVersionPolicy;
-  agent_version_id: string | null;
   virtual_user_id?: string | null;
   owner_principal_id: string;
   resolved_owner_user_id?: string | null;
@@ -802,11 +729,10 @@ export interface Organization {
   default_model_id: string | null;
   default_harness_id: string | null;
   base_harness_id: string | null;
-  /**
-   * Org-level default provider per service (EVE-569): service kind -> provider id.
-   * Always present in responses (empty object when no defaults are configured).
-   */
+  /** Default provider per service kind (EVE-569); empty object when none. */
   default_provider_per_service: Record<string, string>;
+  /** Who answers guardrail jev checks and the Slack relevance check. */
+  system_decisions: SystemDecisionsSource;
   created_at: string;
   updated_at: string;
   /**
@@ -827,12 +753,12 @@ export interface UpdateOrganizationRequest {
   default_model_id?: string | null;
   default_harness_id?: string;
   base_harness_id?: string;
-  /**
-   * Org-level default provider per service (EVE-569): service kind -> provider id.
-   * When present it replaces the whole map.
-   */
+  /** Default provider per service kind (EVE-569); replaces the whole map. */
   default_provider_per_service?: Record<string, string>;
+  system_decisions?: SystemDecisionsSource;
 }
+
+export type SystemDecisionsSource = "deployment" | "organization";
 
 export interface UserInfoResponse {
   id: string;
@@ -2022,7 +1948,6 @@ export interface TraceScore {
   session_id: string;
   turn_id: string;
   agent_id?: string;
-  agent_version_id?: string;
   harness_id?: string;
   status: TraceScoreStatus;
   pass?: boolean;
@@ -2059,28 +1984,6 @@ export interface Event {
   metadata?: Record<string, unknown>;
   tags?: string[];
   sequence?: number;
-}
-
-/** Durable user notification */
-export interface Notification {
-  id: string;
-  kind: string;
-  title: string;
-  body: string;
-  target_type?: string | null;
-  target_id?: string | null;
-  href?: string | null;
-  payload: Record<string, unknown>;
-  occurrence_count: number;
-  viewed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Notification list response with an accurate bell counter */
-export interface ListNotificationsResponse {
-  data: Notification[];
-  unviewed_count: number;
 }
 
 // ============================================
@@ -3233,21 +3136,6 @@ export interface UpdateInstalledPluginRequest {
 // ============================================
 export type ProviderStatus = "active" | "disabled";
 
-/** Vendor/brand of a model, derived from the backend model registry. */
-export type ModelVendor =
-  | "openai"
-  | "anthropic"
-  | "google"
-  | "nvidia"
-  | "qwen"
-  | "microsoft"
-  | "meta"
-  | "minimax"
-  | "moonshot"
-  | "typesafe"
-  | "xai"
-  | "llmsim";
-
 /**
  * Configuration for linking from the chat UI to a provider's observability
  * dashboard ("trace"/"logs"). URL templates support the `{response_id}`,
@@ -3542,8 +3430,8 @@ export interface Session {
   workspace_id?: string;
   harness_id: string;
   agent_id: string | null;
-  /** Immutable agent version captured when the session was created or rebound. */
-  agent_version_id?: string | null;
+  /** Revision of the agent's history this session started on. */
+  agent_revision?: number | null;
   virtual_user_id?: string | null;
   /** Fixed end-user subject for an organisation-shared Playground conversation. */
   playground_user_id?: string | null;

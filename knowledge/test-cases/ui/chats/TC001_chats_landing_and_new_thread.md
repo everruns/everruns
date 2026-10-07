@@ -22,7 +22,7 @@ Verify that landing opens permanent Chat and New chat creates a fresh side conve
 ## Steps
 
 1. Navigate to `/`; confirm it opens `/chats` and the permanent Chat.
-2. Confirm the fixed Platform Chat Agent and its intro/starters render without an Agent or harness picker.
+2. Confirm the fixed Platform Chat and its intro/starters render without an Agent or harness picker.
 3. Open the sidebar's **New side chat**; inspect network requests and confirm no side session is created yet.
 4. Send a message; confirm a distinct conversation opens at `/chats/{id}` on the same Agent and Generic.
 5. Confirm it contains only the new message and reply, with no copied history or workspace files.

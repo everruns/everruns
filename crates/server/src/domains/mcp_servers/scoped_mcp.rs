@@ -10,12 +10,11 @@ use crate::kernel_imports::{
     McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
     contracts::tool_types::ToolDefinition, contracts::typed_id::SessionId,
     contracts::url_validation::validate_safe_url, merge_scoped_mcp_servers,
-    resolve_runtime_capabilities,
 };
 use crate::records::{Agent, Harness, Session};
 use anyhow::{Result, anyhow};
 use chrono::{DateTime, Utc};
-use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
+use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::mcp::{CacheHints, CacheScope, McpCapability};
 use everruns_core::mcp_server::sanitize_mcp_server_name;
@@ -323,23 +322,13 @@ pub fn merge_effective_scoped_mcp_servers_with_capabilities(
     session: &Session,
     capability_registry: &CapabilityRegistry,
 ) -> ScopedMcpServers {
-    let explicit = merge_effective_scoped_mcp_servers(harness, agent, session);
-    // Status-agnostic projection: scoped-MCP wiring historically saw the
-    // stored records regardless of lifecycle status (EVE-877, EVE-881).
-    let agent_definition = agent.map(|a| a.definition());
-    let harness_definition = harness.definition();
-    // EVE-882: capability resolution consumes the portable execution view.
-    let execution_session = session.execution_session();
-    let resolved = resolve_runtime_capabilities(
-        &harness_definition,
-        agent_definition.as_ref(),
-        &execution_session,
+    super::user_layer::merge_turn_scoped_mcp_servers(
+        harness,
+        agent,
+        session,
         capability_registry,
-    );
-    let contributed =
-        collect_capability_mcp_servers(&resolved.resolved_capability_configs, capability_registry);
-
-    merge_scoped_mcp_servers(&contributed, &explicit)
+        &ScopedMcpServers::new(),
+    )
 }
 
 pub fn merge_scoped_mcp_server_layers<'a, I>(layers: I) -> ScopedMcpServers
@@ -378,6 +367,7 @@ pub async fn resolve_scoped_mcp_server(
     resolve_matched_scoped_mcp_server(mcp_server_service, org_id, session.id.uuid(), matched).await
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn resolve_scoped_mcp_server_with_capabilities(
     mcp_server_service: &McpServerService,
     org_id: i64,
@@ -386,12 +376,14 @@ pub async fn resolve_scoped_mcp_server_with_capabilities(
     session: &Session,
     server_prefix: &str,
     capability_registry: &CapabilityRegistry,
+    user_layer: &ScopedMcpServers,
 ) -> Result<Option<McpServerResolved>> {
-    let effective = merge_effective_scoped_mcp_servers_with_capabilities(
+    let effective = super::user_layer::merge_turn_scoped_mcp_servers(
         harness,
         agent,
         session,
         capability_registry,
+        user_layer,
     );
     let matched = effective.into_iter().find(|(name, _)| {
         everruns_core::mcp_server::is_valid_mcp_server_name(name)
@@ -1193,4 +1185,4 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 mod cache_tests;
 #[cfg(test)]
 #[path = "scoped_mcp/tests.rs"]
-mod tests;
+pub(super) mod tests;

@@ -845,7 +845,7 @@ mod tests {
     use async_trait::async_trait;
 
     fn db() -> StorageBackend {
-        StorageBackend::in_memory()
+        StorageBackend::test_database()
     }
 
     async fn seed_user(db: &StorageBackend, email: &str) -> Uuid {

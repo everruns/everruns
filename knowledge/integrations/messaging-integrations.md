@@ -104,7 +104,7 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. Every outbound message goes through the trait, and transient-vs-permanent decision lives in the adapter alone — a dispatcher that also classifies lets the two lists drift apart. |
 | **Signing/auth verification** | Platform-specific request authentication (e.g. HMAC signing secret for Slack, Ed25519 for Discord). |
 | **Unit tests** | Webhook parsing, signature verification, session tag construction, delivery text extraction, bot message filtering. |
-| **Integration tests** | `crates/server/tests/{platform}_integration_test.rs`, webhook→session→message flows against in-memory storage. |
+| **Integration tests** | `crates/server/tests/{platform}_integration_test.rs`, webhook→session→message flows against a per-test PostgreSQL database (`TestServer`). |
 | **Live API tests** | Feature-gated tests against real platform API. Doppler credentials: `TEST_{PLATFORM}_*` vars. |
 | **CI: unit tests** | Tests run in the `unit-test` job. |
 | **CI: change detection** | Path filter for `{platform}` files. |

@@ -67,7 +67,7 @@ Events are classified as **ephemeral** or **durable**:
 | Ephemeral | `output.message.delta`, `reason.thinking.delta`, `tool.output.delta` | EventDelivery-only when the backend supports ephemeral skip; otherwise PostgreSQL + EventDelivery | EventDelivery only |
 | Durable | `llm.generation`, `output.message.completed`, `turn.started`, `tool.completed` | PostgreSQL | PG + EventDelivery |
 
-`EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. With NATS-backed delivery, ephemeral delta events skip PostgreSQL, reducing write pressure significantly. In-memory dev delivery still persists events to PG. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content.
+`EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. With NATS-backed delivery, ephemeral delta events skip PostgreSQL, reducing write pressure significantly. In-memory dev event delivery still persists events to PG. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content.
 
 Durable events and usage rows can also feed asynchronous analytical projections
 for built-in reporting. Reporting is not part of the hot event delivery path;
@@ -111,13 +111,10 @@ Production event routing therefore prefers:
    - `engine/`, `host/`, `builtins/`, `mcp/`, `ag-ui/` - Deprecated one-release forwarding shims; canonical modules live in `core/src/`
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
-   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); no `everruns-*` dependencies
+   - `durable/` → `everruns-durable` - Generic durable execution engine (task queue, event log, signals, schedules) with in-memory and PostgreSQL stores, published with its own idempotent schema (`PostgresWorkflowEventStore::migrate`); it has no `everruns-*` dependency
    - `durable-engine/` → `everruns-durable-engine` - Durable turn backend: runs core turns as queued, checkpointed steps behind core's `TurnBackend`; the worker's turn driver and the facade's experimental `durable` feature
    - `drivers/drivers/` → `everruns-drivers` - Feature-selected official LLM transports over `everruns-contracts`; `drivers/llmsim/` retains the simulator
-   - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
-   - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
-   - `integrations/e2b/` → `everruns-integrations-e2b` - E2B cloud sandbox integration (auto-registered via `inventory` plugin system)
-   - `integrations/deno/` → `everruns-integrations-deno` - Deno sandbox integration (auto-registered via `inventory` plugin system)
+   - `integrations/` → feature modules in `crates/integrations` (`everruns-integrations`); experimental Deno and Sprites live in `crates/integrations-experimental`.
 3. **Frontend**: Next.js application in `apps/ui/` for management and chat interfaces
    - Exports providers, components, hooks, and lib modules via `package.json` `exports` field for SaaS wrapper consumption
 4. **Documentation Site**: Astro Starlight in `apps/docs/` deployed to https://docs.everruns.com/
@@ -141,6 +138,7 @@ everruns/
 │   ├── host/             # Deprecated one-release host shim
 │   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
+│   ├── db/               # Database utilities: embedded SQLite, UpdateField
 │   ├── durable/          # Generic durable execution engine
 │   ├── durable-engine/   # Durable turn backend over durable
 │   └── drivers/          # Consolidated official LLM drivers and standalone simulator
@@ -423,7 +421,7 @@ sequenceDiagram
 
 ### Task Worker Architecture
 
-The `TaskWorker` provides a unified worker implementation that works with both in-memory (DEV_MODE) and database-backed (production) storage:
+The `TaskWorker` provides a unified worker implementation that works with any `WorkflowEventStore`: embedded PostgreSQL (DEV_MODE) or external PostgreSQL (production):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -466,7 +464,7 @@ The `TaskWorker` provides a unified worker implementation that works with both i
 
 | Mode | Store | Adapters | Use Case |
 |------|-------|----------|----------|
-| DEV_MODE | `InMemoryWorkflowEventStore` | `DirectWorkerAdapters` | Local development |
+| DEV_MODE | `PostgresWorkflowEventStore` (embedded PostgreSQL) | `DirectWorkerAdapters` | Local development |
 | Production | `PostgresWorkflowEventStore` | `GrpcWorkerAdapters` | External workers |
 
 **Adapter Parity Principle**: Both `DirectWorkerAdapters` and `GrpcWorkerAdapters` must implement every `WorkerAdapters` method. The trait enforces this at compile time: store accessors have no default implementations, so adding a new store requires updating both adapters or the build fails. Methods return `Arc<dyn T>` (non-optional) to guarantee the store is available in both backends. The only exception is `sqldb_store()` which returns `Option` with a default `None` until gRPC support is added (tracked in EVE-44).
@@ -580,7 +578,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [kn
 ### Infrastructure
 
 1. **Local Development**: Docker Compose in `local/` for Postgres, Valkey
-2. **Dev Mode**: In-memory storage mode for quick local development without PostgreSQL
+2. **Dev Mode**: embedded PostgreSQL server for quick local development without an external database
 3. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 4. **License Compliance**: cargo-deny for dependency license checking
 5. **Secrets Management**: [Doppler](https://www.doppler.com/) for development secrets (API keys, tokens). Project: `everruns-dev`, config: `dev`. Use `doppler run -- <command>` to inject secrets into processes.
@@ -591,7 +589,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [kn
 For rapid local development without infrastructure dependencies:
 
 ```bash
-# Start in dev mode (no Docker/PostgreSQL required)
+# Start in dev mode (no Docker or external PostgreSQL required)
 DEV_MODE=true cargo run -p everruns-server
 
 # Or use the convenience command
@@ -599,10 +597,10 @@ just start-dev
 ```
 
 **DEV_MODE behavior:**
-- Uses in-memory storage (data lost on restart)
+- Runs on an embedded PostgreSQL server (`crates/pg-embedded`) started by the process; DATABASE_URL is ignored and the database is deleted on exit (`crates/server/src/storage_init.rs`)
 - Execution happens in-process (no separate worker)
 - gRPC server disabled (not needed without workers)
-- No migrations required
+- Migrations run at startup against the embedded database
 
 **Use cases:**
 - Quick UI development and testing
@@ -610,7 +608,7 @@ just start-dev
 - Debugging without infrastructure setup
 
 **Limitations:**
-- No persistence
+- No persistence across restarts
 - No worker/gRPC functionality
 - Single-instance only
 

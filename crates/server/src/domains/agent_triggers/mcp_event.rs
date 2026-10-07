@@ -200,16 +200,14 @@ async fn find_attachment(
         agent_row.org_id,
         &agent_row.public_id,
     )
-    .await
-    .map_err(classify_anyhow)?
+    .await?
     .ok_or_else(|| CommandError::not_found("Agent"))?;
     let harness = crate::domains::harnesses::queries::resolve_effective(
         db,
         agent_row.org_id,
         agent.harness_id,
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     let (name, attachment) = scoped_mcp::merge_agent_scoped_mcp_servers(harness.as_ref(), &agent)
         .into_iter()
         .find(|(name, _)| name == server)
@@ -273,8 +271,7 @@ pub(super) async fn after_update(
     let has_subscription = ctx
         .db
         .get_agent_trigger_mcp_subscription(after.id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .is_some();
     if before.enabled && has_subscription && !resubscribe {
         return Ok(());
@@ -453,16 +450,14 @@ impl McpEventTriggers {
         let agent = self
             .db
             .get_agent(trigger.org_id, trigger.agent_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .filter(|agent| agent.status == "active")
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
         let existing = self
             .db
             .get_agent_trigger_mcp_subscription(trigger.id)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let (secret, mut state) = match existing.filter(|_| !fresh_secret) {
             Some(row) => {
                 let secret = encryption
@@ -489,8 +484,7 @@ impl McpEventTriggers {
                 // verified against this secret.
                 self.db
                     .upsert_agent_trigger_mcp_subscription(state.clone())
-                    .await
-                    .map_err(classify_anyhow)?;
+                    .await?;
                 (secret, state)
             }
         };

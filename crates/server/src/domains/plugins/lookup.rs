@@ -1,5 +1,5 @@
 use super::types::PluginInstallRow;
-use crate::domains::common::{CommandError, Ctx, classify_anyhow};
+use crate::domains::common::{CommandError, Ctx};
 use crate::kernel_imports::contracts::typed_id::PluginInstallId;
 
 pub(super) fn parse_plugin_public_id(id: &str) -> Result<PluginInstallId, CommandError> {
@@ -14,7 +14,6 @@ pub(super) async fn get_install_by_public_id(
     let public_id = parse_plugin_public_id(id)?;
     ctx.db
         .get_plugin_install_by_public_id(ctx.org_id(), &public_id.to_string())
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Installed plugin"))
 }

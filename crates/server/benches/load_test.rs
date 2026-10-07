@@ -19,6 +19,7 @@
 //!   API_URL=http://localhost:9300/api   # API endpoint
 //!   SESSIONS=100                    # Number of parallel sessions
 //!   MESSAGES_PER_SESSION=50         # Messages per session
+//!   MODEL_ID=model_...              # Model (default: llmsim-latency seed)
 //!   TARGET=docker-example           # Target label (auto-detected if unset)
 
 use std::fs;
@@ -76,7 +77,11 @@ impl Default for LoadTestConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(50),
-            model_id: DEFAULT_LLMSIM_MODEL_ID.to_string(),
+            // MODEL_ID swaps in another model, e.g. the zero-latency llmsim
+            // seed (model_01933b5a000070008000000000000401) to isolate
+            // platform overhead from simulated LLM time.
+            model_id: std::env::var("MODEL_ID")
+                .unwrap_or_else(|_| DEFAULT_LLMSIM_MODEL_ID.to_string()),
             max_concurrent_sessions: std::env::var("MAX_CONCURRENT")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -1121,6 +1126,7 @@ fn print_help() {
     println!("  MESSAGES_PER_SESSION Messages per session (default: 50)");
     println!("  MAX_CONCURRENT       Max concurrent sessions (default: 50)");
     println!("  TIMEOUT_SECS         Request timeout in seconds (default: 300)");
+    println!("  MODEL_ID             Model id (default: llmsim-latency seed model)");
     println!("  TARGET               Target label for saved results (default: auto-detected)");
     println!("                       Examples: dev, docker-example, staging");
     println!();

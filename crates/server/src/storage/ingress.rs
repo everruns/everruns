@@ -1,5 +1,5 @@
+use crate::storage::UpdateField;
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -25,8 +25,6 @@ pub struct CreateAgentChannelRow {
     pub enabled: bool,
     pub status: String,
     pub virtual_user_id: Option<Uuid>,
-    pub agent_version_policy: String,
-    pub agent_version_id: Option<Uuid>,
     pub owner_principal_id: Uuid,
     pub resolved_owner_user_id: Option<Uuid>,
 }
@@ -40,8 +38,6 @@ pub struct UpdateAgentChannelRow {
     pub auth_encrypted: UpdateField<Vec<u8>>,
     pub enabled: Option<bool>,
     pub status: Option<String>,
-    pub agent_version_policy: Option<String>,
-    pub agent_version_id: UpdateField<Uuid>,
 }
 /// Channel-owned values required to serve ingress without archival App reads.
 #[derive(Debug, Clone, FromRow)]
@@ -59,8 +55,6 @@ pub struct IngressChannelRow {
     pub agent_status: String,
     pub exposures_suspended: bool,
     pub virtual_user_id: Option<Uuid>,
-    pub agent_version_policy: String,
-    pub agent_version_id: Option<Uuid>,
     pub owner_principal_id: Uuid,
     pub resolved_owner_user_id: Option<Uuid>,
     pub channel_type: String,

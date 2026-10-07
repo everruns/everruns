@@ -16,6 +16,15 @@ import { usePolicies } from "@/hooks/use-policies";
 import { Badge } from "@/components/ui/badge";
 import { ChannelHealthWarning } from "@/components/health/channel-health-warning";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { SlackRemovalNotice } from "@/components/agents/integrations/slack-removal-notice";
 import { Card, CardContent } from "@/components/ui/card";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
@@ -27,16 +36,6 @@ import {
   type ChannelFormState,
 } from "@/components/agents/channels/channel-form";
 import { CronLabel } from "@/components/apps/cron-label";
-import {
-  AgentVersionPolicyField,
-  AgentVersionSelectionBadge,
-  isVersionSelectionValid,
-  sameVersionSelection,
-  useShowVersionSelection,
-  versionSelectionOf,
-  versionSelectionRequest,
-  type AgentVersionSelection,
-} from "@/components/agents/agent-version-policy-field";
 import {
   BackLink,
   PageBreadcrumb,
@@ -131,14 +130,12 @@ function AgentChannelForm({
   const channelId = channel.id;
   const updateEndpoint = useUpdateAgentChannel(agentId, channelId);
   const deleteEndpoint = useDeleteAgentChannel(agentId, channelId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const publishEndpoint = usePublishAgentChannel(agentId);
   const triggerEndpoint = useTriggerAgentChannel(agentId);
   const [formState, setFormState] = useState<ChannelFormState>(() =>
     getDefaultChannelFormState(channel.channel_type, channel),
   );
-  const storedVersion = versionSelectionOf(channel);
-  const [versionSelection, setVersionSelection] = useState<AgentVersionSelection>(storedVersion);
-  const showVersion = useShowVersionSelection(storedVersion);
   const agentName = getDisplayName(agent);
   const lifecycle = getChannelLifecyclePresentation(channel);
   const slackInstallAvailable = slackInstallCapability?.connected === true;
@@ -171,7 +168,6 @@ function AgentChannelForm({
               Editing
             </Badge>
             <Badge variant={lifecycle.isLive ? "default" : "secondary"}>{lifecycle.label}</Badge>
-            <AgentVersionSelectionBadge agentId={agentId} selection={storedVersion} />
           </>
         }
         description={
@@ -189,12 +185,7 @@ function AgentChannelForm({
             <Button
               type="submit"
               form="channel-edit-form"
-              disabled={
-                !canManage ||
-                !isChannelFormValid(formState) ||
-                !isVersionSelectionValid(versionSelection) ||
-                updateEndpoint.isPending
-              }
+              disabled={!canManage || !isChannelFormValid(formState) || updateEndpoint.isPending}
             >
               <Check className="size-4" />
               {updateEndpoint.isPending ? "Saving..." : "Save"}
@@ -226,11 +217,7 @@ function AgentChannelForm({
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
-                deleteEndpoint.mutate(undefined, {
-                  onSuccess: () => router.push(returnHref),
-                })
-              }
+              onClick={() => setConfirmDelete(true)}
               disabled={!canDangerous || deleteEndpoint.isPending}
             >
               <Trash2 className="size-4" />
@@ -247,11 +234,6 @@ function AgentChannelForm({
             {
               channel_config: buildChannelConfig(formState),
               enabled: formState.enabled,
-              // Only send the selection when it changed, so saving transport
-              // config never rewrites a pin the editor did not touch.
-              ...(sameVersionSelection(versionSelection, storedVersion)
-                ? {}
-                : versionSelectionRequest(versionSelection)),
             },
             { onSuccess: () => router.push(returnHref) },
           );
@@ -292,23 +274,46 @@ function AgentChannelForm({
                 Save configuration changes before publishing this channel.
               </p>
             </RailSection>
-            {showVersion && (
-              <RailSection label="Agent version">
-                <AgentVersionPolicyField
-                  agentId={agentId}
-                  value={versionSelection}
-                  onChange={setVersionSelection}
-                  disabled={!canManage}
-                  idPrefix="channel-agent-version"
-                />
-              </RailSection>
-            )}
           </PageRail>
         </PageColumns>
       </form>
       <PageFooter>
         <BackLink href={returnHref}>Back to {agentName}</BackLink>
       </PageFooter>
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Delete {getChannelTypeDisplayName(channel.channel_type)} channel
+            </DialogTitle>
+            <DialogDescription>Delete this connection to {agentName}?</DialogDescription>
+          </DialogHeader>
+          <SlackRemovalNotice channels={[channel]} action="channel" />
+          {deleteEndpoint.error && (
+            <Notice variant="destructive">
+              <NoticeDescription>{deleteEndpoint.error.message}</NoticeDescription>
+            </Notice>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={deleteEndpoint.isPending}
+              onClick={() => setConfirmDelete(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!canDangerous || deleteEndpoint.isPending}
+              onClick={() =>
+                deleteEndpoint.mutate(undefined, { onSuccess: () => router.push(returnHref) })
+              }
+            >
+              {deleteEndpoint.isPending ? "Deleting..." : "Delete channel"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   );
 }

@@ -82,12 +82,13 @@ export EVERRUNS_API_KEY=evr_pat_...   # or run `everruns login`
 everruns agents create \
   --name "my-agent" \
   --system-prompt "You are a helpful assistant." \
-  --tag production
+  --tag production \
+  --reason "Support pilot"
 
 # From a file (TOML, YAML, JSON, or Markdown front matter)
 everruns agents create -f agent.toml
 everruns agents create -f agent.yaml
-everruns agents create -f agent.md
+everruns agents create -f agent.md --reason "Import from repo"
 ```
 
 If `./agent.toml` exists and you don't pass inline flags, `everruns agents create` picks it up automatically. The file formats are documented in [Define agents as files](/how-to/define-agents-as-files/).
@@ -95,14 +96,14 @@ If `./agent.toml` exists and you don't pass inline flags, `everruns agents creat
 ```bash
 everruns agents list
 everruns agents get agent_...
-everruns agents delete agent_...
+everruns agents delete agent_... --reason "Replaced by a newer agent"
 ```
 
 ### Sessions
 
 ```bash
 everruns sessions create --agent agent_...
-everruns sessions create --agent agent_... --title "Debug session"
+everruns sessions create --agent agent_... --title "Debug session" --reason "Reproduce ticket 42"
 
 # With session-level overrides
 everruns sessions create \
@@ -145,15 +146,14 @@ everruns agents list -o yaml
 Every other command comes from the same command contract that agents use in their shell and through MCP `execute`, so the spelling, flags and validation are identical everywhere. Run `everruns --help`, `everruns <noun> --help` or `everruns <noun> <verb> --help` to browse them.
 
 ```bash
-everruns agents versions list --agent agent_...
 everruns agents triggers list --agent-id agent_...
-everruns sessions participants add --session-id session_... --kind agent --agent-id agent_...
+everruns sessions participants add --session session_... --kind agent --agent-id agent_... --reason "Hand off to the reviewer agent"
 everruns capabilities list --search web
 
 # Plugins, skills and knowledge bases
-everruns plugins install --marketplace-id <marketplace-id> --plugin-name <plugin-name>
-everruns skills create --skill-md @./SKILL.md
-everruns knowledge-bases create --name "Product docs" --description "Published product documentation"
+everruns plugins install --marketplace-id <marketplace-id> --plugin-name <plugin-name> --reason "Add the release tooling"
+everruns skills create --skill-md @./SKILL.md --reason "Share the code-review checklist"
+everruns knowledge-bases create --name "Product docs" --description "Published product documentation" --reason "Ground support answers in the docs"
 ```
 
 These commands print the command's JSON output (YAML with `-o yaml`). A text or JSON flag written `@path` is read from that local file, as in `--skill-md @./SKILL.md`; write `@@` for a value that really starts with `@`.
@@ -170,7 +170,7 @@ A repeat with the same key returns the first result. Reusing a key for a differe
 
 ### Reasons and manager context
 
-Every command takes `--reason "..."`, which is stored on the changed entity's history entry, and `--context-revision N`, which says which revision of the entity's manager notes you read. `everruns history list <id>` shows who changed an entity and why. `everruns context get <id>` shows its notes. See [Change history](/features/change-history/).
+Every command that changes something takes `--reason "..."`, which is stored on the changed entity's history entry. That includes `agents create`, `agents update`, `agents import` and `sessions create`. [Platform commands](#platform-commands) also take `--context-revision N`, which says which revision of the entity's manager notes you read. `everruns history list <id>` shows who changed an entity and why. `everruns context get <id>` shows its notes. See [Change history](/features/change-history/).
 
 ## See also
 

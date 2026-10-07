@@ -1,5 +1,4 @@
 use crate::records::reporting::{DatasetCatalog, ReportQuery, ReportResult, ReportScope};
-use everruns_core::Policy;
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -11,31 +10,22 @@ use super::types::{
     ReportingDiagnostics, SavedReport, UpdateSavedReportRequest,
 };
 use super::{REPORT_ADMIN, REPORT_MANAGE, REPORT_VIEW};
-use crate::domains::common::{Command, CommandDescriptor, CommandError, CommandMeta, Ctx};
+use crate::domains::common::{Command, CommandError, Ctx, command};
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunReportQuery(pub ReportQuery);
 
+#[command(
+    name = "run_report_query",
+    category = "reporting",
+    description = "Run an org-scoped semantic reporting query.",
+    method = "POST",
+    path = "/v1/reports/query",
+    policy = REPORT_VIEW,
+    read_only = true,
+)]
 impl Command for RunReportQuery {
     type Output = ReportResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "run_report_query",
-            category: "reporting",
-            description: "Run an org-scoped semantic reporting query.",
-            method: "POST",
-            path: "/v1/reports/query",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_VIEW)
-    }
-
-    fn read_only() -> bool {
-        true
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -53,54 +43,38 @@ impl Command for RunReportQuery {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<RunReportQuery>() }
-
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetReportCatalog;
 
+#[command(
+    name = "get_report_catalog",
+    category = "reporting",
+    description = "Return semantic reporting datasets, dimensions, measures, and filter fields.",
+    method = "GET",
+    path = "/v1/reports/catalog",
+    policy = REPORT_VIEW,
+)]
 impl Command for GetReportCatalog {
     type Output = DatasetCatalog;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_report_catalog",
-            category: "reporting",
-            description: "Return semantic reporting datasets, dimensions, measures, and filter fields.",
-            method: "GET",
-            path: "/v1/reports/catalog",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_VIEW)
-    }
 
     async fn execute(self, _ctx: &Ctx) -> Result<DatasetCatalog, CommandError> {
         Ok(catalog::catalog())
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetReportCatalog>() }
-
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct ListSavedReports;
 
+#[command(
+    name = "list_saved_reports",
+    category = "reporting",
+    description = "List org-scoped saved report definitions.",
+    method = "GET",
+    path = "/v1/reports/saved",
+    policy = REPORT_VIEW,
+)]
 impl Command for ListSavedReports {
     type Output = Vec<SavedReport>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_saved_reports",
-            category: "reporting",
-            description: "List org-scoped saved report definitions.",
-            method: "GET",
-            path: "/v1/reports/saved",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SavedReport>, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -110,30 +84,22 @@ impl Command for ListSavedReports {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListSavedReports>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
 }
 
+#[command(
+    name = "get_saved_report",
+    category = "reporting",
+    description = "Get an org-scoped saved report definition.",
+    method = "GET",
+    path = "/v1/reports/saved/{report_id}",
+    policy = REPORT_VIEW,
+)]
 impl Command for GetSavedReport {
     type Output = SavedReport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_saved_report",
-            category: "reporting",
-            description: "Get an org-scoped saved report definition.",
-            method: "GET",
-            path: "/v1/reports/saved/{report_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SavedReport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -143,27 +109,19 @@ impl Command for GetSavedReport {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSavedReport>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct CreateSavedReport(pub CreateSavedReportRequest);
 
+#[command(
+    name = "create_saved_report",
+    category = "reporting",
+    description = "Create an org-scoped saved report definition.",
+    method = "POST",
+    path = "/v1/reports/saved",
+    policy = REPORT_MANAGE,
+)]
 impl Command for CreateSavedReport {
     type Output = SavedReport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_saved_report",
-            category: "reporting",
-            description: "Create an org-scoped saved report definition.",
-            method: "POST",
-            path: "/v1/reports/saved",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SavedReport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -173,8 +131,6 @@ impl Command for CreateSavedReport {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateSavedReport>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct UpdateSavedReport {
     /// Saved report's prefixed public identifier.
@@ -182,22 +138,16 @@ pub struct UpdateSavedReport {
     pub request: UpdateSavedReportRequest,
 }
 
+#[command(
+    name = "update_saved_report",
+    category = "reporting",
+    description = "Update an org-scoped saved report definition.",
+    method = "PATCH",
+    path = "/v1/reports/saved/{report_id}",
+    policy = REPORT_MANAGE,
+)]
 impl Command for UpdateSavedReport {
     type Output = SavedReport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_saved_report",
-            category: "reporting",
-            description: "Update an org-scoped saved report definition.",
-            method: "PATCH",
-            path: "/v1/reports/saved/{report_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<SavedReport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -209,30 +159,22 @@ impl Command for UpdateSavedReport {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateSavedReport>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct DeleteSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
 }
 
+#[command(
+    name = "delete_saved_report",
+    category = "reporting",
+    description = "Delete an org-scoped saved report definition.",
+    method = "DELETE",
+    path = "/v1/reports/saved/{report_id}",
+    policy = REPORT_MANAGE,
+)]
 impl Command for DeleteSavedReport {
     type Output = ();
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_saved_report",
-            category: "reporting",
-            description: "Delete an org-scoped saved report definition.",
-            method: "DELETE",
-            path: "/v1/reports/saved/{report_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -244,34 +186,23 @@ impl Command for DeleteSavedReport {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteSavedReport>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunSavedReport {
     /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
 }
 
+#[command(
+    name = "run_saved_report",
+    category = "reporting",
+    description = "Run an org-scoped saved report definition.",
+    method = "POST",
+    path = "/v1/reports/saved/{report_id}/run",
+    policy = REPORT_VIEW,
+    read_only = true,
+)]
 impl Command for RunSavedReport {
     type Output = ReportResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "run_saved_report",
-            category: "reporting",
-            description: "Run an org-scoped saved report definition.",
-            method: "POST",
-            path: "/v1/reports/saved/{report_id}/run",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_VIEW)
-    }
-
-    fn read_only() -> bool {
-        true
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -289,31 +220,20 @@ impl Command for RunSavedReport {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<RunSavedReport>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportReportQuery(pub ExportReportQueryRequest);
 
+#[command(
+    name = "export_report_query",
+    category = "reporting",
+    description = "Run and export an org-scoped semantic reporting query.",
+    method = "POST",
+    path = "/v1/reports/query/export",
+    policy = REPORT_VIEW,
+    read_only = true,
+)]
 impl Command for ExportReportQuery {
     type Output = ReportExport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "export_report_query",
-            category: "reporting",
-            description: "Run and export an org-scoped semantic reporting query.",
-            method: "POST",
-            path: "/v1/reports/query/export",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_VIEW)
-    }
-
-    fn read_only() -> bool {
-        true
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportExport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -333,8 +253,6 @@ impl Command for ExportReportQuery {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ExportReportQuery>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct ExportSavedReport {
     /// Saved report's prefixed public identifier.
@@ -342,26 +260,17 @@ pub struct ExportSavedReport {
     pub request: ExportSavedReportRequest,
 }
 
+#[command(
+    name = "export_saved_report",
+    category = "reporting",
+    description = "Run and export an org-scoped saved report definition.",
+    method = "POST",
+    path = "/v1/reports/saved/{report_id}/export",
+    policy = REPORT_VIEW,
+    read_only = true,
+)]
 impl Command for ExportSavedReport {
     type Output = ReportExport;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "export_saved_report",
-            category: "reporting",
-            description: "Run and export an org-scoped saved report definition.",
-            method: "POST",
-            path: "/v1/reports/saved/{report_id}/export",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_VIEW)
-    }
-
-    fn read_only() -> bool {
-        true
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportExport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -380,27 +289,19 @@ impl Command for ExportSavedReport {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ExportSavedReport>() }
-
 #[derive(Debug, Default, Deserialize, ToSchema, serde::Serialize)]
 pub struct GetReportingDiagnostics;
 
+#[command(
+    name = "get_reporting_diagnostics",
+    category = "reporting",
+    description = "Inspect reporting projector lag and failed outbox rows.",
+    method = "GET",
+    path = "/v1/reports/admin/diagnostics",
+    policy = REPORT_ADMIN,
+)]
 impl Command for GetReportingDiagnostics {
     type Output = ReportingDiagnostics;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_reporting_diagnostics",
-            category: "reporting",
-            description: "Inspect reporting projector lag and failed outbox rows.",
-            method: "GET",
-            path: "/v1/reports/admin/diagnostics",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_ADMIN)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportingDiagnostics, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -409,8 +310,6 @@ impl Command for GetReportingDiagnostics {
         service.diagnostics(ctx.org_id()).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetReportingDiagnostics>() }
 
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct RunReportingProjector {
@@ -423,22 +322,16 @@ fn default_projector_limit() -> i64 {
     100
 }
 
+#[command(
+    name = "run_reporting_projector",
+    category = "reporting",
+    description = "Claim and process pending reporting outbox rows.",
+    method = "POST",
+    path = "/v1/reports/projector/run",
+    policy = REPORT_ADMIN,
+)]
 impl Command for RunReportingProjector {
     type Output = ProjectorRunResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "run_reporting_projector",
-            category: "reporting",
-            description: "Claim and process pending reporting outbox rows.",
-            method: "POST",
-            path: "/v1/reports/projector/run",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_ADMIN)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ProjectorRunResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -448,27 +341,19 @@ impl Command for RunReportingProjector {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<RunReportingProjector>() }
-
 #[derive(Debug, Deserialize, ToSchema, serde::Serialize)]
 pub struct BackfillReporting(pub ReportingBackfillRequest);
 
+#[command(
+    name = "backfill_reporting",
+    category = "reporting",
+    description = "Enqueue missing reporting projection work from canonical sources.",
+    method = "POST",
+    path = "/v1/reports/admin/backfill",
+    policy = REPORT_ADMIN,
+)]
 impl Command for BackfillReporting {
     type Output = ReportingBackfillResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "backfill_reporting",
-            category: "reporting",
-            description: "Enqueue missing reporting projection work from canonical sources.",
-            method: "POST",
-            path: "/v1/reports/admin/backfill",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&REPORT_ADMIN)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportingBackfillResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
@@ -479,8 +364,6 @@ impl Command for BackfillReporting {
             .await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<BackfillReporting>() }
 
 #[cfg(test)]
 mod tests {

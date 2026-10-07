@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use tracing::warn;
 
 use uuid::Uuid;
@@ -21,11 +22,11 @@ impl Database {
         let settings = input.settings.unwrap_or(serde_json::json!({}));
 
         let row = sqlx::query_as::<_, ProviderRow>(
-            r#"
+            sql!(r#"
             INSERT INTO providers (org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
-            "#,
+            RETURNING {ProviderRow}
+            "#),
         )
         .bind(org_id)
         .bind(&input.name)
@@ -55,7 +56,7 @@ impl Database {
         let settings = input.settings.unwrap_or(serde_json::json!({}));
 
         let row = sqlx::query_as::<_, ProviderRow>(
-            r#"
+            sql!(r#"
             INSERT INTO providers (id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO UPDATE SET
@@ -65,8 +66,8 @@ impl Database {
             WHERE
                 providers.name IS DISTINCT FROM EXCLUDED.name
                 OR providers.provider_type IS DISTINCT FROM EXCLUDED.provider_type
-            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
-            "#,
+            RETURNING {ProviderRow}
+            "#),
         )
         .bind(id)
         .bind(org_id)
@@ -83,13 +84,13 @@ impl Database {
     }
 
     pub async fn get_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
-        let row = sqlx::query_as::<_, ProviderRow>(
+        let row = sqlx::query_as::<_, ProviderRow>(sql!(
             r#"
-            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
+            SELECT {ProviderRow}
             FROM providers
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -99,14 +100,14 @@ impl Database {
     }
 
     pub async fn list_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
-        let rows = sqlx::query_as::<_, ProviderRow>(
+        let rows = sqlx::query_as::<_, ProviderRow>(sql!(
             r#"
-            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
+            SELECT {ProviderRow}
             FROM providers
             WHERE org_id = $1
             ORDER BY created_at DESC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .fetch_all(&self.pool)
         .await?;
@@ -128,7 +129,7 @@ impl Database {
         // If updating api_key, also update api_key_set
         let api_key_set = input.api_key_encrypted.as_ref().map(|_| true);
 
-        let row = sqlx::query_as::<_, ProviderRow>(
+        let row = sqlx::query_as::<_, ProviderRow>(sql!(
             r#"
             UPDATE providers
             SET
@@ -141,9 +142,9 @@ impl Database {
                 settings = COALESCE($9, settings),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
-            "#,
-        )
+            RETURNING {ProviderRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(&input.name)
@@ -243,11 +244,11 @@ impl Database {
         let capabilities_json = serde_json::to_value(&input.capabilities)?;
 
         let row = sqlx::query_as::<_, ModelRow>(
-            r#"
+            sql!(r#"
             INSERT INTO models (org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
-            "#,
+            RETURNING {ModelRow}
+            "#),
         )
         .bind(org_id)
         .bind(input.provider_id)
@@ -275,7 +276,7 @@ impl Database {
         let capabilities_json = serde_json::to_value(&input.capabilities)?;
 
         let row = sqlx::query_as::<_, ModelRow>(
-            r#"
+            sql!(r#"
             INSERT INTO models (id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id) DO UPDATE SET
@@ -287,8 +288,8 @@ impl Database {
                 models.display_name IS DISTINCT FROM EXCLUDED.display_name
                 OR models.is_favorite IS DISTINCT FROM EXCLUDED.is_favorite
                 OR models.enabled IS DISTINCT FROM EXCLUDED.enabled
-            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
-            "#,
+            RETURNING {ModelRow}
+            "#),
         )
         .bind(id)
         .bind(org_id)
@@ -313,13 +314,13 @@ impl Database {
     /// needs to read disabled rows uses `get_model_for_mutation` for mutation
     /// preconditions or `get_model_with_provider` for provider-enriched views.
     pub async fn get_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
-        let row = sqlx::query_as::<_, ModelRow>(
+        let row = sqlx::query_as::<_, ModelRow>(sql!(
             r#"
-            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
+            SELECT {ModelRow}
             FROM models
             WHERE org_id = $1 AND id = $2 AND enabled = TRUE
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -331,13 +332,13 @@ impl Database {
     /// Read an org-owned model without filtering disabled or inconsistent
     /// provider links. Mutation callers must validate the provider separately.
     pub async fn get_model_for_mutation(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
-        let row = sqlx::query_as::<_, ModelRow>(
+        let row = sqlx::query_as::<_, ModelRow>(sql!(
             r#"
-            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
+            SELECT {ModelRow}
             FROM models
             WHERE org_id = $1 AND id = $2
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .fetch_optional(&self.pool)
@@ -373,14 +374,14 @@ impl Database {
         org_id: i64,
         provider_id: Uuid,
     ) -> Result<Vec<ModelRow>> {
-        let rows = sqlx::query_as::<_, ModelRow>(
+        let rows = sqlx::query_as::<_, ModelRow>(sql!(
             r#"
-            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
+            SELECT {ModelRow}
             FROM models
             WHERE org_id = $1 AND provider_id = $2
             ORDER BY display_name ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(provider_id)
         .fetch_all(&self.pool)
@@ -424,7 +425,7 @@ impl Database {
             .map(|c| serde_json::to_value(&c))
             .transpose()?;
 
-        let row = sqlx::query_as::<_, ModelRow>(
+        let row = sqlx::query_as::<_, ModelRow>(sql!(
             r#"
             UPDATE models
             SET
@@ -445,9 +446,9 @@ impl Database {
                       WHERE p.org_id = $1 AND p.id = $3
                   )
               )
-            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
-            "#,
-        )
+            RETURNING {ModelRow}
+            "#
+        ))
         .bind(org_id)
         .bind(id)
         .bind(input.provider_id)
@@ -592,9 +593,9 @@ impl Database {
         provider: &str,
         limit: i64,
     ) -> Result<Vec<UnreconciledGeneration>> {
-        let rows = sqlx::query_as::<_, UnreconciledGeneration>(
+        let rows = sqlx::query_as::<_, UnreconciledGeneration>(sql!(
             r#"
-            SELECT id, org_id, provider_response_id
+            SELECT {UnreconciledGeneration}
             FROM   llm_generations
             WHERE  provider = $1
               AND  provider_response_id IS NOT NULL
@@ -602,8 +603,8 @@ impl Database {
               AND  (reconcile_after IS NULL OR reconcile_after <= NOW())
             ORDER  BY created_at ASC
             LIMIT  $2
-            "#,
-        )
+            "#
+        ))
         .bind(provider)
         .bind(limit)
         .fetch_all(&self.pool)

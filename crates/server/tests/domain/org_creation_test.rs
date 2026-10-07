@@ -3,13 +3,13 @@
 //! Verifies org creation, membership assignment, validation constraints,
 //! and listing of user organizations.
 //!
-//! Uses in-memory backend (no PostgreSQL required).
+//! Each test runs on its own embedded PostgreSQL database.
 //!
 //! Run with: cargo test -p everruns-server --test domain org_creation_test::
 
 use uuid::Uuid;
 
-use everruns_server::storage::{CreateOrganizationRow, InMemoryDatabase};
+use everruns_server::storage::{CreateOrganizationRow, StorageBackend};
 
 // ============================================
 // Creation Tests
@@ -17,7 +17,7 @@ use everruns_server::storage::{CreateOrganizationRow, InMemoryDatabase};
 
 #[tokio::test]
 async fn test_create_organization_assigns_public_id() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -35,7 +35,7 @@ async fn test_create_organization_assigns_public_id() {
 
 #[tokio::test]
 async fn test_create_organization_multiple() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let org1 = db
         .create_organization(CreateOrganizationRow {
@@ -67,8 +67,8 @@ async fn test_create_organization_multiple() {
 
 #[tokio::test]
 async fn test_add_member_and_check() {
-    let db = InMemoryDatabase::default();
-    let user_id = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -104,8 +104,8 @@ async fn test_add_member_and_check() {
 
 #[tokio::test]
 async fn test_list_user_organizations() {
-    let db = InMemoryDatabase::default();
-    let user_id = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
 
     // Create two orgs and add user to both
     let org1 = db
@@ -143,9 +143,9 @@ async fn test_list_user_organizations() {
 
 #[tokio::test]
 async fn test_list_user_organizations_excludes_non_member() {
-    let db = InMemoryDatabase::default();
-    let user_id = Uuid::now_v7();
-    let other_user_id = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
+    let other_user_id = db.create_test_user(Uuid::now_v7()).await;
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -171,8 +171,8 @@ async fn test_list_user_organizations_excludes_non_member() {
 
 #[tokio::test]
 async fn test_remove_member() {
-    let db = InMemoryDatabase::default();
-    let user_id = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -219,7 +219,7 @@ async fn test_remove_member() {
 
 #[tokio::test]
 async fn test_get_organization_by_public_id() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
     let public_id = format!("org_{}", Uuid::now_v7().simple());
 
     db.create_organization(CreateOrganizationRow {
@@ -243,7 +243,7 @@ async fn test_get_organization_by_public_id() {
 
 #[tokio::test]
 async fn test_default_org_exists() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     // Default org (org_id=1) should exist
     let default_org = db.get_organization(1).await.unwrap();
@@ -261,7 +261,7 @@ async fn test_default_org_exists() {
 
 #[tokio::test]
 async fn test_update_organization_name() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -288,7 +288,7 @@ async fn test_update_organization_name() {
 
 #[tokio::test]
 async fn test_delete_organization() {
-    let db = InMemoryDatabase::default();
+    let db = StorageBackend::test_database();
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -352,8 +352,8 @@ fn test_generate_org_public_id_format() {
 
 #[tokio::test]
 async fn test_ensure_membership_updates_role() {
-    let db = InMemoryDatabase::default();
-    let user_id = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -382,10 +382,10 @@ async fn test_ensure_membership_updates_role() {
 
 #[tokio::test]
 async fn test_reconcile_memberships_add_update_remove() {
-    let db = InMemoryDatabase::default();
-    let user_a = Uuid::now_v7();
-    let user_b = Uuid::now_v7();
-    let user_c = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_a = db.create_test_user(Uuid::now_v7()).await;
+    let user_b = db.create_test_user(Uuid::now_v7()).await;
+    let user_c = db.create_test_user(Uuid::now_v7()).await;
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -432,8 +432,8 @@ async fn test_reconcile_memberships_add_update_remove() {
 
 #[tokio::test]
 async fn test_reconcile_memberships_empty_authoritative_removes_all() {
-    let db = InMemoryDatabase::default();
-    let user_id = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
 
     let org = db
         .create_organization(CreateOrganizationRow {
@@ -460,8 +460,8 @@ async fn test_reconcile_memberships_empty_authoritative_removes_all() {
 
 #[tokio::test]
 async fn test_reconcile_memberships_no_changes() {
-    let db = InMemoryDatabase::default();
-    let user_id = Uuid::now_v7();
+    let db = StorageBackend::test_database();
+    let user_id = db.create_test_user(Uuid::now_v7()).await;
 
     let org = db
         .create_organization(CreateOrganizationRow {

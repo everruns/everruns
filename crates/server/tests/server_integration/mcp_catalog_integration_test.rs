@@ -38,7 +38,7 @@ async fn create_test_pool() -> PgPool {
 }
 
 async fn create_test_backend() -> StorageBackend {
-    StorageBackend::Postgres(Database::new(create_test_pool().await))
+    StorageBackend::from_database(Database::new(create_test_pool().await))
 }
 
 async fn ensure_test_harness_id(

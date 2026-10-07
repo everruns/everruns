@@ -242,29 +242,47 @@ fn test_incomplete_event_maps_output_limit_to_length() {
                 metadata.provider_finish_reason.as_deref(),
                 Some("max_output_tokens")
             );
-            // The incomplete item was never handed on, so nothing ran truncated.
+            // The incomplete item is never handed on: it is dropped and counted.
             assert_eq!(metadata.tool_calls_truncated_executed, 0);
+            assert_eq!(metadata.tool_calls_dropped, 1);
         }
         other => panic!("expected Done event, got {other:?}"),
     }
     assert!(deferred.lock().unwrap().is_empty());
 }
 
-/// A call already handed on mid-stream (via `output_item.done`) before the
-/// response ended incomplete may run with cut-off arguments: count it. A
-/// completed response counts only calls whose arguments fell back to `{}`.
+/// A finished call handed on before the response ended incomplete counts as
+/// run from a truncated response; its own arguments are complete. A finished
+/// call whose arguments do not parse is withheld and counted as dropped, never
+/// handed on as `{}`, and the response still reads as a tool turn.
 #[test]
-fn test_terminal_event_counts_calls_that_may_run_truncated() {
-    for (status, details, arguments, expected) in [
+fn test_terminal_event_counts_truncated_and_withheld_calls() {
+    for (status, details, arguments, executed, dropped, finish) in [
         (
             "incomplete",
             json!({"reason": "max_output_tokens"}),
             "{}",
             1,
+            0,
+            "length",
         ),
-        ("completed", Value::Null, "{\"command\":\"rm -rf", 1),
-        ("completed", Value::Null, "{\"command\":\"ls\"}", 0),
-        ("completed", Value::Null, "", 0),
+        (
+            "completed",
+            Value::Null,
+            "{\"command\":\"rm -rf",
+            0,
+            1,
+            "tool_calls",
+        ),
+        (
+            "completed",
+            Value::Null,
+            "{\"command\":\"ls\"}",
+            0,
+            0,
+            "tool_calls",
+        ),
+        ("completed", Value::Null, "", 0, 0, "tool_calls"),
     ] {
         let event = json!({
             "type": format!("response.{status}"),
@@ -279,6 +297,8 @@ fn test_terminal_event_counts_calls_that_may_run_truncated() {
         let mut calls = ToolCallStream::default();
         calls.observe_item("fc_1", "call_1", "bash", arguments);
         calls.mark_complete("fc_1", "call_1");
+        let snapshot = calls.snapshot();
+        assert_eq!(snapshot.len(), 1 - dropped as usize, "{status} {arguments}");
         let LlmStreamEvent::Done(metadata) = handle_streaming_event(
             serde_json::from_value(event).unwrap(),
             &Mutex::new(0),
@@ -293,7 +313,13 @@ fn test_terminal_event_counts_calls_that_may_run_truncated() {
             panic!("expected Done");
         };
         assert_eq!(
-            metadata.tool_calls_truncated_executed, expected,
+            metadata.tool_calls_truncated_executed, executed,
+            "{status} {arguments}"
+        );
+        assert_eq!(metadata.tool_calls_dropped, dropped, "{status} {arguments}");
+        assert_eq!(
+            metadata.finish_reason.as_deref(),
+            Some(finish),
             "{status} {arguments}"
         );
     }

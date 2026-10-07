@@ -2,6 +2,7 @@ import {
   getReasoningMultiIterationTurnIds,
   shouldRenderWorkLogEvent,
   isStructuralWorkLogEvent,
+  hasReasoningWorkLogSummary,
 } from "@/components/chat/chat-work-log-events";
 import type { Event, EventContext } from "@/lib/api/types";
 
@@ -43,7 +44,7 @@ describe("chat work log event eligibility", () => {
   });
 
   it("does not render one-iteration reasoning summaries as work logs", () => {
-    const event = reasonCompletedEvent("turn-1");
+    const event = reasonItemEvent("turn-1");
 
     expect(shouldRenderWorkLogEvent(event, new Map([["turn-1", 1]]), new Set(), new Set())).toBe(
       false,
@@ -51,7 +52,7 @@ describe("chat work log event eligibility", () => {
   });
 
   it("renders multi-iteration reasoning summaries as work logs", () => {
-    const event = reasonCompletedEvent("turn-1");
+    const event = reasonItemEvent("turn-1");
 
     expect(shouldRenderWorkLogEvent(event, new Map([["turn-1", 2]]), new Set(), new Set())).toBe(
       true,
@@ -74,6 +75,20 @@ describe("chat work log event eligibility", () => {
     );
   });
 
+  it("never classifies assistant output previews as reasoning", () => {
+    const event = reasonCompletedEvent("turn-1");
+
+    expect(hasReasoningWorkLogSummary(event)).toBe(false);
+    expect(
+      shouldRenderWorkLogEvent(
+        event,
+        new Map([["turn-1", 2]]),
+        new Set(["turn-1"]),
+        new Set(["turn-1"]),
+      ),
+    ).toBe(false);
+  });
+
   it("renders active multi-iteration reasoning before turn completion arrives", () => {
     const firstIteration = reasonCompletedEvent("turn-1");
     const secondIteration = reasonCompletedEvent("turn-1");
@@ -84,7 +99,12 @@ describe("chat work log event eligibility", () => {
 
     expect(multiIterationTurnIds.has("turn-1")).toBe(true);
     expect(
-      shouldRenderWorkLogEvent(firstIteration, new Map(), new Set(), multiIterationTurnIds),
+      shouldRenderWorkLogEvent(
+        reasonItemEvent("turn-1"),
+        new Map(),
+        new Set(),
+        multiIterationTurnIds,
+      ),
     ).toBe(true);
   });
 });

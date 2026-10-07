@@ -858,7 +858,7 @@ mod tests {
     #[tokio::test]
     async fn payment_execution_observes_org_revocation_before_request_or_spend() {
         use everruns_core::{DeploymentGrade, FeatureFlagGrade};
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let mut authority = ServerPaymentAuthority::new(db.clone(), None, 42, None);
         authority.feature_flag_policy =
             crate::records::FeatureFlagPolicy::from_env(DeploymentGrade::Prod)

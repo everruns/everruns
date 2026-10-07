@@ -737,7 +737,6 @@ impl CapabilityService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::memory::InMemoryDatabase;
     use crate::storage::models::{
         CreateMcpServerRow, CreatePluginInstallRow, UpdateMcpServerTools,
     };
@@ -746,7 +745,7 @@ mod tests {
     use everruns_core::McpServerAuthMode;
 
     fn make_service() -> CapabilityService {
-        let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
+        let db = Arc::new(StorageBackend::test_database());
         CapabilityService::with_registry(db, None, crate::platform::oss_capability_registry())
     }
 
@@ -899,7 +898,7 @@ mod tests {
                     name: "oauth-capability".to_string(),
                     description: None,
                     url: "https://example.com/mcp".to_string(),
-                    transport_type: "streamable_http".to_string(),
+                    transport_type: "http".to_string(),
                     api_key_encrypted: None,
                     headers: None,
                     settings: Some(

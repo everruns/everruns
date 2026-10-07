@@ -58,11 +58,12 @@ fn ctx(db: Arc<StorageBackend>, resolver: Arc<dyn PermissionResolver>) -> Ctx {
 }
 
 async fn seed() -> (Arc<StorageBackend>, SessionId) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session = db
         .create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
             title: Some("storage policy".to_string()),
+            owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             ..Default::default()
         })
         .await

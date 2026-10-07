@@ -33,7 +33,7 @@ use everruns_contracts::error::{AgentLoopError, Result};
 use everruns_contracts::message::{Message, MessageRole};
 use serde_json::Value;
 
-/// Driver id for `DECISIONS_DRIVER` and `llm/...` routing.
+/// Driver id for `UTILITY_DECISION_DRIVER` and `llm/...` routing.
 pub const LLM_DECISION_DRIVER_ID: &str = "llm";
 
 /// Questions per request. Each one is prompt text the model has to keep

@@ -13,7 +13,7 @@ export interface PublicChatBootstrap {
   primary_color?: string;
   welcome_message?: string;
   anonymous: boolean;
-  sign_in?: { mode: string; google_client_id?: string };
+  sign_in?: { mode: string; google_client_id?: string; agentid_login?: boolean };
   captcha?: { provider: string; site_key: string };
 }
 

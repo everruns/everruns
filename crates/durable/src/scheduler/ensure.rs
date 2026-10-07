@@ -20,11 +20,11 @@ use tracing::info;
 use uuid::Uuid;
 
 use super::SchedulerError;
+use crate::UpdateField;
 use crate::persistence::{
     CreateScheduleRow, Pagination, ScheduleFilter, ScheduleRow, ScheduleTargetType, Schedules,
     StoreError, UpdateSchedule,
 };
-use crate::update_field::UpdateField;
 
 /// When a schedule fires.
 #[derive(Debug, Clone, PartialEq, Eq)]

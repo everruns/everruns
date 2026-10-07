@@ -163,7 +163,7 @@ Enabled at `normal` on the auto-provisioned Generic harness:
 
 - **Generic** (`crates/server/src/harnesses/generic.rs`): shell, file system,
   and network, so an unattended agent can delete or publish for real.
-- **Platform Chat Agent** (`crates/server/src/platform_chat_agent.rs`) inherits
+- **Platform Chat** (`crates/server/src/platform_chat_agent.rs`) inherits
   soft approval from Generic for platform
   tools that create, mutate, and delete entities for a whole organization. Its
   prompt keeps the platform-specific confirmation cases (creating a harness or

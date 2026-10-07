@@ -8,9 +8,13 @@ struct IdentityCacheResolver {
 
 #[tokio::test]
 async fn credential_rotation_reaps_private_service_rows_but_preserves_public_rows() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
-    let agent_id = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
+    let agent_id = db
+        .create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let session_id = SessionId::new();
     let resolver = Arc::new(IdentityCacheResolver::new([(
         session_id,
@@ -381,9 +385,13 @@ fn cache_keys_keep_acts_as_and_identity_boundaries() {
 
 #[tokio::test]
 async fn user_cache_never_crosses_users_or_reaches_persistent_storage() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
-    let agent_id = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
+    let agent_id = db
+        .create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let user_a = Uuid::new_v4();
     let user_b = Uuid::new_v4();
     let session_a = SessionId::new();
@@ -444,10 +452,16 @@ async fn user_cache_never_crosses_users_or_reaches_persistent_storage() {
 
 #[tokio::test]
 async fn service_cache_shares_across_users_but_not_agents() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
-    let agent_a = Uuid::new_v4();
-    let agent_b = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
+    let agent_a = db
+        .create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
+    let agent_b = db
+        .create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let session_a = SessionId::new();
     let session_b = SessionId::new();
     let resolver = Arc::new(IdentityCacheResolver::new([
@@ -506,11 +520,16 @@ async fn service_cache_shares_across_users_but_not_agents() {
 
 #[tokio::test]
 async fn switching_acts_as_never_reuses_the_old_cache() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let session_id = SessionId::new();
     let context = ScopedMcpCacheContext {
-        agent_id: Some(Uuid::new_v4()),
+        agent_id: Some(
+            db.create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+                .await,
+        ),
         user_id: Some(Uuid::new_v4()),
     };
     let resolver = Arc::new(IdentityCacheResolver::new([(
@@ -540,9 +559,13 @@ async fn switching_acts_as_never_reuses_the_old_cache() {
 
 #[tokio::test]
 async fn private_service_cache_keeps_the_credential_hash() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
-    let agent_id = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
+    let agent_id = db
+        .create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let session_id = SessionId::new();
     let resolver = Arc::new(IdentityCacheResolver::new([(
         session_id,
@@ -606,8 +629,10 @@ async fn private_service_cache_keeps_the_credential_hash() {
 
 #[tokio::test]
 async fn public_service_cache_ignores_credential_rotation_for_the_same_agent() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let session_id = SessionId::new();
     let resolver = Arc::new(IdentityCacheResolver::new([(
         session_id,
@@ -616,7 +641,10 @@ async fn public_service_cache_ignores_credential_rotation_for_the_same_agent() {
     let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
     let egress = IdentityCacheEgress::cacheable("public");
     let context = ScopedMcpCacheContext {
-        agent_id: Some(Uuid::new_v4()),
+        agent_id: Some(
+            db.create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+                .await,
+        ),
         user_id: Some(Uuid::new_v4()),
     };
 
@@ -652,8 +680,10 @@ async fn public_service_cache_ignores_credential_rotation_for_the_same_agent() {
 #[tokio::test]
 async fn missing_zero_and_negative_ttl_are_never_cached() {
     for ttl_ms in [None, Some(0), Some(-1)] {
-        let db = StorageBackend::in_memory();
-        let preset_id = Uuid::new_v4();
+        let db = StorageBackend::test_database();
+        let preset_id = db
+            .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+            .await;
         let session_id = SessionId::new();
         let resolver = Arc::new(IdentityCacheResolver::new([(
             session_id,
@@ -667,7 +697,10 @@ async fn missing_zero_and_negative_ttl_are_never_cached() {
             delay: Duration::ZERO,
         };
         let context = ScopedMcpCacheContext {
-            agent_id: Some(Uuid::new_v4()),
+            agent_id: Some(
+                db.create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+                    .await,
+            ),
             user_id: Some(Uuid::new_v4()),
         };
 
@@ -696,9 +729,13 @@ async fn missing_zero_and_negative_ttl_are_never_cached() {
 
 #[tokio::test]
 async fn revoked_grant_invalidates_cached_tools() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
-    let agent_id = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
+    let agent_id = db
+        .create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let session_id = SessionId::new();
     let resolver = Arc::new(IdentityCacheResolver::new([(
         session_id,
@@ -770,8 +807,10 @@ async fn revoked_grant_invalidates_cached_tools() {
 
 #[tokio::test]
 async fn cache_past_maximum_age_is_omitted_without_blocking() {
-    let db = StorageBackend::in_memory();
-    let preset_id = Uuid::new_v4();
+    let db = StorageBackend::test_database();
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let user_id = Uuid::new_v4();
     let session_id = SessionId::new();
     let identity = CacheIdentity::User {
@@ -810,7 +849,10 @@ async fn cache_past_maximum_age_is_omitted_without_blocking() {
             McpServerActsAs::User,
             session_id,
             ScopedMcpCacheContext {
-                agent_id: Some(Uuid::new_v4()),
+                agent_id: Some(
+                    db.create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+                        .await
+                ),
                 user_id: Some(user_id),
             },
             &resolver_trait,
@@ -824,9 +866,13 @@ async fn cache_past_maximum_age_is_omitted_without_blocking() {
 
 #[tokio::test]
 async fn concurrent_first_fetch_is_single_flight() {
-    let db = Arc::new(StorageBackend::in_memory());
-    let preset_id = Uuid::new_v4();
-    let agent_id = Uuid::new_v4();
+    let db = Arc::new(StorageBackend::test_database());
+    let preset_id = db
+        .create_test_mcp_server(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
+    let agent_id = db
+        .create_test_agent(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+        .await;
     let session_id = SessionId::new();
     let resolver: Arc<dyn UserConnectionResolver> = Arc::new(IdentityCacheResolver::new([(
         session_id,

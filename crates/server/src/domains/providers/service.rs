@@ -1057,7 +1057,7 @@ mod tests {
 
         #[tokio::test]
         async fn update_of_managed_provider_is_forbidden() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let org_id = 1;
             let id = seed_provider(&db, org_id, true).await;
             let service = ProviderService::new(db.clone(), None);
@@ -1079,7 +1079,7 @@ mod tests {
 
         #[tokio::test]
         async fn delete_of_managed_provider_is_forbidden() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let org_id = 1;
             let id = seed_provider(&db, org_id, true).await;
             let service = ProviderService::new(db.clone(), None);
@@ -1095,7 +1095,7 @@ mod tests {
 
         #[tokio::test]
         async fn unmanaged_provider_stays_editable_and_deletable() {
-            let db = Arc::new(StorageBackend::in_memory());
+            let db = Arc::new(StorageBackend::test_database());
             let org_id = 1;
             let id = seed_provider(&db, org_id, false).await;
             let service = ProviderService::new(db.clone(), None);

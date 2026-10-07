@@ -6,7 +6,7 @@
 
 ```toml
 [dependencies]
-everruns-integrations-experimental = { version = "0.42", default-features = false, features = ["deno"] }
+everruns-integrations-experimental = { version = "0.43", default-features = false, features = ["deno"] }
 ```
 
 ```rust

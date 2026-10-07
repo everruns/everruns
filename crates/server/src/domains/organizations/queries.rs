@@ -33,10 +33,7 @@ pub async fn build_organization_response(
     org_id: i64,
     row: OrganizationRow,
 ) -> Result<OrganizationResponse, CommandError> {
-    let settings = db
-        .get_organization_settings(org_id)
-        .await
-        .map_err(classify_anyhow)?;
+    let settings = db.get_organization_settings(org_id).await?;
 
     Ok(OrganizationResponse {
         id: row.public_id,
@@ -48,6 +45,11 @@ pub async fn build_organization_response(
             .as_ref()
             .map(|s| s.default_provider_per_service.0.clone())
             .unwrap_or_default(),
+        system_decisions: settings
+            .as_ref()
+            .map(|s| crate::storage::SystemDecisions::from_db(&s.system_decisions))
+            .unwrap_or_default(),
+        agentid_agents_per_owner: db.agentid_agents_per_owner_setting(org_id).await?,
         created_at: row.created_at,
         updated_at: row.updated_at,
         onboarding_completed_at: row.onboarding_completed_at,

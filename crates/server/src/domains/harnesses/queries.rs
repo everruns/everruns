@@ -513,7 +513,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_loads_local_capabilities_in_one_batched_lookup() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let org_id = 1;
         let root = db
             .create_harness(org_id, harness_row("root", None))
@@ -552,7 +552,7 @@ mod tests {
 
     #[tokio::test]
     async fn sealed_ancestor_is_detected_through_custom_children() {
-        let db = StorageBackend::in_memory();
+        let db = StorageBackend::test_database();
         let org_id = 1;
         let sealed = db
             .create_harness(org_id, harness_row("bashkit-worker", None))

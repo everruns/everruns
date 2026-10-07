@@ -10,7 +10,7 @@ pub(crate) async fn test_worker_service() -> WorkerServiceImpl {
 async fn test_worker_service_with_runner(
     runner: Option<Arc<dyn everruns_core::host::TurnBackend>>,
 ) -> WorkerServiceImpl {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::Dev;
     let host_composition = crate::oss_host_composition_for_grade(grade);
     let encryption = Some(Arc::new(
@@ -123,7 +123,7 @@ impl CompletingTestRunner {
 }
 
 async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let grade = everruns_core::DeploymentGrade::Dev;
     let host_composition = crate::oss_host_composition_for_grade(grade);
     let encryption = Some(Arc::new(
@@ -174,11 +174,11 @@ async fn exact_provider_config_preserves_credentialless_driver_type() {
     let response = service
         .get_default_provider_credentials(tonic::Request::new(
             GetDefaultProviderCredentialsRequest {
-                decision_model_id: None,
                 session_id: None,
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 provider_type: String::new(),
                 provider_id: provider.id.to_string(),
+                ..Default::default()
             },
         ))
         .await
@@ -607,8 +607,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             harness_id: None,
             agent_id: None,
             virtual_user_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             owner_principal_id: everruns_contracts::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(user.id),
             title: Some("authority root".to_string()),
@@ -771,7 +770,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             everruns_core::DEFAULT_ORG_ID,
             parent_id,
             crate::storage::models::UpdateSession {
-                resolved_owner_user_id: everruns_durable::UpdateField::Set(user.id),
+                resolved_owner_user_id: crate::storage::UpdateField::Set(user.id),
                 ..Default::default()
             },
         )
@@ -1333,7 +1332,7 @@ async fn test_list_orphaned_session_tasks_returns_stale_task() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_contracts::typed_id::SessionId::new();
+    let session_id = db.create_test_session().await;
 
     let task_id = create_test_session_task(
         &db,
@@ -1382,7 +1381,7 @@ async fn test_list_orphaned_session_tasks_excludes_fresh_heartbeat() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_contracts::typed_id::SessionId::new();
+    let session_id = db.create_test_session().await;
 
     let task_id = create_test_session_task(
         &db,
@@ -1430,7 +1429,7 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_contracts::typed_id::SessionId::new();
+    let session_id = db.create_test_session().await;
 
     // Create a task with no heartbeat (foreground/subagent tasks).
     let task_id = create_test_session_task(

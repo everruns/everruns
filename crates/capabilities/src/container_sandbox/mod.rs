@@ -37,7 +37,6 @@ use tools::{
 
 /// Capability plugins this module contributes to the hosted catalog.
 pub const CAPABILITY_PLUGINS: &[IntegrationPlugin] = &[IntegrationPlugin {
-    experimental_only: false,
     feature_flag: Some("container_sandbox"),
     factory: || Box::new(ContainerSandboxCapability),
 }];

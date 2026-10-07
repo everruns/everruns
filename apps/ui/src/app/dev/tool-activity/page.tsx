@@ -33,6 +33,68 @@ export default function ToolActivityDevPage() {
       widthClassName="max-w-7xl"
     >
       <div className="space-y-6">
+        <section className="space-y-4 border border-border/70 bg-card/90 p-4">
+          <h2 className="text-lg font-semibold text-foreground">Conversational approval</h2>
+          <div className="space-y-3">
+            <p className="text-sm text-foreground">
+              I can create Coding Agent with the Worker harness and Daytona sandbox. Shall I
+              proceed?
+            </p>
+            <ToolActivityGroup
+              toolCalls={[
+                {
+                  id: "approval-request-preview",
+                  name: "request_approval",
+                  arguments: {
+                    action:
+                      "Create the organisation-wide Coding Agent using the existing Worker harness and a Daytona primary sandbox configuration",
+                    question:
+                      "Shall I create Coding Agent for implementing, debugging and testing code, with approval required before pushes, deployments or destructive actions?",
+                  },
+                },
+              ]}
+              toolResultsMap={new Map()}
+            />
+          </div>
+          <p id="consent-preview" className="text-right text-sm text-foreground">
+            Approved
+          </p>
+          <ToolActivityGroup
+            toolCalls={[
+              {
+                id: "approval-record-preview",
+                name: "record_approval",
+                arguments: {
+                  action: "Create Coding Agent with the Worker harness and Daytona sandbox",
+                },
+              },
+            ]}
+            toolResultsMap={
+              new Map([
+                [
+                  "approval-record-preview",
+                  {
+                    tool_call_id: "approval-record-preview",
+                    tool_name: "record_approval",
+                    success: true,
+                    status: "success",
+                  },
+                ],
+              ])
+            }
+            approvalContexts={
+              new Map([
+                [
+                  "approval-record-preview",
+                  {
+                    approvedBy: "Avery Admin",
+                    consentMessageHref: "#consent-preview",
+                  },
+                ],
+              ])
+            }
+          />
+        </section>
         <section className="space-y-4 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
           <div className="space-y-1">
             <h2 className="text-lg font-semibold text-foreground">Standalone tool outputs</h2>
