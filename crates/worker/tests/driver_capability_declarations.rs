@@ -81,12 +81,7 @@ fn published() -> Vec<(DriverId, &'static str, &'static [ServiceKind], bool)> {
             &[ServiceKind::Chat],
             false,
         ),
-        (
-            DriverId::Meta,
-            "Meta",
-            &[ServiceKind::Chat],
-            false,
-        ),
+        (DriverId::Meta, "Meta", &[ServiceKind::Chat], false),
         (
             DriverId::Cloudflare,
             "Cloudflare AI Gateway",

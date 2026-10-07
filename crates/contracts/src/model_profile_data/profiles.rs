@@ -16,6 +16,7 @@ mod anthropic_capabilities;
 mod enumeration;
 mod gpt6;
 mod model_id_match;
+mod realtime;
 mod speed;
 
 pub use enumeration::*;
