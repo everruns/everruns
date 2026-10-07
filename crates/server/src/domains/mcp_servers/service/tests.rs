@@ -837,7 +837,7 @@ async fn update_rejects_api_key_following_url_to_new_origin() {
 
 #[tokio::test]
 async fn service_connection_provider_is_pinned_to_hosts_that_accept_its_tokens() {
-    // THREAT[TM-TOOL-058]: a preset may only name a connection whose tokens
+    // THREAT[TM-TOOL-059]: a preset may only name a connection whose tokens
     // its host legitimately accepts, on create and on every later edit.
     let db = Arc::new(StorageBackend::test_database());
     let svc = McpServerService::new(db.clone(), Some(test_encryption()));

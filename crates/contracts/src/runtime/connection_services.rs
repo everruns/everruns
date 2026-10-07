@@ -176,6 +176,24 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// Resolve the responding agent's own service-account API-key connection
+    /// for `provider`: its key and the provider metadata stored with it.
+    ///
+    /// Reads only the agent's service virtual user. It never reads the
+    /// invoking end user's connections and never falls back to them, or to a
+    /// management user's. `Ok(None)` means "no service connection".
+    ///
+    /// THREAT[TM-TOOL-041]: fail-closed by default, like
+    /// [`Self::get_mcp_connection_token`]; a resolver that has not opted in
+    /// must not substitute the identity-preferring lookup.
+    async fn get_service_api_key_connection(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+    ) -> Result<Option<ServiceApiKeyConnection>> {
+        Ok(None)
+    }
+
     /// Invalidate an MCP credential after the remote server rejects it.
     ///
     /// Implementations that own persistent grants can remove the credential
@@ -224,6 +242,23 @@ pub trait UserConnectionResolver: Send + Sync {
         _provider: &str,
     ) -> Result<Option<serde_json::Value>> {
         Ok(None)
+    }
+}
+
+/// An API key held by an agent's own service account, with the provider
+/// metadata stored beside it (for example an AgentMail inbox id).
+#[derive(Clone)]
+pub struct ServiceApiKeyConnection {
+    pub api_key: String,
+    pub metadata: Option<serde_json::Value>,
+}
+
+impl std::fmt::Debug for ServiceApiKeyConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ServiceApiKeyConnection")
+            .field("api_key", &"[redacted]")
+            .field("metadata", &self.metadata)
+            .finish()
     }
 }
 

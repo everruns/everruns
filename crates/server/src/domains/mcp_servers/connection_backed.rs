@@ -7,7 +7,7 @@
 // For GitHub that is the agent's own GitHub App installation, so an agent with
 // a GitHub App needs no second GitHub login for the GitHub MCP server.
 //
-// THREAT[TM-TOOL-058]: naming a connection sends that connection's token to the
+// THREAT[TM-TOOL-059]: naming a connection sends that connection's token to the
 // preset's URL. Each provider is therefore pinned to the hosts that legitimately
 // accept its tokens, checked when the preset is saved and again every time a
 // token is resolved, so editing a preset cannot forward an agent's GitHub token

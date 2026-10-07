@@ -11,7 +11,13 @@
   `connect_mcp_server` on its own. See
   [User MCP servers](integrations/user-mcp-servers.md#plan) step 5,
   [agent MCP attachments](integrations/agent-mcp-attachments.md) D2 and
-  TM-TOOL-058.
+  TM-TOOL-059.
+
+* **Agents can finish other apps' AgentID sign-ins.** The experimental
+  `agentid` capability's `agentid_authorize` tool approves an app's AgentID
+  waiting page with the agent's own AgentMail inbox, read only from the
+  agent's service account (TM-TOOL-058). See
+  [AgentID](integrations/agentid.md#outbound-authorize-helper).
 
 * **An organization can answer its own system decisions.** The org setting
   `system_decisions` (`deployment` by default, or `organization`) picks who

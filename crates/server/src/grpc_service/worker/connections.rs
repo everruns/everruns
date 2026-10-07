@@ -67,6 +67,39 @@ impl WorkerServiceImpl {
         Ok(Response::new(GetConnectionTokenResponse { token }))
     }
 
+    pub(crate) async fn handle_get_service_api_key_connection(
+        &self,
+        request: Request<GetServiceApiKeyConnectionRequest>,
+    ) -> Result<Response<GetServiceApiKeyConnectionResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let base = self.connection_resolver()?;
+        let bound = req
+            .input_message_id
+            .as_ref()
+            .map(|id| parse_uuid(Some(id)))
+            .transpose()?
+            .and_then(|id| base.for_execution(id));
+        let resolver = bound.as_ref().unwrap_or(base);
+        let connection = resolver
+            .get_service_api_key_connection(session_id.into(), &req.provider)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to resolve service connection");
+                Status::internal("Failed to resolve service connection")
+            })?;
+        Ok(Response::new(match connection {
+            Some(connection) => GetServiceApiKeyConnectionResponse {
+                api_key: Some(connection.api_key),
+                metadata_json: connection.metadata.map(|value| value.to_string()),
+            },
+            None => GetServiceApiKeyConnectionResponse {
+                api_key: None,
+                metadata_json: None,
+            },
+        }))
+    }
+
     pub(crate) async fn handle_get_connection_user(
         &self,
         request: Request<GetConnectionUserRequest>,
