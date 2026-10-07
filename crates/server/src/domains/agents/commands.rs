@@ -572,7 +572,6 @@ impl Command for UpdateAgentCmd {
                     )
                 })?;
         }
-        // Persist
         let input = UpdateAgent {
             virtual_user_id: match req.service_virtual_user_id {
                 StorageUpdate::Unchanged => None,
@@ -613,6 +612,10 @@ impl Command for UpdateAgentCmd {
             environments: sandbox_templates::update_to_json(req.sandbox_policy),
             ..Default::default()
         };
+        // Validate the entire update before irreversible external cleanup.
+        if is_archiving {
+            super::lifecycle::prepare_for_removal(ctx, internal_id.uuid()).await?;
+        }
         let row = ctx
             .db
             .update_agent(ctx.org_id(), internal_id, input)
@@ -710,13 +713,7 @@ impl Command for DeleteAgent {
             .await?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
-        crate::domains::apps::queries::ensure_no_app_references_to_agent(
-            &ctx.db,
-            ctx.org_id(),
-            row.id.uuid(),
-        )
-        .await?;
-
+        super::lifecycle::prepare_for_removal(ctx, row.id.uuid()).await?;
         ctx.db.delete_agent(ctx.org_id(), row.id).await?;
         super::credentials::revoke_agent_grants(ctx, &row).await?;
 
@@ -1889,13 +1886,7 @@ impl Command for DestroyAgent {
             ));
         }
 
-        crate::domains::apps::queries::ensure_no_app_references_to_agent(
-            &ctx.db,
-            ctx.org_id(),
-            row.id.uuid(),
-        )
-        .await?;
-
+        super::lifecycle::prepare_for_removal(ctx, row.id.uuid()).await?;
         ctx.db.destroy_agent(ctx.org_id(), row.id).await?;
 
         Ok(serde_json::json!({"destroyed": true}))

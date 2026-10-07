@@ -17,6 +17,11 @@
 
 ## 2026-10-06
 
+* **Agent removal cleans up managed Slack apps.** Channel deletion and Agent
+  archive/delete remove managed apps with durable progress and installation
+  serialization. Confirmations explain removal, reinstallation after restore,
+  and the manual-app limit. See [Slack One-Click Install](integrations/slack-one-click-install.md).
+
 * **OpenAI's Decisions API driver leaves preview.** The API reached public
   beta with a published reference, and our key is enabled. The guessed wire
   shape was replaced by the real one (one call carries every question;

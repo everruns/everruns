@@ -11,6 +11,8 @@ import type {
 } from "@/lib/api/types";
 
 const update = jest.fn();
+const deleteChannel = jest.fn();
+let mockDeleteError: Error | null = null;
 const updateTrigger = jest.fn().mockResolvedValue({});
 let mockTrigger: AgentTrigger;
 let mockChannel: AgentChannel;
@@ -89,11 +91,19 @@ jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => ({ can: () => true, isLoading: false }),
 }));
 
+jest.mock("@/components/health/channel-health-warning", () => ({
+  ChannelHealthWarning: () => null,
+}));
+
 jest.mock("@/hooks/use-agent-channels", () => ({
   useAgentChannels: () => ({ channels: [{ channel: mockChannel }], isLoading: false }),
   useSlackInstallCapability: () => ({ data: undefined, isLoading: false, refetch: jest.fn() }),
   useUpdateAgentChannel: () => ({ mutate: update, isPending: false }),
-  useDeleteAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
+  useDeleteAgentChannel: () => ({
+    mutate: deleteChannel,
+    isPending: false,
+    error: mockDeleteError,
+  }),
   usePublishAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
   useTriggerAgentChannel: () => ({ mutate: jest.fn(), isPending: false }),
 }));
@@ -201,6 +211,23 @@ describe("Agent channel version pinning", () => {
     jest.clearAllMocks();
     mockFlagEnabled = true;
     mockChannel = channel();
+    mockDeleteError = null;
+  });
+
+  it("confirms Slack app removal before deleting the channel and keeps failures visible", async () => {
+    mockChannel = {
+      ...channel(),
+      channel_type: "slack",
+      channel_config: { slack_app_provisioned: true },
+    };
+    mockDeleteError = new Error("Could not remove the agent from Slack. Retry.");
+    renderEditor();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(deleteChannel).not.toHaveBeenCalled();
+    expect(await screen.findByRole("dialog")).toHaveTextContent("removed from Slack");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Could not remove the agent from Slack");
+    fireEvent.click(screen.getByRole("button", { name: "Delete channel" }));
+    expect(deleteChannel).toHaveBeenCalledTimes(1);
   });
 
   it("pins a saved version, offering only saved versions", () => {

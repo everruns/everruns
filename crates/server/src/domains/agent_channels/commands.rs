@@ -18,6 +18,19 @@ async fn resolve_agent(
     ctx: &Ctx,
     id_or_name: &str,
 ) -> Result<crate::storage::models::AgentRow, CommandError> {
+    let row = find_agent(ctx, id_or_name).await?;
+    if row.status != "active" {
+        return Err(CommandError::bad_request(
+            "Archived or deleted agents cannot manage channels",
+        ));
+    }
+    Ok(row)
+}
+
+async fn find_agent(
+    ctx: &Ctx,
+    id_or_name: &str,
+) -> Result<crate::storage::models::AgentRow, CommandError> {
     let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
         ctx.db
             .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
@@ -26,11 +39,6 @@ async fn resolve_agent(
         ctx.db.get_agent_by_name(ctx.org_id(), id_or_name).await
     }?
     .ok_or_else(|| CommandError::not_found("Agent"))?;
-    if row.status != "active" {
-        return Err(CommandError::bad_request(
-            "Archived or deleted agents cannot manage channels",
-        ));
-    }
     Ok(row)
 }
 
@@ -130,7 +138,7 @@ impl Command for ListAgentChannels {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
+        let agent = find_agent(ctx, &self.agent_id).await?;
         ctx.db
             .list_agent_channels(ctx.org_id(), agent.id.uuid())
             .await?
@@ -166,7 +174,7 @@ impl Command for GetAgentChannel {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
+        let agent = find_agent(ctx, &self.agent_id).await?;
         let row = ctx
             .db
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
@@ -225,10 +233,13 @@ impl Command for CreateAgentChannel {
             version_id: None,
         });
         let (identity_id, owner) = ensure_identity_for_agent(&ctx.db, ctx.org_id(), &agent).await?;
-        let config = normalize_and_validate_channel_config(
-            self.req.channel_type.clone(),
-            self.req.channel_config,
-        )?;
+        let mut config = self.req.channel_config;
+        // A builder may configure transport credentials, but cannot select an
+        // arbitrary managed app for deletion via forged install metadata.
+        if self.req.channel_type == ChannelType::Slack {
+            merge_preserved_secret_fields(ChannelType::Slack, &mut config, &json!({}));
+        }
+        let config = normalize_and_validate_channel_config(self.req.channel_type.clone(), config)?;
         let prepared = super::queries::prepare_channel_storage(ctx.encryption.as_ref(), &config)?;
         let channel_id = AgentChannelId::new();
         let row = ctx
@@ -291,11 +302,23 @@ impl Command for UpdateAgentChannelCmd {
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
-        let existing = ctx
+        let mut existing = ctx
             .db
             .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Channel"))?;
+        if existing.channel_type == "slack" {
+            // Cleanup must not be followed by a stale settings write restoring
+            // the deleted app's credentials. Hold through the command commit.
+            let guard = ctx.db.lock_slack_install(existing.channel_id).await?;
+            resolve_agent(ctx, &self.agent_id).await?;
+            existing = ctx
+                .db
+                .get_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)
+                .await?
+                .ok_or_else(|| CommandError::not_found("Channel"))?;
+            super::slack_cleanup::release_after_commit(guard).await;
+        }
         let channel_type = ChannelType::from_str_opt(&existing.channel_type)
             .ok_or_else(|| CommandError::bad_request("Channel has an unsupported channel type"))?;
         let version = resolve_version_selection(
@@ -494,6 +517,7 @@ impl Command for DeleteAgentChannel {
 
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
+        super::slack_cleanup::remove_channel_app(ctx, agent.id.uuid(), &self.channel_id).await?;
         let deleted = ctx
             .db
             .delete_agent_channel(ctx.org_id(), agent.id.uuid(), &self.channel_id)

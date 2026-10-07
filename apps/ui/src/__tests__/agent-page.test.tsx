@@ -204,8 +204,9 @@ jest.mock("@/hooks", () => ({
   usePageTitle: () => undefined,
 }));
 
+const mockCan = jest.fn();
 jest.mock("@/hooks/use-policies", () => ({
-  usePolicies: () => ({ can: () => true }),
+  usePolicies: () => ({ can: mockCan }),
 }));
 
 let mockManagerNotes = { content: "", revision: 0 };
@@ -249,9 +250,10 @@ async function save() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
-  mockUseAgentChannels.mockReturnValue({ data: [] });
+  mockUseAgentChannels.mockReturnValue({ data: [], refetch: jest.fn() });
   mockUseAgentTriggers.mockReturnValue({ data: [] });
   mockUseSessions.mockReturnValue({
     data: { data: [mockSession], total: 1 },
@@ -697,6 +699,68 @@ describe("AgentPage entity actions", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Archive agent" }));
     });
     expect(mockArchive).toHaveBeenCalledWith({ id: "agent-1", reason: "replaced by v2" });
+  });
+
+  it.each(["archive", "delete"] as const)("explains Slack removal before %s", async (action) => {
+    mockUseAgentChannels.mockReturnValue({
+      data: [{ channel_type: "slack", channel_config: { slack_app_provisioned: true } }],
+    });
+    if (action === "delete") {
+      mockUseAgent.mockReturnValue({
+        data: { ...mockAgent, status: "archived" },
+        isLoading: false,
+      });
+    }
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: action === "archive" ? "Archive agent" : "Delete agent",
+      }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/removed from Slack/)).toBeInTheDocument();
+    if (action === "archive") {
+      expect(within(dialog).getByText(/reinstall/)).toBeInTheDocument();
+    }
+  });
+
+  it("explains manual Slack removal when archiving a manually configured connection", async () => {
+    mockUseAgentChannels.mockReturnValue({
+      data: [{ channel_type: "slack", channel_config: { bot_token_configured: true } }],
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/remove.*manually.*Slack/i)).toBeInTheDocument();
+  });
+
+  it("waits for Slack connections before allowing archive", async () => {
+    mockUseAgentChannels.mockReturnValue({ data: undefined });
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Checking Slack connections…")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
+    expect(mockArchive).not.toHaveBeenCalled();
+  });
+
+  it("requires integration deletion permission before archiving managed Slack apps", async () => {
+    mockCan.mockImplementation((policy: string) => policy !== "agent.dangerous");
+    mockUseAgentChannels.mockReturnValue({
+      data: [{ channel_type: "slack", channel_config: { slack_app_provisioned: true } }],
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/requires permission to delete Agent integrations/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
+    expect(mockArchive).not.toHaveBeenCalled();
   });
 
   it("shows the manager notes hint only in edit mode", async () => {

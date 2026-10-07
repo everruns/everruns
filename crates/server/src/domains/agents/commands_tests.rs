@@ -1257,3 +1257,6 @@ async fn built_in_agents_do_not_count_toward_limit() {
 
 #[path = "branding_slack_tests.rs"]
 mod branding_slack_tests;
+
+#[path = "lifecycle_slack_tests.rs"]
+mod lifecycle_slack_tests;

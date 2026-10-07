@@ -16,6 +16,15 @@ import { usePolicies } from "@/hooks/use-policies";
 import { Badge } from "@/components/ui/badge";
 import { ChannelHealthWarning } from "@/components/health/channel-health-warning";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { SlackRemovalNotice } from "@/components/agents/integrations/slack-removal-notice";
 import { Card, CardContent } from "@/components/ui/card";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
@@ -131,6 +140,7 @@ function AgentChannelForm({
   const channelId = channel.id;
   const updateEndpoint = useUpdateAgentChannel(agentId, channelId);
   const deleteEndpoint = useDeleteAgentChannel(agentId, channelId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const publishEndpoint = usePublishAgentChannel(agentId);
   const triggerEndpoint = useTriggerAgentChannel(agentId);
   const [formState, setFormState] = useState<ChannelFormState>(() =>
@@ -226,11 +236,7 @@ function AgentChannelForm({
             <Button
               type="button"
               variant="outline"
-              onClick={() =>
-                deleteEndpoint.mutate(undefined, {
-                  onSuccess: () => router.push(returnHref),
-                })
-              }
+              onClick={() => setConfirmDelete(true)}
               disabled={!canDangerous || deleteEndpoint.isPending}
             >
               <Trash2 className="size-4" />
@@ -309,6 +315,40 @@ function AgentChannelForm({
       <PageFooter>
         <BackLink href={returnHref}>Back to {agentName}</BackLink>
       </PageFooter>
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Delete {getChannelTypeDisplayName(channel.channel_type)} channel
+            </DialogTitle>
+            <DialogDescription>Delete this connection to {agentName}?</DialogDescription>
+          </DialogHeader>
+          <SlackRemovalNotice channels={[channel]} action="channel" />
+          {deleteEndpoint.error && (
+            <Notice variant="destructive">
+              <NoticeDescription>{deleteEndpoint.error.message}</NoticeDescription>
+            </Notice>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={deleteEndpoint.isPending}
+              onClick={() => setConfirmDelete(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!canDangerous || deleteEndpoint.isPending}
+              onClick={() =>
+                deleteEndpoint.mutate(undefined, { onSuccess: () => router.push(returnHref) })
+              }
+            >
+              {deleteEndpoint.isPending ? "Deleting..." : "Delete channel"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageContainer>
   );
 }

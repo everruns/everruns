@@ -346,6 +346,30 @@ impl Database {
         Ok(deleted.rows_affected() > 0)
     }
 
+    /// Slack deletion is irreversible; keep its progress even if the enclosing
+    /// Agent mutation rolls back after another app fails. The lifecycle lock
+    /// prevents installs from replacing these credentials during cleanup.
+    pub async fn record_slack_app_removed(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        public_id: &str,
+        config: serde_json::Value,
+        encrypted: Option<Vec<u8>>,
+    ) -> Result<bool> {
+        let mut tx = self.pool.begin_detached().await?;
+        let result = sqlx::query(
+            "UPDATE agent_channels AS channel SET channel_config = $4, \
+             channel_config_encrypted = $5, enabled = false, status = 'disabled', updated_at = NOW() \
+             FROM agents AS agent WHERE agent.org_id = $1 AND agent.id = $2 \
+             AND channel.agent_id = agent.id AND channel.public_id = $3 AND channel.channel_type = 'slack'",
+        )
+        .bind(org_id).bind(agent_id).bind(public_id).bind(config).bind(encrypted)
+        .execute(&mut *tx).await?;
+        tx.commit().await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn list_ingress_channels_by_legacy_alias(
         &self,
         legacy_alias_id: &str,
