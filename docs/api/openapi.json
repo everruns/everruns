@@ -4384,6 +4384,315 @@
         ]
       }
     },
+    "/v1/budgets": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List budgets. Filter by subject_type and subject_id.",
+        "operationId": "list_budgets",
+        "parameters": [
+          {
+            "name": "subject_type",
+            "in": "query",
+            "description": "Only budgets on this kind of subject (session, agent, user, org, ...).",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "description": "Only budgets on this subject's prefixed public identifier.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WithUrls_Budget"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Create a budget for a subject (session, agent, user, org). Sets a spending cap in the given currency.",
+        "operationId": "create_budget",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Get a single budget by ID.",
+        "operationId": "get_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Delete a budget.",
+        "operationId": "delete_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Update a budget limit, status, or metadata.",
+        "operationId": "update_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBudgetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}/check": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Check budget status for a session-scoped budget.",
+        "operationId": "check_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetCheckResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}/ledger": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List ledger entries for a budget.",
+        "operationId": "list_budget_ledger",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of items returned in this page.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Zero-based offset into the result set.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LedgerEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/budgets/{budget_id}/top-up": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Add credits to a budget. Reactivates exhausted or paused budgets if balance becomes positive.",
+        "operationId": "top_up_budget",
+        "parameters": [
+          {
+            "name": "budget_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopUpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Budget"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Budget not found"
+          }
+        }
+      }
+    },
     "/v1/capabilities": {
       "get": {
         "tags": [
@@ -16529,6 +16838,73 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/budget-check": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Check all budgets for a session.",
+        "operationId": "check_session_budgets",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetCheckResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/budgets": {
+      "get": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "List all budgets for a session.",
+        "operationId": "list_session_budgets",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WithUrls_Budget"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/cancel": {
       "post": {
         "tags": [
@@ -18118,6 +18494,38 @@
           },
           "404": {
             "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/resume": {
+      "post": {
+        "tags": [
+          "budgets"
+        ],
+        "summary": "Resume all paused session budgets for a session.",
+        "operationId": "resume_session_budgets",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeSessionResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -52634,6 +53042,127 @@
                 ],
                 "description": "Optional virtual identity that represents the app in unattended/channel execution.",
                 "example": "identity_01933b5a00007000800000000000001"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+      },
+      "WithUrls_Budget": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "Budget — a stored spending cap for a platform subject.",
+            "required": [
+              "id",
+              "organization_id",
+              "subject_type",
+              "subject_id",
+              "currency",
+              "limit",
+              "balance",
+              "status",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "balance": {
+                "type": "number",
+                "format": "double",
+                "description": "Current remaining balance (limit minus consumed)."
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "currency": {
+                "type": "string",
+                "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+              },
+              "id": {
+                "type": "string",
+                "example": "bdgt_01933b5a00007000800000000000001"
+              },
+              "limit": {
+                "type": "number",
+                "format": "double",
+                "description": "Hard limit — budget ceiling."
+              },
+              "metadata": {
+                "description": "Arbitrary metadata."
+              },
+              "organization_id": {
+                "type": "string"
+              },
+              "period": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BudgetPeriod",
+                    "description": "Optional period for recurring budgets."
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "period_started_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+              },
+              "soft_limit": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "format": "double",
+                "description": "Soft limit — triggers pause/warn when balance drops below this."
+              },
+              "status": {
+                "$ref": "#/components/schemas/BudgetStatus"
+              },
+              "subject_id": {
+                "type": "string",
+                "description": "Public ID of the subject entity."
+              },
+              "subject_type": {
+                "$ref": "#/components/schemas/BudgetSubjectType"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           },

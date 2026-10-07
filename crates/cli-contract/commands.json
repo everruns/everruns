@@ -2352,7 +2352,8 @@
         "field": "budget_id",
         "long": "budget-id",
         "kind": "string",
-        "required": true
+        "required": true,
+        "help": "Budget's prefixed public identifier (a path parameter)."
       },
       {
         "field": "limit",
@@ -2384,13 +2385,15 @@
         "field": "subject_id",
         "long": "subject-id",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only budgets on this subject's prefixed public identifier."
       },
       {
         "field": "subject_type",
         "long": "subject-type",
         "kind": "string",
-        "required": false
+        "required": false,
+        "help": "Only budgets on this kind of subject (session, agent, user, org, ...)."
       }
     ]
   },
