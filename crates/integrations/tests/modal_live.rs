@@ -22,6 +22,9 @@ use std::time::Duration;
 
 use common::{call, ok, tool_error};
 use everruns_contracts::connector::Connector;
+use everruns_contracts::session_sandbox::{
+    SessionSandboxCredential, SessionSandboxCredentialSource,
+};
 use everruns_integrations::modal::client::{CreateSandboxParams, ModalClient, ModalCredentials};
 use everruns_integrations::modal::{MODAL_APP_NAME, ModalConnector};
 use serde_json::json;
@@ -38,6 +41,14 @@ fn credentials() -> ModalCredentials {
     ModalCredentials {
         token_id: get("MODAL_TOKEN_ID"),
         token_secret: get("MODAL_TOKEN_SECRET"),
+    }
+}
+
+fn live_provider_credential() -> SessionSandboxCredential {
+    SessionSandboxCredential {
+        source: SessionSandboxCredentialSource::SessionUser,
+        virtual_user_id: Some(uuid::Uuid::nil()),
+        connection_id: None,
     }
 }
 
@@ -320,6 +331,7 @@ async fn managed_provider_pauses_to_a_snapshot_and_resumes_with_files_intact() {
     let (ctx, _, leases) = common::context(Some(&token));
     let config = SessionSandboxConfig {
         provider: "modal".into(),
+        credential: live_provider_credential(),
         provider_config: json!({"runtime": "vm"}),
         ..Default::default()
     };
@@ -388,6 +400,7 @@ async fn managed_run(
     let (ctx, _) = common::context_with_connections(&all);
     let config = SessionSandboxConfig {
         provider: "modal".into(),
+        credential: live_provider_credential(),
         provider_config,
         ..Default::default()
     };
