@@ -39,6 +39,15 @@ const TRANSIENT_RETRY_DELAY: Duration = Duration::from_millis(50);
 
 const ICON_ATTEMPTS: u32 = 3;
 
+/// The API origin Slack should fetch avatars from. Same value as
+/// `AuthConfig::base_url`, which webhook URLs already use. Cached: it does not
+/// change for the life of the process.
+pub fn deployment_api_base() -> String {
+    static BASE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    BASE.get_or_init(crate::auth::AuthConfig::api_base_url_from_env)
+        .clone()
+}
+
 /// Background the generated Slack manifest uses. Transparent pixels are
 /// flattened onto it before a file upload; Slack rejects some alpha PNGs.
 const SLACK_ICON_BACKGROUND: [u8; 3] = [0x1a, 0x1a, 0x2e];

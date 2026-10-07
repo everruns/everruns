@@ -256,6 +256,23 @@ impl Default for AuthConfig {
 }
 
 impl AuthConfig {
+    /// Public API origin. `AUTH_BASE_URL` or `BASE_URL` wins; otherwise the
+    /// public app URL plus `API_PREFIX`. Slack webhook and avatar URLs use it.
+    pub fn api_base_url_from_env() -> String {
+        let api_prefix =
+            std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
+        let public_app_url = env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]);
+        env_opt_string_any(&["AUTH_BASE_URL", "BASE_URL"])
+            .or_else(|| {
+                public_app_url
+                    .as_deref()
+                    .map(|url| auth_base_url_from_public_app_url(url, &api_prefix))
+            })
+            .unwrap_or_else(|| {
+                auth_base_url_from_public_app_url(DEFAULT_PUBLIC_APP_URL, &api_prefix)
+            })
+    }
+
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
         // Fail closed: reject unknown AUTH_MODE values and forbid no-auth
@@ -274,15 +291,7 @@ impl AuthConfig {
         let api_prefix =
             std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
         let public_app_url = env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]);
-        let base_url = env_opt_string_any(&["AUTH_BASE_URL", "BASE_URL"])
-            .or_else(|| {
-                public_app_url
-                    .as_deref()
-                    .map(|url| auth_base_url_from_public_app_url(url, &api_prefix))
-            })
-            .unwrap_or_else(|| {
-                auth_base_url_from_public_app_url(DEFAULT_PUBLIC_APP_URL, &api_prefix)
-            });
+        let base_url = Self::api_base_url_from_env();
 
         // Post-auth redirects land on the public app origin. In single-origin
         // deployments this is the same host as AUTH_BASE_URL, without API_PREFIX.

@@ -62,9 +62,6 @@ pub struct AppState {
     pub org_rate_limiter: OrgRateLimiter,
     /// Pushes agent identity and avatar changes to the agent's one-click Slack apps.
     pub slack_provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
-    /// Public API origin. Slack fetches `{api_base_url}/v1/avatars/...` when
-    /// that origin is reachable from the internet; otherwise the icon is uploaded.
-    pub api_base_url: String,
 }
 
 impl AppState {
@@ -88,7 +85,6 @@ impl AppState {
             health_check_service: None,
             org_rate_limiter: OrgRateLimiter::default(),
             slack_provisioner: None,
-            api_base_url: String::new(),
         }
     }
 
@@ -105,11 +101,6 @@ impl AppState {
         provisioner: Option<Arc<dyn crate::records::slack_provisioning::SlackAppProvisioner>>,
     ) -> Self {
         self.slack_provisioner = provisioner;
-        self
-    }
-
-    pub fn with_api_base_url(mut self, api_base_url: impl Into<String>) -> Self {
-        self.api_base_url = api_base_url.into();
         self
     }
 
