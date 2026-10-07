@@ -647,15 +647,15 @@ impl Database {
         agent_ids: &[AgentId],
     ) -> Result<Vec<AgentCapabilityRow>> {
         let agent_ids: Vec<Uuid> = agent_ids.iter().map(|id| id.uuid()).collect();
-        Ok(sqlx::query_as::<_, AgentCapabilityRow>(
+        Ok(sqlx::query_as::<_, AgentCapabilityRow>(sql!(
             r#"
-            SELECT ac.id, ac.agent_id, ac.capability_id, ac.position, ac.config, ac.created_at
+            SELECT {AgentCapabilityRow as ac}
             FROM agent_capabilities ac
             JOIN agents a ON a.id = ac.agent_id
             WHERE a.org_id = $1 AND ac.agent_id = ANY($2)
             ORDER BY ac.agent_id, ac.position ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(&agent_ids)
         .fetch_all(&self.pool)
