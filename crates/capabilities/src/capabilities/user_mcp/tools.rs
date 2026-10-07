@@ -11,10 +11,34 @@ use everruns_core::mcp::{
     UserMcpStoreError,
 };
 use everruns_core::tool_context::ToolContext;
+use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{McpServerAuthMode, ScopedMcpServer};
 use serde_json::{Value, json};
 use std::sync::Arc;
+
+/// Plain-language narration for the person's own MCP server tools.
+fn narrate_user_mcp(
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    started: &str,
+    done: &str,
+) -> String {
+    let name = arguments
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.trim().is_empty());
+    let target = match name {
+        Some(name) => format!("MCP server {name}"),
+        None => "your MCP servers".to_string(),
+    };
+    match phase {
+        ToolNarrationPhase::Started => format!("{started} {target}"),
+        ToolNarrationPhase::Waiting => format!("{started} {target} (waiting for approval)"),
+        ToolNarrationPhase::Completed => format!("{done} {target}"),
+        ToolNarrationPhase::Failed => format!("{started} {target} failed"),
+    }
+}
 
 pub(super) const LIST_TOOL: &str = "list_user_mcp_servers";
 pub(super) const ADD_TOOL: &str = "add_user_mcp_server";
@@ -100,6 +124,21 @@ pub struct ListUserMcpServersTool;
 
 #[async_trait]
 impl Tool for ListUserMcpServersTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_user_mcp(
+            &tool_call.arguments,
+            phase,
+            "Listing",
+            "Listed",
+        ))
+    }
+
     fn name(&self) -> &str {
         LIST_TOOL
     }
@@ -160,6 +199,21 @@ pub struct AddUserMcpServerTool {
 
 #[async_trait]
 impl Tool for AddUserMcpServerTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_user_mcp(
+            &tool_call.arguments,
+            phase,
+            "Adding",
+            "Added",
+        ))
+    }
+
     fn name(&self) -> &str {
         ADD_TOOL
     }
@@ -309,6 +363,21 @@ pub struct RemoveUserMcpServerTool;
 
 #[async_trait]
 impl Tool for RemoveUserMcpServerTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_user_mcp(
+            &tool_call.arguments,
+            phase,
+            "Removing",
+            "Removed",
+        ))
+    }
+
     fn name(&self) -> &str {
         REMOVE_TOOL
     }
@@ -373,6 +442,29 @@ pub struct SetUserMcpServerEnabledTool {
 
 #[async_trait]
 impl Tool for SetUserMcpServerEnabledTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_user_mcp(
+            &tool_call.arguments,
+            phase,
+            if self.enabled {
+                "Turning on"
+            } else {
+                "Turning off"
+            },
+            if self.enabled {
+                "Turned on"
+            } else {
+                "Turned off"
+            },
+        ))
+    }
+
     fn name(&self) -> &str {
         if self.enabled {
             ENABLE_TOOL
@@ -454,6 +546,21 @@ pub struct ConnectMcpServerTool;
 
 #[async_trait]
 impl Tool for ConnectMcpServerTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_contracts::tool_types::ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_user_mcp(
+            &tool_call.arguments,
+            phase,
+            "Connecting",
+            "Asked you to connect",
+        ))
+    }
+
     fn name(&self) -> &str {
         CONNECT_TOOL
     }
