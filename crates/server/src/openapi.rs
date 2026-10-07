@@ -430,6 +430,10 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::workspace_files::grep_files,
         api::workspace_files::download_path,
         api::workspace_files::preview_path,
+        // Evals: the routes the generic command handler cannot serve
+        api::evals::import_atif,
+        api::evals::export_run_artifacts,
+        api::evals::export_run_dataset,
         // Memory
         api::memory::create_memory,
         api::memory::list_memories,
