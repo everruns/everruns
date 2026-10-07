@@ -303,10 +303,35 @@ Design decisions:
   hour.
 - Consent is never skipped, even when a live grant covers the request.
 
-Messages do not use delegation tokens yet; that is the next step (acting as
-the company's user within the granted scopes, step-up, receipts). Source:
-[`pact_oauth.rs`](../../crates/server/src/api/channel_a2a/pact_oauth.rs),
+Delegated `message:send` (§5.5, §5.6) sends the token in
+`X-A2A-User-Delegation` beside the personal agent's JWT:
+
+- The turn runs as an end user bound to (endpoint, company `sub`), and the
+  token becomes that session's grant for the catalog MCP server
+  `delegation.mcp_server`, which the agent attaches with `actsAs: user`. The
+  company's API therefore sees the user's own token and enforces its scopes
+  itself. A turn without a token clears that grant.
+- Scopes list the agent tools they unlock (`PactScope.tools`). After the turn,
+  a call to a listed tool without its scope granted (attempted, not only
+  succeeded) answers with a `TASK_STATE_AUTH_REQUIRED` task naming the missing
+  scopes and a fresh sign-in link for them. Checking after the turn needs no
+  per-turn change to the agent's tools; the company API refusing the call is
+  what stops the action. A tool several scopes list needs all of them.
+- A context that ran under one company user refuses another's token
+  (`INVALID_PARAMS`): the session carries an account tag beside the caller
+  tag.
+- Every reply under a token carries `metadata["pact.receipt"]`: the scoped
+  tools that succeeded with a SHA-256 of their arguments, signed with the
+  endpoint key (`typ: pact-receipt+jws`). A rejected token is `401` with
+  `error="invalid_token"` and no A2A body.
+- Login and connected pages may be plain HTTP on a loopback host, for local
+  development; the JWKS URL stays HTTPS-only.
+
+Source: [`pact_oauth.rs`](../../crates/server/src/api/channel_a2a/pact_oauth.rs),
+[`pact_delegated.rs`](../../crates/server/src/api/channel_a2a/pact_delegated.rs),
 [`pact_keys.rs`](../../crates/server/src/api/channel_a2a/pact_keys.rs).
+PACT's own Delegated suite runs with `scripts/pact-conformance.sh` against
+its reference company.
 
 ### Streaming (`message/stream`)
 
@@ -670,6 +695,13 @@ Coverage required:
     unknown scope is `invalid_scope`; the consent page refuses forged, stale,
     wrong-audience, wrong-issuer and replayed assertions; an endpoint without
     delegation is `404` on every OAuth route before authentication.
+12. PACT Delegated messages: without a token a scoped tool call is a step-up
+    for exactly the missing scopes with a sign-in link; with a token the turn
+    gets the user's token through the real connection resolver, the reply
+    carries a receipt that verifies against the endpoint JWKS, and a scope the
+    user did not grant is a step-up; a retried `messageId` keeps its receipt;
+    a context bound to one company user refuses another's token; tampered,
+    foreign and malformed tokens are `401 invalid_token`.
 
 ## Rate Limiting
 

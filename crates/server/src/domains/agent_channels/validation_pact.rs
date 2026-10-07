@@ -7,11 +7,27 @@ use crate::records::pact_delegation::PactDelegationConfig;
 const MAX_SCOPES: usize = 50;
 const MAX_SCOPE_ID_LEN: usize = 128;
 const MAX_SCOPE_DESCRIPTION_LEN: usize = 500;
+const MAX_TOOLS_PER_SCOPE: usize = 100;
+const MAX_TOOL_NAME_LEN: usize = 256;
 /// Same cap as a personal agent's inline JWKS.
 const MAX_INLINE_JWKS_BYTES: usize = 16 * 1024;
 
+/// Pages the user is sent to: HTTPS, or plain HTTP on a loopback host for local development: users'
+/// browsers visit these pages, so a loopback URL only reaches the user's own
+/// machine.
 fn https_url(value: &str) -> bool {
-    value.starts_with("https://") && url::Url::parse(value).is_ok()
+    let Ok(url) = url::Url::parse(value) else {
+        return false;
+    };
+    match url.scheme() {
+        "https" => true,
+        "http" => {
+            matches!(url.host(), Some(url::Host::Domain("localhost")))
+                || matches!(url.host(), Some(url::Host::Ipv4(ip)) if ip.is_loopback())
+                || matches!(url.host(), Some(url::Host::Ipv6(ip)) if ip.is_loopback())
+        }
+        _ => false,
+    }
 }
 
 /// RFC 6749 §3.3 scope-token: `%x21 / %x23-5B / %x5D-7E`.
@@ -34,7 +50,8 @@ pub(super) fn validate_delegation(config: &PactDelegationConfig) -> Result<(), S
         return Err("login_issuer must be non-empty".into());
     }
     match (config.login_jwks_uri.as_deref(), config.login_jwks.as_ref()) {
-        (Some(uri), None) if https_url(uri) => {}
+        // Fetched by the server, so HTTPS only, loopback included.
+        (Some(uri), None) if uri.starts_with("https://") && url::Url::parse(uri).is_ok() => {}
         (Some(_), None) => return Err("login_jwks_uri must be an https URL".into()),
         (None, Some(jwks)) => {
             if serde_json::to_vec(jwks).map_or(0, |bytes| bytes.len()) > MAX_INLINE_JWKS_BYTES {
@@ -50,6 +67,11 @@ pub(super) fn validate_delegation(config: &PactDelegationConfig) -> Result<(), S
         && !https_url(url)
     {
         return Err("connected_url must be an https URL".into());
+    }
+    if let Some(server) = config.mcp_server.as_deref()
+        && (server.trim().is_empty() || server.len() > MAX_TOOL_NAME_LEN)
+    {
+        return Err("mcp_server must be a catalog MCP server name".into());
     }
     if config.scopes.is_empty() {
         return Err("scopes must list at least one scope".into());
@@ -67,6 +89,17 @@ pub(super) fn validate_delegation(config: &PactDelegationConfig) -> Result<(), S
         }
         if !seen.insert(scope.id.as_str()) {
             return Err(format!("scope id {:?} is listed twice", scope.id));
+        }
+        if scope.tools.len() > MAX_TOOLS_PER_SCOPE
+            || scope
+                .tools
+                .iter()
+                .any(|tool| tool.trim().is_empty() || tool.len() > MAX_TOOL_NAME_LEN)
+        {
+            return Err(format!(
+                "scope {:?} lists at most 100 tools, each a non-empty name of at most 256 characters",
+                scope.id
+            ));
         }
         let description = scope.description.trim();
         if description.is_empty() || description.len() > MAX_SCOPE_DESCRIPTION_LEN {
@@ -95,6 +128,17 @@ mod tests {
             base[key] = field.clone();
         }
         serde_json::from_value(base).unwrap()
+    }
+
+    #[test]
+    fn accepts_loopback_http_pages_only() {
+        let local = config(json!({
+            "login_url": "http://localhost:3004/login",
+            "connected_url": "http://127.0.0.1:3004/connected",
+        }));
+        assert_eq!(validate_delegation(&local), Ok(()));
+        let jwks = config(json!({ "login_jwks_uri": "http://localhost/jwks" }));
+        assert!(validate_delegation(&jwks).is_err());
     }
 
     #[test]
@@ -147,5 +191,8 @@ mod tests {
         ] }));
         assert!(validate_delegation(&twice).is_err());
         assert!(validate_delegation(&config(json!({ "scopes": [] }))).is_err());
+        let blank_tool =
+            config(json!({ "scopes": [{ "id": "a", "description": "x", "tools": [" "] }] }));
+        assert!(validate_delegation(&blank_tool).is_err());
     }
 }

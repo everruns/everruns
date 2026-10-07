@@ -154,6 +154,32 @@ pub(super) fn security_scheme(interface_url: &str, delegation: &PactDelegationCo
     })
 }
 
+/// The card as JSON text with the `userDelegation` scopes in config order.
+///
+/// Design Decision: `serde_json::Value` objects sort their keys, but the
+/// scopes are a list the company ordered (PACT's suite and consent page read
+/// them in that order), so that one object is written by hand.
+pub(super) fn card_json(mut card: Value, delegation: Option<&PactDelegationConfig>) -> String {
+    const PLACEHOLDER: &str = "__pact_scopes__";
+    let Some(delegation) = delegation else {
+        return card.to_string();
+    };
+    let Some(scopes) = card.pointer_mut(
+        "/securitySchemes/userDelegation/oauth2SecurityScheme/flows/deviceCode/scopes",
+    ) else {
+        return card.to_string();
+    };
+    *scopes = Value::String(PLACEHOLDER.into());
+    let ordered = delegation
+        .scopes
+        .iter()
+        .map(|scope| format!("{}:{}", json!(scope.id), json!(scope.description)))
+        .collect::<Vec<_>>()
+        .join(",");
+    card.to_string()
+        .replacen(&format!("\"{PLACEHOLDER}\""), &format!("{{{ordered}}}"), 1)
+}
+
 /// A delegation-enabled endpoint, before any authentication.
 struct Endpoint {
     app: IngressContext,
@@ -1059,5 +1085,28 @@ mod tests {
         assert!(html.contains("See &quot;your&quot; &lt;orders&gt;"));
         assert!(html.contains("name=\"session\" value=\"a.b.c\""));
         assert!(!html.contains("<Brand>"));
+    }
+
+    #[test]
+    fn card_scopes_keep_config_order() {
+        let delegation: PactDelegationConfig = serde_json::from_value(json!({
+            "login_url": "https://b.example/login",
+            "login_issuer": "https://b.example",
+            "login_jwks_uri": "https://b.example/jwks",
+            "scopes": [
+                { "id": "z:read", "description": "Zed" },
+                { "id": "a:write", "description": "A \"quoted\" one" },
+            ],
+        }))
+        .unwrap();
+        let card = json!({ "securitySchemes": {
+            "userDelegation": security_scheme("https://x.example/v1/a2a/c", &delegation),
+        }});
+        let text = card_json(card, Some(&delegation));
+        let parsed: Value = serde_json::from_str(&text).unwrap();
+        let scopes = &parsed["securitySchemes"]["userDelegation"]["oauth2SecurityScheme"]["flows"]
+            ["deviceCode"]["scopes"];
+        assert_eq!(scopes["a:write"], "A \"quoted\" one");
+        assert!(text.find("z:read").unwrap() < text.find("a:write").unwrap());
     }
 }

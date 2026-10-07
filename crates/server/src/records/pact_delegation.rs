@@ -35,6 +35,13 @@ pub struct PactDelegationConfig {
     /// Without it, Everruns shows its own "return to your agent" page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connected_url: Option<String>,
+    /// Name of the org's catalog MCP server for the company's own API. The
+    /// agent attaches it as a preset with `actsAs: user`; during a turn sent
+    /// with a delegation token, that token is the attachment's bearer, so
+    /// the API acts for that user only. Without it, tokens still gate the
+    /// tools listed under `scopes`, but nothing calls the company as the user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_server: Option<String>,
     /// Permissions the user can grant, listed on the Agent Card.
     pub scopes: Vec<PactScope>,
 }
@@ -47,11 +54,25 @@ pub struct PactScope {
     pub id: String,
     /// Shown verbatim to the user on the consent page and listed on the card.
     pub description: String,
+    /// Agent tools that need this scope, by the name the model calls them
+    /// (an MCP tool is `mcp_{server}__{tool}`). A turn that calls one without
+    /// the scope granted answers with a step-up request instead of a reply.
+    /// Tools no scope lists stay available to every personal agent.
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 impl PactDelegationConfig {
     /// The scope with this id, if the company offers it.
     pub fn scope(&self, id: &str) -> Option<&PactScope> {
         self.scopes.iter().find(|scope| scope.id == id)
+    }
+
+    /// Ids of the scopes that list `tool`.
+    pub fn scopes_for_tool(&self, tool: &str) -> impl Iterator<Item = &str> {
+        self.scopes
+            .iter()
+            .filter(move |scope| scope.tools.iter().any(|listed| listed == tool))
+            .map(|scope| scope.id.as_str())
     }
 }

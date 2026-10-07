@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 const BRAND_ISSUER: &str = "https://brand.example";
 const CONNECTED: &str = "https://brand.example/connected";
 
-fn delegated_config(pa: &PersonalAgentKey, brand: &PersonalAgentKey) -> Value {
+pub(crate) fn delegated_config(pa: &PersonalAgentKey, brand: &PersonalAgentKey) -> Value {
     let mut config = pact_config(pa);
     config["delegation"] = json!({
         "brand_name": "Skyline",
@@ -32,28 +32,42 @@ fn delegated_config(pa: &PersonalAgentKey, brand: &PersonalAgentKey) -> Value {
     config
 }
 
-struct Fixture {
-    server: TestServer,
-    channel: String,
-    pa: PersonalAgentKey,
-    brand: PersonalAgentKey,
+pub(crate) struct Fixture {
+    pub(crate) server: TestServer,
+    pub(crate) channel: String,
+    pub(crate) pa: PersonalAgentKey,
+    pub(crate) brand: PersonalAgentKey,
 }
 
 async fn fixture() -> Fixture {
     let (server, _) = server().await;
-    let pa = PersonalAgentKey::generate();
-    let brand = PersonalAgentKey::generate();
-    let channel = create_channel(&server, Some(delegated_config(&pa, &brand))).await;
-    Fixture {
-        server,
-        channel,
-        pa,
-        brand,
-    }
+    Fixture::new(server, delegated_config).await
 }
 
 impl Fixture {
-    async fn form(&self, route: &str, token: Option<&str>, form: &[(&str, &str)]) -> TestResponse {
+    /// A PACT channel on `server` whose config `config` builds from the
+    /// personal agent's and the company's keys.
+    pub(crate) async fn new(
+        server: TestServer,
+        config: impl FnOnce(&PersonalAgentKey, &PersonalAgentKey) -> Value,
+    ) -> Self {
+        let pa = PersonalAgentKey::generate();
+        let brand = PersonalAgentKey::generate();
+        let channel = create_channel(&server, Some(config(&pa, &brand))).await;
+        Self {
+            server,
+            channel,
+            pa,
+            brand,
+        }
+    }
+
+    pub(crate) async fn form(
+        &self,
+        route: &str,
+        token: Option<&str>,
+        form: &[(&str, &str)],
+    ) -> TestResponse {
         let auth = token.map(|token| format!("Bearer {token}"));
         let mut headers = vec![("content-type", "application/x-www-form-urlencoded")];
         if let Some(auth) = auth.as_deref() {
@@ -72,11 +86,11 @@ impl Fixture {
             .await
     }
 
-    fn pa_token(&self) -> String {
+    pub(crate) fn pa_token(&self) -> String {
         self.pa.token("pa-user-1")
     }
 
-    async fn start(&self, scope: &str) -> Value {
+    pub(crate) async fn start(&self, scope: &str) -> Value {
         self.form(
             "device_authorization",
             Some(&self.pa_token()),
@@ -87,7 +101,7 @@ impl Fixture {
         .json()
     }
 
-    async fn poll(&self, device_code: &str) -> TestResponse {
+    pub(crate) async fn poll(&self, device_code: &str) -> TestResponse {
         self.form(
             "token",
             Some(&self.pa_token()),
@@ -100,7 +114,7 @@ impl Fixture {
         .await
     }
 
-    async fn metadata(&self) -> Value {
+    pub(crate) async fn metadata(&self) -> Value {
         self.server
             .get(&format!(
                 "/v1/a2a/{}/oauth/.well-known/oauth-authorization-server",
@@ -113,7 +127,7 @@ impl Fixture {
 
     /// The company's sign-in assertion for `user_code`, as its login would
     /// POST it to the consent page.
-    async fn assertion(&self, user_code: &str, overrides: Value) -> String {
+    pub(crate) async fn assertion(&self, user_code: &str, overrides: Value) -> String {
         let consent = format!(
             "{}/consent",
             self.metadata().await["issuer"].as_str().unwrap()
@@ -133,7 +147,12 @@ impl Fixture {
     }
 
     /// Sign in with `assertion`, then answer the consent page.
-    async fn consent(&self, assertion: &str, decision: &str, scopes: &[&str]) -> TestResponse {
+    pub(crate) async fn consent(
+        &self,
+        assertion: &str,
+        decision: &str,
+        scopes: &[&str],
+    ) -> TestResponse {
         let page = self
             .form("consent", None, &[("assertion", assertion)])
             .await
@@ -146,7 +165,7 @@ impl Fixture {
     }
 }
 
-fn input_value(html: &str, name: &str) -> String {
+pub(crate) fn input_value(html: &str, name: &str) -> String {
     let at = html.find(&format!("name=\"{name}\" value=\"")).expect(name);
     let rest = &html[at + name.len() + 15..];
     rest[..rest.find('"').unwrap()].to_string()
@@ -158,7 +177,7 @@ fn oauth_error(response: TestResponse, status: StatusCode, error: &str) {
     assert_eq!(body["error"], error, "{body}");
 }
 
-fn claims(token: &str) -> Value {
+pub(crate) fn claims(token: &str) -> Value {
     let payload = token.split('.').nth(1).unwrap();
     serde_json::from_slice(
         &base64::engine::general_purpose::URL_SAFE_NO_PAD
