@@ -280,6 +280,40 @@ async fn organization_rejects_personal_model_and_service_defaults() {
 }
 
 #[tokio::test]
+async fn organization_chooses_who_answers_system_decisions() {
+    let (app, db, user_id) = create_org_app(None).await;
+    db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+        .await
+        .unwrap();
+    let send = |body: serde_json::Value| {
+        let app = app.clone();
+        async move {
+            let response = app
+                .oneshot(update_default_org_json_request(body.to_string()))
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            let body = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+            (status, body)
+        }
+    };
+    // Defaults to the deployment; an unrelated update leaves it alone.
+    let (status, org) = send(serde_json::json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(org["system_decisions"], "deployment");
+    let (status, org) = send(serde_json::json!({"system_decisions": "organization"})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(org["system_decisions"], "organization");
+    let (_, org) = send(serde_json::json!({})).await;
+    assert_eq!(org["system_decisions"], "organization");
+    let (status, _) = send(serde_json::json!({"system_decisions": "tenant"})).await;
+    assert!(status.is_client_error());
+    let (_, org) = send(serde_json::json!({"system_decisions": "deployment"})).await;
+    assert_eq!(org["system_decisions"], "deployment");
+}
+
+#[tokio::test]
 async fn create_organization_rejects_empty_name() {
     let (app, db, user_id) = create_org_app(None).await;
 

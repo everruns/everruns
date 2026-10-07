@@ -174,11 +174,11 @@ async fn exact_provider_config_preserves_credentialless_driver_type() {
     let response = service
         .get_default_provider_credentials(tonic::Request::new(
             GetDefaultProviderCredentialsRequest {
-                decision_model_id: None,
                 session_id: None,
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 provider_type: String::new(),
                 provider_id: provider.id.to_string(),
+                ..Default::default()
             },
         ))
         .await

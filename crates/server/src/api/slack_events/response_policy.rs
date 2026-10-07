@@ -10,7 +10,7 @@ use everruns_core::{DecisionQuestion, DecisionRequest, DecisionsService};
 use serde_json::{Value, json};
 
 use crate::api::channel_ingress::{IngressChannel, IngressContext};
-use crate::storage::models::EventRow;
+use crate::storage::models::{EventRow, SessionRow};
 
 use super::{SlackEvent, SlackState, build_session_tags, find_slack_session};
 
@@ -33,20 +33,35 @@ pub(super) async fn should_process_message(
         tracing::debug!(endpoint_id = %endpoint.public_id, "Slack response policy ignored unmentioned message");
         return false;
     }
-    if !state.decisions.is_configured() {
+    // An org that answers these checks itself never reaches the deployment's
+    // service, even when its own model is missing (THREAT[TM-LLM-037]).
+    let organization = match super::org_decisions::org_selected(state, app.org_id).await {
+        Ok(organization) => organization,
+        Err(error) => {
+            tracing::warn!(endpoint_id = %endpoint.public_id, %error, "Slack decision source unavailable; ignoring unmentioned message");
+            return false;
+        }
+    };
+    if !organization && !state.decisions.is_configured() {
         tracing::warn!(endpoint_id = %endpoint.public_id, "Slack relevance decisions unavailable; ignoring unmentioned message");
         return false;
     }
 
     // Include storage/context assembly in the deadline, not just vendor latency.
     match tokio::time::timeout(DECISION_TIMEOUT, async {
-        let context = decision_state(state, app, endpoint, config, event).await?;
-        evaluate_relevance(
-            state.decisions.as_ref(),
-            context,
-            &endpoint.public_id.to_string(),
-        )
-        .await
+        let (context, session) =
+            decision_state_and_session(state, app, endpoint, config, event).await?;
+        let endpoint_id = endpoint.public_id.to_string();
+        if organization {
+            let org = OrgDecisions {
+                state,
+                org_id: app.org_id,
+                session: session.as_ref(),
+            };
+            evaluate_relevance(&org, context, &endpoint_id).await
+        } else {
+            evaluate_relevance(state.decisions.as_ref(), context, &endpoint_id).await
+        }
     })
     .await
     {
@@ -71,6 +86,30 @@ fn is_directed_message(event: &SlackEvent) -> bool {
             .is_some_and(|channel| channel.starts_with('D'))
 }
 
+/// The org-selected model behind the same interface the deployment's has.
+struct OrgDecisions<'a> {
+    state: &'a SlackState,
+    org_id: i64,
+    session: Option<&'a SessionRow>,
+}
+
+#[async_trait::async_trait]
+impl DecisionsService for OrgDecisions<'_> {
+    fn is_configured(&self) -> bool {
+        true
+    }
+
+    async fn evaluate(
+        &self,
+        request: DecisionRequest,
+    ) -> everruns_contracts::error::Result<everruns_core::DecisionOutcome> {
+        super::org_decisions::evaluate(self.state, self.org_id, self.session, request)
+            .await
+            .map_err(|error| everruns_contracts::error::AgentLoopError::tool(error.to_string()))
+    }
+}
+
+#[cfg(test)]
 async fn decision_state(
     state: &SlackState,
     app: &IngressContext,
@@ -78,6 +117,21 @@ async fn decision_state(
     config: &SlackChannelConfig,
     event: &SlackEvent,
 ) -> anyhow::Result<Value> {
+    Ok(
+        decision_state_and_session(state, app, endpoint, config, event)
+            .await?
+            .0,
+    )
+}
+
+/// The decision's state, and the Slack session it belongs to when one exists.
+async fn decision_state_and_session(
+    state: &SlackState,
+    app: &IngressContext,
+    endpoint: &IngressChannel,
+    config: &SlackChannelConfig,
+    event: &SlackEvent,
+) -> anyhow::Result<(Value, Option<SessionRow>)> {
     let surface = crate::slack_delivery::classify_surface(
         config.agent_surface_enabled,
         event.channel_type.as_deref(),
@@ -143,7 +197,7 @@ async fn decision_state(
         }
         _ => vec![],
     };
-    Ok(json!({
+    let value = json!({
         "agent": {
             "name": bounded(name, 256),
             "description": bounded(description, 1024),
@@ -156,7 +210,8 @@ async fn decision_state(
         },
         "recent_thread_messages": recent,
         "context_is_partial": true,
-    }))
+    });
+    Ok((value, existing))
 }
 
 // THREAT[TM-SLACK-011]: unrelated threads and tool results must not steer participation.

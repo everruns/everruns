@@ -230,6 +230,8 @@ pub mod provider_resolution;
 pub use everruns_contracts::runtime::resource_ownership;
 pub use everruns_contracts::runtime::runtime_agent;
 pub mod runtime_context;
+/// Deployment-owned decision checks, answered by the source the org picked.
+pub mod system_decisions;
 pub use everruns_contracts::runtime::session_files;
 pub use everruns_contracts::runtime::session_services;
 /// Narrow child-session delegation contract: core owns the host-neutral

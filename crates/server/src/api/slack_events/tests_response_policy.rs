@@ -373,3 +373,65 @@ async fn live_jev_relevance_matches_intent_examples() {
         assert_eq!(actual, expected, "{message}");
     }
 }
+
+async fn answer_with_org_model(state: &mut SlackState, org_id: i64) {
+    state
+        .db
+        .patch_organization_settings(
+            org_id,
+            crate::storage::models::UpdateOrganizationSettings {
+                system_decisions: Some(crate::storage::SystemDecisions::Organization),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    state.org_decisions = Some(super::super::SlackOrgDecisions {
+        provider_resolver: Arc::new(crate::services::ProviderResolverService::new(
+            state.db.clone(),
+            None,
+        )),
+        budget_service: Arc::new(crate::domains::budgets::BudgetService::new(
+            state.db.clone(),
+        )),
+        egress: Arc::new(everruns_core::host::DirectEgressService::default()),
+    });
+}
+
+// THREAT[TM-LLM-037]: an org that answers these checks itself is never
+// answered by the deployment, even when its own model is missing.
+#[tokio::test]
+async fn an_org_without_a_usable_model_stays_silent_instead_of_using_the_deployment() {
+    let judge = Arc::new(Judge::probability(0.99));
+    let (mut state, app, config, event) = fixture(Some(judge.clone())).await;
+    answer_with_org_model(&mut state, app.org_id).await;
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    // Unwired org decisions are silent too.
+    state.org_decisions = None;
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(judge.requests.lock().unwrap().is_empty());
+    // Mentions never needed a decision.
+    let mut mention = event.clone();
+    mention.event_type = "app_mention".into();
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &mention).await);
+}
+
+#[tokio::test]
+async fn an_org_that_leaves_it_to_the_deployment_keeps_the_deployment_judge() {
+    let judge = Arc::new(Judge::probability(0.99));
+    let (mut state, app, config, event) = fixture(Some(judge.clone())).await;
+    answer_with_org_model(&mut state, app.org_id).await;
+    state
+        .db
+        .patch_organization_settings(
+            app.org_id,
+            crate::storage::models::UpdateOrganizationSettings {
+                system_decisions: Some(crate::storage::SystemDecisions::Deployment),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert_eq!(judge.requests.lock().unwrap().len(), 1);
+}

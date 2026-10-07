@@ -150,7 +150,7 @@ impl Capability for GuardrailsCapability {
                                 "type": "string",
                                 "enum": ["utility_llm", "jev"],
                                 "default": "utility_llm",
-                                "description": "Which system model answers a model-backed check (type=llm_judge or moderation). utility_llm prompts the utility model for a verdict, one request per check. jev asks TypeSafe's Jev model a typed question and gets a calibrated probability back; every jev check on a stage rides a single request, and `threshold` decides the verdict. jev requires UTILITY_TYPESAFE_API_KEY on the deployment; without it the check is skipped. Both fail open."
+                                "description": "Which system model answers a model-backed check (type=llm_judge or moderation). utility_llm prompts the utility model for a verdict, one request per check. jev asks TypeSafe's Jev model a typed question and gets a calibrated probability back; every jev check on a stage rides a single request, and `threshold` decides the verdict. jev requires UTILITY_TYPESAFE_API_KEY on the deployment, or an organization that answers system decisions with its own decision model; without either the check is skipped. Both fail open."
                             },
                             "categories": {
                                 "type": "array",
@@ -339,7 +339,7 @@ async fn run_judge_check(
 // ============================================================================
 //
 // Checks configured with `engine: "jev"` are answered by Jev, through the
-// deployment's decisions, instead of the utility LLM. Two things change:
+// decisions the org picks (`system_decisions`), not the utility LLM. Changes:
 //
 //   1. Every jev-engine check on a stage rides ONE request. The
 //      utility-LLM path spends a round trip per check, which is why it needs a
@@ -1089,7 +1089,7 @@ impl PreToolUseHook for GuardrailPreToolHook {
         // call and its cap.
         {
             let judged = stage_decisions(
-                context.decisions.as_ref(),
+                crate::system_decisions::for_context(context).as_ref(),
                 &self.compiled,
                 GuardrailStage::ToolUse,
                 Some(&tool_call.name),
@@ -1297,7 +1297,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
         // LLM-judge checks for tool_output, both engines as on tool_use.
         {
             let judged = stage_decisions(
-                context.decisions.as_ref(),
+                crate::system_decisions::for_context(context).as_ref(),
                 &self.compiled,
                 GuardrailStage::ToolOutput,
                 Some(&tool_call.name),

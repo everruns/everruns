@@ -122,9 +122,9 @@ pub struct OrganizationSettingsRow {
     pub default_model_id: Option<ModelId>,
     pub default_harness_id: Option<HarnessId>,
     pub base_harness_id: Option<HarnessId>,
-    /// Org-level default provider per service (EVE-569). Always present;
-    /// an empty map means no org defaults are configured.
+    /// Org-level default provider per service (EVE-569); empty means none.
     pub default_provider_per_service: sqlx::types::Json<ServiceProviderDefaults>,
+    pub system_decisions: String, // `SystemDecisions` as stored
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -134,9 +134,9 @@ pub struct UpdateOrganizationSettings {
     pub default_model_id: UpdateField<ModelId>,
     pub default_harness_id: UpdateField<HarnessId>,
     pub base_harness_id: UpdateField<HarnessId>,
-    /// Replaces the whole per-service default map. `Set` overwrites,
-    /// `Clear` resets to empty, `Unchanged` leaves it as-is.
+    /// Replaces the whole per-service map: `Set` overwrites, `Clear` empties.
     pub default_provider_per_service: UpdateField<ServiceProviderDefaults>,
+    pub system_decisions: Option<super::SystemDecisions>, // `None` keeps it
 }
 
 /// Organization task webhook row from database

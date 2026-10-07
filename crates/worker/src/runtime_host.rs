@@ -582,6 +582,14 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
                 extensions.insert(Arc::new(DurableToolResultStoreExt(durable)));
             }
         }
+        // Org-selected decision models answer guardrail `jev` checks when the
+        // org set `system_decisions: organization`, on the Jev tool's budget,
+        // egress, and usage path.
+        extensions.insert(Arc::new(
+            crate::core::connection_services::DecisionModelExecutorExt(Arc::new(
+                everruns_integrations::typesafe::BoundDecisionExecutor,
+            )),
+        ));
         extensions
     }
 
