@@ -95,7 +95,7 @@ If `./agent.toml` exists and you don't pass inline flags, `everruns agents creat
 ```bash
 everruns agents list
 everruns agents get agent_...
-everruns agents delete agent_...
+everruns agents delete agent_... --reason "Replaced by a newer agent"
 ```
 
 ### Sessions
@@ -146,13 +146,13 @@ Every other command comes from the same command contract that agents use in thei
 
 ```bash
 everruns agents triggers list --agent-id agent_...
-everruns sessions participants add --session-id session_... --kind agent --agent-id agent_...
+everruns sessions participants add --session session_... --kind agent --agent-id agent_... --reason "Hand off to the reviewer agent"
 everruns capabilities list --search web
 
 # Plugins, skills and knowledge bases
-everruns plugins install --marketplace-id <marketplace-id> --plugin-name <plugin-name>
-everruns skills create --skill-md @./SKILL.md
-everruns knowledge-bases create --name "Product docs" --description "Published product documentation"
+everruns plugins install --marketplace-id <marketplace-id> --plugin-name <plugin-name> --reason "Add the release tooling"
+everruns skills create --skill-md @./SKILL.md --reason "Share the code-review checklist"
+everruns knowledge-bases create --name "Product docs" --description "Published product documentation" --reason "Ground support answers in the docs"
 ```
 
 These commands print the command's JSON output (YAML with `-o yaml`). A text or JSON flag written `@path` is read from that local file, as in `--skill-md @./SKILL.md`; write `@@` for a value that really starts with `@`.

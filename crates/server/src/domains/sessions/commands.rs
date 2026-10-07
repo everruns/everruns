@@ -42,7 +42,7 @@ impl CommandSchema for CreateSession {
     method = "POST",
     path = "/v1/sessions",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "create").with_args(&[CliArg::new("agent_id").short('a').long("agent"), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Start a session for an agent", "everruns sessions create --agent agt_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "create").with_args(&[CliArg::new("agent_id").short('a').long("agent"), CliArg::new("harness_name").short('H').long("harness"), CliArg::new("tag").short('t'),]).with_examples(&[CliExample::new("Start a session for an agent", "everruns sessions create --agent agt_01h9 --reason 'Investigate the failed release'",)]),
 )]
 impl Command for CreateSession {
     type Output = Session;
@@ -325,7 +325,7 @@ pub struct AddSessionParticipant {
     method = "POST",
     path = "/v1/sessions/{session_id}/participants",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions", "participants"], "add").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Bring a user into a running session", "everruns sessions participants add --session ses_01h9 --kind user",)]),
+    cli = CliRoute::new(&["sessions", "participants"], "add").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Bring a user into a running session", "everruns sessions participants add --session ses_01h9 --kind user --reason 'Bring in the on-call reviewer'",)]),
 )]
 impl Command for AddSessionParticipant {
     type Output = SessionParticipant;
@@ -443,7 +443,7 @@ pub struct LeaveSessionParticipant {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/participants/{participant_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions", "participants"], "leave").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Remove one participant from a session", "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9",)]),
+    cli = CliRoute::new(&["sessions", "participants"], "leave").with_args(&[CliArg::new("session_id").long("session")]).with_examples(&[CliExample::new("Remove one participant from a session", "everruns sessions participants leave --session ses_01h9 --participant-id par_01h9 --reason 'Review finished'",)]),
 )]
 impl Command for LeaveSessionParticipant {
     type Output = SessionParticipant;
@@ -507,7 +507,7 @@ pub struct ForkSession {
     method = "POST",
     path = "/v1/sessions/{session_id}/fork",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "fork").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Branch from a session to try a different direction", "everruns sessions fork ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "fork").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Branch from a session to try a different direction", "everruns sessions fork ses_01h9 --reason 'Try the rollback path'",)]),
 )]
 impl Command for ForkSession {
     type Output = Session;
@@ -785,7 +785,7 @@ pub struct UpdateSessionCmd {
     method = "PATCH",
     path = "/v1/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update ses_01h9 --title 'Release triage'",)]),
+    cli = CliRoute::new(&["sessions"], "update").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Retitle a session so it is findable later", "everruns sessions update ses_01h9 --title 'Release triage' --reason 'Clarify the session topic'",)]),
 )]
 impl Command for UpdateSessionCmd {
     type Output = Session;
@@ -838,7 +838,7 @@ pub struct DeleteSession {
     method = "DELETE",
     path = "/v1/sessions/{session_id}",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "delete").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Archive a session, keeping it restorable", "everruns sessions delete ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "delete").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Archive a session, keeping it restorable", "everruns sessions delete ses_01h9 --reason 'Duplicate of the release session'",)]),
 )]
 impl Command for DeleteSession {
     type Output = bool;
@@ -892,7 +892,7 @@ pub struct PinSession {
     method = "PUT",
     path = "/v1/sessions/{session_id}/pin",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "pin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Keep a session at the top of the list", "everruns sessions pin ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "pin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Keep a session at the top of the list", "everruns sessions pin ses_01h9 --reason 'Active incident'",)]),
 )]
 impl Command for PinSession {
     type Output = bool;
@@ -922,7 +922,7 @@ pub struct UnpinSession {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/pin",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "unpin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop keeping a session at the top of the list", "everruns sessions unpin ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "unpin").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Stop keeping a session at the top of the list", "everruns sessions unpin ses_01h9 --reason 'Incident resolved'",)]),
 )]
 impl Command for UnpinSession {
     type Output = bool;
@@ -952,7 +952,7 @@ pub struct ArchiveSession {
     method = "PUT",
     path = "/v1/sessions/{session_id}/archive",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "archive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Move a finished session out of the active list", "everruns sessions archive ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "archive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Move a finished session out of the active list", "everruns sessions archive ses_01h9 --reason 'Release shipped'",)]),
 )]
 impl Command for ArchiveSession {
     type Output = bool;
@@ -983,7 +983,7 @@ pub struct UnarchiveSession {
     method = "DELETE",
     path = "/v1/sessions/{session_id}/archive",
     policy = super::SESSION_MANAGE,
-    cli = CliRoute::new(&["sessions"], "unarchive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Bring an archived session back to the active list", "everruns sessions unarchive ses_01h9",)]),
+    cli = CliRoute::new(&["sessions"], "unarchive").with_args(&[CliArg::new("session_id").at(1).long("session")]).with_examples(&[CliExample::new("Bring an archived session back to the active list", "everruns sessions unarchive ses_01h9 --reason 'Release reopened'",)]),
 )]
 impl Command for UnarchiveSession {
     type Output = bool;
