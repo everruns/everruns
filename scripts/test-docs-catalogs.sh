@@ -35,7 +35,6 @@ scratch() {
   mkdir -p "$WORK/repo"
   cp -R "$ROOT/docs" "$WORK/repo/docs"
   cp -Rs "$ROOT/crates" "$WORK/repo/crates"
-  cp -Rs "$ROOT/integrations" "$WORK/repo/integrations"
 }
 
 # Replace a linked source file with a real copy so it can be edited.
