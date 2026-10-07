@@ -3127,6 +3127,34 @@
         }
       }
     },
+    "/v1/agents/{id}/delete": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Permanently delete an archived agent.",
+        "operationId": "destroy_agent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Agent not found"
+          }
+        }
+      }
+    },
     "/v1/apps": {
       "get": {
         "tags": [
@@ -9019,6 +9047,34 @@
         }
       }
     },
+    "/v1/harnesses/{id}/delete": {
+      "post": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "Permanently delete an archived harness.",
+        "operationId": "destroy_harness",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "Harness not found"
+          }
+        }
+      }
+    },
     "/v1/health-issues": {
       "get": {
         "tags": [
@@ -10964,6 +11020,34 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/mcp-servers/{id}/delete": {
+      "post": {
+        "tags": [
+          "mcp_servers"
+        ],
+        "summary": "Permanently delete an archived MCP server.",
+        "operationId": "destroy_mcp_server",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Prefixed public identifier",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No content"
+          },
+          "404": {
+            "description": "MCP server not found"
           }
         }
       }

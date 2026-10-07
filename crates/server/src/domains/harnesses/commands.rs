@@ -620,6 +620,8 @@ pub struct DestroyHarness {
     path = "/v1/harnesses/{id}/delete",
     policy = HARNESS_DANGEROUS,
     positional = "id",
+    http = no_content,
+    responses((status = 404, description = "Harness not found")),
     cli = CliRoute::new(&["harnesses"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived harness", "everruns harnesses destroy harness_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyHarness {
