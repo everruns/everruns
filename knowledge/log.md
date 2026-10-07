@@ -2,6 +2,15 @@
 
 ## 2026-10-07
 
+* **MCP servers can load their tools on demand.** A server marked `deferred`
+  is not listed at turn start (no `tools/list`); the model sees one
+  placeholder line per server and reveals it through `tool_search` (or by
+  calling the placeholder), after which the session lists it through the
+  ordinary discovery and tool cache from the next step on. A person's own
+  servers are always deferred; agent attachments opt in. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 7a and
+  [tool search](execution/tool-search.md).
+
 * **Agent MCP servers can opt out of in-chat Connect cards.** An attachment
   with `connectInChat: never` reports a missing sign-in as a tool error naming
   the server and its settings link instead of pausing the turn on a card, and

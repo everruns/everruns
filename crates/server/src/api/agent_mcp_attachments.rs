@@ -97,6 +97,9 @@ pub struct AgentMcpAttachment {
     /// Whether a missing sign-in pauses the turn with an in-chat card (`ask`)
     /// or fails the call with a settings link (`never`).
     pub connect_in_chat: McpConnectInChat,
+    /// Whether the attachment's tools are listed only when the model reveals
+    /// the server through tool search (`false` lists them at turn start).
+    pub deferred: bool,
     /// Catalog preset name referenced by the attachment, including a missing preset.
     pub preset_name: Option<String>,
     /// ID of the active catalog preset when the reference resolves.
@@ -495,6 +498,7 @@ pub async fn list_agent_mcp_attachments(
             overridden_sources: sourced.overridden_sources,
             acts_as: sourced.server.acts_as,
             connect_in_chat: sourced.server.connect_in_chat,
+            deferred: sourced.server.deferred,
             preset_name,
             preset_id: preset_row.as_ref().map(|row| row.id.to_string()),
             connection_provider: provider,

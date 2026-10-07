@@ -8,6 +8,8 @@ export interface ScopedMcpServer {
   actsAs?: McpServerActsAs;
   /** `never` fails a call missing a sign-in with a settings link instead of a card. */
   connectInChat?: McpConnectInChat;
+  /** `true` lists the server's tools only when the model reveals it through tool search. */
+  deferred?: boolean;
   tool_discovery?: boolean;
 }
 

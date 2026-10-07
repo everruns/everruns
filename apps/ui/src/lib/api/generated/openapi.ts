@@ -6707,6 +6707,11 @@ export interface components {
       /** @description OAuth provider key used to create or revoke the attachment connection. */
       connection_provider?: string | null;
       contributor?: components["schemas"]["AgentMcpAttachmentContributor"] | null;
+      /**
+       * @description Whether the attachment's tools are listed only when the model reveals
+       *     the server through tool search (`false` lists them at turn start).
+       */
+      deferred: boolean;
       /** @description Whether the attachment is defined directly on the agent and can be removed there. */
       editable: boolean;
       /** @description Header names configured for the endpoint; secret header values are omitted. */
@@ -7335,6 +7340,12 @@ export interface components {
          *     (`never`).
          */
         connectInChat?: components["schemas"]["McpConnectInChat"];
+        /**
+         * @description Whether the server's tools are listed only when the model asks for
+         *     them through tool search (`false`, the default, lists them at turn
+         *     start).
+         */
+        deferred?: boolean;
         /** @description Which elicitation modes this server may use (`url` by default). */
         elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
         /** @description Environment variables set for the stdio `command`. */
@@ -20892,6 +20903,12 @@ export interface components {
        *     (`never`).
        */
       connectInChat?: components["schemas"]["McpConnectInChat"];
+      /**
+       * @description Whether the server's tools are listed only when the model asks for
+       *     them through tool search (`false`, the default, lists them at turn
+       *     start).
+       */
+      deferred?: boolean;
       /** @description Which elicitation modes this server may use (`url` by default). */
       elicitation_policy?: components["schemas"]["McpElicitationPolicy"];
       /** @description Environment variables set for the stdio `command`. */

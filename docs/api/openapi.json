@@ -24625,6 +24625,7 @@
           "overridden_sources",
           "acts_as",
           "connect_in_chat",
+          "deferred",
           "header_names",
           "tools_available",
           "tools",
@@ -24674,6 +24675,10 @@
                 "type": "null"
               }
             ]
+          },
+          "deferred": {
+            "type": "boolean",
+            "description": "Whether the attachment's tools are listed only when the model reveals\nthe server through tool search (`false` lists them at turn start)."
           },
           "editable": {
             "type": "boolean",
@@ -25889,6 +25894,10 @@
             "connectInChat": {
               "$ref": "#/components/schemas/McpConnectInChat",
               "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+            },
+            "deferred": {
+              "type": "boolean",
+              "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart)."
             },
             "elicitation_policy": {
               "$ref": "#/components/schemas/McpElicitationPolicy",
@@ -49790,6 +49799,10 @@
           "connectInChat": {
             "$ref": "#/components/schemas/McpConnectInChat",
             "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+          },
+          "deferred": {
+            "type": "boolean",
+            "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart)."
           },
           "elicitation_policy": {
             "$ref": "#/components/schemas/McpElicitationPolicy",

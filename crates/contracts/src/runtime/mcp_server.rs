@@ -364,6 +364,11 @@ pub struct ScopedMcpServer {
     )]
     #[cfg_attr(feature = "openapi", schema(rename = "connectInChat"))]
     pub connect_in_chat: McpConnectInChat,
+    /// Whether the server's tools are listed only when the model asks for
+    /// them through tool search (`false`, the default, lists them at turn
+    /// start).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub deferred: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -413,6 +418,8 @@ struct ScopedMcpServerWire {
         skip_serializing_if = "McpConnectInChat::is_ask"
     )]
     connect_in_chat: McpConnectInChat,
+    #[serde(default, skip_serializing_if = "is_false")]
+    deferred: bool,
 }
 
 impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
@@ -442,6 +449,7 @@ impl TryFrom<ScopedMcpServerWire> for ScopedMcpServer {
             preset: wire.preset,
             acts_as: wire.acts_as,
             connect_in_chat: wire.connect_in_chat,
+            deferred: wire.deferred,
         })
     }
 }
@@ -463,6 +471,7 @@ impl From<ScopedMcpServer> for ScopedMcpServerWire {
             preset: server.preset,
             acts_as: server.acts_as,
             connect_in_chat: server.connect_in_chat,
+            deferred: server.deferred,
         }
     }
 }
@@ -484,6 +493,7 @@ impl Default for ScopedMcpServer {
             preset: None,
             acts_as: McpServerActsAs::None,
             connect_in_chat: McpConnectInChat::Ask,
+            deferred: false,
         }
     }
 }
@@ -565,6 +575,10 @@ fn default_scoped_tool_discovery() -> bool {
 
 fn is_true(value: &bool) -> bool {
     *value
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub fn scoped_mcp_servers_is_empty(servers: &ScopedMcpServers) -> bool {

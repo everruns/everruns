@@ -374,7 +374,12 @@ async fn build_runtime_agent(
         RuntimeAgentBuilder::from_overlay(effective_overlay, capability_registry, prompt_ctx)
             .await
             .with_locale(prompt_ctx.locale.as_deref())
-            .tools(mcp_tool_definitions.iter().cloned())
+            .tools(
+                mcp_tool_definitions
+                    .iter()
+                    .cloned()
+                    .map(crate::mcp_deferred::normalize_deferred_mcp_server_definition),
+            )
             .tools(overlay_tools)
             .model(model)
             .build()

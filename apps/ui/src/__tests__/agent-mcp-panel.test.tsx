@@ -64,6 +64,7 @@ const attachment: AgentMcpAttachment = {
   ],
   acts_as: "user",
   connect_in_chat: "ask",
+  deferred: false,
   preset_name: "github",
   preset_id: "preset-1",
   connection_provider: "github",
@@ -539,6 +540,69 @@ describe("AgentMcpPanel", () => {
         },
       }),
     );
+  });
+
+  it("toggles loading tools on demand for an attachment authored on the agent", async () => {
+    const withGithub = {
+      ...agent,
+      mcpServers: {
+        ...agent.mcpServers,
+        github: { use: "catalog:github", actsAs: "user" },
+      },
+    } as Agent;
+    const { rerender } = render(<AgentMcpPanel agent={withGithub} />);
+
+    const toggle = screen.getByRole("switch", { name: "Load tools on demand" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user", deferred: true },
+          },
+        },
+      }),
+    );
+
+    // Turning it off drops the field: listing at turn start is the default.
+    showAttachments({ ...attachment, deferred: true });
+    rerender(
+      <AgentMcpPanel
+        agent={
+          {
+            ...withGithub,
+            mcpServers: {
+              ...withGithub.mcpServers,
+              github: { use: "catalog:github", actsAs: "user", deferred: true },
+            },
+          } as Agent
+        }
+      />,
+    );
+    expect(screen.getByText(/loads its tools through tool search/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Load tools on demand" }));
+    await waitFor(() =>
+      expect(mockUpdateAgent).toHaveBeenLastCalledWith({
+        agentId: "agent-1",
+        request: {
+          mcpServers: {
+            ...agent.mcpServers,
+            github: { use: "catalog:github", actsAs: "user" },
+          },
+        },
+      }),
+    );
+  });
+
+  it("labels a read-only attachment whose tools load on demand", () => {
+    showAttachments({ ...attachment, source: "harness", editable: false, deferred: true });
+    render(<AgentMcpPanel agent={agent} />);
+
+    expect(screen.getByText("Tools load on demand")).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Load tools on demand" })).not.toBeInTheDocument();
   });
 
   it("labels a read-only attachment that connects in settings only", () => {

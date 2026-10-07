@@ -86,6 +86,7 @@ function McpAttachmentRow({
   hasCollision,
   onRemove,
   onConnectInChatChange,
+  onDeferredChange,
   saving,
 }: {
   agentId: string;
@@ -93,10 +94,12 @@ function McpAttachmentRow({
   hasCollision: boolean;
   onRemove: (attachment: AgentMcpAttachment) => void;
   onConnectInChatChange: (attachment: AgentMcpAttachment, allow: boolean) => void;
+  onDeferredChange: (attachment: AgentMcpAttachment, deferred: boolean) => void;
   saving: boolean;
 }) {
   const toolsId = useId();
   const connectInChatId = useId();
+  const deferredId = useId();
   const connectsInChat = attachment.connect_in_chat !== "never";
   const [toolsOpen, setToolsOpen] = useState(false);
   const revoke = useRevokeAgentMcpConnection(agentId);
@@ -176,6 +179,27 @@ function McpAttachmentRow({
           ) : (
             !connectsInChat && <Badge variant="outline">Connects in settings only</Badge>
           ))}
+        {attachment.editable ? (
+          <div className="flex items-start gap-3">
+            <Switch
+              id={deferredId}
+              checked={attachment.deferred}
+              disabled={saving}
+              aria-label="Load tools on demand"
+              onCheckedChange={(deferred) => onDeferredChange(attachment, deferred)}
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor={deferredId}>Load tools on demand</Label>
+              <p className="text-xs text-muted-foreground">
+                {attachment.deferred
+                  ? "The agent sees one line for this server and loads its tools through tool search when it needs them."
+                  : "The server's tools are listed at the start of every turn."}
+              </p>
+            </div>
+          </div>
+        ) : (
+          attachment.deferred && <Badge variant="outline">Tools load on demand</Badge>
+        )}
 
         {attachment.state === "preset_missing" ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
@@ -438,6 +462,23 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     }
   };
 
+  const changeDeferred = async (attachment: AgentMcpAttachment, deferred: boolean) => {
+    const current = agent.mcpServers?.[attachment.name];
+    if (!current) return;
+    setRowError(null);
+    const rest = { ...current };
+    delete rest.deferred;
+    try {
+      await saveAuthoredAttachments({
+        ...(agent.mcpServers ?? {}),
+        // Off is the default and stays off the wire.
+        [attachment.name]: deferred ? { ...rest, deferred: true } : rest,
+      });
+    } catch (error) {
+      setRowError(errorMessage(error));
+    }
+  };
+
   const removeAttachment = async () => {
     if (!removeTarget) return;
     setRemoveError(null);
@@ -488,6 +529,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
               hasCollision={(prefixCounts.get(attachmentPrefix(attachment.name)) ?? 0) > 1}
               onRemove={setRemoveTarget}
               onConnectInChatChange={changeConnectInChat}
+              onDeferredChange={changeDeferred}
               saving={updateAgent.isPending}
             />
           ))}

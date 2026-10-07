@@ -258,6 +258,7 @@ Framework and serve can bind stdio when their MCP stdio support is enabled.
 | `env` | Table of strings | Empty; stdio environment values. |
 | `auth_mode` | String | `none`; `none`, `api_key` or `oauth`. Hosted credentials require destination bindings. |
 | `actsAs` | String | `none`; `none`, `user`, `service` or `user_or_service` (the person's grant, else the agent's), identifying whose grant to use. |
+| `deferred` | Boolean | `false`; `true` lists the server's tools only when the agent loads them through tool search. |
 | `connectInChat` | String | `ask`; `ask` pauses the chat on a Connect card when a sign-in is missing, `never` fails the call with a settings link instead. |
 | `oauth_provider_id` | String | Optional named provider requirement; installed MCP resource IDs are rejected. |
 | `tool_discovery` | Boolean | `true`; discover server tools. |

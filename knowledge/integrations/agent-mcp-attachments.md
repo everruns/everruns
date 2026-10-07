@@ -106,6 +106,11 @@ How a missing grant is *reported* is a separate per-attachment choice,
 returns an ordinary tool error carrying the same setup URL and does not pause.
 It never changes which store is read.
 
+`deferred` (user MCP servers D6, default off) is likewise orthogonal to
+identity: it only decides whether the server's tools are listed at turn start
+or after the model reveals the server through `tool_search`. Every grant and
+fallback rule above applies unchanged once they are listed.
+
 The existing identity→user fallback in `DbConnectionResolver` is removed for MCP
 resolution. It stays for the non-MCP providers that rely on it today, or is
 retired with them separately; either way MCP no longer depends on it.

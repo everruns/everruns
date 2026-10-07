@@ -772,3 +772,22 @@ fn connect_in_chat_defaults_to_ask_and_round_trips_never() {
     assert_eq!(McpConnectInChat::from("never"), McpConnectInChat::Never);
     assert_eq!(McpConnectInChat::Never.to_string(), "never");
 }
+
+#[test]
+fn deferred_defaults_to_off_and_round_trips() {
+    let server: ScopedMcpServer =
+        serde_json::from_value(json!({"use": "catalog:linear", "actsAs": "user"})).unwrap();
+    assert!(!server.deferred, "existing attachments keep listing tools");
+    // Off stays off the wire, so existing configs serialize unchanged.
+    assert!(
+        serde_json::to_value(&server)
+            .unwrap()
+            .get("deferred")
+            .is_none()
+    );
+
+    let server: ScopedMcpServer =
+        serde_json::from_value(json!({"use": "catalog:linear", "deferred": true})).unwrap();
+    assert!(server.deferred);
+    assert_eq!(serde_json::to_value(&server).unwrap()["deferred"], true);
+}

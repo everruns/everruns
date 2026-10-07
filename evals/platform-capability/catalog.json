@@ -132,6 +132,10 @@
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
               },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -1314,6 +1318,10 @@
               "connectInChat": {
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -3858,6 +3866,10 @@
               "connectInChat": {
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -6576,6 +6588,10 @@
               "connectInChat": {
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -14156,6 +14172,10 @@
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
               },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
+              },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
                 "description": "Which elicitation modes this server may use (`url` by default)."
@@ -14708,6 +14728,10 @@
               "connectInChat": {
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -16054,6 +16078,10 @@
               "connectInChat": {
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -18458,6 +18486,10 @@
               "connectInChat": {
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",
@@ -21356,6 +21388,10 @@
               "connectInChat": {
                 "$ref": "#/$defs/McpConnectInChat",
                 "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
+              },
+              "deferred": {
+                "description": "Whether the server's tools are listed only when the model asks for\nthem through tool search (`false`, the default, lists them at turn\nstart).",
+                "type": "boolean"
               },
               "elicitation_policy": {
                 "$ref": "#/$defs/McpElicitationPolicy",

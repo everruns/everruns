@@ -552,7 +552,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
     ) -> Option<Arc<dyn crate::core::session_services::SessionStorageStore>> {
-        Some(self.adapters.storage_store(org_id))
+        // A deferred MCP server revealed by a tool loads on the turn's next step.
+        Some(Arc::new(crate::reveal_storage::RevealAwareStorage {
+            inner: self.adapters.storage_store(org_id),
+            reads: self.reads.clone(),
+            org_id,
+        }))
     }
 
     fn connection_resolver(

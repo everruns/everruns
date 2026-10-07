@@ -141,6 +141,7 @@ pub use everruns_contracts::runtime::events;
 pub use everruns_contracts::runtime::finalized_tool_calls;
 pub use everruns_contracts::runtime::harness_definition;
 pub use everruns_contracts::runtime::leased_resource;
+pub use everruns_contracts::runtime::mcp_deferred;
 pub use everruns_contracts::runtime::mcp_proxy;
 pub use everruns_contracts::runtime::mcp_server;
 pub use everruns_contracts::runtime::mount_fs;
@@ -498,6 +499,11 @@ pub use capability_mcp_server::{
 pub use harness_definition::HarnessDefinition;
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
+};
+pub use mcp_deferred::{
+    DEFERRED_MCP_REVEAL_KV_PREFIX, DeferredMcpServerTool, deferred_mcp_server_definition,
+    deferred_mcp_server_prefix, partition_deferred_mcp_servers, reveal_deferred_mcp_server,
+    revealed_mcp_servers,
 };
 pub use mcp_proxy::{
     McpCallIdentity, McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools,
