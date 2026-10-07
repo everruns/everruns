@@ -11,7 +11,7 @@ tags:
 
 # User MCP servers and agent MCP auth modes
 
-> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 4 are built (steps in [Plan](#plan)).
+> Status: **Accepted 2026-10-06, being implemented**: steps 1 to 5 are built (steps in [Plan](#plan)).
 > Public docs: `docs/features/user-mcp-servers.md`, `docs/capabilities/user-mcp-servers.md`.
 > [Agent MCP attachments](agent-mcp-attachments.md),
 > [MCP servers](mcp-servers.md), and [virtual users](../runtime-resources/virtual-users.md)
@@ -282,7 +282,7 @@ Each step is one PR, shippable alone.
 2. **My MCP servers in settings.** Section in My agent experience; MCP page *My connections* tab redirects there.
 3. **`user_mcp` capability, *use*.** Resolve the initiating virtual user's enabled servers into the turn; unattended and shared sessions get none; Platform Chat turns *use* on. Built: `crates/server/src/domains/mcp_servers/user_layer.rs`, which the worker turn context, MCP prefix resolution and the tool-call token check all share; channel consumers may sign in to their own servers (`RuntimeAccount::allowed_mcp_providers`). Name-clash reporting in the agent MCP sheet moves to step 4, with the list tool.
 4. **`user_mcp` *manage* and `connect_mcp_server`.** Shared store and prompter traits in `everruns-core`; approval defaults; Platform Chat turns it on; an eval case in `evals/platform-capability` for "add Linear and connect it". Built: `UserMcpStore` and `McpLoginPrompter` in `crates/core/src/mcp/user_store.rs`; the tools in `crates/capabilities/src/capabilities/user_mcp/`, which hold `add` and `enable` behind a capability-owned durable approval gate; the control-plane store in `crates/server/src/domains/mcp_servers/user_manage.rs`, which re-derives `manage`, `allow_custom_urls` and the initiating person itself and is reached in process or over the `InvokeUserMcpStore` worker RPC. Name clashes are reported by the list tool and, for the viewer's own servers, in the agent MCP sheet. Eval case `user-mcp-add-linear-and-connect`.
-5. **`user_or_service` and connection-backed presets.** New `actsAs` value with per-call recorded identity; preset field naming a connection provider; GitHub preset backed by the agent's GitHub App.
+5. **`user_or_service` and connection-backed presets.** New `actsAs` value with per-call recorded identity; preset field naming a connection provider; GitHub preset backed by the agent's GitHub App. Built: `McpServerActsAs::UserOrService` and its `resolution_order` in `crates/contracts/src/runtime/mcp_server.rs`, composed by the default `UserConnectionResolver::get_mcp_connection_credential` so the worker RPC stays per identity; the identity a call used travels as `McpConnection::acted_as` to `ToolCompletedData::acted_as` through the per-call `McpCallIdentity` slot (`crates/contracts/src/runtime/mcp_proxy.rs`). Presets name a provider in their settings (`service_connection_provider`), pinned to the hosts that accept its tokens on save and on every resolution (`crates/server/src/domains/mcp_servers/connection_backed.rs`); the seeded `github` preset uses it. `connect_mcp_server` alone is derived for agents with a `user` or `user_or_service` server (`imply_mcp_connect_tool` in `crates/core/src/runtime_context.rs`), and the control-plane store routes a service server's card to the agent's sheet (`agent_server_login` in `user_manage.rs`). Not covered: MCP Events triggers still read only an MCP OAuth grant for the agent, not a connection-backed preset.
 6. **`connectInChat` per attachment.**
 7. **Deferred servers and session servers.** Per-server deferral through `tool_search`; ARD's session record generalized.
 8. **MCP catalog moves to Settings > Organization.**
@@ -298,8 +298,10 @@ makes use case 2 not need a separate MCP login.
    standing permission for one agent to use one person's login unattended. Out of
    scope here; it should be an explicit, revocable delegation, never a default.
 2. **GitHub's remote MCP server and GitHub App installation tokens.** Step 5
-   assumes it accepts them for service use. Verify before building; the fallback
-   is an OAuth grant on the service account.
+   assumes it accepts them for service use; not yet verified against the live
+   server. If it does not, clearing the seeded preset's
+   `service_connection_provider` falls back to an OAuth grant on the service
+   account with no code change.
 3. **Admin policy on user servers.** Should an org be able to forbid custom
    URLs or limit people to catalog presets? Proposed: an org setting, off means
    catalog-only, on by default for self-hosted and off for hosted.
