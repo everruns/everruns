@@ -103,6 +103,7 @@ use everruns_internal_protocol::proto::{
     GetAgentResponse,
     GetAndConsumeDurableWorkflowSignalsRequest,
     GetAndConsumeDurableWorkflowSignalsResponse,
+    GetConnectionTokenForConnectionRequest,
     GetConnectionTokenForUserRequest,
     GetConnectionTokenForUserResponse,
     GetConnectionTokenRequest,
@@ -1088,6 +1089,9 @@ fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedR
         display_name: s.display_name.clone(),
         status: s.status.to_string(),
         owner_user_id: s.owner_user_id.map(|id| proto::Uuid {
+            value: id.to_string(),
+        }),
+        connection_id: s.connection_id.map(|id| proto::Uuid {
             value: id.to_string(),
         }),
         lease_duration_seconds: s.lease_duration_seconds,

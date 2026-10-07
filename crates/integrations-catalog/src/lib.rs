@@ -382,9 +382,9 @@ mod tests {
     }
 
     #[test]
-    fn daytona_capabilities_are_ungated_while_its_connection_is_flagged() {
+    fn daytona_capabilities_and_connection_are_ungated() {
         assert_eq!(capability_feature_flag("daytona"), None);
-        assert_eq!(connector_feature_flag("daytona"), Some("daytona"));
+        assert_eq!(connector_feature_flag("daytona"), None);
         assert_eq!(connector_feature_flag("e2b"), None);
         assert_eq!(capability_feature_flag("modal"), Some("modal"));
     }
@@ -396,9 +396,7 @@ mod tests {
         let mut prod = ConnectorRegistry::new();
         register_connectors(&mut prod, DeploymentGrade::Prod);
         assert!(prod.has("e2b"));
-        if std::env::var("FEATURE_DAYTONA").is_err() {
-            assert!(prod.has("daytona"), "daytona is adoption grade");
-        }
+        assert!(prod.has("daytona"));
         if std::env::var("FEATURE_BROWSERLESS").is_err() {
             assert!(prod.has("browserless"), "browserless is adoption grade");
         }

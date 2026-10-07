@@ -8,14 +8,15 @@ use everruns_contracts::runtime::{
     session_services::SecretInfo, session_services::SessionStorageStore, tool_context::ToolContext,
 };
 use everruns_contracts::session_sandbox::{
-    SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxInstance,
-    create_session_sandbox_provider,
+    SessionSandboxConfig, SessionSandboxCredential, SessionSandboxCredentialSource,
+    SessionSandboxExecRequest, SessionSandboxInstance, create_session_sandbox_provider,
 };
 use everruns_contracts::typed_id::SessionId;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -100,6 +101,14 @@ impl UserConnectionResolver for MockConnectionResolver {
     ) -> Result<Option<String>> {
         Ok(Some("test_api_key".to_string()))
     }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _user_id: Uuid,
+        _provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(Some("test_api_key".to_string()))
+    }
 }
 
 fn test_context() -> ToolContext {
@@ -113,6 +122,11 @@ fn test_context() -> ToolContext {
 fn test_config(mock_server: &MockServer) -> SessionSandboxConfig {
     SessionSandboxConfig {
         provider: "daytona".to_string(),
+        credential: SessionSandboxCredential {
+            source: SessionSandboxCredentialSource::SessionUser,
+            virtual_user_id: Some(Uuid::nil()),
+            connection_id: None,
+        },
         auto_start: true,
         idle_pause_after_seconds: 180,
         idle_pause_enabled: true,

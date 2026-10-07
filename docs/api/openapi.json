@@ -14493,6 +14493,194 @@
         ]
       }
     },
+    "/v1/orgs/{org}/organization-connections": {
+      "get": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "description": "List non-secret metadata for organization-owned sandbox provider accounts.",
+        "operationId": "list_connections",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrganizationConnectionResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/organization-connections/providers/{provider}": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "description": "Create and validate an encrypted organization-owned sandbox provider account.",
+        "operationId": "create_connection",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveOrganizationConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationConnectionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/orgs/{org}/organization-connections/{connection_id}": {
+      "put": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "description": "Replace the name and credential for an organization-owned sandbox provider account.",
+        "operationId": "update_connection",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveOrganizationConnectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationConnectionResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "description": "Delete an organization-owned provider account when no active sandbox configuration or lease references it.",
+        "operationId": "delete_connection",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {}
+        }
+      }
+    },
+    "/v1/orgs/{org}/organization-connections/{connection_id}/verify": {
+      "post": {
+        "tags": [
+          "sandbox-templates"
+        ],
+        "description": "Revalidate an organization-owned sandbox provider credential without returning the secret.",
+        "operationId": "verify_connection",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyConnectionResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/payments/accounts": {
       "get": {
         "tags": [
@@ -36193,6 +36381,14 @@
             "description": "Cleanup attempt start time when the resource is currently claimed.",
             "example": "2026-05-25T10:30:00Z"
           },
+          "connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Exact provider connection used to create the resource."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -44044,6 +44240,55 @@
           }
         }
       },
+      "OrganizationConnectionResponse": {
+        "type": "object",
+        "description": "Non-secret metadata for an organization-owned sandbox provider account.",
+        "required": [
+          "id",
+          "name",
+          "provider",
+          "connected_at",
+          "updated_at"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time at which the provider account was first connected.",
+            "example": "2026-10-07T12:00:00Z"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable connection identifier used by Sandbox Templates.",
+            "example": "00000000-0000-0000-0000-000000000002"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable account name.",
+            "example": "Production Daytona"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Sandbox provider connector identifier.",
+            "example": "daytona"
+          },
+          "provider_username": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider identity returned while validating the credential, when available.",
+            "example": "platform-team"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time at which the account name or credential was last replaced.",
+            "example": "2026-10-07T12:30:00Z"
+          }
+        }
+      },
       "OrganizationResponse": {
         "type": "object",
         "description": "Response for organization operations",
@@ -46612,9 +46857,17 @@
           "display_name",
           "description",
           "icon",
-          "connection_type"
+          "connection_type",
+          "capabilities"
         ],
         "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Product features that can consume this connection."
+          },
           "connection_type": {
             "type": "string",
             "description": "Provider credential mechanism.",
@@ -48910,11 +49163,14 @@
         "type": "object",
         "description": "One target this deployment can offer, and what it can do.",
         "required": [
+          "display_name",
+          "icon",
           "kind",
           "available",
           "capabilities",
           "containment_levels",
-          "durability"
+          "durability",
+          "credential_sources"
         ],
         "properties": {
           "available": {
@@ -48932,9 +49188,24 @@
             },
             "description": "Containment levels this target supports, weakest first."
           },
+          "credential_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Credential sources accepted by this target."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable provider/target name."
+          },
           "durability": {
             "type": "string",
             "description": "Recovery guarantee offered by this target."
+          },
+          "icon": {
+            "type": "string",
+            "description": "Lucide icon name used by management surfaces."
           },
           "kind": {
             "type": "string",
@@ -48981,6 +49252,10 @@
             ],
             "description": "Credential/transport binding for a registered machine target.",
             "example": "conn_01933b5a000070008000000000000001"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/SessionSandboxCredential",
+            "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
           },
           "kind": {
             "$ref": "#/components/schemas/SandboxTargetKind",
@@ -49271,6 +49546,28 @@
             "description": "Spans clipped to the window, oldest first."
           }
         }
+      },
+      "SaveOrganizationConnectionRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/CreateConnectionRequest",
+            "description": "Provider credential and any provider-specific connection fields."
+          },
+          {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Human-readable account name shown in Sandbox Template selectors.",
+                "example": "Production Daytona"
+              }
+            }
+          }
+        ],
+        "description": "Organization-owned sandbox provider account input."
       },
       "SavedReport": {
         "type": "object",
@@ -51221,6 +51518,47 @@
           "pause",
           "resume",
           "delete"
+        ]
+      },
+      "SessionSandboxCredential": {
+        "type": "object",
+        "description": "Non-secret, session-pinned credential binding.",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "connection_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+            "example": "00000000-0000-0000-0000-000000000002"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SessionSandboxCredentialSource",
+            "description": "Identity scope from which the provider credential is resolved."
+          },
+          "virtual_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+            "example": "00000000-0000-0000-0000-000000000001"
+          }
+        }
+      },
+      "SessionSandboxCredentialSource": {
+        "type": "string",
+        "description": "Where a managed Sandbox obtains its provider credential.",
+        "enum": [
+          "none",
+          "session_user",
+          "agent",
+          "organization"
         ]
       },
       "SessionSandboxResponse": {

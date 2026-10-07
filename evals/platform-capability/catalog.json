@@ -1860,6 +1860,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -1931,6 +1935,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -7083,6 +7128,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -7154,6 +7203,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -16620,6 +16710,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -16691,6 +16785,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
@@ -22136,6 +22271,10 @@
                 "null"
               ]
             },
+            "credential": {
+              "$ref": "#/$defs/SessionSandboxCredential",
+              "description": "Provider credential source. User and Agent bindings are resolved to an\nexact virtual user when the Session starts; organization bindings also\npin the exact connection."
+            },
             "kind": {
               "$ref": "#/$defs/SandboxTargetKind",
               "description": "Provider-neutral target class."
@@ -22207,6 +22346,47 @@
             "target"
           ],
           "type": "object"
+        },
+        "SessionSandboxCredential": {
+          "description": "Non-secret, session-pinned credential binding.",
+          "properties": {
+            "connection_id": {
+              "description": "Exact connection for organization grants, which may have several\naccounts for one provider.",
+              "example": "00000000-0000-0000-0000-000000000002",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source": {
+              "$ref": "#/$defs/SessionSandboxCredentialSource",
+              "description": "Identity scope from which the provider credential is resolved."
+            },
+            "virtual_user_id": {
+              "description": "Exact virtual-user owner for user, Agent, and organization grants.",
+              "example": "00000000-0000-0000-0000-000000000001",
+              "format": "uuid",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source"
+          ],
+          "type": "object"
+        },
+        "SessionSandboxCredentialSource": {
+          "description": "Where a managed Sandbox obtains its provider credential.",
+          "enum": [
+            "none",
+            "session_user",
+            "agent",
+            "organization"
+          ],
+          "type": "string"
         },
         "SideEffectClass": {
           "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",

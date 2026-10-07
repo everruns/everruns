@@ -164,6 +164,7 @@ service WorkerService {
     rpc GetServiceApiKeyConnection(GetServiceApiKeyConnectionRequest) returns (GetServiceApiKeyConnectionResponse);
     rpc GetConnectionUser(GetConnectionUserRequest) returns (GetConnectionUserResponse);
     rpc GetConnectionTokenForUser(GetConnectionTokenForUserRequest) returns (GetConnectionTokenForUserResponse);
+    rpc GetConnectionTokenForConnection(GetConnectionTokenForConnectionRequest) returns (GetConnectionTokenForUserResponse);
 
     // === Leased resource operations ===
     // Generic resource leases for provider-owned remote state that needs cleanup.
@@ -1506,6 +1507,12 @@ message GetConnectionTokenForUserRequest {
     string provider = 2;
 }
 
+message GetConnectionTokenForConnectionRequest {
+    Uuid connection_id = 1;
+    Uuid virtual_user_id = 2;
+    string provider = 3;
+}
+
 message GetConnectionTokenForUserResponse {
     optional string token = 1;
 }
@@ -1533,6 +1540,7 @@ message LeasedResourceProto {
     optional google.protobuf.Struct metadata = 16;
     Timestamp created_at = 17;
     Timestamp updated_at = 18;
+    optional Uuid connection_id = 19;
 }
 
 message UpsertLeasedResourceRequest {
@@ -1544,6 +1552,7 @@ message UpsertLeasedResourceRequest {
     optional Uuid owner_user_id = 6;
     uint32 lease_duration_seconds = 7;
     optional google.protobuf.Struct metadata = 8;
+    optional Uuid connection_id = 9;
 }
 
 message UpsertLeasedResourceResponse {

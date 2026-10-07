@@ -18,6 +18,7 @@ mod api_integration_test;
 mod harness_levels_test;
 mod late_generation_usage_test;
 mod mcp_catalog_integration_test;
+mod organization_connections_test;
 mod platform_chat_starter_test;
 mod platform_chat_upgrade_test;
 mod repository_conformance_test;

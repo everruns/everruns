@@ -1357,10 +1357,7 @@ impl ServerAppBuilder {
                 "CORS origins configured"
             );
         }
-
-        // =====================================================================
-        // Phase 6: Build API router
-        // =====================================================================
+        // Phase 6: Build API router.
         let mut api_routes = Router::new()
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
@@ -1372,6 +1369,9 @@ impl ServerAppBuilder {
                 verifier: api::channel_auth::ChannelAuthVerifier::new(),
             }))
             .merge(api::virtual_users::routes(api_state.clone()))
+            .merge(api::organization_connections::routes(
+                virtual_user_connections_state.clone(),
+            ))
             .merge(api::virtual_user_connections::routes(
                 virtual_user_connections_state,
             ))

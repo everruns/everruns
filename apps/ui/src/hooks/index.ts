@@ -29,6 +29,7 @@ export * from "./use-chat-model-selection";
 export * from "./use-virtual-users";
 export * from "./use-evals";
 export * from "./use-sandbox-templates";
+export * from "./use-organization-connections";
 export * from "./use-name-availability";
 export * from "./use-page-title";
 export * from "./use-memory";

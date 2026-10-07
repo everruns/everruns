@@ -102,6 +102,7 @@ impl LeasedResourceStore for MockLeasedResourceStore {
             display_name: input.display_name,
             status: LeasedResourceStatus::Active,
             owner_user_id: input.owner_user_id,
+            connection_id: input.connection_id,
             lease_duration_seconds: input.lease_duration_seconds,
             last_touched_at: now,
             lease_expires_at: now
@@ -164,6 +165,15 @@ impl UserConnectionResolver for MockConnectionResolver {
         assert_eq!(provider, "modal");
         Ok(self.0.clone())
     }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
+        assert_eq!(provider, "modal");
+        Ok(self.0.clone())
+    }
 }
 
 /// Resolves several providers' connection tokens.
@@ -172,6 +182,14 @@ pub struct MapConnectionResolver(pub HashMap<String, String>);
 #[async_trait]
 impl UserConnectionResolver for MapConnectionResolver {
     async fn get_connection_token(&self, _: SessionId, provider: &str) -> Result<Option<String>> {
+        Ok(self.0.get(provider).cloned())
+    }
+
+    async fn get_connection_token_for_user(
+        &self,
+        _: uuid::Uuid,
+        provider: &str,
+    ) -> Result<Option<String>> {
         Ok(self.0.get(provider).cloned())
     }
 }

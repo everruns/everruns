@@ -4,7 +4,7 @@
 use everruns_contracts::runtime::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_contracts::runtime::deployment::DeploymentGrade;
 
-use everruns_integrations::daytona::CAPABILITY_PLUGINS;
+use everruns_integrations::daytona::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
 
 fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
     let mut registry = CapabilityRegistry::new();
@@ -46,6 +46,19 @@ fn test_daytona_plugin_is_not_behind_a_feature_flag() {
     assert!(
         daytona.feature_flag.is_none(),
         "daytona should not be behind a feature flag"
+    );
+}
+
+#[test]
+fn test_daytona_connector_is_not_behind_a_feature_flag() {
+    let daytona = CONNECTOR_PLUGINS
+        .iter()
+        .find(|plugin| (plugin.factory)().provider_id() == "daytona")
+        .expect("Daytona connector not found");
+
+    assert!(
+        daytona.feature_flag.is_none(),
+        "daytona connection setup must be available wherever the ungated sandbox capability is available"
     );
 }
 

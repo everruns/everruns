@@ -223,6 +223,7 @@ pub async fn touch_sandbox_lease(
             external_id: state.container_id.clone(),
             display_name: Some(state.container_name.clone()),
             owner_user_id: None,
+            connection_id: None,
             lease_duration_seconds: SANDBOX_LEASE_DURATION_SECONDS,
             metadata: json!({
                 "image": &state.image,

@@ -879,11 +879,11 @@ mod tests {
             assert!(!disabled.is_capability_enabled(capability), "{capability}");
             assert!(enabled.is_capability_enabled(capability), "{capability}");
         }
-        // Daytona and E2B capabilities are generally available; Daytona's
-        // connection is behind its own flag.
+        // Daytona and E2B capabilities and their credential connectors are
+        // generally available.
         assert!(disabled.is_capability_enabled("daytona"));
         assert!(disabled.is_capability_enabled("e2b"));
-        assert!(!disabled.is_connector_enabled("daytona"));
+        assert!(disabled.is_connector_enabled("daytona"));
         assert!(enabled.is_connector_enabled("daytona"));
         assert!(disabled.is_connector_enabled("e2b"));
     }
@@ -899,16 +899,10 @@ mod tests {
         assert_eq!(prod.grade("deno"), FeatureFlagGrade::Off);
         assert!(!prod.deployment_flags().is_enabled("deno"));
         assert!(!prod.deployment_flags().is_connector_enabled("deno"));
-        assert_eq!(prod.grade("daytona"), FeatureFlagGrade::Adoption);
-        let adopted = prod;
-        assert!(adopted.deployment_flags().is_enabled("daytona"));
-        assert!(!adopted.for_org(&HashMap::new()).is_enabled("daytona"));
+        assert!(prod.deployment_flags().is_connector_enabled("daytona"));
         assert!(
-            adopted
-                .for_org(&HashMap::from([("daytona".into(), true)]))
+            prod.for_org(&HashMap::new())
                 .is_connector_enabled("daytona")
         );
-        let map = adopted.deployment_flags().to_map();
-        assert_eq!(map.0.get("daytona"), Some(&true));
     }
 }

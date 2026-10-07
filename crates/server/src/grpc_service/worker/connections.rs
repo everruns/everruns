@@ -38,6 +38,24 @@ impl WorkerServiceImpl {
         Ok(Response::new(GetConnectionTokenResponse { token }))
     }
 
+    pub(crate) async fn handle_get_connection_token_for_connection(
+        &self,
+        request: Request<GetConnectionTokenForConnectionRequest>,
+    ) -> Result<Response<GetConnectionTokenForUserResponse>, Status> {
+        let req = request.into_inner();
+        let connection_id = parse_uuid(req.connection_id.as_ref())?;
+        let virtual_user_id = parse_uuid(req.virtual_user_id.as_ref())?;
+        let token = self
+            .connection_resolver()?
+            .get_connection_token_for_connection(connection_id, virtual_user_id, &req.provider)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to resolve exact connection token");
+                Status::internal("Failed to resolve connection token")
+            })?;
+        Ok(Response::new(GetConnectionTokenForUserResponse { token }))
+    }
+
     pub(crate) async fn handle_get_mcp_connection_token(
         &self,
         request: Request<GetMcpConnectionTokenRequest>,

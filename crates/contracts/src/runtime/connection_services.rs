@@ -234,6 +234,18 @@ pub trait UserConnectionResolver: Send + Sync {
         Ok(None)
     }
 
+    /// Resolve one exact connection owned by the given virtual user. Sandbox
+    /// lifecycle uses this for organization accounts so provisioning and later
+    /// cleanup cannot drift to a different account for the same provider.
+    async fn get_connection_token_for_connection(
+        &self,
+        _connection_id: Uuid,
+        _virtual_user_id: Uuid,
+        _provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Get provider-specific metadata stored alongside the connection.
     /// Returns None if no metadata is stored or no connection exists.
     async fn get_connection_metadata(

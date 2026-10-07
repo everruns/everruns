@@ -870,13 +870,10 @@ mod tests {
     pub(super) fn test_config_with_init(commands: Vec<&str>) -> SessionSandboxConfig {
         SessionSandboxConfig {
             provider: "core-test-session-sandbox".to_string(),
-            auto_start: true,
-            idle_pause_after_seconds: 180,
-            idle_pause_enabled: true,
-            provider_config: json!({}),
             init: SessionSandboxInitConfig {
                 commands: commands.into_iter().map(ToString::to_string).collect(),
             },
+            ..Default::default()
         }
     }
 
@@ -1206,11 +1203,7 @@ mod tests {
     fn revision_test_config() -> SessionSandboxConfig {
         SessionSandboxConfig {
             provider: "revision-test-session-sandbox".to_string(),
-            auto_start: true,
-            idle_pause_after_seconds: 180,
-            idle_pause_enabled: true,
-            provider_config: json!({}),
-            init: SessionSandboxInitConfig { commands: vec![] },
+            ..Default::default()
         }
     }
 
@@ -1625,11 +1618,7 @@ mod tests {
     fn reconcile_config() -> SessionSandboxConfig {
         SessionSandboxConfig {
             provider: "rewind-test-session-sandbox".to_string(),
-            auto_start: true,
-            idle_pause_after_seconds: 180,
-            idle_pause_enabled: true,
-            provider_config: json!({}),
-            init: SessionSandboxInitConfig { commands: vec![] },
+            ..Default::default()
         }
     }
 

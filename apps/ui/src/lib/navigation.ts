@@ -29,6 +29,7 @@ import {
   Server,
   Container,
   Cpu,
+  KeyRound,
   Settings,
   Shield,
   Telescope,
@@ -196,6 +197,13 @@ export const defaultSandboxesNavigation: NavigationItem[] = [
     href: "/sandbox-templates",
     icon: Container,
     keywords: ["sandbox templates", "environment", "compute", "workspace"],
+  },
+  {
+    name: "Provider Accounts",
+    href: "/sandbox-provider-accounts",
+    icon: KeyRound,
+    keywords: ["sandbox credentials", "daytona", "modal", "e2b", "organization accounts"],
+    minimumRole: "admin",
   },
 ];
 

@@ -252,6 +252,7 @@ pub async fn touch_sandbox_lease(
             external_id: state.sandbox_id.clone(),
             display_name: state.title.clone(),
             owner_user_id,
+            connection_id: None,
             lease_duration_seconds: MODAL_SANDBOX_LEASE_DURATION_SECONDS,
             // THREAT[TM-API-015]: leased-resource metadata is API-visible;
             // keep it to non-secret descriptive fields.
