@@ -275,9 +275,16 @@ println!("urgent: {urgent:.2}");
 # }
 ```
 
+A runnable version that routes a support ticket with all three primitives is
+[`openai_decisions_triage`](https://github.com/everruns/everruns/blob/main/crates/integrations/examples/openai_decisions_triage.rs):
+
+```bash
+OPENAI_API_KEY=... cargo run -p everruns-integrations --features openai-decisions --example openai_decisions_triage
+```
+
 All three primitives are native and calibrated, and one request sends every
 question in one call. Score questions take at most ten levels. On Everruns
-Platform, set `DECISIONS_DRIVER=openai` with `UTILITY_OPENAI_API_KEY` to answer
+Platform, set `UTILITY_DECISION_DRIVER=openai` with `UTILITY_OPENAI_API_KEY` to answer
 guardrail `jev` checks with it (see
 [environment variables](/sre/environment-variables/)).
 
