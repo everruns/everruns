@@ -1,5 +1,5 @@
 import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
-import McpServersPage from "@/app/(main)/mcp-servers/page";
+import McpCatalogPage from "@/app/(main)/settings/mcp-catalog/page";
 
 const mockUseMcpServerCatalog = jest.fn();
 const mockUseMcpServerUsage = jest.fn();
@@ -7,8 +7,6 @@ const mockUseCreateMcpServer = jest.fn();
 const mockUseDeleteMcpServer = jest.fn();
 const mockUseUpdateMcpServer = jest.fn();
 const mockUseDestroyMcpServer = jest.fn();
-const mockUseUserMcpConnections = jest.fn();
-const mockUseDeleteUserConnection = jest.fn();
 const mockUsePolicies = jest.fn();
 
 jest.mock("@/hooks/use-mcp-servers", () => ({
@@ -19,16 +17,12 @@ jest.mock("@/hooks/use-mcp-servers", () => ({
   useUpdateMcpServer: () => mockUseUpdateMcpServer(),
   useDestroyMcpServer: () => mockUseDestroyMcpServer(),
 }));
-jest.mock("@/hooks/use-user-connections", () => ({
-  useUserMcpConnections: () => mockUseUserMcpConnections(),
-  useDeleteUserConnection: () => mockUseDeleteUserConnection(),
-}));
 
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => mockUsePolicies(),
 }));
 
-describe("McpServersPage", () => {
+describe("McpCatalogPage", () => {
   beforeEach(() => {
     mockUsePolicies.mockReturnValue({
       isLoading: false,
@@ -65,17 +59,6 @@ describe("McpServersPage", () => {
       error: null,
     });
 
-    mockUseUserMcpConnections.mockReturnValue({
-      data: [],
-      isLoading: false,
-      error: null,
-    });
-
-    mockUseDeleteUserConnection.mockReturnValue({
-      mutate: jest.fn(),
-      isPending: false,
-    });
-
     mockUseCreateMcpServer.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
@@ -106,7 +89,7 @@ describe("McpServersPage", () => {
       error: new Error("Network error"),
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
@@ -115,18 +98,50 @@ describe("McpServersPage", () => {
     expect(within(dialog).getByRole("button", { name: "Archive" })).toBeDisabled();
   });
 
-  it("uses the standard main-page shell", () => {
-    render(<McpServersPage />);
+  it("renders as a Settings > Organization page that explains presets", () => {
+    render(<McpCatalogPage />);
 
-    const pageShell = screen
-      .getByRole("heading", { level: 1, name: "MCP" })
-      .closest("div.container");
+    expect(screen.getByRole("heading", { level: 2, name: "MCP catalog" })).toBeInTheDocument();
+    expect(
+      screen.getByText("A preset does nothing until an agent or a person adds it."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "My connections" })).not.toBeInTheDocument();
+    expect(screen.getByText("Used by")).toBeInTheDocument();
+    expect(screen.getByText("2 agents")).toBeInTheDocument();
+  });
 
-    expect(pageShell).toHaveClass("container", "mx-auto", "max-w-full", "p-4", "sm:p-6");
+  it("hides the catalog and its controls without view permission", () => {
+    mockUsePolicies.mockReturnValue({
+      isLoading: false,
+      can: () => false,
+    });
+
+    render(<McpCatalogPage />);
+
+    expect(screen.getByText("You cannot view the MCP catalog")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open My agent experience" })).toHaveAttribute(
+      "href",
+      "/settings/agent-experience",
+    );
+    expect(screen.queryByRole("button", { name: "Add Server" })).not.toBeInTheDocument();
+    expect(screen.queryByText("microsoft_learn")).not.toBeInTheDocument();
+  });
+
+  it("shows the catalog read-only to people who can view but not manage it", () => {
+    mockUsePolicies.mockReturnValue({
+      isLoading: false,
+      can: (policy: string) => policy === "mcp_server.view",
+    });
+
+    render(<McpCatalogPage />);
+
+    expect(screen.getByText("microsoft_learn")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add Server" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Archive/ })).not.toBeInTheDocument();
   });
 
   it("renders configured MCP servers", () => {
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     expect(screen.getByText("microsoft_learn")).toBeInTheDocument();
     expect(screen.getByText("Microsoft Learn documentation MCP server")).toBeInTheDocument();
@@ -143,7 +158,7 @@ describe("McpServersPage", () => {
       error: null,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     expect(screen.getByText("No MCP presets")).toBeInTheDocument();
   });
@@ -155,13 +170,13 @@ describe("McpServersPage", () => {
       error: new Error("Network error"),
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     expect(screen.getByText(/Failed to load MCP catalog/)).toBeInTheDocument();
   });
 
   it("shows confirmation dialog when clicking Archive", () => {
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
@@ -179,7 +194,7 @@ describe("McpServersPage", () => {
       isPending: false,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
@@ -197,7 +212,7 @@ describe("McpServersPage", () => {
       isPending: false,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Archive" }));
 
@@ -218,37 +233,8 @@ describe("McpServersPage", () => {
       fetchNextPage,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
     fireEvent.click(screen.getByRole("button", { name: "Load more presets" }));
-
-    expect(fetchNextPage).toHaveBeenCalledTimes(1);
-  });
-
-  it("loads the next personal-connections page through the continuation control", () => {
-    const fetchNextPage = jest.fn();
-    mockUseUserMcpConnections.mockReturnValue({
-      data: [
-        {
-          provider: "mcp_oauth_11111111-1111-1111-1111-111111111111",
-          server_id: "11111111-1111-1111-1111-111111111111",
-          server_name: "linear",
-          server_url: "https://mcp.linear.app/mcp",
-          server_status: "active",
-          provider_username: "person@example.com",
-          scopes: "read write",
-          connected_at: "2024-01-02T00:00:00Z",
-        },
-      ],
-      isLoading: false,
-      error: null,
-      hasNextPage: true,
-      isFetchingNextPage: false,
-      fetchNextPage,
-    });
-
-    render(<McpServersPage />);
-    fireEvent.click(screen.getByRole("tab", { name: "My connections" }));
-    fireEvent.click(screen.getByRole("button", { name: "Load more connections" }));
 
     expect(fetchNextPage).toHaveBeenCalledTimes(1);
   });
@@ -260,7 +246,7 @@ describe("McpServersPage", () => {
       isPending: false,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "atlassian" } });
@@ -282,7 +268,7 @@ describe("McpServersPage", () => {
       isPending: false,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
     const dialog = screen.getByRole("dialog");
@@ -300,7 +286,7 @@ describe("McpServersPage", () => {
   });
 
   it("opens the edit dialog prefilled with the server's current values", () => {
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
@@ -314,88 +300,13 @@ describe("McpServersPage", () => {
   });
 
   it("opens the edit dialog from the catalog row keyboard action", () => {
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     const row = screen.getByText("microsoft_learn").closest("tr");
     expect(row).not.toBeNull();
     fireEvent.keyDown(row!, { key: "Enter" });
 
     expect(screen.getByRole("dialog")).toHaveTextContent("Edit MCP Server");
-  });
-
-  it("shows and revokes the current user's MCP connections", async () => {
-    const revoke = jest.fn().mockResolvedValue({});
-    mockUseUserMcpConnections.mockReturnValue({
-      data: [
-        {
-          provider: "mcp_oauth_11111111-1111-1111-1111-111111111111",
-          server_id: "11111111-1111-1111-1111-111111111111",
-          server_name: "linear",
-          server_url: "https://mcp.linear.app/mcp",
-          server_status: "active",
-          provider_username: "person@example.com",
-          scopes: "read write",
-          connected_at: "2024-01-02T00:00:00Z",
-        },
-      ],
-      isLoading: false,
-      error: null,
-    });
-    mockUseDeleteUserConnection.mockReturnValue({
-      mutate: revoke,
-      isPending: false,
-    });
-
-    render(<McpServersPage />);
-    fireEvent.click(screen.getByRole("tab", { name: "My connections" }));
-
-    expect(screen.getByText("linear")).toBeInTheDocument();
-    expect(screen.getByText("mcp.linear.app")).toBeInTheDocument();
-    expect(screen.getByText("person@example.com")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Revoke" }));
-    await waitFor(() =>
-      expect(revoke).toHaveBeenCalledWith("mcp_oauth_11111111-1111-1111-1111-111111111111"),
-    );
-  });
-
-  it("keeps deleted presets visible and revocable", () => {
-    mockUseUserMcpConnections.mockReturnValue({
-      data: [
-        {
-          provider: "mcp_oauth_22222222-2222-2222-2222-222222222222",
-          server_id: "22222222-2222-2222-2222-222222222222",
-          server_name: "deleted-server",
-          server_url: "https://deleted.example/mcp",
-          server_status: "deleted",
-          provider_username: null,
-          scopes: null,
-          connected_at: "2024-01-02T00:00:00Z",
-        },
-      ],
-      isLoading: false,
-      error: null,
-    });
-
-    render(<McpServersPage />);
-    fireEvent.click(screen.getByRole("tab", { name: "My connections" }));
-
-    expect(screen.getByText("Preset unavailable")).toBeInTheDocument();
-    expect(screen.getByText("unavailable")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Revoke" })).toBeEnabled();
-  });
-
-  it("hides the catalog and its controls without view permission", () => {
-    mockUsePolicies.mockReturnValue({
-      isLoading: false,
-      can: () => false,
-    });
-
-    render(<McpServersPage />);
-
-    expect(screen.getByRole("tab", { name: "My connections" })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Catalog" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add Server" })).not.toBeInTheDocument();
-    expect(screen.queryByText("microsoft_learn")).not.toBeInTheDocument();
   });
 
   it("submits updated name, description, and URL through the update hook", async () => {
@@ -407,7 +318,7 @@ describe("McpServersPage", () => {
       error: null,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
@@ -465,7 +376,7 @@ describe("McpServersPage", () => {
       error: null,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByLabelText("Agent credential")).toHaveTextContent(
@@ -489,7 +400,7 @@ describe("McpServersPage", () => {
       error: null,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
@@ -510,7 +421,7 @@ describe("McpServersPage", () => {
       error: new Error("name already exists"),
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
@@ -549,7 +460,7 @@ describe("McpServersPage", () => {
       error: null,
     });
 
-    render(<McpServersPage />);
+    render(<McpCatalogPage />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog");
 

@@ -2,6 +2,12 @@
 
 ## 2026-10-07
 
+* **The org MCP catalog moved to Settings > Organization > MCP catalog.** The
+  main-navigation MCP entry is gone; the Settings entry shows only to people
+  who manage MCP servers, old `/mcp-servers` URLs redirect, and the personal
+  MCP sign-ins list moved to My agent experience. See
+  [User MCP servers](integrations/user-mcp-servers.md#plan) step 8.
+
 * **One session record for MCP servers added mid-conversation.** ARD
   attachments and servers a person adds "for this chat only" (`user_mcp` add
   with `scope: "chat"`) write the same `session_mcp:<name>` record, folded into
