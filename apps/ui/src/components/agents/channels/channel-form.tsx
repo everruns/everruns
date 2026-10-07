@@ -56,6 +56,8 @@ import type {
   SlackResponsePolicy,
   WebhookChannelConfig,
 } from "@/lib/api/types";
+import { agentIdChannelAuth, agentIdClientId, isAgentIdChannelAuth } from "@/lib/agentid";
+import { AgentIdSignInFields, PublicChatSignInFields } from "./sign-in-fields";
 import {
   getAgUiToolVisibilityDisplayName,
   getChannelTypeDisplayName,
@@ -119,6 +121,8 @@ export type ChannelFormState = {
   agUiToken: string;
   agUiAnonymous: boolean;
   agUiAuth?: ChannelAuthConfig;
+  agUiAgentIdEnabled: boolean;
+  agUiAgentIdClientId: string;
   agUiExpirationHours: number;
   agUiRateLimitPerMinute: string;
   agUiToolVisibility: AgUiToolVisibility;
@@ -145,6 +149,8 @@ export type ChannelFormState = {
   publicChatGoogleEnabled: boolean;
   publicChatGoogleClientId: string;
   publicChatGoogleAllowedDomains: string;
+  publicChatAgentIdEnabled: boolean;
+  publicChatAgentIdClientId: string;
 };
 
 function secretValue(value?: string, configured?: boolean): string {
@@ -178,6 +184,8 @@ export function getDefaultChannelFormState(
     agUiToken: kind === "ag_ui" && !channel ? generateChannelToken() : "",
     agUiAnonymous: true,
     agUiAuth: undefined,
+    agUiAgentIdEnabled: false,
+    agUiAgentIdClientId: "",
     agUiExpirationHours: DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600,
     agUiRateLimitPerMinute: "",
     agUiToolVisibility: "generic",
@@ -204,6 +212,8 @@ export function getDefaultChannelFormState(
     publicChatGoogleEnabled: false,
     publicChatGoogleClientId: "",
     publicChatGoogleAllowedDomains: "",
+    publicChatAgentIdEnabled: false,
+    publicChatAgentIdClientId: "",
   };
 
   if (!channel) return base;
@@ -238,6 +248,8 @@ export function getDefaultChannelFormState(
       agUiToken: secretValue(config.token, config.token_configured),
       agUiAnonymous: config.anonymous ?? true,
       agUiAuth: auth,
+      agUiAgentIdEnabled: isAgentIdChannelAuth(auth),
+      agUiAgentIdClientId: agentIdClientId(auth),
       agUiExpirationHours:
         typeof config.session_expiration_seconds === "number"
           ? config.session_expiration_seconds / 3600
@@ -305,6 +317,8 @@ export function getDefaultChannelFormState(
         auth?.provider?.type === "google_oidc"
           ? (auth.provider.allowed_domains ?? []).join(", ")
           : "",
+      publicChatAgentIdEnabled: isAgentIdChannelAuth(auth),
+      publicChatAgentIdClientId: agentIdClientId(auth),
     };
   }
   if (channel.channel_type === "slack") {
@@ -346,9 +360,16 @@ export function buildChannelConfig(state: ChannelFormState) {
       };
     case "ag_ui": {
       const rateLimit = Number.parseInt(state.agUiRateLimitPerMinute, 10);
+      // AgentID replaces whatever auth the channel had; turning it off keeps a
+      // non-AgentID config that was set elsewhere (for example through the API).
+      const agUiAuth = state.agUiAgentIdEnabled
+        ? agentIdChannelAuth(state.agUiAgentIdClientId)
+        : isAgentIdChannelAuth(state.agUiAuth)
+          ? undefined
+          : state.agUiAuth;
       return {
         anonymous: state.agUiAnonymous,
-        ...(state.agUiAuth ? { auth: state.agUiAuth } : {}),
+        ...(agUiAuth ? { auth: agUiAuth } : {}),
         ...(state.agUiToken.trim() ? { token: state.agUiToken.trim() } : {}),
         session_expiration_seconds: Math.max(0, Math.round(state.agUiExpirationHours * 3600)),
         ...(Number.isFinite(rateLimit) && rateLimit > 0
@@ -413,7 +434,9 @@ export function buildChannelConfig(state: ChannelFormState) {
                 ...(allowedDomains.length > 0 ? { allowed_domains: allowedDomains } : {}),
               },
             }
-          : undefined;
+          : state.publicChatAgentIdEnabled && state.publicChatAgentIdClientId.trim()
+            ? agentIdChannelAuth(state.publicChatAgentIdClientId)
+            : undefined;
       return {
         anonymous: state.publicChatAnonymous,
         ...(state.publicChatToken.trim() ? { token: state.publicChatToken.trim() } : {}),
@@ -443,6 +466,7 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   }
   if (state.kind === "webhook") return !!state.channelMessage.trim();
   if (state.kind === "ag_ui") {
+    if (state.agUiAgentIdEnabled && !state.agUiAgentIdClientId.trim()) return false;
     return state.agUiToolVisibility !== "generic" || state.agUiGenericToolText.trim().length <= 120;
   }
   if (state.kind === "fcp") {
@@ -469,10 +493,17 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
     if (state.publicChatGoogleEnabled && !state.publicChatGoogleClientId.trim()) {
       return false;
     }
+    if (state.publicChatAgentIdEnabled && !state.publicChatAgentIdClientId.trim()) {
+      return false;
+    }
     // Turning anonymous access off requires a sign-in provider; otherwise the
     // server forbids every request and the chat is unreachable. (A shared token
     // only gates the anonymous path, so it cannot substitute here.)
-    if (!state.publicChatAnonymous && !state.publicChatGoogleEnabled) {
+    if (
+      !state.publicChatAnonymous &&
+      !state.publicChatGoogleEnabled &&
+      !state.publicChatAgentIdEnabled
+    ) {
       return false;
     }
     return true;
@@ -868,6 +899,14 @@ export function ChannelForm({
               </Button>
             </div>
           </div>
+          <AgentIdSignInFields
+            idPrefix="ag_ui"
+            description="Accept AgentID tokens from AI agents. When on, every request must present a valid AgentID token for your client and the bearer token above is not used."
+            enabled={state.agUiAgentIdEnabled}
+            clientId={state.agUiAgentIdClientId}
+            onEnabledChange={(checked) => update("agUiAgentIdEnabled", checked)}
+            onClientIdChange={(value) => update("agUiAgentIdClientId", value)}
+          />
           <FieldGrid>
             <div className="space-y-2">
               <Label htmlFor="ag_ui_tool_visibility">Tool visibility</Label>
@@ -1147,49 +1186,14 @@ export function ChannelForm({
             </p>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between border p-3">
-              <div>
-                <p className="text-sm font-medium">Google sign-in</p>
-                <p className="text-xs text-muted-foreground">
-                  Require visitors to sign in with Google. When on, every request must present a
-                  valid Google account; signed-in visitors skip the Turnstile challenge.
-                </p>
-              </div>
-              <Switch
-                checked={state.publicChatGoogleEnabled}
-                onCheckedChange={(checked) => update("publicChatGoogleEnabled", checked)}
-              />
-            </div>
-            {state.publicChatGoogleEnabled && (
-              <FieldGrid>
-                <div className="space-y-2">
-                  <Label htmlFor="public_chat_google_client_id">Google OAuth client ID</Label>
-                  <Input
-                    id="public_chat_google_client_id"
-                    value={state.publicChatGoogleClientId}
-                    onChange={(event) => update("publicChatGoogleClientId", event.target.value)}
-                    className="font-mono"
-                    placeholder="1234-abc.apps.googleusercontent.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="public_chat_google_domains">Allowed domains (optional)</Label>
-                  <Input
-                    id="public_chat_google_domains"
-                    value={state.publicChatGoogleAllowedDomains}
-                    onChange={(event) =>
-                      update("publicChatGoogleAllowedDomains", event.target.value)
-                    }
-                    placeholder="example.com, partner.com"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Comma-separated. Leave blank to allow any Google account.
-                  </p>
-                </div>
-              </FieldGrid>
-            )}
-          </div>
+          <PublicChatSignInFields
+            googleEnabled={state.publicChatGoogleEnabled}
+            googleClientId={state.publicChatGoogleClientId}
+            googleAllowedDomains={state.publicChatGoogleAllowedDomains}
+            agentIdEnabled={state.publicChatAgentIdEnabled}
+            agentIdClientId={state.publicChatAgentIdClientId}
+            update={update}
+          />
 
           <FieldGrid>
             <div className="space-y-2">

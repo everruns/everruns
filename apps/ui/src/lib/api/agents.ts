@@ -8,20 +8,14 @@ import { createCrudApi } from "./crud";
 import { withOrgHeader } from "./active-org";
 import type {
   Agent,
-  AgentVersion,
-  AgentVersionDiffResponse,
   AgentAnalysisResponse,
   AgentPreviewResponse,
   HealthCheckRun,
   LatestHealthCheckRun,
-  CreateAgentVersionRequest,
   CreateAgentRequest,
-  ForkAgentVersionRequest,
   PreviewAgentRequest,
-  RollbackAgentVersionRequest,
   ResourceStats,
   PaginatedResponse,
-  SetDefaultAgentVersionRequest,
   UpdateAgentRequest,
   AgentCredentialBinding,
   AgentMcpAttachment,
@@ -215,62 +209,6 @@ export async function getLatestHealthCheckRun(agentId: string): Promise<LatestHe
 
 export async function listHealthCheckRuns(agentId: string): Promise<HealthCheckRun[]> {
   const response = await api.get<HealthCheckRun[]>(`/v1/agents/${agentId}/health-checks`);
-  return response.data;
-}
-
-export async function listAgentVersions(agentId: string): Promise<AgentVersion[]> {
-  const response = await api.get<AgentVersion[]>(`/v1/agents/${agentId}/versions`);
-  return response.data;
-}
-
-export async function createAgentVersion(
-  agentId: string,
-  request: CreateAgentVersionRequest,
-): Promise<AgentVersion> {
-  const response = await api.post<AgentVersion>(`/v1/agents/${agentId}/versions`, request);
-  return response.data;
-}
-
-export async function setDefaultAgentVersion(
-  agentId: string,
-  request: SetDefaultAgentVersionRequest,
-): Promise<Agent> {
-  const response = await api.post<Agent>(`/v1/agents/${agentId}/versions/default`, request);
-  return response.data;
-}
-
-export async function rollbackAgentVersion(
-  agentId: string,
-  versionId: string,
-  request: RollbackAgentVersionRequest,
-): Promise<Agent> {
-  const response = await api.post<Agent>(
-    `/v1/agents/${agentId}/versions/${versionId}/rollback`,
-    request,
-  );
-  return response.data;
-}
-
-export async function forkAgentVersion(
-  agentId: string,
-  versionId: string,
-  request: ForkAgentVersionRequest,
-): Promise<Agent> {
-  const response = await api.post<Agent>(
-    `/v1/agents/${agentId}/versions/${versionId}/fork`,
-    request,
-  );
-  return response.data;
-}
-
-export async function diffAgentVersions(
-  agentId: string,
-  fromVersionId: string,
-  toVersionId: string,
-): Promise<AgentVersionDiffResponse> {
-  const response = await api.get<AgentVersionDiffResponse>(
-    `/v1/agents/${agentId}/versions/${fromVersionId}/diff/${toVersionId}`,
-  );
   return response.data;
 }
 

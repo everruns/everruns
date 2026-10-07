@@ -1,7 +1,7 @@
-// Stored Agent and AgentVersion persistence records (EVE-877).
+// Stored Agent persistence records (EVE-877).
 //
 // Decision: Agent persistence and lifecycle are a platform concern. These
-// records — lifecycle status, versioning and publication metadata, fork
+// records — lifecycle status, publication metadata, fork
 // lineage, timestamps, usage — moved here from `everruns-core`. The execution
 // kernel consumes only the portable `everruns_core::AgentDefinition`, produced
 // at the loading seam by [`Agent::execution_definition`], which enforces
@@ -18,9 +18,7 @@ use uuid::Uuid;
 use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 use everruns_contracts::error::AgentLoopError;
 use everruns_contracts::tool_types::ToolDefinition;
-use everruns_contracts::typed_id::{
-    AgentId, AgentVersionId, AvatarId, HarnessId, ModelId, PrincipalId,
-};
+use everruns_contracts::typed_id::{AgentId, AvatarId, HarnessId, ModelId};
 use everruns_core::AgentDefinition;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
@@ -95,117 +93,6 @@ pub enum AgentStatus {
     Deleted,
 }
 
-/// Reason a version was created. Stored as lower_snake_case text.
-/// One of `auto`, `manual`, `patch`, `minor`, `major`, `import`, `rollback`, `fork`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
-#[schema(example = "manual")]
-#[serde(rename_all = "snake_case")]
-pub enum AgentVersionChangeKind {
-    Auto,
-    Manual,
-    Patch,
-    Minor,
-    Major,
-    Import,
-    Rollback,
-    Fork,
-}
-
-impl std::fmt::Display for AgentVersionChangeKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AgentVersionChangeKind::Auto => write!(f, "auto"),
-            AgentVersionChangeKind::Manual => write!(f, "manual"),
-            AgentVersionChangeKind::Patch => write!(f, "patch"),
-            AgentVersionChangeKind::Minor => write!(f, "minor"),
-            AgentVersionChangeKind::Major => write!(f, "major"),
-            AgentVersionChangeKind::Import => write!(f, "import"),
-            AgentVersionChangeKind::Rollback => write!(f, "rollback"),
-            AgentVersionChangeKind::Fork => write!(f, "fork"),
-        }
-    }
-}
-
-impl From<&str> for AgentVersionChangeKind {
-    fn from(s: &str) -> Self {
-        match s {
-            "auto" => AgentVersionChangeKind::Auto,
-            "patch" => AgentVersionChangeKind::Patch,
-            "minor" => AgentVersionChangeKind::Minor,
-            "major" => AgentVersionChangeKind::Major,
-            "import" => AgentVersionChangeKind::Import,
-            "rollback" => AgentVersionChangeKind::Rollback,
-            "fork" => AgentVersionChangeKind::Fork,
-            _ => AgentVersionChangeKind::Manual,
-        }
-    }
-}
-
-/// Immutable snapshot of an Agent's authored and resolved runtime config.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct AgentVersion {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    #[serde(rename = "id")]
-    #[schema(value_type = String, example = "agentver_01933b5a000070008000000000000001")]
-    pub public_id: AgentVersionId,
-    /// Internal database UUID. Not part of the public identifier surface; skipped during serialization.
-    #[serde(skip, default = "uuid::Uuid::nil")]
-    pub internal_id: uuid::Uuid,
-    /// Owning agent's prefixed public identifier.
-    #[schema(value_type = String, example = "agent_01933b5a000070008000000000000001")]
-    pub agent_id: AgentId,
-    /// Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot.
-    #[schema(example = 7)]
-    pub version_number: i32,
-    /// Semantic version major component.
-    #[schema(example = 1)]
-    pub semver_major: i32,
-    /// Semantic version minor component.
-    #[schema(example = 4)]
-    pub semver_minor: i32,
-    /// Semantic version patch component.
-    #[schema(example = 2)]
-    pub semver_patch: i32,
-    /// Combined semver string for display (e.g. `1.4.2`).
-    #[schema(example = "1.4.2")]
-    pub version: String,
-    /// Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback.
-    #[schema(example = true)]
-    pub is_published: bool,
-    /// Version this one was forked or branched from, if any.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
-    pub parent_version_id: Option<AgentVersionId>,
-    /// When this version is a copy of another version (e.g. a manual rollback), the original source. `None` for ordinary snapshots.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
-    pub source_version_id: Option<AgentVersionId>,
-    /// Identity of the principal (user or virtual user) that created this version. `None` for system-generated snapshots.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
-    pub created_by_principal_id: Option<PrincipalId>,
-    /// Classification of why this version was created (manual publish, automatic draft, rollback, fork, etc.).
-    pub change_kind: AgentVersionChangeKind,
-    /// Human-readable summary of changes in this version (release notes). `None` if not provided.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(
-        example = "Switched default model to claude-sonnet-4-6; added refund-runbook capability."
-    )]
-    pub summary: Option<String>,
-    /// Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.
-    #[schema(example = "blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a")]
-    pub config_hash: String,
-    /// User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here.
-    #[schema(value_type = Object)]
-    pub authored_config: serde_json::Value,
-    /// Resolved configuration after applying harness, capability, and platform layers. This is what the runtime executes against.
-    #[schema(value_type = Object)]
-    pub resolved_config: serde_json::Value,
-    /// Timestamp when this version was created (RFC 3339).
-    #[schema(example = "2026-04-20T14:22:00Z")]
-    pub created_at: DateTime<Utc>,
-}
-
 impl std::fmt::Display for AgentStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -227,7 +114,7 @@ impl From<&str> for AgentStatus {
 }
 
 // Stored Agent record: authored configuration plus platform persistence
-// metadata (lifecycle status, versioning, fork lineage, timestamps, usage).
+// metadata (lifecycle status, fork lineage, timestamps, usage).
 // The doc comment below is part of the public OpenAPI schema description and
 // intentionally unchanged by the EVE-877 move.
 /// Agent configuration for agentic loop.
@@ -291,18 +178,10 @@ pub struct Agent {
     /// Harness that supplies the base execution environment for this agent.
     #[schema(value_type = String, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: HarnessId,
-    /// Default immutable version used by deployments that choose the default policy.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
-    pub default_version_id: Option<AgentVersionId>,
     /// Source agent for a forked agent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub forked_from_agent_id: Option<AgentId>,
-    /// Source version for a forked agent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
-    pub forked_from_version_id: Option<AgentVersionId>,
     /// Root agent lineage identifier for grouping fork families.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
@@ -311,6 +190,12 @@ pub struct Agent {
     #[serde(default)]
     #[schema(example = json!(["support", "production"]))]
     pub tags: Vec<String>,
+    /// Built-in agents (Platform Chat) are provisioned by the platform and
+    /// are read-only: they cannot be modified or deleted via the API. Copy
+    /// one to get an editable version.
+    #[serde(default)]
+    #[schema(example = false)]
+    pub is_built_in: bool,
     /// Capabilities enabled for this agent with per-agent configuration.
     /// Capabilities add tools and system prompt modifications.
     #[serde(default)]
@@ -490,6 +375,7 @@ mod tests {
 
     fn test_agent() -> Agent {
         Agent {
+            is_built_in: false,
             avatar: None,
             service_virtual_user_id: None,
 
@@ -504,9 +390,7 @@ mod tests {
             system_prompt: "test".to_string(),
             default_model_id: None,
             harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),
-            default_version_id: None,
             forked_from_agent_id: None,
-            forked_from_version_id: None,
             root_agent_id: None,
             tags: vec![],
             capabilities: vec![],
@@ -629,7 +513,7 @@ mod tests {
 
         // Persistence metadata never enters the portable definition.
         let json = serde_json::to_value(&definition).unwrap();
-        for field in ["status", "created_at", "default_version_id", "usage"] {
+        for field in ["status", "created_at", "usage"] {
             assert!(json.get(field).is_none(), "{field} leaked into definition");
         }
     }

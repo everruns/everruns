@@ -110,7 +110,7 @@ The set below is what ships today. The boundary is open, so a
 
 | Driver | Crate | Wire protocol | Services | Model discovery |
 | --- | --- | --- | --- | --- |
-| OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat, embeddings, realtime | yes |
+| OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses, OpenAI Decisions API | chat, embeddings, realtime, decisions | yes |
 | ChatGPT plan | `everruns-drivers` (`chatgpt`) | Stateless Responses + open-source OAuth | chat | account-visible models |
 | OpenAI (Chat Completions) | `everruns-drivers` (`openai`) | OpenAI Chat Completions | chat | yes |
 | Azure OpenAI | `everruns-drivers` (`openai`) | OpenAI Responses | chat | yes |
@@ -122,6 +122,7 @@ The set below is what ships today. The boundary is open, so a
 | Microsoft MAI | `everruns-drivers` (`mai`) | OpenAI Chat Completions (Azure AI Foundry) | chat | yes |
 | Fireworks AI | `everruns-drivers` (`fireworks`) | OpenAI Chat Completions-compatible | chat | yes |
 | Meta Model API | `everruns-drivers` (`meta`) | OpenAI Responses-compatible | chat | yes |
+| Mistral AI | `everruns-drivers` (`mistral`) | OpenAI Chat Completions-compatible | chat | yes |
 | Cloudflare AI Gateway | `everruns-drivers` (`cloudflare`) | OpenAI Chat Completions-compatible | chat | Workers AI only |
 | Vercel AI Gateway | `everruns-drivers` (`vercel`) | Open Responses | chat | yes |
 | LLM Simulator | `everruns-llmsim` | none — in-process test double | chat | no |
@@ -214,6 +215,7 @@ let model = Model::new(
 | TypeSafe | `TYPESAFE_API_KEY` | `TYPESAFE_BASE_URL` |
 | Fireworks AI | `FIREWORKS_API_KEY` | `FIREWORKS_BASE_URL` |
 | Meta Model API | `LLAMA_API_KEY`, or `META_API_KEY` | `LLAMA_BASE_URL` |
+| Mistral AI | `MISTRAL_API_KEY` | `MISTRAL_BASE_URL` |
 | AWS Bedrock | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` (or `AWS_DEFAULT_REGION`), `AWS_SESSION_TOKEN` | — (the region selects it) |
 | Microsoft MAI | `AZURE_AI_API_KEY`, **or** `AZURE_TENANT_ID` + `AZURE_CLIENT_ID` + `AZURE_CLIENT_SECRET` | `AZURE_AI_ENDPOINT` |
 | Cloudflare AI Gateway | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_GATEWAY_ID` | — (derived from the account) |

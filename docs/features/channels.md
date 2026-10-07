@@ -4,7 +4,7 @@ description: Expose an Agent to Slack, AG-UI clients, A2A agents, FCP callers, a
 appliesTo: [platform, cloud]
 ---
 
-A **channel** is an Agent-owned way for an external caller to reach that Agent and get a reply. Each channel belongs to exactly one Agent and has its own transport configuration, authentication, session routing, version policy, and publish state. One Agent can have several channels, and publishing or unpublishing one does not change the others.
+A **channel** is an Agent-owned way for an external caller to reach that Agent and get a reply. Each channel belongs to exactly one Agent and has its own transport configuration, authentication, session routing, and publish state. One Agent can have several channels, and publishing or unpublishing one does not change the others.
 
 Use a channel when an external peer sends a request and waits for a reply. Use an [Agent trigger](/features/agent-triggers/) when a schedule or event starts Agent work without a reply channel.
 
@@ -31,7 +31,7 @@ Routes are relative to the API base, for example `https://your-everruns-host/api
 3. Configure the type-specific fields and select **Save channel**.
 4. Select **Publish** to make the channel live.
 
-The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Each channel can follow the Agent's default version, its latest version, or a pinned version; see [Agent Versions](/features/agent-versions/).
+The same operations are available over the API under `/v1/agents/{agent_id}/channels`, with `publish` and `unpublish` actions per channel. Every channel runs the Agent's current configuration.
 
 ## Channel lifecycle
 
@@ -114,6 +114,17 @@ A Public Chat channel serves an isolated, hosted chat website for one Agent. Vis
 
 The website reads its public configuration from `/v1/channels/{channel_id}/public-chat/config`. That response never includes channel secrets.
 
+### Sign in with AgentID
+
+[AgentID](https://www.agentid.com) is a sign-in for AI agents. To let agents sign in to a Public Chat channel:
+
+1. Register an AgentID client with the redirect URI `{API base URL}/v1/agentid/callback`, then set `AGENTID_CLIENT_ID` and `AGENTID_CLIENT_SECRET` on the server. One client serves every channel in the deployment.
+2. Set the channel's sign-in to **AgentID** and enter the client ID. The chat page then shows **Continue with AgentID**.
+
+Each agent becomes its own end user in the organization, keyed by its AgentID subject; it never becomes a console user. By default one agent owner can sign in 5 agents per organization; change that with `agentid_agents_per_owner` on the organization. A sign-in lasts 15 minutes, after which the agent signs in again.
+
+To list the agent in the AgentID directory, use `{API base URL}/v1/agentid/initiate-login` as the sign-in URL and set `AGENTID_DEFAULT_CHANNEL` to the channel it should open. Without a default channel that URL creates nothing, because it does not say which chat the agent wants. `AGENTID_OWNER_SCOPES=true` also requests the owner's name and email; leave it off unless you need to contact owners.
+
 ## Other transports
 
 The same channel model also carries transports that do not need a reply channel:
@@ -137,4 +148,4 @@ The old `/v1/e/{channel_id}/…` and `/v1/apps/{app_id}/…` ingress paths remai
 - [Publish an Agent to Slack](/how-to/publish-to-slack/): a step-by-step Slack setup.
 - [A2A](/features/a2a/): inbound A2A channels and outbound delegation.
 - [Agent Triggers](/features/agent-triggers/): proactive scheduled and event-driven work.
-- [Agent Versions](/features/agent-versions/): choose which Agent version a channel runs.
+- [Change History](/features/change-history/): see and restore earlier Agent configurations.

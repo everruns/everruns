@@ -1,4 +1,5 @@
-//! Compatibility application helper for the deployment-opted-in Decisions preview.
+//! OpenAI's Decisions API as a standalone `DecisionsService`, for deployments
+//! and applications that use it as their only decision driver.
 use async_trait::async_trait;
 use everruns_contracts::error::Result;
 use everruns_contracts::runtime::{DecisionOutcome, DecisionRequest, DecisionsService};
@@ -45,7 +46,7 @@ impl DecisionsService for OpenAIDecisions {
         true
     }
     fn name(&self) -> &'static str {
-        "OpenAIDecisionsPreview"
+        "OpenAIDecisions"
     }
     async fn evaluate(&self, mut request: DecisionRequest) -> Result<DecisionOutcome> {
         request.model = request.model.or_else(|| Some(self.model.clone()));

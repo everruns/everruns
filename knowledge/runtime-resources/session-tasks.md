@@ -51,7 +51,7 @@ attempt fencing), and id-reconciled status parts in streaming UIs
 
 ### Task record
 
-One row per task in `session_tasks` (PostgreSQL; in-memory map in dev mode).
+One row per task in `session_tasks` (PostgreSQL; dev mode uses an embedded PostgreSQL).
 IDs use the `task_` prefix per `knowledge/foundations/id-schema.md`.
 
 | Field | Meaning |
@@ -230,8 +230,8 @@ poller advances `next_trigger_at` — the first thing it does with a claimed row
 Once `next_trigger_at` moves into the future the row is no longer due and the
 stale claim is inert.
 
-Both storage backends implement the lease, so the in-memory backend cannot
-drift from Postgres semantics under test. Exclusivity and lease takeover are
+Tests run the real PostgreSQL lease (each unit test gets its own database), so
+there is no second implementation to drift. Exclusivity and lease takeover are
 covered by `claim_due_session_schedules_is_exclusive_across_instances_pg` and
 `expired_session_schedule_claim_is_reclaimable_pg`; the equivalent contract for
 durable schedules is
@@ -551,7 +551,7 @@ No backward compatibility is required; data migrates forward once:
   from `everruns-core`.
 
 - Storage: `session_tasks` + `session_task_messages` (migration 053);
-  PostgreSQL and in-memory backends both route updates through
+  the storage layer routes updates through
   `apply_task_update` in `crates/contracts/src/runtime/session_task.rs`. gRPC workers get
   the registry via task RPCs in the internal worker protocol; task and message
   payloads travel as native protobuf messages (EVE-642), serialized once by

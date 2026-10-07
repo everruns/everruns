@@ -124,17 +124,22 @@ impl ToolCallStream {
         for item in output {
             // THREAT[TM-LLM-041]: A truncated terminal item is model-controlled
             // data, not an executable call, even when its partial body is JSON.
+            // It is recorded unfinished so it counts as dropped, never run.
             if let types::OutputItem::FunctionCall {
                 id,
                 call_id,
                 name,
                 arguments,
-                status: types::ItemStatus::Completed,
+                status,
                 ..
             } = item
             {
-                self.observe_item(id, call_id, name, arguments);
-                self.mark_complete(id, call_id);
+                if matches!(status, types::ItemStatus::Completed) {
+                    self.observe_item(id, call_id, name, arguments);
+                    self.mark_complete(id, call_id);
+                } else {
+                    self.observe_unfinished(id, call_id, name, arguments);
+                }
             }
         }
     }
@@ -158,17 +163,28 @@ impl ToolCallStream {
             if item.get("type").and_then(|t| t.as_str()) != Some("function_call") {
                 continue;
             }
-            if item.get("status").and_then(|s| s.as_str()) != Some("completed") {
-                continue;
-            }
             let field = |key: &str| item.get(key).and_then(|v| v.as_str()).unwrap_or("");
-            self.observe_item(
-                field("id"),
-                field("call_id"),
-                field("name"),
-                field("arguments"),
-            );
-            self.mark_complete(field("id"), field("call_id"));
+            let (id, call_id) = (field("id"), field("call_id"));
+            // Unfinished items stay recorded but unexecutable (TM-LLM-041).
+            if item.get("status").and_then(|s| s.as_str()) == Some("completed") {
+                self.observe_item(id, call_id, field("name"), field("arguments"));
+                self.mark_complete(id, call_id);
+            } else {
+                self.observe_unfinished(id, call_id, field("name"), field("arguments"));
+            }
+        }
+    }
+
+    /// Record a call the terminal response lists as unfinished, so it counts
+    /// as dropped. A call an earlier frame already finished keeps that record.
+    fn observe_unfinished(&mut self, id: &str, call_id: &str, name: &str, arguments: &str) {
+        let finished = self.calls.iter().any(|tc| {
+            tc.completed
+                && ((!id.is_empty() && tc.id == id)
+                    || (!call_id.is_empty() && tc.call_id == call_id))
+        });
+        if !finished {
+            self.observe_item(id, call_id, name, arguments);
         }
     }
 
@@ -214,20 +230,33 @@ impl ToolCallStream {
         Some(snapshot)
     }
 
-    /// Handed-on calls that may run with incomplete arguments: every one when
-    /// the response itself ended incomplete (a call can be cut mid-body), and
-    /// otherwise those whose arguments did not parse and fell back to `{}` in
-    /// [`Self::snapshot`]. Observability only (see `llm_telemetry`).
+    /// Calls handed on although the response itself ended incomplete. Their
+    /// own arguments are complete (the item finished and parsed); the response
+    /// was cut off after them. Observability only (see `llm_telemetry`).
     pub(crate) fn truncated_executed(&self, response_incomplete: bool) -> u32 {
+        if !response_incomplete {
+            return 0;
+        }
         let count = self
             .calls
             .iter()
             .filter(|tc| tc.completed && !tc.name.is_empty())
-            .filter(|tc| {
-                response_incomplete
-                    || (!tc.arguments.trim().is_empty()
-                        && serde_json::from_str::<Value>(&tc.arguments).is_err())
-            })
+            .filter(|tc| executable_arguments(&tc.arguments).is_some())
+            .count();
+        u32::try_from(count).unwrap_or(u32::MAX)
+    }
+
+    /// Calls the model started that can never run, so [`Self::snapshot`]
+    /// withholds them: the item never finished (the response was cut off
+    /// mid-call, or its done frame never arrived), or it finished with
+    /// arguments that are not JSON. Reported as `tool_calls_dropped`; the
+    /// engine's truncation gate decides what the model is told.
+    pub(crate) fn dropped(&self) -> u32 {
+        let count = self
+            .calls
+            .iter()
+            .filter(|tc| !tc.name.is_empty())
+            .filter(|tc| !tc.completed || executable_arguments(&tc.arguments).is_none())
             .count();
         u32::try_from(count).unwrap_or(u32::MAX)
     }
@@ -236,37 +265,47 @@ impl ToolCallStream {
         self.calls
             .iter()
             .filter(|tc| tc.completed && !tc.name.is_empty())
-            .map(|tc| {
-                let arguments: Value =
-                    serde_json::from_str(&tc.arguments).unwrap_or_else(|error| {
-                        // An empty string is the ordinary shape of a no-argument
-                        // call. Anything else that fails to parse is a truncated
-                        // or corrupt body — but the turn is not the place to fail
-                        // on it. Dropping the call here leaves the finish reason
-                        // this driver already derived saying `tool_calls` with
-                        // nothing to run, and hands the model no error to recover
-                        // from. `{}` reaches the tool, which rejects it, and the
-                        // model retries (EVE-1083, #3802). Nothing executes the
-                        // malformed body either way.
-                        if !tc.arguments.trim().is_empty() {
-                            tracing::warn!(
-                                tool = %tc.name,
-                                call_id = %tc.call_id,
-                                %error,
-                                "OpenResponses: unparseable tool-call arguments, \
-                                 falling back to empty arguments"
-                            );
-                        }
-                        json!({})
-                    });
-                ToolCall {
+            .filter_map(|tc| {
+                // THREAT[TM-LLM-041]: arguments that do not parse are a cut-off
+                // or corrupt body. They used to fall back to `{}` so the tool
+                // would reject them (EVE-1083), but `{}` is a valid call for a
+                // tool whose fields are all optional, so it could run with
+                // inputs the model never sent. The call is withheld instead and
+                // counted in `dropped`; the engine tells the model it did not
+                // run.
+                let Some(arguments) = executable_arguments(&tc.arguments) else {
+                    tracing::warn!(
+                        tool = %tc.name,
+                        call_id = %tc.call_id,
+                        "OpenResponses: unparseable tool-call arguments, call withheld"
+                    );
+                    return None;
+                };
+                Some(ToolCall {
                     id: tc.call_id.clone(),
                     name: tc.name.clone(),
                     arguments,
-                }
+                })
             })
             .collect()
     }
+}
+
+/// The arguments a finished call runs with. An empty string is the ordinary
+/// shape of a no-argument call and means `{}`; anything else must parse.
+fn executable_arguments(raw: &str) -> Option<Value> {
+    if raw.trim().is_empty() {
+        return Some(json!({}));
+    }
+    serde_json::from_str(raw).ok()
+}
+
+/// Finish reason for a response that ended normally: what the stream already
+/// derived, else `tool_calls` when the model ended on calls that were all
+/// withheld (so the engine sees a tool turn whose calls were lost, not a
+/// plain answer), else `stop`.
+pub(crate) fn completed_finish_reason(existing: Option<String>, dropped: u32) -> String {
+    existing.unwrap_or_else(|| if dropped > 0 { "tool_calls" } else { "stop" }.to_string())
 }
 
 /// Decode a completed native call only after its terminal item is available.
@@ -309,9 +348,9 @@ pub(crate) fn completed_tool_call_event(
         call.validate()?;
         return Ok(LlmStreamEvent::NativeToolCall(call));
     }
-    // A synchronous call joins the lenient accumulator below: arguments that
-    // are not JSON become `{}` with a warning (see `ToolCallStream::snapshot`)
-    // rather than failing the turn over one malformed call.
+    // A synchronous call joins the accumulator below: arguments that are not
+    // JSON withhold that call (see `ToolCallStream::snapshot`) rather than
+    // failing the turn over one malformed call.
 
     let crate::native_async::NativeToolCall::Function {
         call_id,
@@ -511,10 +550,10 @@ pub(crate) fn handle_streaming_event(
                 }
             }
 
+            let dropped = accumulated_tool_calls.lock().unwrap().dropped();
             let reason = match response.status {
                 types::ResponseStatus::Completed => {
-                    let existing = finish_reason.lock().unwrap().clone();
-                    existing.unwrap_or_else(|| "stop".to_string())
+                    completed_finish_reason(finish_reason.lock().unwrap().clone(), dropped)
                 }
                 types::ResponseStatus::Failed => {
                     tracing::warn!(
@@ -576,6 +615,12 @@ pub(crate) fn handle_streaming_event(
                 truncated_executed,
                 provider_reason.as_deref().unwrap_or(&reason),
             );
+            crate::llm_telemetry::warn_tool_calls_dropped(
+                "openai_responses",
+                &model,
+                dropped,
+                provider_reason.as_deref().unwrap_or(&reason),
+            );
 
             LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                 // `input` is OpenAI's cache-inclusive prompt count; normalize to
@@ -594,6 +639,7 @@ pub(crate) fn handle_streaming_event(
                 response_model: Some(response.model),
                 finish_reason: Some(reason),
                 provider_finish_reason: provider_reason,
+                tool_calls_dropped: dropped,
                 tool_calls_truncated_executed: truncated_executed,
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),

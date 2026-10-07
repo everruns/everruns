@@ -31,6 +31,7 @@ pub mod session_tasks;
 pub mod slack;
 pub mod subagents;
 pub mod user_hooks;
+pub mod user_mcp;
 pub mod util;
 
 pub use everruns_core::capabilities::{
@@ -109,6 +110,11 @@ pub use subagents::{
     SUBAGENTS_CAPABILITY_ID, SpawnLifetime, SpawnSubagentAsAgentTool, SubagentCapability,
 };
 pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
+pub use user_mcp::{
+    ForwardingUserMcpStore, McpLoginPrompterExt, USER_MCP_APPROVAL_TOOLS, USER_MCP_CAPABILITY_ID,
+    UserMcpCallInvoker, UserMcpCapability, UserMcpStoreExt, install_user_mcp_store,
+    user_mcp_custom_urls_allowed, user_mcp_manage_enabled, user_mcp_use_enabled,
+};
 
 /// Register the hosted platform-management capabilities on a registry.
 pub fn register_platform_capabilities(
@@ -207,6 +213,9 @@ pub fn register_hosted_capabilities(
         std::sync::Arc::new(everruns_core::builtins::DurableToolApprover),
     ));
     registry.register(UserHooksCapability);
+    // Inert outside the hosted control plane, which resolves the chatting
+    // person's servers per turn.
+    registry.register(UserMcpCapability);
     registry.register(DataKnowledgeCapability);
     registry.register(KnowledgeBaseCapability);
     registry.register(KnowledgeIndexCapability);
@@ -222,10 +231,9 @@ pub fn register_hosted_capabilities(
         registry.register_plugins(
             crate::container_sandbox::CAPABILITY_PLUGINS.iter(),
             |plugin| {
-                plugin.feature_flag.map_or_else(
-                    || !plugin.experimental_only || grade.experimental_features_enabled(),
-                    |flag| decisions.is_enabled(flag),
-                )
+                plugin
+                    .feature_flag
+                    .is_none_or(|flag| decisions.is_enabled(flag))
             },
         );
     }

@@ -24,7 +24,7 @@ async fn postgres_replaces_and_fences_physical_incarnations() {
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect to PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let owner = create_test_principal(&backend, "sandbox-state").await;
     let session = backend
         .create_session(session_input(owner, "sandbox-state"))
@@ -159,7 +159,7 @@ async fn postgres_pins_profile_and_keeps_logical_environment_after_instance_dele
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect to PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let owner = create_test_principal(&backend, "profiled-environment").await;
     let session = backend
         .create_session(session_input(owner, "profiled-environment"))

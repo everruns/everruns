@@ -3,8 +3,8 @@
 use super::session_row_fixture::base_session_row;
 use crate::test_harness;
 use everruns_contracts::typed_id::{AgentId, PrincipalId};
-use everruns_durable::UpdateField;
 use everruns_server::domains::session_files::{CreateFileInput, WorkspaceFileService};
+use everruns_server::storage::UpdateField;
 use everruns_server::{
     org_init,
     storage::{Database, StorageBackend, models::*},
@@ -165,8 +165,6 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
                 description: None,
                 harness_id: preview.id.uuid(),
                 agent_id: Some(agent.id.uuid()),
-                agent_version_policy: "default".to_string(),
-                agent_version_id: None,
                 virtual_user_id: None,
                 owner_principal_id: owner,
                 resolved_owner_user_id: None,
@@ -195,8 +193,6 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
             execution_app_id: Some(app.id),
             legacy_alias_id: None,
             legacy_alias_name: None,
-            agent_version_policy: None,
-            agent_version_id: None,
         })
         .await
         .unwrap();
@@ -462,7 +458,7 @@ async fn verify_upgrade(db: Arc<StorageBackend>, opted_in: bool) {
 
 #[tokio::test]
 async fn platform_chat_upgrade_in_memory() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     for opted_in in [true, false] {
         verify_upgrade(db.clone(), opted_in).await;
     }
@@ -470,7 +466,7 @@ async fn platform_chat_upgrade_in_memory() {
 
 #[tokio::test]
 async fn platform_chat_upgrade_postgres() {
-    let db = Arc::new(StorageBackend::Postgres(Database::new(
+    let db = Arc::new(StorageBackend::from_database(Database::new(
         test_harness::create_test_pool().await,
     )));
     for opted_in in [true, false] {

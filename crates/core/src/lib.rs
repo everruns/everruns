@@ -196,6 +196,7 @@ pub use everruns_contracts::runtime::computer_use;
 pub mod config;
 pub use everruns_contracts::runtime::config_layer;
 pub mod context_report;
+pub mod output_truncation;
 pub use everruns_contracts::runtime::dependency_blocker;
 /// Shared lease and persistence contracts for native asynchronous tools.
 pub mod native_async_store;
@@ -229,6 +230,8 @@ pub mod provider_resolution;
 pub use everruns_contracts::runtime::resource_ownership;
 pub use everruns_contracts::runtime::runtime_agent;
 pub mod runtime_context;
+/// Deployment-owned decision checks, answered by the source the org picked.
+pub mod system_decisions;
 pub use everruns_contracts::runtime::session_files;
 pub use everruns_contracts::runtime::session_services;
 /// Narrow child-session delegation contract: core owns the host-neutral
@@ -430,8 +433,8 @@ pub(crate) use everruns_contracts::CapabilityRef as AgentCapabilityConfig;
 
 // Domain entity re-exports
 // Provider persistence rows live in `crates/server/src/records`; runtime provider contracts live in contracts.
-// EVE-877: the stored `Agent`/`AgentVersion` persistence records, their
-// lifecycle/versioning enums, and the public-name/persistence helpers moved to
+// EVE-877: the stored `Agent` persistence records, their
+// lifecycle enums, and the public-name/persistence helpers moved to
 // the `crates/server/src/records/`. Core keeps only the portable authored
 // execution configuration consumed during a turn.
 pub use agent_definition::AgentDefinition;
@@ -578,8 +581,10 @@ pub use deployment::DeploymentGrade;
 // Execution feature decisions (EVE-878): `FeatureFlags` and the management
 // catalog live in `crates/server/src/records`; core re-exports only the resolved
 // execution-facing values.
-pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};
-pub use feature_flag_grade::FeatureFlagGrade;
+pub use execution_features::{
+    ExecutionFeatureDecisions, InternalFeatureFlags, feature_flag_available,
+};
+pub use feature_flag_grade::{FeatureFlagDefinition, FeatureFlagGrade};
 
 pub use everruns_contracts::runtime::sandbox_context;
 

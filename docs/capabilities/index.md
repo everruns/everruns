@@ -77,7 +77,7 @@ Browser automation and web interaction capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [Browserless](/capabilities/browserless/) | `browserless` | 7 |
-| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1 (dev-only) |
+| [Computer Use](/capabilities/computer-use/) | `computer_use` | 1; `FEATURE_BROWSERLESS_COMPUTER_USE` grade |
 
 ### Data and knowledge
 
@@ -123,6 +123,7 @@ External-service capabilities and blueprint-backed workflows.
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 | [Slack](/capabilities/slack/) | `slack` | 4 |
 | Cursor | `cursor` | 9 |
+| [User MCP Servers](/capabilities/user-mcp-servers/) | `user_mcp` | 6 (only with `manage` on) |
 
 ### Platform
 
@@ -167,6 +168,7 @@ Streaming-output guardrails and runtime safety nets.
 |---|---|---|
 | [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
 | [Tool Call Repair](/capabilities/tool-call-repair/) | `tool_call_repair` | 0 |
+| [Output Truncation](/capabilities/output-truncation/) | `output_truncation` | 0 |
 | [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 | [Tool Approval](/capabilities/tool-approval/) | `tool_approval` | 0 |
 | Progress Guard | `progress_guard` | 0 |

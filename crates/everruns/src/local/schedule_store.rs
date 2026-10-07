@@ -11,6 +11,7 @@
 // runtime act path sees the standard schedule store while embedders keep their
 // extensible bag locally.
 
+use crate::sqlite as rusqlite;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
@@ -21,7 +22,6 @@ use everruns_core::session_schedule::{
     ScheduleLimitError, SessionSchedule, validate_cron_min_interval_with,
 };
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_durable::sqlite as rusqlite;
 use rusqlite::{OptionalExtension, TransactionBehavior};
 use serde_json::Value;
 use std::str::FromStr;

@@ -174,6 +174,7 @@ fn generation(success: bool) -> LlmGenerationData {
             provider_finish_reason: None,
             tool_calls_dropped: 0,
             tool_calls_truncated_executed: 0,
+            truncation_gate: None,
         },
     }
 }
@@ -1193,7 +1194,9 @@ async fn truncation_details_reach_chat_and_turn_spans() {
         let h = OtelHarness::new(false, conventions);
         h.emit(0, h.context(None, None, None), h.turn_started())
             .await;
-        let mut data = generation(true).with_stop_details(Some("max_tokens".into()), 2, 1);
+        let mut data = generation(true)
+            .with_stop_details(Some("max_tokens".into()), 2, 1)
+            .with_truncation_gate(Some("retried"));
         data.metadata.finish_reasons = Some(vec!["length".into()]);
         h.emit(600, h.context(Some(ExecId::new()), Some("g1"), None), data)
             .await;
@@ -1228,6 +1231,10 @@ async fn truncation_details_reach_chat_and_turn_spans() {
             attr(chat, "everruns.llm.tool_calls_truncated_executed"),
             Some(&Value::I64(1))
         );
+        assert_eq!(
+            attr_str(chat, "everruns.llm.truncation_gate").as_deref(),
+            Some("retried")
+        );
         let turn = spans
             .iter()
             .find(|span| attr(span, "everruns.turn.iterations").is_some())
@@ -1250,6 +1257,7 @@ async fn truncation_details_reach_chat_and_turn_spans() {
         "everruns.llm.provider_finish_reason",
         "everruns.llm.tool_calls_dropped",
         "everruns.llm.tool_calls_truncated_executed",
+        "everruns.llm.truncation_gate",
     ] {
         assert!(attr(chat, absent).is_none(), "{absent}");
     }

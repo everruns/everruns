@@ -20,8 +20,8 @@ execution target without changing the ordinary shell and file tools the model us
 3. Select Bashkit or an available managed provider such as Daytona.
 4. Configure durability, lifecycle, and bootstrap options, then save.
 
-Editing a Sandbox Template creates a new immutable revision. Existing Agent versions and Sessions
-keep the revision they already reference. Managed templates such as Bashkit Virtual Workspace are
+Editing a Sandbox Template creates a new immutable revision. Existing Sessions keep the revision
+they already reference. Managed templates such as Bashkit Virtual Workspace are
 provisioned by Everruns and cannot be edited or archived.
 
 ## Configure an Agent

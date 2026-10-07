@@ -59,7 +59,7 @@ mod framework;
 
 pub use capability::JevCapability;
 #[cfg(feature = "typesafe-hosted")]
-pub use capability::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS};
+pub use capability::{CAPABILITY_PLUGINS, CONNECTOR_PLUGINS, FEATURE_FLAGS};
 #[cfg(feature = "typesafe-hosted")]
 pub use connection::TypeSafeAIConnector;
 pub use evaluate::EvaluateInput;
@@ -87,3 +87,6 @@ pub const TYPESAFE_API_KEY_SECRET: &str = client::API_KEY_ENV;
 pub const TYPESAFE_CONNECTION_PROVIDER: &str = "typesafe";
 
 mod bound;
+
+/// Org-selected decision models on the host's budget, egress, and usage path.
+pub use bound::{BoundDecisionExecutor, evaluate_unmetered};

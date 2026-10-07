@@ -54,13 +54,13 @@ hermetic, and exercises exactly the code in your working tree.
 
 | Axis | Values | Env override | Default |
 |------|--------|--------------|---------|
-| **target** (model) | `anthropic/<model>`, `openai/<model>`, `openrouter/<vendor>/<model>` | `EVERRUNS_EVAL_TARGETS` | key-gated `anthropic/claude-sonnet-5` + `openai/gpt-5.5` + `openrouter/z-ai/glm-5.2` |
+| **target** (model) | `anthropic/<model>`, `openai/<model>`, `mistral/<model>`, `openrouter/<vendor>/<model>` | `EVERRUNS_EVAL_TARGETS` | key-gated `anthropic/claude-sonnet-5` + `openai/gpt-5.5` + `openrouter/z-ai/glm-5.2` |
 | **effort** | `default`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh` | `EVERRUNS_EVAL_EFFORTS` | `default` (no override) |
 | **harness** | `minimal`, `workspace`, `coding`, `behavior-baseline`, `behavior-tuned` | `EVERRUNS_EVAL_HARNESSES` | `coding` |
 | **config** | `default`, `tight-iterations`, `parallel-tools` | `EVERRUNS_EVAL_CONFIGS` | `default` |
 
 - **Targets** are key-gated (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
-  `OPENROUTER_API_KEY`): missing key ⇒ those cases are *skipped*, never
+  `OPENROUTER_API_KEY` / `MISTRAL_API_KEY`): missing key ⇒ those cases are *skipped*, never
   failed, so a key-free run stays green. OpenRouter carries any vendor it
   proxies (GLM, Qwen, DeepSeek, …), the model slug keeps its vendor prefix,
   e.g. `openrouter/z-ai/glm-5.2`.
@@ -99,7 +99,8 @@ EVERRUNS_EVAL_CONFIGS="default,tight-iterations" mira run --preset tools
    brew install everruns/tap/mira      # or: cargo install mira-cli --locked
    ```
 2. Provider API keys in the environment for the models you want to evaluate
-   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
+   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`,
+   `MISTRAL_API_KEY`).
 3. The Rust toolchain (this study is a standalone crate; `mira` builds it).
 
 ## Run

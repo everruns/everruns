@@ -53,6 +53,7 @@ pub mod openai_server_tools;
 pub mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
 pub mod openui;
+pub mod output_truncation;
 pub mod parallel_tool_calls;
 pub use native_async_tools::NativeAsyncToolsCapability;
 pub mod progress_guard;
@@ -169,6 +170,7 @@ pub use openai_tool_search::{
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
+pub use output_truncation::OutputTruncationCapability;
 pub use parallel_tool_calls::{
     PARALLEL_TOOL_CALLS_CAPABILITY_ID, ParallelToolCallsCapability, ParallelToolCallsMode,
     parallel_tool_calls_from_config,
@@ -327,6 +329,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
         Arc::new(AutoToolSearchCapability::new()),
         Arc::new(PromptCachingCapability::new()),
         Arc::new(ParallelToolCallsCapability),
+        Arc::new(OutputTruncationCapability),
         Arc::new(NativeAsyncToolsCapability),
         Arc::new(SystemCommandsCapability),
         Arc::new(ToolOutputPersistenceCapability),
@@ -344,7 +347,7 @@ fn capabilities_with_ask_user(ask_user: AskUserCapability) -> Vec<Arc<dyn Capabi
 mod bundle_tests {
     use super::*;
 
-    const RUNTIME_IDS: [&str; 30] = [
+    const RUNTIME_IDS: [&str; 31] = [
         "human_intent",
         "ask_user",
         "infinity_context",
@@ -365,6 +368,7 @@ mod bundle_tests {
         "auto_tool_search",
         "prompt_caching",
         "parallel_tool_calls",
+        "output_truncation",
         "native_async_tools",
         "system_commands",
         "tool_output_persistence",

@@ -414,6 +414,7 @@ async fn list_runtime_connectors(
 }
 async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<ProviderResponse>> {
     let mut providers = Vec::new();
+    let feature_flags = org_feature_flags(state, org_id).await;
 
     // Hardcoded GitHub OAuth provider (only if configured)
     if state.auth_config.github_connection.is_some() {
@@ -429,6 +430,9 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
 
     // Platform-registered providers (API-key based)
     for provider in state.connectors.list() {
+        if !feature_flags.is_connector_enabled(provider.provider_id()) {
+            continue;
+        }
         let form_schema = provider.form_schema().map(|s| form_schema_to_response(&s));
         let conn_type = match provider.connection_type() {
             ConnectorType::OAuth => "oauth",
@@ -499,6 +503,21 @@ async fn list_connectors_for_org(state: &AppState, org_id: i64) -> Json<Vec<Prov
     Json(providers)
 }
 
+/// Effective flags for `org_id`. A storage failure hides flag-gated
+/// connectors rather than offering them.
+async fn org_feature_flags(state: &AppState, org_id: i64) -> crate::records::FeatureFlags {
+    crate::services::org_feature_flags::resolve_org_feature_flags(
+        &state.db,
+        org_id,
+        &state.auth.feature_flag_policy,
+    )
+    .await
+    .unwrap_or_else(|error| {
+        tracing::error!(%error, org_id, "Failed to resolve connector feature flags");
+        crate::records::FeatureFlags::default()
+    })
+}
+
 fn mcp_connection_display_name(
     settings: &serde_json::Value,
     fallback: &str,
@@ -545,6 +564,15 @@ pub async fn create_api_key_connection(
             format!("Unknown connector: {provider_id}"),
         )
     })?;
+    if !org_feature_flags(&state, auth.org_id)
+        .await
+        .is_connector_enabled(&provider_id)
+    {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("Unknown connector: {provider_id}"),
+        ));
+    }
 
     // Only API-key providers support direct creation
     if provider.connection_type() != ConnectorType::ApiKey {
@@ -797,12 +825,21 @@ async fn authorize_connection_inner(
             format!("Unknown OAuth provider: {provider}"),
         ));
     };
-    let row = state
+    let owned = state
         .db
-        .get_mcp_server(authority.org_id, server_id)
+        .get_mcp_server_with_owner(authority.org_id, server_id)
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
+    let mode = normalize_oauth_mode(query.mode.as_deref())?;
+    // THREAT[TM-AUTHZ-018]: a user MCP server is connectable only by its owner,
+    // and only for that owner's own grant. Anyone else sees it as missing.
+    if let Some(owner) = owned.owner_virtual_user_id
+        && (owner != authority.target_id || mode == "identity")
+    {
+        return Err((StatusCode::NOT_FOUND, "MCP server not found".to_string()));
+    }
+    let row = owned.row;
     if row.status != "active" {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -822,7 +859,6 @@ async fn authorize_connection_inner(
         &format!("/settings/connections?connected={provider}"),
     );
     let popup = query.popup.unwrap_or(false);
-    let mode = normalize_oauth_mode(query.mode.as_deref())?;
     let session_id = match mode.as_str() {
         "session" => Some(query.session_id.ok_or((
             StatusCode::BAD_REQUEST,
@@ -872,13 +908,10 @@ async fn authorize_connection_inner(
         ensure_mcp_oauth_registration(&state, &row, settings, &provider).await?;
     state
         .db
-        .update_mcp_server(
+        .update_mcp_server_settings_any_owner(
             authority.org_id,
             server_id,
-            crate::storage::models::UpdateMcpServer {
-                settings: Some(serde_json::to_value(&updated_settings).unwrap_or_default()),
-                ..Default::default()
-            },
+            serde_json::to_value(&updated_settings).unwrap_or_default(),
         )
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
@@ -1013,12 +1046,25 @@ pub async fn connection_oauth_callback(
         "OAuth callback is missing the authorization code".to_string(),
     ))?;
 
-    let row = state
+    let owned = state
         .db
-        .get_mcp_server(authority.org_id, server_id)
+        .get_mcp_server_with_owner(authority.org_id, server_id)
         .await
         .map_err(|e| sanitized_internal_error("OAuth connection", &e))?
         .ok_or((StatusCode::NOT_FOUND, "MCP server not found".to_string()))?;
+    // Re-check ownership against the subject the grant will be written for;
+    // the state cookie is browser-bound but not signed.
+    if let Some(owner) = owned.owner_virtual_user_id {
+        let subject = pending
+            .virtual_user_id
+            .as_deref()
+            .and_then(|id| id.parse::<VirtualUserId>().ok())
+            .map(|id| id.uuid());
+        if pending.mode == "identity" || subject != Some(owner) {
+            return Err((StatusCode::NOT_FOUND, "MCP server not found".to_string()));
+        }
+    }
+    let row = owned.row;
     if row.status != "active" {
         return Err((
             StatusCode::BAD_REQUEST,

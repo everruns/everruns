@@ -52,7 +52,7 @@ Deterministic rules (`regex`, `blocklist`, `tool_pattern`) run in the streaming 
 The two model-backed types, `llm_judge` and `moderation`, choose which system model answers them with `engine`:
 
 - **`utility_llm`** (the default) prompts your org's utility model for a verdict — `allow`/`block` for a judge, 0-100 scores per category for moderation. One request per check.
-- **`jev`** asks [Jev](/integrations/typesafe/), TypeSafe's System One model, a typed question and gets a calibrated probability back. The `threshold` you configure (a percentage, default 50) decides the verdict, and every jev check on a stage is answered in a **single** request. It needs `UTILITY_TYPESAFE_API_KEY` on the deployment, or `DECISIONS_DRIVER=llm` to have the utility model answer the same questions (a yes/no label rather than a calibrated probability, so the threshold then only checks which answer it picked).
+- **`jev`** asks [Jev](/integrations/typesafe/), TypeSafe's System One model, a typed question and gets a calibrated probability back. The `threshold` you configure (a percentage, default 50) decides the verdict, and every jev check on a stage is answered in a **single** request. It needs `UTILITY_TYPESAFE_API_KEY` on the deployment, or `UTILITY_DECISION_DRIVER=llm` to have the utility model answer the same questions (a yes/no label rather than a calibrated probability, so the threshold then only checks which answer it picked).
 
 ```json
 {
@@ -67,6 +67,12 @@ The two model-backed types, `llm_judge` and `moderation`, choose which system mo
 Two reasons to prefer `jev` once your deployment has a key configured. It is cheaper on latency: four judge checks on a tool call cost one round trip instead of four. And the verdict is yours — the model reports how likely a violation is, your threshold decides what to do about it, and there is no written verdict to misparse. For moderation it also reads the *tail* of the distribution rather than a score: content that is probably fine but 30% likely to be a clear violation trips a 30% threshold, where an averaged score would hide it.
 
 `utility_llm` stays the default, so existing configs are unchanged. Both engines fail open, honor `on_fail` and advisory mode identically, and send the same bounded excerpt. A check set to `jev` in a deployment with no TypeSafe key configured is skipped with a warning.
+
+#### Use your organization's decision model
+
+By default, `jev` checks use the deployment's decision model. An organization can answer them with its own model instead: pick a **Default decision model** on the Models page, then set **System decisions** to **This organization's model** (or `PATCH /v1/orgs/{org}` with `"system_decisions": "organization"`). The checks then run on your provider account, count against the session's budget, and show up in its usage, the same as the `jev_decision` tool.
+
+Once you opt in, the deployment's model is never used for your checks. If your default decision model is missing, disabled, or failing, `jev` checks fail open with a warning. Switch back with `"system_decisions": "deployment"`.
 
 ### On-fail
 
@@ -111,7 +117,7 @@ The `id` is optional but recommended, it is surfaced in reason codes and logs.
 ## Data egress and failure behavior
 
 - **Deterministic checks** (`regex`, `blocklist`, `tool_pattern`) run entirely in-process; no data leaves the platform.
-- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's TypeSafe Jev model. Either way it is an operator-configured destination, not a per-agent one.
+- **`llm_judge` and `moderation`** send a bounded content excerpt to a system model: with `engine: "utility_llm"`, your org's *own* configured utility LLM, the same provider the agent already uses; with `engine: "jev"`, the deployment's decision model, or your organization's default decision model when **System decisions** is set to it. Either way it is an operator-configured destination, not a per-agent one.
 - **`mcp`** sends a bounded content excerpt to an external, operator-configured MCP guardrail endpoint. Tenant scoping is enforced by the host's per-session scoped-MCP resolver, so a config can only reach servers scoped to its own session/org.
 
 Every async check is bounded (10 s timeout; at most 4 utility-LLM calls per invocation, and one batched request for all `jev` checks on a stage) and **fails open**: a timeout, error, or unparseable verdict defaults to `allow`. A guardrail outage, or a hostile MCP endpoint, can only ever *allow*, never make execution more permissive than the no-guardrail baseline in a way that blocks a healthy turn. Model-backed checks flow through utility-LLM accounting, not the session model budget.

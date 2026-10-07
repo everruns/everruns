@@ -71,7 +71,6 @@ impl SessionService {
             None,
             None,
             None,
-            None,
             source,
             req,
         )
@@ -97,8 +96,6 @@ impl SessionService {
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
         app_internal_id: Option<Uuid>,
-        agent_version_policy: AgentVersionPolicy,
-        agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
         // Internal id of the endpoint this ingress resolved, recorded as
         // `sessions.channel_id` so provenance names the door, not the bundle
         // (EVE-1004). `None` only where the caller genuinely has no endpoint
@@ -121,7 +118,6 @@ impl SessionService {
             harness_id,
             agent_internal_id,
             agent_public_id,
-            Some((agent_version_policy, agent_version_id)),
             app_internal_id,
             channel_internal_id,
             trigger_internal_id,
@@ -149,9 +145,6 @@ impl SessionService {
         // `sessions.trigger_id` so its budget subject is a column rather than
         // the `agent_trigger:` tag (EVE-1138).
         trigger_internal_id: Option<Uuid>,
-        // The trigger's own version selection (EVE-1139).
-        agent_version_policy: AgentVersionPolicy,
-        agent_version_id: Option<everruns_contracts::typed_id::AgentVersionId>,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
         source: SessionSource,
@@ -162,7 +155,6 @@ impl SessionService {
             harness_id,
             Some(agent_internal_id),
             Some(agent_public_id),
-            Some((agent_version_policy, agent_version_id)),
             None,
             None,
             trigger_internal_id,
@@ -180,10 +172,6 @@ impl SessionService {
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
-        agent_version_selection: Option<(
-            AgentVersionPolicy,
-            Option<everruns_contracts::typed_id::AgentVersionId>,
-        )>,
         app_id: Option<Uuid>,
         // Endpoint whose ingress is creating this session (EVE-1004). Every
         // app-channel path knows its endpoint, so this is passed rather than
@@ -281,38 +269,27 @@ impl SessionService {
             .as_ref()
             .map(|agent| serde_json::from_value(agent.mcp_servers.clone()).unwrap_or_default());
 
-        let resolved_agent_version = if let Some(agent) = &agent {
-            let (policy, version_id) = agent_version_selection.unwrap_or_default();
-            crate::domains::agents::version_policy::resolve_exposure_version(
-                &self.db,
-                org_id,
-                agent,
-                policy,
-                version_id,
-                FeatureFlags::current().agent_versions,
-            )
-            .await?
-        } else {
-            None
+        // Every session runs the agent's current configuration; it records
+        // the history revision it started on so a trace still says exactly
+        // what ran (`everruns history show <agent> --revision N`). Agent
+        // versions and pinning are retired (change-history phase 5).
+        let agent_revision = match &agent {
+            Some(agent) => {
+                self.db
+                    .latest_entity_revision(
+                        org_id,
+                        crate::domains::change_history::EntityKind::Agent.as_str(),
+                        &agent.public_id,
+                    )
+                    .await?
+            }
+            None => None,
         };
 
-        // Resolve once from the immutable Agent version selected for this
-        // Session. Falling back to the editable Agent head is only for agents
-        // without versioning; later edits never move an existing Session.
-        let agent_sandbox_policy: Option<SandboxPolicy> =
-            if let Some(version) = &resolved_agent_version {
-                version
-                    .authored_config
-                    .get("sandbox_policy")
-                    .or_else(|| version.authored_config.get("environments"))
-                    .cloned()
-                    .and_then(|value| serde_json::from_value(value).ok())
-            } else {
-                agent
-                    .as_ref()
-                    .and_then(|agent| agent.environments.clone())
-                    .and_then(|value| serde_json::from_value(value).ok())
-            };
+        let agent_sandbox_policy: Option<SandboxPolicy> = agent
+            .as_ref()
+            .and_then(|agent| agent.environments.clone())
+            .and_then(|value| serde_json::from_value(value).ok());
         let harness_fixes_bashkit = crate::domains::harnesses::queries::inherits_from_name(
             &self.db,
             org_id,
@@ -538,10 +515,7 @@ impl SessionService {
             trigger_id,
             harness_id: Some(harness_id),
             agent_id,
-            agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
-            agent_config_hash: resolved_agent_version
-                .as_ref()
-                .map(|version| version.config_hash.clone()),
+            agent_revision,
             virtual_user_id,
             playground_user_id: req.playground_user_id,
             owner_principal_id,
@@ -744,8 +718,7 @@ impl SessionService {
             trigger_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_revision: None,
             virtual_user_id: None,
             owner_principal_id: owner_principal.id,
             resolved_owner_user_id: owner_principal.resolved_user_id,

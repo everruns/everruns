@@ -90,6 +90,9 @@ describe("ToolActivityGroup", () => {
     );
 
     expect(screen.getByText("Approval recorded")).toBeInTheDocument();
+    expect(screen.queryByText("Delete the staging database")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /view consent/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Approval recorded" }));
     expect(screen.getByText("Delete the staging database")).toBeInTheDocument();
     expect(screen.getByText("Approved by Avery Admin")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view consent/i })).toHaveAttribute(
@@ -99,7 +102,7 @@ describe("ToolActivityGroup", () => {
     expect(screen.queryByText("1 of 1 complete")).not.toBeInTheDocument();
   });
 
-  it("renders an approval request as its own chat entry", () => {
+  it("keeps conversational approval details collapsed until requested", () => {
     render(
       <ToolActivityGroup
         toolCalls={[
@@ -114,8 +117,41 @@ describe("ToolActivityGroup", () => {
     );
 
     expect(screen.getByText("Approval requested")).toBeInTheDocument();
+    expect(screen.queryByText("Send the report")).not.toBeInTheDocument();
+    expect(screen.queryByText("May I email the report?")).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Approval requested" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("Send the report")).toBeInTheDocument();
     expect(screen.getByText("May I email the report?")).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(screen.queryByText("May I email the report?")).not.toBeInTheDocument();
+  });
+
+  it("keeps approval errors visible while details are collapsed", () => {
+    render(
+      <ToolActivityGroup
+        toolCalls={[{ id: "failed-approval", name: "request_approval", arguments: {} }]}
+        toolResultsMap={
+          new Map([
+            [
+              "failed-approval",
+              {
+                tool_call_id: "failed-approval",
+                tool_name: "request_approval",
+                success: false,
+                status: "error",
+                error: "Could not save the approval request",
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    expect(screen.getByText("Approval could not be recorded")).toBeInTheDocument();
+    expect(screen.getByText("Could not save the approval request")).toBeInTheDocument();
   });
 
   it("renders structured bash details with separate stdout and stderr", () => {

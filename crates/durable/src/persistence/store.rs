@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::update_field::UpdateField;
+use crate::UpdateField;
 use crate::workflow::{ActivityOptions, WorkflowEvent, WorkflowSignal};
 
 /// Default snapshot interval: save a snapshot every N events.
@@ -178,6 +178,25 @@ pub struct TaskDefinition {
     pub options: ActivityOptions,
 }
 
+/// The steering a run start carries; see [`EventLog::start_run_with_task`].
+///
+/// Decision: a caller that finds a run active steers it with a signal, and
+/// that signal is written under the same workflow lock as the active-run
+/// check. Sent afterwards, in its own write, it could land after the run's
+/// last step drained its signals and completed the workflow, and nothing
+/// would act on it (a follow-up message sent right after a turn went idle
+/// was lost that way under load).
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunSteering {
+    /// The signal type that steers this workflow's runs. When a new run
+    /// starts, pending signals of this type are consumed: they were sent to
+    /// a run that has ended, and the new run acts on what they announced.
+    pub signal_type: String,
+    /// Payload of the signal sent to the run when one is active. `None`
+    /// sends nothing.
+    pub payload: Option<serde_json::Value>,
+}
+
 /// Outcome of [`EventLog::start_run_with_task`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunStart {
@@ -240,6 +259,15 @@ pub struct HeartbeatResponse {
 
     /// Whether cancellation was requested
     pub should_cancel: bool,
+}
+
+/// What the registry tells a worker in reply to its heartbeat.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WorkerHeartbeat {
+    /// The worker is draining (an operator drained it, or it is shutting
+    /// down): the queue hands it no new tasks, so it should stop claiming.
+    /// False for a worker the registry does not know.
+    pub draining: bool,
 }
 
 /// Outcome of failing a task
@@ -749,7 +777,16 @@ pub trait EventLog: Send + Sync + 'static {
     ///   `try_start_new_run` does (stale pending tasks are cancelled) and
     ///   enqueue `task`.
     /// - Active run (Running, or a task claimed): change nothing and return
-    ///   [`RunStart::Active`].
+    ///   [`RunStart::Active`]. A run that is Running with no pending or
+    ///   claimed task and a completed last task is stranded between steps:
+    ///   its last step is enqueued again (as
+    ///   [`TaskQueue::requeue_stranded_workflows`] does) so the run the
+    ///   caller then signals resumes.
+    ///
+    ///
+    /// With `steering`, an active run is sent its signal (when it has a
+    /// payload) and a new run consumes the pending signals of its type, both
+    /// under the same lock as the active-run check; see [`RunSteering`].
     ///
     /// `task.workflow_id` is ignored; the task always belongs to `workflow_id`.
     async fn start_run_with_task(
@@ -758,6 +795,7 @@ pub trait EventLog: Send + Sync + 'static {
         workflow_type: &str,
         input: serde_json::Value,
         task: TaskDefinition,
+        steering: Option<RunSteering>,
     ) -> Result<RunStart, StoreError>;
 
     /// Cancel a workflow
@@ -858,6 +896,31 @@ pub trait TaskQueue: Send + Sync + 'static {
         worker_id: &str,
         result: serde_json::Value,
     ) -> Result<(), StoreError>;
+
+    /// Complete a workflow's task and hand the workflow to its next step in
+    /// one atomic write: complete (ownership checked as in
+    /// [`complete_task`](Self::complete_task)), consume `hand_off.drain`,
+    /// then enqueue the next task or complete the workflow. Nothing changes
+    /// on `TaskNotOwned`. See [`crate::HandOff`].
+    async fn complete_task_and_hand_off(
+        &self,
+        task_id: Uuid,
+        worker_id: &str,
+        result: serde_json::Value,
+        hand_off: crate::HandOff,
+    ) -> Result<crate::HandedOff, StoreError>;
+
+    /// Re-enqueue the last step of each `workflow_type` workflow left
+    /// `Running` with no pending or claimed task whose last task completed
+    /// more than `completed_before` ago, at most `limit` of them. The step
+    /// runs again from its own input, as after a crash before its completion.
+    /// Safe to run concurrently: a workflow is requeued once.
+    async fn requeue_stranded_workflows(
+        &self,
+        workflow_type: &str,
+        completed_before: Duration,
+        limit: usize,
+    ) -> Result<Vec<crate::RequeuedWorkflow>, StoreError>;
 
     /// Fail a task using its normal retry policy.
     async fn fail_task(
@@ -961,13 +1024,13 @@ pub trait WorkerRegistry: Send + Sync + 'static {
     /// Register a worker
     async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError>;
 
-    /// Update worker heartbeat and load
+    /// Update worker heartbeat and load, and report whether it is draining
     async fn worker_heartbeat(
         &self,
         worker_id: &str,
         current_load: usize,
         accepting_tasks: bool,
-    ) -> Result<(), StoreError>;
+    ) -> Result<WorkerHeartbeat, StoreError>;
 
     /// Get all active workers
     async fn list_workers(&self, filter: WorkerFilter) -> Result<Vec<WorkerInfo>, StoreError>;

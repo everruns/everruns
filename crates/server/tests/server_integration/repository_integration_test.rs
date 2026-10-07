@@ -17,9 +17,9 @@ use uuid::Uuid;
 
 use crate::session_row_fixture::base_session_row;
 use everruns_core::message_filter::MessageQuery;
-use everruns_durable::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
+use everruns_server::storage::UpdateField;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
     CreateDeclarativeCapabilityRow, CreateEvalRow, CreateEventRow, CreateHarnessRow,
@@ -43,7 +43,7 @@ async fn create_test_pool() -> PgPool {
 /// Create a test storage backend
 async fn create_test_backend() -> StorageBackend {
     let pool = create_test_pool().await;
-    StorageBackend::Postgres(Database::new(pool))
+    StorageBackend::from_database(Database::new(pool))
 }
 
 /// Test organization ID (default org)
@@ -684,8 +684,6 @@ async fn test_session_crud() {
                 description: None,
                 harness_id: app_harness.id.uuid(),
                 agent_id: None,
-                agent_version_policy: "default".to_string(),
-                agent_version_id: None,
                 virtual_user_id: None,
                 owner_principal_id,
                 resolved_owner_user_id: None,
@@ -1377,7 +1375,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         Some("call-final")
     );
 
-    let pool = backend.pool().expect("postgres pool");
+    let pool = backend.pool();
     let (index_ddl, index_target, predicate): (String, String, Option<String>) = sqlx::query_as(
         r#"
         SELECT pg_get_indexdef(i.indexrelid),

@@ -309,6 +309,7 @@ mod tests {
                 secrets,
                 budget_limits,
                 budget_soft_limits,
+                reason,
             } = command
             {
                 assert_eq!(harness, Some("harness_abc".to_string()));
@@ -328,6 +329,7 @@ mod tests {
                 assert!(secrets.is_empty());
                 assert!(budget_limits.is_empty());
                 assert!(budget_soft_limits.is_empty());
+                assert_eq!(reason, None);
             } else {
                 panic!("Expected Create command");
             }

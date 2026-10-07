@@ -4,6 +4,7 @@
 // ApiResult: standard return type for API handlers
 // impl_auth_state!: macro to eliminate repeated FromRef<AppState> for AuthState impls
 
+use crate::storage::UpdateField;
 use axum::Json;
 use axum::body::{Body, to_bytes};
 use axum::extract::Request;
@@ -12,7 +13,6 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
 use everruns_contracts::typed_id::SessionId;
-use everruns_durable::UpdateField;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{DeserializeOwned, Error as DeError},
@@ -1230,11 +1230,11 @@ pub fn agent_allowed_actions(
             .with_href(format!("{api_base}/v1/agents/{id}"))
             .with_schema_ref("#/components/schemas/UpdateAgentRequest")
             .with_hint("Edit agent metadata (name, system prompt, capabilities, etc.)."),
-        AllowedAction::new("versions")
+        AllowedAction::new("history")
             .with_method("GET")
-            .with_operation_id("list_agent_versions")
-            .with_href(format!("{api_base}/v1/agents/{id}/versions"))
-            .with_hint("List the immutable version history for this agent."),
+            .with_operation_id("list_entity_history")
+            .with_href(format!("{api_base}/v1/history/{id}"))
+            .with_hint("List this agent's change history; restore a past revision from it."),
     ];
     if matches!(status, AgentStatus::Active) {
         actions.push(
@@ -2426,7 +2426,7 @@ mod tests {
             "archived agent should not expose copy"
         );
         let rels: Vec<&str> = active.iter().map(|a| a.rel.as_str()).collect();
-        for expected in ["self", "update", "versions", "delete"] {
+        for expected in ["self", "update", "history", "delete"] {
             assert!(
                 rels.contains(&expected),
                 "missing rel `{expected}` for active agent: {rels:?}"

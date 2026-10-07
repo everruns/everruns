@@ -10,6 +10,7 @@ use crate::records::{
     AuditEvent, BuiltInHarnessDefinition, ManagementAction, Organization, generate_org_public_id,
     validate_org_public_id,
 };
+use crate::storage::UpdateField;
 use crate::storage::{
     StorageBackend,
     models::{AddOrganizationMemberOutcome, UpdateOrganizationSettings},
@@ -21,7 +22,6 @@ use axum::{
     routing::get,
 };
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
-use everruns_durable::UpdateField;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,
@@ -187,6 +187,18 @@ pub struct UpdateOrganizationRequest {
             everruns_contracts::typed_id::ProviderId,
         >,
     >,
+    /// Who answers deployment-owned decision checks (guardrail `jev` checks
+    /// and the Slack relevance check). `organization` uses the org's default
+    /// decision model (`PUT /v1/models/decision-default`) on its own provider
+    /// account; when that model is missing or failing, guardrail checks fail
+    /// open and Slack stays silent, never falling back to the deployment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_decisions: Option<crate::storage::SystemDecisions>,
+    /// How many agents one AgentID owner may sign in to this organization's
+    /// Public Chat channels. Pass null to use the platform default (5).
+    #[serde(default, deserialize_with = "double_option")]
+    #[schema(value_type = Option<i32>, example = 5, minimum = 0)]
+    pub agentid_agents_per_owner: Option<Option<i32>>,
 }
 
 fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
@@ -220,6 +232,12 @@ pub struct OrganizationResponse {
         everruns_contracts::driver_registry::ServiceKind,
         everruns_contracts::typed_id::ProviderId,
     >,
+    /// Who answers deployment-owned decision checks: `deployment` (default)
+    /// or `organization` (the org's default decision model).
+    pub system_decisions: crate::storage::SystemDecisions,
+    /// How many agents one AgentID owner may sign in; null means the platform
+    /// default.
+    pub agentid_agents_per_owner: Option<i32>,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
@@ -602,7 +620,18 @@ pub async fn update_organization(
         default_harness_name,
         base_harness_id,
         default_provider_per_service,
+        system_decisions,
+        agentid_agents_per_owner,
     } = req;
+    if agentid_agents_per_owner
+        .flatten()
+        .is_some_and(|cap| cap < 0)
+    {
+        return Err(
+            ErrorResponse::new("agentid_agents_per_owner cannot be negative")
+                .into_response(StatusCode::BAD_REQUEST),
+        );
+    }
 
     // Resolve default_harness_name to default_harness_id (mutually exclusive)
     if default_harness_id.is_some() && default_harness_name.is_some() {
@@ -706,6 +735,7 @@ pub async fn update_organization(
         || default_harness_id.is_some()
         || base_harness_id.is_some()
         || default_provider_per_service.is_some()
+        || system_decisions.is_some()
     {
         state
             .db
@@ -723,10 +753,18 @@ pub async fn update_organization(
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
                     default_provider_per_service: default_provider_per_service
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
+                    system_decisions,
                 },
             )
             .await
             .log_internal_error_json("update organization settings")?;
+    }
+    if let Some(cap) = agentid_agents_per_owner {
+        state
+            .db
+            .set_agentid_agents_per_owner(org_row.org_id, cap)
+            .await
+            .log_internal_error_json("update AgentID owner cap")?;
     }
 
     let response = build_organization_response(&state.db, row.org_id, row).await?;
@@ -853,6 +891,10 @@ async fn build_organization_response(
         .get_organization_settings(org_id)
         .await
         .log_internal_error_json("get organization settings")?;
+    let agentid_agents_per_owner = db
+        .agentid_agents_per_owner_setting(org_id)
+        .await
+        .log_internal_error_json("get AgentID owner cap")?;
 
     let onboarding_completed_at = row.onboarding_completed_at;
     let org = Organization {
@@ -872,6 +914,11 @@ async fn build_organization_response(
             .as_ref()
             .map(|s| s.default_provider_per_service.0.clone())
             .unwrap_or_default(),
+        system_decisions: settings
+            .as_ref()
+            .map(|s| crate::storage::SystemDecisions::from_db(&s.system_decisions))
+            .unwrap_or_default(),
+        agentid_agents_per_owner,
         created_at: org.created_at,
         updated_at: org.updated_at,
         onboarding_completed_at,

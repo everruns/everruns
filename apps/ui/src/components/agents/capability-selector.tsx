@@ -17,6 +17,8 @@ interface CapabilitySelectorProps {
   disabled?: boolean;
   /** Label for the component */
   label?: string;
+  /** Tighter rows for the agent page's narrow column. */
+  compact?: boolean;
 }
 
 /**
@@ -30,6 +32,7 @@ export function CapabilitySelector({
   onChange,
   disabled,
   label = "Capabilities",
+  compact = false,
 }: CapabilitySelectorProps) {
   const { selectedIds, getCapability, getAllDependencies, getDependents, canRemove } =
     useCapabilityDependencies({ capabilities, selected });
@@ -102,9 +105,13 @@ export function CapabilitySelector({
   );
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">{label}</span>
+    <div className={compact ? "space-y-1.5" : "space-y-3"}>
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={compact ? "text-xs font-medium text-muted-foreground" : "text-sm font-medium"}
+        >
+          {label}
+        </span>
         <CapabilityDialog
           capabilities={capabilities}
           selectedIds={selectedIds}
@@ -124,6 +131,7 @@ export function CapabilitySelector({
         onConfigChange={handleConfigChange}
         onMoveUp={moveUp}
         onMoveDown={moveDown}
+        compact={compact}
       />
 
       {/* Coming soon indicator */}

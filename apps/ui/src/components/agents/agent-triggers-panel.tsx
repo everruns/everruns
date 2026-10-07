@@ -32,10 +32,6 @@ import {
   getWebhookTriggerConfig,
   TriggerSetupGuidance,
 } from "@/components/agents/integrations/trigger-setup-guidance";
-import {
-  AgentVersionSelectionBadge,
-  versionSelectionOf,
-} from "@/components/agents/agent-version-policy-field";
 import { Badge } from "@/components/ui/badge";
 import { Button, LinkButton } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout";
@@ -184,10 +180,6 @@ export function AgentTriggersPanel({
                       <Badge variant={trigger.enabled ? "default" : "outline"}>
                         {trigger.enabled ? "Enabled" : "Disabled"}
                       </Badge>
-                      <AgentVersionSelectionBadge
-                        agentId={agentId}
-                        selection={versionSelectionOf(trigger)}
-                      />
                     </div>
                     <p className="text-sm text-muted-foreground">{config.message}</p>
                     {isGithub && (

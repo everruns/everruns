@@ -824,8 +824,6 @@ async fn resolve_session(
             Some(app.agent_internal_id),
             app.agent_id,
             app.historical_app_id,
-            app.agent_version_policy.clone(),
-            app.agent_version_id,
             Some(channel.internal_id),
             // Channel ingress, not a trigger.
             None,

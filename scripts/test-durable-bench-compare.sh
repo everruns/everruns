@@ -43,4 +43,28 @@ if "$COMPARE" "$TMP/empty.jsonl" "$TMP/baseline.jsonl" >/dev/null; then
   fail "an empty run must fail"
 fi
 
+# DB statements per turn gate (server turn latency rows).
+db_row() {
+  printf '{"bench":"s","scenario":"%s","moniker":"m","smoke":false,"tasks":10,"tasks_per_sec":10,"s2s_p50_ms":1,"s2s_p99_ms":2,"db_statements_per_turn":%s,"db_ms_per_turn":5}\n' "$1" "$2"
+}
+{ db_row c1 100; db_row c8 100; } >"$TMP/db_baseline.jsonl"
+{ db_row c1 110; db_row c8 60; } >"$TMP/db_within.jsonl"
+{ db_row c1 130; } >"$TMP/db_grown.jsonl"
+
+out="$("$COMPARE" "$TMP/db_within.jsonl" "$TMP/db_baseline.jsonl")" || fail "10% more statements must pass: $out"
+grep -q '| s | c1 | 110 | 100 | 10% |' <<<"$out" || fail "statements row missing: $out"
+grep -q '| s | c8 | 60 | 100 | -40% |' <<<"$out" || fail "fewer statements must pass: $out"
+
+if out="$("$COMPARE" "$TMP/db_grown.jsonl" "$TMP/db_baseline.jsonl")"; then
+  fail "30% more statements per turn must fail"
+fi
+grep -q '| s | c1 | 130 | 100 | 30% REGRESSED |' <<<"$out" || fail "statement growth is flagged: $out"
+
+DURABLE_BENCH_MAX_STATEMENT_GROWTH_PCT=50 "$COMPARE" "$TMP/db_grown.jsonl" "$TMP/db_baseline.jsonl" >/dev/null ||
+  fail "the statement threshold is configurable"
+
+# A baseline without the field (older rows) reports throughput only.
+out="$("$COMPARE" "$TMP/db_grown.jsonl" "$TMP/baseline.jsonl")" || true
+grep -q 'Database gate' <<<"$out" && fail "no database table without baseline statements"
+
 echo "durable bench compare: all checks passed"

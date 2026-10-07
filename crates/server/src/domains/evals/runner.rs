@@ -40,7 +40,8 @@ pub struct EvalRunContext {
 
 /// Spawn the eval run execution in the background.
 pub fn spawn_eval_run(ctx: Arc<EvalRunContext>, org_id: i64, run_id: Uuid) {
-    tokio::spawn(async move {
+    // It reads the run row, so it starts once that commits.
+    crate::storage::transaction::spawn_after_commit(async move {
         if let Err(e) = execute_eval_run(ctx.clone(), org_id, run_id).await {
             tracing::error!(run_id = %run_id, error = %e, "Eval run failed");
             // Mark run as failed so it doesn't stay "running" indefinitely
@@ -1003,8 +1004,8 @@ mod tests {
 
     #[tokio::test]
     async fn collect_case_artifacts_reads_named_files() {
-        let db = StorageBackend::in_memory();
-        let session_uuid = Uuid::now_v7();
+        let db = StorageBackend::test_database();
+        let session_uuid = db.create_test_session().await.uuid();
 
         db.create_session_file(CreateSessionFileRow {
             session_id: SessionId::from_uuid(session_uuid),

@@ -38,4 +38,4 @@ Beyond user-facing behavioral evals, Everruns ships a **SWE-bench Lite** harness
 ## Related
 
 - [Harnesses](/features/harnesses/), what an eval target runs
-- [Agent Versions](/features/agent-versions/), immutable configurations that evals can compare
+- [Change History](/features/change-history/), every change to an agent and how to restore an earlier configuration

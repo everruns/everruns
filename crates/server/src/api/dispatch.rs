@@ -96,6 +96,17 @@ impl Dispatcher {
         Ok(Json(ListResponse::new(items).with_urls(&self.url_builder)))
     }
 
+    /// Run `cmd` whose output is `Vec<T>` and return a bare JSON array with
+    /// every element URL-decorated.
+    pub async fn run_vec_with_urls<C, T>(&self, cmd: C) -> ApiResult<Vec<WithUrls<T>>>
+    where
+        C: Command<Output = Vec<T>>,
+        T: ResourceUrlable + Serialize,
+    {
+        let items = cmd.run(&self.ctx).await?;
+        Ok(Json(self.url_builder.wrap_vec(items)))
+    }
+
     /// Run `cmd` whose output is `Paginated<T>` and re-shape to
     /// `PaginatedResponse<WithUrls<T>>` with every element URL-decorated.
     pub async fn run_paginated_with_urls<C, T>(
@@ -163,7 +174,7 @@ mod tests {
         Dispatcher {
             ctx: Ctx::minimal_for_test(
                 everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID),
-                Arc::new(StorageBackend::in_memory()),
+                Arc::new(StorageBackend::test_database()),
                 None,
             ),
             url_builder: UrlBuilder::new("https://api.example/api", "https://app.example"),

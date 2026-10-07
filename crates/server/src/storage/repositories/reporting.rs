@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use super::Database;
 use crate::storage::reporting::models::ReportingOutboxRow;
+use everruns_server_macros::sql;
 
 impl Database {
     pub async fn enqueue_reporting_outbox(
@@ -46,18 +47,17 @@ impl Database {
         source_id: &str,
         reason: &str,
     ) -> Result<Vec<ReportingOutboxRow>> {
-        let rows = sqlx::query_as::<_, ReportingOutboxRow>(
+        let rows = sqlx::query_as::<_, ReportingOutboxRow>(sql!(
             r#"
-            SELECT id, org_id, source_type, source_id, source_version, reason,
-                   status, attempts, next_attempt_at, last_error, created_at, updated_at
+            SELECT {ReportingOutboxRow}
             FROM reporting_outbox
             WHERE org_id = $1
               AND source_type = $2
               AND source_id = $3
               AND reason = $4
             ORDER BY created_at ASC
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(source_type)
         .bind(source_id)

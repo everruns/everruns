@@ -28,22 +28,18 @@ impl CommandSchema for CreateObserver {
     }
 }
 
+#[command(
+    name = "create_observer",
+    category = "observers",
+    description = "Create an observer (online scoring).",
+    method = "POST",
+    path = "/v1/observers",
+    policy = OBSERVER_MANAGE,
+    http = created,
+    request_body(CreateObserverRequest),
+)]
 impl Command for CreateObserver {
     type Output = Observer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_observer",
-            category: "observers",
-            description: "Create an observer (online scoring).",
-            method: "POST",
-            path: "/v1/observers",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&OBSERVER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Observer, CommandError> {
         service(ctx)
@@ -52,8 +48,6 @@ impl Command for CreateObserver {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateObserver>() }
 
 // ============================================
 // List
@@ -71,22 +65,18 @@ impl CommandSchema for ListObservers {
     }
 }
 
+#[command(
+    name = "list_observers",
+    category = "observers",
+    description = "List observers.",
+    method = "GET",
+    path = "/v1/observers",
+    policy = OBSERVER_VIEW,
+    http = list,
+    params(ListObserversQuery),
+)]
 impl Command for ListObservers {
     type Output = Vec<Observer>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_observers",
-            category: "observers",
-            description: "List observers.",
-            method: "GET",
-            path: "/v1/observers",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&OBSERVER_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Observer>, CommandError> {
         service(ctx)
@@ -95,8 +85,6 @@ impl Command for ListObservers {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListObservers>() }
 
 // ============================================
 // Get
@@ -107,38 +95,28 @@ pub struct GetObserver {
     pub observer_id: String,
 }
 
+#[command(
+    name = "get_observer",
+    category = "observers",
+    description = "Get a single observer.",
+    method = "GET",
+    path = "/v1/observers/{observer_id}",
+    policy = OBSERVER_VIEW,
+    positional = "observer_id",
+    http = plain,
+    responses((status = 404, description = "Observer not found")),
+)]
 impl Command for GetObserver {
     type Output = Observer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_observer",
-            category: "observers",
-            description: "Get a single observer.",
-            method: "GET",
-            path: "/v1/observers/{observer_id}",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("observer_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&OBSERVER_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Observer, CommandError> {
         let observer_id = parse_observer_id(&self.observer_id)?;
         service(ctx)
             .get_by_public_id(&ctx.caller, &observer_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Observer"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetObserver>() }
 
 // ============================================
 // Update
@@ -151,34 +129,28 @@ pub struct UpdateObserver {
     pub req: UpdateObserverRequest,
 }
 
+#[command(
+    name = "update_observer",
+    category = "observers",
+    description = "Update an observer.",
+    method = "PATCH",
+    path = "/v1/observers/{observer_id}",
+    policy = OBSERVER_MANAGE,
+    http = plain,
+    request_body(UpdateObserverRequest),
+    responses((status = 404, description = "Observer not found")),
+)]
 impl Command for UpdateObserver {
     type Output = Observer;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_observer",
-            category: "observers",
-            description: "Update an observer.",
-            method: "PATCH",
-            path: "/v1/observers/{observer_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&OBSERVER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Observer, CommandError> {
         let observer_id = parse_observer_id(&self.observer_id)?;
         service(ctx)
             .update(&ctx.caller, &observer_id.to_string(), self.req)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Observer"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateObserver>() }
 
 // ============================================
 // Delete
@@ -189,29 +161,24 @@ pub struct DeleteObserver {
     pub observer_id: String,
 }
 
+#[command(
+    name = "delete_observer",
+    category = "observers",
+    description = "Archive an observer.",
+    method = "DELETE",
+    path = "/v1/observers/{observer_id}",
+    policy = OBSERVER_MANAGE,
+    http = no_content,
+    responses((status = 404, description = "Observer not found")),
+)]
 impl Command for DeleteObserver {
     type Output = bool;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_observer",
-            category: "observers",
-            description: "Archive an observer.",
-            method: "DELETE",
-            path: "/v1/observers/{observer_id}",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&OBSERVER_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let observer_id = parse_observer_id(&self.observer_id)?;
         let deleted = service(ctx)
             .delete(&ctx.caller, &observer_id.to_string())
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         if deleted {
             Ok(true)
         } else {
@@ -219,8 +186,6 @@ impl Command for DeleteObserver {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteObserver>() }
 
 // ============================================
 // List scores
@@ -230,26 +195,28 @@ inventory::submit! { CommandDescriptor::of::<DeleteObserver>() }
 pub struct ListObserverScores {
     pub observer_id: String,
     pub session_id: Option<String>,
+    #[serde(default = "default_scores_limit")]
     pub limit: i64,
+    #[serde(default)]
     pub offset: i64,
 }
 
+const fn default_scores_limit() -> i64 {
+    100
+}
+
+#[command(
+    name = "list_observer_scores",
+    category = "observers",
+    description = "List trace scores produced by an observer.",
+    method = "GET",
+    path = "/v1/observers/{observer_id}/scores",
+    policy = OBSERVER_VIEW,
+    http = list,
+    params(crate::api::observers::ListTraceScoresQuery),
+)]
 impl Command for ListObserverScores {
     type Output = Vec<TraceScore>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_observer_scores",
-            category: "observers",
-            description: "List trace scores produced by an observer.",
-            method: "GET",
-            path: "/v1/observers/{observer_id}/scores",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&OBSERVER_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<TraceScore>, CommandError> {
         let observer_id = parse_observer_id(&self.observer_id)?;
@@ -269,10 +236,7 @@ impl Command for ListObserverScores {
                 self.limit,
                 self.offset,
             )
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Observer"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListObserverScores>() }

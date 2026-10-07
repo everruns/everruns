@@ -172,6 +172,21 @@ function CloudflareIcon({ size }: { size: number }) {
   );
 }
 
+function MistralIcon({ size }: { size: number }) {
+  // Mistral AI mark from simple-icons (https://simpleicons.org), CC0.
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      width={size}
+      height={size}
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M17.143 3.429v3.428h-3.429v3.429h-3.428V6.857H6.857V3.43H3.43v13.714H0v3.428h10.286v-3.428H6.857v-3.429h3.429v3.429h3.429v-3.429h3.428v3.429h-3.428v3.428H24v-3.428h-3.43V3.429z" />
+    </svg>
+  );
+}
+
 function VercelIcon({ size }: { size: number }) {
   // Vercel mark from simple-icons (https://simpleicons.org), CC0.
   return (
@@ -201,6 +216,7 @@ const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: num
   mai: MicrosoftIcon,
   fireworks: FireworksIcon,
   meta: MetaIcon,
+  mistral: MistralIcon,
   cloudflare: CloudflareIcon,
   vercel: VercelIcon,
 };
@@ -219,6 +235,7 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
   mai: "Microsoft MAI",
   fireworks: "Fireworks AI",
   meta: "Meta Model API",
+  mistral: "Mistral AI",
   cloudflare: "Cloudflare AI Gateway",
   vercel: "Vercel AI Gateway",
 };
@@ -238,6 +255,7 @@ const PROVIDER_DESCRIPTIONS: Record<DriverId, string> = {
   mai: "Microsoft MAI models via Azure AI Foundry.",
   fireworks: "Fast, low-cost inference for open models.",
   meta: "Muse Spark models via Meta's Responses API.",
+  mistral: "Mistral Large, Medium and Codestral from La Plateforme.",
   cloudflare: "Many vendors plus Workers AI, billed to your Cloudflare account.",
   vercel: "Many vendors behind one gateway key, over Open Responses.",
 };

@@ -47,6 +47,7 @@ mod mcp_cache;
 pub mod observability;
 #[cfg(feature = "openai-agents-api")]
 pub mod openai_agents_api;
+mod partial_stream;
 #[cfg(feature = "process")]
 mod process_command;
 mod real_disk;

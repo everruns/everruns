@@ -11,7 +11,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn polling_dispatcher_delivers_without_any_notification() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session = terminal_state_tests::seed_session(&db).await;
 
     let mock_server = MockServer::start().await;

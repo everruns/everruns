@@ -57,6 +57,27 @@ async fn real_workspace_seeding_and_context_inspection_use_framework_types() {
 }
 
 #[tokio::test]
+async fn agent_instructions_appear_once_in_the_inspected_context() {
+    let agent = Agent::builder()
+        .instructions("SINGLE_INSTRUCTIONS_SENTINEL")
+        .model(Model::simulated("ok"))
+        .build()
+        .expect("agent builds");
+
+    let session = InMemoryEngine::new().create(agent);
+    let context = session.inspect().await.expect("context assembles");
+    assert_eq!(
+        context
+            .instructions
+            .matches("SINGLE_INSTRUCTIONS_SENTINEL")
+            .count(),
+        1,
+        "instructions duplicated: {:?}",
+        context.instructions
+    );
+}
+
+#[tokio::test]
 async fn agent_plugin_with_dotted_name_contributes_to_the_inspected_context() {
     let plugin = tempfile::tempdir().expect("plugin dir");
     fs::create_dir_all(plugin.path().join(".claude-plugin")).expect("manifest dir");

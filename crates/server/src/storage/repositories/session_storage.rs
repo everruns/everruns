@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 #[derive(sqlx::FromRow)]
@@ -23,15 +24,15 @@ impl Database {
         &self,
         input: UpsertSessionKeyValue,
     ) -> Result<SessionKeyValueRow> {
-        let row = sqlx::query_as::<_, SessionKeyValueRow>(
+        let row = sqlx::query_as::<_, SessionKeyValueRow>(sql!(
             r#"
             INSERT INTO session_key_values (session_id, key, value)
             VALUES ($1, $2, $3)
             ON CONFLICT (session_id, key) DO UPDATE
             SET value = EXCLUDED.value, updated_at = NOW()
-            RETURNING id, session_id, key, value, created_at, updated_at
-            "#,
-        )
+            RETURNING {SessionKeyValueRow}
+            "#
+        ))
         .bind(input.session_id)
         .bind(&input.key)
         .bind(&input.value)
@@ -47,13 +48,13 @@ impl Database {
         session_id: Uuid,
         key: &str,
     ) -> Result<Option<SessionKeyValueRow>> {
-        let row = sqlx::query_as::<_, SessionKeyValueRow>(
+        let row = sqlx::query_as::<_, SessionKeyValueRow>(sql!(
             r#"
-            SELECT id, session_id, key, value, created_at, updated_at
+            SELECT {SessionKeyValueRow}
             FROM session_key_values
             WHERE session_id = $1 AND key = $2
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .bind(key)
         .fetch_optional(&self.pool)
@@ -64,14 +65,14 @@ impl Database {
 
     /// List all keys for a session (without values)
     pub async fn list_session_keys(&self, session_id: Uuid) -> Result<Vec<SessionKeyInfoRow>> {
-        let rows = sqlx::query_as::<_, SessionKeyInfoRow>(
+        let rows = sqlx::query_as::<_, SessionKeyInfoRow>(sql!(
             r#"
-            SELECT key, created_at, updated_at
+            SELECT {SessionKeyInfoRow}
             FROM session_key_values
             WHERE session_id = $1
             ORDER BY key
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
@@ -252,14 +253,14 @@ impl Database {
         &self,
         session_id: Uuid,
     ) -> Result<Vec<SessionSecretInfoRow>> {
-        let rows = sqlx::query_as::<_, SessionSecretInfoRow>(
+        let rows = sqlx::query_as::<_, SessionSecretInfoRow>(sql!(
             r#"
-            SELECT name, created_at, updated_at
+            SELECT {SessionSecretInfoRow}
             FROM session_secrets
             WHERE session_id = $1
             ORDER BY name
-            "#,
-        )
+            "#
+        ))
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;

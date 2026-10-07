@@ -212,6 +212,69 @@ async fn runtime_token_is_self_only_and_revocation_is_live() {
         .0,
         StatusCode::FORBIDDEN
     );
+    // User MCP servers follow the same self-only rule as preferences.
+    let (status, added) = send(
+        &router,
+        &token,
+        "POST",
+        "/v1/virtual-users/me/mcp-servers",
+        json!({"name":"notes","url":"https://notes.example.com/mcp","auth_mode":"oauth"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["source"], "custom");
+    assert_eq!(added["connection"]["status"], "not_connected");
+    let (status, listed) = send(
+        &router,
+        &token,
+        "GET",
+        &format!("{path}/mcp-servers"),
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed["data"][0]["name"], "notes");
+    let server_path = format!(
+        "/v1/virtual-users/me/mcp-servers/{}",
+        added["id"].as_str().unwrap()
+    );
+    let (status, disabled) = send(
+        &router,
+        &token,
+        "PATCH",
+        &server_path,
+        json!({"enabled":false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(disabled["enabled"], false);
+    assert_eq!(
+        send(
+            &router,
+            &token,
+            "GET",
+            &format!(
+                "/v1/virtual-users/{}/mcp-servers",
+                everruns_contracts::typed_id::VirtualUserId::new()
+            ),
+            Value::Null
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(&router, &token, "DELETE", &server_path, Value::Null)
+            .await
+            .0,
+        StatusCode::NO_CONTENT
+    );
+    assert_eq!(
+        send(&router, &token, "GET", &server_path, Value::Null)
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
     assert!(
         server
             .db

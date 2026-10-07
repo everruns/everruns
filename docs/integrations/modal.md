@@ -4,7 +4,7 @@ description: Modal sandboxes for code execution, full Linux VMs with their own k
 appliesTo: [platform]
 ---
 
-> **Status:** Experimental (available in Dev environments). Modal is not part of the supported sandbox set and may change or be removed.
+> **Status:** Experimental, behind the `modal` feature flag at the `adoption` rollout grade: an organisation owner or admin enables it in Settings → Features. `FEATURE_MODAL` can override the grade. Modal is not part of the supported sandbox set and may change or be removed.
 
 Everruns integrates with [Modal](https://modal.com/) sandboxes. By default an agent gets a [VM sandbox](https://modal.com/blog/vm-sandboxes-agent-computers): a full Linux virtual machine with its own kernel, so workloads that need real kernel features (Docker, FUSE, databases, system services) run as they would on a server. The lighter gVisor container runtime is available too.
 

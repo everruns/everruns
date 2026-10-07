@@ -68,7 +68,7 @@ async fn fixture(
     SlackChannelConfig,
     SlackEvent,
 ) {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let mut app = test_app();
     let agent = db
         .create_agent(
@@ -312,20 +312,23 @@ async fn state_and_history_are_bounded_without_splitting_unicode() {
 }
 
 #[tokio::test]
-async fn the_judge_uses_the_endpoints_pinned_purpose() {
-    let (mut state, mut app, config, event) = fixture(None).await;
-    state.agent_versions_enabled = true;
-    let id = everruns_contracts::typed_id::AgentVersionId::new();
-    state.db.create_agent_version(crate::storage::models::CreateAgentVersionRow {
-        id, public_id: id.to_string(), org_id: app.org_id, agent_id: app.agent_id.unwrap(),
-        version_number: 1, semver_major: 1, semver_minor: 0, semver_patch: 0,
-        version: "1.0.0".into(), is_published: true, parent_version_id: None, source_version_id: None,
-        created_by_principal_id: None, change_kind: "publish".into(), summary: None, config_hash: "test".into(),
-        authored_config: json!({"name": "pinned-agent", "description": "Pinned purpose", "system_prompt": "Answer questions about invoices."}),
-        resolved_config: json!({}),
-    }).await.unwrap();
-    app.agent_version_policy = crate::records::AgentVersionPolicy::Pinned;
-    app.agent_version_id = Some(id);
+async fn the_judge_uses_the_agents_current_purpose() {
+    // Agent versions are retired: every endpoint runs the agent as it is now,
+    // so the relevance judge reads the current definition.
+    let (state, app, config, event) = fixture(None).await;
+    state
+        .db
+        .update_agent(
+            app.org_id,
+            app.agent_id.unwrap(),
+            crate::storage::models::UpdateAgent {
+                name: Some("invoice-agent".into()),
+                system_prompt: Some("Answer questions about invoices.".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
     let context = decision_state(&state, &app, &app.channels[0], &config, &event)
         .await
         .unwrap();
@@ -333,7 +336,7 @@ async fn the_judge_uses_the_endpoints_pinned_purpose() {
         context["agent"]["purpose"],
         "Answer questions about invoices."
     );
-    assert_eq!(context["agent"]["name"], "pinned-agent");
+    assert_eq!(context["agent"]["name"], "invoice-agent");
 }
 
 /// Run explicitly with the deployment-owned UTILITY_TYPESAFE_API_KEY.
@@ -372,4 +375,66 @@ async fn live_jev_relevance_matches_intent_examples() {
         );
         assert_eq!(actual, expected, "{message}");
     }
+}
+
+async fn answer_with_org_model(state: &mut SlackState, org_id: i64) {
+    state
+        .db
+        .patch_organization_settings(
+            org_id,
+            crate::storage::models::UpdateOrganizationSettings {
+                system_decisions: Some(crate::storage::SystemDecisions::Organization),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    state.org_decisions = Some(super::super::SlackOrgDecisions {
+        provider_resolver: Arc::new(crate::services::ProviderResolverService::new(
+            state.db.clone(),
+            None,
+        )),
+        budget_service: Arc::new(crate::domains::budgets::BudgetService::new(
+            state.db.clone(),
+        )),
+        egress: Arc::new(everruns_core::host::DirectEgressService::default()),
+    });
+}
+
+// THREAT[TM-LLM-037]: an org that answers these checks itself is never
+// answered by the deployment, even when its own model is missing.
+#[tokio::test]
+async fn an_org_without_a_usable_model_stays_silent_instead_of_using_the_deployment() {
+    let judge = Arc::new(Judge::probability(0.99));
+    let (mut state, app, config, event) = fixture(Some(judge.clone())).await;
+    answer_with_org_model(&mut state, app.org_id).await;
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    // Unwired org decisions are silent too.
+    state.org_decisions = None;
+    assert!(!should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert!(judge.requests.lock().unwrap().is_empty());
+    // Mentions never needed a decision.
+    let mut mention = event.clone();
+    mention.event_type = "app_mention".into();
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &mention).await);
+}
+
+#[tokio::test]
+async fn an_org_that_leaves_it_to_the_deployment_keeps_the_deployment_judge() {
+    let judge = Arc::new(Judge::probability(0.99));
+    let (mut state, app, config, event) = fixture(Some(judge.clone())).await;
+    answer_with_org_model(&mut state, app.org_id).await;
+    state
+        .db
+        .patch_organization_settings(
+            app.org_id,
+            crate::storage::models::UpdateOrganizationSettings {
+                system_decisions: Some(crate::storage::SystemDecisions::Deployment),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(should_process_message(&state, &app, &app.channels[0], &config, &event).await);
+    assert_eq!(judge.requests.lock().unwrap().len(), 1);
 }

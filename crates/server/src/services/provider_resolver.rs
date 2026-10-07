@@ -180,12 +180,49 @@ impl ProviderResolverService {
         model_id: Option<&str>,
         session_id: Uuid,
     ) -> Result<Option<everruns_core::connection_services::DecisionModelBinding>> {
-        let session = self
+        self.resolve_decision_binding(org_id, model_id, Some(session_id))
+            .await
+    }
+
+    /// Who answers this org's deployment-owned decision checks.
+    ///
+    /// `session_id` is `None` only for a check made before any session exists
+    /// (Slack deciding whether to answer a new thread); personal providers
+    /// then fail closed. An org that opted in without a usable decision
+    /// default is an error, never `Deployment` (THREAT[TM-LLM-037]).
+    pub async fn resolve_system_decision_model(
+        &self,
+        org_id: i64,
+        session_id: Option<Uuid>,
+    ) -> Result<everruns_core::connection_services::SystemDecisionModel> {
+        use everruns_core::connection_services::SystemDecisionModel;
+        let choice = self
             .db
-            .get_session(org_id, session_id.into())
+            .get_organization_settings(org_id)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("Session unavailable"))?;
-        let _ = session;
+            .map(|settings| crate::storage::SystemDecisions::from_db(&settings.system_decisions))
+            .unwrap_or_default();
+        if choice == crate::storage::SystemDecisions::Deployment {
+            return Ok(SystemDecisionModel::Deployment);
+        }
+        self.resolve_decision_binding(org_id, None, session_id)
+            .await?
+            .map(SystemDecisionModel::Organization)
+            .ok_or_else(|| anyhow::anyhow!("Organization decision model is not selected"))
+    }
+
+    async fn resolve_decision_binding(
+        &self,
+        org_id: i64,
+        model_id: Option<&str>,
+        session_id: Option<Uuid>,
+    ) -> Result<Option<everruns_core::connection_services::DecisionModelBinding>> {
+        if let Some(session_id) = session_id {
+            self.db
+                .get_session(org_id, session_id.into())
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("Session unavailable"))?;
+        }
         let id = match model_id {
             Some(id) => id.parse::<everruns_contracts::typed_id::ModelId>()?.uuid(),
             None => match self.db.get_decision_default(org_id).await? {
@@ -222,7 +259,7 @@ impl ProviderResolverService {
             .resolve_runtime_provider_config_for_session(
                 org_id,
                 &row.provider_id.to_string(),
-                Some(session_id),
+                session_id,
             )
             .await?
             .ok_or_else(|| anyhow::anyhow!("Provider unavailable"))?;

@@ -556,7 +556,7 @@ mod tests {
 
     #[tokio::test]
     async fn memory_sync_storage_claims_and_replaces_files() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let created = db
             .create_memory(
                 DEFAULT_ORG_ID,
@@ -621,7 +621,7 @@ mod tests {
 
     #[tokio::test]
     async fn memory_sync_storage_rejects_stale_claim_completion() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let created = db
             .create_memory(
                 DEFAULT_ORG_ID,

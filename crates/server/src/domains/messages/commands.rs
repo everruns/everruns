@@ -29,22 +29,16 @@ pub struct CreateMessage {
     pub request_id: Option<String>,
 }
 
+#[command(
+    name = "create_message",
+    category = "messages",
+    description = "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
+    method = "POST",
+    path = "/v1/sessions/{session_id}/messages",
+    policy = crate::domains::sessions::SESSION_MANAGE,
+)]
 impl Command for CreateMessage {
     type Output = Message;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_message",
-            category: "messages",
-            description: "Create a user message in a session and start the next run. The message content is an array of content parts, e.g. --content '[{\"type\":\"text\",\"text\":\"Tell me a short, family-friendly joke.\"}]'.",
-            method: "POST",
-            path: "/v1/sessions/{session_id}/messages",
-        }
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Message, CommandError> {
         if self.message.role != MessageRole::User {
@@ -67,8 +61,7 @@ impl Command for CreateMessage {
         let session_id = q::parse_session_id(&self.session_id)?;
         let loaded = q::session_service(ctx)?
             .get_for_send(&ctx.caller, session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
         require_platform_chat_owner(ctx, &loaded)?;
         let session = &loaded.session;
@@ -123,8 +116,6 @@ impl Command for CreateMessage {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
-
 fn require_platform_chat_owner(
     ctx: &Ctx,
     loaded: &crate::domains::sessions::service::SessionForSend,
@@ -160,8 +151,7 @@ async fn resolve_responder_agent_id(
     let participants = ctx
         .db
         .list_session_participants(ctx.org_id(), session_id)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
     let participant = participants
         .iter()
         .find(|row| row.id == participant_id)
@@ -193,8 +183,7 @@ async fn resolve_responder_agent_id(
     let public_id = ctx
         .db
         .get_agent_public_id(ctx.org_id(), agent_id)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::internal(anyhow::anyhow!("participant agent not found")))?
         .parse::<AgentId>()
         .map_err(|err| CommandError::internal(anyhow::anyhow!(err)))?;
@@ -211,29 +200,22 @@ pub struct ListMessages {
     pub limit: Option<i32>,
 }
 
+#[command(
+    name = "list_messages",
+    category = "messages",
+    description = "List materialized messages in a session, optionally limited to the most recent N.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/messages",
+    positional = "session_id"
+)]
 impl Command for ListMessages {
     type Output = Vec<Message>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_messages",
-            category: "messages",
-            description: "List materialized messages in a session, optionally limited to the most recent N.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/messages",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Message>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         q::message_service(ctx)?
@@ -242,8 +224,6 @@ impl Command for ListMessages {
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListMessages>() }
 
 #[derive(Debug, Serialize)]
 pub struct ExportSessionJsonl {
@@ -277,33 +257,23 @@ pub struct ExportSessionMessages {
     pub format: SessionExportFormat,
 }
 
+#[command(
+    name = "export_session_messages",
+    category = "messages",
+    description = "Export session messages as JSONL.",
+    method = "GET",
+    path = "/v1/sessions/{session_id}/export",
+    policy = crate::domains::sessions::SESSION_VIEW,
+    positional = "session_id",
+)]
 impl Command for ExportSessionMessages {
     type Output = ExportSessionJsonl;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "export_session_messages",
-            category: "messages",
-            description: "Export session messages as JSONL.",
-            method: "GET",
-            path: "/v1/sessions/{session_id}/export",
-        }
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("session_id")
-    }
-
-    fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::sessions::SESSION_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<ExportSessionJsonl, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
             .get(&ctx.caller, session_id.uuid(), None)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         if self.format == SessionExportFormat::Atif {
@@ -315,8 +285,7 @@ impl Command for ExportSessionMessages {
             );
             let events = event_service
                 .list(session_id.uuid(), None, None, &[], &[], None, None)
-                .await
-                .map_err(classify_anyhow)?;
+                .await?;
             let trajectory = crate::atif::build_trajectory(
                 Some(&session_id.to_string()),
                 &events,
@@ -331,10 +300,7 @@ impl Command for ExportSessionMessages {
             });
         }
 
-        let messages = q::message_service(ctx)?
-            .list(session_id.uuid())
-            .await
-            .map_err(classify_anyhow)?;
+        let messages = q::message_service(ctx)?.list(session_id.uuid()).await?;
 
         let mut body = String::new();
         for message in &messages {
@@ -350,8 +316,6 @@ impl Command for ExportSessionMessages {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ExportSessionMessages>() }
 
 /// One byte-bounded segment of a segmented ATIF session export, ready for the
 /// HTTP route.
@@ -386,8 +350,7 @@ pub async fn export_session_segment(
     let session_id = q::parse_session_id(session_id_str)?;
     q::session_service(ctx)?
         .get(&ctx.caller, session_id.uuid(), None)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| CommandError::not_found("Session"))?;
 
     if let Some(raw_cursor) = cursor {
@@ -404,8 +367,7 @@ pub async fn export_session_segment(
     );
     let events = event_service
         .list(session_id.uuid(), None, None, &[], &[], None, None)
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
     let segment = crate::atif::build_segment(
         &session_id.to_string(),
@@ -502,7 +464,7 @@ mod tests {
     }
 
     async fn setup_routing_fixture() -> RoutingFixture {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let harness = db
             .create_harness(
                 DEFAULT_ORG_ID,
@@ -540,8 +502,7 @@ mod tests {
                 trigger_id: None,
                 harness_id: Some(harness.id),
                 agent_id: Some(host_agent.id),
-                agent_version_id: None,
-                agent_config_hash: None,
+                agent_revision: None,
                 virtual_user_id: None,
                 owner_principal_id: PrincipalId::from_seed(DEFAULT_ORG_ID as u128),
                 resolved_owner_user_id: None,
@@ -572,7 +533,6 @@ mod tests {
                 session_id: session.id,
                 kind: SessionParticipantKind::Agent,
                 agent_id: Some(guest_agent.id),
-                agent_version_id: None,
                 principal_id: session.owner_principal_id,
                 display_name: None,
                 role: SessionParticipantRole::Member,
@@ -667,7 +627,7 @@ mod tests {
         caller_user_id: Uuid,
         owner_user_id: Uuid,
     ) -> (Ctx, crate::domains::sessions::service::SessionForSend) {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let harness = db
             .create_harness(
                 DEFAULT_ORG_ID,
@@ -692,6 +652,9 @@ mod tests {
             )
             .await
             .expect("create Platform Chat harness");
+        db.create_test_user(owner_user_id).await;
+        db.create_test_principal(PrincipalId::from_seed(owner_user_id.as_u128()))
+            .await;
         let row = db
             .create_session(CreateSessionRow {
                 playground_user_id: None,
@@ -702,8 +665,7 @@ mod tests {
                 trigger_id: None,
                 harness_id: Some(harness.id),
                 agent_id: None,
-                agent_version_id: None,
-                agent_config_hash: None,
+                agent_revision: None,
                 virtual_user_id: None,
                 owner_principal_id: PrincipalId::from_seed(owner_user_id.as_u128()),
                 resolved_owner_user_id: Some(owner_user_id),

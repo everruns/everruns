@@ -24,8 +24,7 @@ pub(super) async fn seed_session(db: &StorageBackend) -> everruns_contracts::typ
         trigger_id: None,
         harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
         agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -147,7 +146,7 @@ async fn register_turn_with_mode(
 
 #[tokio::test]
 async fn turn_failed_without_reply_posts_one_notice() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_id = seed_session(&db).await;
     let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
     register_turn(&dispatcher, session_id.uuid()).await;
@@ -188,7 +187,7 @@ async fn turn_failed_without_reply_posts_one_notice() {
 
 #[tokio::test]
 async fn turn_completed_without_output_posts_notice() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_id = seed_session(&db).await;
     let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
     register_turn(&dispatcher, session_id.uuid()).await;
@@ -214,7 +213,7 @@ async fn turn_completed_without_output_posts_notice() {
 
 #[tokio::test]
 async fn delivered_reply_suppresses_notice() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_id = seed_session(&db).await;
     let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
     register_turn(&dispatcher, session_id.uuid()).await;
@@ -247,7 +246,7 @@ async fn delivered_reply_suppresses_notice() {
 /// answered turn would be chased by a spurious "no reply" notice.
 #[tokio::test]
 async fn reply_in_earlier_pass_still_suppresses_notice() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_id = seed_session(&db).await;
     let (dispatcher, mock_server) = dispatcher_against_slack(db.clone()).await;
     register_turn(&dispatcher, session_id.uuid()).await;
@@ -280,7 +279,7 @@ async fn reply_in_earlier_pass_still_suppresses_notice() {
 /// to sit registered forever and the user was never told.
 #[tokio::test]
 async fn turn_cancelled_notifies_and_unregisters() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_id = seed_session(&db).await;
     emit(
         &db,
@@ -319,7 +318,7 @@ async fn turn_cancelled_notifies_and_unregisters() {
 
 #[tokio::test]
 async fn historical_cancellation_does_not_unregister_a_follow_up() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_id = seed_session(&db).await;
 
     emit(
@@ -378,7 +377,7 @@ async fn historical_cancellation_does_not_unregister_a_follow_up() {
 /// be told the turn is over.
 #[tokio::test]
 async fn failed_delivery_still_yields_notice() {
-    let db = Arc::new(StorageBackend::in_memory());
+    let db = Arc::new(StorageBackend::test_database());
     let session_id = seed_session(&db).await;
 
     // Reject every post with a permanent error so no retry budget burns.
@@ -436,8 +435,11 @@ async fn failed_delivery_still_yields_notice() {
 #[tokio::test]
 async fn notice_without_frontend_url_omits_link() {
     let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
-    let dispatcher =
-        SlackDeliveryDispatcher::start(Arc::new(StorageBackend::in_memory()), rx, String::new());
+    let dispatcher = SlackDeliveryDispatcher::start(
+        Arc::new(StorageBackend::test_database()),
+        rx,
+        String::new(),
+    );
 
     let notice = dispatcher.terminal_notice("turn.failed", uuid::Uuid::nil());
     assert_eq!(notice, "The agent could not finish this request.");
@@ -453,7 +455,7 @@ async fn explicit_posts_are_not_reposted_and_failures_still_get_a_terminal_notic
         ),
         ("turn.cancelled", Some("This request was cancelled.")),
     ] {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let session = seed_session(&db).await;
         let (dispatcher, slack) = dispatcher_against_slack(db.clone()).await;
         register_turn_with_mode(&dispatcher, session.uuid(), SlackReplyMode::ToolOnly).await;

@@ -8,7 +8,7 @@ use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, Update
 use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
 use crate::kernel_imports::{
-    AgentCapabilityConfig, Policy, ScopedMcpServers,
+    AgentCapabilityConfig, ScopedMcpServers,
     contracts::openresponses_types::{
         MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH,
     },
@@ -151,8 +151,7 @@ async fn normalize_capability_refs(
         ctx.org_id(),
         caps,
     )
-    .await
-    .map_err(classify_anyhow)?;
+    .await?;
     crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
         &ctx.feature_flags,
         &caps,
@@ -194,22 +193,16 @@ impl CommandSchema for CreateHarness {
     }
 }
 
+#[command(
+    name = "create_harness",
+    category = "harnesses",
+    description = "Create a new harness with a name, system prompt, and optional capabilities.",
+    method = "POST",
+    path = "/v1/harnesses",
+    policy = HARNESS_MANAGE,
+)]
 impl Command for CreateHarness {
     type Output = Harness;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "create_harness",
-            category: "harnesses",
-            description: "Create a new harness with a name, system prompt, and optional capabilities.",
-            method: "POST",
-            path: "/v1/harnesses",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_MANAGE)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         let req = self.0;
@@ -222,11 +215,7 @@ impl Command for CreateHarness {
         // soft-deleted rows and system-seeded built-in harnesses, so only
         // user-created harnesses consume the budget.
         let max = ctx.resource_limits.max_harnesses_per_org;
-        let count = ctx
-            .db
-            .count_harnesses_for_org(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let count = ctx.db.count_harnesses_for_org(ctx.org_id()).await?;
         if count >= max {
             return Err(CommandError::conflict(format!(
                 "Harness limit reached (max {max})"
@@ -248,16 +237,13 @@ impl Command for CreateHarness {
             ctx.org_id(),
             &caps,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let parent_harness_id =
-            q::validate_parent_harness(&ctx.db, ctx.org_id(), None, req.parent_harness_id)
-                .await
-                .map_err(classify_anyhow)?;
+            q::validate_parent_harness(&ctx.db, ctx.org_id(), None, req.parent_harness_id).await?;
         let parent = match parent_harness_id {
-            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
-                .await
-                .map_err(classify_anyhow)?,
+            Some(parent_id) => {
+                q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id).await?
+            }
             None => None,
         };
         let mut scoped_mcp_layers = Vec::new();
@@ -270,11 +256,9 @@ impl Command for CreateHarness {
             ctx.org_id(),
             scoped_mcp_layers,
         )
-        .await
-        .map_err(classify_anyhow)?;
-        let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        .await?;
+        let default_model_id =
+            q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
 
         // Persist
         let input = CreateHarnessRow {
@@ -301,19 +285,13 @@ impl Command for CreateHarness {
             embedder_metadata: serde_json::to_value(&req.embedder_metadata).unwrap_or_default(),
             is_built_in: false,
         };
-        let row = ctx
-            .db
-            .create_harness(ctx.org_id(), input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = ctx.db.create_harness(ctx.org_id(), input).await?;
         let harness_uuid = row.id.uuid();
 
         persist_capabilities(&ctx.db, harness_uuid, &caps).await?;
         Ok(q::row_to_harness(row, caps))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CreateHarness>() }
 
 // ============================================================================
 // ListHarnesses
@@ -327,22 +305,16 @@ pub struct ListHarnesses {
     pub include_archived: bool,
 }
 
+#[command(
+    name = "list_harnesses",
+    category = "harnesses",
+    description = "List all active harnesses. Use search for name search, include_archived=true to include archived.",
+    method = "GET",
+    path = "/v1/harnesses",
+    policy = HARNESS_VIEW,
+)]
 impl Command for ListHarnesses {
     type Output = Vec<Harness>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "list_harnesses",
-            category: "harnesses",
-            description: "List all active harnesses. Use search for name search, include_archived=true to include archived.",
-            method: "GET",
-            path: "/v1/harnesses",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<Harness>())
@@ -356,15 +328,12 @@ impl Command for ListHarnesses {
         let rows = ctx
             .db
             .list_harnesses(ctx.org_id(), self.search.as_deref(), self.include_archived)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         q::load_harnesses_list(&ctx.db, rows)
             .await
             .map_err(classify_anyhow)
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ListHarnesses>() }
 
 // ============================================================================
 // GetHarness
@@ -377,36 +346,24 @@ pub struct GetHarness {
     pub id: String,
 }
 
+#[command(
+    name = "get_harness",
+    category = "harnesses",
+    description = "Get a single harness by ID or name.",
+    method = "GET",
+    path = "/v1/harnesses/{id}",
+    policy = HARNESS_VIEW,
+    positional = "id",
+)]
 impl Command for GetHarness {
     type Output = Harness;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "get_harness",
-            category: "harnesses",
-            description: "Get a single harness by ID or name.",
-            method: "GET",
-            path: "/v1/harnesses/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         q::resolve(&ctx.db, ctx.org_id(), &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<GetHarness>() }
 
 // ============================================================================
 // UpdateHarness
@@ -421,26 +378,17 @@ pub struct UpdateHarnessCmd {
     pub req: UpdateHarnessRequest,
 }
 
+#[command(
+    name = "update_harness",
+    category = "harnesses",
+    description = "Update a harness. Only provided fields are changed.",
+    method = "PATCH",
+    path = "/v1/harnesses/{id}",
+    policy = HARNESS_MANAGE,
+    positional = "id",
+)]
 impl Command for UpdateHarnessCmd {
     type Output = Harness;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "update_harness",
-            category: "harnesses",
-            description: "Update a harness. Only provided fields are changed.",
-            method: "PATCH",
-            path: "/v1/harnesses/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         let harness_id: HarnessId = self
@@ -461,10 +409,7 @@ impl Command for UpdateHarnessCmd {
         }
 
         // Reject updates to built-in harnesses
-        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id).await? {
             return Err(CommandError::bad_request(
                 "Cannot modify built-in harness. Copy it first to create an editable version.",
             ));
@@ -474,8 +419,7 @@ impl Command for UpdateHarnessCmd {
         let existing = ctx
             .db
             .get_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         if existing.status != "active" {
@@ -506,9 +450,7 @@ impl Command for UpdateHarnessCmd {
                 .await?,
             ),
             None if final_has_initial_files => Some(q::ensure_file_system_capability(
-                q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid())
-                    .await
-                    .map_err(classify_anyhow)?,
+                q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid()).await?,
                 true,
             )),
             None => None,
@@ -519,20 +461,17 @@ impl Command for UpdateHarnessCmd {
                 ctx.org_id(),
                 caps,
             )
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         }
-        let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let default_model_id =
+            q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id).await?;
         let parent_harness_id = q::validate_parent_harness(
             &ctx.db,
             ctx.org_id(),
             Some(harness_id),
             req.parent_harness_id.flatten(),
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let updated_mcp_servers = req.mcp_servers.clone().unwrap_or_else(|| {
             serde_json::from_value(existing.mcp_servers.clone()).unwrap_or_default()
         });
@@ -541,9 +480,9 @@ impl Command for UpdateHarnessCmd {
             .map(|_| parent_harness_id)
             .unwrap_or(existing.parent_harness_id);
         let parent = match effective_parent_harness_id {
-            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
-                .await
-                .map_err(classify_anyhow)?,
+            Some(parent_id) => {
+                q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id).await?
+            }
             None => None,
         };
         let mut scoped_mcp_layers = Vec::new();
@@ -556,8 +495,7 @@ impl Command for UpdateHarnessCmd {
             ctx.org_id(),
             scoped_mcp_layers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
 
         // Persist
         let input = UpdateHarness {
@@ -594,24 +532,19 @@ impl Command for UpdateHarnessCmd {
         let row = ctx
             .db
             .update_harness(ctx.org_id(), harness_id, input)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         let caps = if let Some(caps) = capabilities_override {
             persist_capabilities(&ctx.db, harness_id.uuid(), &caps).await?;
             caps
         } else {
-            q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid())
-                .await
-                .map_err(classify_anyhow)?
+            q::get_capabilities(&ctx.db, ctx.org_id(), harness_id.uuid()).await?
         };
 
         Ok(q::row_to_harness(row, caps))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<UpdateHarnessCmd>() }
 
 // ============================================================================
 // DeleteHarness
@@ -624,26 +557,17 @@ pub struct DeleteHarness {
     pub id: String,
 }
 
+#[command(
+    name = "delete_harness",
+    category = "harnesses",
+    description = "Archive a harness (soft delete). Can be restored.",
+    method = "DELETE",
+    path = "/v1/harnesses/{id}",
+    policy = HARNESS_DANGEROUS,
+    positional = "id",
+)]
 impl Command for DeleteHarness {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "delete_harness",
-            category: "harnesses",
-            description: "Archive a harness (soft delete). Can be restored.",
-            method: "DELETE",
-            path: "/v1/harnesses/{id}",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let harness_id: HarnessId = self
@@ -652,10 +576,7 @@ impl Command for DeleteHarness {
             .map_err(|e| CommandError::bad_request(format!("Invalid harness ID: {e}")))?;
 
         // Reject deletion of built-in harnesses
-        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id).await? {
             return Err(CommandError::bad_request("Cannot delete built-in harness."));
         }
 
@@ -670,11 +591,7 @@ impl Command for DeleteHarness {
         )
         .await?;
 
-        let deleted = ctx
-            .db
-            .delete_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let deleted = ctx.db.delete_harness(ctx.org_id(), harness_id).await?;
 
         if deleted {
             Ok(serde_json::json!({"deleted": true}))
@@ -683,8 +600,6 @@ impl Command for DeleteHarness {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DeleteHarness>() }
 
 // ============================================================================
 // DestroyHarness (hard delete)
@@ -697,39 +612,18 @@ pub struct DestroyHarness {
     pub id: String,
 }
 
+#[command(
+    name = "destroy_harness",
+    category = "harnesses",
+    description = "Permanently delete an archived harness.",
+    method = "POST",
+    path = "/v1/harnesses/{id}/delete",
+    policy = HARNESS_DANGEROUS,
+    positional = "id",
+    cli = CliRoute::new(&["harnesses"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an already-archived harness", "everruns harnesses destroy harness_01h9 --reason 'Retired after the archive window'",)]),
+)]
 impl Command for DestroyHarness {
     type Output = serde_json::Value;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "destroy_harness",
-            category: "harnesses",
-            description: "Permanently delete an archived harness.",
-            method: "POST",
-            path: "/v1/harnesses/{id}/delete",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        // Declared, not derived: the REST path `.../{id}/delete` would derive
-        // `harnesses delete destroy`, turning the `delete` leaf
-        // into a group and making it unreachable from the command line.
-        const ROUTE: CliRoute = CliRoute::new(&["harnesses"], "destroy")
-            .with_args(&[CliArg::new("id").at(1)])
-            .with_examples(&[CliExample::new(
-                "Permanently remove an already-archived harness",
-                "everruns harnesses destroy harness_01h9",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_DANGEROUS)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<serde_json::Value, CommandError> {
         let harness_id: HarnessId = self
@@ -738,10 +632,7 @@ impl Command for DestroyHarness {
             .map_err(|e| CommandError::bad_request(format!("Invalid harness ID: {e}")))?;
 
         // Reject deletion of built-in harnesses
-        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
-        {
+        if q::is_built_in(&ctx.db, ctx.org_id(), harness_id).await? {
             return Err(CommandError::bad_request("Cannot delete built-in harness."));
         }
 
@@ -759,8 +650,7 @@ impl Command for DestroyHarness {
         let existing = ctx
             .db
             .get_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         if existing.status != "archived" {
@@ -769,11 +659,7 @@ impl Command for DestroyHarness {
             ));
         }
 
-        let destroyed = ctx
-            .db
-            .destroy_harness(ctx.org_id(), harness_id)
-            .await
-            .map_err(classify_anyhow)?;
+        let destroyed = ctx.db.destroy_harness(ctx.org_id(), harness_id).await?;
 
         if destroyed {
             Ok(serde_json::json!({"destroyed": true}))
@@ -782,8 +668,6 @@ impl Command for DestroyHarness {
         }
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DestroyHarness>() }
 
 // ============================================================================
 // CopyHarness
@@ -796,37 +680,25 @@ pub struct CopyHarness {
     pub id: String,
 }
 
+#[command(
+    name = "copy_harness",
+    category = "harnesses",
+    description = "Copy a harness. Generates a unique name.",
+    method = "POST",
+    path = "/v1/harnesses/{id}/copy",
+    policy = HARNESS_MANAGE,
+    positional = "id",
+)]
 impl Command for CopyHarness {
     type Output = Harness;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "copy_harness",
-            category: "harnesses",
-            description: "Copy a harness. Generates a unique name.",
-            method: "POST",
-            path: "/v1/harnesses/{id}/copy",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_MANAGE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("id")
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<Harness, CommandError> {
         let source = q::resolve(&ctx.db, ctx.org_id(), &self.id)
-            .await
-            .map_err(classify_anyhow)?
+            .await?
             .ok_or_else(|| CommandError::not_found("Harness"))?;
 
         let copy_name =
-            q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name))
-                .await
-                .map_err(classify_anyhow)?;
+            q::find_unique_name(&ctx.db, ctx.org_id(), &format!("{}-copy", source.name)).await?;
 
         let req = CreateHarnessRequest {
             name: copy_name,
@@ -849,8 +721,6 @@ impl Command for CopyHarness {
         CreateHarness(req).execute(ctx).await
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CopyHarness>() }
 
 // ============================================================================
 // PreviewHarness
@@ -876,32 +746,23 @@ pub struct HarnessPreview {
     pub tools: Vec<ToolDefinition>,
 }
 
+#[command(
+    name = "preview_harness",
+    category = "harnesses",
+    description = "Preview the final harness shape with capabilities applied.",
+    method = "POST",
+    path = "/v1/harnesses/preview",
+    policy = HARNESS_VIEW,
+    read_only = true,
+)]
 impl Command for PreviewHarness {
     type Output = HarnessPreview;
 
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "preview_harness",
-            category: "harnesses",
-            description: "Preview the final harness shape with capabilities applied.",
-            method: "POST",
-            path: "/v1/harnesses/preview",
-        }
-    }
-
-    fn read_only() -> bool {
-        true
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
-
     async fn execute(self, ctx: &Ctx) -> Result<HarnessPreview, CommandError> {
         let parent = match self.parent_harness_id {
-            Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
-                .await
-                .map_err(classify_anyhow)?,
+            Some(parent_id) => {
+                q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id).await?
+            }
             None => None,
         };
         crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers_for_org(
@@ -909,8 +770,7 @@ impl Command for PreviewHarness {
             ctx.org_id(),
             &self.mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let (system_prompt, capabilities) = q::merge_preview_layer(
             parent.as_ref(),
             &self.system_prompt.unwrap_or_default(),
@@ -928,13 +788,11 @@ impl Command for PreviewHarness {
             ctx.org_id(),
             &effective_mcp_servers,
         )
-        .await
-        .map_err(classify_anyhow)?;
+        .await?;
         let preview = ctx
             .capability_service
             .preview_with_features(ctx.org_id(), &system_prompt, &capabilities)
-            .await
-            .map_err(classify_anyhow)?;
+            .await?;
         let mut tools = preview.tools;
         tools.extend(
             crate::domains::mcp_servers::scoped_mcp::build_materialized_scoped_mcp_tool_definitions(
@@ -946,7 +804,7 @@ impl Command for PreviewHarness {
                 ctx.capability_service.egress_service().as_ref(),
             )
             .await
-            .map_err(classify_anyhow)?,
+            ?,
         );
         Ok(HarnessPreview {
             system_prompt: preview.system_prompt,
@@ -955,8 +813,6 @@ impl Command for PreviewHarness {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<PreviewHarness>() }
 
 // ============================================================================
 // CheckHarnessName
@@ -975,22 +831,16 @@ pub struct NameAvailability {
     pub available: bool,
 }
 
+#[command(
+    name = "check_harness_name",
+    category = "harnesses",
+    description = "Check whether a harness name is available.",
+    method = "GET",
+    path = "/v1/harnesses/check-name",
+    policy = HARNESS_VIEW,
+)]
 impl Command for CheckHarnessName {
     type Output = NameAvailability;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "check_harness_name",
-            category: "harnesses",
-            description: "Check whether a harness name is available.",
-            method: "GET",
-            path: "/v1/harnesses/check-name",
-        }
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HARNESS_VIEW)
-    }
 
     async fn execute(self, ctx: &Ctx) -> Result<NameAvailability, CommandError> {
         // If name is invalid or reserved, it's not "available"
@@ -1006,11 +856,7 @@ impl Command for CheckHarnessName {
             })
             .transpose()?;
 
-        let existing = ctx
-            .db
-            .get_harness_by_name(ctx.org_id(), &self.name)
-            .await
-            .map_err(classify_anyhow)?;
+        let existing = ctx.db.get_harness_by_name(ctx.org_id(), &self.name).await?;
 
         let available = match existing {
             Some(row) => exclude_id == Some(row.id),
@@ -1020,8 +866,6 @@ impl Command for CheckHarnessName {
         Ok(NameAvailability { available })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<CheckHarnessName>() }
 
 #[cfg(test)]
 mod tests {
@@ -1204,7 +1048,7 @@ mod tests {
 
     #[tokio::test]
     async fn harness_creation_rejected_at_limit_and_allowed_below() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = test_ctx(db, 2);
 
         CreateHarness(basic_request("h1"))
@@ -1226,7 +1070,7 @@ mod tests {
 
     #[tokio::test]
     async fn soft_deleted_harnesses_do_not_count_toward_limit() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = test_ctx(db, 1);
 
         let h1 = CreateHarness(basic_request("h1"))
@@ -1264,7 +1108,7 @@ mod tests {
 
     #[tokio::test]
     async fn built_in_harnesses_do_not_count_toward_limit() {
-        let db = Arc::new(StorageBackend::in_memory());
+        let db = Arc::new(StorageBackend::test_database());
         let ctx = test_ctx(db.clone(), 1);
 
         // Seed a system harness (is_built_in = true), as platform bootstrap does.

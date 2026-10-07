@@ -4,7 +4,7 @@
 // has a single import path.
 
 use crate::records::VirtualUserStatus;
-use everruns_durable::UpdateField;
+use crate::storage::UpdateField;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 

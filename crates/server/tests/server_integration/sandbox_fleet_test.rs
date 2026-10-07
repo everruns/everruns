@@ -78,7 +78,7 @@ async fn setup(
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect to PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let owner = create_test_principal(&backend, label).await;
     let session = backend
         .create_session(session_input(owner, label))

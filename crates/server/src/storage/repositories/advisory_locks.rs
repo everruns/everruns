@@ -38,7 +38,9 @@ impl Database {
     ) -> Result<Transaction<'static, Postgres>> {
         let deadline = tokio::time::Instant::now() + wait;
         loop {
-            let mut tx = self.pool.begin().await?;
+            // A lock guard, not data: it must end when its holder drops it,
+            // not when an enclosing command transaction does.
+            let mut tx = self.pool.begin_detached().await?;
             let acquired: bool = sqlx::query_scalar(
                 "SELECT pg_try_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))",
             )

@@ -165,7 +165,7 @@ pluggable. OSS depends on no vendor SDK at the core layer.
 Backends:
 
 * **In-memory** (`InMemoryVectorStore`), brute-force cosine, used by dev mode
-  and the in-memory storage-parity tests. No external dependency.
+  and tests. No external dependency.
 * **Turbopuffer** (reference production backend), namespace-oriented serverless
   vector + BM25 engine. Multitenancy is first-class: each index is its own
   **namespace**, org-prefixed for isolation.
@@ -404,7 +404,7 @@ harness.
   ordering, document delete, namespace delete, cosine ranking).
 * Capability config validation: empty is valid; malformed IDs, duplicates, and
   out-of-range `top_k` are rejected.
-* Storage parity (in-memory and Postgres) for the three tables (management slice).
+* Storage contract tests on PostgreSQL for the three tables (management slice).
 * Sync claim/complete/fail concurrency with stale-claim rejection (sync slice).
 * Create-to-ingestion state transitions, invalid embedding-model rejection,
   source-subfolder ingestion, failure display, and management-UI polling.
@@ -419,7 +419,7 @@ PR-sized slices, each leaving the tree green:
 1. **Foundation**: entity IDs, Postgres schema, `VectorStore` trait +
    `InMemoryVectorStore`, `knowledge_index` capability registration + config
    validation. No retrieval, no sync yet.
-2. **Management + storage**: domain, repositories (in-memory + Postgres),
+2. **Management + storage**: domain, repositories (Postgres),
    CRUD API, namespace assignment, OpenAPI.
 3. **Syncout**: GitHub source connector, chunking, embedding, the background
    sync worker, Turbopuffer backend wired through `HostComposition` and

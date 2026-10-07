@@ -479,18 +479,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         }
         let response_model = body.model.clone();
         let (text, tool_calls, reasoning, finish_reason) = match body.choices.into_iter().next() {
-            Some(choice) => {
-                let text = match choice.message.content {
-                    Some(OpenAiContent::Text(text)) => text,
-                    Some(OpenAiContent::Parts(parts)) => parts
-                        .into_iter()
-                        .filter_map(|part| match part {
-                            OpenAiContentPart::Text { text, .. } => Some(text),
-                            _ => None,
-                        })
-                        .collect(),
-                    None => String::new(),
-                };
+            Some(mut choice) => {
+                let (text, thinking) = choice.message.text_and_thinking();
                 // Mirror the streaming path: tool calls whose arguments are not
                 // complete JSON values cannot execute, so drop them.
                 let tool_calls: Vec<ToolCall> = choice
@@ -506,7 +496,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                         })
                     })
                     .collect();
-                let reasoning = choice.message.reasoning_content.map(|text| {
+                let reasoning = thinking.map(|text| {
                     crate::reasoning::ReasoningContentPart::opaque("openai-protocol")
                         .with_text(crate::reasoning::ReasoningText::Plain { text })
                 });
@@ -832,23 +822,22 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     let mut counts = completion_tokens.lock().unwrap();
                                     let mut acc = accumulated_tool_calls.lock().unwrap();
                                     let mut fr = finish_reason.lock().unwrap();
-                                    let Some(stream_event) = process_stream_choice(
+                                    let events = process_stream_choice(
                                         choice,
                                         &mut counts.estimated,
                                         &mut acc,
                                         &mut fr,
-                                    ) else {
-                                        return Vec::new();
-                                    };
+                                    );
                                     // Mirror reasoning deltas into the artifact
                                     // buffer as they stream, so the durable item
                                     // assembled at [DONE] carries the whole text.
-                                    if let LlmStreamEvent::ReasoningDelta { delta, .. } =
-                                        &stream_event
-                                    {
-                                        accumulated_reasoning.lock().unwrap().push_str(delta);
+                                    for event in &events {
+                                        if let LlmStreamEvent::ReasoningDelta { delta, .. } = event
+                                        {
+                                            accumulated_reasoning.lock().unwrap().push_str(delta);
+                                        }
                                     }
-                                    return vec![Ok(stream_event)];
+                                    return events.into_iter().map(Ok).collect();
                                 }
                                 Vec::new() // usage- or role-only chunk
                             }
@@ -898,21 +887,24 @@ fn take_pending_tool_calls(
 }
 
 /// Processes a single chat-completion stream choice, updating the running
-/// accumulators and returning the event to emit.
+/// accumulators and returning the events to emit, in order.
 ///
 /// EVE-522: some OpenAI-compatible providers (OpenRouter/DeepInfra) send an
 /// empty `content: ""` delta in the *same* chunk that carries
 /// `finish_reason: "tool_calls"`. The content branch must therefore ignore
-/// empty content, otherwise it short-circuits before the finish handler and the
-/// accumulated tool calls are silently dropped. Emitting drains the accumulator
-/// so a repeated finish chunk does not re-emit the same calls.
-/// `None` when the chunk has nothing to emit: no empty `TextDelta` filler.
+/// empty content, otherwise the accumulated tool calls are silently dropped.
+/// Emitting drains the accumulator so a repeated finish chunk does not re-emit
+/// the same calls. Empty when the chunk has nothing to emit: no empty
+/// `TextDelta` filler.
+///
+/// One chunk can carry reasoning and answer text together (Mistral's typed
+/// content chunks do), so both are emitted, reasoning first.
 fn process_stream_choice(
     choice: &OpenAiStreamChoice,
     total_tokens: &mut u32,
     accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: &mut Option<String>,
-) -> Option<LlmStreamEvent> {
+) -> Vec<LlmStreamEvent> {
     // THREAT[TM-TOOL-036]: a terminal reason can share a final tool fragment.
     // Preserve it before any delta branch returns, especially for rejected calls.
     if let Some(reason) = &choice.finish_reason {
@@ -931,37 +923,41 @@ fn process_stream_choice(
                 tc.function.as_ref().and_then(|f| f.arguments.as_deref()),
             );
         }
-        return None;
+        return Vec::new();
     }
 
-    // Reasoning delta. Checked before content: a chunk carries one or the
-    // other, and reasoning must reach the reasoning channel rather than being
-    // dropped (which is what happened before this protocol parsed it at all).
+    let mut events = Vec::new();
+    // Reasoning delta, before content so it reaches the reasoning channel
+    // rather than being dropped (which is what happened before this protocol
+    // parsed it at all).
     if let Some(reasoning) = choice.delta.reasoning_text() {
-        return Some(LlmStreamEvent::ReasoningDelta {
+        events.push(LlmStreamEvent::ReasoningDelta {
             delta: reasoning.to_string(),
             summary: false,
         });
     }
 
     // Content delta. Guard on non-empty: an empty-content delta that rides along
-    // with finish_reason must not short-circuit the finish handler below.
+    // with finish_reason must not stand in for the finish handler below.
     if let Some(content) = &choice.delta.content
         && !content.is_empty()
     {
         *total_tokens += 1;
-        return Some(LlmStreamEvent::TextDelta(content.clone()));
+        events.push(LlmStreamEvent::TextDelta(content.clone()));
     }
 
     // Emit completed calls immediately. Draining prevents repeated finish
     // chunks from emitting the same calls again.
-    if choice.finish_reason.as_deref() == Some("tool_calls") && !accumulated_tool_calls.is_empty() {
-        return Some(LlmStreamEvent::ToolCalls(
+    if events.is_empty()
+        && choice.finish_reason.as_deref() == Some("tool_calls")
+        && !accumulated_tool_calls.is_empty()
+    {
+        events.push(LlmStreamEvent::ToolCalls(
             accumulated_tool_calls.take_finalized(),
         ));
     }
 
-    None
+    events
 }
 
 // ============================================================================

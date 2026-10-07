@@ -7,9 +7,9 @@ use crate::kernel_imports::{
     contracts::typed_id::SessionId,
     session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule},
 };
+use crate::storage::UpdateField;
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
-use everruns_durable::UpdateField;
 use std::sync::Arc;
 
 use crate::services::PrincipalService;

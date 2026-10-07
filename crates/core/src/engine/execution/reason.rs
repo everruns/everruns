@@ -16,9 +16,8 @@ use crate::engine::error::{AgentLoopError, Result};
 use crate::engine::events::{
     EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, OutputMessageCompletedData,
     OutputMessageDeltaData, OutputMessageReplacedData, OutputMessageStartedData,
-    ReasonCompletedData, ReasonItemData, ReasonRecoveredData, ReasonStartedData,
-    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, RecoveryMode,
-    TokenUsage, ToolDefinitionSummary,
+    ReasonCompletedData, ReasonItemData, ReasonStartedData, ReasonThinkingCompletedData,
+    ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::engine::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, remaining_retry_time,
@@ -39,7 +38,6 @@ use crate::engine::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::engine::{ErrorDisclosure, UserFacingError, UserFacingErrorContext};
 use crate::engine::{
     durability::DurableToolResultStore,
-    durability::PartialStreamState,
     durability::PartialStreamStore,
     file_services::{FileResolver, ResolvedFile},
     image_services::ImageResolver,
@@ -56,11 +54,13 @@ mod generation_outcome;
 mod hosted_tools;
 mod observability;
 mod output_hooks;
+mod partial_recovery;
 mod provider_managed_compaction;
 mod reasoning_updates;
 mod request_controls;
 mod stream_state;
 mod transcript;
+mod truncation_gate;
 
 use compaction::{
     ProactiveCompactionContext, ReactiveCompactionContext, apply_proactive_compaction,
@@ -182,6 +182,10 @@ pub struct ReasonResult {
     /// A remote tool loop (OpenAI Agents API) paused on a tool call; the turn parks (EVE-1124).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub waiting_for_tool_results: bool,
+    /// The generation lost tool calls to truncation and the output-truncation
+    /// gate retries: the turn runs another reason step even without calls.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub truncation_retry: bool,
 }
 
 fn default_max_iterations() -> usize {
@@ -472,19 +476,21 @@ impl ReasonAtom {
         // Track reason phase timing for Braintrust observability
         let reason_start = Instant::now();
 
-        // Emit reason.started event
-        if let Err(e) = self
-            .event_emitter
-            .emit(EventRequest::new(
-                context.session_id,
-                event_context.clone(),
-                ReasonStartedData {
-                    harness_id,
-                    agent_id,
-                    metadata: None, // Will be populated after model resolution
-                },
-            ))
-            .await
+        // A lost attempt of this step already announced it (EVE-532).
+        let prior = self.prior_stream(&context).await;
+        if prior.announces_step()
+            && let Err(e) = self
+                .event_emitter
+                .emit(EventRequest::new(
+                    context.session_id,
+                    event_context.clone(),
+                    ReasonStartedData {
+                        harness_id,
+                        agent_id,
+                        metadata: None, // Will be populated after model resolution
+                    },
+                ))
+                .await
         {
             tracing::warn!(
                 session_id = %context.session_id,
@@ -528,6 +534,7 @@ impl ReasonAtom {
                         iteration,
                         mcp_tool_definitions: &mcp_tool_definitions,
                         assembled,
+                        prior,
                     },
                 ))
                 .await;
@@ -746,6 +753,7 @@ impl ReasonAtom {
         previous_response_id: Option<String>,
         iteration: u32,
         assembled: AssembledTurnContext,
+        prior: partial_recovery::PriorStream,
     ) -> Result<ReasonResult> {
         let prior_usage = assembled.cumulative_usage();
         let mut messages = transcript::order_native_results(assembled.messages);
@@ -762,6 +770,7 @@ impl ReasonAtom {
         let resolved_locale = assembled.resolved_locale;
         let compaction_policy = assembled.compaction_policy;
         let resolved_capability_configs = assembled.resolved_capability_configs;
+        let truncation_gate = truncation_gate::Gate::new(&resolved_capability_configs, &messages);
         let runtime_agent = assembled.runtime_agent;
         let embedder_metadata = assembled.embedder_metadata;
 
@@ -865,70 +874,23 @@ impl ReasonAtom {
         )
         .filter(|_| native_reasoning_compaction);
 
-        // 9. Check for an in-flight partial assistant stream from a previous worker (EVE-532).
-        // If found, apply the ContinuePartial recovery policy: finalize from accumulated
-        // text (if non-empty) or restart clean (if empty/usable partial only).
-        if let Some(ref store) = self.partial_stream_store {
-            let turn_id_str = context.turn_id.to_string();
-            match store.get_partial_stream(session_id, &turn_id_str).await {
-                Ok(Some(partial)) if !partial.accumulated.is_empty() => {
-                    // Finalize: emit completed from persisted accumulated text.
-                    return self
-                        .finalize_partial_stream(
-                            session_id,
-                            context,
-                            partial,
-                            iteration,
-                            &runtime_agent,
-                            &resolved_capability_configs,
-                        )
-                        .await;
-                }
-                Ok(Some(partial)) => {
-                    if let (Some(replay), Some(mut saved)) =
-                        (reasoning_replay.as_mut(), partial.reasoning_state)
-                    {
-                        // The old worker persisted the effective live override
-                        // before sending. Its process-local handle is gone.
-                        saved.pending = saved.effective;
-                        replay.state = saved;
-                    }
-                    // Empty accumulated: restart clean — fall through to normal LLM call.
-                    // Emit reason.recovered { mode: Restart } for observability.
-                    let recovery_ctx = EventContext::from_execution_context(context);
-                    let _ = self
-                        .event_emitter
-                        .emit(EventRequest::new(
-                            session_id,
-                            recovery_ctx,
-                            ReasonRecoveredData {
-                                turn_id: context.turn_id,
-                                mode: RecoveryMode::Restart,
-                                accumulated_len: 0,
-                            },
-                        ))
-                        .await;
-                    tracing::info!(
-                        session_id = %session_id,
-                        turn_id = %context.turn_id,
-                        "ReasonAtom: partial stream detected with empty accumulated; restarting clean"
-                    );
-                }
-                Ok(None) => {} // No partial; normal first-run execution.
-                Err(e) => {
-                    if reasoning_replay.is_some() {
-                        return Err(e);
-                    }
-                    // Best-effort: log and continue with normal execution.
-                    tracing::warn!(
-                        session_id = %session_id,
-                        turn_id = %context.turn_id,
-                        error = %e,
-                        "ReasonAtom: partial-stream store error; proceeding with normal execution"
-                    );
-                }
-            }
-        }
+        // 9. Recover a stream a lost attempt left open (EVE-532): finalize it
+        // from persisted text, or restart the call under its message id.
+        let resumed_message_id = match self
+            .recover_partial_stream(
+                prior,
+                context,
+                iteration,
+                &runtime_agent,
+                &resolved_capability_configs,
+                reasoning_replay.as_mut(),
+            )
+            .await?
+        {
+            partial_recovery::Recovery::Finalized(result) => return Ok(*result),
+            partial_recovery::Recovery::Restart(message_id) => Some(message_id),
+            partial_recovery::Recovery::Fresh => None,
+        };
 
         // 10. Repair dangling tool calls (EVE-533): ensure every assistant tool_call
         // has a matching ToolResult before the LLM call. Consults durable_tool_results
@@ -971,6 +933,7 @@ impl ReasonAtom {
                 &context_messages,
                 stateful_response_continuation || restored_checkpoint.is_some(),
             );
+        context_messages = truncation_gate::insert_notes(context_messages);
 
         // 9c. Dynamic facts after each answered input, rendered as of that input.
         // Capable Anthropic models use turn-scoped system messages; others keep
@@ -1201,29 +1164,26 @@ impl ReasonAtom {
         // Allocate the public message id before the first lifecycle event so
         // started/delta/replaced/completed can be grouped without turn-level
         // heuristics. Each reasoning iteration reaches this point separately.
-        let output_message_id = MessageId::new();
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %context.turn_id,
-            "ReasonAtom: emitting output.message.started event"
-        );
-        if let Err(e) = self
-            .event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                streaming_event_context.clone(),
-                OutputMessageStartedData {
-                    reasoning_state: llm_config.reasoning_state.clone(),
-                    turn_id: context.turn_id,
-                    message_id: output_message_id,
-                    model: Some(runtime_agent.model.clone()),
-                    iteration: Some(iteration),
-                    // Emitted before the LLM call — phase is not yet known, so the
-                    // streamed hint starts `None` (treat as assistant text).
-                    phase: None,
-                },
-            ))
-            .await
+        // A restarted stream keeps the id whose started event is stored.
+        let output_message_id = resumed_message_id.unwrap_or_else(MessageId::new);
+        if resumed_message_id.is_none()
+            && let Err(e) = self
+                .event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    streaming_event_context.clone(),
+                    OutputMessageStartedData {
+                        reasoning_state: llm_config.reasoning_state.clone(),
+                        turn_id: context.turn_id,
+                        message_id: output_message_id,
+                        model: Some(runtime_agent.model.clone()),
+                        iteration: Some(iteration),
+                        // Emitted before the LLM call — phase is not yet known, so the
+                        // streamed hint starts `None` (treat as assistant text).
+                        phase: None,
+                    },
+                ))
+                .await
         {
             if llm_config.reasoning_state.is_some() {
                 return Err(e);
@@ -1232,11 +1192,6 @@ impl ReasonAtom {
                 session_id = %session_id,
                 error = %e,
                 "ReasonAtom: failed to emit output.message.started event"
-            );
-        } else {
-            tracing::info!(
-                session_id = %session_id,
-                "ReasonAtom: output.message.started event emitted successfully"
             );
         }
 
@@ -2315,6 +2270,7 @@ impl ReasonAtom {
             !finalized_tool_calls.is_empty(),
         );
         let served = meta.and_then(|m| m.response_model.clone());
+        let truncation = truncation_gate.decide(&outcome);
         let mut generation_data = outcome
             .apply(LlmGenerationData::success_with_retry(
                 messages_for_event.clone(),
@@ -2330,7 +2286,8 @@ impl ReasonAtom {
                 response_id.clone(),
                 generation_outcome::retry_info(meta),
             ))
-            .with_response_model(served);
+            .with_response_model(served)
+            .with_truncation_gate(truncation.label());
         if let Some(info) = compaction_info {
             generation_data = generation_outcome::with_compaction(generation_data, info);
         }
@@ -2357,45 +2314,30 @@ impl ReasonAtom {
             );
         }
 
-        // 17. Build metadata with model and reasoning effort info
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert(
-            "model".to_string(),
-            serde_json::Value::String(runtime_agent.model.clone()),
+        // A cut-off generation the policy will not retry ends the turn here,
+        // before its answer is stored (see `truncation_gate`).
+        truncation.log(
+            model_with_provider.provider_type.as_str(),
+            &runtime_agent.model,
         );
-        if let Some(state) = &llm_config.reasoning_state {
-            metadata.insert(
-                reasoning_updates::STATE_KEY.to_string(),
-                serde_json::json!(state),
-            );
+        if truncation.action == crate::output_truncation::OutputTruncationAction::Fail {
+            return Err(truncation.failure());
         }
-        if let Some(effort) = llm_config
-            .reasoning_state
-            .as_ref()
-            .and_then(|state| state.effective)
-            .or(reasoning_effort)
-        {
-            metadata.insert(
-                "reasoning_effort".to_string(),
-                serde_json::Value::String(effort.as_str().to_string()),
-            );
-        }
-        // Stamp the provider driver id and provider response id so the chat UI
-        // can build a deep link to the provider's trace/logs for this message
-        // (see ProviderTraceConfig). The resolved model carries the driver id,
-        // not the concrete provider instance id, so the UI keys trace config by
-        // driver. `response_id` is the provider's generation id (e.g.
-        // OpenRouter's "gen-..."); absent for providers that do not return one.
-        metadata.insert(
-            "provider".to_string(),
-            serde_json::Value::String(model_with_provider.provider_type.to_string()),
+
+        // 17. Assistant-message metadata; a retried generation is stamped.
+        let mut metadata = generation_outcome::assistant_metadata(
+            &runtime_agent.model,
+            llm_config.reasoning_state.as_ref(),
+            llm_config
+                .reasoning_state
+                .as_ref()
+                .and_then(|state| state.effective)
+                .or(reasoning_effort)
+                .map(|effort| effort.as_str()),
+            &model_with_provider.provider_type.to_string(),
+            response_id.as_deref(),
         );
-        if let Some(ref rid) = response_id {
-            metadata.insert(
-                "response_id".to_string(),
-                serde_json::Value::String(rid.clone()),
-            );
-        }
+        truncation.stamp(&mut metadata);
 
         // 18. Store and emit output.message.completed event with metadata and usage.
         // Apply capability-owned response filters before persisting/returning
@@ -2504,8 +2446,10 @@ impl ReasonAtom {
             usage,
             output_message_id: Some(output_message_id),
             time_to_first_token_ms,
-            response_id,
+            // A retry must not chain onto a response that ended mid-call.
+            response_id: response_id.filter(|_| !truncation.retries()),
             finish_reason,
+            truncation_retry: truncation.retries(),
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,
@@ -2577,116 +2521,6 @@ impl ReasonAtom {
         );
 
         Ok(result)
-    }
-
-    /// Finalize a partial assistant stream without making a new provider call (EVE-532).
-    ///
-    /// Emits `output.message.started`, `output.message.completed` from the persisted
-    /// `accumulated` text, and `reason.recovered { mode: Finalize }`.
-    async fn finalize_partial_stream(
-        &self,
-        session_id: SessionId,
-        context: &ExecutionContext,
-        partial: PartialStreamState,
-        iteration: u32,
-        runtime_agent: &crate::engine::RuntimeAgent,
-        resolved_capability_configs: &[crate::engine::CapabilityRef],
-    ) -> Result<ReasonResult> {
-        let event_context = EventContext::from_execution_context(context);
-        let turn_id = context.turn_id;
-        let message_id = partial.message_id;
-
-        // Signal that output is starting (keeps the streaming protocol intact).
-        let _ = self
-            .event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                event_context.clone(),
-                OutputMessageStartedData {
-                    reasoning_state: partial.reasoning_state.clone(),
-                    turn_id,
-                    message_id,
-                    model: None,
-                    iteration: Some(iteration),
-                    // Recovery/finalize path reconstructs the started signal only;
-                    // the streamed phase hint is unavailable here (None).
-                    phase: None,
-                },
-            ))
-            .await;
-
-        // Build the assistant message from capability-filtered accumulated text
-        // and persist it via the canonical event path.
-        let accumulated = filter_response_text(
-            &self.capability_registry,
-            resolved_capability_configs,
-            partial.accumulated,
-        );
-        let mut assistant_message = RuntimeMessage::assistant(&accumulated).with_id(message_id);
-        if let Some(state) = partial.reasoning_state {
-            assistant_message.metadata = Some(HashMap::from([
-                ("model".into(), serde_json::json!("gpt-6-astra")),
-                ("provider".into(), serde_json::json!("openai")),
-                (
-                    reasoning_updates::STATE_KEY.into(),
-                    serde_json::json!(state),
-                ),
-                (
-                    "reasoning_effort".into(),
-                    serde_json::json!(state.effective),
-                ),
-            ]));
-        }
-        let output_message_id = message_id;
-        self.event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                event_context.clone(),
-                OutputMessageCompletedData::new(assistant_message),
-            ))
-            .await?;
-
-        // Emit observability event.
-        let accumulated_len = accumulated.len();
-        let _ = self
-            .event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                event_context.clone(),
-                ReasonRecoveredData {
-                    turn_id,
-                    mode: RecoveryMode::Finalize,
-                    accumulated_len,
-                },
-            ))
-            .await;
-
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %turn_id,
-            accumulated_len,
-            "ReasonAtom: finalized partial stream from persisted accumulated text"
-        );
-
-        Ok(ReasonResult {
-            native_counts: None,
-            success: true,
-            text: accumulated,
-            tool_calls: vec![],
-            has_tool_calls: false,
-            tool_definitions: runtime_agent.tools.clone(),
-            max_iterations: runtime_agent.max_iterations,
-            error: None,
-            user_facing_error: None,
-            error_disclosure: None,
-            usage: None,
-            output_message_id: Some(output_message_id),
-            time_to_first_token_ms: None,
-            response_id: None,
-            finish_reason: Some("stop".to_string()),
-            // No locale, network list, or parallel-call preference on finalize.
-            ..ReasonResult::default()
-        })
     }
 
     /// Resolve image_file references to actual image data

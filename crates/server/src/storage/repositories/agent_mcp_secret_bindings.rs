@@ -2,6 +2,7 @@ use super::super::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBinding
 use super::Database;
 use anyhow::Result;
 use everruns_contracts::typed_id::AgentId;
+use everruns_server_macros::sql;
 use uuid::Uuid;
 
 impl Database {
@@ -9,7 +10,7 @@ impl Database {
         &self,
         input: UpsertAgentMcpSecretBindingRow,
     ) -> Result<AgentMcpSecretBindingRow> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(
+        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
             r#"
             INSERT INTO agent_mcp_secret_bindings
                 (org_id, agent_id, mcp_server_name, mcp_server_url, tool_name,
@@ -26,11 +27,9 @@ impl Database {
                     ELSE NULL
                 END,
                 updated_at = NOW()
-            RETURNING id, org_id, agent_id, mcp_server_name, mcp_server_url,
-                      tool_name, parameter_name, label, description,
-                      value_encrypted, created_at, updated_at
-            "#,
-        )
+            RETURNING {AgentMcpSecretBindingRow}
+            "#
+        ))
         .bind(input.org_id)
         .bind(input.agent_id)
         .bind(input.mcp_server_name)
@@ -49,16 +48,14 @@ impl Database {
         org_id: i64,
         agent_id: AgentId,
     ) -> Result<Vec<AgentMcpSecretBindingRow>> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(
+        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
             r#"
-            SELECT id, org_id, agent_id, mcp_server_name, mcp_server_url,
-                   tool_name, parameter_name, label, description,
-                   value_encrypted, created_at, updated_at
+            SELECT {AgentMcpSecretBindingRow}
             FROM agent_mcp_secret_bindings
             WHERE org_id = $1 AND agent_id = $2
             ORDER BY mcp_server_name, tool_name, parameter_name
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(agent_id)
         .fetch_all(&self.pool)
@@ -72,15 +69,13 @@ impl Database {
         agent_id: AgentId,
         binding_id: Uuid,
     ) -> Result<Option<AgentMcpSecretBindingRow>> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(
+        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
             r#"
-            SELECT id, org_id, agent_id, mcp_server_name, mcp_server_url,
-                   tool_name, parameter_name, label, description,
-                   value_encrypted, created_at, updated_at
+            SELECT {AgentMcpSecretBindingRow}
             FROM agent_mcp_secret_bindings
             WHERE org_id = $1 AND agent_id = $2 AND id = $3
-            "#,
-        )
+            "#
+        ))
         .bind(org_id)
         .bind(agent_id)
         .bind(binding_id)
@@ -96,16 +91,14 @@ impl Database {
         binding_id: Uuid,
         value_encrypted: Vec<u8>,
     ) -> Result<Option<AgentMcpSecretBindingRow>> {
-        sqlx::query_as::<_, AgentMcpSecretBindingRow>(
+        sqlx::query_as::<_, AgentMcpSecretBindingRow>(sql!(
             r#"
             UPDATE agent_mcp_secret_bindings
             SET value_encrypted = $4, updated_at = NOW()
             WHERE org_id = $1 AND agent_id = $2 AND id = $3
-            RETURNING id, org_id, agent_id, mcp_server_name, mcp_server_url,
-                      tool_name, parameter_name, label, description,
-                      value_encrypted, created_at, updated_at
-            "#,
-        )
+            RETURNING {AgentMcpSecretBindingRow}
+            "#
+        ))
         .bind(org_id)
         .bind(agent_id)
         .bind(binding_id)

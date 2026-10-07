@@ -7,7 +7,6 @@
 // for a hand-written update, and that update records as `restored`. Restore
 // declares itself exempt because the update it runs is the recorded change.
 
-use everruns_core::Policy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::ToSchema;
@@ -42,8 +41,7 @@ async fn revision(
     };
     ctx.db
         .get_entity_revision(&key)
-        .await
-        .map_err(classify_anyhow)?
+        .await?
         .ok_or_else(|| match revision {
             Some(revision) => {
                 CommandError::not_found_msg(format!("{entity_ref} has no revision {revision}"))
@@ -76,36 +74,18 @@ pub struct ShowEntityRevision {
     pub revision: Option<i64>,
 }
 
+#[command(
+    name = "show_entity_revision",
+    category = "history",
+    description = "Show an entity as it stood at one revision of its history (the latest by default). Secrets appear only as markers saying whether they were set.",
+    method = "GET",
+    path = "/v1/history/{entity_ref}/revisions/{revision}",
+    policy = HISTORY_READ,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["history"], "show").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("See an agent's configuration before last week's change", "everruns history show agent_01h9 --revision 4",)]),
+)]
 impl Command for ShowEntityRevision {
     type Output = EntityRevision;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "show_entity_revision",
-            category: "history",
-            description: "Show an entity as it stood at one revision of its history (the latest by default). Secrets appear only as markers saying whether they were set.",
-            method: "GET",
-            path: "/v1/history/{entity_ref}/revisions/{revision}",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["history"], "show")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "See an agent's configuration before last week's change",
-                "everruns history show agent_01h9 --revision 4",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HISTORY_READ)
-    }
 
     fn output_shape() -> &'static str {
         "{revision, change, snapshot}"
@@ -121,8 +101,6 @@ impl Command for ShowEntityRevision {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<ShowEntityRevision>() }
 
 // ============================================================================
 // DiffEntityRevisions
@@ -141,36 +119,18 @@ pub struct DiffEntityRevisions {
     pub to: Option<i64>,
 }
 
+#[command(
+    name = "diff_entity_revisions",
+    category = "history",
+    description = "Compare two revisions of an entity field by field (to the latest by default). Secrets compare only as set or changed.",
+    method = "GET",
+    path = "/v1/history/{entity_ref}/diff",
+    policy = HISTORY_READ,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["history"], "diff").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("See what changed in an agent since revision 4", "everruns history diff agent_01h9 --from 4",)]),
+)]
 impl Command for DiffEntityRevisions {
     type Output = Vec<FieldDiff>;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "diff_entity_revisions",
-            category: "history",
-            description: "Compare two revisions of an entity field by field (to the latest by default). Secrets compare only as set or changed.",
-            method: "GET",
-            path: "/v1/history/{entity_ref}/diff",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["history"], "diff")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "See what changed in an agent since revision 4",
-                "everruns history diff agent_01h9 --from 4",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HISTORY_READ)
-    }
 
     fn output_schema() -> serde_json::Value {
         array_output_schema(output_schema_for::<FieldDiff>())
@@ -187,8 +147,6 @@ impl Command for DiffEntityRevisions {
         Ok(snapshot::diff(snapshot_of(&from)?, snapshot_of(&to)?))
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<DiffEntityRevisions>() }
 
 // ============================================================================
 // RestoreEntityRevision
@@ -216,36 +174,18 @@ pub struct RestoreEntityRevision {
     pub revision: i64,
 }
 
+#[command(
+    name = "restore_entity_revision",
+    category = "history",
+    description = "Make an entity look like it did at a revision. Runs as a new change through the entity's own update command, recorded as `restored`; secrets keep their current value.",
+    method = "POST",
+    path = "/v1/history/{entity_ref}/restore",
+    policy = HISTORY_READ,
+    positional = "entity_ref",
+    cli = CliRoute::new(&["history"], "restore").with_args(&[CliArg::new("entity_ref").at(1)]).with_examples(&[CliExample::new("Put an agent back the way it was before a bad edit", "everruns history restore agent_01h9 --revision 4 --reason 'Revert the prompt change'",)]),
+)]
 impl Command for RestoreEntityRevision {
     type Output = RestoreResult;
-
-    fn meta() -> CommandMeta {
-        CommandMeta {
-            name: "restore_entity_revision",
-            category: "history",
-            description: "Make an entity look like it did at a revision. Runs as a new change through the entity's own update command, recorded as `restored`; secrets keep their current value.",
-            method: "POST",
-            path: "/v1/history/{entity_ref}/restore",
-        }
-    }
-
-    fn cli() -> Option<CliRoute> {
-        const ROUTE: CliRoute = CliRoute::new(&["history"], "restore")
-            .with_args(&[CliArg::new("entity_ref").at(1)])
-            .with_examples(&[CliExample::new(
-                "Put an agent back the way it was before a bad edit",
-                "everruns history restore agent_01h9 --revision 4 --reason 'Revert the prompt change'",
-            )]);
-        Some(ROUTE)
-    }
-
-    fn positional_arg() -> Option<&'static str> {
-        Some("entity_ref")
-    }
-
-    fn policy() -> Option<&'static Policy> {
-        Some(&HISTORY_READ)
-    }
 
     fn output_shape() -> &'static str {
         "{restored_revision, entity, warnings}"
@@ -304,5 +244,3 @@ impl Command for RestoreEntityRevision {
         })
     }
 }
-
-inventory::submit! { CommandDescriptor::of::<RestoreEntityRevision>() }

@@ -23,6 +23,7 @@ use everruns_core::{
     tool_context::ToolContext,
 };
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
+use everruns_server::storage::{DbSessionTaskRegistry, StorageBackend};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -380,12 +381,11 @@ async fn spawn_background_against_local_a2a(config: Value) -> (Arc<TestStorageSt
     let storage = Arc::new(TestStorageStore::default());
     // Background spawns are now required to be task-backed (so they can be
     // controlled via wait_task/message_task/cancel_task), so the ToolContext
-    // must carry a session-task registry. An in-memory one is enough here.
-    let task_registry: Arc<dyn everruns_core::session_task::SessionTaskRegistry> =
-        Arc::new(everruns_server::storage::DbSessionTaskRegistry::new(
-            Arc::new(everruns_server::storage::StorageBackend::in_memory()),
-        ));
-    let ctx = ToolContext::with_storage_store(SessionId::new(), storage.clone())
+    // must carry a session-task registry, and tasks belong to a real session.
+    let task_db = Arc::new(StorageBackend::test_database());
+    let parent_session_id = task_db.create_test_session().await;
+    let task_registry = Arc::new(DbSessionTaskRegistry::new(task_db));
+    let ctx = ToolContext::with_storage_store(parent_session_id, storage.clone())
         .with_session_task_registry(task_registry);
 
     let result = spawn_tool

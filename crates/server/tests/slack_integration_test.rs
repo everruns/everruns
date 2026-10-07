@@ -1259,8 +1259,9 @@ async fn test_real_slack_reads_the_configuration_refresh_token() {
         EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
             .expect("test encryption"),
     );
-    let provisioner = SlackApiProvisioner::new(Arc::new(StorageBackend::in_memory()), encryption)
-        .expect("provisioner");
+    let provisioner =
+        SlackApiProvisioner::new(Arc::new(StorageBackend::test_database()), encryption)
+            .expect("provisioner");
 
     match provisioner
         .connect(1, "xoxe-1-everruns-contract-check")

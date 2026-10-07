@@ -142,8 +142,7 @@ async fn create_test_session(
         trigger_id: None,
         harness_id: Some(harness.id),
         agent_id: None,
-        agent_version_id: None,
-        agent_config_hash: None,
+        agent_revision: None,
         virtual_user_id: None,
         owner_principal_id: principal_id,
         resolved_owner_user_id: None,
@@ -336,7 +335,7 @@ async fn run_background_sweep_regression() {
         .await
         .expect("save parked turn input");
 
-    let _burst = saturate(context.db.pool().expect("request pool"), 4).await;
+    let _burst = saturate(context.db.pool(), 4).await;
     let request_error = context
         .db
         .get_session(DEFAULT_ORG_ID, scheduled_session.id)

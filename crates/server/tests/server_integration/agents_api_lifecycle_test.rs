@@ -50,7 +50,7 @@ async fn postgres_agents_api_provider_sessions_are_tombstoned_retained_and_delet
     let pool = PgPool::connect(&get_database_url())
         .await
         .expect("connect PostgreSQL");
-    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let backend = StorageBackend::from_database(Database::new(pool.clone()));
     let principal = create_test_principal(&backend, "agents-api-lifecycle").await;
     let encryption = Arc::new(
         EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap(),

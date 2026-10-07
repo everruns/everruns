@@ -2376,7 +2376,7 @@ mod tests {
         let config = AuthConfig::default();
         AuthState::builtin(
             config,
-            std::sync::Arc::new(crate::storage::StorageBackend::in_memory()),
+            std::sync::Arc::new(crate::storage::StorageBackend::test_database()),
         )
     }
 

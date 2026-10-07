@@ -60,7 +60,7 @@ async fn exchange(
         .db
         .resolve_runtime_identity(crate::storage::runtime_identity::VerifiedRuntimeIdentity {
             org_id: context.org_id,
-            provider: "oidc".into(),
+            provider: principal.provider.clone(),
             realm: principal.identity_realm.clone(),
             subject: principal.subject.clone(),
             name: "User".into(),
@@ -80,7 +80,7 @@ async fn exchange(
     let binding = bindings
         .iter()
         .find(|b| {
-            b.provider == "oidc"
+            b.provider == principal.provider
                 && b.realm == principal.identity_realm
                 && b.subject == principal.subject
         })

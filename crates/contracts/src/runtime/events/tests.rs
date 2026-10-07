@@ -50,6 +50,7 @@ fn generation_metadata() -> LlmGenerationMetadata {
         provider_finish_reason: None,
         tool_calls_dropped: 0,
         tool_calls_truncated_executed: 0,
+        truncation_gate: None,
     }
 }
 

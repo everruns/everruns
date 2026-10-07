@@ -19,6 +19,8 @@ pub mod gemini;
 pub mod mai;
 #[cfg(feature = "meta")]
 pub mod meta;
+#[cfg(feature = "mistral")]
+pub mod mistral;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "openrouter")]
@@ -53,6 +55,7 @@ pub use everruns_contracts::driver_registry::{ChatDriver, DriverRegistry};
         feature = "gemini",
         feature = "mai",
         feature = "meta",
+        feature = "mistral",
         feature = "openai",
         feature = "openrouter",
         feature = "vercel"
@@ -78,6 +81,8 @@ pub fn register_drivers(registry: &mut DriverRegistry) {
     mai::register_driver(registry);
     #[cfg(feature = "meta")]
     meta::register_driver(registry);
+    #[cfg(feature = "mistral")]
+    mistral::register_driver(registry);
     #[cfg(feature = "openai")]
     openai::register_driver(registry);
     #[cfg(feature = "openrouter")]
