@@ -337,10 +337,8 @@ async fn an_unscoped_missing_grant_keeps_the_provider_only_shape_without_private
 
     assert_eq!(authorization_of(&connection), None);
     assert_eq!(*resolver.legacy_calls.lock().unwrap(), 0);
-    assert_eq!(
-        *resolver.acts_as_calls.lock().unwrap(),
-        vec![McpServerActsAs::None]
-    );
+    // `none` names no identity, so no connection store is asked.
+    assert!(resolver.acts_as_calls.lock().unwrap().is_empty());
     let required = connection
         .pending_oauth_provider
         .expect("unscoped missing grant must still prompt");
