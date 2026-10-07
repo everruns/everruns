@@ -114,6 +114,39 @@ fn is_loopback_http_uri(raw: &str) -> bool {
     }
 }
 
+/// Whether a requested redirect URI matches a registered one.
+///
+/// Exact string match, except for native loopback callbacks (RFC 8252 §7.3):
+/// the port is ignored, because native clients bind an ephemeral port at
+/// authorization time, and `localhost`, `127.0.0.0/8` and `[::1]` are treated
+/// as one host, because proxies and client libraries rewrite one to another
+/// (seen breaking Codex and Claude Desktop against other servers). Scheme,
+/// path and query must still match exactly, and only `http://` loopback URIs
+/// get this leniency, so a web callback is never widened.
+fn redirect_uri_matches(registered: &str, requested: &str) -> bool {
+    if registered == requested {
+        return true;
+    }
+    if !is_loopback_http_uri(registered) || !is_loopback_http_uri(requested) {
+        return false;
+    }
+    let (Ok(a), Ok(b)) = (url::Url::parse(registered), url::Url::parse(requested)) else {
+        return false;
+    };
+    a.path() == b.path()
+        && a.query() == b.query()
+        && a.username() == b.username()
+        && a.password() == b.password()
+        && a.fragment().is_none()
+        && b.fragment().is_none()
+}
+
+fn redirect_uri_registered(registered_uris: &[String], requested: &str) -> bool {
+    registered_uris
+        .iter()
+        .any(|registered| redirect_uri_matches(registered, requested))
+}
+
 // ============================================
 // Request/Response types
 // ============================================
@@ -575,7 +608,7 @@ async fn oauth_authorize(
     // Validate redirect_uri against registered URIs
     let registered_uris: Vec<String> =
         serde_json::from_value(client.redirect_uris).unwrap_or_default();
-    if !registered_uris.contains(&query.redirect_uri) {
+    if !redirect_uri_registered(&registered_uris, &query.redirect_uri) {
         return Err(AuthError::unauthorized("Invalid redirect_uri"));
     }
     // Defense-in-depth: reject unsafe schemes even if a legacy client managed to
@@ -709,7 +742,7 @@ async fn validate_authorize_client(
         .ok_or_else(|| AuthError::unauthorized("Invalid client_id"))?;
     let registered_uris: Vec<String> =
         serde_json::from_value(client.redirect_uris).unwrap_or_default();
-    if !registered_uris.contains(&query.redirect_uri) {
+    if !redirect_uri_registered(&registered_uris, &query.redirect_uri) {
         return Err(AuthError::unauthorized("Invalid redirect_uri"));
     }
     if validate_redirect_uri(&query.redirect_uri).is_err() {
@@ -1258,7 +1291,7 @@ async fn handle_authorization_code_grant(
     }
 
     // Validate redirect_uri matches
-    if auth_code.redirect_uri != redirect_uri {
+    if !redirect_uri_matches(&auth_code.redirect_uri, redirect_uri) {
         return Err(OAuthErrorResponse {
             error: "invalid_grant".to_string(),
             error_description: Some("redirect_uri mismatch".to_string()),
@@ -1776,6 +1809,63 @@ mod tests {
         assert!(!is_loopback_http_uri("https://localhost/cb"));
         assert!(!is_loopback_http_uri("http://evil.example/cb"));
         assert!(!is_loopback_http_uri("not a url"));
+    }
+
+    #[test]
+    fn test_redirect_uri_matches_loopback_ignores_port_and_host_alias() {
+        // Native clients register without a port and bind an ephemeral one.
+        assert!(redirect_uri_matches(
+            "http://127.0.0.1/callback",
+            "http://127.0.0.1:53124/callback"
+        ));
+        // Something in front rewrote 127.0.0.1 to localhost, or the reverse.
+        assert!(redirect_uri_matches(
+            "http://127.0.0.1:1455/cb",
+            "http://localhost:1455/cb"
+        ));
+        assert!(redirect_uri_matches(
+            "http://localhost/cb",
+            "http://[::1]:9000/cb"
+        ));
+        assert!(redirect_uri_registered(
+            &[
+                "https://app.example.com/cb".into(),
+                "http://localhost/cb".into()
+            ],
+            "http://127.0.0.1:7777/cb"
+        ));
+    }
+
+    #[test]
+    fn test_redirect_uri_matches_stays_strict_elsewhere() {
+        // Path and query still have to match.
+        assert!(!redirect_uri_matches(
+            "http://127.0.0.1/callback",
+            "http://127.0.0.1:5000/other"
+        ));
+        assert!(!redirect_uri_matches(
+            "http://127.0.0.1/cb?a=1",
+            "http://127.0.0.1/cb?a=2"
+        ));
+        // Web callbacks get no port or host leniency.
+        assert!(!redirect_uri_matches(
+            "https://app.example.com/cb",
+            "https://app.example.com:8443/cb"
+        ));
+        assert!(!redirect_uri_matches(
+            "https://localhost/cb",
+            "https://127.0.0.1/cb"
+        ));
+        // A loopback registration never admits a remote host or https.
+        assert!(!redirect_uri_matches(
+            "http://127.0.0.1/cb",
+            "http://evil.example/cb"
+        ));
+        assert!(!redirect_uri_matches(
+            "http://127.0.0.1/cb",
+            "https://127.0.0.1/cb"
+        ));
+        assert!(!redirect_uri_registered(&[], "http://127.0.0.1/cb"));
     }
 
     #[test]
