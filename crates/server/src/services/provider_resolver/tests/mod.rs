@@ -1149,3 +1149,98 @@ async fn an_openai_provider_serves_gpt_6_luna_as_a_decision_model() {
             .is_err()
     );
 }
+
+// THREAT[TM-LLM-037]: an org that answers deployment-owned checks itself is
+// never handed back to the deployment, even when its model cannot serve.
+#[tokio::test]
+async fn system_decisions_follow_the_org_choice_and_never_fall_back() {
+    use everruns_core::connection_services::SystemDecisionModel;
+    let db = Arc::new(StorageBackend::test_database());
+    let encryption = test_encryption();
+    let provider = seed_active_provider(&db, &encryption, "openrouter").await;
+    let model = db
+        .create_model(
+            DEFAULT_ORG_ID,
+            CreateModelRow {
+                provider_id: provider,
+                model_id: "typesafe/jev-1.13".into(),
+                display_name: "Jev".into(),
+                capabilities: vec!["decisions".into()],
+                enabled: true,
+                is_favorite: false,
+                source: "manual".into(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap();
+    db.set_decision_default(DEFAULT_ORG_ID, Some(model.id.uuid()))
+        .await
+        .unwrap();
+    let resolver = service_resolver(db.clone(), Some(encryption));
+    // The default leaves these checks to the deployment, model or not.
+    assert!(matches!(
+        resolver
+            .resolve_system_decision_model(DEFAULT_ORG_ID, None)
+            .await
+            .unwrap(),
+        SystemDecisionModel::Deployment
+    ));
+    let choose = |choice| crate::storage::models::UpdateOrganizationSettings {
+        system_decisions: Some(choice),
+        ..Default::default()
+    };
+    db.patch_organization_settings(
+        DEFAULT_ORG_ID,
+        choose(crate::storage::SystemDecisions::Organization),
+    )
+    .await
+    .unwrap();
+    // Session-less, as Slack asks before a thread has a session.
+    let SystemDecisionModel::Organization(bound) = resolver
+        .resolve_system_decision_model(DEFAULT_ORG_ID, None)
+        .await
+        .unwrap()
+    else {
+        panic!("the org's own model answers");
+    };
+    assert_eq!(bound.model_id, model.id.to_string());
+    assert_eq!(bound.api_key, "sk-test");
+    // A disabled or cleared default is an error, not the deployment.
+    db.update_model(
+        DEFAULT_ORG_ID,
+        model.id.uuid(),
+        crate::storage::models::UpdateModel {
+            enabled: Some(false),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        resolver
+            .resolve_system_decision_model(DEFAULT_ORG_ID, None)
+            .await
+            .is_err()
+    );
+    db.set_decision_default(DEFAULT_ORG_ID, None).await.unwrap();
+    assert!(
+        resolver
+            .resolve_system_decision_model(DEFAULT_ORG_ID, None)
+            .await
+            .is_err()
+    );
+    db.patch_organization_settings(
+        DEFAULT_ORG_ID,
+        choose(crate::storage::SystemDecisions::Deployment),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        resolver
+            .resolve_system_decision_model(DEFAULT_ORG_ID, None)
+            .await
+            .unwrap(),
+        SystemDecisionModel::Deployment
+    ));
+}

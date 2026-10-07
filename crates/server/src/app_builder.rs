@@ -1065,7 +1065,7 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             auth_config.base_url.clone(),
         )
-        .with_decisions(host_composition.decisions());
+        .with_decisions(&host_composition, &provider_resolver, &budget_service);
         let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("webhook", client)

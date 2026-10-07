@@ -177,3 +177,51 @@ async fn an_openai_decision_model_runs_on_the_decisions_api_and_is_priced() {
         .unwrap();
     assert!((cost - 0.0001).abs() < 1e-12, "{cost}");
 }
+
+/// A deployment-owned check asked of the org's model: the binding's model
+/// wins over whatever the caller named, and the call is budgeted and metered
+/// like the Jev tool.
+#[tokio::test]
+async fn host_checks_run_the_org_model_on_the_jev_path() {
+    let response = json!({"model":"typesafe/jev-1.13","answers":{"q":{"type":"noul","noul":0.2}},"usage":{"input_tokens":10,"output_tokens":1}});
+    let (active, events) = context(serde_json::to_vec(&response).unwrap(), "active");
+    let request = DecisionRequest::new("guarded content")
+        .ask("q", DecisionQuestion::noul("Violates the policy?"))
+        .model("caller-named-model");
+    let outcome = BoundDecisionExecutor
+        .evaluate(binding(), request.clone(), &active)
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome.get("q").and_then(|a| a.probability_yes()),
+        Some(0.2)
+    );
+    assert_eq!(events.0.lock().unwrap().len(), 1);
+    let (blocked, _) = context(vec![], "exhausted");
+    assert!(
+        BoundDecisionExecutor
+            .evaluate(binding(), request, &blocked)
+            .await
+            .is_err()
+    );
+}
+
+/// Before a session exists there is nothing to budget or bill, so the call
+/// needs only egress.
+#[tokio::test]
+async fn unmetered_decisions_need_only_egress() {
+    let response = json!({"model":"typesafe/jev-1.13","answers":{"q":{"type":"noul","noul":0.95}}});
+    let request = DecisionRequest::new("a Slack message")
+        .ask("q", DecisionQuestion::noul("Should the agent answer?"));
+    let outcome = evaluate_unmetered(
+        &binding(),
+        request,
+        &Network(serde_json::to_vec(&response).unwrap()),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        outcome.get("q").and_then(|a| a.probability_yes()),
+        Some(0.95)
+    );
+}
