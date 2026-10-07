@@ -80,6 +80,8 @@ To stop new Slack messages without deleting the configuration, select **Unpublis
 Select **Delete** in the Slack channel editor to remove that connection. For an
 app created through **Add to Slack**, this also deletes its Slack app, bot, and
 workspace installation. The confirmation explains this before you continue.
+Removing managed Slack apps requires permission to delete Agent integrations,
+including when archiving an Agent.
 
 Archiving or deleting the Agent removes all of its Slack apps created by
 Everruns and stops new Slack messages. Archiving keeps the Agent definition,

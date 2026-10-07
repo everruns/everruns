@@ -81,6 +81,15 @@ async fn remove_channel_app_locked(
     })?;
     let managed = slack.provisioned_app.is_some();
     if let Some(app) = slack.provisioned_app {
+        // Archiving normally needs manage permission, but deleting a managed
+        // Slack identity must not bypass the integration-deletion policy.
+        crate::domains::agents::AGENT_DANGEROUS
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|_| {
+                CommandError::forbidden(
+                    "Removing managed Slack apps requires permission to delete Agent integrations.",
+                )
+            })?;
         let provisioner = ctx.slack_provisioner.as_ref().ok_or_else(|| {
             CommandError::unavailable(
                 "Slack app removal is unavailable. Reconnect the Slack workspace before retrying.",

@@ -40,7 +40,10 @@ import { usePolicies } from "@/hooks/use-policies";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
-import { SlackRemovalNotice } from "@/components/agents/integrations/slack-removal-notice";
+import {
+  hasManagedSlackApps,
+  SlackRemovalNotice,
+} from "@/components/agents/integrations/slack-removal-notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -430,6 +433,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const canManage = can("agent.manage");
   const confirmError = confirmAction === "delete" ? destroyAgent.error : deleteAgent.error;
   const confirmPending = deleteAgent.isPending || destroyAgent.isPending;
+  const slackRemovalForbidden =
+    !!channels && hasManagedSlackApps(channels) && !can("agent.dangerous");
   const recordPermissions = { manage: canManage };
 
   const overflowMenu = (
@@ -698,6 +703,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             {confirmAction && channels && (
               <SlackRemovalNotice channels={channels} action={confirmAction} />
             )}
+            {slackRemovalForbidden && (
+              <p className="text-sm text-muted-foreground">
+                Removing managed Slack apps requires permission to delete Agent integrations.
+              </p>
+            )}
             {channels === undefined && (
               <p className="text-sm text-muted-foreground">
                 {channelsError
@@ -732,7 +742,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             <Button
               variant={confirmAction === "delete" ? "destructive" : "default"}
               onClick={handleConfirm}
-              disabled={confirmPending || channels === undefined}
+              disabled={confirmPending || channels === undefined || slackRemovalForbidden}
             >
               {confirmAction === "delete"
                 ? destroyAgent.isPending

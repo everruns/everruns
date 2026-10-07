@@ -440,6 +440,55 @@ async fn delayed_slack_delivery_evidence_cannot_restore_removed_credentials() {
 }
 
 #[tokio::test]
+async fn archive_cannot_bypass_managed_slack_app_deletion_permission() {
+    for managed in [false, true] {
+        for patch in [false, true] {
+            let (ctx, agent, provisioner) = setup().await;
+            endpoint(&ctx, &agent, managed.then_some("A1"), true).await;
+            let mut member = ctx_with_role(ctx.db.clone(), OrgRole::Member)
+                .await
+                .with_slack_provisioner(Some(provisioner.clone()));
+            member.encryption = ctx.encryption.clone();
+            let result = if patch {
+                UpdateAgentCmd {
+                    id: agent.public_id.to_string(),
+                    req: UpdateAgentRequest {
+                        status: Some(AgentStatus::Archived),
+                        ..Default::default()
+                    },
+                }
+                .run(&member)
+                .await
+                .map(|_| ())
+            } else {
+                DeleteAgent {
+                    id: agent.public_id.to_string(),
+                }
+                .run(&member)
+                .await
+                .map(|_| ())
+            };
+            if managed {
+                assert_eq!(
+                    result.unwrap_err().status(),
+                    axum::http::StatusCode::FORBIDDEN
+                );
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(provisioner.apps.lock().unwrap().len(), 3);
+            let row = ctx
+                .db
+                .get_agent(ctx.org_id(), AgentId::from_uuid(agent.internal_id))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(row.status, if managed { "active" } else { "archived" });
+        }
+    }
+}
+
+#[tokio::test]
 async fn invalid_patch_does_not_remove_slack_apps() {
     let (ctx, agent, provisioner) = setup().await;
     endpoint(&ctx, &agent, Some("A1"), false).await;

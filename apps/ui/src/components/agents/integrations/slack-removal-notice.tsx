@@ -1,6 +1,14 @@
 import type { AgentChannel } from "@/lib/api/types";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 
+export function hasManagedSlackApps(channels: AgentChannel[]) {
+  return channels.some(
+    (channel) =>
+      channel.channel_type === "slack" &&
+      (channel.channel_config as Record<string, unknown>)?.slack_app_provisioned,
+  );
+}
+
 export function SlackRemovalNotice({
   channels,
   action,
@@ -10,9 +18,7 @@ export function SlackRemovalNotice({
 }) {
   const slack = channels.filter((channel) => channel.channel_type === "slack");
   if (slack.length === 0) return null;
-  const managed = slack.some(
-    (channel) => (channel.channel_config as Record<string, unknown>)?.slack_app_provisioned,
-  );
+  const managed = hasManagedSlackApps(slack);
   const manual = slack.some((channel) => {
     const config = channel.channel_config as Record<string, unknown>;
     return (

@@ -204,8 +204,9 @@ jest.mock("@/hooks", () => ({
   usePageTitle: () => undefined,
 }));
 
+const mockCan = jest.fn();
 jest.mock("@/hooks/use-policies", () => ({
-  usePolicies: () => ({ can: () => true }),
+  usePolicies: () => ({ can: mockCan }),
 }));
 
 let mockManagerNotes = { content: "", revision: 0 };
@@ -249,6 +250,7 @@ async function save() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCan.mockReturnValue(true);
   mockSearchParams = new URLSearchParams();
   mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
   mockUseAgentChannels.mockReturnValue({ data: [], refetch: jest.fn() });
@@ -741,6 +743,22 @@ describe("AgentPage entity actions", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Checking Slack connections…")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
+    expect(mockArchive).not.toHaveBeenCalled();
+  });
+
+  it("requires integration deletion permission before archiving managed Slack apps", async () => {
+    mockCan.mockImplementation((policy: string) => policy !== "agent.dangerous");
+    mockUseAgentChannels.mockReturnValue({
+      data: [{ channel_type: "slack", channel_config: { slack_app_provisioned: true } }],
+    });
+    await renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "More actions for Test Agent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive agent" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(/requires permission to delete Agent integrations/),
+    ).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Archive agent" })).toBeDisabled();
     expect(mockArchive).not.toHaveBeenCalled();
   });

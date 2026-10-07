@@ -203,7 +203,9 @@ says so before it happens.
 **Removing an Agent removes the managed Slack identity.** Channel deletion,
 Agent archive, and permanent deletion remove apps created by Everruns; archive
 preserves the Agent definition but requires Slack reinstallation if restored.
-Manual apps stay operator-managed and confirmations distinguish that limit.
+Managed removal requires the existing Agent integration-deletion permission,
+including through archive. Manual apps stay operator-managed and confirmations
+distinguish that limit.
 Cleanup must finish before lifecycle success is reported. Because external
 deletion cannot roll back, each successful app removal clears its local
 installation credentials durably even if another app fails. Retrying skips
