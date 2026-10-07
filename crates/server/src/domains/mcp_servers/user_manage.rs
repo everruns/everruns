@@ -154,8 +154,7 @@ pub async fn invoke_user_mcp_store(
 }
 
 /// The records a manage call is checked against, loaded from storage as the
-/// turn sees them: the agent that answers this input message (pinned to the
-/// session's version when it is the session's own agent) and its effective
+/// turn sees them: the agent that answers this input message and its effective
 /// harness. Shared by the in-process worker and the gRPC edge.
 pub struct ManageTurnRecords {
     pub harness: Harness,
@@ -185,9 +184,6 @@ impl ManageTurnRecords {
                 .runtime_invocation_responder(session.id, message)
                 .await?
                 .map(everruns_contracts::typed_id::AgentId::from_uuid);
-            if session.agent_id != responder {
-                session.agent_version_id = None;
-            }
             session.agent_id = responder;
         }
         let agent = match session.agent_id {
@@ -199,16 +195,10 @@ impl ManageTurnRecords {
                         row.id.uuid(),
                     )
                     .await?;
-                    let mut agent =
-                        crate::domains::agents::queries::row_to_agent(row, capabilities);
-                    if let Some(version_id) = session.agent_version_id
-                        && let Some(version) = db.get_agent_version(org_id, version_id).await?
-                    {
-                        let version =
-                            crate::domains::agents::queries::row_to_agent_version(version);
-                        agent = crate::domains::agents::queries::version_to_agent(&agent, &version);
-                    }
-                    Some(agent)
+                    Some(crate::domains::agents::queries::row_to_agent(
+                        row,
+                        capabilities,
+                    ))
                 }
                 _ => None,
             },

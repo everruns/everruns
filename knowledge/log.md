@@ -9,6 +9,11 @@
   versions retired into history, and the `⋯` menu, with the limits that remain.
   See [Change Reasons and Manager Context](execution/change-reasons-and-manager-context.md).
 
+* **Slack app icons follow avatar changes.** One-click apps get `apps.icon.set`
+  at create, again after install, and on every avatar change. A public API
+  origin is fetched by Slack; a local one is uploaded. See
+  [Agent Avatars](ui/agent-avatars.md).
+
 * **OpenAI's GPT-6 Luna is a tenant decision model.** An OpenAI provider
   now offers `gpt-6-luna-decisions` in its catalog, so an organization can
   pick it as its decision default or bind it to the Jev capability. It runs on
