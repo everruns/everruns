@@ -141,6 +141,10 @@ fn configure_environment(database_url: &str) {
         std::env::set_var("DEPLOYMENT_GRADE", "dev");
         std::env::set_var("AUTH_MODE", "none");
         std::env::set_var("WORKER_GRPC_AUTH_TOKEN", WORKER_TOKEN);
+        // Every client here shares 127.0.0.1, so the per-IP API limit (1200
+        // requests a minute) trips on event polling once sessions run in
+        // parallel. The bench measures turns, not the limiter.
+        std::env::set_var("RATE_LIMIT_API_REQUESTS_PER_MINUTE", "0");
     }
 }
 

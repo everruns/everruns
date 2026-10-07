@@ -17,15 +17,14 @@
 # rows only when DATABASE_URL is set (the facade CI job runs its smoke without
 # a database). The bench applies the durable schema itself, so the job needs
 # no migrations. Its compare gates only against baseline rows recorded with
-# this job's moniker: the committed turn_backends_baseline.jsonl was taken on
-# a 4-core container (`local`), so until a run's summary.jsonl replaces it the
-# job reports and does not gate.
+# this job's moniker, so turn_backends_baseline.jsonl keeps the `local` rows
+# from a 4-core container next to the `github-ubuntu-latest` rows it gates on.
 #
 # The `server-turn-latency` job runs `crates/server/benches/turn_latency.rs`:
 # the real server and a gRPC worker in process, one chat turn at a time
 # (HTTP message, worker claims over gRPC, turn.completed), p50/p95 per turn.
-# The bench migrates the service database itself. It has no baseline yet, so
-# it reports only.
+# The bench migrates the service database itself. It gates on throughput
+# against turn_latency_baseline.jsonl the same way.
 name: Durable Benchmarks
 
 on:
@@ -39,6 +38,12 @@ concurrency:
 
 permissions:
   contents: read
+
+# An explicit `bash` runs steps with `-eo pipefail`; the implicit default is
+# `bash -e`, under which `compare | tee` passes even when the compare fails.
+defaults:
+  run:
+    shell: bash
 
 env:
   CARGO_TERM_COLOR: always
@@ -68,7 +73,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U everruns"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -138,7 +143,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U everruns"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -194,7 +199,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U everruns"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -216,7 +221,7 @@ jobs:
           cargo bench -p everruns-server --bench turn_latency -- \
             --moniker "$BENCH_MONIKER" --summary "$RUNNER_TEMP/summary.jsonl"
 
-      - name: Report
+      - name: Compare with baseline
         run: |
           echo "::group::summary.jsonl"; cat "$RUNNER_TEMP/summary.jsonl"; echo "::endgroup::"
           {
@@ -226,7 +231,12 @@ jobs:
             echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
             jq -r '"| \(.scenario) | \(.tasks) | \(.tasks_per_sec) | \(.e2e_p50_ms) | \(.e2e_p95_ms) | \(.server_p50_ms) | \(.server_p95_ms) | \(.s2s_p50_ms) |"' \
               "$RUNNER_TEMP/summary.jsonl"
+            echo
           } | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -c --arg moniker "$BENCH_MONIKER" 'select(.moniker == $moniker)' \
+            crates/server/benches/turn_latency_baseline.jsonl > "$RUNNER_TEMP/baseline.jsonl" 2>/dev/null || true
+          bash scripts/lib/durable-bench-compare.sh "$RUNNER_TEMP/summary.jsonl" "$RUNNER_TEMP/baseline.jsonl" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Upload results
         if: always()
