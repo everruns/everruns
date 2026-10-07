@@ -343,7 +343,7 @@ impl ChannelAuthVerifier {
         Ok(discovery)
     }
 
-    async fn jwks(&self, jwks_url: &str) -> Result<Arc<JwkSet>, ChannelAuthError> {
+    pub(crate) async fn jwks(&self, jwks_url: &str) -> Result<Arc<JwkSet>, ChannelAuthError> {
         if let Some(jwks) = self.jwks_cache.get(jwks_url).await {
             return Ok(jwks);
         }

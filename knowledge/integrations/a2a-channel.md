@@ -235,6 +235,44 @@ The binding is 1.0 only: no `A2A-Version` reads as 1.0, any other version is
 `VERSION_NOT_SUPPORTED`. Source:
 [`crates/server/src/api/channel_a2a/http_json.rs`](../../crates/server/src/api/channel_a2a/http_json.rs).
 
+### Inbound PACT Identity profile
+
+[PACT 1.0](https://github.com/openpactprotocol/openpactprotocol) (Decagon and
+Instinct, 2026-10) is a profile on A2A 1.0 HTTP+JSON for personal agents: a
+person's own agent calling a company's agent for one user. A channel with
+`pact` in its config (`PactProfileConfig` in
+[`records/agent_channel.rs`](../../crates/server/src/records/agent_channel.rs))
+is also served at `/v1/a2a/{channel_id}`.
+
+Design decisions:
+
+- Separate routes, not a mode of the channel URL. PACT changes what the same
+  operations mean (a reply is a Message, there are no tasks, `A2A-Version` is
+  ignored), so the ordinary A2A URL keeps its meaning and its API key.
+- Identity is a JWT the personal agent signs per request (ES256/RS256 only,
+  30 s skew, at most 300 s lifetime, `sub` required), verified against the
+  JWKS of a registered, enabled issuer. Every failure is a bare `401` with
+  `WWW-Authenticate: Bearer realm="a2a"`. Routing precedes authentication, so
+  an unknown channel or a non-PACT path is a plain `404`/`405`.
+- The caller is (issuer, `sub`). Its hash is a session tag, every message
+  without `contextId` starts its own session (whatever `session_mode` says),
+  and a `contextId` continues only for the same channel and caller. Anything
+  else is `INVALID_PARAMS` "Unknown contextId", so a context's existence
+  never leaks.
+- Retries: the caller's `messageId` is stored on the user message
+  (`a2a_message_id` metadata) and the reply is read back from session events,
+  so a repeated `messageId` in its context returns the stored reply without a
+  new turn, with no extra table.
+- The card declares the JWT scheme as both `paJwt` (spec name) and
+  `platformJwt` (the conformance suite's name), each alone in a requirement.
+
+Not implemented: the Delegated profile (OAuth device code, scopes, step-up,
+receipts). Source:
+[`crates/server/src/api/channel_a2a/pact.rs`](../../crates/server/src/api/channel_a2a/pact.rs),
+[`pact_identity.rs`](../../crates/server/src/api/channel_a2a/pact_identity.rs).
+PACT's own suite runs with `scripts/pact-conformance.sh` (10/10 at the pinned
+commit).
+
 ### Streaming (`message/stream`)
 
 The same endpoint accepts `method = "message/stream"`. Authentication, channel
@@ -584,6 +622,12 @@ Coverage required:
    question as `cancelled` and is delivered as a message; a `secret` question
    projects as `auth-required` with a URL and cannot be answered over the
    channel.
+10. PACT: personal-agent JWT negatives (missing, unpublished key, wrong
+    audience, future `iat`, expired, unknown or disabled issuer, HS256) are a
+    bare `401`; replies are Messages; a `contextId` is refused across users
+    and channels; a repeated `messageId` returns the stored reply without a
+    turn; task, streaming and push routes return the PACT errors; PACT's own
+    conformance suite passes (`scripts/pact-conformance.sh`).
 
 ## Rate Limiting
 
