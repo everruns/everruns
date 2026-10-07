@@ -134,8 +134,10 @@ production server (`ServerAppBuilder`) and a standalone worker
 PostgreSQL, which it migrates, then drives turns over HTTP with an llmsim
 model that answers at once. One turn is `POST /v1/sessions/{id}/messages`, the
 worker claiming its steps over gRPC, and `turn.completed`. It reports per turn,
-as p50/p95/p99, the client's wall time to seeing `turn.completed` (`e2e`,
-events polled every 5 ms), `input.message` to `turn.completed` from the event
+as p50/p95/p99, the client's wall time to receiving `turn.completed` on the
+session's SSE stream (`e2e`; one stream per session, as the UI holds, because
+polling the events endpoint added about ten HTTP requests per turn and their
+database reads), `input.message` to `turn.completed` from the event
 timestamps (`server`), and `input.message` to `turn.started` (`pickup`), at one
 session and at eight concurrent sessions of five turns each.
 
@@ -149,13 +151,26 @@ DATABASE_URL=postgres://... cargo bench -p everruns-server --bench turn_latency
 just bench-turn-latency --smoke    # five turns; DATABASE_URL defaults to the local test DB
 ```
 
+It also reports the statements PostgreSQL executed and their execution time
+per turn, from `pg_stat_statements` reset at the start of each scenario
+(`--top <n>` lists the statements costing the most time). Wall times on a
+shared box swing by tens of percent between runs, while statements per turn
+barely move, so they are the reliable signal that the platform's database
+work changed. The extension must be preloaded
+(`shared_preload_libraries=pg_stat_statements`); without it those columns
+read `n/a`.
+
 `--summary <file>` appends one JSON line per scenario (bench
 `server_turn_latency`) in the shape of the durable benches' baseline, and
 `--moniker` labels it. It is a bench target, so `cargo test` never runs it;
 the `server-turn-latency` job of
 [`durable-bench.yml`](../../.github/workflows/durable-bench.yml) runs it
-weekly against a PostgreSQL service container and reports without gating
-until a baseline exists.
+weekly against PostgreSQL with `pg_stat_statements` loaded and
+`pg_stat_statements.track=all`, so statements inside trigger functions count
+(compare runs only under the same setting). It fails a
+scenario whose throughput drops more than 30% below
+`turn_latency_baseline.jsonl`, or whose statements per turn grow more than 15%
+over it; latency is reported, not gated.
 
 ## Justfile Profiles
 
