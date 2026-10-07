@@ -186,7 +186,7 @@ impl ManageTurnRecords {
                 .await?
                 .map(everruns_contracts::typed_id::AgentId::from_uuid);
             if session.agent_id != responder {
-                session.agent_version_id = None;
+                session.agent_revision = None;
             }
             session.agent_id = responder;
         }
@@ -199,16 +199,12 @@ impl ManageTurnRecords {
                         row.id.uuid(),
                     )
                     .await?;
-                    let mut agent =
-                        crate::domains::agents::queries::row_to_agent(row, capabilities);
-                    if let Some(version_id) = session.agent_version_id
-                        && let Some(version) = db.get_agent_version(org_id, version_id).await?
-                    {
-                        let version =
-                            crate::domains::agents::queries::row_to_agent_version(version);
-                        agent = crate::domains::agents::queries::version_to_agent(&agent, &version);
-                    }
-                    Some(agent)
+                    // Agent versions are retired (#4312): a session runs the
+                    // agent's current config, as the worker loads it.
+                    Some(crate::domains::agents::queries::row_to_agent(
+                        row,
+                        capabilities,
+                    ))
                 }
                 _ => None,
             },
