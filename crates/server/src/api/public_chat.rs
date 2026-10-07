@@ -67,7 +67,8 @@ pub fn routes(state: AgUiState) -> Router {
             "/v1/e/{channel_id}/public-chat/config",
             get(get_config_channel),
         )
-        .with_state(state)
+        .with_state(state.clone())
+        .merge(super::agentid_login::routes(state))
 }
 enum PublicChatTarget {
     LegacyApp(String),
@@ -105,6 +106,10 @@ struct PublicChatSignIn {
     /// client can render the Google sign-in widget.
     #[serde(skip_serializing_if = "Option::is_none")]
     google_client_id: Option<String>,
+    /// Present for the `agentid` mode when this deployment can run the
+    /// AgentID browser sign-in, so the page offers "Continue with AgentID".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    agentid_login: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -150,9 +155,15 @@ async fn get_config(
                 }
                 _ => None,
             };
+            let mode = if auth.is_agentid() {
+                "agentid"
+            } else {
+                auth_mode_str(&auth.mode)
+            };
             PublicChatSignIn {
-                mode: auth_mode_str(&auth.mode).to_string(),
+                mode: mode.to_string(),
                 google_client_id,
+                agentid_login: super::agentid_login::browser_sign_in_available(&state, auth),
             }
         });
 

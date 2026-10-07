@@ -30,6 +30,24 @@ use futures::{
     stream::{self, Stream},
 };
 
+/// What sent a notification. Kinds share one shape so new senders (a shared
+/// agent, an integration) render without a client change.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+pub struct NotificationSource {
+    /// `agent` or `system`.
+    #[serde(rename = "type")]
+    #[schema(example = "agent")]
+    pub source_type: String,
+    /// Public ID of the sender, when it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "agent_01933b5a00007000800000000000001")]
+    pub id: Option<String>,
+    /// Display name of the sender.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Platform Assistant")]
+    pub name: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Notification {
     #[schema(value_type = String, example = "notification_01933b5a00007000800000000000001")]
@@ -39,7 +57,12 @@ pub struct Notification {
     pub kind: String,
     /// Human-readable title. Safe to render in user-facing messages.
     pub title: String,
+    /// Plain-text summary of what happened.
     pub body: String,
+    /// What sent the notification. Absent on notifications written before
+    /// senders were recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<NotificationSource>,
     pub target_type: Option<String>,
     pub target_id: Option<String>,
     pub href: Option<String>,
@@ -109,23 +132,6 @@ fn require_user_id(org: &ResolvedOrg) -> Result<uuid::Uuid, (StatusCode, Json<Er
         ErrorResponse::new("Notifications require an authenticated user".to_string())
             .into_response(StatusCode::UNAUTHORIZED)
     })
-}
-
-fn row_to_notification(row: crate::storage::NotificationRow) -> Notification {
-    Notification {
-        id: row.id,
-        kind: row.kind,
-        title: row.title,
-        body: row.body,
-        target_type: row.target_type,
-        target_id: row.target_id,
-        href: row.href,
-        payload: row.payload,
-        occurrence_count: row.occurrence_count,
-        viewed_at: row.viewed_at,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-    }
 }
 
 pub async fn list_notifications(
@@ -299,7 +305,9 @@ pub async fn stream_notifications_sse(
                             let events = notifications
                                 .into_iter()
                                 .map(|row| {
-                                    let json = serde_json::to_string(&row_to_notification(row))
+                                    let json = serde_json::to_string(
+                                        &crate::domains::notifications::queries::row_to_notification(row),
+                                    )
                                         .unwrap_or_else(|_| "{}".to_string());
                                     Ok(SseEvent::default()
                                         .event("notification.upsert")

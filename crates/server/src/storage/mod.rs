@@ -42,6 +42,7 @@ mod system_decisions;
 // Server storage updates share durable's `UpdateField`: the server already
 // depends on `everruns-durable` and passes these fields to its schedule store.
 pub use everruns_durable::UpdateField;
+pub mod agentid;
 pub mod org_slack_connections;
 pub mod partial_stream;
 pub mod password;

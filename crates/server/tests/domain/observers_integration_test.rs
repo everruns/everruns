@@ -256,7 +256,7 @@ async fn scores_endpoint_returns_empty_for_new_observer() {
     let id = created["id"].as_str().unwrap().to_string();
 
     let scores = server
-        .get(&format!("/v1/observers/{id}/scores"))
+        .get(&format!("/v1/observers/{id}/scores?limit=5&offset=0"))
         .await
         .assert_status(StatusCode::OK)
         .json_value();

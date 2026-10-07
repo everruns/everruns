@@ -3167,6 +3167,60 @@ export interface paths {
     patch: operations["update_model"];
     trace?: never;
   };
+  "/v1/observers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List observers. */
+    get: operations["list_observers"];
+    put?: never;
+    /** Create an observer (online scoring). */
+    post: operations["create_observer"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/observers/{observer_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get a single observer. */
+    get: operations["get_observer"];
+    put?: never;
+    post?: never;
+    /** Archive an observer. */
+    delete: operations["delete_observer"];
+    options?: never;
+    head?: never;
+    /** Update an observer. */
+    patch: operations["update_observer"];
+    trace?: never;
+  };
+  "/v1/observers/{observer_id}/scores": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List trace scores produced by an observer. */
+    get: operations["list_observer_scores"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/orgs": {
     parameters: {
       query?: never;
@@ -8831,6 +8885,28 @@ export interface components {
       profile_key?: string | null;
       service?: components["schemas"]["ServiceKind"] | null;
     };
+    /** @description Request to create a new observer. */
+    CreateObserverRequest: {
+      /**
+       * @description Human-readable description. Safe to render in user-facing messages.
+       * @example Score replies from the support agent
+       */
+      description?: string | null;
+      match?: components["schemas"]["ObserverMatch"] | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example Support quality
+       */
+      name: string;
+      /**
+       * Format: double
+       * @description Fraction of matching turns to score (0.0–1.0). Defaults to 0.1.
+       * @example 0.25
+       */
+      sampling_rate?: number | null;
+      /** @description Scoring rules. Must contain at least one. */
+      scorers: components["schemas"]["ObserverScorerConfig"][];
+    };
     /** @description Request to create a new organization */
     CreateOrganizationRequest: {
       /**
@@ -13030,9 +13106,57 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
+    ListResponse_Observer: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /** Format: date-time */
+        archived_at?: string | null;
+        /** Format: date-time */
+        created_at: string;
+        /**
+         * @description Optional description.
+         * @example Grades support replies for grounded answers.
+         */
+        description?: string | null;
+        /**
+         * @description External identifier (observer_<32-hex>). Shown as "id" in API.
+         * @example observer_01933b5a000070008000000000000001
+         */
+        id: string;
+        /** @description Which sessions to score. */
+        match?: components["schemas"]["ObserverMatch"];
+        /**
+         * @description Display name.
+         * @example Support answer quality
+         */
+        name: string;
+        /**
+         * Format: double
+         * @description Fraction of matching turns to score (0.0–1.0), applied after match.
+         * @example 0.1
+         */
+        sampling_rate: number;
+        /** @description Scoring rules. */
+        scorers: components["schemas"]["ObserverScorerConfig"][];
+        /** @description Lifecycle status. */
+        status: components["schemas"]["ObserverStatus"];
+        /** Format: date-time */
+        updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
     ListResponse_OrganizationResponse: {
       /** @description Array of items returned by the list operation. */
       data: {
+        /**
+         * Format: int32
+         * @description How many agents one AgentID owner may sign in; null means the platform
+         *     default.
+         */
+        agentid_agents_per_owner?: number | null;
         /** @description Base harness used when session creation omits harness_id. */
         base_harness_id?: string | null;
         /**
@@ -13207,6 +13331,79 @@ export interface components {
         updated_at: string;
         /** @description Target URL that receives POST requests. */
         url: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_TraceScore: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        /** @description Agent active in the session at scoring time. */
+        agent_id?: string | null;
+        /** Format: date-time */
+        created_at: string;
+        /** @description Error details if errored. */
+        error_message?: string | null;
+        /** @description Harness of the session. */
+        harness_id?: string | null;
+        /**
+         * @description External identifier (score_<32-hex>). Shown as "id" in API.
+         * @example score_01933b5a000070008000000000000001
+         */
+        id: string;
+        /**
+         * Format: double
+         * @description Judge call cost in USD when the provider reports it (llm_judge only).
+         */
+        judge_cost_usd?: number | null;
+        /**
+         * Format: int64
+         * @description Judge LLM input tokens (llm_judge scores only).
+         */
+        judge_input_tokens?: number | null;
+        /**
+         * Format: int64
+         * @description Judge LLM output tokens (llm_judge scores only).
+         */
+        judge_output_tokens?: number | null;
+        /** @description Optional categorical label from an LLM judge (e.g. `missing_source`). */
+        label?: string | null;
+        /**
+         * @description Observer that produced this score.
+         * @example observer_01933b5a000070008000000000000001
+         */
+        observer_id: string;
+        /** @description Whether the scorer passed (set when completed). */
+        pass?: boolean | null;
+        /**
+         * @description Human-readable explanation (set when completed). For LLM judges this is
+         *     the judge's reasoning — retained as the raw material for the Phase 2
+         *     improvement loop.
+         */
+        reason?: string | null;
+        /**
+         * @description Scorer key within the observer.
+         * @example grounded
+         */
+        scorer_key: string;
+        /**
+         * @description Session this score grades.
+         * @example session_01933b5a000070008000000000000001
+         */
+        session_id: string;
+        status: components["schemas"]["TraceScoreStatus"];
+        /** @description Turn this score grades (turn scope). */
+        turn_id: string;
+        /** Format: date-time */
+        updated_at: string;
+        /**
+         * Format: double
+         * @description Score value 0.0–1.0 (set when completed).
+         * @example 0.85
+         */
+        value?: number | null;
       }[];
     };
     /**
@@ -14191,6 +14388,28 @@ export interface components {
       text?: string | null;
       /** @description Tool calls requested by the model */
       tool_calls?: components["schemas"]["ToolCall"][];
+    };
+    /**
+     * @description LLM-as-judge scoring configuration. The judge grades the scoped trace
+     *     slice against `rubric` and returns a 0.0–1.0 value, an optional
+     *     categorical label, and free-text reasoning.
+     */
+    LlmJudgeConfig: {
+      /**
+       * @description Org model to judge with. When `None`, the org's default model is used.
+       *     Judge calls go through the org's own providers and are billed to it.
+       */
+      model_id?: string | null;
+      /**
+       * Format: double
+       * @description Score value at/above which `pass` is true.
+       */
+      pass_threshold?: number;
+      /**
+       * @description Grading rubric shown to the judge model. Should describe what a high
+       *     vs. low score means.
+       */
+      rubric: string;
     };
     /** @description Request-side prompt cache settings for an LLM generation. */
     LlmPromptCacheInfo: {
@@ -15358,6 +15577,78 @@ export interface components {
       /** @description Optional session grant destination for legacy setup. */
       session_id?: string | null;
     };
+    /** @description An observer: online scoring config over production sessions. */
+    Observer: {
+      /** Format: date-time */
+      archived_at?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /**
+       * @description Optional description.
+       * @example Grades support replies for grounded answers.
+       */
+      description?: string | null;
+      /**
+       * @description External identifier (observer_<32-hex>). Shown as "id" in API.
+       * @example observer_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description Which sessions to score. */
+      match?: components["schemas"]["ObserverMatch"];
+      /**
+       * @description Display name.
+       * @example Support answer quality
+       */
+      name: string;
+      /**
+       * Format: double
+       * @description Fraction of matching turns to score (0.0–1.0), applied after match.
+       * @example 0.1
+       */
+      sampling_rate: number;
+      /** @description Scoring rules. */
+      scorers: components["schemas"]["ObserverScorerConfig"][];
+      /** @description Lifecycle status. */
+      status: components["schemas"]["ObserverStatus"];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    /**
+     * @description Predicates selecting which production sessions an observer scores.
+     *     All present predicates must match (AND); within a list, any entry matches (OR).
+     *     An empty match block matches all org traffic. Sessions tagged `eval` are
+     *     always excluded so synthetic eval-run sessions are never scored.
+     */
+    ObserverMatch: {
+      /** @description Match sessions running any of these agents. */
+      agent_ids?: string[] | null;
+      /** @description Match sessions on any of these harnesses. */
+      harness_ids?: string[] | null;
+      /** @description Match sessions carrying any of these tags. */
+      session_tags?: string[] | null;
+    };
+    /**
+     * @description What slice of the trace a scorer grades. Phase 1 implements `turn` only;
+     *     `session` and `tool` scopes are reserved for future use.
+     * @enum {string}
+     */
+    ObserverScope: "turn";
+    /**
+     * @description One scorer inside an observer. `key` names the score series in listings
+     *     and future dashboards; `scope` selects the trace slice; `method` is how
+     *     it grades.
+     */
+    ObserverScorerConfig: components["schemas"]["ScorerMethod"] & {
+      /** @description Stable name within the observer (score series name). */
+      key: string;
+      /** @description Trace slice this scorer grades. */
+      scope?: components["schemas"]["ObserverScope"];
+    };
+    /**
+     * @description Observer lifecycle status. `paused` keeps configuration but stops matching.
+     * @enum {string}
+     */
+    ObserverStatus: "active" | "paused" | "archived" | "deleted";
     /**
      * @description A single inline bundle file, for callers that send files as JSON rather
      *     than a tarball.
@@ -15396,6 +15687,12 @@ export interface components {
     };
     /** @description Response for organization operations */
     OrganizationResponse: {
+      /**
+       * Format: int32
+       * @description How many agents one AgentID owner may sign in; null means the platform
+       *     default.
+       */
+      agentid_agents_per_owner?: number | null;
       /** @description Base harness used when session creation omits harness_id. */
       base_harness_id?: string | null;
       /**
@@ -18710,6 +19007,136 @@ export interface components {
       url?: string;
       use?: components["schemas"]["McpServerPresetRef"] | null;
     };
+    /** @description A scoring rule applied to eval case output. */
+    Scorer:
+      | {
+          text: string;
+          /** @enum {string} */
+          type: "contains";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          text: string;
+          /** @enum {string} */
+          type: "not_contains";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          pattern: string;
+          /** @enum {string} */
+          type: "regex";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          /** Format: int32 */
+          min?: number;
+          tool: string;
+          /** @enum {string} */
+          type: "tool_called";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          tool: string;
+          /** @enum {string} */
+          type: "tool_not_called";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          /** Format: int32 */
+          max?: number | null;
+          /** Format: int32 */
+          min?: number | null;
+          /** @enum {string} */
+          type: "tool_call_count";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          /** Format: int32 */
+          max: number;
+          /** @enum {string} */
+          type: "turns_within";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          path: string;
+          text: string;
+          /** @enum {string} */
+          type: "file_contains";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          schema: unknown;
+          /** @enum {string} */
+          type: "json_schema";
+          /** Format: double */
+          weight?: number;
+        }
+      | {
+          /**
+           * Format: int32
+           * @description Minimum number of citations the answer must carry.
+           * @example 1
+           */
+          min_citations?: number;
+          /**
+           * Format: double
+           * @description Minimum fraction of citations verified `entailed` to pass.
+           * @example 0.8
+           */
+          pass_threshold?: number;
+          /** @enum {string} */
+          type: "citation_faithful";
+          /**
+           * Format: double
+           * @description Relative weight of this scorer in the case's weighted average.
+           * @example 1
+           */
+          weight?: number;
+        }
+      | {
+          model_id?: components["schemas"]["modelId"] | null;
+          /**
+           * Format: double
+           * @description Minimum judged score `[0,1]` to pass.
+           * @example 0.8
+           */
+          pass_threshold?: number;
+          /**
+           * @description Rubric override; a citation-faithfulness rubric is used when absent.
+           * @example Score the fraction of cited claims supported by their source.
+           */
+          rubric?: string | null;
+          /** @enum {string} */
+          type: "citation_judged";
+          /**
+           * Format: double
+           * @description Relative weight of this scorer in the case's weighted average.
+           * @example 1
+           */
+          weight?: number;
+        };
+    /**
+     * @description How a scorer grades a trace slice: a deterministic `rule` (reusing the
+     *     eval scorer vocabulary) or an `llm_judge`.
+     */
+    ScorerMethod:
+      | {
+          /** @enum {string} */
+          method: "rule";
+          rule: components["schemas"]["Scorer"];
+        }
+      | (components["schemas"]["LlmJudgeConfig"] & {
+          /** @enum {string} */
+          method: "llm_judge";
+        });
     /** @description Secret entry info (name and timestamps only, no value) */
     SecretInfo: {
       /** @description When the secret was created */
@@ -20483,6 +20910,82 @@ export interface components {
       description?: string | null;
     };
     /**
+     * @description One score produced by an observer scorer for one trace slice. Linked back
+     *     to the exact session/turn it graded; agent/harness identifiers are
+     *     denormalized at scoring time for aggregation.
+     */
+    TraceScore: {
+      /** @description Agent active in the session at scoring time. */
+      agent_id?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** @description Error details if errored. */
+      error_message?: string | null;
+      /** @description Harness of the session. */
+      harness_id?: string | null;
+      /**
+       * @description External identifier (score_<32-hex>). Shown as "id" in API.
+       * @example score_01933b5a000070008000000000000001
+       */
+      id: string;
+      /**
+       * Format: double
+       * @description Judge call cost in USD when the provider reports it (llm_judge only).
+       */
+      judge_cost_usd?: number | null;
+      /**
+       * Format: int64
+       * @description Judge LLM input tokens (llm_judge scores only).
+       */
+      judge_input_tokens?: number | null;
+      /**
+       * Format: int64
+       * @description Judge LLM output tokens (llm_judge scores only).
+       */
+      judge_output_tokens?: number | null;
+      /** @description Optional categorical label from an LLM judge (e.g. `missing_source`). */
+      label?: string | null;
+      /**
+       * @description Observer that produced this score.
+       * @example observer_01933b5a000070008000000000000001
+       */
+      observer_id: string;
+      /** @description Whether the scorer passed (set when completed). */
+      pass?: boolean | null;
+      /**
+       * @description Human-readable explanation (set when completed). For LLM judges this is
+       *     the judge's reasoning — retained as the raw material for the Phase 2
+       *     improvement loop.
+       */
+      reason?: string | null;
+      /**
+       * @description Scorer key within the observer.
+       * @example grounded
+       */
+      scorer_key: string;
+      /**
+       * @description Session this score grades.
+       * @example session_01933b5a000070008000000000000001
+       */
+      session_id: string;
+      status: components["schemas"]["TraceScoreStatus"];
+      /** @description Turn this score grades (turn scope). */
+      turn_id: string;
+      /** Format: date-time */
+      updated_at: string;
+      /**
+       * Format: double
+       * @description Score value 0.0–1.0 (set when completed).
+       * @example 0.85
+       */
+      value?: number | null;
+    };
+    /**
+     * @description Lifecycle of one trace score. `pending` rows double as the scoring queue.
+     * @enum {string}
+     */
+    TraceScoreStatus: "pending" | "scoring" | "completed" | "errored" | "skipped";
+    /**
      * @description Action taken during transcript repair for a dangling tool call.
      * @enum {string}
      */
@@ -21237,6 +21740,28 @@ export interface components {
       provider_id?: string | null;
       service?: components["schemas"]["ServiceKind"] | null;
     };
+    /** @description Request to update an observer. Omitted fields are unchanged. */
+    UpdateObserverRequest: {
+      /**
+       * @description Human-readable description. Safe to render in user-facing messages.
+       * @example Score replies from the support agent
+       */
+      description?: string | null;
+      match?: components["schemas"]["ObserverMatch"] | null;
+      /**
+       * @description Human-readable name. Safe to render in user-facing messages.
+       * @example Support quality
+       */
+      name?: string | null;
+      /**
+       * Format: double
+       * @description Fraction of matching turns to score (0.0–1.0).
+       * @example 0.5
+       */
+      sampling_rate?: number | null;
+      scorers?: components["schemas"]["ObserverScorerConfig"][] | null;
+      status?: components["schemas"]["ObserverStatus"] | null;
+    };
     UpdateOrgFeatureFlagsRequest: {
       /** @description Map of flag name -> enabled. Omitted flags are unchanged. */
       flags: {
@@ -21245,6 +21770,13 @@ export interface components {
     };
     /** @description Request to update an organization */
     UpdateOrganizationRequest: {
+      /**
+       * Format: int32
+       * @description How many agents one AgentID owner may sign in to this organization's
+       *     Public Chat channels. Pass null to use the platform default (5).
+       * @example 5
+       */
+      agentid_agents_per_owner?: number | null;
       /**
        * @description Base harness to use when a session is started without an explicit harness_id.
        * @example harness_01933b5a000070008000000000000601
@@ -23875,6 +24407,11 @@ export interface components {
      * @example harness_01933b5a000070008000000000000001
      */
     harnessId: string;
+    /**
+     * @description Prefixed identifier with 'model' prefix
+     * @example model_01933b5a000070008000000000000001
+     */
+    modelId: string;
     /**
      * @description Prefixed identifier with 'payacct' prefix
      * @example payacct_01933b5a000070008000000000000001
@@ -33373,6 +33910,175 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  list_observers: {
+    parameters: {
+      query?: {
+        /** @description Include archived observers. */
+        include_archived?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_Observer"];
+        };
+      };
+    };
+  };
+  create_observer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateObserverRequest"];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Observer"];
+        };
+      };
+    };
+  };
+  get_observer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Observer"];
+        };
+      };
+      /** @description Observer not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_observer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description No content */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Observer not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  update_observer: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateObserverRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Observer"];
+        };
+      };
+      /** @description Observer not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_observer_scores: {
+    parameters: {
+      query?: {
+        /** @description Filter to one session. */
+        session_id?: string;
+        /** @description Maximum number of scores returned (default 100). */
+        limit?: number;
+        /** @description Zero-based offset into the result set. */
+        offset?: number;
+      };
+      header?: never;
+      path: {
+        /** @description Prefixed public identifier */
+        observer_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_TraceScore"];
+        };
       };
     };
   };

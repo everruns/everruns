@@ -162,6 +162,11 @@ Anonymous visitors get a bounded visitor binding and lifetime, not membership
 or management authority. Provisioning needs per-org limits and inactive-visitor
 retention so ingress cannot create unbounded durable accounts.
 
+An AgentID agent is a provider binding like any other (provider `agentid`,
+realm `https://auth.agentid.com`, subject `sub`) and an end-user virtual user,
+never a management user. Its AgentID `owner_sub` is kept beside it so an org
+can cap agents per human owner; see [AgentID](../integrations/agentid.md).
+
 Retain Principal as the ownership/provenance reference layer. Management user,
 virtual user, and system principals have distinct meanings. Both runtime usages
 refer to virtual-user principals; agent identity is no longer a separate kind.

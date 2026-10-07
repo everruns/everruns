@@ -331,6 +331,13 @@ impl ChannelAuthVerifier {
         Ok(discovery)
     }
 
+    /// AgentID's published keys, found through AgentID's own discovery
+    /// document (never an operator-supplied URL).
+    pub(crate) async fn agentid_jwks(&self) -> Result<Arc<JwkSet>, ChannelAuthError> {
+        let discovery = self.discovery(AGENTID_ISSUER).await?;
+        self.jwks(discovery.jwks_uri.as_str()).await
+    }
+
     pub(crate) async fn jwks(&self, jwks_url: &str) -> Result<Arc<JwkSet>, ChannelAuthError> {
         if let Some(jwks) = self.jwks_cache.get(jwks_url).await {
             return Ok(jwks);
@@ -432,6 +439,52 @@ fn verify_jwt_with_jwks(
     verifier_authority: &str,
     agentid: bool,
 ) -> Result<ChannelAuthPrincipal, ChannelAuthError> {
+    if agentid {
+        let claims = verify_agentid_claims(token, jwks, requirements)?;
+        let subject = claims
+            .get("sub")
+            .and_then(Value::as_str)
+            .ok_or(ChannelAuthError::Unauthorized)?;
+        return Ok(ChannelAuthPrincipal {
+            provider: AGENTID_PROVIDER.to_string(),
+            issuer: AGENTID_ISSUER.to_string(),
+            subject: subject.to_string(),
+            identity_realm: AGENTID_ISSUER.to_string(),
+        });
+    }
+    let claims = decode_verified_claims(token, issuer, jwks, requirements, false)?;
+    principal_from_claims(&claims, verifier_authority)
+}
+
+/// Verify an AgentID token (ES256, `iss`, `aud`, `exp`, the claim
+/// requirements) and return its claims. `actor_type` and `sub` are checked
+/// only after the signature: an unverified claim decides nothing.
+pub(crate) fn verify_agentid_claims(
+    token: &str,
+    jwks: &JwkSet,
+    requirements: &ChannelAuthRequirements,
+) -> Result<Value, ChannelAuthError> {
+    let claims = decode_verified_claims(token, AGENTID_ISSUER, jwks, requirements, true)?;
+    if claims.get("actor_type").and_then(Value::as_str) != Some("agent") {
+        return Err(ChannelAuthError::Unauthorized);
+    }
+    if claims
+        .get("sub")
+        .and_then(Value::as_str)
+        .is_none_or(str::is_empty)
+    {
+        return Err(ChannelAuthError::Unauthorized);
+    }
+    Ok(claims)
+}
+
+fn decode_verified_claims(
+    token: &str,
+    issuer: &str,
+    jwks: &JwkSet,
+    requirements: &ChannelAuthRequirements,
+    es256_only: bool,
+) -> Result<Value, ChannelAuthError> {
     let header = decode_header(token).map_err(|_| ChannelAuthError::Unauthorized)?;
     let kid = header.kid.ok_or(ChannelAuthError::Unauthorized)?;
     let jwk = jwks
@@ -440,7 +493,7 @@ fn verify_jwt_with_jwks(
         .find(|jwk| jwk.common.key_id.as_deref() == Some(kid.as_str()))
         .ok_or(ChannelAuthError::Unauthorized)?;
     let alg = header.alg;
-    if !is_public_key_algorithm(alg) || (agentid && alg != Algorithm::ES256) {
+    if !is_public_key_algorithm(alg) || (es256_only && alg != Algorithm::ES256) {
         return Err(ChannelAuthError::Unauthorized);
     }
     let key = DecodingKey::from_jwk(jwk).map_err(|_| ChannelAuthError::Unauthorized)?;
@@ -453,24 +506,7 @@ fn verify_jwt_with_jwks(
         .map_err(|_| ChannelAuthError::Unauthorized)?
         .claims;
     validate_claim_requirements(&claims, requirements)?;
-    if agentid {
-        // Checked only after the signature: an unverified claim decides nothing.
-        if claims.get("actor_type").and_then(Value::as_str) != Some("agent") {
-            return Err(ChannelAuthError::Unauthorized);
-        }
-        let subject = claims
-            .get("sub")
-            .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .ok_or(ChannelAuthError::Unauthorized)?;
-        return Ok(ChannelAuthPrincipal {
-            provider: AGENTID_PROVIDER.to_string(),
-            issuer: AGENTID_ISSUER.to_string(),
-            subject: subject.to_string(),
-            identity_realm: AGENTID_ISSUER.to_string(),
-        });
-    }
-    principal_from_claims(&claims, verifier_authority)
+    Ok(claims)
 }
 
 fn normalize_issuer(issuer: &str) -> String {
@@ -797,44 +833,9 @@ mod tests {
 
     mod agentid {
         use super::*;
-        use aws_lc_rs::rand::SystemRandom;
-        use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _};
-        use jsonwebtoken::{EncodingKey, Header, encode};
+        use crate::api::channel_auth::test_keys::{Signer, signer, token};
 
         const CLIENT_ID: &str = "agentid-client";
-
-        struct Signer {
-            encoding: EncodingKey,
-            jwks: JwkSet,
-        }
-
-        // A fresh P-256 key per test, so no private key lives in the repo.
-        fn signer() -> Signer {
-            let rng = SystemRandom::new();
-            let pkcs8 =
-                EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
-            let pair =
-                EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref()).unwrap();
-            let point = pair.public_key().as_ref();
-            let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
-            let jwks: JwkSet = serde_json::from_value(serde_json::json!({
-                "keys": [{
-                    "kty": "EC", "crv": "P-256", "kid": "k1", "alg": "ES256", "use": "sig",
-                    "x": b64(&point[1..33]), "y": b64(&point[33..65]),
-                }]
-            }))
-            .unwrap();
-            Signer {
-                encoding: EncodingKey::from_ec_der(pkcs8.as_ref()),
-                jwks,
-            }
-        }
-
-        fn token(signer: &Signer, claims: Value) -> String {
-            let mut header = Header::new(Algorithm::ES256);
-            header.kid = Some("k1".to_string());
-            encode(&header, &claims, &signer.encoding).unwrap()
-        }
 
         fn claims(actor_type: Option<&str>) -> Value {
             let now = chrono::Utc::now().timestamp();
@@ -1043,5 +1044,48 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+}
+
+/// AgentID-shaped ES256 test keys, generated per test so no private key lives
+/// in the repo.
+#[cfg(test)]
+pub(crate) mod test_keys {
+    use aws_lc_rs::rand::SystemRandom;
+    use aws_lc_rs::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _};
+    use base64::Engine;
+    use jsonwebtoken::jwk::JwkSet;
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+    use serde_json::Value;
+
+    pub(crate) struct Signer {
+        encoding: EncodingKey,
+        pub(crate) jwks: JwkSet,
+    }
+
+    pub(crate) fn signer() -> Signer {
+        let rng = SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &rng).unwrap();
+        let pair =
+            EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref()).unwrap();
+        let point = pair.public_key().as_ref();
+        let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+        let jwks: JwkSet = serde_json::from_value(serde_json::json!({
+            "keys": [{
+                "kty": "EC", "crv": "P-256", "kid": "k1", "alg": "ES256", "use": "sig",
+                "x": b64(&point[1..33]), "y": b64(&point[33..65]),
+            }]
+        }))
+        .unwrap();
+        Signer {
+            encoding: EncodingKey::from_ec_der(pkcs8.as_ref()),
+            jwks,
+        }
+    }
+
+    pub(crate) fn token(signer: &Signer, claims: Value) -> String {
+        let mut header = Header::new(Algorithm::ES256);
+        header.kid = Some("k1".to_string());
+        encode(&header, &claims, &signer.encoding).unwrap()
     }
 }

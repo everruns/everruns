@@ -1902,60 +1902,6 @@ pub struct UpdateMcpServerTools {
 // Session Key/Value Storage models
 // ============================================
 
-/// Notification row from database
-#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
-pub struct NotificationRow {
-    pub id: NotificationId,
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub kind: String,
-    pub title: String,
-    pub body: String,
-    pub target_type: Option<String>,
-    pub target_id: Option<String>,
-    pub href: Option<String>,
-    pub payload: serde_json::Value,
-    pub dedupe_key: Option<String>,
-    pub occurrence_count: i32,
-    pub viewed_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-/// Input for creating a notification
-#[derive(Debug, Clone)]
-pub struct CreateNotificationRow {
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub kind: String,
-    pub title: String,
-    pub body: String,
-    pub target_type: Option<String>,
-    pub target_id: Option<String>,
-    pub href: Option<String>,
-    pub payload: serde_json::Value,
-    pub dedupe_key: Option<String>,
-}
-
-/// Input for storing turn -> notification recipient mapping
-#[derive(Debug, Clone)]
-pub struct CreateNotificationTurnRequestRow {
-    pub input_message_id: MessageId,
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub session_id: SessionId,
-}
-
-/// Stored turn -> notification recipient mapping
-#[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
-pub struct NotificationTurnRequestRow {
-    pub input_message_id: MessageId,
-    pub org_id: i64,
-    pub user_id: Uuid,
-    pub session_id: SessionId,
-    pub created_at: DateTime<Utc>,
-}
-
 /// Session key/value row from database
 #[derive(Debug, Clone, FromRow, everruns_server_macros::Columns)]
 pub struct SessionKeyValueRow {
@@ -3628,6 +3574,8 @@ pub struct InstallCompactionCheckpointRow {
 }
 
 mod agent_triggers;
+mod notifications;
 mod virtual_users;
 pub use agent_triggers::*;
+pub use notifications::*;
 pub use virtual_users::*;

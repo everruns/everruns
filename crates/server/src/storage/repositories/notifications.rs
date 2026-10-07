@@ -60,9 +60,10 @@ impl Database {
         let row = sqlx::query_as::<_, NotificationRow>(
             sql!(r#"
             INSERT INTO notifications (
-                org_id, user_id, kind, title, body, target_type, target_id, href, payload, dedupe_key
+                org_id, user_id, kind, title, body, target_type, target_id, href, payload, dedupe_key,
+                source_type, source_id, source_name
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (org_id, user_id, dedupe_key)
                 WHERE dedupe_key IS NOT NULL AND viewed_at IS NULL
             DO UPDATE SET
@@ -72,6 +73,9 @@ impl Database {
                 target_id = EXCLUDED.target_id,
                 href = EXCLUDED.href,
                 payload = EXCLUDED.payload,
+                source_type = EXCLUDED.source_type,
+                source_id = EXCLUDED.source_id,
+                source_name = EXCLUDED.source_name,
                 occurrence_count = notifications.occurrence_count + 1,
                 updated_at = NOW()
             RETURNING
@@ -88,6 +92,9 @@ impl Database {
         .bind(&input.href)
         .bind(&input.payload)
         .bind(&input.dedupe_key)
+        .bind(input.source.as_ref().map(|s| s.source_type.clone()))
+        .bind(input.source.as_ref().and_then(|s| s.source_id.clone()))
+        .bind(input.source.as_ref().and_then(|s| s.source_name.clone()))
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

@@ -88,6 +88,11 @@ pub enum SessionsCommand {
         /// Must pair with a --budget-limit of the same currency.
         #[arg(long = "budget-soft-limit", value_name = "[CURRENCY:]LIMIT")]
         budget_soft_limits: Vec<String>,
+
+        /// Why you are making this change. Recorded in the session's history
+        /// (and the history of any budgets and secrets this creates)
+        #[arg(long, value_name = "TEXT")]
+        reason: Option<String>,
     },
 
     /// Watch session events in real time
@@ -158,6 +163,7 @@ pub async fn run(
             secrets,
             budget_limits,
             budget_soft_limits,
+            reason,
         } => {
             create(
                 &client,
@@ -180,6 +186,7 @@ pub async fn run(
                 secrets,
                 budget_limits,
                 budget_soft_limits,
+                reason,
             )
             .await
         }
@@ -214,7 +221,9 @@ async fn create(
     raw_secrets: Vec<String>,
     raw_budget_limits: Vec<String>,
     raw_budget_soft_limits: Vec<String>,
+    reason: Option<String>,
 ) -> Result<()> {
+    let reason = reason.as_deref();
     let secrets = parse_secrets(&raw_secrets)?;
     let budget_specs = parse_budget_limits(&raw_budget_limits, &raw_budget_soft_limits)?;
     let body = build_create_session_body(CreateSessionArgs {
@@ -234,7 +243,12 @@ async fn create(
         max_iterations,
     })?;
 
-    let session = contract::execute(client, "create_session", body).await?;
+    let session = contract::execute(
+        client,
+        "create_session",
+        contract::with_reason(body, reason),
+    )
+    .await?;
     let session_id = session
         .get("id")
         .and_then(|id| id.as_str())
@@ -246,7 +260,10 @@ async fn create(
         contract::execute(
             client,
             "batch_set_session_secrets",
-            serde_json::json!({ "session_id": session_id, "secrets": secrets }),
+            contract::with_reason(
+                serde_json::json!({ "session_id": session_id, "secrets": secrets }),
+                reason,
+            ),
         )
         .await
         .with_context(|| {
@@ -270,11 +287,13 @@ async fn create(
         if let Some(soft) = spec.soft_limit {
             params["soft_limit"] = serde_json::json!(soft);
         }
-        let budget = contract::execute(client, "create_budget", params)
-            .await
-            .with_context(|| {
-                format!("Session {} created but budget creation failed", session_id)
-            })?;
+        let budget = contract::execute(
+            client,
+            "create_budget",
+            contract::with_reason(params, reason),
+        )
+        .await
+        .with_context(|| format!("Session {} created but budget creation failed", session_id))?;
         created_budgets.push(budget);
     }
 
@@ -936,6 +955,43 @@ fn capitalize_first(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `sessions create <args>` against a one-shot server: the envelope sent.
+    async fn create_sent(args: &[&str]) -> serde_json::Value {
+        use clap::Parser;
+        let argv = ["everruns", "sessions", "create"]
+            .iter()
+            .chain(args)
+            .copied();
+        let command = match crate::Cli::try_parse_from(argv).unwrap().command {
+            crate::Commands::Sessions { command } => command,
+            _ => unreachable!("a sessions command"),
+        };
+        let (url, captured) =
+            crate::commands::api::capture::serve_once(200, r#"{"output":{"id":"ses_1"}}"#).await;
+        run(
+            command,
+            ApiClient::new(&url, "key", None),
+            OutputFormat::Json,
+            true,
+        )
+        .await
+        .unwrap();
+        captured.await.unwrap().json()
+    }
+
+    #[tokio::test]
+    async fn create_puts_the_reason_in_the_envelope() {
+        let body = create_sent(&["--title", "t", "--reason", "triage"]).await;
+        assert_eq!(body["reason"], "triage");
+        assert_eq!(body["params"], serde_json::json!({ "title": "t" }));
+    }
+
+    #[tokio::test]
+    async fn create_without_a_reason_sends_none() {
+        let body = create_sent(&["--title", "t"]).await;
+        assert!(body.get("reason").is_none(), "{body}");
+    }
 
     #[test]
     fn task_created_line_uses_created_verb_and_snapshot_fields() {
