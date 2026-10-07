@@ -70,11 +70,7 @@ impl SessionSandboxService {
         };
 
         if let Err(err) = self.ensure_started(session_id, &config).await {
-            tracing::warn!(
-                session_id = %session_id,
-                error = ?err,
-                "Failed to auto-start session sandbox"
-            );
+            log_auto_start_failure(session_id, &err);
         }
     }
 
@@ -86,11 +82,7 @@ impl SessionSandboxService {
             return;
         }
         if let Err(err) = self.ensure_started(session_id, &config).await {
-            tracing::warn!(
-                session_id = %session_id,
-                error = ?err,
-                "Failed to auto-start session sandbox"
-            );
+            log_auto_start_failure(session_id, &err);
         }
     }
 
@@ -216,6 +208,32 @@ impl EventListener for SessionSandboxEventListener {
     fn name(&self) -> &'static str {
         "SessionSandboxEventListener"
     }
+}
+
+/// Auto-start is best effort: the session still opens and the sandbox tools report the
+/// failure on first use. A missing provider connection is the user's setup state, not a
+/// server fault, so it stays below `warn` and out of error reporting (EVERRUNS-2C).
+fn log_auto_start_failure(session_id: SessionId, err: &everruns_core::ToolExecutionResult) {
+    if is_expected_auto_start_failure(err) {
+        tracing::info!(
+            session_id = %session_id,
+            error = ?err,
+            "Session sandbox auto-start skipped: provider connection required"
+        );
+    } else {
+        tracing::warn!(
+            session_id = %session_id,
+            error = ?err,
+            "Failed to auto-start session sandbox"
+        );
+    }
+}
+
+fn is_expected_auto_start_failure(err: &everruns_core::ToolExecutionResult) -> bool {
+    matches!(
+        err,
+        everruns_core::ToolExecutionResult::ConnectionRequired { .. }
+    )
 }
 
 #[cfg(test)]
@@ -736,5 +754,19 @@ mod tests {
             .unwrap();
         assert_eq!(state.provider, "resolver-required-session-sandbox");
         assert_eq!(state.instance.external_id, "sb_resolver");
+    }
+
+    #[test]
+    fn missing_provider_connection_is_an_expected_auto_start_failure() {
+        assert!(is_expected_auto_start_failure(
+            &everruns_core::ToolExecutionResult::ConnectionRequired {
+                provider: "daytona".to_string(),
+                subject: None,
+                setup_url: None,
+            }
+        ));
+        assert!(!is_expected_auto_start_failure(
+            &everruns_core::ToolExecutionResult::ToolError("boom".to_string())
+        ));
     }
 }
