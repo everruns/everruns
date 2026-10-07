@@ -57,6 +57,11 @@ export type NavigationItem = {
   warningTooltip?: string;
   /** Minimum organization role required to see this destination. */
   minimumRole?: "admin" | "owner";
+  /**
+   * Policy id (as served by `/v1/{resource}/config`) the viewer must hold. Callers
+   * resolve it with `useNavigationPolicy`; without a checker the item stays hidden.
+   */
+  policy?: string;
 };
 
 export type NavigationSection = {
@@ -277,6 +282,7 @@ export function visibleNavigationSections(
   featureFlags: FeatureFlags,
   hasRole: (role: "admin" | "owner") => boolean,
   isDev: boolean,
+  can?: (policy: string) => boolean,
 ): NavigationSection[] {
   return sections
     .filter((section) => !section.devOnly || isDev)
@@ -285,7 +291,8 @@ export function visibleNavigationSections(
       items: section.items.filter(
         (item) =>
           (!item.flag || featureFlags[item.flag]) &&
-          (!item.minimumRole || hasRole(item.minimumRole)),
+          (!item.minimumRole || hasRole(item.minimumRole)) &&
+          (!item.policy || (can?.(item.policy) ?? false)),
       ),
     }))
     .filter((section) => section.items.length > 0);

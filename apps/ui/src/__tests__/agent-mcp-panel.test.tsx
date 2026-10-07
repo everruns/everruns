@@ -387,7 +387,7 @@ describe("AgentMcpPanel", () => {
     expect(screen.getByText("This preset is no longer available.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View catalog" })).toHaveAttribute(
       "href",
-      "/mcp-servers",
+      "/settings/mcp-catalog",
     );
     fireEvent.click(screen.getByRole("button", { name: /Tools 0 Unavailable/ }));
     expect(screen.getByText("No cached tools are available.")).toBeInTheDocument();

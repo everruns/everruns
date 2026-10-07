@@ -26,7 +26,7 @@ and desktop widths. Check shared layout behavior first, then the representative 
 | Surface | Representative routes |
 |---|---|
 | Landing and reporting | `/chats`, `/reports` |
-| Lists | `/sessions`, `/agents`, `/harnesses`, `/agent-identities`, `/skills`, `/memory`, `/knowledge-indexes`, `/models`, `/capabilities`, `/mcp-servers`, `/plugins`, `/apps`, `/evals`, `/observers` |
+| Lists | `/sessions`, `/agents`, `/harnesses`, `/agent-identities`, `/skills`, `/memory`, `/knowledge-indexes`, `/models`, `/capabilities`, `/plugins`, `/apps`, `/evals`, `/observers` |
 | Detail and edit | Representative agent, harness, identity, memory, knowledge index, capability, app, provider, and session detail/edit routes |
 | Create forms | New agent, harness, identity, declarative capability, app, eval, observer, and app-channel routes |
 | Session and chat | `/chats` plus session chat, transcript, timeline, work, events, workspace, and cost |
