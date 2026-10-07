@@ -35,6 +35,8 @@ impl CommandSchema for CreateObserver {
     method = "POST",
     path = "/v1/observers",
     policy = OBSERVER_MANAGE,
+    http = created,
+    request_body(CreateObserverRequest),
 )]
 impl Command for CreateObserver {
     type Output = Observer;
@@ -70,6 +72,8 @@ impl CommandSchema for ListObservers {
     method = "GET",
     path = "/v1/observers",
     policy = OBSERVER_VIEW,
+    http = list,
+    params(ListObserversQuery),
 )]
 impl Command for ListObservers {
     type Output = Vec<Observer>;
@@ -99,6 +103,8 @@ pub struct GetObserver {
     path = "/v1/observers/{observer_id}",
     policy = OBSERVER_VIEW,
     positional = "observer_id",
+    http = plain,
+    responses((status = 404, description = "Observer not found")),
 )]
 impl Command for GetObserver {
     type Output = Observer;
@@ -130,6 +136,9 @@ pub struct UpdateObserver {
     method = "PATCH",
     path = "/v1/observers/{observer_id}",
     policy = OBSERVER_MANAGE,
+    http = plain,
+    request_body(UpdateObserverRequest),
+    responses((status = 404, description = "Observer not found")),
 )]
 impl Command for UpdateObserver {
     type Output = Observer;
@@ -159,6 +168,8 @@ pub struct DeleteObserver {
     method = "DELETE",
     path = "/v1/observers/{observer_id}",
     policy = OBSERVER_MANAGE,
+    http = no_content,
+    responses((status = 404, description = "Observer not found")),
 )]
 impl Command for DeleteObserver {
     type Output = bool;
@@ -184,8 +195,14 @@ impl Command for DeleteObserver {
 pub struct ListObserverScores {
     pub observer_id: String,
     pub session_id: Option<String>,
+    #[serde(default = "default_scores_limit")]
     pub limit: i64,
+    #[serde(default)]
     pub offset: i64,
+}
+
+const fn default_scores_limit() -> i64 {
+    100
 }
 
 #[command(
@@ -195,6 +212,8 @@ pub struct ListObserverScores {
     method = "GET",
     path = "/v1/observers/{observer_id}/scores",
     policy = OBSERVER_VIEW,
+    http = list,
+    params(crate::api::observers::ListTraceScoresQuery),
 )]
 impl Command for ListObserverScores {
     type Output = Vec<TraceScore>;

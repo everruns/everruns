@@ -5672,6 +5672,7 @@
       "properties": {
         "description": {
           "description": "Human-readable description. Safe to render in user-facing messages.",
+          "example": "Score replies from the support agent",
           "type": [
             "string",
             "null"
@@ -5690,10 +5691,12 @@
         },
         "name": {
           "description": "Human-readable name. Safe to render in user-facing messages.",
+          "example": "Support quality",
           "type": "string"
         },
         "sampling_rate": {
           "description": "Fraction of matching turns to score (0.0–1.0). Defaults to 0.1.",
+          "example": 0.25,
           "format": "double",
           "type": [
             "number",
@@ -12469,9 +12472,7 @@
         }
       },
       "required": [
-        "observer_id",
-        "limit",
-        "offset"
+        "observer_id"
       ],
       "type": "object"
     },
@@ -12490,6 +12491,7 @@
       "description": "Query parameters for listing observers.",
       "properties": {
         "include_archived": {
+          "description": "Include archived observers.",
           "type": [
             "boolean",
             "null"
@@ -19766,6 +19768,7 @@
           "properties": {
             "description": {
               "description": "Human-readable description. Safe to render in user-facing messages.",
+              "example": "Score replies from the support agent",
               "type": [
                 "string",
                 "null"
@@ -19783,12 +19786,15 @@
             },
             "name": {
               "description": "Human-readable name. Safe to render in user-facing messages.",
+              "example": "Support quality",
               "type": [
                 "string",
                 "null"
               ]
             },
             "sampling_rate": {
+              "description": "Fraction of matching turns to score (0.0–1.0).",
+              "example": 0.5,
               "format": "double",
               "type": [
                 "number",

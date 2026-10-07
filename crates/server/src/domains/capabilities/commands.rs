@@ -360,7 +360,7 @@ pub struct DestroyDeclarativeCapability {
     path = "/v1/capabilities/declarative/{id}/delete",
     policy = CAPABILITY_DANGEROUS,
     positional = "id",
-    cli = CliRoute::new(&["capabilities", "declarative"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an archived declarative capability", "everruns capabilities declarative destroy cap_01h9",)]),
+    cli = CliRoute::new(&["capabilities", "declarative"], "destroy").with_args(&[CliArg::new("id").at(1)]).with_examples(&[CliExample::new("Permanently remove an archived declarative capability", "everruns capabilities declarative destroy cap_01h9 --reason 'Retired after the archive window'",)]),
 )]
 impl Command for DestroyDeclarativeCapability {
     type Output = serde_json::Value;

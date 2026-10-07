@@ -15,6 +15,7 @@
 * [Public Chat (Hosted Chat App)](public-chat.md) - Public Chat (hosted, isolated chat app), product spec/proposal.
 * [Legacy App Invocation Aliases](app-invocation-channels.md) - Frozen App-shaped aliases for channel-owned webhook and schedule ingress.
 * [Channel Authentication](channel-auth.md) - Shared inbound auth framework for Agent-owned channels.
+* [AgentID](agentid.md) - AgentID (OIDC for AI agents): channel preset, consumer sign-in, and agents finishing other apps' AgentID sign-ins.
 * [Legacy App API Keys](app-api-keys.md) - Frozen execution-only credentials for channel-owned native session ingress.
 * [AG-UI Channel](ag-ui.md) - AG-UI 1.0 channel: wire types, runtime-event projection, the consumer pipeline, and the 1.0 rules each side keeps.
 * [A2A Channel](a2a-channel.md) - A2A inbound channel.

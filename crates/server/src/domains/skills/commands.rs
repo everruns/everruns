@@ -40,7 +40,7 @@ impl CommandSchema for CreateSkill {
     method = "POST",
     path = "/v1/skills",
     policy = SKILL_MANAGE,
-    cli = CliRoute::new(&["skills"], "create").with_examples(&[CliExample::new("Add a skill from a local file", "everruns skills create --skill-md \"$(cat SKILL.md)\"",)]),
+    cli = CliRoute::new(&["skills"], "create").with_examples(&[CliExample::new("Add a skill from a local file", "everruns skills create --skill-md \"$(cat SKILL.md)\" --reason 'Share the code-review checklist'",)]),
     http = created_with_urls,
     request_body(CreateSkillRequest),
     responses(
@@ -296,7 +296,7 @@ pub struct UpdateSkillCmd {
     path = "/v1/skills/{id}",
     policy = SKILL_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["skills"], "update") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Replace a skill's content from a local file", "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\"",)]),
+    cli = CliRoute::new(&["skills"], "update") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Replace a skill's content from a local file", "everruns skills update skl_01h9 --skill-md \"$(cat SKILL.md)\" --reason 'Add the security review step'",)]),
     http = with_urls,
     request_body(UpdateSkillRequest),
     responses(
@@ -436,7 +436,7 @@ pub struct DeleteSkill {
     path = "/v1/skills/{id}",
     policy = SKILL_MANAGE,
     positional = "id",
-    cli = CliRoute::new(&["skills"], "delete") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Archive a skill, keeping it restorable", "everruns skills delete skl_01h9",)]),
+    cli = CliRoute::new(&["skills"], "delete") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Archive a skill, keeping it restorable", "everruns skills delete skl_01h9 --reason 'Superseded by the shared review skill'",)]),
     http = no_content,
     responses((status = 404, description = "Skill not found")),
 )]
@@ -481,7 +481,7 @@ pub struct DestroySkill {
     path = "/v1/skills/{id}/delete",
     policy = SKILL_DANGEROUS,
     positional = "id",
-    cli = CliRoute::new(&["skills"], "destroy") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Permanently remove an already-archived skill", "everruns skills destroy skl_01h9",)]),
+    cli = CliRoute::new(&["skills"], "destroy") .with_args(&[CliArg::new("id").at(1)]) .with_examples(&[CliExample::new("Permanently remove an already-archived skill", "everruns skills destroy skl_01h9 --reason 'Retired after the archive window'",)]),
     http = no_content,
     responses(
         (status = 400, description = "Skill is not archived", body = crate::api::common::ErrorResponse),

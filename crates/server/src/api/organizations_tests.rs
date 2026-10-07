@@ -703,3 +703,43 @@ fn test_update_request_partial() {
         serde_json::from_str(r#"{"default_model_id":null}"#).unwrap();
     assert_eq!(req.default_model_id, Some(None));
 }
+
+#[tokio::test]
+async fn admins_set_and_clear_the_agentid_owner_cap() {
+    use crate::storage::models::CreateOrganizationRow;
+
+    let (app, db, user_id) = create_org_app(None).await;
+    let public_id = generate_org_public_id();
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: public_id.clone(),
+            name: "AgentID Cap".to_string(),
+            created_by: None,
+        })
+        .await
+        .unwrap();
+    db.add_organization_member(org.org_id, user_id, "owner")
+        .await
+        .unwrap();
+
+    let patch = |body: &'static str| {
+        app.clone()
+            .oneshot(update_org_json_request(&public_id, body))
+    };
+    let response = patch(r#"{"agentid_agents_per_owner":3}"#).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["agentid_agents_per_owner"], 3);
+    assert_eq!(db.agentid_agents_per_owner(org.org_id).await.unwrap(), 3);
+
+    let response = patch(r#"{"agentid_agents_per_owner":-1}"#).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let response = patch(r#"{"agentid_agents_per_owner":null}"#).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        db.agentid_agents_per_owner(org.org_id).await.unwrap(),
+        crate::storage::agentid::DEFAULT_AGENTS_PER_OWNER
+    );
+}

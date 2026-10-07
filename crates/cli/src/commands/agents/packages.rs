@@ -98,6 +98,7 @@ pub(super) async fn run(
             content,
             target,
             format: input_format,
+            reason,
         } => {
             let package = if let Some(content) = content {
                 everruns_core::agent_package::AgentPackage::parse(
@@ -109,7 +110,7 @@ pub(super) async fn run(
             };
             let body = serde_json::json!({"content":package.to_string(everruns_core::agent_package::Format::Json)?,"format":"json","target":target});
             let response = super::super::api::ApiClient::new(api_url, api_key, org_id)
-                .post("/v1/agents/import", Some(&body))
+                .post_with_reason("/v1/agents/import", Some(&body), reason.as_deref())
                 .await?;
             print_package_report(output, &response);
             Ok(())
