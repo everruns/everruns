@@ -37,7 +37,7 @@ assert_false "UI source does not select Rust checks" pre_push_rust_changed
 PRE_PUSH_CHANGED_FILES=$'crates/core/src/lib.rs'
 assert_true "core source selects the core API guard" pre_push_core_api_changed
 
-PRE_PUSH_CHANGED_FILES=$'integrations/example/Cargo.toml'
+PRE_PUSH_CHANGED_FILES=$'crates/integrations/Cargo.toml'
 assert_true "nested manifests select Rust checks" pre_push_rust_changed
 assert_true "nested manifests refresh the Cargo graph" pre_push_cargo_graph_changed
 
