@@ -35560,6 +35560,7 @@
                 "id",
                 "name",
                 "default_provider_per_service",
+                "system_decisions",
                 "created_at",
                 "updated_at"
               ],
@@ -35615,6 +35616,10 @@
                   ],
                   "format": "date-time",
                   "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
+                "system_decisions": {
+                  "$ref": "#/components/schemas/SystemDecisions",
+                  "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
                 },
                 "updated_at": {
                   "type": "string",
@@ -40295,6 +40300,7 @@
           "id",
           "name",
           "default_provider_per_service",
+          "system_decisions",
           "created_at",
           "updated_at"
         ],
@@ -40350,6 +40356,10 @@
             ],
             "format": "date-time",
             "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
+          "system_decisions": {
+            "$ref": "#/components/schemas/SystemDecisions",
+            "description": "Who answers deployment-owned decision checks: `deployment` (default)\nor `organization` (the org's default decision model)."
           },
           "updated_at": {
             "type": "string",
@@ -48364,6 +48374,14 @@
         ],
         "description": "Response from syncing models from a provider"
       },
+      "SystemDecisions": {
+        "type": "string",
+        "description": "Who answers an org's deployment-owned decision checks (guardrail `jev`\nchecks and the Slack relevance check).",
+        "enum": [
+          "deployment",
+          "organization"
+        ]
+      },
       "TaskArtifact": {
         "type": "object",
         "description": "Typed link to something the task produced.",
@@ -51362,6 +51380,17 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          },
+          "system_decisions": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SystemDecisions",
+                "description": "Who answers deployment-owned decision checks (guardrail `jev` checks\nand the Slack relevance check). `organization` uses the org's default\ndecision model (`PUT /v1/models/decision-default`) on its own provider\naccount; when that model is missing or failing, guardrail checks fail\nopen and Slack stays silent, never falling back to the deployment."
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

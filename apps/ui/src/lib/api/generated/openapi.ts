@@ -13181,6 +13181,11 @@ export interface components {
          */
         onboarding_completed_at?: string | null;
         /**
+         * @description Who answers deployment-owned decision checks: `deployment` (default)
+         *     or `organization` (the org's default decision model).
+         */
+        system_decisions: components["schemas"]["SystemDecisions"];
+        /**
          * Format: date-time
          * @description When the organization was last updated
          */
@@ -15705,6 +15710,11 @@ export interface components {
        *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
        */
       onboarding_completed_at?: string | null;
+      /**
+       * @description Who answers deployment-owned decision checks: `deployment` (default)
+       *     or `organization` (the org's default decision model).
+       */
+      system_decisions: components["schemas"]["SystemDecisions"];
       /**
        * Format: date-time
        * @description When the organization was last updated
@@ -20216,6 +20226,12 @@ export interface components {
           /** @enum {string} */
           status: "not_supported";
         };
+    /**
+     * @description Who answers an org's deployment-owned decision checks (guardrail `jev`
+     *     checks and the Slack relevance check).
+     * @enum {string}
+     */
+    SystemDecisions: "deployment" | "organization";
     /** @description Typed link to something the task produced. */
     TaskArtifact: {
       name: string;
@@ -21780,6 +21796,7 @@ export interface components {
        * @example Acme Corporation
        */
       name?: string | null;
+      system_decisions?: components["schemas"]["SystemDecisions"] | null;
     };
     /** @description Request body for the `update_payment_account` operation. */
     UpdatePaymentAccountRequest: {
