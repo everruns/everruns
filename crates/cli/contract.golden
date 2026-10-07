@@ -170,7 +170,7 @@ observers create	--context-revision --description --match --name! --reason --sam
 observers delete	--context-revision --observer-id! --reason
 observers get	--context-revision --observer-id! --reason
 observers list	--context-revision --include-archived --reason
-observers scores list	--context-revision --limit! --observer-id! --offset! --reason --session-id
+observers scores list	--context-revision --limit --observer-id! --offset --reason --session-id
 observers update	--context-revision --description --match --name --observer-id! --reason --sampling-rate --scorers --status
 orgs audit-logs list	--action --actor-id --before --context-revision --domain --event-type --limit --reason
 orgs get	--context-revision --org! --reason
