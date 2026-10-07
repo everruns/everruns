@@ -1,7 +1,9 @@
 use super::{
+    active_turns,
     service::{SlackHealthService, issue_copy},
     types::{HealthIssue, HealthIssueList},
 };
+use crate::domains::sessions::limits::OrgCaps;
 use crate::domains::{
     agents::{AGENT_MANAGE, AGENT_VIEW},
     common::*,
@@ -46,7 +48,10 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
                 user_id,
                 kind: "health.issue".into(),
                 title: title.clone(),
-                body: format!("{}: {body}", row.agent_name),
+                body: match &row.agent_name {
+                    Some(agent) => format!("{agent}: {body}"),
+                    None => body.clone(),
+                },
                 target_type: Some("health_issue".into()),
                 target_id: Some(row.id.to_string()),
                 href: Some(href.clone()),
@@ -70,11 +75,16 @@ pub async fn present(ctx: &Ctx, row: HealthIssueRow) -> Result<HealthIssue, Comm
     } else {
         None
     };
-    let revision = ctx
-        .db
-        .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await?;
-    let stale = revision.is_none_or(|e| e.updated_at != row.channel_revision)
+    // An organization-level issue has no channel revision to compare.
+    let revision_changed = match &row.channel_public_id {
+        Some(channel) => ctx
+            .db
+            .get_ingress_channel_by_public_id(channel)
+            .await?
+            .is_none_or(|e| Some(e.updated_at) != row.channel_revision),
+        None => false,
+    };
+    let stale = revision_changed
         || Utc::now() - row.last_checked_at > chrono::Duration::minutes(15)
         || row.error_code.as_deref() == Some("verification_unavailable");
     Ok(HealthIssue {
@@ -112,10 +122,11 @@ async fn issue(ctx: &Ctx, id: Uuid) -> Result<HealthIssueRow, CommandError> {
         .get_health_issue(ctx.org_id(), id)
         .await?
         .ok_or_else(|| CommandError::not_found("Health issue"))?;
-    if let Some(channel) = ctx
-        .db
-        .get_ingress_channel_by_public_id(&row.channel_public_id)
-        .await?
+    if let Some(channel_public_id) = row.channel_public_id.as_deref()
+        && let Some(channel) = ctx
+            .db
+            .get_ingress_channel_by_public_id(channel_public_id)
+            .await?
         && (!channel.enabled || channel.channel_status == "disabled")
     {
         row.status = "inapplicable".into();
@@ -210,10 +221,21 @@ impl Command for CheckHealthIssue {
     type Output = HealthIssue;
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         let row = issue(ctx, self.issue_id).await?;
-        if !SlackHealthService::new(ctx.db.clone(), ctx.encryption.clone())
-            .check_requested(&row.channel_public_id, self.issue_id)
-            .await?
-        {
+        let checked = match row.channel_public_id.as_deref() {
+            Some(channel_public_id) => {
+                SlackHealthService::new(ctx.db.clone(), ctx.encryption.clone())
+                    .check_requested(channel_public_id, self.issue_id)
+                    .await?
+            }
+            // Same cooldown as a channel check.
+            None if Utc::now() - row.last_checked_at < chrono::Duration::seconds(15) => false,
+            None if row.code == active_turns::ACTIVE_TURN_LIMIT => {
+                active_turns::recheck(&ctx.db, ctx.org_id(), OrgCaps::from_env()).await?;
+                true
+            }
+            None => true,
+        };
+        if !checked {
             return Err(
                 CommandError::rate_limited("Wait a few seconds before checking again")
                     .with_retry_after(15),
@@ -277,14 +299,17 @@ pub async fn filter_notifications(
             let Some(issue) = ctx.db.get_health_issue(ctx.org_id(), id).await? else {
                 continue;
             };
-            let channel = ctx
-                .db
-                .get_ingress_channel_by_public_id(&issue.channel_public_id)
-                .await?;
-            if issue.status == "inapplicable"
-                || channel.is_none_or(|e| !e.enabled || e.channel_status == "disabled")
-            {
+            if issue.status == "inapplicable" {
                 continue;
+            }
+            if let Some(channel_public_id) = issue.channel_public_id.as_deref() {
+                let channel = ctx
+                    .db
+                    .get_ingress_channel_by_public_id(channel_public_id)
+                    .await?;
+                if channel.is_none_or(|e| !e.enabled || e.channel_status == "disabled") {
+                    continue;
+                }
             }
         }
         visible.push(row);

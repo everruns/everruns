@@ -66,7 +66,8 @@ function NotificationMenuContent() {
               <div className="min-w-0">
                 <p className="text-sm font-medium">{issue.title}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {issue.agent_name} · {issue.stale ? "Needs check" : "Action required"}
+                  {issue.agent_name ?? "Organization"} ·{" "}
+                  {issue.stale ? "Needs check" : "Action required"}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">{issue.body}</p>
                 <p className="mt-2 text-xs underline">Review issue</p>
