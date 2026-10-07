@@ -17,6 +17,14 @@
 //! - `server`: `input.message` to `turn.completed`, from the events' own
 //!   timestamps: the server's view, free of the client's polling.
 //! - `pickup`: `input.message` to `turn.started`: enqueue, wakeup and claim.
+//! - `db stmts/turn` and `db ms/turn`: statements PostgreSQL executed and
+//!   their execution time per turn, from `pg_stat_statements` reset at the
+//!   start of each scenario. Wall times swing with the machine; statement
+//!   counts barely move between runs, so they are the regression signal for
+//!   the platform's database work. Background loops (sweeps, heartbeats) run
+//!   during the scenario and are counted too: they are part of what a turn
+//!   costs the database. Needs `shared_preload_libraries=pg_stat_statements`;
+//!   without it the columns read `n/a`.
 //!
 //! Decisions:
 //! - The model answers instantly (llmsim without `-latency` in the model id),
@@ -37,6 +45,7 @@
 //!   ... -- --smoke                 # five turns, a second or two
 //!   ... -- --summary out.jsonl     # append one JSON line per scenario
 //!   ... -- --moniker <name>        # label for the summary lines
+//!   ... -- --top <n>               # print the n statements costing most DB time per turn
 //!
 //! `--summary` lines follow `crates/durable/benches/baseline.jsonl`
 //! (`tasks` are turns, `s2s_*` the pickup, `e2e_*` the client latency), so
@@ -64,6 +73,7 @@ struct Options {
     smoke: bool,
     moniker: String,
     summary: Option<PathBuf>,
+    top: usize,
 }
 
 impl Options {
@@ -71,12 +81,14 @@ impl Options {
         let mut smoke = false;
         let mut moniker = None;
         let mut summary = None;
+        let mut top = 0;
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--smoke" => smoke = true,
                 "--moniker" => moniker = args.next(),
                 "--summary" => summary = args.next().map(PathBuf::from),
+                "--top" => top = args.next().and_then(|n| n.parse().ok()).unwrap_or(10),
                 // `cargo bench` passes `--bench`.
                 _ => {}
             }
@@ -85,6 +97,7 @@ impl Options {
             smoke,
             moniker: moniker.unwrap_or_else(|| "local".into()),
             summary,
+            top,
         }
     }
 }
@@ -117,7 +130,7 @@ fn main() {
         .enable_all()
         .build()
         .expect("tokio runtime");
-    let lines = runtime.block_on(run(&opts, http_port, grpc_port));
+    let lines = runtime.block_on(run(&opts, &database_url, http_port, grpc_port));
 
     if let Some(path) = &opts.summary {
         let mut file = OpenOptions::new()
@@ -156,7 +169,7 @@ fn free_port() -> u16 {
         .port()
 }
 
-async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
+async fn run(opts: &Options, database_url: &str, http_port: u16, grpc_port: u16) -> Vec<Value> {
     let base = format!("http://127.0.0.1:{http_port}");
     let config = ServerConfig {
         dev_mode: false,
@@ -183,6 +196,7 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
     // The first turn pays one-off costs (worker registration, caches).
     let mut warmup = create_session(&client, &base, &agent).await;
     send_turn(&client, &base, &mut warmup).await;
+    let stats = DbStats::connect(database_url).await;
 
     let loads = if opts.smoke {
         vec![Load {
@@ -206,7 +220,7 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
         if opts.smoke { "smoke" } else { "full" }
     );
     println!(
-        "{:>5} {:>6} {:>8} {:>9} {:>9} {:>9} {:>11} {:>11} {:>11}",
+        "{:>5} {:>6} {:>8} {:>9} {:>9} {:>9} {:>11} {:>11} {:>11} {:>14} {:>11}",
         "conc",
         "turns",
         "turns/s",
@@ -215,7 +229,9 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
         "e2e p99",
         "server p50",
         "server p95",
-        "pickup p50"
+        "pickup p50",
+        "db stmts/turn",
+        "db ms/turn"
     );
     let mut lines = Vec::new();
     for load in loads {
@@ -226,6 +242,9 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
                 sessions.push(create_session(&client, &base, &agent).await);
             }
             slots.push(sessions);
+        }
+        if let Some(stats) = &stats {
+            stats.reset().await;
         }
         let started = Instant::now();
         let tasks: Vec<_> = slots
@@ -249,6 +268,12 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
             turns.extend(task.await.expect("session slot"));
         }
         let elapsed = started.elapsed();
+        let db = match &stats {
+            Some(stats) => Some(stats.per_turn(turns.len(), opts.top).await),
+            None => None,
+        };
+        let db_cell =
+            |value: Option<f64>| value.map_or_else(|| "n/a".to_owned(), |v| format!("{v:.1}"));
 
         let mut e2e: Vec<f64> = turns
             .iter()
@@ -259,7 +284,7 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
         let turns_per_sec = turns.len() as f64 / elapsed.as_secs_f64();
         let pct = |values: &mut Vec<f64>, p: f64| round2(percentile(values, p));
         println!(
-            "{:>5} {:>6} {:>8.1} {:>9.2} {:>9.2} {:>9.2} {:>11.2} {:>11.2} {:>11.2}",
+            "{:>5} {:>6} {:>8.1} {:>9.2} {:>9.2} {:>9.2} {:>11.2} {:>11.2} {:>11.2} {:>14} {:>11}",
             load.concurrency,
             turns.len(),
             turns_per_sec,
@@ -269,7 +294,14 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
             pct(&mut server, 0.50),
             pct(&mut server, 0.95),
             pct(&mut pickup, 0.50),
+            db_cell(db.as_ref().map(|db| db.statements)),
+            db_cell(db.as_ref().map(|db| db.exec_ms)),
         );
+        if let Some(db) = &db {
+            for line in &db.top {
+                println!("      {line}");
+            }
+        }
         lines.push(json!({
             "bench": "server_turn_latency",
             "scenario": format!("text_c{}", load.concurrency),
@@ -285,12 +317,103 @@ async fn run(opts: &Options, http_port: u16, grpc_port: u16) -> Vec<Value> {
             "server_p50_ms": pct(&mut server, 0.50),
             "server_p95_ms": pct(&mut server, 0.95),
             "server_p99_ms": pct(&mut server, 0.99),
+            "db_statements_per_turn": db.as_ref().map(|db| round2(db.statements)),
+            "db_ms_per_turn": db.as_ref().map(|db| round2(db.exec_ms)),
         }));
     }
 
     worker.abort();
     server.abort();
     lines
+}
+
+/// Database work per turn, read from `pg_stat_statements`.
+struct DbStats {
+    pool: sqlx::PgPool,
+}
+
+struct DbPerTurn {
+    statements: f64,
+    exec_ms: f64,
+    /// `--top` lines: the statements costing the most time per turn.
+    top: Vec<String>,
+}
+
+impl DbStats {
+    /// `None`, with a note, when the extension is not loaded.
+    async fn connect(database_url: &str) -> Option<Self> {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .connect(database_url)
+            .await
+            .expect("bench database connection");
+        let ready = sqlx::query("CREATE EXTENSION IF NOT EXISTS pg_stat_statements")
+            .execute(&pool)
+            .await
+            .is_ok()
+            && sqlx::query("SELECT 1 FROM pg_stat_statements LIMIT 1")
+                .execute(&pool)
+                .await
+                .is_ok();
+        if !ready {
+            println!(
+                "note: pg_stat_statements is not loaded (shared_preload_libraries), so DB work per turn is not reported"
+            );
+            return None;
+        }
+        Some(Self { pool })
+    }
+
+    async fn reset(&self) {
+        sqlx::query("SELECT pg_stat_statements_reset()")
+            .execute(&self.pool)
+            .await
+            .expect("reset pg_stat_statements");
+    }
+
+    async fn per_turn(&self, turns: usize, top: usize) -> DbPerTurn {
+        let turns = turns.max(1) as f64;
+        // Only this database: the server and worker share it, other
+        // databases on the instance are not the bench's.
+        let (calls, exec_ms): (f64, f64) = sqlx::query_as(
+            "SELECT COALESCE(SUM(calls), 0)::float8, COALESCE(SUM(total_exec_time), 0)::float8
+             FROM pg_stat_statements
+             WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+               AND query NOT ILIKE '%pg_stat_statements%'",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .expect("read pg_stat_statements");
+        let mut lines = Vec::new();
+        if top > 0 {
+            let rows: Vec<(f64, f64, String)> = sqlx::query_as(
+                "SELECT calls::float8, total_exec_time, query
+                 FROM pg_stat_statements
+                 WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                   AND query NOT ILIKE '%pg_stat_statements%'
+                 ORDER BY total_exec_time DESC
+                 LIMIT $1",
+            )
+            .bind(top as i64)
+            .fetch_all(&self.pool)
+            .await
+            .expect("read top statements");
+            for (calls, total_ms, query) in rows {
+                let query: String = query.split_whitespace().collect::<Vec<_>>().join(" ");
+                let query: String = query.chars().take(110).collect();
+                lines.push(format!(
+                    "{:>6.2} ms {:>5.1} calls/turn  {query}",
+                    total_ms / turns,
+                    calls / turns
+                ));
+            }
+        }
+        DbPerTurn {
+            statements: calls / turns,
+            exec_ms: exec_ms / turns,
+            top: lines,
+        }
+    }
 }
 
 async fn wait_for_health(

@@ -149,13 +149,24 @@ DATABASE_URL=postgres://... cargo bench -p everruns-server --bench turn_latency
 just bench-turn-latency --smoke    # five turns; DATABASE_URL defaults to the local test DB
 ```
 
+It also reports the statements PostgreSQL executed and their execution time
+per turn, from `pg_stat_statements` reset at the start of each scenario
+(`--top <n>` lists the statements costing the most time). Wall times on a
+shared box swing by tens of percent between runs, while statements per turn
+barely move, so they are the reliable signal that the platform's database
+work changed. The extension must be preloaded
+(`shared_preload_libraries=pg_stat_statements`); without it those columns
+read `n/a`.
+
 `--summary <file>` appends one JSON line per scenario (bench
 `server_turn_latency`) in the shape of the durable benches' baseline, and
 `--moniker` labels it. It is a bench target, so `cargo test` never runs it;
 the `server-turn-latency` job of
 [`durable-bench.yml`](../../.github/workflows/durable-bench.yml) runs it
-weekly against a PostgreSQL service container and reports without gating
-until a baseline exists.
+weekly against PostgreSQL with `pg_stat_statements` loaded. It fails a
+scenario whose throughput drops more than 30% below
+`turn_latency_baseline.jsonl`, or whose statements per turn grow more than 15%
+over it; latency is reported, not gated.
 
 ## Justfile Profiles
 
