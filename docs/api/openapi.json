@@ -23580,6 +23580,7 @@
           "source_label",
           "overridden_sources",
           "acts_as",
+          "connect_in_chat",
           "header_names",
           "tools_available",
           "tools",
@@ -23600,6 +23601,10 @@
           "can_revoke": {
             "type": "boolean",
             "description": "Whether the current caller can revoke the active connection."
+          },
+          "connect_in_chat": {
+            "$ref": "#/components/schemas/McpConnectInChat",
+            "description": "Whether a missing sign-in pauses the turn with an in-chat card (`ask`)\nor fails the call with a settings link (`never`)."
           },
           "connected_as": {
             "type": [
@@ -24781,6 +24786,10 @@
                 "null"
               ],
               "description": "Executable to spawn for a stdio transport server."
+            },
+            "connectInChat": {
+              "$ref": "#/components/schemas/McpConnectInChat",
+              "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
             },
             "elicitation_policy": {
               "$ref": "#/components/schemas/McpElicitationPolicy",
@@ -38790,6 +38799,15 @@
         "type": "object",
         "description": "Response body for manual memory source."
       },
+      "McpConnectInChat": {
+        "type": "string",
+        "description": "Whether a missing sign-in for an agent MCP attachment may pause the turn\nwith an in-chat Connect card.\n\nDecision: `never` exists for agents behind channels that cannot render a\ncard (user MCP servers D5). The call then fails like any other tool error,\nnaming the server and where to connect it, and the turn keeps going. It\nchanges only how a missing grant is reported, never which grant is used.",
+        "enum": [
+          "ask",
+          "never"
+        ],
+        "example": "ask"
+      },
       "McpElicitationPolicy": {
         "type": "string",
         "description": "Which MCP elicitation modes the client declares to one server.\n\nAn operator decision on the server record, never a per-call negotiation and\nnever something the model can widen. Under MRTR a server must not ask for an\ninput type the client did not declare, so this is what stops a configured\nserver from putting questions in front of a person.\n\nTHREAT[TM-TOOL-045]: form mode is opt-in per server. The default keeps the\nbehaviour every existing deployment already had, and it is omitted from\nserialized config so stored records stay byte-identical.",
@@ -46542,6 +46560,10 @@
               "null"
             ],
             "description": "Executable to spawn for a stdio transport server."
+          },
+          "connectInChat": {
+            "$ref": "#/components/schemas/McpConnectInChat",
+            "description": "Whether a missing sign-in may pause the turn with an in-chat Connect\ncard (`ask`, the default) or fails the call with a settings link\n(`never`)."
           },
           "elicitation_policy": {
             "$ref": "#/components/schemas/McpElicitationPolicy",

@@ -1320,6 +1320,10 @@ message McpServerInfo {
     // Elicitation modes the client may declare: "url" (default, also what an
     // empty string means), "url_and_form", or "none".
     string elicitation_policy = 11;
+    // Whether a missing grant may pause the turn with an in-chat card: "ask"
+    // (default, also what an empty string means) or "never", which reports a
+    // tool error carrying the setup link instead.
+    string connect_in_chat = 12;
 }
 
 message McpSecretBinding {

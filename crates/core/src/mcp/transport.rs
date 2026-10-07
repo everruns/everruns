@@ -49,6 +49,10 @@ pub struct McpConnection {
     /// The executor short-circuits into a structured `connection_required`
     /// result instead of sending an unauthenticated request.
     pub pending_oauth_provider: Option<ConnectionRequired>,
+    /// Whether `pending_oauth_provider` may pause the turn with an in-chat
+    /// card (`ask`) or is reported as a plain tool error with the setup link
+    /// (`never`). Set from the agent's MCP attachment.
+    pub connect_in_chat: crate::McpConnectInChat,
     /// Write-only Agent credentials bound to exact MCP tool parameters. Values
     /// are resolved by the control plane and injected only inside the executor.
     pub secret_bindings: HashMap<String, Vec<McpSecretBinding>>,
@@ -92,6 +96,7 @@ impl McpConnection {
             elicitation_policy: McpElicitationPolicy::Url,
             oauth_provider_id: None,
             pending_oauth_provider: None,
+            connect_in_chat: crate::McpConnectInChat::Ask,
             secret_bindings: HashMap::new(),
             acted_as: None,
         }

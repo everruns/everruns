@@ -71,7 +71,10 @@ the capability being configured, when one of the agent's own MCP servers acts
 as `user` or `user_or_service`, so the agent can offer the sign-in before a
 call fails. For a server that acts as the agent (`service`), the card leads to
 the agent's **MCP servers** sheet, where only someone allowed to manage MCP
-servers can authorize it; anyone else is told to ask an admin. Servers added in chat cannot carry API keys
+servers can authorize it; anyone else is told to ask an admin. An agent server
+set to `connectInChat: never` gets no card: the tool returns the same settings
+link for the agent to pass on (see
+[Connecting from chat](/features/mcp/#connecting-from-chat)). Servers added in chat cannot carry API keys
 or headers; the person adds those in Settings.
 
 ## Behaviour

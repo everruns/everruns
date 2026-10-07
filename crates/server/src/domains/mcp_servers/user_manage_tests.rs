@@ -396,6 +396,7 @@ async fn agent_servers_acting_as_the_person_connect_without_manage() {
         provider,
         setup_url,
         for_agent,
+        ..
     } = connect_card(&fixture, "linear").await
     else {
         panic!("expected a pending sign-in");
@@ -508,5 +509,71 @@ async fn agent_servers_acting_as_the_agent_route_to_the_agents_sheet() {
     assert_eq!(
         connect_card(&fixture, "github").await,
         McpLogin::AlreadyConnected
+    );
+}
+
+#[tokio::test]
+async fn connect_in_chat_never_travels_with_the_agent_servers_sign_in() {
+    let mut fixture = Fixture::new(None).await;
+    fixture.catalog_preset("linear", "oauth").await;
+    fixture.catalog_preset("notion", "oauth").await;
+    let quiet = |acts_as: &str| -> ScopedMcpServer {
+        serde_json::from_value(json!({
+            "use": "catalog:linear",
+            "actsAs": acts_as,
+            "connectInChat": "never",
+        }))
+        .unwrap()
+    };
+    fixture
+        .agent
+        .mcp_servers
+        .insert("linear".into(), quiet("user"));
+    fixture
+        .agent
+        .mcp_servers
+        .insert("notion".into(), agent_server("notion", "user"));
+
+    let McpLogin::Pending {
+        setup_url,
+        for_agent,
+        connect_in_chat,
+        ..
+    } = connect_card(&fixture, "linear").await
+    else {
+        panic!("expected a pending sign-in");
+    };
+    assert_eq!(connect_in_chat, everruns_core::McpConnectInChat::Never);
+    assert_eq!(setup_url, SETUP_URL);
+    assert!(!for_agent);
+
+    // The default stays `ask`, so existing agents keep their card.
+    let McpLogin::Pending {
+        connect_in_chat, ..
+    } = connect_card(&fixture, "notion").await
+    else {
+        panic!("expected a pending sign-in");
+    };
+    assert_eq!(connect_in_chat, everruns_core::McpConnectInChat::Ask);
+
+    // An agent's own login keeps the agent sheet link under `never` too.
+    fixture
+        .agent
+        .mcp_servers
+        .insert("linear".into(), quiet("service"));
+    let McpLogin::Pending {
+        setup_url,
+        for_agent,
+        connect_in_chat,
+        ..
+    } = connect_card(&fixture, "linear").await
+    else {
+        panic!("expected a pending sign-in");
+    };
+    assert!(for_agent);
+    assert_eq!(connect_in_chat, everruns_core::McpConnectInChat::Never);
+    assert_eq!(
+        setup_url,
+        format!("/agents/{}?tab=mcp", fixture.agent.public_id)
     );
 }

@@ -208,6 +208,9 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             elicitation_policy: info.elicitation_policy,
             oauth_provider_id: info.oauth_provider_id,
             pending_oauth_provider,
+            // `never` turns a missing grant into a plain tool error with the
+            // same setup link, so the turn does not pause on a card.
+            connect_in_chat: info.connect_in_chat,
             secret_bindings: info.secret_bindings,
             acted_as,
         }))

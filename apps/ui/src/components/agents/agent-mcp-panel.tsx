@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useAgentMcpAttachments,
@@ -84,13 +85,19 @@ function McpAttachmentRow({
   attachment,
   hasCollision,
   onRemove,
+  onConnectInChatChange,
+  saving,
 }: {
   agentId: string;
   attachment: AgentMcpAttachment;
   hasCollision: boolean;
   onRemove: (attachment: AgentMcpAttachment) => void;
+  onConnectInChatChange: (attachment: AgentMcpAttachment, allow: boolean) => void;
+  saving: boolean;
 }) {
   const toolsId = useId();
+  const connectInChatId = useId();
+  const connectsInChat = attachment.connect_in_chat !== "never";
   const [toolsOpen, setToolsOpen] = useState(false);
   const revoke = useRevokeAgentMcpConnection(agentId);
   const connectHref = connectionHref(agentId, attachment);
@@ -147,6 +154,28 @@ function McpAttachmentRow({
             <span className="font-mono text-foreground">{attachment.header_names.join(", ")}</span>
           </p>
         )}
+        {attachment.acts_as !== "none" &&
+          (attachment.editable ? (
+            <div className="flex items-start gap-3">
+              <Switch
+                id={connectInChatId}
+                checked={connectsInChat}
+                disabled={saving}
+                aria-label="Ask to connect in chat"
+                onCheckedChange={(allow) => onConnectInChatChange(attachment, allow)}
+              />
+              <div className="space-y-0.5">
+                <Label htmlFor={connectInChatId}>Ask to connect in chat</Label>
+                <p className="text-xs text-muted-foreground">
+                  {connectsInChat
+                    ? "A missing sign-in pauses the chat with a Connect card."
+                    : "A missing sign-in fails the call with a link to settings. For channels that cannot show cards."}
+                </p>
+              </div>
+            </div>
+          ) : (
+            !connectsInChat && <Badge variant="outline">Connects in settings only</Badge>
+          ))}
 
         {attachment.state === "preset_missing" ? (
           <div className="flex flex-wrap items-center gap-2 text-sm text-destructive">
@@ -260,6 +289,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
   const [search, setSearch] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [actsAs, setActsAs] = useState<McpServerActsAs>("none");
+  const [connectInChat, setConnectInChat] = useState(true);
+  const [rowError, setRowError] = useState<string | null>(null);
   const [customName, setCustomName] = useState("");
   const [customUrl, setCustomUrl] = useState("");
   const [customHeaders, setCustomHeaders] = useState("");
@@ -305,6 +336,7 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     setSearch("");
     setSelectedPreset(null);
     setActsAs("none");
+    setConnectInChat(true);
     setCustomName("");
     setCustomUrl("");
     setCustomHeaders("");
@@ -324,6 +356,8 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
         [selectedPreset]: {
           use: `catalog:${selectedPreset}`,
           actsAs,
+          // `ask` is the default and stays off the wire.
+          ...(actsAs !== "none" && !connectInChat ? { connectInChat: "never" as const } : {}),
         },
       });
       closeAdd();
@@ -388,6 +422,22 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
     }
   };
 
+  const changeConnectInChat = async (attachment: AgentMcpAttachment, allow: boolean) => {
+    const current = agent.mcpServers?.[attachment.name];
+    if (!current) return;
+    setRowError(null);
+    const rest = { ...current };
+    delete rest.connectInChat;
+    try {
+      await saveAuthoredAttachments({
+        ...(agent.mcpServers ?? {}),
+        [attachment.name]: allow ? rest : { ...rest, connectInChat: "never" },
+      });
+    } catch (error) {
+      setRowError(errorMessage(error));
+    }
+  };
+
   const removeAttachment = async () => {
     if (!removeTarget) return;
     setRemoveError(null);
@@ -437,8 +487,11 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
               attachment={attachment}
               hasCollision={(prefixCounts.get(attachmentPrefix(attachment.name)) ?? 0) > 1}
               onRemove={setRemoveTarget}
+              onConnectInChatChange={changeConnectInChat}
+              saving={updateAgent.isPending}
             />
           ))}
+          {rowError && <p className="text-sm text-destructive">{rowError}</p>}
         </div>
       ) : (
         <Card>
@@ -589,6 +642,16 @@ export function AgentMcpPanel({ agent }: { agent: Agent }) {
                   </p>
                 )}
               </fieldset>
+              {actsAs !== "none" && (
+                <Label>
+                  <input
+                    type="checkbox"
+                    checked={connectInChat}
+                    onChange={(event) => setConnectInChat(event.target.checked)}
+                  />
+                  Ask to connect in chat when a sign-in is missing
+                </Label>
+              )}
             </div>
           ) : (
             <div className="space-y-4">

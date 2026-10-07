@@ -737,3 +737,38 @@ fn user_or_service_tries_the_user_before_the_agent() {
     assert!(!McpServerActsAs::User.uses_service_grant());
     assert!(!McpServerActsAs::Service.uses_user_grant());
 }
+
+#[test]
+fn connect_in_chat_defaults_to_ask_and_round_trips_never() {
+    let server: ScopedMcpServer =
+        serde_json::from_value(json!({"use": "catalog:github", "actsAs": "user"})).unwrap();
+    assert_eq!(server.connect_in_chat, McpConnectInChat::Ask);
+    // The default stays off the wire, so existing configs serialize unchanged.
+    let wire = serde_json::to_value(&server).unwrap();
+    assert!(wire.get("connectInChat").is_none());
+
+    let server: ScopedMcpServer = serde_json::from_value(json!({
+        "use": "catalog:github",
+        "actsAs": "user",
+        "connectInChat": "never",
+    }))
+    .unwrap();
+    assert_eq!(server.connect_in_chat, McpConnectInChat::Never);
+    assert!(!server.connect_in_chat.allows_card());
+    let wire = serde_json::to_value(&server).unwrap();
+    assert_eq!(wire["connectInChat"], "never");
+
+    let snake: ScopedMcpServer =
+        serde_json::from_value(json!({"url": "https://x.example/mcp", "connect_in_chat": "never"}))
+            .unwrap();
+    assert_eq!(snake.connect_in_chat, McpConnectInChat::Never);
+    assert!(
+        serde_json::from_value::<ScopedMcpServer>(
+            json!({"url": "https://x.example/mcp", "connectInChat": "sometimes"})
+        )
+        .is_err()
+    );
+    assert_eq!(McpConnectInChat::from(""), McpConnectInChat::Ask);
+    assert_eq!(McpConnectInChat::from("never"), McpConnectInChat::Never);
+    assert_eq!(McpConnectInChat::Never.to_string(), "never");
+}
