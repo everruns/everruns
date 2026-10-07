@@ -344,14 +344,21 @@ test.describe("Page masthead responsive layout", () => {
 
     const title = page.getByRole("heading", { name: "Responsive Harness" });
     const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
-    const edit = page.getByRole("link", { name: "Edit" });
+    const edit = page.getByRole("button", { name: "Edit", exact: true });
+    const moreActions = page.getByRole("button", { name: "More actions for Responsive Harness" });
 
     await expect(title).toBeVisible();
     await expect(page.getByRole("link", { name: "Create app" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
+    // Copy is a secondary action, same as on the agent page.
+    await expect(page.getByRole("button", { name: "Copy", exact: true })).toHaveCount(0);
     await expect(edit).toBeVisible();
-    await expect(page.getByRole("button", { name: "More actions for Responsive Harness" })).toBeVisible();
+    await expect(moreActions).toBeVisible();
     await edit.click({ trial: true });
+    await moreActions.click();
+    await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "History", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Archive harness" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(masthead.locator("a > button")).toHaveCount(0);
 
     const mastheadBox = await masthead.boundingBox();
