@@ -77,6 +77,7 @@ pub struct Notification {
     #[schema(example = "/chat/session_01933b5a00007000800000000000001")]
     pub href: Option<String>,
     /// Kind-specific structured detail.
+    #[schema(value_type = Object)]
     pub payload: serde_json::Value,
     /// How many times the same event recurred into this notification.
     #[schema(example = 1)]

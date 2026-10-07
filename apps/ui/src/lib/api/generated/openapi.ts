@@ -15766,7 +15766,7 @@ export interface components {
        */
       occurrence_count: number;
       /** @description Kind-specific structured detail. */
-      payload: unknown;
+      payload: Record<string, unknown>;
       source?: components["schemas"]["NotificationSource"] | null;
       /**
        * @description Prefixed public identifier of the resource the notification is about.

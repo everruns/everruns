@@ -40416,6 +40416,7 @@
             "example": 1
           },
           "payload": {
+            "type": "object",
             "description": "Kind-specific structured detail."
           },
           "source": {
